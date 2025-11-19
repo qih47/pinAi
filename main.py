@@ -1,5 +1,7 @@
-# pinAi/main.py
 from flask import Flask, render_template, request, jsonify
+
+# ==== IMPORT CONFIG ====
+from app_config import SECRET_KEY, MODEL_LIST
 
 # ==== IMPORT MODULE INTERNAL ====
 from nlp.intent import is_memory_instruction, is_correction
@@ -20,13 +22,13 @@ from chat.chat_session import (
     get_session_messages
 )
 
+from database.db import get_db
+
 # ====================================================
 # FLASK APP CONFIG
 # ====================================================
 app = Flask(__name__)
-app.secret_key = "80769f0403534ef73f11092dd900d8ce8d8bad1ed4fbe81c634562258b36e1fd"
-
-MODEL_LIST = ["qwen3:8b", "deepseek-r1:8b", "qwen2.5:7b"]
+app.secret_key = SECRET_KEY
 
 
 # ====================================================
@@ -70,30 +72,23 @@ def api_send_message():
     question = data["message"]
     model = data["model"]
 
-    # simpan chat user
     save_chat_message(session_id, "user", question)
 
-    # ============================================
-    # MEMORY INSTRUCTION
-    # ============================================
+    # 1. Memory instruction
     if is_memory_instruction(question):
         save_user_memory(question, question)
         reply = "Siap bro, sudah aku ingat!"
         save_chat_message(session_id, "assistant", reply)
         return jsonify({"success": True, "answer": reply})
 
-    # ============================================
-    # USER CORRECTION
-    # ============================================
+    # 2. Correction
     if is_correction(question):
         save_correction(question, question)
         reply = "Oke bro, koreksi sudah aku simpan!"
         save_chat_message(session_id, "assistant", reply)
         return jsonify({"success": True, "answer": reply})
 
-    # ============================================
-    # PREPARE ALL DATA SOURCES
-    # ============================================
+    # 3. Gather memory sources
     memory_items = get_relevant_user_memory(question)
     memory_text = "\n".join([f"- {m['value']}" for m in memory_items])
 
@@ -108,9 +103,7 @@ def api_send_message():
     rag_items = search_rag(question)
     rag_text = "\n".join([r["content"] for r in rag_items])
 
-    # ============================================
-    # ANTI HALU FILTER
-    # ============================================
+    # 4. Anti halu
     if not is_corporate_answer_possible(rag_items, learning_items, memory_items):
         answer = (
             "Maaf bro, tidak ada informasi mengenai hal tersebut "
@@ -120,9 +113,7 @@ def api_send_message():
         save_dialogue(question, answer)
         return jsonify({"success": True, "answer": answer})
 
-    # ============================================
-    # GENERATE FINAL ANSWER
-    # ============================================
+    # 5. Generate final answer
     answer = ask_ollama(
         model,
         memory_text,
@@ -140,7 +131,6 @@ def api_send_message():
 
 @app.route("/api/switch_model", methods=["POST"])
 def switch_model():
-    from database.db import get_db
     data = request.json
     session_id = data["session_id"]
     new_model = data["model"]
