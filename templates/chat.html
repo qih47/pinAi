@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat - PinAI</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar -->
+        <div class="sidebar">
+            <div class="sidebar-header">
+                <h2>🤖 PinAI</h2>
+                <button class="new-chat-btn" onclick="createNewChat()">
+                    + New Chat
+                </button>
+            </div>
+            
+            <div class="sessions-list">
+                <h3>Recent Chats</h3>
+                {% for session in sessions %}
+                <div class="session-item {% if session.id == current_session.id %}active{% endif %}" 
+                     onclick="location.href='/chat/{{ session.id }}'">
+                    <div class="session-info">
+                        <strong>{{ session.model_name }}</strong>
+                        <span>{{ session.message_count }} messages</span>
+                    </div>
+                    <small>{{ session.started_at.strftime('%d/%m %H:%M') }}</small>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- Main Chat Area -->
+        <div class="main-content">
+            <div class="chat-header">
+                <div class="chat-info">
+                    <h3>Chat Session</h3>
+                    <span class="model-badge">{{ current_session.model_name }}</span>
+                </div>
+                <div class="model-switcher">
+                    <select id="model-switch" onchange="switchModel(this.value)">
+                        {% for model in models %}
+                        <option value="{{ model }}" {% if model == current_session.model_name %}selected{% endif %}>
+                            {{ model }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+
+            <div class="chat-messages" id="chatMessages">
+                {% for message in messages %}
+                <div class="message {% if message.role == 'user' %}user-message{% else %}ai-message{% endif %}">
+                    <div class="message-content">
+                        <div class="message-avatar">
+                            {% if message.role == 'user' %}👤{% else %}🤖{% endif %}
+                        </div>
+                        <div class="message-text">
+                            <div class="message-text-content">{{ message.message_text }}</div>
+                            <div class="message-time">
+                                {{ message.timestamp.strftime('%H:%M') }}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+
+            <div class="chat-input-container">
+                <div class="input-wrapper">
+                    <textarea 
+                        id="messageInput" 
+                        placeholder="Type your message here..." 
+                        rows="1"
+                        onkeydown="handleKeyDown(event)"
+                    ></textarea>
+                    <button onclick="sendMessage()" id="sendButton">
+                        Send
+                    </button>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const currentSessionId = {{ current_session.id }};
+        let currentModel = "{{ current_session.model_name }}";
+        let isTyping = false;
+        
+        function scrollToBottom() {
+            const chatMessages = document.getElementById('chatMessages');
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+        
+        function reformatAllMessages() {
+            document.querySelectorAll('.message-text-content').forEach(el => {
+                // Skip kalau sudah diformat
+                if (el.innerHTML.includes('class="bullet-item"') ||
+                    el.innerHTML.includes('class="numbered-item"') ||
+                    el.innerHTML.includes('class="nested-item"')) {
+                    return;
+                }
+        
+                el.innerHTML = formatAnswer(el.innerHTML);
+            });
+        }
+
+        function handleKeyDown(event) {
+            if (event.key === 'Enter' && !event.shiftKey) {
+                event.preventDefault();
+                sendMessage();
+            }
+        }
+        
+        async function sendMessage() {
+            if (isTyping) return;
+            
+            const input = document.getElementById('messageInput');
+            const message = input.value.trim();
+            const sendButton = document.getElementById('sendButton');
+            
+            if (!message) return;
+        
+            // Add user message to chat
+            addMessageToChat('user', message);
+            input.value = '';
+            sendButton.disabled = true;
+            sendButton.textContent = 'Thinking...';
+            isTyping = true;
+        
+            try {
+                const response = await fetch('/api/send_message', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        session_id: currentSessionId,
+                        message: message,
+                        model: currentModel
+                    })
+                });
+        
+                const data = await response.json();
+                
+                if (data.success) {
+                    await typeMessage('assistant', data.answer);
+                } else {
+                    addMessageToChat('assistant', 'Error: ' + (data.error || 'Unknown error'));
+                }
+            } catch (error) {
+                console.error('Error sending message:', error);
+                addMessageToChat('assistant', 'Error sending message');
+            } finally {
+                sendButton.disabled = false;
+                sendButton.textContent = 'Send';
+                isTyping = false;
+            }
+        }
+        
+        // Typing animation function
+        async function typeMessage(role, content) {
+            const chatMessages = document.getElementById('chatMessages');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${role}-message typing-message`;
+            
+            const timestamp = new Date().toLocaleTimeString('id-ID', { 
+                hour: '2-digit', 
+                minute: '2-digit' 
+            });
+            
+            let avatar = role === 'user' ? '👤' : '🤖';
+            
+            messageDiv.innerHTML = `
+                <div class="message-content">
+                    <div class="message-avatar">${avatar}</div>
+                    <div class="message-text">
+                        <div class="message-text-content">
+                            <div class="typing-indicator">
+                                <span></span>
+                                <span></span>
+                                <span></span>
+                            </div>
+                        </div>
+                        <div class="message-time">${timestamp}</div>
+                    </div>
+                </div>
+            `;
+            
+            chatMessages.appendChild(messageDiv);
+            scrollToBottom();
+            
+            const typingContent = messageDiv.querySelector('.message-text-content');
+            
+            // IMPORTANT: Format answer BEFORE typing
+            await typeText(typingContent, formatAnswer(content));
+            
+            messageDiv.classList.remove('typing-message');
+            messageDiv.querySelector('.message-time').textContent =
+                new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+        }
+        
+        // Type one character at a time
+        function typeText(element, html) {
+            return new Promise((resolve) => {
+                element.innerHTML = "";
+                let idx = 0;
+        
+                // Convert HTML into characters safely
+                const temp = document.createElement("div");
+                temp.innerHTML = html;
+                const finalText = temp.innerHTML;
+        
+                function type() {
+                    if (idx < finalText.length) {
+                        element.innerHTML = finalText.slice(0, idx + 1);
+                        scrollToBottom();
+                        idx++;
+                        setTimeout(type, 5);
+                    } else {
+                        resolve();
+                    }
+                }
+                type();
+            });
+        }
+
+        function formatAnswer(content) {
+            let formatted = content;
+        
+            formatted = formatted.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>");
+        
+            // Nested bullet dulu
+            formatted = formatted.replace(/^\s{2,}-\s+(.*)/gm,
+                `<div class="nested-item"><span>$1</span></div>`
+            );
+        
+            // Bullet biasa
+            formatted = formatted.replace(/^\s*-\s+(.*)/gm,
+                `<div class="bullet-item"><span>$1</span></div>`
+            );
+        
+            // Numbered item
+            formatted = formatted.replace(/^\s*(\d+)\.\s+(.*)/gm,
+                `<div class="numbered-item"><strong>$1.</strong><span>$2</span></div>`
+            );
+        
+      
+        
+            return formatted;
+        }
+        
+        
+        function addMessageToChat(role, content) {
+            const chatMessages = document.getElementById('chatMessages');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${role}-message`;
+        
+            const timestamp = new Date().toLocaleTimeString('id-ID', { 
+                hour: '2-digit', 
+                minute: '2-digit'
+            });
+        
+            let avatar = role === 'user' ? '👤' : '🤖';
+        
+            messageDiv.innerHTML = `
+                <div class="message-content">
+                    <div class="message-avatar">${avatar}</div>
+                    <div class="message-text">
+                        <div class="message-text-content">${formatAnswer(content)}</div>
+                        <div class="message-time">${timestamp}</div>
+                    </div>
+                </div>
+            `;
+        
+            chatMessages.appendChild(messageDiv);
+            scrollToBottom();
+        }
+        
+        async function switchModel(newModel) {
+            try {
+                const response = await fetch('/api/switch_model', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        session_id: currentSessionId,
+                        model: newModel
+                    })
+                });
+        
+                const data = await response.json();
+                if (data.success) {
+                    currentModel = newModel;
+                    document.getElementById('model-switch').value = newModel;
+                    document.getElementById('bottom-model-select').value = newModel;
+        
+                    const notification = document.createElement('div');
+                    notification.className = 'notification';
+                    notification.textContent = `Model switched to ${newModel}`;
+                    document.body.appendChild(notification);
+        
+                    setTimeout(() => notification.remove(), 3000);
+                }
+            } catch (e) {
+                alert('Error switching model');
+            }
+        }
+        
+        async function createNewChat() {
+            try {
+                const response = await fetch('/api/new_chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ model: currentModel })
+                });
+        
+                const data = await response.json();
+                if (data.success) window.location.href = data.redirect_url;
+        
+            } catch (error) {
+                alert("Error creating new chat");
+            }
+        }
+        
+        document.getElementById('messageInput').addEventListener('input', function () {
+            this.style.height = 'auto';
+            this.style.height = (this.scrollHeight) + 'px';
+        });
+        
+        window.addEventListener('DOMContentLoaded', () => {
+            reformatAllMessages();
+            scrollToBottom();
+        });
+        
+    </script>
+        
+</body>
+</html>

@@ -1,0 +1,25 @@
+# Ignore seluruh folder Backup_konsepLama
+Backup_konsepLama/
+
+# Ignore isi rag_env tapi tetap push foldernya
+rag_env/*
+!rag_env/.gitkeep
+
+# Ignore cache, env, log besar
+__pycache__/
+*.pyc
+*.log
+*.sqlite
+
+# Ignore output AI besar
+outputs/
+document_store/
+static/uploads/
+
+# Ignore model weights & embeddings
+*.pt
+*.pth
+*.onnx
+
+# Ignore chainlit session
+.chainlit/
