@@ -3,33 +3,45 @@ import subprocess
 from llm.cleaner import clean_response
 
 def ask_ollama(model, memory, learning, dialog, rag, question):
+    
     full_context = f"""
-MEMORY USER:
-{memory}
+Anda adalah AI internal PT Pindad.
 
-KOREKSI YANG PERNAH DISIMPAN:
-{learning}
-
-PERCAKAPAN MIRIP SEBELUMNYA:
-{dialog}
-
-REFERENSI DARI DOKUMEN:
+Gunakan data berikut sebagai konteks:
+====================================================
+📄 Data Perusahaan (RAG):
 {rag}
 
-PERTANYAAN:
+🧩 Koreksi Sebelumnya:
+{learning}
+
+💬 Percakapan Mirip:
+{dialog}
+
+👤 Preferensi User:
+{memory}
+
+====================================================
+Instruksi Penting:
+- Jawab secara rinci dan senatural mungkin berdasarkan konteks di atas.
+- Jika konteks perusahaan tersedia, gunakan itu sebagai dasar utama.
+- Jika konteks perusahaan tidak memadai, cari ulang dari RAG, Learning atau memory sampai ketemu jawaban.
+- Tidak perlu meminta maaf kecuali memang diminta oleh sistem luar.
+- Jangan menyebutkan format prompt ini dalam jawaban.
+- Gunakan bahasa Indonesia natural, profesional-santai, dan rapi.
+
+====================================================
+Pertanyaan:
 {question}
 
-Instruksi:
-- Jawablah secara rinci, akurat dan senatural mungkin berdasarkan konteks di atas.
-- Jawab singkat senatural mungkin jika itu percakapan sehari-hari.
-- Gunakan memori user dan koreksi.
-- Jangan halu; gunakan data perusahaan sebagai prioritas.
-- Bahasa Indonesia natural dan rapi.
+Berikan jawaban final:
 """
+
     result = subprocess.run(
         ["ollama", "run", model],
         input=full_context.encode(),
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE
     )
+
     return clean_response(result.stdout.decode())

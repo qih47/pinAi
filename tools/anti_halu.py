@@ -1,17 +1,38 @@
 # pinAi/tools/anti_halu.py
 
 def is_corporate_answer_possible(rag_items, learning_items, memory_items):
-    # Ada dokumen perusahaan valid
-    if rag_items and rag_items[0].get("similarity", 0) >= 0.40:
-        return True
+    """
+    Validasi apakah AI diperbolehkan menjawab pertanyaan berbasis data.
+    """
 
-    # Ada koreksi user sebelumnya
+    # ==============================================
+    # 1. PRIORITAS UTAMA: DOKUMEN PERUSAHAAN (RAG)
+    # ==============================================
+    if rag_items:
+
+        # Cek similarity tertinggi
+        top_sim = rag_items[0].get("similarity", 0)
+
+        # Wajib sangat relevan untuk menjawab (>= 0.70)
+        if top_sim >= 0.70:
+            return True
+
+    # ==============================================
+    # 2. KOREKSI USER → selalu valid untuk menjawab
+    # ==============================================
     if learning_items:
         return True
 
-    # Ada long-term memory
+    # ==============================================
+    # 3. MEMORY USER → hanya untuk percakapan biasa,
+    #    TIDAK untuk dokumen perusahaan!
+    # ==============================================
+    # memory tidak dipakai sebagai validasi perusahaan
+        # cek memori personal
     if memory_items:
         return True
 
-    # Tidak ada dasar data → jangan jawab
+    # ==============================================
+    # TIDAK ADA DASAR → jangan jawab
+    # ==============================================
     return False

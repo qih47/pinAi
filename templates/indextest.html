@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Upload PDF Quart</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 40px;
+            background: #f5f5f5;
+        }
+
+        .container {
+            background: white;
+            padding: 50px;
+            border-radius: 10px;
+            max-width: 900px;
+            margin: auto;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.15);
+        }
+
+        h2 { margin-top: 0; }
+
+        .log-box {
+            margin-top: 20px;
+            padding: 15px;
+            padding-top: 0px; 
+            padding-bottom: 40px; 
+            background: #222;
+            color: #0f0;
+            font-family: monospace;
+            border-radius: 8px;
+            height: 500px;
+            overflow-y: auto;
+            font-size: 12px;
+            text-align: left;
+            white-space: pre-wrap;
+        }
+
+        #processBtn {
+            margin-top: 15px;
+            padding: 10px 18px;
+            border: none;
+            background: #007bff;
+            color: white;
+            border-radius: 6px;
+            cursor: pointer;
+        }
+
+        #processBtn:hover {
+            background: #0056b3;
+        }
+
+        /* Spinner */
+        #spinner {
+            display: none;
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #0f0;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            animation: spin 1s linear infinite;
+            margin-left: 10px;
+            vertical-align: middle;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .btn {
+            padding: 8px 16px;
+            margin: 5px;
+            cursor: pointer;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            text-decoration: none;
+            display: inline-block;
+        }
+
+        .btn:hover { background: #0056b3; }
+        
+        .btn-success {
+            background: #28a745;
+        }
+        
+        .btn-warning {
+            background: #ffc107;
+            color: #212529;
+        }
+        
+        .download-section {
+            background: #e7f4e4;
+            padding: 15px;
+            border-radius: 5px;
+            border: 1px solid #c3e6cb;
+            margin-top: 15px;
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h2>Upload PDF</h2>
+
+    <form id="uploadForm" action="/upload_pdf" method="post" enctype="multipart/form-data">
+        <input id="pdfInput" type="file" name="pdf_file" accept="application/pdf" required>
+    </form>
+
+    {% if uploaded %}
+    <p><b>File berhasil diupload:</b> {{ filename }}</p>
+    <button id="processBtn">Proses<span id="spinner"></span></button>
+    {% endif %}
+
+    <!-- Download Area -->
+    <div id="downloadArea" style="display: none;">
+        <div class="download-section">
+            <h4 style="margin-top: 0; color: #155724;">✅ Text Extraction Selesai</h4>
+            
+            <div id="standardDownload" style="display: none;">
+                <p><b>Standard Extraction:</b> <span id="standardFilename"></span></p>
+                <a id="downloadStandardLink" href="#" class="btn btn-success">
+                    📄 Download Standard Text
+                </a>
+            </div>
+            
+            <div id="easyocrDownload" style="display: none; margin-top: 10px;">
+                <p><b>EasyOCR with AI:</b> <span id="easyocrFilename"></span></p>
+                <a id="downloadEasyOCRLink" href="#" class="btn btn-warning">
+                    🔍 Download EasyOCR Text
+                </a>
+            </div>
+            
+            <div id="errorSection" style="display: none; margin-top: 10px; color: #dc3545;">
+                <p><b>⚠️ Errors:</b> <span id="errorText"></span></p>
+            </div>
+        </div>
+    </div>
+
+    <div class="log-box">
+        <div style="font-weight:bold;">LOG SYSTEM:</div>
+        <div id="logContent">{{ gpu_log|safe }}<br></div>
+    </div>
+</div>
+
+<script>
+document.getElementById("pdfInput").addEventListener("change", function () {
+    document.getElementById("uploadForm").submit();
+});
+
+window.addEventListener("load", () => {
+    const processBtn = document.getElementById("processBtn");
+    if (processBtn) processBtn.addEventListener("click", startProcess);
+});
+
+function sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+// Typing animation
+async function typeLog(text, delay=20) {
+    const log = document.getElementById("logContent");
+    const lineSpan = document.createElement('span');
+    log.appendChild(lineSpan);
+    for (let i = 0; i < text.length; i++) {
+        lineSpan.textContent += text[i];
+        lineSpan.scrollIntoView({ behavior: 'auto', block: 'end' });
+        await sleep(delay);
+    }
+    log.appendChild(document.createElement('br'));
+    log.lastChild.scrollIntoView({ behavior: 'auto', block: 'end' });
+}
+
+{% if uploaded %} 
+document.getElementById("logContent").innerHTML += "\n📄 PDF telah diupload: {{ filename }}\n"; 
+{% endif %}
+
+async function startProcess() {
+    const spinner = document.getElementById("spinner");
+    const processBtn = document.getElementById("processBtn");
+    
+    // Disable button dan show spinner
+    processBtn.disabled = true;
+    spinner.style.display = "inline-block";
+    
+    // Clear log untuk proses baru
+    const logContent = document.getElementById("logContent");
+    logContent.innerHTML = "{{ gpu_log|safe }}<br>";
+    logContent.innerHTML += `\n📄 PDF telah diupload: {{ filename }}\n`;
+    
+    const filename = "{{ filename }}";
+    
+    try {
+        await typeLog("\n🚀 Memulai proses...");
+        await sleep(200);
+        
+        await typeLog(`🎯 Memproses ${filename}...`);
+        await sleep(200);
+        
+        await typeLog("🔍 Sedang menganalisa dokumen...");
+        await sleep(300);
+        
+        {% if pdf_info %}
+        const pdf_info = {{ pdf_info|tojson }};
+        
+        await typeLog("📑 ANALISIS PDF:");
+        await typeLog(`- Total halaman : ${pdf_info.pages}`);
+        
+        if (pdf_info.summary) {
+            await typeLog(`- Tipe dokumen  : ${pdf_info.summary.document_type}`);
+            await typeLog(`- Rata-rata teks: ${pdf_info.summary.avg_text_ratio}%`);
+            await typeLog(`- Rata-rata gambar: ${pdf_info.summary.avg_image_ratio}%`);
+            await typeLog(`- Butuh OCR     : ${pdf_info.summary.requires_ocr ? '✅ YA' : '❌ TIDAK'}`);
+        }
+        
+        await typeLog("- Detail tiap halaman:");
+        for (const p of pdf_info.page_detail) {
+            await typeLog(`📄 Halaman ${p.page}`);
+            await typeLog(`    Ukuran      : ${p.width_mm}mm x ${p.height_mm}mm`);
+            await typeLog(`    Text        : ${p.text_ratio}%`);
+            await typeLog(`    Image       : ${p.image_ratio}%`);
+        }
+        {% endif %}
+        
+        // PROSES KEDUA METODE SEKALIGUS
+        await typeLog("\n🔄 Memulai extract text dengan semua metode...");
+        await typeLog("1️⃣ Standard extraction...");
+        await sleep(300);
+
+        // Panggil backend untuk semua metode sekaligus
+        const resp = await fetch("/extract_all", { method: "POST" });
+        const result = await resp.json();
+        
+        // Update log berdasarkan hasil
+        const errors = [];
+        
+        // Standard method results
+        if (result.standard && result.standard.success) {
+            await typeLog("✅ Standard extraction berhasil");
+        } else if (result.standard && result.standard.error) {
+            await typeLog(`❌ Standard error: ${result.standard.error}`);
+            errors.push(`Standard: ${result.standard.error}`);
+        }
+        
+        await typeLog("2️⃣ EasyOCR extraction...");
+        await sleep(300);
+        
+        // EasyOCR method results  
+        if (result.easyocr && result.easyocr.success) {
+            await typeLog("✅ EasyOCR extraction berhasil");
+        } else if (result.easyocr && result.easyocr.error) {
+            await typeLog(`⚠️ EasyOCR: ${result.easyocr.error}`);
+            if (!result.easyocr.error.includes("tidak tersedia")) {
+                errors.push(`EasyOCR: ${result.easyocr.error}`);
+            }
+        }
+        
+        // Tampilkan download section
+        const downloadArea = document.getElementById("downloadArea");
+        downloadArea.style.display = 'block';
+        
+        // Standard download
+        if (result.filenames && result.filenames.standard) {
+            document.getElementById("standardDownload").style.display = 'block';
+            document.getElementById("standardFilename").textContent = result.filenames.standard;
+            document.getElementById("downloadStandardLink").href = "/download_standard";
+        }
+        
+        // EasyOCR download
+        if (result.filenames && result.filenames.easyocr) {
+            document.getElementById("easyocrDownload").style.display = 'block';
+            document.getElementById("easyocrFilename").textContent = result.filenames.easyocr;
+            document.getElementById("downloadEasyOCRLink").href = "/download_easyocr";
+        }
+        
+        // Tampilkan errors jika ada
+        if (errors.length > 0) {
+            document.getElementById("errorSection").style.display = 'block';
+            document.getElementById("errorText").textContent = errors.join("; ");
+        }
+        
+        await typeLog("\n🎉 Proses selesai! File siap didownload.");
+        
+    } catch (error) {
+        await typeLog(`\n❌ Error: ${error.message}`);
+        logContent.innerHTML += `\n❌ Error: ${error.message}\n`;
+    } finally {
+        // Enable button dan hide spinner
+        processBtn.disabled = false;
+        spinner.style.display = "none";
+    }
+}
+</script>
+</body>
+</html>

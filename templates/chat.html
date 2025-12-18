@@ -289,11 +289,30 @@
                     })
                 });
         
-                const data = await response.json();
-                if (data.success) {
+                if (!response.ok) {
+                    alert("Server error switching model");
+                    return;
+                }
+        
+                let data = {};
+                try {
+                    data = await response.json();
+                    console.log("Switch response:", data);
+                } catch (err) {
+                    console.error("JSON parse error:", err);
+                    alert("Error switching model");
+                    return;
+                }
+        
+                if (data.success === true) {
+        
                     currentModel = newModel;
-                    document.getElementById('model-switch').value = newModel;
-                    document.getElementById('bottom-model-select').value = newModel;
+        
+                    // SAFE Update dropdown
+                    const topModelSelect = document.getElementById('model-switch');
+                    if (topModelSelect) topModelSelect.value = newModel;
+        
+                    // Tidak ada bottom dropdown → tidak perlu apa-apa
         
                     const notification = document.createElement('div');
                     notification.className = 'notification';
@@ -301,11 +320,16 @@
                     document.body.appendChild(notification);
         
                     setTimeout(() => notification.remove(), 3000);
+                } else {
+                    alert("Error switching model");
                 }
+        
             } catch (e) {
+                console.error("Fetch error:", e);
                 alert('Error switching model');
             }
         }
+            
         
         async function createNewChat() {
             try {
