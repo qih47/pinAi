@@ -24,7 +24,7 @@ os.makedirs(app.config["OUTPUT_FOLDER"], exist_ok=True)
 # =============================
 def get_db_connection():
     return psycopg2.connect(
-        host="localhost", database="ragdb", user="pindadai", password="Pindad123!"
+        host="localhost", database="ragdb", user="pindadai", password="Pindad123"
     )
 
 
