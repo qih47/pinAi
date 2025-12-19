@@ -8,6 +8,7 @@ from psycopg2.extras import Json
 from psycopg2.extras import RealDictCursor
 import hashlib
 from embeddings.chunk_skep import chunk_skep
+from embeddings.chunk_se import chunk_se
 from sentence_transformers import SentenceTransformer
 
 EMBEDDING_MODEL = SentenceTransformer("BAAI/bge-m3")
@@ -203,6 +204,27 @@ async def debug_skep():
         print(f"🚨 Error di /chunk_skep: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
+# Chunk SE
+@app.route("/chunk_se", methods=["POST"])
+async def debug_se():
+    try:
+        data = await request.get_json()
+        text = data.get("text", "").strip()
+        if not text:
+            return jsonify({"error": "Teks OCR kosong"}), 400
+
+        sections = chunk_se(text)
+        preview = sections[:3]  # ambil 3 pertama untuk preview
+
+        return jsonify({
+            "doc_type": "SE",
+            "chunk_count": len(sections),
+            "preview_chunks": preview
+        })
+    except Exception as e:
+        print(f"🚨 Error di /chunk_se: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
 # upload
 @app.post("/upload")
 async def upload_document():
@@ -305,13 +327,65 @@ async def upload_document():
                         "content": sec["content"],
                         "section_type": sec["type"],
                         "section_title": sec["title"],
-                        "parent_title": sec.get("parent_title")
+                        "parent_title": sec.get("parent_title"),
+                        "level": sec.get("level", 0),
+                        "order": sec.get("order", i + 1),
+                        "parent_id": sec.get("parent_id")
+                    })
+                    chunks_with_meta.append(chunk_meta)
+
+            elif id_jenis == "2":  # SE (Surat Edaran)
+                from embeddings.chunk_se import chunk_se
+                raw_sections = chunk_se(ocr_text)
+
+                # Ekstrak metadata untuk SE
+                metadata = {
+                    "doc_type": "SE",
+                    "nomor": None,
+                    "tanggal": None,
+                    "tentang": None,
+                    "judul": None
+                }
+
+                # Nomor
+                nomor_match = re.search(r'Nomor\s*[:：]\s*([SEse\d/\w\s\-\.]+)', ocr_text, re.IGNORECASE)
+                if nomor_match:
+                    metadata["nomor"] = nomor_match.group(1).strip()
+
+                # Tanggal
+                tanggal_match = re.search(r'(Ditetapkan di|Dikeluarkan di).*?\n.*?tanggal\s*[:：]?\s*([\d\s\w,\.]+)', ocr_text, re.IGNORECASE)
+                if not tanggal_match:
+                    tanggal_match = re.search(r'Pada tanggal\s*[:：]?\s*([\d\s\w,\.]+)', ocr_text, re.IGNORECASE)
+                if tanggal_match:
+                    metadata["tanggal"] = tanggal_match.group(1).strip()
+
+                # Tentang / Judul
+                tentang_match = re.search(r'Tentang\s*\n\s*([^\n]+)', ocr_text, re.IGNORECASE)
+                if tentang_match:
+                    tentang_clean = tentang_match.group(1).strip()
+                    metadata["tentang"] = tentang_clean
+                    metadata["judul"] = tentang_clean
+
+                # Siapkan chunks_with_meta
+                chunks_with_meta = []
+                for i, sec in enumerate(raw_sections):
+                    if not sec["content"].strip():
+                        continue
+                    chunk_meta = metadata.copy()
+                    chunk_meta.update({
+                        "chunk_id": i + 1,
+                        "content": sec["content"],
+                        "section_type": sec["type"],
+                        "section_title": sec["title"],
+                        "parent_title": None,  # SE uses parent_id instead of parent_title
+                        "level": sec.get("level", 0),
+                        "order": sec.get("order", i + 1),
+                        "parent_id": sec.get("parent_id")
                     })
                     chunks_with_meta.append(chunk_meta)
 
             else:
-                # Untuk jenis dokumen lain (SE, IK, Prosedur) — fallback sementara
-                # Nanti akan kita ganti dengan chunk_se, chunk_ik, dll
+                # Untuk jenis dokumen lain (IK, Prosedur) — fallback sementara
                 chunks_with_meta = [{
                     "doc_type": "UNKNOWN",
                     "nomor": None,
@@ -322,7 +396,10 @@ async def upload_document():
                     "content": ocr_text,
                     "section_type": "dokumen",
                     "section_title": "Dokumen Lengkap",
-                    "parent_title": None
+                    "parent_title": None,
+                    "level": 0,
+                    "order": 1,
+                    "parent_id": None
                 }]
 
             # === SIMPAN KE DATABASE (sama untuk semua jenis) ===
@@ -339,36 +416,42 @@ async def upload_document():
 
                 section_type = chunk.get("section_type", "bagian")
                 section_title = chunk.get("section_title", f"Bagian {chunk['chunk_id']}")
-                section_order = chunk["chunk_id"]
-                parent_title = chunk.get("parent_title")
+                section_order = chunk.get("order", chunk["chunk_id"])
+                parent_id = chunk.get("parent_id")  # Use parent_id directly for SE
 
                 cur.execute("""
                     INSERT INTO dokumen_section (
-                        dokumen_id, section_type, section_title, content, section_order
-                    ) VALUES (%s, %s, %s, %s, %s)
+                        dokumen_id, section_type, section_title, content, section_order, parent_id
+                    ) VALUES (%s, %s, %s, %s, %s, %s)
                     RETURNING id
                 """, (
                     dokumen_id,
                     section_type,
                     section_title,
                     content,
-                    section_order
+                    section_order,
+                    parent_id
                 ))
                 sec_id = cur.fetchone()[0]
 
-                temp_sections.append((sec_id, parent_title, section_title, section_order))
+                temp_sections.append((sec_id, parent_id, section_title, section_order))
                 section_ids[(section_title, section_order)] = sec_id
 
-            # Update parent_id berdasarkan parent_title
-            for sec_id, parent_title, child_title, order in temp_sections:
-                if parent_title:
-                    cur.execute("""
-                        SELECT id FROM dokumen_section
-                        WHERE dokumen_id = %s AND section_title = %s
-                    """, (dokumen_id, parent_title))
-                    parent_row = cur.fetchone()
-                    if parent_row:
-                        cur.execute("UPDATE dokumen_section SET parent_id = %s WHERE id = %s", (parent_row[0], sec_id))
+            # For SKEP documents, we still need to update parent_id based on parent_title
+            # because SKEP chunks use parent_title instead of parent_id
+            for sec_id, parent_id, child_title, order in temp_sections:
+                if parent_id is None:  # Only for SKEP or documents that use parent_title
+                    parent_title = next((chunk.get("parent_title") for chunk in chunks_with_meta 
+                                        if chunk.get("section_title") == child_title and 
+                                        chunk.get("order") == order), None)
+                    if parent_title:
+                        cur.execute("""
+                            SELECT id FROM dokumen_section
+                            WHERE dokumen_id = %s AND section_title = %s
+                        """, (dokumen_id, parent_title))
+                        parent_row = cur.fetchone()
+                        if parent_row:
+                            cur.execute("UPDATE dokumen_section SET parent_id = %s WHERE id = %s", (parent_row[0], sec_id))
 
             # Simpan ke dokumen_chunk (untuk RAG)
             for chunk in chunks_with_meta:
