@@ -380,7 +380,7 @@ async def upload_document():
                         "parent_title": None,  # SE uses parent_id instead of parent_title
                         "level": sec.get("level", 0),
                         "order": sec.get("order", i + 1),
-                        "parent_id": sec.get("parent_id")
+                        "parent_id": None  # SE tidak menggunakan hierarki, jadi parent_id di-set None
                     })
                     chunks_with_meta.append(chunk_meta)
 
@@ -417,7 +417,7 @@ async def upload_document():
                 section_type = chunk.get("section_type", "bagian")
                 section_title = chunk.get("section_title", f"Bagian {chunk['chunk_id']}")
                 section_order = chunk.get("order", chunk["chunk_id"])
-                parent_id = chunk.get("parent_id")  # Use parent_id directly for SE
+                parent_id = chunk.get("parent_id")  # Will be None for SE documents (no hierarchy)
 
                 cur.execute("""
                     INSERT INTO dokumen_section (
@@ -439,19 +439,21 @@ async def upload_document():
 
             # For SKEP documents, we still need to update parent_id based on parent_title
             # because SKEP chunks use parent_title instead of parent_id
-            for sec_id, parent_id, child_title, order in temp_sections:
-                if parent_id is None:  # Only for SKEP or documents that use parent_title
-                    parent_title = next((chunk.get("parent_title") for chunk in chunks_with_meta 
-                                        if chunk.get("section_title") == child_title and 
-                                        chunk.get("order") == order), None)
-                    if parent_title:
-                        cur.execute("""
-                            SELECT id FROM dokumen_section
-                            WHERE dokumen_id = %s AND section_title = %s
-                        """, (dokumen_id, parent_title))
-                        parent_row = cur.fetchone()
-                        if parent_row:
-                            cur.execute("UPDATE dokumen_section SET parent_id = %s WHERE id = %s", (parent_row[0], sec_id))
+            # Skip this logic for SE documents (id_jenis == "2") since they don't have hierarchy
+            if id_jenis != "2":  # Only process hierarchy for non-SE documents (like SKEP)
+                for sec_id, parent_id, child_title, order in temp_sections:
+                    if parent_id is None:  # Only for SKEP or documents that use parent_title
+                        parent_title = next((chunk.get("parent_title") for chunk in chunks_with_meta 
+                                            if chunk.get("section_title") == child_title and 
+                                            chunk.get("order") == order), None)
+                        if parent_title:
+                            cur.execute("""
+                                SELECT id FROM dokumen_section
+                                WHERE dokumen_id = %s AND section_title = %s
+                            """, (dokumen_id, parent_title))
+                            parent_row = cur.fetchone()
+                            if parent_row:
+                                cur.execute("UPDATE dokumen_section SET parent_id = %s WHERE id = %s", (parent_row[0], sec_id))
 
             # Simpan ke dokumen_chunk (untuk RAG)
             for chunk in chunks_with_meta:
