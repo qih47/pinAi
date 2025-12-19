@@ -96,7 +96,7 @@ def chunk_se(text: str) -> List[Dict[str, Any]]:
             in_structured_section = True  # Tetap dalam konteks struktur hukum
             
         # Deteksi butir utama: "1.", "2.", "10.", dll. (juga sebagai indikator awal struktur hukum)
-        elif (re.match(r'^\s*\d+\.\\s*$', stripped) or re.match(r'^\s*\d+\.\\s+\S', stripped)):
+        elif (re.match(r'^\s*\d+\\\s*$', stripped) or re.match(r'^\s*\d+\\\s+\S', stripped)):
             # Set status bahwa kita sekarang dalam konteks struktur hukum
             in_structured_section = True
             # Simpan section sebelumnya jika ada
@@ -110,7 +110,7 @@ def chunk_se(text: str) -> List[Dict[str, Any]]:
                 sections.append(current_section)
             
             # Ekstrak nomor dan judul
-            parts = re.split(r'\.\\s*', stripped, 1)
+            parts = re.split(r'\s*', stripped, 1)
             number = parts[0].strip()
             title = parts[1].strip() if len(parts) > 1 else ""
             
