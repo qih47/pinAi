@@ -67,26 +67,51 @@ def chunk_skep(text: str) -> List[Dict[str, str]]:
             "parent_title": None
         })
 
-    # 2. Parse BAB dan Pasal
+    # 2. Parse BAB dan Pasal - dengan struktur hirarki yang benar
     current_bab_title = None
+    current_bab_content = ""
+    current_bab_index = -1
     lines = body.splitlines()
     i = 0
 
     while i < len(lines):
         line = lines[i].strip()
 
-        # Deteksi BAB
-        bab_match = re.match(r'^(BAB\s+[IVXLCDM]+)\s+(.+)$', line, re.IGNORECASE)
+        # Deteksi BAB - sekarang kita juga mencari BAB yang judulnya di baris berikutnya
+        bab_match = re.match(r'^(BAB\s+[IVXLCDM]+)\s*(.*)$', line, re.IGNORECASE)
         if bab_match:
             bab_no = bab_match.group(1).strip().upper()
             bab_name = bab_match.group(2).strip()
-            current_bab_title = f"{bab_no} – {bab_name}"
+            
+            # Jika nama BAB kosong, coba ambil baris berikutnya sebagai nama BAB
+            if not bab_name and i + 1 < len(lines):
+                next_line = lines[i + 1].strip()
+                # Jika baris berikutnya bukan Pasal atau BAB, maka mungkin itu nama BAB
+                if not re.match(r'^(Pasal\s+\d+|BAB\s+[IVXLCDM]+)', next_line, re.IGNORECASE):
+                    bab_name = next_line
+                    i += 1  # Lewati baris nama BAB juga
+            
+            # Jika masih kosong, gunakan nama umum
+            if not bab_name:
+                bab_name = "BAB TANPA NAMA"
+                
+            bab_title = f"{bab_no} – {bab_name}"
+            
+            # Jika sebelumnya ada BAB yang sedang diproses, simpan dulu
+            if current_bab_title and current_bab_content.strip():
+                sections[current_bab_index]["content"] = current_bab_content.strip()
+            
+            current_bab_title = bab_title
+            
+            # Tambahkan BAB ke sections
             sections.append({
                 "type": "bab",
                 "title": current_bab_title,
-                "content": "",
+                "content": "",  # Akan diisi nanti
                 "parent_title": None
             })
+            current_bab_index = len(sections) - 1
+            current_bab_content = f"{bab_no} {bab_name}"  # Mulai dengan judul BAB
             i += 1
             continue
 
@@ -116,10 +141,25 @@ def chunk_skep(text: str) -> List[Dict[str, str]]:
                 "content": pasal_content,
                 "parent_title": current_bab_title
             })
+            
+            # Tambahkan pasal ke konten BAB saat ini
+            if current_bab_content:
+                current_bab_content += "\n\n" + pasal_content
+            else:
+                current_bab_content = pasal_content
+            
             i = j
             continue
-
+        
+        # Jika bukan BAB atau Pasal, tambahkan ke konten BAB saat ini
+        if current_bab_title:
+            current_bab_content += "\n" + line
+        
         i += 1
+    
+    # Jangan lupa simpan konten BAB terakhir jika ada
+    if current_bab_title and current_bab_content.strip() and current_bab_index >= 0:
+        sections[current_bab_index]["content"] = current_bab_content.strip()
 
     # 3. Tambahkan tanda tangan ke chunk terakhir
     if signature_block.strip():
