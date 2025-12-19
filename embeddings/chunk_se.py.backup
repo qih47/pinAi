@@ -95,16 +95,17 @@ def chunk_se(text: str) -> List[Dict[str, Any]]:
             item_counter += 1
             in_structured_section = True  # Tetap dalam konteks struktur hukum
             
-        # Deteksi butir utama: "1.", "2.", "10.", dll. (juga sebagai indikator awal struktur hukum)
-        elif re.match(r'^\s*\d+\.\s*', stripped):
-            # Set status bahwa kita sekarang dalam konteks struktur hukum
-            in_structured_section = True
-            # Simpan section sebelumnya beserta sub-itemsnya jika ada
+        # Deteksi butir utama: "1.", "2.", "10.", dll. (hanya jika dalam konteks struktur hukum)
+        elif (re.match(r'^\s*\d+\.\s*$', stripped) or re.match(r'^\s*\d+\.\s+\S', stripped)) and in_structured_section:
+            # Simpan section sebelumnya jika ada
             if current_section:
+                # Gabungkan sub-items ke main section
+                full_content = current_section['content']
+                if current_sub_items:
+                    full_content += "\n" + "\n".join([sub['content'] for sub in current_sub_items])
+                
+                current_section['content'] = full_content
                 sections.append(current_section)
-                # Tambahkan sub-items
-                for sub_item in current_sub_items:
-                    sections.append(sub_item)
             
             # Ekstrak nomor dan judul
             parts = re.split(r'\.\s*', stripped, 1)
@@ -130,7 +131,7 @@ def chunk_se(text: str) -> List[Dict[str, Any]]:
                re.match(r'^\s*-\s', line) or \
                re.match(r'^\s*•\s', line):
                 
-                # Simpan sub-item sebagai section terpisah
+                # Simpan sub-item
                 sub_item = {
                     'type': 'sub_item',
                     'title': line.strip(),
@@ -140,17 +141,22 @@ def chunk_se(text: str) -> List[Dict[str, Any]]:
                     'parent_id': current_section['order'],  # Referensi ke order dari parent section
                     'metadata': {'parent_item': current_section.get('metadata', {}).get('item_number') or current_section.get('metadata', {}).get('pasal_number')}
                 }
-                # Tambahkan ke sections langsung, bukan hanya disimpan
-                sections.append(sub_item)
+                current_sub_items.append(sub_item)
             else:
                 # Tambahkan ke konten dari section saat ini
                 current_section['content'] += f"\n{line}"
-
+        
         i += 1
 
-    # Tambahkan section terakhir beserta sub-itemsnya
+    # Tambahkan section terakhir
     if current_section:
+        full_content = current_section['content']
+        if current_sub_items:
+            full_content += "\n" + "\n".join([sub['content'] for sub in current_sub_items])
+        
+        current_section['content'] = full_content
         sections.append(current_section)
+        
         # Tambahkan sub-items
         for sub_item in current_sub_items:
             sections.append(sub_item)
