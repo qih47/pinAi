@@ -3,6 +3,15 @@
 *.pyc
 __pycache__/
 
+# Ignore isi temp_uploads tapi tetap push foldernya
+temp_uploads/*
+!temp_uploads/.gitkeep
+
+# Ignore isi rag_env tapi tetap push foldernya
+rag_env/*
+!rag_env/.gitkeep
+
+
 # Dependencies
 .venv/
 venv/

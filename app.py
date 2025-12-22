@@ -10,6 +10,7 @@ import hashlib
 from embeddings.chunk_skep import chunk_skep
 from embeddings.chunk_se import chunk_se
 from embeddings.chunk_ik import chunk_ik
+from embeddings.chunk_prosedur import chunk_prosedur
 from sentence_transformers import SentenceTransformer
 
 EMBEDDING_MODEL = SentenceTransformer("BAAI/bge-m3")
@@ -247,6 +248,27 @@ async def debug_ik():
         print(f"🚨 Error di /chunk_ik: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
+# Prosedur
+@app.route("/chunk_prosedur", methods=["POST"])
+async def debug_prosedur():
+    try:
+        data = await request.get_json()
+        text = data.get("text", "").strip()
+        if not text:
+            return jsonify({"error": "Teks OCR kosong"}), 400
+
+        sections = chunk_prosedur(text)
+        preview = sections[:3]
+
+        return jsonify({
+            "doc_type": "PROSEDUR",
+            "chunk_count": len(sections),
+            "preview_chunks": preview
+        })
+    except Exception as e:
+        print(f"🚨 Error di /chunk_prosedur: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
 # upload
 @app.post("/upload")
 async def upload_document():
@@ -403,6 +425,36 @@ async def upload_document():
                             if idx + 1 < len(lines):
                                 metadata["judul"] = lines[idx + 1]
                                 metadata["tentang"] = lines[idx + 1]
+                            break
+                        
+            elif id_jenis == "4":  # Prosedur
+                from embeddings.chunk_prosedur import chunk_prosedur
+                raw_sections = chunk_prosedur(ocr_text)
+
+                # Ekstrak metadata untuk Prosedur
+                metadata = {
+                    "doc_type": "PROSEDUR",
+                    "nomor": None,
+                    "tanggal": None,
+                    "tentang": None,
+                    "judul": None
+                }
+
+                # Nomor (cari pola seperti P-11-PP-070)
+                nomor_match = re.search(r'(P\s*[-–]\s*\d+\s*[-–]\s*[A-Z\d\s\-]+)', ocr_text)
+                if nomor_match:
+                    metadata["nomor"] = nomor_match.group(1).strip()
+
+                # Judul (ambil dari baris pertama sebelum nomor)
+                lines = [line.strip() for line in ocr_text.split('\n') if line.strip()]
+                if lines:
+                    for line in lines:
+                        if "PROSEDUR" in line.upper():
+                            # Ambil baris sebelumnya sebagai judul
+                            idx = lines.index(line)
+                            if idx > 0:
+                                metadata["judul"] = lines[idx - 1]
+                                metadata["tentang"] = lines[idx - 1]
                             break
 
             else:
