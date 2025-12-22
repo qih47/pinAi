@@ -195,7 +195,7 @@ async def debug_skep():
             return jsonify({"error": "Teks OCR kosong"}), 400
 
         sections = chunk_skep(text)
-        preview = sections[:3]  # ambil 3 pertama untuk preview
+        preview = sections[:20]  # ambil 3 pertama untuk preview
 
         return jsonify({
             "doc_type": "SKEP",
@@ -216,7 +216,7 @@ async def debug_se():
             return jsonify({"error": "Teks OCR kosong"}), 400
 
         sections = chunk_se(text)
-        preview = sections[:3]  # ambil 3 pertama untuk preview
+        preview = sections[:20]  # ambil 3 pertama untuk preview
 
         return jsonify({
             "doc_type": "SE",
@@ -237,7 +237,7 @@ async def debug_ik():
             return jsonify({"error": "Teks OCR kosong"}), 400
 
         sections = chunk_ik(text)
-        preview = sections[:3]  # ambil 3 pertama untuk preview
+        preview = sections[:20]  # ambil 3 pertama untuk preview
 
         return jsonify({
             "doc_type": "IK",
@@ -258,7 +258,7 @@ async def debug_prosedur():
             return jsonify({"error": "Teks OCR kosong"}), 400
 
         sections = chunk_prosedur(text)
-        preview = sections[:3]
+        preview = sections[:20]
 
         return jsonify({
             "doc_type": "PROSEDUR",
