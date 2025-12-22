@@ -1,13 +1,11 @@
 import re
 from typing import List, Dict, Any
 
-def chunk_se(text: str) -> List[Dict[str, Any]]:
+def chunk_se(text: str) -> List[str]:
     """
-    Chunk Surat Edaran berdasarkan struktur dokumen hukum formal (BAB, Pasal, dll).
+    Chunk Surat Edaran berdasarkan butir utama (1., 2., dst.).
     Menangani:
-      - BAB (struktur utama)
-      - Pasal (sub utama)
-      - Butir (1., 2., 3., dll)
+      - Butir utama di baris terpisah 
       - Sub-butir (a., b., i), -, • tetap dalam chunk
       - Tanda tangan di akhir ditambahkan ke chunk terakhir
       - Bagian 'Tembusan' dihapus
@@ -30,153 +28,33 @@ def chunk_se(text: str) -> List[Dict[str, Any]]:
         text = text[:sig_match.start()]
 
     lines = text.splitlines()
-    sections = []
-    current_section = None
-    current_sub_items = []
-    
-    # Counter untuk urutan
-    item_counter = 1
-    
-    # Status untuk melacak apakah kita sedang dalam konteks pasal (baru mulai dari BAB ke atas)
-    in_structured_section = False
-    
-    i = 0
-    while i < len(lines):
-        line = lines[i]
+    chunks = []
+    current_chunk = []
+    current_main_number = None
+
+    for line in lines:
         stripped = line.strip()
 
-        # Deteksi BAB: BAB I, BAB II, dll.
-        if re.match(r'^BAB\s+[IVX]+', stripped, re.IGNORECASE):
-            # Simpan section sebelumnya jika ada
-            if current_section:
-                # Gabungkan sub-items ke main section
-                full_content = current_section['content']
-                if current_sub_items:
-                    full_content += "\n" + "\n".join([sub['content'] for sub in current_sub_items])
-                
-                current_section['content'] = full_content
-                sections.append(current_section)
-            
-            current_section = {
-                'type': 'bab',
-                'title': stripped,
-                'content': line,
-                'level': 0,
-                'order': item_counter,
-                'parent_id': None,
-                'metadata': {'section_type': 'bab'}
-            }
-            current_sub_items = []
-            item_counter += 1
-            in_structured_section = True  # Mulai dari sini kita anggap dalam konteks struktur hukum
-            
-        # Deteksi Pasal: Pasal 1, Pasal 2, dll.
-        elif re.match(r'^Pasal\s+\d+', stripped, re.IGNORECASE):
-            # Simpan section sebelumnya jika ada
-            if current_section:
-                # Gabungkan sub-items ke main section
-                full_content = current_section['content']
-                if current_sub_items:
-                    full_content += "\n" + "\n".join([sub['content'] for sub in current_sub_items])
-                
-                current_section['content'] = full_content
-                sections.append(current_section)
-            
-            current_section = {
-                'type': 'pasal',
-                'title': stripped,
-                'content': line,
-                'level': 1,
-                'order': item_counter,
-                'parent_id': None,  # Akan diisi di database berdasarkan BAB jika ada
-                'metadata': {'section_type': 'pasal', 'pasal_number': re.search(r'\d+', stripped).group()}
-            }
-            current_sub_items = []
-            item_counter += 1
-            in_structured_section = True  # Tetap dalam konteks struktur hukum
-            
-        # Deteksi butir utama: "1.", "2.", "10.", dll. (juga sebagai indikator awal struktur hukum)
-        elif re.match(r'^\s*\d+\.\s*', stripped):
-            # Set status bahwa kita sekarang dalam konteks struktur hukum
-            in_structured_section = True
-            # Simpan section sebelumnya beserta sub-itemsnya jika ada
-            if current_section:
-                sections.append(current_section)
-                # Tambahkan sub-items
-                for sub_item in current_sub_items:
-                    sections.append(sub_item)
-            
-            # Ekstrak nomor dan judul
-            parts = re.split(r'\.\s*', stripped, 1)
-            number = parts[0].strip()
-            title = parts[1].strip() if len(parts) > 1 else ""
-            
-            current_section = {
-                'type': 'butir',
-                'title': f"{number}. {title}".strip(),
-                'content': stripped,
-                'level': 2,
-                'order': item_counter,
-                'parent_id': None,  # Akan diisi di database berdasarkan pasal/bab jika ada
-                'metadata': {'item_number': number}
-            }
-            current_sub_items = []
-            item_counter += 1
-            
-        elif current_section:  # Jika sedang dalam section
-            # Deteksi sub-item (a., b., c., i., ii., dst.)
-            if re.match(r'^\s*[a-zA-Z]\.\s', line) or \
-               re.match(r'^\s*[ivx]+\)\s', line) or \
-               re.match(r'^\s*-\s', line) or \
-               re.match(r'^\s*•\s', line):
-                
-                # Simpan sub-item sebagai section terpisah
-                sub_item = {
-                    'type': 'sub_item',
-                    'title': line.strip(),
-                    'content': line,
-                    'level': current_section['level'] + 1,
-                    'order': len(current_sub_items) + 1,
-                    'parent_id': current_section['order'],  # Referensi ke order dari parent section
-                    'metadata': {'parent_item': current_section.get('metadata', {}).get('item_number') or current_section.get('metadata', {}).get('pasal_number')}
-                }
-                # Tambahkan ke sections langsung, bukan hanya disimpan
-                sections.append(sub_item)
-            else:
-                # Tambahkan ke konten dari section saat ini
-                current_section['content'] += f"\n{line}"
+        # Deteksi butir utama: "1.", "2.", "10.", dll.
+        if re.match(r'^\d+\.\s*$', stripped) or re.match(r'^\d+\.\s+\S', stripped):
+            if current_chunk:
+                chunks.append("\n".join(current_chunk))
+            current_chunk = [line]
+            current_main_number = True
+        else:
+            if current_main_number:
+                current_chunk.append(line)
 
-        i += 1
+    if current_chunk:
+        chunks.append("\n".join(current_chunk))
 
-    # Tambahkan section terakhir beserta sub-itemsnya
-    if current_section:
-        sections.append(current_section)
-        # Tambahkan sub-items
-        for sub_item in current_sub_items:
-            sections.append(sub_item)
-
-    # Jika tidak ada section terstruktur → kembalikan seluruh isi sebagai header/deskripsi
-    if not sections:
+    if not chunks:
         body = text.strip()
         if signature_block:
             body += "\n\n" + signature_block
-        
-        if body:
-            sections.append({
-                'type': 'header',
-                'title': 'Deskripsi Surat Edaran',
-                'content': body,
-                'level': 0,
-                'order': 1,
-                'parent_id': None,
-                'metadata': {}
-            })
+        return [body] if body else []
 
-    # Tambahkan signature ke section terakhir jika ada
-    if signature_block and sections:
-        sections[-1]['content'] = sections[-1]['content'].rstrip() + "\n\n" + signature_block
-        # Update metadata untuk menunjukkan ini termasuk signature
-        if 'includes_signature' not in sections[-1]['metadata']:
-            sections[-1]['metadata']['includes_signature'] = True
+    if signature_block:
+        chunks[-1] = chunks[-1].rstrip() + "\n\n" + signature_block
 
-    return sections
+    return chunks

@@ -25,7 +25,7 @@ os.makedirs(app.config["OUTPUT_FOLDER"], exist_ok=True)
 # =============================
 def get_db_connection():
     return psycopg2.connect(
-        host="localhost", database="ragdb", user="pindadai", password="Pindad123"
+        host="localhost", database="ragdb", user="pindadai", password="Pindad123!"
     )
 
 
@@ -284,130 +284,98 @@ async def upload_document():
 
         # === 2. Parse & simpan ke `dokumen_section` dan `dokumen_chunk` ===
         try:
+            # Gunakan pendekatan flat untuk semua jenis dokumen
             if id_jenis == "1":  # SKEP
                 from embeddings.chunk_skep import chunk_skep
                 raw_sections = chunk_skep(ocr_text)
+            elif id_jenis == "2":  # SE
+                from embeddings.chunk_se import chunk_se
+                raw_sections = chunk_se(ocr_text)
+                # Konversi ke format dict
+                sections_dict = []
+                for i, content in enumerate(raw_sections):
+                    sections_dict.append({
+                        "type": "butir",
+                        "title": f"Butir {i+1}",
+                        "content": content,
+                        "parent_title": None
+                    })
+                raw_sections = sections_dict
+            else:
+                # Fallback untuk jenis lain
+                raw_sections = [{
+                    "type": "dokumen",
+                    "title": "Dokumen Lengkap",
+                    "content": ocr_text,
+                    "parent_title": None
+                }]
 
-                # Ekstrak metadata untuk SKEP
-                metadata = {
-                    "doc_type": "SKEP",
-                    "nomor": None,
-                    "tanggal": None,
-                    "tentang": None,
-                    "judul": None
-                }
+            # Ekstrak metadata
+            metadata = {
+                "doc_type": "SKEP" if id_jenis == "1" else "SE" if id_jenis == "2" else "UNKNOWN",
+                "nomor": None,
+                "tanggal": None,
+                "tentang": None,
+                "judul": None
+            }
 
-                # Nomor
+            if id_jenis == "1":  # SKEP
                 nomor_match = re.search(r'Nomor\s*[:：]\s*(Skep[/\d\w\s\-\.]+)', ocr_text, re.IGNORECASE)
                 if nomor_match:
                     metadata["nomor"] = nomor_match.group(1).strip()
-
-                # Tanggal
+                    
                 tanggal_match = re.search(r'(Ditetapkan di|Dikeluarkan di).*?\n.*?tanggal\s*[:：]?\s*([\d\s\w,\.]+)', ocr_text, re.IGNORECASE)
                 if not tanggal_match:
                     tanggal_match = re.search(r'Pada tanggal\s*[:：]?\s*([\d\s\w,\.]+)', ocr_text, re.IGNORECASE)
                 if tanggal_match:
                     metadata["tanggal"] = tanggal_match.group(1).strip()
 
-                # Tentang / Judul
                 tentang_match = re.search(r'Tentang\s*\n\s*([^\n]+)', ocr_text, re.IGNORECASE)
                 if tentang_match:
                     tentang_clean = tentang_match.group(1).strip()
                     metadata["tentang"] = tentang_clean
                     metadata["judul"] = tentang_clean
 
-                # Siapkan chunks_with_meta
-                chunks_with_meta = []
-                for i, sec in enumerate(raw_sections):
-                    if not sec["content"].strip():
-                        continue
-                    chunk_meta = metadata.copy()
-                    chunk_meta.update({
-                        "chunk_id": i + 1,
-                        "content": sec["content"],
-                        "section_type": sec["type"],
-                        "section_title": sec["title"],
-                        "parent_title": sec.get("parent_title"),
-                        "level": sec.get("level", 0),
-                        "order": sec.get("order", i + 1),
-                        "parent_id": sec.get("parent_id")
-                    })
-                    chunks_with_meta.append(chunk_meta)
-
-            elif id_jenis == "2":  # SE (Surat Edaran)
-                from embeddings.chunk_se import chunk_se
-                raw_sections = chunk_se(ocr_text)
-
-                # Ekstrak metadata untuk SE
-                metadata = {
-                    "doc_type": "SE",
-                    "nomor": None,
-                    "tanggal": None,
-                    "tentang": None,
-                    "judul": None
-                }
-
-                # Nomor
+            elif id_jenis == "2":  # SE
                 nomor_match = re.search(r'Nomor\s*[:：]\s*([SEse\d/\w\s\-\.]+)', ocr_text, re.IGNORECASE)
                 if nomor_match:
                     metadata["nomor"] = nomor_match.group(1).strip()
-
-                # Tanggal
+                    
                 tanggal_match = re.search(r'(Ditetapkan di|Dikeluarkan di).*?\n.*?tanggal\s*[:：]?\s*([\d\s\w,\.]+)', ocr_text, re.IGNORECASE)
                 if not tanggal_match:
                     tanggal_match = re.search(r'Pada tanggal\s*[:：]?\s*([\d\s\w,\.]+)', ocr_text, re.IGNORECASE)
                 if tanggal_match:
                     metadata["tanggal"] = tanggal_match.group(1).strip()
 
-                # Tentang / Judul
                 tentang_match = re.search(r'Tentang\s*\n\s*([^\n]+)', ocr_text, re.IGNORECASE)
                 if tentang_match:
                     tentang_clean = tentang_match.group(1).strip()
                     metadata["tentang"] = tentang_clean
                     metadata["judul"] = tentang_clean
 
-                # Siapkan chunks_with_meta
-                chunks_with_meta = []
-                for i, sec in enumerate(raw_sections):
-                    if not sec["content"].strip():
-                        continue
-                    chunk_meta = metadata.copy()
-                    chunk_meta.update({
-                        "chunk_id": i + 1,
-                        "content": sec["content"],
-                        "section_type": sec["type"],
-                        "section_title": sec["title"],
-                        "parent_title": None,  # SE uses parent_id instead of parent_title
-                        "level": sec.get("level", 0),
-                        "order": sec.get("order", i + 1),
-                        "parent_id": None  # SE tidak menggunakan hierarki, jadi parent_id di-set None
-                    })
-                    chunks_with_meta.append(chunk_meta)
+            # Siapkan chunks_with_meta
+            chunks_with_meta = []
+            for i, sec in enumerate(raw_sections):
+                chunk_meta = metadata.copy()
+                chunk_meta.update({
+                    "chunk_id": i + 1,
+                    "content": sec["content"],
+                    "section_type": sec["type"],
+                    "section_title": sec["title"],
+                    "parent_title": sec.get("parent_title")
+                })
+                chunks_with_meta.append(chunk_meta)
 
-            else:
-                # Untuk jenis dokumen lain (IK, Prosedur) — fallback sementara
-                chunks_with_meta = [{
-                    "doc_type": "UNKNOWN",
-                    "nomor": None,
-                    "tanggal": None,
-                    "tentang": None,
-                    "judul": None,
-                    "chunk_id": 1,
-                    "content": ocr_text,
-                    "section_type": "dokumen",
-                    "section_title": "Dokumen Lengkap",
-                    "parent_title": None,
-                    "level": 0,
-                    "order": 1,
-                    "parent_id": None
-                }]
-
-            # === SIMPAN KE DATABASE (sama untuk semua jenis) ===
+            # === SIMPAN KE DATABASE ===
             conn = get_db_connection()
             cur = conn.cursor()
 
             section_ids = {}
             temp_sections = []
+
+            # Normalisasi function untuk konsistensi
+            def normalize_title(title):
+                return title.replace('–', '-').replace('—', '-').strip()
 
             for chunk in chunks_with_meta:
                 content = chunk["content"]
@@ -416,44 +384,37 @@ async def upload_document():
 
                 section_type = chunk.get("section_type", "bagian")
                 section_title = chunk.get("section_title", f"Bagian {chunk['chunk_id']}")
-                section_order = chunk.get("order", chunk["chunk_id"])
-                parent_id = chunk.get("parent_id")  # Will be None for SE documents (no hierarchy)
+                section_order = chunk["chunk_id"]
+                parent_title = chunk.get("parent_title")
+
+                # Normalisasi judul
+                section_title_norm = normalize_title(section_title)
+                parent_title_norm = normalize_title(parent_title) if parent_title else None
 
                 cur.execute("""
                     INSERT INTO dokumen_section (
-                        dokumen_id, section_type, section_title, content, section_order, parent_id
-                    ) VALUES (%s, %s, %s, %s, %s, %s)
+                        dokumen_id, section_type, section_title, content, section_order
+                    ) VALUES (%s, %s, %s, %s, %s)
                     RETURNING id
                 """, (
                     dokumen_id,
                     section_type,
-                    section_title,
+                    section_title_norm,
                     content,
-                    section_order,
-                    parent_id
+                    section_order
                 ))
                 sec_id = cur.fetchone()[0]
+                temp_sections.append((sec_id, parent_title_norm, section_title_norm))
+                section_ids[section_title_norm] = sec_id
 
-                temp_sections.append((sec_id, parent_id, section_title, section_order))
-                section_ids[(section_title, section_order)] = sec_id
-
-            # For SKEP documents, we still need to update parent_id based on parent_title
-            # because SKEP chunks use parent_title instead of parent_id
-            # Skip this logic for SE documents (id_jenis == "2") since they don't have hierarchy
-            if id_jenis != "2":  # Only process hierarchy for non-SE documents (like SKEP)
-                for sec_id, parent_id, child_title, order in temp_sections:
-                    if parent_id is None:  # Only for SKEP or documents that use parent_title
-                        parent_title = next((chunk.get("parent_title") for chunk in chunks_with_meta 
-                                            if chunk.get("section_title") == child_title and 
-                                            chunk.get("order") == order), None)
-                        if parent_title:
-                            cur.execute("""
-                                SELECT id FROM dokumen_section
-                                WHERE dokumen_id = %s AND section_title = %s
-                            """, (dokumen_id, parent_title))
-                            parent_row = cur.fetchone()
-                            if parent_row:
-                                cur.execute("UPDATE dokumen_section SET parent_id = %s WHERE id = %s", (parent_row[0], sec_id))
+            # Update parent_id
+            for sec_id, parent_title_norm, child_title in temp_sections:
+                if parent_title_norm:
+                    if parent_title_norm in section_ids:
+                        parent_id = section_ids[parent_title_norm]
+                        cur.execute("UPDATE dokumen_section SET parent_id = %s WHERE id = %s", (parent_id, sec_id))
+                    else:
+                        print(f"Warning: Parent '{parent_title_norm}' not found for section '{child_title}'")
 
             # Simpan ke dokumen_chunk (untuk RAG)
             for chunk in chunks_with_meta:

@@ -37,6 +37,10 @@ htmlcov/
 *.swp
 *.swo
 
+# Ignore isi rag_env tapi tetap push foldernya
+rag_env/*
+!rag_env/.gitkeep
+
 # OS
 .DS_Store
 Thumbs.db
