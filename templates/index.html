@@ -166,13 +166,13 @@
           try {
               logBox.innerHTML += "✂️ Memotong margin dokumen pdf....<br>";
               const cropRes = await fetch("/proses_crop", { method: "POST", body: formData }).then(r => r.json());
-              if (cropRes.log) logBox.innerHTML += cropRes.log.replace(/\n/g, "<br>") + "<br>";
+              if (cropRes.log) logBox.innerHTML += "✂️ Log Crop:<br>" + cropRes.log.replace(/\n/g, "<br>") + "<br>";
               logBox.innerHTML += "✅ Pemotongan selesai dilakukan....<br>";
               logBox.scrollTop = logBox.scrollHeight;
   
               logBox.innerHTML += "🚀 Memulai proses OCR dokumen PDF.....<br>";
               const ocrRes = await fetch("/proses_ocr", { method: "POST" }).then(r => r.json());
-              if (ocrRes.log) logBox.innerHTML += ocrRes.log.replace(/\n/g, "<br>") + "<br>";
+              if (ocrRes.log) logBox.innerHTML += "🔍 Log OCR:<br>" + ocrRes.log.replace(/\n/g, "<br>") + "<br>";
               logBox.innerHTML += "🎉 OCR selesai dilakukan....<br>";
               logBox.scrollTop = logBox.scrollHeight;
   
