@@ -1,72 +1,9 @@
 #!/usr/bin/env python3
 """
-Skrip untuk debugging fungsi chunk_ik
+Skrip untuk debugging fungsi chunk_ik yang baru
 """
 
 import re
-
-def debug_chunk_ik(text: str):
-    """
-    Debug versi dari fungsi chunk_ik untuk melihat apa yang terjadi di setiap tahap
-    """
-    print("=== AWAL TEXT ===")
-    print(repr(text[:200]))
-    print("\n")
-    
-    text = re.sub(r'={5,}\s*PAGE\s+\d+\s*={5,}', '', text, flags=re.IGNORECASE)
-    text = re.sub(r'\n{3,}', '\n\n', text)
-    
-    print("=== SETELAH PENGHAPUSAN PAGE ===")
-    print(repr(text[:200]))
-    print("\n")
-    
-    # Pisahkan bagian utama dari LEMBAR PENGESAHAN
-    pengesahan_match = re.search(r'(\n\s*LEMBAR\s+PENGESAHAN.*$)', text, re.IGNORECASE | re.DOTALL)
-    print("=== PENCOCOKAN PENGESAHAN ===")
-    print(f"Pengesahan match: {bool(pengesahan_match)}")
-    if pengesahan_match:
-        print(f"Match group: {repr(pengesahan_match.group(1)[:100])}")
-        
-    if pengesahan_match:
-        pengesahan_content = pengesahan_match.group(1).strip()
-        main_content = text[:pengesahan_match.start()].strip()
-        print(f"Main content akhir: {repr(main_content[-100:])}")
-    else:
-        pengesahan_content = ""
-        main_content = text
-    
-    print(f"\n=== MAIN CONTENT ===")
-    print(repr(main_content[:300]))
-    print("\n")
-    
-    # Cek apakah ada pola angka diikuti titik
-    numbers = re.findall(r'\n\s*(\d+)\.\s+', main_content)
-    print(f"Angka yang ditemukan: {numbers}")
-    
-    # Ekstrak header (judul, nomor, edisi)
-    header = ""
-    # Cari pola INSTRUKSI KERJA sampai sebelum angka pertama yang diikuti titik
-    header_match = re.search(r'(INSTRUKSI\s+KERJA.*?)((?=\n\s*\d+\.\s+)|(?=\n\s*1.\s+))', main_content, re.IGNORECASE | re.DOTALL)
-    print(f"\n=== HEADER MATCH ===")
-    print(f"Header match: {bool(header_match)}")
-    if header_match:
-        print(f"Header group 1: {repr(header_match.group(1)[:200])}")
-    
-    if header_match:
-        header = header_match.group(1).strip()
-        main_content = main_content[header_match.end():].strip()
-        print(f"Sisa main_content setelah ekstraksi header: {repr(main_content[:200])}")
-    
-    print(f"\n=== HASIL AKHIR ===")
-    print(f"Header: {repr(header[:100])}")
-    print(f"Main content setelah header: {repr(main_content[:100])}")
-    print(f"Pengesahan content: {repr(pengesahan_content[:100])}")
-    
-    # Split berdasarkan bagian utama: 1., 2., 3., 4. (angka 1 digit + titik)
-    parts = re.split(r'(\n?\s*\d+\.\s+)', main_content)
-    print(f"\n=== SPLIT PARTS ===")
-    for i, part in enumerate(parts):
-        print(f"Part {i}: {repr(part[:100])}")
 
 # Contoh teks dari dokumen Instruksi Kerja
 sample_text = """INSTRUKSI KERJA
@@ -159,5 +96,112 @@ c. Prosedur nomor P-02-P-059 tentang Prosedur Produksi.
 LEMBAR PENGESAHAN
 NO DISI |NO REVISI |DESKRIPSI                                                 |TANGGAL    |STATUS *) |DISETUJUI OLEH                                        |DISAHKAN OLEH
 001     | 000      | Instruksi Kerja Pengoperasian Mesin Painting Penambat Rel| 11-09-2015| Baru     | WS. MANAGER TEMPA & PRODUKSI PRASARANA KA OMA PURNAMA| GM MANUFAKTUR DAN REKAYASA INDUSTRI AMBAR MARDIYOTO, ST"""
+
+def debug_chunk_ik(text: str):
+    """
+    Debug versi dari fungsi chunk_ik untuk melihat apa yang terjadi di setiap tahap
+    """
+    print("=== AWAL TEXT ===")
+    print(repr(text[:200]))
+    print("\n")
+    
+    text = re.sub(r'={5,}\s*PAGE\s+\d+\s*={5,}', '', text, flags=re.IGNORECASE)
+    text = re.sub(r'\n{3,}', '\n\n', text)
+    
+    print("=== SETELAH PENGHAPUSAN PAGE ===")
+    print(repr(text[:200]))
+    print("\n")
+    
+    # Pisahkan bagian utama dari LEMBAR PENGESAHAN
+    pengesahan_match = re.search(r'(\n\s*LEMBAR\s+PENGESAHAN.*$)', text, re.IGNORECASE | re.DOTALL)
+    print("=== PENCOCOKAN PENGESAHAN ===")
+    print(f"Pengesahan match: {bool(pengesahan_match)}")
+    if pengesahan_match:
+        print(f"Match group: {repr(pengesahan_match.group(1)[:100])}")
+        
+    if pengesahan_match:
+        pengesahan_content = pengesahan_match.group(1).strip()
+        main_content = text[:pengesahan_match.start()].strip()
+        print(f"Main content akhir: {repr(main_content[-100:])}")
+    else:
+        pengesahan_content = ""
+        main_content = text
+    
+    print(f"\n=== MAIN CONTENT ===")
+    print(repr(main_content[:300]))
+    print("\n")
+    
+    # Ekstrak header (judul, nomor, edisi)
+    header = ""
+    # Cari pola INSTRUKSI KERJA sampai sebelum angka pertama yang diikuti titik
+    header_match = re.search(r'(INSTRUKSI\s+KERJA.*?)((?=\n\s*\d+\.\s+)|(?=\n\s*1.\s+))', main_content, re.IGNORECASE | re.DOTALL)
+    print(f"\n=== HEADER MATCH ===")
+    print(f"Header match: {bool(header_match)}")
+    if header_match:
+        print(f"Header group 1: {repr(header_match.group(1)[:200])}")
+    
+    if header_match:
+        header = header_match.group(1).strip()
+        main_content = main_content[header_match.end():].strip()
+        print(f"Sisa main_content setelah ekstraksi header: {repr(main_content[:200])}")
+    
+    print(f"\n=== HASIL SETELAH EKSTRAKSI HEADER ===")
+    print(f"Header: {repr(header[:100])}")
+    print(f"Main content setelah header: {repr(main_content[:100])}")
+    print(f"Pengesahan content: {repr(pengesahan_content[:100])}")
+    
+    # Cari semua bagian utama: 1., 2., 3., 4.
+    # Cari posisi awal setiap bagian
+    section_starts = []
+    for match in re.finditer(r'\n\s*(\d+)\.\s+', main_content):
+        print(f"Found section at position {match.start()}-{match.end()}: {repr(main_content[match.start():match.end()+20])}")
+        section_starts.append((match.start(), match.end()))
+    
+    print(f"\nSection starts: {section_starts}")
+    
+    # Ekstrak setiap bagian
+    section_parts = []
+    for i in range(len(section_starts)):
+        start_pos = section_starts[i][0]
+        if i < len(section_starts) - 1:
+            end_pos = section_starts[i+1][0]
+            content = main_content[start_pos:end_pos].strip()
+        else:
+            content = main_content[start_pos:].strip()
+        section_parts.append(content)
+        print(f"Section {i} content: {repr(content[:100])}")
+    
+    print(f"\nTotal section parts: {len(section_parts)}")
+    
+    # Proses setiap bagian
+    sections = []
+    for part in section_parts:
+        # Ekstrak nomor dan judul bagian
+        title_match = re.match(r'\n\s*(\d+)\.\s+(.+?)(?=\n)', part, re.DOTALL)
+        print(f"Processing part: {repr(part[:50])}...")
+        print(f"Title match: {bool(title_match)}")
+        if title_match:
+            print(f"Number: {title_match.group(1)}, Title: {repr(title_match.group(2))}")
+            number = title_match.group(1)
+            title = title_match.group(2).strip()
+            section_title = f"{number}. {title}"
+            
+            # Sisanya adalah konten bagian tersebut
+            content_start = title_match.end()
+            content = part[content_start:].strip()
+            print(f"Content after title: {repr(content[:100])}")
+            
+            full_content = f"{number}. {title}\n{content}".strip()
+            
+            sections.append({
+                "type": "bagian",
+                "title": section_title,
+                "content": full_content,
+                "parent_title": None
+            })
+
+    print(f"\nTotal sections created: {len(sections)}")
+    for i, section in enumerate(sections):
+        print(f"Section {i}: {section['title']} - content length: {len(section['content'])}")
 
 debug_chunk_ik(sample_text)

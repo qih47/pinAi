@@ -1,72 +1,9 @@
 #!/usr/bin/env python3
 """
-Skrip untuk debugging fungsi chunk_ik
+Skrip untuk menguji fungsi chunk_ik
 """
 
-import re
-
-def debug_chunk_ik(text: str):
-    """
-    Debug versi dari fungsi chunk_ik untuk melihat apa yang terjadi di setiap tahap
-    """
-    print("=== AWAL TEXT ===")
-    print(repr(text[:200]))
-    print("\n")
-    
-    text = re.sub(r'={5,}\s*PAGE\s+\d+\s*={5,}', '', text, flags=re.IGNORECASE)
-    text = re.sub(r'\n{3,}', '\n\n', text)
-    
-    print("=== SETELAH PENGHAPUSAN PAGE ===")
-    print(repr(text[:200]))
-    print("\n")
-    
-    # Pisahkan bagian utama dari LEMBAR PENGESAHAN
-    pengesahan_match = re.search(r'(\n\s*LEMBAR\s+PENGESAHAN.*$)', text, re.IGNORECASE | re.DOTALL)
-    print("=== PENCOCOKAN PENGESAHAN ===")
-    print(f"Pengesahan match: {bool(pengesahan_match)}")
-    if pengesahan_match:
-        print(f"Match group: {repr(pengesahan_match.group(1)[:100])}")
-        
-    if pengesahan_match:
-        pengesahan_content = pengesahan_match.group(1).strip()
-        main_content = text[:pengesahan_match.start()].strip()
-        print(f"Main content akhir: {repr(main_content[-100:])}")
-    else:
-        pengesahan_content = ""
-        main_content = text
-    
-    print(f"\n=== MAIN CONTENT ===")
-    print(repr(main_content[:300]))
-    print("\n")
-    
-    # Cek apakah ada pola angka diikuti titik
-    numbers = re.findall(r'\n\s*(\d+)\.\s+', main_content)
-    print(f"Angka yang ditemukan: {numbers}")
-    
-    # Ekstrak header (judul, nomor, edisi)
-    header = ""
-    # Cari pola INSTRUKSI KERJA sampai sebelum angka pertama yang diikuti titik
-    header_match = re.search(r'(INSTRUKSI\s+KERJA.*?)((?=\n\s*\d+\.\s+)|(?=\n\s*1.\s+))', main_content, re.IGNORECASE | re.DOTALL)
-    print(f"\n=== HEADER MATCH ===")
-    print(f"Header match: {bool(header_match)}")
-    if header_match:
-        print(f"Header group 1: {repr(header_match.group(1)[:200])}")
-    
-    if header_match:
-        header = header_match.group(1).strip()
-        main_content = main_content[header_match.end():].strip()
-        print(f"Sisa main_content setelah ekstraksi header: {repr(main_content[:200])}")
-    
-    print(f"\n=== HASIL AKHIR ===")
-    print(f"Header: {repr(header[:100])}")
-    print(f"Main content setelah header: {repr(main_content[:100])}")
-    print(f"Pengesahan content: {repr(pengesahan_content[:100])}")
-    
-    # Split berdasarkan bagian utama: 1., 2., 3., 4. (angka 1 digit + titik)
-    parts = re.split(r'(\n?\s*\d+\.\s+)', main_content)
-    print(f"\n=== SPLIT PARTS ===")
-    for i, part in enumerate(parts):
-        print(f"Part {i}: {repr(part[:100])}")
+from embeddings.chunk_ik import chunk_ik
 
 # Contoh teks dari dokumen Instruksi Kerja
 sample_text = """INSTRUKSI KERJA
@@ -160,4 +97,12 @@ LEMBAR PENGESAHAN
 NO DISI |NO REVISI |DESKRIPSI                                                 |TANGGAL    |STATUS *) |DISETUJUI OLEH                                        |DISAHKAN OLEH
 001     | 000      | Instruksi Kerja Pengoperasian Mesin Painting Penambat Rel| 11-09-2015| Baru     | WS. MANAGER TEMPA & PRODUKSI PRASARANA KA OMA PURNAMA| GM MANUFAKTUR DAN REKAYASA INDUSTRI AMBAR MARDIYOTO, ST"""
 
-debug_chunk_ik(sample_text)
+# Panggil fungsi chunk_ik
+chunks = chunk_ik(sample_text)
+
+print("Hasil chunking:")
+for i, chunk in enumerate(chunks):
+    print(f"\n{i+1}. Title: {chunk['title']}")
+    print(f"   Type: {chunk['type']}")
+    print(f"   Content preview: {chunk['content'][:100]}...")
+    print(f"   Content length: {len(chunk['content'])}")
