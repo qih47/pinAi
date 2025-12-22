@@ -2,19 +2,13 @@
 # Compiled and build artifacts
 *.pyc
 __pycache__/
-
-# Ignore isi temp_uploads tapi tetap push foldernya
-temp_uploads/*
-!temp_uploads/.gitkeep
-
-# Ignore isi rag_env tapi tetap push foldernya
-rag_env/*
-!rag_env/.gitkeep
-
+*.o
+*.obj
 
 # Dependencies
 .venv/
 venv/
+node_modules/
 
 # Logs and temp files
 *.log
@@ -29,4 +23,30 @@ venv/
 # Editors
 .vscode/
 .idea/
+
+# Coverage reports
+.coverage
+coverage/
+htmlcov/
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
+
+# Python specific
+*.pyc
+__pycache__/
+.Python
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Web specific
+*.min.js
+*.min.css
+*.bundle.js
+
+# OS generated files
+.DS_Store
+Thumbs.db
 ```

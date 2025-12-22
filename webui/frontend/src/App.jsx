@@ -6,9 +6,15 @@ function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [backendStatus, setBackendStatus] = useState("checking");
   const [uploadedFiles, setUploadedFiles] = useState([]);
+  const [documents, setDocuments] = useState([]);
+  const [showFileUpload, setShowFileUpload] = useState(false);
+  const [showPreview, setShowPreview] = useState(false);
+  const [previewFile, setPreviewFile] = useState(null);
+  const [tempFileId, setTempFileId] = useState(null);
+  const [currentMode, setCurrentMode] = useState("normal"); // normal, document, search
+  const [showDocumentList, setShowDocumentList] = useState(false);
   const messagesEndRef = useRef(null);
   const fileInputRef = useRef(null);
-  const [showFileUpload, setShowFileUpload] = useState(false);
 
   const API_BASE = "http://192.168.11.80:5000";
 
@@ -20,6 +26,7 @@ function App() {
   // Check backend on load
   useEffect(() => {
     checkBackend();
+    loadDocuments();
   }, []);
 
   const checkBackend = async () => {
@@ -31,29 +38,28 @@ function App() {
     }
   };
 
-  // Handle file upload
-  const handleFileUpload = async (e) => {
+  const loadDocuments = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/documents`);
+      if (res.ok) {
+        const data = await res.json();
+        setDocuments(data.documents);
+      }
+    } catch (err) {
+      console.error("Error loading documents:", err);
+    }
+  };
+
+  // Handle file preview
+  const handleFilePreview = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
-
-    // Sembunyikan panel upload
-    setShowFileUpload(false);
 
     const formData = new FormData();
     formData.append("file", file);
 
-    // Tampilkan pesan "uploading"
-    setMessages((prev) => [
-      ...prev,
-      {
-        sender: "system",
-        text: `📁 Uploading "${file.name}"...`,
-        isSystem: true,
-      },
-    ]);
-
     try {
-      const res = await fetch(`${API_BASE}/api/upload`, {
+      const res = await fetch(`${API_BASE}/api/upload-preview`, {
         method: "POST",
         body: formData,
       });
@@ -61,20 +67,53 @@ function App() {
       const data = await res.json();
 
       if (res.ok) {
-        // Update pesan upload
-        setMessages((prev) =>
-          prev.map((msg) =>
-            msg.text.includes("Uploading") && msg.sender === "system"
-              ? {
-                  sender: "system",
-                  text: `✅ File "${data.filename}" uploaded successfully!\n\nYou can now ask questions about this file.`,
-                  isSystem: true,
-                }
-              : msg
-          )
-        );
+        setTempFileId(data.file_id);
+        setPreviewFile({
+          name: data.filename,
+          type: data.file_type,
+          size: data.size,
+          previewText: data.preview_text
+        });
+        setShowPreview(true);
+      } else {
+        setMessages((prev) => [
+          ...prev,
+          {
+            sender: "system",
+            text: `❌ Preview failed: ${data.error}`,
+            isSystem: true,
+            isError: true,
+          },
+        ]);
+      }
+    } catch (err) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          sender: "system",
+          text: `❌ Preview error: ${err.message}`,
+          isSystem: true,
+          isError: true,
+        },
+      ]);
+    }
+  };
 
-        // Simpan info file
+  // Confirm upload after preview
+  const confirmUpload = async () => {
+    if (!tempFileId) return;
+
+    try {
+      const res = await fetch(`${API_BASE}/api/confirm-upload`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ file_id: tempFileId }),
+      });
+
+      const data = await res.json();
+
+      if (res.ok) {
+        // Add to uploaded files
         setUploadedFiles((prev) => [
           ...prev,
           {
@@ -83,6 +122,20 @@ function App() {
             type: data.file_type,
           },
         ]);
+
+        // Add system message
+        setMessages((prev) => [
+          ...prev,
+          {
+            sender: "system",
+            text: `✅ File "${data.filename}" uploaded successfully!\n\nYou can now ask questions about this file.`,
+            isSystem: true,
+          },
+        ]);
+
+        setShowPreview(false);
+        setPreviewFile(null);
+        setTempFileId(null);
       } else {
         setMessages((prev) => [
           ...prev,
@@ -104,6 +157,46 @@ function App() {
           isError: true,
         },
       ]);
+    }
+  };
+
+  // Cancel upload
+  const cancelUpload = async () => {
+    if (tempFileId) {
+      await fetch(`${API_BASE}/api/cancel-upload`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ file_id: tempFileId }),
+      });
+    }
+    
+    setShowPreview(false);
+    setPreviewFile(null);
+    setTempFileId(null);
+  };
+
+  // Switch mode
+  const switchMode = async (mode) => {
+    try {
+      const res = await fetch(`${API_BASE}/api/mode-switch`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode }),
+      });
+
+      if (res.ok) {
+        setCurrentMode(mode);
+        setMessages((prev) => [
+          ...prev,
+          {
+            sender: "system",
+            text: `🔄 Mode switched to ${mode}`,
+            isSystem: true,
+          },
+        ]);
+      }
+    } catch (err) {
+      console.error("Error switching mode:", err);
     }
   };
 
@@ -134,8 +227,11 @@ function App() {
         : null;
 
       // Chat dengan backend
-      const payload = { message: userMessage };
-      if (lastFileId) {
+      const payload = { 
+        message: userMessage,
+        mode: currentMode  // Include current mode
+      };
+      if (lastFileId && currentMode === "normal") {  // Only include file in normal mode
         payload.file_id = lastFileId;
       }
 
@@ -241,8 +337,111 @@ function App() {
         </div>
 
         <p className="text-xs text-gray-500 mt-4 text-center">
-          After uploading, ask questions about the file
+          File will be previewed before upload
         </p>
+      </div>
+    </div>
+  );
+
+  // File preview panel component
+  const FilePreviewPanel = () => (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl max-w-2xl w-full p-6 shadow-xl max-h-[80vh] overflow-y-auto">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold text-gray-900">File Preview</h3>
+          <button
+            onClick={cancelUpload}
+            className="p-1 hover:bg-gray-100 rounded-lg"
+          >
+            ✕
+          </button>
+        </div>
+
+        {previewFile && (
+          <div className="space-y-4">
+            <div className="p-4 bg-gray-50 rounded-lg">
+              <div className="flex items-center space-x-3">
+                <span className="text-2xl">📄</span>
+                <div>
+                  <p className="font-medium">{previewFile.name}</p>
+                  <p className="text-sm text-gray-500">
+                    {previewFile.type} • {(previewFile.size / 1024).toFixed(1)} KB
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="border rounded-lg p-4">
+              <h4 className="font-medium mb-2">Preview Content:</h4>
+              <div className="bg-gray-50 p-3 rounded text-sm max-h-40 overflow-y-auto">
+                {previewFile.previewText || "No preview available"}
+              </div>
+            </div>
+
+            <div className="flex space-x-3 pt-4">
+              <button
+                onClick={cancelUpload}
+                className="flex-1 py-2 px-4 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmUpload}
+                className="flex-1 py-2 px-4 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                Confirm Upload
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
+  // Document list panel component
+  const DocumentListPanel = () => (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl max-w-3xl w-full p-6 shadow-xl max-h-[80vh] overflow-y-auto">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold text-gray-900">Documents</h3>
+          <button
+            onClick={() => setShowDocumentList(false)}
+            className="p-1 hover:bg-gray-100 rounded-lg"
+          >
+            ✕
+          </button>
+        </div>
+
+        <div className="space-y-3">
+          {documents.length > 0 ? (
+            documents.map((doc) => (
+              <div key={doc.id} className="p-4 border rounded-lg hover:bg-gray-50">
+                <div className="font-medium">{doc.judul || "Untitled Document"}</div>
+                <div className="text-sm text-gray-600">
+                  {doc.nomor && `No: ${doc.nomor} • `}
+                  {doc.tanggal && `Date: ${doc.tanggal} • `}
+                  Status: {doc.status}
+                </div>
+                <div className="text-xs text-gray-500 mt-1">
+                  File: {doc.filename} • Uploaded: {new Date(doc.created_at).toLocaleDateString()}
+                </div>
+              </div>
+            ))
+          ) : (
+            <div className="text-center py-8 text-gray-500">
+              No documents available
+            </div>
+          )}
+        </div>
+
+        <div className="mt-4 flex justify-end">
+          <button
+            onClick={() => setShowDocumentList(false)}
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+          >
+            Close
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -253,15 +452,21 @@ function App() {
       <input
         type="file"
         ref={fileInputRef}
-        onChange={handleFileUpload}
+        onChange={handleFilePreview}
         accept=".pdf,.png,.jpg,.jpeg,.txt,.docx"
         className="hidden"
       />
 
       {/* File upload modal */}
       {showFileUpload && <FileUploadPanel />}
+      
+      {/* File preview modal */}
+      {showPreview && <FilePreviewPanel />}
+      
+      {/* Document list modal */}
+      {showDocumentList && <DocumentListPanel />}
 
-      {/* Header - SIMPLIFIED, TANPA UPLOAD BUTTON */}
+      {/* Header with mode selector */}
       <div className="bg-white border-b border-gray-200 px-4 py-3">
         <div className="max-w-3xl mx-auto flex items-center justify-between">
           <div className="flex items-center space-x-3">
@@ -288,8 +493,29 @@ function App() {
             </div>
           </div>
 
-          {/* HANYA BUTTON CLEAR CHAT */}
+          {/* Mode selector and buttons */}
           <div className="flex items-center space-x-2">
+            <div className="relative group">
+              <button
+                className="px-3 py-1.5 text-sm bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+                onClick={() => setShowDocumentList(true)}
+              >
+                Documents
+              </button>
+            </div>
+            
+            <div className="relative group">
+              <select
+                value={currentMode}
+                onChange={(e) => switchMode(e.target.value)}
+                className="px-3 py-1.5 text-sm bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors border-none focus:outline-none focus:ring-1 focus:ring-blue-500"
+              >
+                <option value="normal">Chat</option>
+                <option value="document">Document</option>
+                <option value="search">Search</option>
+              </select>
+            </div>
+            
             <button
               onClick={clearChat}
               className="p-1.5 hover:bg-gray-100 rounded-lg text-gray-500"
