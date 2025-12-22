@@ -487,7 +487,7 @@ function App() {
                   {backendStatus === "connected"
                     ? "Connected"
                     : "Connecting..."}{" "}
-                  • Qwen3-VL 8B
+                  • Qwen3 8B
                 </span>
               </div>
             </div>

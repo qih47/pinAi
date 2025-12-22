@@ -1,52 +1,70 @@
 ```
-# Compiled and build artifacts
-*.pyc
+# Python
 __pycache__/
-*.o
-*.obj
-
-# Dependencies
-.venv/
+*.pyc
+*.pyo
+*.pyd
+.Python
 venv/
-node_modules/
-
-# Logs and temp files
-*.log
-*.tmp
-*.swp
-
-# Environment
+.venv/
 .env
 .env.local
-*.env.*
+.env.*
 
-# Editors
-.vscode/
-.idea/
+# Node.js/JavaScript
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
 
-# Coverage reports
-.coverage
-coverage/
-htmlcov/
-
-# Distribution / packaging
+# Build/dist directories
 dist/
 build/
-*.egg-info/
+target/
 
-# Python specific
-*.pyc
-__pycache__/
-.Python
-pip-log.txt
-pip-delete-this-directory.txt
+# IDE specific
+.vscode/
+.idea/
+*.swp
+*.swo
 
-# Web specific
-*.min.js
-*.min.css
-*.bundle.js
+# Logs
+*.log
 
 # OS generated files
 .DS_Store
 Thumbs.db
+
+# Coverage reports
+coverage/
+htmlcov/
+.coverage
+
+# Temporary files
+*.tmp
+*.temp
+
+# Compressed files
+*.zip
+*.gz
+*.tar
+*.tgz
+*.bz2
+*.xz
+*.7z
+*.rar
+*.zst
+*.lz4
+*.lzh
+*.cab
+*.arj
+*.rpm
+*.deb
+*.Z
+*.lz
+*.lzo
+*.tar.gz
+*.tar.bz2
+*.tar.xz
+*.tar.zst
 ```
