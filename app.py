@@ -16,10 +16,12 @@ from sentence_transformers import SentenceTransformer
 EMBEDDING_MODEL = SentenceTransformer("BAAI/bge-m3")
 app = Quart(__name__)
 app.config["UPLOAD_FOLDER"] = "./temp_uploads"
+app.config["DB_DOC_FOLDER"] = "./db_doc"
 app.config["OUTPUT_FOLDER"] = "./ocr_file"
 app.secret_key = "pinAI-secret-key"
 
 os.makedirs(app.config["UPLOAD_FOLDER"], exist_ok=True)
+os.makedirs(app.config["DB_DOC_FOLDER"], exist_ok=True)
 os.makedirs(app.config["OUTPUT_FOLDER"], exist_ok=True)
 
 # =============================
@@ -293,7 +295,7 @@ async def upload_document():
         page_count = 0
         if file:
             filename = file.filename
-            file_path = os.path.join(app.config["UPLOAD_FOLDER"], filename)
+            file_path = os.path.join(app.config["DB_DOC_FOLDER"], filename)
             await file.save(file_path)
             try:
                 page_count = get_pdf_page_count(file_path)
