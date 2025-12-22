@@ -39,50 +39,33 @@ def chunk_ik(text: str) -> List[Dict[str, str]]:
         })
 
     # Split berdasarkan bagian utama: 1., 2., 3., 4. (angka 1 digit + titik)
-    # Gunakan regex yang fleksibel: ^\s*\d\.\s+ atau \n\s*\d\.\s+
-    parts = re.split(r'(\n?\s*\d\.\s+)', main_content)
-
-    current_section = None
-    current_content = ""
-
-    for i, part in enumerate(parts):
-        stripped = part.strip()
-
-        # Jika ini adalah awal bagian utama (1., 2., 3., dst)
-        if re.match(r'^\s*\d\.\s+', stripped):
-            # Simpan section sebelumnya
-            if current_section:
-                sections.append({
-                    "type": "bagian",
-                    "title": current_section,
-                    "content": current_content.strip(),
-                    "parent_title": None
-                })
+    # Hasil split akan menghasilkan: ['', '1. ', 'TUJUAN\n...', '2. ', 'DEFINISI\n...', '3. ', 'URAIAN INSTRUKSI\n...']
+    parts = re.split(r'(\n?\s*\d+\.\s+)', main_content)
+    
+    # Proses pasangan header dan konten
+    i = 1  # Mulai dari indeks 1 karena indeks 0 biasanya string kosong
+    while i < len(parts):
+        if i + 1 < len(parts):  # Pastikan ada header dan konten
+            header_part = parts[i].strip()
+            content_part = parts[i + 1].strip()
             
-            # Ekstrak nomor dan judul
-            title_match = re.match(r'^\s*(\d+)\.\s*(.+)', stripped)
+            # Ekstrak nomor dan judul dari header
+            title_match = re.match(r'^\s*(\d+)\.\s*(.+)', header_part)
             if title_match:
                 number = title_match.group(1)
                 title = title_match.group(2).strip()
-                current_section = f"{number}. {title}"
-                current_content = stripped  # simpan awal section
-            else:
-                current_section = stripped
-                current_content = stripped
-        
+                section_title = f"{number}. {title}"
+                
+                sections.append({
+                    "type": "bagian",
+                    "title": section_title,
+                    "content": header_part + content_part,  # Gabungkan header dan konten
+                    "parent_title": None
+                })
+            
+            i += 2  # Pindah 2 langkah karena sudah proses pasangan
         else:
-            # Tambahkan ke konten section saat ini
-            if current_section:
-                current_content += part
-
-    # Tambahkan section terakhir
-    if current_section:
-        sections.append({
-            "type": "bagian",
-            "title": current_section,
-            "content": current_content.strip(),
-            "parent_title": None
-        })
+            i += 1
 
     # Tambahkan LEMBAR PENGESAHAN jika ada
     if pengesahan_content:
