@@ -43,7 +43,9 @@ OLLAMA_URL = "http://localhost:11434/api/chat"
 OLLAMA_GENERATE_URL = "http://localhost:11434/api/generate"
 
 # PRIMARY MODEL - HANYA SATU
-PRIMARY_MODEL = "qwen3-vl:8b"  # 🎯 MODEL UTAMA
+PRIMARY_MODEL = "qwen3:8b"  # 🎯 MODEL UTAMA
+# FALLBACK MODEL for images and PDFs
+VISION_MODEL = "qwen3-vl:8b"  # 🎯 MODEL VISUAL
 
 # MODES
 MODE_NORMAL = "normal"
@@ -192,7 +194,8 @@ async def extract_with_qwen3_vl(filepath, filetype):
             for i, img_b64 in enumerate(images):
                 text = await ask_qwen3_vl(
                     f"Ekstrak semua teks dari halaman {i+1} dokumen ini:",
-                    images=[img_b64]
+                    images=[img_b64],
+                    file_type=filetype
                 )
                 all_text.append(text)
             
@@ -204,7 +207,8 @@ async def extract_with_qwen3_vl(filepath, filetype):
             
             return await ask_qwen3_vl(
                 "Ekstrak semua teks dari gambar ini:",
-                images=[img_b64]
+                images=[img_b64],
+                file_type=filetype
             )
             
         elif filetype == 'txt':
@@ -218,15 +222,18 @@ async def extract_with_qwen3_vl(filepath, filetype):
         logging.error(f"Qwen3-VL extraction error: {e}")
         return await extract_fallback(filepath, filetype)
 
-async def ask_qwen3_vl(prompt, images=None, stream=False):
-    """Helper untuk bertanya ke qwen3-vl:8b"""
+async def ask_qwen3_vl(prompt, images=None, stream=False, file_type=None):
+    """Helper untuk bertanya ke model yang sesuai berdasarkan konten"""
+    # Pilih model berdasarkan apakah ada gambar atau file PDF
+    selected_model = VISION_MODEL if images or (file_type and file_type in ['pdf', 'png', 'jpg', 'jpeg']) else PRIMARY_MODEL
+    
     messages = [{"role": "user", "content": prompt}]
     if images:
         messages[0]["images"] = images
     
     async with aiohttp.ClientSession() as session:
         async with session.post(OLLAMA_URL, json={
-            "model": PRIMARY_MODEL,
+            "model": selected_model,
             "messages": messages,
             "stream": stream,
             "options": {"temperature": 0.1}
@@ -485,7 +492,7 @@ async def analyze():
             with open(context['path'], "rb") as f:
                 img_b64 = base64.b64encode(f.read()).decode('utf-8')
             
-            reply = await ask_qwen3_vl(question, images=[img_b64])
+            reply = await ask_qwen3_vl(question, images=[img_b64], file_type=context['type'])
             
         else:
             # Untuk file lain
