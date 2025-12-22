@@ -9,6 +9,7 @@ from psycopg2.extras import RealDictCursor
 import hashlib
 from embeddings.chunk_skep import chunk_skep
 from embeddings.chunk_se import chunk_se
+from embeddings.chunk_ik import chunk_ik
 from sentence_transformers import SentenceTransformer
 
 EMBEDDING_MODEL = SentenceTransformer("BAAI/bge-m3")
@@ -224,6 +225,27 @@ async def debug_se():
     except Exception as e:
         print(f"🚨 Error di /chunk_se: {str(e)}")
         return jsonify({"error": str(e)}), 500
+    
+# Chunk IK
+@app.route("/chunk_ik", methods=["POST"])
+async def debug_ik():
+    try:
+        data = await request.get_json()
+        text = data.get("text", "").strip()
+        if not text:
+            return jsonify({"error": "Teks OCR kosong"}), 400
+
+        sections = chunk_ik(text)
+        preview = sections[:3]  # ambil 3 pertama untuk preview
+
+        return jsonify({
+            "doc_type": "IK",
+            "chunk_count": len(sections),
+            "preview_chunks": preview
+        })
+    except Exception as e:
+        print(f"🚨 Error di /chunk_ik: {str(e)}")
+        return jsonify({"error": str(e)}), 500
 
 # upload
 @app.post("/upload")
@@ -284,42 +306,19 @@ async def upload_document():
 
         # === 2. Parse & simpan ke `dokumen_section` dan `dokumen_chunk` ===
         try:
-            # Gunakan pendekatan flat untuk semua jenis dokumen
             if id_jenis == "1":  # SKEP
                 from embeddings.chunk_skep import chunk_skep
                 raw_sections = chunk_skep(ocr_text)
-            elif id_jenis == "2":  # SE
-                from embeddings.chunk_se import chunk_se
-                raw_sections = chunk_se(ocr_text)
-                # Konversi ke format dict
-                sections_dict = []
-                for i, content in enumerate(raw_sections):
-                    sections_dict.append({
-                        "type": "butir",
-                        "title": f"Butir {i+1}",
-                        "content": content,
-                        "parent_title": None
-                    })
-                raw_sections = sections_dict
-            else:
-                # Fallback untuk jenis lain
-                raw_sections = [{
-                    "type": "dokumen",
-                    "title": "Dokumen Lengkap",
-                    "content": ocr_text,
-                    "parent_title": None
-                }]
 
-            # Ekstrak metadata
-            metadata = {
-                "doc_type": "SKEP" if id_jenis == "1" else "SE" if id_jenis == "2" else "UNKNOWN",
-                "nomor": None,
-                "tanggal": None,
-                "tentang": None,
-                "judul": None
-            }
+                # Ekstrak metadata untuk SKEP
+                metadata = {
+                    "doc_type": "SKEP",
+                    "nomor": None,
+                    "tanggal": None,
+                    "tentang": None,
+                    "judul": None
+                }
 
-            if id_jenis == "1":  # SKEP
                 nomor_match = re.search(r'Nomor\s*[:：]\s*(Skep[/\d\w\s\-\.]+)', ocr_text, re.IGNORECASE)
                 if nomor_match:
                     metadata["nomor"] = nomor_match.group(1).strip()
@@ -337,6 +336,29 @@ async def upload_document():
                     metadata["judul"] = tentang_clean
 
             elif id_jenis == "2":  # SE
+                from embeddings.chunk_se import chunk_se
+                raw_sections = chunk_se(ocr_text)
+                
+                # Konversi ke format dict
+                sections_dict = []
+                for i, content in enumerate(raw_sections):
+                    sections_dict.append({
+                        "type": "butir",
+                        "title": f"Butir {i+1}",
+                        "content": content,
+                        "parent_title": None
+                    })
+                raw_sections = sections_dict
+
+                # Ekstrak metadata untuk SE
+                metadata = {
+                    "doc_type": "SE",
+                    "nomor": None,
+                    "tanggal": None,
+                    "tentang": None,
+                    "judul": None
+                }
+
                 nomor_match = re.search(r'Nomor\s*[:：]\s*([SEse\d/\w\s\-\.]+)', ocr_text, re.IGNORECASE)
                 if nomor_match:
                     metadata["nomor"] = nomor_match.group(1).strip()
@@ -352,6 +374,52 @@ async def upload_document():
                     tentang_clean = tentang_match.group(1).strip()
                     metadata["tentang"] = tentang_clean
                     metadata["judul"] = tentang_clean
+
+            elif id_jenis == "3":  # IK (Instruksi Kerja)
+                from embeddings.chunk_ik import chunk_ik
+                raw_sections = chunk_ik(ocr_text)
+
+                # Ekstrak metadata untuk IK
+                metadata = {
+                    "doc_type": "IK",
+                    "nomor": None,
+                    "tanggal": None,
+                    "tentang": None,
+                    "judul": None
+                }
+
+                # Nomor (cari pola seperti I-03-MI-555)
+                nomor_match = re.search(r'(I[-\s]\d{2,3}[-\w\d]+)', ocr_text)
+                if nomor_match:
+                    metadata["nomor"] = nomor_match.group(1).strip()
+
+                # Judul (ambil dari baris setelah INSTRUKSI KERJA)
+                lines = [line.strip() for line in ocr_text.split('\n') if line.strip()]
+                if lines:
+                    for line in lines:
+                        if "INSTRUKSI KERJA" in line.upper():
+                            # Ambil baris berikutnya sebagai judul
+                            idx = lines.index(line)
+                            if idx + 1 < len(lines):
+                                metadata["judul"] = lines[idx + 1]
+                                metadata["tentang"] = lines[idx + 1]
+                            break
+
+            else:
+                # Fallback untuk jenis lain
+                raw_sections = [{
+                    "type": "dokumen",
+                    "title": "Dokumen Lengkap",
+                    "content": ocr_text,
+                    "parent_title": None
+                }]
+                metadata = {
+                    "doc_type": "UNKNOWN",
+                    "nomor": None,
+                    "tanggal": None,
+                    "tentang": None,
+                    "judul": None
+                }
 
             # Siapkan chunks_with_meta
             chunks_with_meta = []

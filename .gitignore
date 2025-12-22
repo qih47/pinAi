@@ -41,6 +41,10 @@ htmlcov/
 rag_env/*
 !rag_env/.gitkeep
 
+# Temp
+temp_uploads/*
+!temp_uploads/.gitkeep
+
 # OS
 .DS_Store
 Thumbs.db
