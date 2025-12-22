@@ -6,9 +6,6 @@ __pycache__/
 # Dependencies
 .venv/
 venv/
-node_modules/
-.mypy_cache/
-.pytest_cache/
 
 # Logs and temp files
 *.log
@@ -23,13 +20,4 @@ node_modules/
 # Editors
 .vscode/
 .idea/
-
-# Coverage
-coverage/
-htmlcov/
-.coverage
-
-# OS
-.DS_Store
-Thumbs.db
 ```
