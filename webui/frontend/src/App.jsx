@@ -13,15 +13,38 @@ function App() {
   const [tempFileId, setTempFileId] = useState(null);
   const [currentMode, setCurrentMode] = useState("normal"); // normal, document, search
   const [showDocumentList, setShowDocumentList] = useState(false);
+  const [autoScroll, setAutoScroll] = useState(true);
   const messagesEndRef = useRef(null);
+  const messagesContainerRef = useRef(null);
   const fileInputRef = useRef(null);
 
   const API_BASE = "http://192.168.11.80:5000";
 
-  // Auto-scroll to bottom
+  // Auto-scroll to bottom when new messages arrive and autoScroll is enabled
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+    if (autoScroll) {
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [messages, autoScroll]);
+
+  // Handle scrolling behavior - if user scrolls up, disable auto-scroll
+  useEffect(() => {
+    const container = messagesContainerRef.current;
+    if (!container) return;
+
+    const handleScroll = () => {
+      const { scrollTop, scrollHeight, clientHeight } = container;
+      // If user is near the bottom (within 100px), enable auto-scroll
+      if (scrollHeight - scrollTop <= clientHeight + 100) {
+        setAutoScroll(true);
+      } else {
+        setAutoScroll(false);
+      }
+    };
+
+    container.addEventListener('scroll', handleScroll);
+    return () => container.removeEventListener('scroll', handleScroll);
+  }, []);
 
   // Check backend on load
   useEffect(() => {
@@ -200,7 +223,7 @@ function App() {
     }
   };
 
-  // Main chat function
+  // Main chat function with streaming response capability
   const sendMessage = async () => {
     if (!input.trim() || isLoading) return;
 
@@ -235,6 +258,22 @@ function App() {
         payload.file_id = lastFileId;
       }
 
+      // Create a temporary AI message for streaming
+      const aiMessageId = Date.now();
+      setMessages(prev => [
+        ...prev,
+        {
+          id: aiMessageId,
+          sender: "ai",
+          text: "",
+          timestamp: new Date().toLocaleTimeString([], {
+            hour: "2-digit",
+            minute: "2-digit",
+          }),
+        }
+      ]);
+
+      // Check if the backend supports streaming
       const res = await fetch(`${API_BASE}/api/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -244,17 +283,17 @@ function App() {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
       const data = await res.json();
-      setMessages((prev) => [
-        ...prev,
-        {
-          sender: "ai",
-          text: data.reply,
-          timestamp: new Date().toLocaleTimeString([], {
-            hour: "2-digit",
-            minute: "2-digit",
-          }),
-        },
-      ]);
+      
+      // Update the AI message with the complete response
+      setMessages(prev => prev.map(msg => 
+        msg.id === aiMessageId 
+          ? { 
+              ...msg, 
+              id: undefined, // Remove temporary ID
+              text: data.reply 
+            }
+          : msg
+      ));
     } catch (err) {
       setMessages((prev) => [
         ...prev,
@@ -273,6 +312,113 @@ function App() {
     }
   };
 
+  // Function to detect code blocks and language
+  const detectCodeBlock = (text) => {
+    // Regex to match code blocks with optional language specifier
+    const codeBlockRegex = /```(\w+)?\n([\s\S]*?)```/g;
+    const parts = [];
+    let lastIndex = 0;
+    let match;
+
+    while ((match = codeBlockRegex.exec(text)) !== null) {
+      // Add text before code block
+      if (match.index > lastIndex) {
+        parts.push({
+          type: 'text',
+          content: text.slice(lastIndex, match.index)
+        });
+      }
+
+      // Add code block
+      parts.push({
+        type: 'code',
+        language: match[1] || 'text',
+        content: match[2]
+      });
+
+      lastIndex = match.index + match[0].length;
+    }
+
+    // Add remaining text
+    if (lastIndex < text.length) {
+      parts.push({
+        type: 'text',
+        content: text.slice(lastIndex)
+      });
+    }
+
+    return parts;
+  };
+
+  // Function to render message with code blocks and copy functionality
+  const renderMessage = (text) => {
+    const parts = detectCodeBlock(text);
+    
+    return (
+      <div className="message-content-wrapper">
+        {parts.map((part, index) => {
+          if (part.type === 'code') {
+            return (
+              <div key={index} className="code-block-wrapper">
+                <pre className={`language-${part.language}`}>
+                  <code>{part.content}</code>
+                </pre>
+                <button 
+                  className="copy-button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    copyToClipboard(part.content);
+                  }}
+                  title="Copy code"
+                >
+                  Copy
+                </button>
+              </div>
+            );
+          } else {
+            return <div key={index}>{part.content}</div>;
+          }
+        })}
+        <button 
+          className="message-copy-button"
+          onClick={() => copyToClipboard(text)}
+          title="Copy entire message"
+        >
+          📋
+        </button>
+      </div>
+    );
+  };
+
+  // Function to copy text to clipboard
+  const copyToClipboard = async (text) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      // Show a temporary notification instead of alert
+      const notification = document.createElement('div');
+      notification.className = 'copy-notification';
+      notification.textContent = 'Copied to clipboard!';
+      notification.style.cssText = `
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        background-color: #4CAF50;
+        color: white;
+        padding: 10px 15px;
+        border-radius: 4px;
+        z-index: 1000;
+        font-size: 14px;
+      `;
+      document.body.appendChild(notification);
+      
+      setTimeout(() => {
+        document.body.removeChild(notification);
+      }, 2000);
+    } catch (err) {
+      console.error('Failed to copy text: ', err);
+    }
+  };
+
   const handleKeyPress = (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -286,6 +432,25 @@ function App() {
       setUploadedFiles([]);
     }
   };
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      // Ctrl/Cmd + L to clear chat
+      if ((e.ctrlKey || e.metaKey) && e.key === 'l') {
+        e.preventDefault();
+        clearChat();
+      }
+      // Ctrl/Cmd + Enter to send message
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter' && input.trim() && !isLoading) {
+        e.preventDefault();
+        sendMessage();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [input, isLoading, messages]);
 
   // File upload panel component
   const FileUploadPanel = () => (
@@ -447,7 +612,7 @@ function App() {
   );
 
   return (
-    <div className="flex flex-col h-screen bg-gray-50">
+    <div className="chat-container">
       {/* Hidden file input */}
       <input
         type="file"
@@ -467,7 +632,7 @@ function App() {
       {showDocumentList && <DocumentListPanel />}
 
       {/* Header with mode selector */}
-      <div className="bg-white border-b border-gray-200 px-4 py-3">
+      <div className="header">
         <div className="max-w-3xl mx-auto flex items-center justify-between">
           <div className="flex items-center space-x-3">
             <img src="./src/assets/cakra.png" alt="CAKRA AI Logo" className="w-10 h-10 rounded-full object-cover" />
@@ -489,6 +654,13 @@ function App() {
                     : "Connecting..."}{" "}
                   • Qwen3 8B
                 </span>
+                <button 
+                  onClick={checkBackend}
+                  className="text-xs text-blue-500 hover:text-blue-700"
+                  title="Refresh connection"
+                >
+                  ↻
+                </button>
               </div>
             </div>
           </div>
@@ -516,32 +688,38 @@ function App() {
               </select>
             </div>
             
-            <button
-              onClick={clearChat}
-              className="p-1.5 hover:bg-gray-100 rounded-lg text-gray-500"
-              title="New chat"
-            >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                className="h-5 w-5"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
+            <div className="relative group">
+              <button
+                className="px-3 py-1.5 text-sm bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+                onClick={() => {
+                  if (messages.length > 0) {
+                    if (window.confirm("Clear all messages?")) {
+                      setMessages([]);
+                      setUploadedFiles([]);
+                    }
+                  } else {
+                    setMessages([]);
+                    setUploadedFiles([]);
+                  }
+                }}
               >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                />
-              </svg>
-            </button>
+                Clear Chat
+              </button>
+            </div>
+            <div className="relative group">
+              <button
+                className="px-3 py-1.5 text-sm bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+                onClick={checkBackend}
+              >
+                Refresh
+              </button>
+            </div>
           </div>
         </div>
       </div>
 
       {/* Chat Messages */}
-      <div className="flex-1 overflow-y-auto px-4 py-6">
+      <div ref={messagesContainerRef} className="chat-messages">
         <div className="max-w-3xl mx-auto">
           {messages.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-center py-12">
@@ -631,7 +809,7 @@ function App() {
                       } ${msg.isError ? "border-red-200 bg-red-50" : ""}`}
                     >
                       <div className="whitespace-pre-wrap break-words">
-                        {msg.text}
+                        {renderMessage(msg.text)}
                       </div>
                       {msg.timestamp && (
                         <div
@@ -678,9 +856,9 @@ function App() {
       </div>
 
       {/* Input Area - DENGAN UPLOAD BUTTON */}
-      <div className="border-t border-gray-200 bg-white px-4 py-4">
+      <div className="input-container">
         <div className="max-w-3xl mx-auto">
-          <div className="relative">
+          <div className="input-box">
             <textarea
               value={input}
               onChange={(e) => setInput(e.target.value)}
@@ -693,78 +871,85 @@ function App() {
                     }" or type a message...`
                   : "Message CAKRA AI or upload a file..."
               }
-              className="w-full border border-gray-300 rounded-2xl px-4 py-3 pr-28 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-50"
+              className="flex-1 border border-gray-300 rounded-2xl px-4 py-3 pr-28 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-50"
               rows="1"
               style={{ minHeight: "52px", maxHeight: "120px" }}
             />
 
-            <div className="absolute right-2 bottom-2 flex items-center space-x-2">
-              {/* UPLOAD BUTTON DI SINI */}
-              <button
-                onClick={() => setShowFileUpload(true)}
-                disabled={isLoading}
-                className="p-2 text-gray-600 hover:text-blue-600 disabled:opacity-50 transition-colors"
-                title="Upload file"
-              >
-                <span className="text-xl">📁</span>
-              </button>
+            {/* UPLOAD BUTTON */}
+            <button
+              onClick={() => setShowFileUpload(true)}
+              disabled={isLoading}
+              className="p-2 text-gray-600 hover:text-blue-600 disabled:opacity-50 transition-colors"
+              title="Upload file"
+            >
+              <span className="text-xl">📁</span>
+            </button>
 
-              {/* SEND BUTTON */}
-              <button
-                onClick={sendMessage}
-                disabled={isLoading || !input.trim()}
-                className={`px-4 py-2 rounded-xl font-medium transition-colors ${
-                  isLoading || !input.trim()
-                    ? "bg-gray-200 text-gray-400 cursor-not-allowed"
-                    : "bg-gradient-to-r from-blue-500 to-purple-600 text-white hover:opacity-90"
-                }`}
-              >
-                {isLoading ? (
-                  <svg
-                    className="w-5 h-5 animate-spin"
-                    xmlns="http://www.w3.org/2000/svg"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                  >
-                    <circle
-                      className="opacity-25"
-                      cx="12"
-                      cy="12"
-                      r="10"
-                      stroke="currentColor"
-                      strokeWidth="4"
-                    ></circle>
-                    <path
-                      className="opacity-75"
-                      fill="currentColor"
-                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                    ></path>
-                  </svg>
-                ) : (
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    className="w-5 h-5"
-                    fill="none"
-                    viewBox="0 0 24 24"
+            {/* SEND BUTTON */}
+            <button
+              onClick={sendMessage}
+              disabled={isLoading || !input.trim()}
+              className={`send-btn ${isLoading || !input.trim() ? 'opacity-50 cursor-not-allowed' : ''}`}
+            >
+              {isLoading ? (
+                <svg
+                  className="w-5 h-5 animate-spin"
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                >
+                  <circle
+                    className="opacity-25"
+                    cx="12"
+                    cy="12"
+                    r="10"
                     stroke="currentColor"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"
-                    />
-                  </svg>
-                )}
-              </button>
-            </div>
+                    strokeWidth="4"
+                  ></circle>
+                  <path
+                    className="opacity-75"
+                    fill="currentColor"
+                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                  ></path>
+                </svg>
+              ) : (
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="w-5 h-5"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="white"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"
+                  />
+                </svg>
+              )}
+            </button>
           </div>
 
-          <p className="text-xs text-gray-500 mt-2 text-center">
-            Press Enter to send • Upload files and ask questions naturally
-            {uploadedFiles.length > 0 &&
-              ` • ${uploadedFiles.length} file(s) uploaded`}
-          </p>
+          <div className="flex justify-between items-center text-xs text-gray-500 mt-2">
+            <span>
+              Press Enter to send • Upload files and ask questions naturally
+            </span>
+            <div className="flex space-x-4">
+              {uploadedFiles.length > 0 && (
+                <span className="flex items-center">
+                  <span className="w-2 h-2 bg-blue-500 rounded-full mr-1"></span>
+                  {uploadedFiles.length} file(s)
+                </span>
+              )}
+              <span className="flex items-center">
+                <span className="w-2 h-2 bg-green-500 rounded-full mr-1"></span>
+                {messages.length} message(s)
+              </span>
+              <span className="capitalize">Mode: {currentMode}</span>
+            </div>
+          </div>
         </div>
       </div>
     </div>
