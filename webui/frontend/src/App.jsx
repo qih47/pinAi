@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 
 function App() {
   const [messages, setMessages] = useState([]);
@@ -13,21 +13,76 @@ function App() {
   const [tempFileId, setTempFileId] = useState(null);
   const [currentMode, setCurrentMode] = useState("normal"); // normal, document, search
   const [showDocumentList, setShowDocumentList] = useState(false);
+  const [notification, setNotification] = useState(null);
+  const [smartScroll, setSmartScroll] = useState(true);
+  const [isScrolledUp, setIsScrolledUp] = useState(false);
   const messagesEndRef = useRef(null);
   const fileInputRef = useRef(null);
+  const messagesContainerRef = useRef(null);
 
   const API_BASE = "http://192.168.11.80:5000";
 
-  // Auto-scroll to bottom
+  // Smart scroll handling
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+    const container = messagesContainerRef.current;
+    if (!container) return;
+
+    const handleScroll = () => {
+      const { scrollTop, scrollHeight, clientHeight } = container;
+      const isAtBottom = scrollHeight - scrollTop <= clientHeight + 10;
+      
+      if (isAtBottom) {
+        setSmartScroll(true);
+        setIsScrolledUp(false);
+      } else {
+        setSmartScroll(false);
+        setIsScrolledUp(true);
+      }
+    };
+
+    container.addEventListener('scroll', handleScroll);
+    return () => container.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  // Auto-scroll to bottom when new messages arrive and user is at bottom
+  useEffect(() => {
+    if (smartScroll) {
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [messages, smartScroll]);
 
   // Check backend on load
   useEffect(() => {
     checkBackend();
     loadDocuments();
-  }, []);
+    
+    // Add keyboard shortcuts
+    const handleKeyDown = (e) => {
+      // Ctrl/Cmd + Enter to send message
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        sendMessage();
+      }
+      
+      // Escape to close modals
+      if (e.key === 'Escape') {
+        setShowFileUpload(false);
+        setShowPreview(false);
+        setShowDocumentList(false);
+      }
+      
+      // Ctrl/Cmd + K to focus on input
+      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+        e.preventDefault();
+        const inputElement = document.querySelector('textarea');
+        if (inputElement) {
+          inputElement.focus();
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [input, isLoading, uploadedFiles, currentMode]);
 
   const checkBackend = async () => {
     try {
@@ -35,6 +90,65 @@ function App() {
       setBackendStatus(res.ok ? "connected" : "error");
     } catch {
       setBackendStatus("disconnected");
+    }
+  };
+
+  // Show notification
+  const showNotification = useCallback((message, type = 'info') => {
+    const id = Date.now();
+    setNotification({ id, message, type });
+    
+    setTimeout(() => {
+      setNotification(null);
+    }, 3000);
+  }, []);
+
+  // Format code blocks with syntax highlighting
+  const formatCodeBlock = useCallback((text) => {
+    // Split text by code block markers
+    const parts = text.split(/(```[\s\S]*?```)/g);
+    
+    return parts.map((part, index) => {
+      if (part.startsWith('```') && part.endsWith('```')) {
+        // Extract language and code
+        const lines = part.split('\n');
+        const langMatch = lines[0].match(/```(\w+)/);
+        const language = langMatch ? langMatch[1] : 'text';
+        
+        // Extract the actual code content
+        const codeContent = lines.slice(1, lines.length - 1).join('\n');
+        
+        return (
+          <div key={index} className="code-block-container my-3">
+            <div className="code-header flex justify-between items-center bg-gray-800 text-gray-200 px-3 py-2 rounded-t-lg text-sm">
+              <span className="font-medium">{language || 'code'}</span>
+              <button 
+                onClick={() => copyToClipboard(codeContent)}
+                className="copy-button text-xs bg-gray-700 hover:bg-gray-600 px-2 py-1 rounded transition-colors"
+              >
+                Copy
+              </button>
+            </div>
+            <pre className="hljs bg-gray-900 text-gray-100 p-4 rounded-b-lg overflow-x-auto text-sm">
+              <code className={`language-${language}`}>
+                {codeContent}
+              </code>
+            </pre>
+          </div>
+        );
+      }
+      return part;
+    });
+  }, []);
+
+  // Copy to clipboard function
+  const copyToClipboard = async (text) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      showNotification('Code copied to clipboard!', 'success');
+    } catch (err) {
+      console.error('Failed to copy text: ', err);
+      showNotification('Failed to copy code', 'error');
     }
   };
 
@@ -541,7 +655,7 @@ function App() {
       </div>
 
       {/* Chat Messages */}
-      <div className="flex-1 overflow-y-auto px-4 py-6">
+      <div ref={messagesContainerRef} className="flex-1 overflow-y-auto px-4 py-6">
         <div className="max-w-3xl mx-auto">
           {messages.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-center py-12">
@@ -631,7 +745,7 @@ function App() {
                       } ${msg.isError ? "border-red-200 bg-red-50" : ""}`}
                     >
                       <div className="whitespace-pre-wrap break-words">
-                        {msg.text}
+                        {typeof msg.text === 'string' ? formatCodeBlock(msg.text) : msg.text}
                       </div>
                       {msg.timestamp && (
                         <div
@@ -767,6 +881,18 @@ function App() {
           </p>
         </div>
       </div>
+      
+      {/* Notification Toast */}
+      {notification && (
+        <div 
+          className={`fixed top-4 right-4 z-50 px-6 py-3 rounded-lg shadow-lg text-white font-medium transition-opacity duration-300 ${
+            notification.type === 'success' ? 'bg-green-500' : 
+            notification.type === 'error' ? 'bg-red-500' : 'bg-blue-500'
+          }`}
+        >
+          {notification.message}
+        </div>
+      )}
     </div>
   );
 }
