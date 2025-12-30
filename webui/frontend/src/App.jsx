@@ -1,5 +1,347 @@
 import { useState, useEffect, useRef } from "react";
 
+/**
+ * Komponen untuk menampilkan teks dengan format list yang rapi
+ */
+function FormattedMessage({ text }) {
+  // Tambahkan pengecekan tipe dan konversi ke string jika perlu
+  if (!text) return null;
+
+  // Pastikan text adalah string sebelum memanggil replace
+  let cleanText = text;
+  if (typeof text !== "string") {
+    cleanText = String(text); // Konversi ke string
+  }
+
+  // Parse HTML entities dan clean text
+  cleanText = cleanText
+    .replace(/&nbsp;/g, " ")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/?div[^>]*>/gi, "\n")
+    .replace(/<\/?[^>]+(>|$)/g, "")
+    // TAMBAH INI:
+    .replace(/^[-_]{3,}\s*$/gm, "") // Hapus baris yang cuma "---"
+    .replace(/^\s*[-_]{2,}\s*/gm, "") // Hapus "---" di awal baris
+    // JANGAN PAKAI YANG INI: .replace(/[\s_-]{3,}/g, ' ')
+    .trim();
+
+  // Split menjadi lines
+  const lines = cleanText.split("\n").filter((line) => line.trim() !== "");
+
+  return (
+    <div className="space-y-2">
+      {lines.map((line, lineIndex) => {
+        const trimmedLine = line.trim();
+
+        // Deteksi berbagai jenis list
+        const numberMatch = trimmedLine.match(/^(\d+)\.\s+(.+)/);
+        const letterMatch = trimmedLine.match(/^([a-z])\.\s+(.+)/i);
+        const bulletMatch = trimmedLine.match(/^[-*•]\s+(.+)/);
+        const numberedParenMatch = trimmedLine.match(/^(\d+)\)\s+(.+)/);
+        const letterParenMatch = trimmedLine.match(/^([a-z])\)\s+(.+)/i);
+        const doubleNumberedParenMatch = trimmedLine.match(/^(\d+)\)\)\s+(.+)/);
+        const tripleNumberedParenMatch =
+          trimmedLine.match(/^(\d+)\)\)\)\s+(.+)/);
+
+        // Cek indentasi dengan spasi/tab
+        const indentCount = line.length - line.trimStart().length;
+        const indentLevel = Math.floor(indentCount / 4);
+
+        // Fungsi untuk wrap text panjang
+        const wrapText = (textToWrap, maxLength = 100) => {
+          if (!textToWrap || textToWrap.length <= maxLength)
+            return [textToWrap];
+
+          const words = textToWrap.split(" ");
+          const wrappedLines = [];
+          let currentLine = [];
+          let currentLength = 0;
+
+          for (const word of words) {
+            if (
+              currentLength + word.length + 1 <= maxLength ||
+              currentLine.length === 0
+            ) {
+              currentLine.push(word);
+              currentLength += word.length + 1;
+            } else {
+              wrappedLines.push(currentLine.join(" "));
+              currentLine = [word];
+              currentLength = word.length;
+            }
+          }
+
+          if (currentLine.length > 0) {
+            wrappedLines.push(currentLine.join(" "));
+          }
+
+          return wrappedLines;
+        };
+
+        // Render berdasarkan tipe
+        let content;
+
+        if (numberMatch) {
+          const [, number, contentText] = numberMatch;
+          const wrappedContent = wrapText(contentText, 65);
+          content = (
+            <div className="flex">
+              <span className="font-semibold min-w-[0.8rem]">{number}.</span>
+              <div className="ml-2">
+                {wrappedContent.map((wrappedLine, idx) => (
+                  <div key={idx}>
+                    {wrappedLine}
+                    {idx < wrappedContent.length - 1 && <br />}
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        } else if (letterMatch) {
+          const [, letter, contentText] = letterMatch;
+          const wrappedContent = wrapText(contentText, 60);
+          content = (
+            <div className="flex ml-4">
+              <span className="font-semibold min-w-[1rem]">{letter}.</span>
+              <div className="ml-2">
+                {wrappedContent.map((wrappedLine, idx) => (
+                  <div key={idx}>
+                    {wrappedLine}
+                    {idx < wrappedContent.length - 1 && <br />}
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        } else if (bulletMatch) {
+          const [, contentText] = bulletMatch;
+          const wrappedContent = wrapText(contentText, 65);
+          content = (
+            <div className="flex ml-5">
+              <span className="mr-2">•</span>
+              <div>
+                {wrappedContent.map((wrappedLine, idx) => (
+                  <div key={idx}>
+                    {wrappedLine}
+                    {idx < wrappedContent.length - 1 && <br />}
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        } else if (numberedParenMatch) {
+          const [, number, contentText] = numberedParenMatch;
+          const wrappedContent = wrapText(contentText, 60);
+          content = (
+            <div className="flex ml-6">
+              <span className="font-semibold min-w-[1.5rem]">{number})</span>
+              <div className="ml-5">
+                {wrappedContent.map((wrappedLine, idx) => (
+                  <div key={idx}>
+                    {wrappedLine}
+                    {idx < wrappedContent.length - 1 && <br />}
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        } else if (letterParenMatch) {
+          const [, letter, contentText] = letterParenMatch;
+          const wrappedContent = wrapText(contentText, 55);
+          content = (
+            <div className="flex ml-8">
+              <span className="font-semibold min-w-[1rem]">{letter})</span>
+              <div className="ml-2">
+                {wrappedContent.map((wrappedLine, idx) => (
+                  <div key={idx}>
+                    {wrappedLine}
+                    {idx < wrappedContent.length - 1 && <br />}
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        } else if (doubleNumberedParenMatch) {
+          const [, number, contentText] = doubleNumberedParenMatch;
+          const wrappedContent = wrapText(contentText, 50);
+          content = (
+            <div className="flex ml-10">
+              <span className="font-semibold min-w-[2rem]">{number}))</span>
+              <div className="ml-2">
+                {wrappedContent.map((wrappedLine, idx) => (
+                  <div key={idx}>
+                    {wrappedLine}
+                    {idx < wrappedContent.length - 1 && <br />}
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        } else if (tripleNumberedParenMatch) {
+          const [, number, contentText] = tripleNumberedParenMatch;
+          const wrappedContent = wrapText(contentText, 45);
+          content = (
+            <div className="flex ml-12">
+              <span className="font-semibold min-w-[2.5rem]">{number})))</span>
+              <div className="ml-2">
+                {wrappedContent.map((wrappedLine, idx) => (
+                  <div key={idx}>
+                    {wrappedLine}
+                    {idx < wrappedContent.length - 1 && <br />}
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        } else if (indentLevel > 0) {
+          // Text dengan indentasi
+          const wrappedContent = wrapText(trimmedLine, 75 - indentLevel * 10);
+          content = (
+            <div className={`ml-${indentLevel * 4}`}>
+              {wrappedContent.map((wrappedLine, idx) => (
+                <div key={idx}>
+                  {wrappedLine}
+                  {idx < wrappedContent.length - 1 && <br />}
+                </div>
+              ))}
+            </div>
+          );
+        } else {
+          // Text biasa
+          const wrappedContent = wrapText(trimmedLine, 75);
+          content = (
+            <div>
+              {wrappedContent.map((wrappedLine, idx) => (
+                <div key={idx}>
+                  {wrappedLine}
+                  {idx < wrappedContent.length - 1 && <br />}
+                </div>
+              ))}
+            </div>
+          );
+        }
+
+        return (
+          <div key={lineIndex} className="leading-relaxed">
+            {content}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// --- TAMBAH KOMPONEN PDF BUTTONS ---
+function PdfButtons({ pdfInfo, isFromDocument, isTyping = false }) {
+  // PERUBAHAN: isFromDocument sekarang dari backend yang sudah filtered
+  const shouldShow =
+    isFromDocument === true &&
+    pdfInfo &&
+    typeof pdfInfo === "object" &&
+    pdfInfo.filename &&
+    !isTyping;
+
+  if (!shouldShow) {
+    return null;
+  }
+
+  const API_BASE = "http://192.168.11.80:5000";
+
+  const handleView = () => {
+    if (pdfInfo.url) {
+      const previewUrl = `${API_BASE}${pdfInfo.url}`;
+      window.open(previewUrl, "_blank", "noopener,noreferrer");
+    }
+  };
+
+  const handleDownload = () => {
+    if (pdfInfo.download_url) {
+      const downloadUrl = `${API_BASE}${pdfInfo.download_url}`;
+      window.open(downloadUrl, "_blank", "noopener,noreferrer");
+    }
+  };
+
+  return (
+    <div className="mt-4 p-3 bg-blue-50 rounded-lg border border-blue-200 animate-fadeIn">
+      <div className="flex items-start justify-between">
+        <div className="flex items-center space-x-3">
+          <div className="p-2 bg-blue-100 rounded-lg">
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <path
+                d="M14 2H6C4.9 2 4.01 2.9 4.01 4L4 20C4 21.1 4.89 22 5.99 22H18C19.1 22 20 21.1 20 20V8L14 2ZM16 18H8V16H16V18ZM16 14H8V12H16V14ZM13 9V3.5L18.5 9H13Z"
+                fill="#1D4ED8"
+              />
+            </svg>
+          </div>
+          <div>
+            <p className="text-sm font-medium text-gray-900">
+              Referensi: {pdfInfo.title || pdfInfo.filename}
+            </p>
+            <div className="text-xs text-gray-600 mt-1">
+              {pdfInfo.nomor && <span>No: {pdfInfo.nomor} • </span>}
+              {pdfInfo.tanggal && <span>Tanggal: {pdfInfo.tanggal}</span>}
+            </div>
+            <p className="text-xs text-gray-500 mt-1">{pdfInfo.filename}</p>
+          </div>
+        </div>
+      </div>
+      <div className="flex justify-end mt-2">
+        <div className="flex flex-col sm:flex-row gap-2">
+          {pdfInfo.url && (
+            <button
+              onClick={handleView}
+              className="flex items-center justify-center px-2 py-0.5 text-xs bg-white text-blue-600 border border-blue-300 rounded-full hover:bg-blue-50 transition-colors"
+            >
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                xmlns="http://www.w3.org/2000/svg"
+                className="mr-1"
+              >
+                <path
+                  d="M19 19H5V5h7V3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2v-7h-2v7zM14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z"
+                  fill="currentColor"
+                />
+              </svg>
+              Lihat
+            </button>
+          )}
+
+          {pdfInfo.download_url && (
+            <button
+              onClick={handleDownload}
+              className="flex items-center justify-center px-2 py-0.5 text-xs bg-blue-600 text-white rounded-full hover:bg-blue-700 transition-colors"
+            >
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                xmlns="http://www.w3.org/2000/svg"
+                className="mr-1"
+              >
+                <path
+                  d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"
+                  fill="currentColor"
+                />
+              </svg>
+              Download
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function App() {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
@@ -50,6 +392,41 @@ function App() {
     }
   };
 
+  // Helper function untuk membersihkan markdown
+  const cleanMarkdown = (text) => {
+    if (!text) return text;
+
+    return (
+      text
+        // Hapus basic markdown
+        .replace(/\*\*(.*?)\*\*/g, "$1")
+        .replace(/__(.*?)__/g, "$1")
+        .replace(/^#{1,6}\s+/gm, "")
+        .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+        // Rapikan spasi
+        .replace(/\n{3,}/g, "\n\n")
+        .trim()
+    );
+  };
+
+  // Helper function untuk animasi ketik
+  const typeText = async (text, callback, speed = 15) => {
+    // Jangan format di sini - biarkan AI yang format
+    const cleanText = cleanMarkdown(text); // Hanya basic cleaning
+    let i = 0;
+    return new Promise((resolve) => {
+      const timer = setInterval(() => {
+        if (i < cleanText.length) {
+          callback(cleanText.slice(0, i + 1));
+          i++;
+        } else {
+          clearInterval(timer);
+          resolve();
+        }
+      }, speed);
+    });
+  };
+
   // Handle file preview
   const handleFilePreview = async (e) => {
     const file = e.target.files[0];
@@ -72,7 +449,7 @@ function App() {
           name: data.filename,
           type: data.file_type,
           size: data.size,
-          previewText: data.preview_text
+          previewText: data.preview_text,
         });
         setShowPreview(true);
       } else {
@@ -169,38 +546,27 @@ function App() {
         body: JSON.stringify({ file_id: tempFileId }),
       });
     }
-    
+
     setShowPreview(false);
     setPreviewFile(null);
     setTempFileId(null);
   };
 
-  // Switch mode
+  // Switch mode dengan toggle logic - HAPUS pemanggilan API yang tidak perlu
   const switchMode = async (mode) => {
-    try {
-      const res = await fetch(`${API_BASE}/api/mode-switch`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mode }),
-      });
+    // Jika mode yang diklik sedang aktif, kembalikan ke normal
+    const nextMode = currentMode === mode ? "normal" : mode;
+    setCurrentMode(nextMode);
 
-      if (res.ok) {
-        setCurrentMode(mode);
-        setMessages((prev) => [
-          ...prev,
-          {
-            sender: "system",
-            text: `🔄 Mode switched to ${mode}`,
-            isSystem: true,
-          },
-        ]);
-      }
-    } catch (err) {
-      console.error("Error switching mode:", err);
+    // HAPUS SEMUA pemanggilan API ini - tidak diperlukan
+    // Hanya ganti state, jangan panggil API
+
+    // Tambahkan pesan sistem untuk memberi tahu mode yang aktif
+    if (nextMode !== "normal") {
+      setMessages((prev) => [...prev]);
     }
   };
 
-  // Main chat function
   const sendMessage = async () => {
     if (!input.trim() || isLoading) return;
 
@@ -220,19 +586,22 @@ function App() {
     setIsLoading(true);
 
     try {
-      // Cek apakah ada file yang diupload
-      const hasFiles = uploadedFiles.length > 0;
-      const lastFileId = hasFiles
-        ? uploadedFiles[uploadedFiles.length - 1].id
-        : null;
+      let aiResponse = "";
+      let pdfInfo = null; // Inisialisasi pdfInfo
+      let isFromDocument = false; // Inisialisasi isFromDocument
 
-      // Chat dengan backend
-      const payload = { 
+      // --- HAPUS SEMUA LOGIKA PENGIRIMAN LANGSUNG KE API DI SINI ---
+      // Kita hanya kirim satu kali ke /api/chat, dan biarkan backend yang handle modenya
+
+      const payload = {
         message: userMessage,
-        mode: currentMode  // Include current mode
+        mode: currentMode, // Kirim mode yang sedang aktif
       };
-      if (lastFileId && currentMode === "normal") {  // Only include file in normal mode
-        payload.file_id = lastFileId;
+
+      // Cek apakah ada file aktif untuk mode normal atau document (jika tidak ada file di upload, mungkin tidak perlu file_id)
+      // Misalnya, hanya kirim file_id jika mode document dan ada uploaded file
+      if (currentMode === "document" && uploadedFiles.length > 0) {
+        payload.file_id = uploadedFiles[uploadedFiles.length - 1].id;
       }
 
       const res = await fetch(`${API_BASE}/api/chat`, {
@@ -244,23 +613,58 @@ function App() {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
       const data = await res.json();
+      aiResponse = data.reply || "No response from AI.";
+      pdfInfo = data.pdf_info || null;
+      isFromDocument = data.is_from_document || false; // Ambil is_from_document dari respons API
+
+      // Tambahkan placeholder untuk animasi ketik
+      const tempMessageId = Date.now();
       setMessages((prev) => [
         ...prev,
         {
+          id: tempMessageId,
           sender: "ai",
-          text: data.reply,
+          text: "",
+          // --- HAPUS isFromDocument ---
+          pdfInfo: pdfInfo,
+          isFromDocument: isFromDocument, // <-- HAPUS BARIS INI
+          // --- HAPUS SELESAI ---
           timestamp: new Date().toLocaleTimeString([], {
             hour: "2-digit",
             minute: "2-digit",
           }),
+          isTyping: true,
         },
       ]);
+
+      // Animasi ketik
+      await typeText(aiResponse, (partialText) => {
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === tempMessageId
+              ? { ...msg, text: partialText, isTyping: true }
+              : msg
+          )
+        );
+      });
+
+      // Selesai mengetik
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.id === tempMessageId ? { ...msg, isTyping: false } : msg
+        )
+      );
     } catch (err) {
+      // Di dalam catch block:
       setMessages((prev) => [
         ...prev,
         {
           sender: "ai",
           text: `Sorry, I encountered an error: ${err.message}`,
+          // --- HAPUS isFromDocument ---
+          pdfInfo: null,
+          isFromDocument: false, // <-- HAPUS BARIS INI
+          // --- HAPUS SELESAI ---
           timestamp: new Date().toLocaleTimeString([], {
             hour: "2-digit",
             minute: "2-digit",
@@ -365,7 +769,8 @@ function App() {
                 <div>
                   <p className="font-medium">{previewFile.name}</p>
                   <p className="text-sm text-gray-500">
-                    {previewFile.type} • {(previewFile.size / 1024).toFixed(1)} KB
+                    {previewFile.type} • {(previewFile.size / 1024).toFixed(1)}{" "}
+                    KB
                   </p>
                 </div>
               </div>
@@ -415,15 +820,21 @@ function App() {
         <div className="space-y-3">
           {documents.length > 0 ? (
             documents.map((doc) => (
-              <div key={doc.id} className="p-4 border rounded-lg hover:bg-gray-50">
-                <div className="font-medium">{doc.judul || "Untitled Document"}</div>
+              <div
+                key={doc.id}
+                className="p-4 border rounded-lg hover:bg-gray-50"
+              >
+                <div className="font-medium">
+                  {doc.judul || "Untitled Document"}
+                </div>
                 <div className="text-sm text-gray-600">
                   {doc.nomor && `No: ${doc.nomor} • `}
                   {doc.tanggal && `Date: ${doc.tanggal} • `}
                   Status: {doc.status}
                 </div>
                 <div className="text-xs text-gray-500 mt-1">
-                  File: {doc.filename} • Uploaded: {new Date(doc.created_at).toLocaleDateString()}
+                  File: {doc.filename} • Uploaded:{" "}
+                  {new Date(doc.created_at).toLocaleDateString()}
                 </div>
               </div>
             ))
@@ -459,18 +870,22 @@ function App() {
 
       {/* File upload modal */}
       {showFileUpload && <FileUploadPanel />}
-      
+
       {/* File preview modal */}
       {showPreview && <FilePreviewPanel />}
-      
+
       {/* Document list modal */}
       {showDocumentList && <DocumentListPanel />}
 
-      {/* Header with mode selector */}
+      {/* Header - HANYA LOGO DAN STATUS */}
       <div className="bg-white border-b border-gray-200 px-4 py-3">
         <div className="max-w-3xl mx-auto flex items-center justify-between">
           <div className="flex items-center space-x-3">
-            <img src="./src/assets/cakra.png" alt="CAKRA AI Logo" className="w-10 h-10 rounded-full object-cover" />
+            <img
+              src="./src/assets/cakra.png"
+              alt="CAKRA AI Logo"
+              className="w-10 h-10 rounded-full object-cover"
+            />
             <div>
               <h1 className="text-lg font-semibold text-gray-900">CAKRA AI</h1>
               <div className="flex items-center space-x-2">
@@ -493,33 +908,12 @@ function App() {
             </div>
           </div>
 
-          {/* Mode selector and buttons */}
+          {/* Hanya tombol Documents di kanan */}
           <div className="flex items-center space-x-2">
-            <div className="relative group">
-              <button
-                className="px-3 py-1.5 text-sm bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
-                onClick={() => setShowDocumentList(true)}
-              >
-                Documents
-              </button>
-            </div>
-            
-            <div className="relative group">
-              <select
-                value={currentMode}
-                onChange={(e) => switchMode(e.target.value)}
-                className="px-3 py-1.5 text-sm bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors border-none focus:outline-none focus:ring-1 focus:ring-blue-500"
-              >
-                <option value="normal">Chat</option>
-                <option value="document">Document</option>
-                <option value="search">Search</option>
-              </select>
-            </div>
-            
             <button
-              onClick={clearChat}
-              className="p-1.5 hover:bg-gray-100 rounded-lg text-gray-500"
-              title="New chat"
+              onClick={() => setShowDocumentList(true)}
+              className="p-2 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+              title="Documents"
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
@@ -532,7 +926,7 @@ function App() {
                   strokeLinecap="round"
                   strokeLinejoin="round"
                   strokeWidth={2}
-                  d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                  d="M21 12a9 9 0 00-9-9H9M9 3v2m3 14v-2m3 2v-2M3 18v-2m6-2a6 6 0 016-6H9M9 12h6"
                 />
               </svg>
             </button>
@@ -552,8 +946,9 @@ function App() {
                 Hai saya CAKRA (Pindad AI)
               </h2>
               <p className="text-gray-600 max-w-md mb-8">
-                Saya bisa membantu menjawab pertanyaan anda, memberikan informasi terkait rekrutmen, peraturan perusahaan,
-                dan lain lain. Kamu juga bisa mengupload file untuk dianalisa.
+                Saya bisa membantu menjawab pertanyaan anda, memberikan
+                informasi terkait rekrutmen, peraturan perusahaan, dan lain
+                lain. Kamu juga bisa mengupload file untuk dianalisa.
               </p>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-w-lg mb-8">
@@ -588,86 +983,61 @@ function App() {
             </div>
           ) : (
             <div className="space-y-6">
-              {messages.map((msg, idx) => (
-                <div
-                  key={idx}
-                  className={`flex ${
-                    msg.sender === "user" ? "justify-end" : "justify-start"
-                  }`}
-                >
-                  <div
-                    className={`flex max-w-3xl ${
-                      msg.sender === "user" ? "flex-row-reverse" : "flex-row"
-                    } items-start`}
-                  >
-                    <div
-                      className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-medium ${
-                        msg.sender === "user"
-                          ? "bg-blue-600 ml-3"
-                          : msg.sender === "system"
-                          ? "bg-gray-500 ml-3"
-                          : "mr-3"
-                      }`}
-                    >
-                      {msg.sender === "user"
-                        ? "You"
-                        : msg.sender === "system"
-                        ? "📁"
-                        : (
-                          <img
-                            src="src/assets/cakra.png"
-                            alt="CAKRA"
-                            className="w-8 h-8 object-cover rounded-full"
-                          />
-                        )}
-                    </div>
-                    <div
-                      className={`px-4 py-3 rounded-2xl ${
-                        msg.sender === "user"
-                          ? "bg-blue-600 text-white rounded-tr-none"
-                          : msg.sender === "system"
-                          ? "bg-gray-100 text-gray-800 rounded-tl-none border border-gray-200"
-                          : "bg-white border border-gray-200 text-gray-800 rounded-tl-none"
-                      } ${msg.isError ? "border-red-200 bg-red-50" : ""}`}
-                    >
-                      <div className="whitespace-pre-wrap break-words">
-                        {msg.text}
+              {messages.map((msg, idx) =>
+                msg.sender === "system" ? (
+                  <div key={idx} className="message-container system">
+                    <div className="message-bubble system">
+                      <div className="flex items-center">
+                        <span className="mr-2">📁</span>
+                        <FormattedMessage text={msg.text} />
                       </div>
                       {msg.timestamp && (
-                        <div
-                          className={`text-xs mt-2 ${
-                            msg.sender === "user"
-                              ? "text-blue-200"
-                              : "text-gray-500"
-                          }`}
-                        >
-                          {msg.timestamp}
-                        </div>
+                        <div className="message-timestamp">{msg.timestamp}</div>
                       )}
                     </div>
                   </div>
-                </div>
-              ))}
+                ) : (
+                  <div
+                    key={idx}
+                    className={`message-container ${
+                      msg.sender === "user" ? "user" : "ai"
+                    }`}
+                  >
+                    <div
+                      className={`message-bubble ${
+                        msg.sender === "user" ? "user" : "ai"
+                      }`}
+                    >
+                      {msg.sender === "ai" ? (
+                        <>
+                          <FormattedMessage text={msg.text} />
+
+                          {/* PERUBAHAN: Gunakan props yang lebih strict */}
+                          <PdfButtons
+                            pdfInfo={msg.pdfInfo}
+                            isFromDocument={msg.isFromDocument}
+                            isTyping={msg.isTyping}
+                          />
+                        </>
+                      ) : (
+                        <div className="whitespace-pre-wrap break-words">
+                          {msg.text}
+                        </div>
+                      )}
+                      {msg.timestamp && (
+                        <div className="message-timestamp">{msg.timestamp}</div>
+                      )}
+                    </div>
+                  </div>
+                )
+              )}
 
               {isLoading && (
-                <div className="flex justify-start">
-                  <div className="flex max-w-3xl items-start">
-                    <div className="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-medium mr-3 overflow-hidden">
-                      <img src="src/assets/cakra.png" alt="CAKRA" className="w-8 h-8 object-cover" />
-                    </div>
-                    <div className="px-4 py-3 bg-white border border-gray-200 rounded-2xl rounded-tl-none">
-                      <div className="flex space-x-1">
-                        <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
-                        <div
-                          className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"
-                          style={{ animationDelay: "0.1s" }}
-                        ></div>
-                        <div
-                          className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"
-                          style={{ animationDelay: "0.2s" }}
-                        ></div>
-                      </div>
-                    </div>
+                <div className="message-container ai">
+                  <div className="loading-dots">
+                    <div className="loading-dot"></div>
+                    <div className="loading-dot"></div>
+                    <div className="loading-dot"></div>
                   </div>
                 </div>
               )}
@@ -677,94 +1047,134 @@ function App() {
         </div>
       </div>
 
-      {/* Input Area - DENGAN UPLOAD BUTTON */}
-      <div className="border-t border-gray-200 bg-white px-4 py-4">
+      {/* Input Area */}
+      <div className="border-t border-gray-200 bg-white px-4 py-4 sticky bottom-0">
         <div className="max-w-3xl mx-auto">
-          <div className="relative">
-            <textarea
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={handleKeyPress}
-              disabled={isLoading}
-              placeholder={
-                uploadedFiles.length > 0
-                  ? `Ask about "${
-                      uploadedFiles[uploadedFiles.length - 1].name
-                    }" or type a message...`
-                  : "Message CAKRA AI or upload a file..."
-              }
-              className="w-full border border-gray-300 rounded-2xl px-4 py-3 pr-28 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-50"
-              rows="1"
-              style={{ minHeight: "52px", maxHeight: "120px" }}
-            />
-
-            <div className="absolute right-2 bottom-2 flex items-center space-x-2">
-              {/* UPLOAD BUTTON DI SINI */}
-              <button
-                onClick={() => setShowFileUpload(true)}
-                disabled={isLoading}
-                className="p-2 text-gray-600 hover:text-blue-600 disabled:opacity-50 transition-colors"
-                title="Upload file"
-              >
-                <span className="text-xl">📁</span>
-              </button>
-
-              {/* SEND BUTTON */}
-              <button
-                onClick={sendMessage}
-                disabled={isLoading || !input.trim()}
-                className={`px-4 py-2 rounded-xl font-medium transition-colors ${
-                  isLoading || !input.trim()
-                    ? "bg-gray-200 text-gray-400 cursor-not-allowed"
-                    : "bg-gradient-to-r from-blue-500 to-purple-600 text-white hover:opacity-90"
+          {/* Di bagian header, setelah status connection */}
+          <div className="flex items-center space-x-2 mb-2">
+            {currentMode !== "normal" && (
+              <span
+                className={`text-xs px-2 py-1 rounded-full ${
+                  currentMode === "document"
+                    ? "bg-blue-100 text-blue-800"
+                    : "bg-purple-100 text-purple-800"
                 }`}
               >
-                {isLoading ? (
-                  <svg
-                    className="w-5 h-5 animate-spin"
-                    xmlns="http://www.w3.org/2000/svg"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                  >
-                    <circle
-                      className="opacity-25"
-                      cx="12"
-                      cy="12"
-                      r="10"
+                {currentMode === "document"
+                  ? "📄 Document Mode"
+                  : "🌐 Search Mode"}
+              </span>
+            )}
+          </div>
+          <div className="relative">
+            <div className="bg-gray-50 rounded-2xl p-3">
+              <textarea
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={handleKeyPress}
+                disabled={isLoading}
+                placeholder={
+                  currentMode === "document"
+                    ? "Tanya apapun terkait dokumen PT Pindad..."
+                    : currentMode === "search"
+                    ? "Cari informasi dari Web resmi PT Pindad..."
+                    : uploadedFiles.length > 0
+                    ? `Ask about "${
+                        uploadedFiles[uploadedFiles.length - 1].name
+                      }"...`
+                    : "Tanya CAKRA AI..."
+                }
+                className="w-full border-none bg-transparent resize-none focus:outline-none text-gray-900"
+                rows="1"
+                style={{ minHeight: "52px", maxHeight: "120px" }}
+                onInput={(e) => {
+                  e.target.style.height = "auto";
+                  e.target.style.height =
+                    Math.min(e.target.scrollHeight, 120) + "px";
+                }}
+              />
+            </div>
+
+            <div className="flex items-center justify-between mt-2">
+              <div className="flex space-x-2">
+                <button
+                  onClick={() => switchMode("document")}
+                  className={`px-3 py-1.5 text-sm rounded-full transition-colors ${
+                    currentMode === "document"
+                      ? "bg-blue-600 text-white"
+                      : "bg-gray-100 hover:bg-gray-200 text-gray-800"
+                  }`}
+                >
+                  <span className="text-xs">📄</span> Document
+                </button>
+                <button
+                  onClick={() => switchMode("search")}
+                  className={`px-3 py-1.5 text-sm rounded-full transition-colors ${
+                    currentMode === "search"
+                      ? "bg-purple-600 text-white"
+                      : "bg-gray-100 hover:bg-gray-200 text-gray-800"
+                  }`}
+                >
+                  <span className="text-xs">🌐</span> Search
+                </button>
+              </div>
+
+              <div className="flex space-x-2">
+                <button
+                  onClick={() => setShowFileUpload(true)}
+                  className="p-2 text-gray-600 hover:text-blue-600 transition-colors"
+                  title="Upload file"
+                >
+                  <span className="text-xl">📁</span>
+                </button>
+                <button
+                  onClick={sendMessage}
+                  disabled={isLoading || !input.trim()}
+                  className={`p-2 rounded-lg transition-colors ${
+                    isLoading || !input.trim()
+                      ? "bg-gray-200 text-gray-400"
+                      : "bg-gradient-to-r from-blue-500 to-purple-600 text-white hover:opacity-90"
+                  }`}
+                >
+                  {isLoading ? (
+                    <svg
+                      className="w-5 h-5 animate-spin"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                    >
+                      <circle
+                        className="opacity-25"
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        stroke="currentColor"
+                        strokeWidth="4"
+                      ></circle>
+                      <path
+                        className="opacity-75"
+                        fill="currentColor"
+                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                      ></path>
+                    </svg>
+                  ) : (
+                    <svg
+                      className="w-5 h-5"
+                      fill="none"
                       stroke="currentColor"
-                      strokeWidth="4"
-                    ></circle>
-                    <path
-                      className="opacity-75"
-                      fill="currentColor"
-                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                    ></path>
-                  </svg>
-                ) : (
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    className="w-5 h-5"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"
-                    />
-                  </svg>
-                )}
-              </button>
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth="2"
+                        d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"
+                      ></path>
+                    </svg>
+                  )}
+                </button>
+              </div>
             </div>
           </div>
-
-          <p className="text-xs text-gray-500 mt-2 text-center">
-            Press Enter to send • Upload files and ask questions naturally
-            {uploadedFiles.length > 0 &&
-              ` • ${uploadedFiles.length} file(s) uploaded`}
-          </p>
         </div>
       </div>
     </div>

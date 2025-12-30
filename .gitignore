@@ -11,6 +11,20 @@ venv/
 .env.local
 .env.*
 
+
+# Ignore isi rag_env tapi tetap push foldernya
+rag_env/*
+!rag_env/.gitkeep
+
+# Ignore isi db_doc tapi tetap push foldernya
+db_doc/*
+!db_doc/.gitkeep
+
+# Ignore isi ocr_file tapi tetap push foldernya
+ocr_file/*
+!ocr_file/.gitkeep
+
+
 # Node.js/JavaScript
 node_modules/
 npm-debug.log*
