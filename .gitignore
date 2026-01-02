@@ -20,6 +20,15 @@ rag_env/*
 db_doc/*
 !db_doc/.gitkeep
 
+# Ignore isi file_koreksi tapi tetap push foldernya
+file_koreksi/*
+!file_koreksi/.gitkeep
+
+# Ignore isi uploads tapi tetap push foldernya
+uploads/*
+!uploads/.gitkeep
+
+
 # Ignore isi ocr_file tapi tetap push foldernya
 ocr_file/*
 !ocr_file/.gitkeep

@@ -1,53 +1,152 @@
-import { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 
-/**
- * Komponen untuk menampilkan teks dengan format list yang rapi
- */
-function FormattedMessage({ text }) {
-  // Tambahkan pengecekan tipe dan konversi ke string jika perlu
-  if (!text) return null;
+// Function untuk copy to clipboard
+const copyToClipboard = async (text, showNotification) => {
+  try {
+    await navigator.clipboard.writeText(text);
+    if (showNotification) {
+      showNotification("Code copied to clipboard!", "success");
+    }
+  } catch (err) {
+    console.error("Failed to copy text: ", err);
+    if (showNotification) {
+      showNotification("Failed to copy code", "error");
+    }
+  }
+};
 
-  // Pastikan text adalah string sebelum memanggil replace
+// Function untuk memisahkan code blocks dari teks biasa
+const extractCodeBlocks = (text) => {
+  if (!text || typeof text !== "string")
+    return { textOnly: text, codeBlocks: [] };
+
+  const parts = text.split(/(```[\s\S]*?```)/g);
+  const codeBlocks = [];
+  const textParts = [];
+
+  parts.forEach((part, index) => {
+    if (part.startsWith("```") && part.endsWith("```")) {
+      const lines = part.split("\n");
+      const langMatch = lines[0].match(/```(\w+)/);
+      const language = langMatch ? langMatch[1] : "text";
+      const codeContent = lines.slice(1, lines.length - 1).join("\n");
+
+      codeBlocks.push({
+        index,
+        language,
+        content: codeContent,
+        fullText: part,
+      });
+    } else if (part.trim()) {
+      textParts.push(part);
+    }
+  });
+
+  return {
+    textOnly: textParts.join(""),
+    codeBlocks,
+    hasCodeBlocks: codeBlocks.length > 0,
+  };
+};
+
+// Function untuk render teks dengan styling Markdown
+const renderStyledText = (text) => {
+  if (!text || typeof text !== "string") return text;
+
+  let processedText = text;
+
+  processedText = processedText.replace(
+    /\*\*(.*?)\*\*/g,
+    "<strong>$1</strong>"
+  );
+  processedText = processedText.replace(/__(.*?)__/g, "<strong>$1</strong>");
+  processedText = processedText.replace(/\*(.*?)\*/g, "<em>$1</em>");
+  processedText = processedText.replace(/_(.*?)_/g, "<em>$1</em>");
+  processedText = processedText.replace(/~~(.*?)~~/g, "<del>$1</del>");
+  processedText = processedText.replace(
+    /`([^`]+)`/g,
+    '<code class="inline-code">$1</code>'
+  );
+  processedText = processedText.replace(
+    /\[([^\]]+)\]\(([^)]+)\)/g,
+    '<a href="$2" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:text-blue-800 hover:underline">$1</a>'
+  );
+
+  return processedText;
+};
+
+// Komponen untuk Code Block
+const CodeBlockComponent = ({
+  language,
+  content,
+  showNotification,
+  isAnimatingBlock,
+}) => {
+  return (
+    <div className="code-block-container my-3">
+      <div className="code-header flex justify-between items-center bg-gray-800 text-gray-200 px-3 py-2 rounded-t-lg text-sm">
+        <span className="font-medium capitalize">{language || "code"}</span>
+        <button
+          onClick={() => copyToClipboard(content, showNotification)}
+          className="copy-button text-xs bg-gray-700 hover:bg-gray-600 px-2 py-1 rounded transition-colors flex items-center gap-1"
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            className="h-3 w-3"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
+            />
+          </svg>
+          Copy
+        </button>
+      </div>
+      <pre className="hljs bg-gray-900 text-gray-100 p-4 rounded-b-lg overflow-x-auto text-sm">
+        <code className={`language-${language}`}>
+          {content}
+          {isAnimatingBlock && <span className="typing-cursor"></span>}
+        </code>
+      </pre>
+    </div>
+  );
+};
+
+// Komponen untuk menampilkan teks dengan format list dan styling
+function FormattedMessage({ text, showNotification }) {
+  if (!text || typeof text !== "string") return null;
+
   let cleanText = text;
   if (typeof text !== "string") {
-    cleanText = String(text); // Konversi ke string
+    cleanText = String(text);
   }
 
-  // Parse HTML entities dan clean text
   cleanText = cleanText
     .replace(/&nbsp;/g, " ")
     .replace(/<br\s*\/?>/gi, "\n")
     .replace(/<\/?div[^>]*>/gi, "\n")
     .replace(/<\/?[^>]+(>|$)/g, "")
-    // TAMBAH INI:
-    .replace(/^[-_]{3,}\s*$/gm, "") // Hapus baris yang cuma "---"
-    .replace(/^\s*[-_]{2,}\s*/gm, "") // Hapus "---" di awal baris
-    // JANGAN PAKAI YANG INI: .replace(/[\s_-]{3,}/g, ' ')
+    .replace(/^[-_]{3,}\s*$/gm, "")
+    .replace(/^\s*[-_]{2,}\s*/gm, "")
     .trim();
 
-  // Split menjadi lines
-  const lines = cleanText.split("\n").filter((line) => line.trim() !== "");
+  const styledText = renderStyledText(cleanText);
+  const lines = styledText.split("\n").filter((line) => line.trim() !== "");
 
   return (
     <div className="space-y-2">
       {lines.map((line, lineIndex) => {
         const trimmedLine = line.trim();
 
-        // Deteksi berbagai jenis list
         const numberMatch = trimmedLine.match(/^(\d+)\.\s+(.+)/);
         const letterMatch = trimmedLine.match(/^([a-z])\.\s+(.+)/i);
         const bulletMatch = trimmedLine.match(/^[-*•]\s+(.+)/);
-        const numberedParenMatch = trimmedLine.match(/^(\d+)\)\s+(.+)/);
-        const letterParenMatch = trimmedLine.match(/^([a-z])\)\s+(.+)/i);
-        const doubleNumberedParenMatch = trimmedLine.match(/^(\d+)\)\)\s+(.+)/);
-        const tripleNumberedParenMatch =
-          trimmedLine.match(/^(\d+)\)\)\)\s+(.+)/);
 
-        // Cek indentasi dengan spasi/tab
-        const indentCount = line.length - line.trimStart().length;
-        const indentLevel = Math.floor(indentCount / 4);
-
-        // Fungsi untuk wrap text panjang
         const wrapText = (textToWrap, maxLength = 100) => {
           if (!textToWrap || textToWrap.length <= maxLength)
             return [textToWrap];
@@ -78,7 +177,6 @@ function FormattedMessage({ text }) {
           return wrappedLines;
         };
 
-        // Render berdasarkan tipe
         let content;
 
         if (numberMatch) {
@@ -89,10 +187,10 @@ function FormattedMessage({ text }) {
               <span className="font-semibold min-w-[0.8rem]">{number}.</span>
               <div className="ml-2">
                 {wrappedContent.map((wrappedLine, idx) => (
-                  <div key={idx}>
-                    {wrappedLine}
-                    {idx < wrappedContent.length - 1 && <br />}
-                  </div>
+                  <div
+                    key={idx}
+                    dangerouslySetInnerHTML={{ __html: wrappedLine }}
+                  />
                 ))}
               </div>
             </div>
@@ -105,10 +203,10 @@ function FormattedMessage({ text }) {
               <span className="font-semibold min-w-[1rem]">{letter}.</span>
               <div className="ml-2">
                 {wrappedContent.map((wrappedLine, idx) => (
-                  <div key={idx}>
-                    {wrappedLine}
-                    {idx < wrappedContent.length - 1 && <br />}
-                  </div>
+                  <div
+                    key={idx}
+                    dangerouslySetInnerHTML={{ __html: wrappedLine }}
+                  />
                 ))}
               </div>
             </div>
@@ -121,101 +219,23 @@ function FormattedMessage({ text }) {
               <span className="mr-2">•</span>
               <div>
                 {wrappedContent.map((wrappedLine, idx) => (
-                  <div key={idx}>
-                    {wrappedLine}
-                    {idx < wrappedContent.length - 1 && <br />}
-                  </div>
+                  <div
+                    key={idx}
+                    dangerouslySetInnerHTML={{ __html: wrappedLine }}
+                  />
                 ))}
               </div>
-            </div>
-          );
-        } else if (numberedParenMatch) {
-          const [, number, contentText] = numberedParenMatch;
-          const wrappedContent = wrapText(contentText, 60);
-          content = (
-            <div className="flex ml-6">
-              <span className="font-semibold min-w-[1.5rem]">{number})</span>
-              <div className="ml-5">
-                {wrappedContent.map((wrappedLine, idx) => (
-                  <div key={idx}>
-                    {wrappedLine}
-                    {idx < wrappedContent.length - 1 && <br />}
-                  </div>
-                ))}
-              </div>
-            </div>
-          );
-        } else if (letterParenMatch) {
-          const [, letter, contentText] = letterParenMatch;
-          const wrappedContent = wrapText(contentText, 55);
-          content = (
-            <div className="flex ml-8">
-              <span className="font-semibold min-w-[1rem]">{letter})</span>
-              <div className="ml-2">
-                {wrappedContent.map((wrappedLine, idx) => (
-                  <div key={idx}>
-                    {wrappedLine}
-                    {idx < wrappedContent.length - 1 && <br />}
-                  </div>
-                ))}
-              </div>
-            </div>
-          );
-        } else if (doubleNumberedParenMatch) {
-          const [, number, contentText] = doubleNumberedParenMatch;
-          const wrappedContent = wrapText(contentText, 50);
-          content = (
-            <div className="flex ml-10">
-              <span className="font-semibold min-w-[2rem]">{number}))</span>
-              <div className="ml-2">
-                {wrappedContent.map((wrappedLine, idx) => (
-                  <div key={idx}>
-                    {wrappedLine}
-                    {idx < wrappedContent.length - 1 && <br />}
-                  </div>
-                ))}
-              </div>
-            </div>
-          );
-        } else if (tripleNumberedParenMatch) {
-          const [, number, contentText] = tripleNumberedParenMatch;
-          const wrappedContent = wrapText(contentText, 45);
-          content = (
-            <div className="flex ml-12">
-              <span className="font-semibold min-w-[2.5rem]">{number})))</span>
-              <div className="ml-2">
-                {wrappedContent.map((wrappedLine, idx) => (
-                  <div key={idx}>
-                    {wrappedLine}
-                    {idx < wrappedContent.length - 1 && <br />}
-                  </div>
-                ))}
-              </div>
-            </div>
-          );
-        } else if (indentLevel > 0) {
-          // Text dengan indentasi
-          const wrappedContent = wrapText(trimmedLine, 75 - indentLevel * 10);
-          content = (
-            <div className={`ml-${indentLevel * 4}`}>
-              {wrappedContent.map((wrappedLine, idx) => (
-                <div key={idx}>
-                  {wrappedLine}
-                  {idx < wrappedContent.length - 1 && <br />}
-                </div>
-              ))}
             </div>
           );
         } else {
-          // Text biasa
           const wrappedContent = wrapText(trimmedLine, 75);
           content = (
             <div>
               {wrappedContent.map((wrappedLine, idx) => (
-                <div key={idx}>
-                  {wrappedLine}
-                  {idx < wrappedContent.length - 1 && <br />}
-                </div>
+                <div
+                  key={idx}
+                  dangerouslySetInnerHTML={{ __html: wrappedLine }}
+                />
               ))}
             </div>
           );
@@ -231,9 +251,113 @@ function FormattedMessage({ text }) {
   );
 }
 
-// --- TAMBAH KOMPONEN PDF BUTTONS ---
+// Main component untuk render message dengan typing animation
+const MessageRenderer = ({ text, showNotification, isTyping = false }) => {
+  const [displayText, setDisplayText] = useState("");
+  const [isAnimating, setIsAnimating] = useState(false);
+
+  // 1. Ekstrak struktur blok dari teks ASLI (full text)
+  const { codeBlocks: originalBlocks } = extractCodeBlocks(text || "");
+
+  useEffect(() => {
+    if (!text) return;
+    if (isTyping) {
+      setIsAnimating(true);
+      let i = 0;
+      const typingSpeed = 15;
+      const typeTimer = setInterval(() => {
+        if (i < text.length) {
+          setDisplayText(text.slice(0, i + 1));
+          i++;
+        } else {
+          clearInterval(typeTimer);
+          setIsAnimating(false);
+        }
+      }, typingSpeed);
+      return () => clearInterval(typeTimer);
+    } else {
+      setDisplayText(text);
+    }
+  }, [text, isTyping]);
+
+  // 2. Fungsi pembantu untuk menentukan apa yang tampil
+  const renderContent = () => {
+    // Jika tidak ada code blocks, render biasa
+    if (originalBlocks.length === 0) {
+      return (
+        <>
+          <FormattedMessage
+            text={displayText}
+            showNotification={showNotification}
+          />
+          {isAnimating && <span className="typing-cursor"></span>}
+        </>
+      );
+    }
+
+    // Logic untuk membagi tampilan antara teks biasa dan code block yang sedang "diketik"
+    const parts = text.split(/(```[\s\S]*?```)/g);
+    let currentPos = 0;
+
+    return parts.map((part, index) => {
+      const partStart = currentPos;
+      const partEnd = currentPos + part.length;
+      currentPos = partEnd;
+
+      // Jika progres pengetikan (displayText) belum sampai ke part ini, jangan tampilkan
+      if (displayText.length <= partStart) return null;
+
+      // Ambil bagian dari part ini yang sudah "terketik"
+      const visiblePart = text.slice(
+        partStart,
+        Math.min(partEnd, displayText.length)
+      );
+
+      if (part.startsWith("```")) {
+        // Ini adalah area Code Block
+        const lines = visiblePart.split("\n");
+        const langMatch = lines[0].match(/```(\w+)/);
+        const language = langMatch ? langMatch[1] : "code";
+
+        // Bersihkan konten dari tag ``` dan bahasa
+        let content = lines.slice(1).join("\n").replace(/```$/, "");
+
+        const isCurrentlyTypingThisBlock =
+          displayText.length > partStart && displayText.length < partEnd;
+
+        return (
+          <CodeBlockComponent
+            key={index}
+            language={language}
+            content={content}
+            showNotification={showNotification}
+            isAnimatingBlock={isCurrentlyTypingThisBlock}
+          />
+        );
+      } else {
+        // Ini teks biasa
+        return (
+          <FormattedMessage
+            key={index}
+            text={visiblePart}
+            showNotification={showNotification}
+          />
+        );
+      }
+    });
+  };
+
+  return (
+    <div className="space-y-3 message-renderer">
+      {/* CSS Styles tetap sama */}
+      <style>{` ... `}</style>
+      {renderContent()}
+    </div>
+  );
+};
+
+// PDF Buttons Component
 function PdfButtons({ pdfInfo, isFromDocument, isTyping = false }) {
-  // PERUBAHAN: isFromDocument sekarang dari backend yang sudah filtered
   const shouldShow =
     isFromDocument === true &&
     pdfInfo &&
@@ -241,38 +365,32 @@ function PdfButtons({ pdfInfo, isFromDocument, isTyping = false }) {
     pdfInfo.filename &&
     !isTyping;
 
-  if (!shouldShow) {
-    return null;
-  }
+  if (!shouldShow) return null;
 
   const API_BASE = "http://192.168.11.80:5000";
 
   const handleView = () => {
     if (pdfInfo.url) {
-      const previewUrl = `${API_BASE}${pdfInfo.url}`;
-      window.open(previewUrl, "_blank", "noopener,noreferrer");
+      window.open(`${API_BASE}${pdfInfo.url}`, "_blank", "noopener,noreferrer");
     }
   };
 
   const handleDownload = () => {
     if (pdfInfo.download_url) {
-      const downloadUrl = `${API_BASE}${pdfInfo.download_url}`;
-      window.open(downloadUrl, "_blank", "noopener,noreferrer");
+      window.open(
+        `${API_BASE}${pdfInfo.download_url}`,
+        "_blank",
+        "noopener,noreferrer"
+      );
     }
   };
 
   return (
-    <div className="mt-4 p-3 bg-blue-50 rounded-lg border border-blue-200 animate-fadeIn">
+    <div className="mt-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
       <div className="flex items-start justify-between">
         <div className="flex items-center space-x-3">
           <div className="p-2 bg-blue-100 rounded-lg">
-            <svg
-              width="20"
-              height="20"
-              viewBox="0 0 24 24"
-              fill="none"
-              xmlns="http://www.w3.org/2000/svg"
-            >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
               <path
                 d="M14 2H6C4.9 2 4.01 2.9 4.01 4L4 20C4 21.1 4.89 22 5.99 22H18C19.1 22 20 21.1 20 20V8L14 2ZM16 18H8V16H16V18ZM16 14H8V12H16V14ZM13 9V3.5L18.5 9H13Z"
                 fill="#1D4ED8"
@@ -291,52 +409,23 @@ function PdfButtons({ pdfInfo, isFromDocument, isTyping = false }) {
           </div>
         </div>
       </div>
-      <div className="flex justify-end mt-2">
-        <div className="flex flex-col sm:flex-row gap-2">
-          {pdfInfo.url && (
-            <button
-              onClick={handleView}
-              className="flex items-center justify-center px-2 py-0.5 text-xs bg-white text-blue-600 border border-blue-300 rounded-full hover:bg-blue-50 transition-colors"
-            >
-              <svg
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                xmlns="http://www.w3.org/2000/svg"
-                className="mr-1"
-              >
-                <path
-                  d="M19 19H5V5h7V3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2v-7h-2v7zM14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z"
-                  fill="currentColor"
-                />
-              </svg>
-              Lihat
-            </button>
-          )}
-
-          {pdfInfo.download_url && (
-            <button
-              onClick={handleDownload}
-              className="flex items-center justify-center px-2 py-0.5 text-xs bg-blue-600 text-white rounded-full hover:bg-blue-700 transition-colors"
-            >
-              <svg
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                xmlns="http://www.w3.org/2000/svg"
-                className="mr-1"
-              >
-                <path
-                  d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"
-                  fill="currentColor"
-                />
-              </svg>
-              Download
-            </button>
-          )}
-        </div>
+      <div className="flex justify-end mt-2 gap-2">
+        {pdfInfo.url && (
+          <button
+            onClick={handleView}
+            className="px-2 py-0.5 text-xs bg-white text-blue-600 border border-blue-300 rounded-full hover:bg-blue-50"
+          >
+            Lihat
+          </button>
+        )}
+        {pdfInfo.download_url && (
+          <button
+            onClick={handleDownload}
+            className="px-2 py-0.5 text-xs bg-blue-600 text-white rounded-full hover:bg-blue-700"
+          >
+            Download
+          </button>
+        )}
       </div>
     </div>
   );
@@ -346,88 +435,59 @@ function App() {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [backendStatus, setBackendStatus] = useState("checking");
+  const [backendStatus, setBackendStatus] = useState("connected");
   const [uploadedFiles, setUploadedFiles] = useState([]);
   const [documents, setDocuments] = useState([]);
   const [showFileUpload, setShowFileUpload] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
   const [previewFile, setPreviewFile] = useState(null);
   const [tempFileId, setTempFileId] = useState(null);
-  const [currentMode, setCurrentMode] = useState("normal"); // normal, document, search
+  const [currentMode, setCurrentMode] = useState("normal");
   const [showDocumentList, setShowDocumentList] = useState(false);
+  const [notification, setNotification] = useState(null);
   const messagesEndRef = useRef(null);
   const fileInputRef = useRef(null);
+  const messagesContainerRef = useRef(null);
 
   const API_BASE = "http://192.168.11.80:5000";
 
-  // Auto-scroll to bottom
+  // Auto-scroll
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  // Check backend on load
+  // Check backend
   useEffect(() => {
+    const checkBackend = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/health`);
+        setBackendStatus(res.ok ? "connected" : "error");
+      } catch {
+        setBackendStatus("disconnected");
+      }
+    };
+
     checkBackend();
     loadDocuments();
   }, []);
 
-  const checkBackend = async () => {
-    try {
-      const res = await fetch(`${API_BASE}/health`);
-      setBackendStatus(res.ok ? "connected" : "error");
-    } catch {
-      setBackendStatus("disconnected");
-    }
-  };
+  const showNotification = useCallback((message, type = "info") => {
+    setNotification({ id: Date.now(), message, type });
+    setTimeout(() => setNotification(null), 3000);
+  }, []);
 
   const loadDocuments = async () => {
     try {
       const res = await fetch(`${API_BASE}/api/documents`);
       if (res.ok) {
         const data = await res.json();
-        setDocuments(data.documents);
+        setDocuments(data.documents || []);
       }
     } catch (err) {
       console.error("Error loading documents:", err);
     }
   };
 
-  // Helper function untuk membersihkan markdown
-  const cleanMarkdown = (text) => {
-    if (!text) return text;
-
-    return (
-      text
-        // Hapus basic markdown
-        .replace(/\*\*(.*?)\*\*/g, "$1")
-        .replace(/__(.*?)__/g, "$1")
-        .replace(/^#{1,6}\s+/gm, "")
-        .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
-        // Rapikan spasi
-        .replace(/\n{3,}/g, "\n\n")
-        .trim()
-    );
-  };
-
-  // Helper function untuk animasi ketik
-  const typeText = async (text, callback, speed = 15) => {
-    // Jangan format di sini - biarkan AI yang format
-    const cleanText = cleanMarkdown(text); // Hanya basic cleaning
-    let i = 0;
-    return new Promise((resolve) => {
-      const timer = setInterval(() => {
-        if (i < cleanText.length) {
-          callback(cleanText.slice(0, i + 1));
-          i++;
-        } else {
-          clearInterval(timer);
-          resolve();
-        }
-      }, speed);
-    });
-  };
-
-  // Handle file preview
   const handleFilePreview = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -453,30 +513,13 @@ function App() {
         });
         setShowPreview(true);
       } else {
-        setMessages((prev) => [
-          ...prev,
-          {
-            sender: "system",
-            text: `❌ Preview failed: ${data.error}`,
-            isSystem: true,
-            isError: true,
-          },
-        ]);
+        showNotification(`Preview failed: ${data.error}`, "error");
       }
     } catch (err) {
-      setMessages((prev) => [
-        ...prev,
-        {
-          sender: "system",
-          text: `❌ Preview error: ${err.message}`,
-          isSystem: true,
-          isError: true,
-        },
-      ]);
+      showNotification(`Preview error: ${err.message}`, "error");
     }
   };
 
-  // Confirm upload after preview
   const confirmUpload = async () => {
     if (!tempFileId) return;
 
@@ -490,7 +533,6 @@ function App() {
       const data = await res.json();
 
       if (res.ok) {
-        // Add to uploaded files
         setUploadedFiles((prev) => [
           ...prev,
           {
@@ -500,44 +542,16 @@ function App() {
           },
         ]);
 
-        // Add system message
-        setMessages((prev) => [
-          ...prev,
-          {
-            sender: "system",
-            text: `✅ File "${data.filename}" uploaded successfully!\n\nYou can now ask questions about this file.`,
-            isSystem: true,
-          },
-        ]);
-
+        showNotification(`File "${data.filename}" uploaded!`, "success");
         setShowPreview(false);
         setPreviewFile(null);
         setTempFileId(null);
-      } else {
-        setMessages((prev) => [
-          ...prev,
-          {
-            sender: "system",
-            text: `❌ Upload failed: ${data.error}`,
-            isSystem: true,
-            isError: true,
-          },
-        ]);
       }
     } catch (err) {
-      setMessages((prev) => [
-        ...prev,
-        {
-          sender: "system",
-          text: `❌ Upload error: ${err.message}`,
-          isSystem: true,
-          isError: true,
-        },
-      ]);
+      showNotification(`Upload error: ${err.message}`, "error");
     }
   };
 
-  // Cancel upload
   const cancelUpload = async () => {
     if (tempFileId) {
       await fetch(`${API_BASE}/api/cancel-upload`, {
@@ -552,28 +566,22 @@ function App() {
     setTempFileId(null);
   };
 
-  // Switch mode dengan toggle logic - HAPUS pemanggilan API yang tidak perlu
-  const switchMode = async (mode) => {
-    // Jika mode yang diklik sedang aktif, kembalikan ke normal
+  const switchMode = (mode) => {
     const nextMode = currentMode === mode ? "normal" : mode;
     setCurrentMode(nextMode);
-
-    // HAPUS SEMUA pemanggilan API ini - tidak diperlukan
-    // Hanya ganti state, jangan panggil API
-
-    // Tambahkan pesan sistem untuk memberi tahu mode yang aktif
-    if (nextMode !== "normal") {
-      setMessages((prev) => [...prev]);
-    }
   };
 
   const sendMessage = async () => {
     if (!input.trim() || isLoading) return;
 
     const userMessage = input.trim();
+    setInput("");
+
+    const userMsgId = Date.now();
     setMessages((prev) => [
       ...prev,
       {
+        id: userMsgId,
         sender: "user",
         text: userMessage,
         timestamp: new Date().toLocaleTimeString([], {
@@ -582,25 +590,31 @@ function App() {
         }),
       },
     ]);
-    setInput("");
+
     setIsLoading(true);
 
+    const aiMsgId = Date.now() + 1;
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: aiMsgId,
+        sender: "ai",
+        text: "",
+        timestamp: new Date().toLocaleTimeString([], {
+          hour: "2-digit",
+          minute: "2-digit",
+        }),
+        isTyping: false,
+      },
+    ]);
+
     try {
-      let aiResponse = "";
-      let pdfInfo = null; // Inisialisasi pdfInfo
-      let isFromDocument = false; // Inisialisasi isFromDocument
-
-      // --- HAPUS SEMUA LOGIKA PENGIRIMAN LANGSUNG KE API DI SINI ---
-      // Kita hanya kirim satu kali ke /api/chat, dan biarkan backend yang handle modenya
-
       const payload = {
         message: userMessage,
-        mode: currentMode, // Kirim mode yang sedang aktif
+        mode: currentMode,
       };
 
-      // Cek apakah ada file aktif untuk mode normal atau document (jika tidak ada file di upload, mungkin tidak perlu file_id)
-      // Misalnya, hanya kirim file_id jika mode document dan ada uploaded file
-      if (currentMode === "document" && uploadedFiles.length > 0) {
+      if (uploadedFiles.length > 0 && currentMode === "normal") {
         payload.file_id = uploadedFiles[uploadedFiles.length - 1].id;
       }
 
@@ -613,65 +627,46 @@ function App() {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
       const data = await res.json();
-      aiResponse = data.reply || "No response from AI.";
-      pdfInfo = data.pdf_info || null;
-      isFromDocument = data.is_from_document || false; // Ambil is_from_document dari respons API
+      const aiResponse = data.reply || "No response from AI.";
+      const pdfInfo = data.pdf_info || null;
+      const isFromDocument = data.is_from_document || false;
 
-      // Tambahkan placeholder untuk animasi ketik
-      const tempMessageId = Date.now();
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: tempMessageId,
-          sender: "ai",
-          text: "",
-          // --- HAPUS isFromDocument ---
-          pdfInfo: pdfInfo,
-          isFromDocument: isFromDocument, // <-- HAPUS BARIS INI
-          // --- HAPUS SELESAI ---
-          timestamp: new Date().toLocaleTimeString([], {
-            hour: "2-digit",
-            minute: "2-digit",
-          }),
-          isTyping: true,
-        },
-      ]);
-
-      // Animasi ketik
-      await typeText(aiResponse, (partialText) => {
-        setMessages((prev) =>
-          prev.map((msg) =>
-            msg.id === tempMessageId
-              ? { ...msg, text: partialText, isTyping: true }
-              : msg
-          )
-        );
-      });
-
-      // Selesai mengetik
+      // Set response dengan isTyping true untuk trigger animasi
       setMessages((prev) =>
         prev.map((msg) =>
-          msg.id === tempMessageId ? { ...msg, isTyping: false } : msg
+          msg.id === aiMsgId
+            ? {
+                ...msg,
+                text: aiResponse,
+                pdfInfo: pdfInfo,
+                isFromDocument: isFromDocument,
+                isTyping: true,
+              }
+            : msg
         )
       );
+
+      // Matikan isTyping setelah animasi selesai
+      setTimeout(() => {
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === aiMsgId ? { ...msg, isTyping: false } : msg
+          )
+        );
+      }, aiResponse.length * 15 + 500);
     } catch (err) {
-      // Di dalam catch block:
-      setMessages((prev) => [
-        ...prev,
-        {
-          sender: "ai",
-          text: `Sorry, I encountered an error: ${err.message}`,
-          // --- HAPUS isFromDocument ---
-          pdfInfo: null,
-          isFromDocument: false, // <-- HAPUS BARIS INI
-          // --- HAPUS SELESAI ---
-          timestamp: new Date().toLocaleTimeString([], {
-            hour: "2-digit",
-            minute: "2-digit",
-          }),
-          isError: true,
-        },
-      ]);
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.id === aiMsgId
+            ? {
+                ...msg,
+                text: `Error: ${err.message}`,
+                isTyping: false,
+                isError: true,
+              }
+            : msg
+        )
+      );
     } finally {
       setIsLoading(false);
     }
@@ -877,7 +872,7 @@ function App() {
       {/* Document list modal */}
       {showDocumentList && <DocumentListPanel />}
 
-      {/* Header - HANYA LOGO DAN STATUS */}
+      {/* Header */}
       <div className="bg-white border-b border-gray-200 px-4 py-3">
         <div className="max-w-3xl mx-auto flex items-center justify-between">
           <div className="flex items-center space-x-3">
@@ -901,14 +896,15 @@ function App() {
                 <span className="text-xs text-gray-500">
                   {backendStatus === "connected"
                     ? "Connected"
-                    : "Connecting..."}{" "}
+                    : backendStatus === "disconnected"
+                    ? "Disconnected"
+                    : "Checking..."}{" "}
                   • Qwen3 8B
                 </span>
               </div>
             </div>
           </div>
 
-          {/* Hanya tombol Documents di kanan */}
           <div className="flex items-center space-x-2">
             <button
               onClick={() => setShowDocumentList(true)}
@@ -926,7 +922,27 @@ function App() {
                   strokeLinecap="round"
                   strokeLinejoin="round"
                   strokeWidth={2}
-                  d="M21 12a9 9 0 00-9-9H9M9 3v2m3 14v-2m3 2v-2M3 18v-2m6-2a6 6 0 016-6H9M9 12h6"
+                  d="M19 21H5a2 2 0 01-2-2V7a2 2 0 012-2h4l2-2h6a2 2 0 012 2v14a2 2 0 01-2 2zM5 7v12h14V7H5zm4 2h6v2H9V9z"
+                />
+              </svg>
+            </button>
+            <button
+              onClick={clearChat}
+              className="p-1.5 hover:bg-gray-100 rounded-lg text-gray-500"
+              title="New chat"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                className="h-5 w-5"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
                 />
               </svg>
             </button>
@@ -935,7 +951,10 @@ function App() {
       </div>
 
       {/* Chat Messages */}
-      <div className="flex-1 overflow-y-auto px-4 py-6">
+      <div
+        ref={messagesContainerRef}
+        className="flex-1 overflow-y-auto px-4 py-6"
+      >
         <div className="max-w-3xl mx-auto">
           {messages.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-center py-12">
@@ -983,61 +1002,70 @@ function App() {
             </div>
           ) : (
             <div className="space-y-6">
-              {messages.map((msg, idx) =>
-                msg.sender === "system" ? (
-                  <div key={idx} className="message-container system">
-                    <div className="message-bubble system">
-                      <div className="flex items-center">
-                        <span className="mr-2">📁</span>
-                        <FormattedMessage text={msg.text} />
-                      </div>
-                      {msg.timestamp && (
-                        <div className="message-timestamp">{msg.timestamp}</div>
-                      )}
-                    </div>
-                  </div>
-                ) : (
+              {messages.map((msg) => (
+                <div
+                  key={msg.id}
+                  className={`flex ${
+                    msg.sender === "user" ? "justify-end" : "justify-start"
+                  }`}
+                >
                   <div
-                    key={idx}
-                    className={`message-container ${
-                      msg.sender === "user" ? "user" : "ai"
+                     className={`${
+                      msg.sender === "user"
+                        ? "bg-blue-600 text-white rounded-xl px-4 py-1 max-w-xs sm:max-w-sm md:max-w-md ml-auto"
+                        : "max-w-3xl"
                     }`}
                   >
-                    <div
-                      className={`message-bubble ${
-                        msg.sender === "user" ? "user" : "ai"
-                      }`}
-                    >
-                      {msg.sender === "ai" ? (
-                        <>
-                          <FormattedMessage text={msg.text} />
-
-                          {/* PERUBAHAN: Gunakan props yang lebih strict */}
-                          <PdfButtons
-                            pdfInfo={msg.pdfInfo}
-                            isFromDocument={msg.isFromDocument}
-                            isTyping={msg.isTyping}
-                          />
-                        </>
-                      ) : (
-                        <div className="whitespace-pre-wrap break-words">
-                          {msg.text}
+                      <MessageRenderer
+                        text={msg.text}
+                        showNotification={showNotification}
+                        isTyping={msg.isTyping}
+                      />
+                      {msg.sender === "ai" && (
+                        <PdfButtons
+                          pdfInfo={msg.pdfInfo}
+                          isFromDocument={msg.isFromDocument}
+                          isTyping={msg.isTyping}
+                        />
+                      )}
+                      {(
+                        <div
+                          className={`text-xs mt-2 ${
+                            msg.sender === "user"
+                              ? "text-blue-200"
+                              : "text-gray-500"
+                          }`}
+                        >
                         </div>
                       )}
-                      {msg.timestamp && (
-                        <div className="message-timestamp">{msg.timestamp}</div>
-                      )}
-                    </div>
+              
                   </div>
-                )
-              )}
+                </div>
+              ))}
 
               {isLoading && (
-                <div className="message-container ai">
-                  <div className="loading-dots">
-                    <div className="loading-dot"></div>
-                    <div className="loading-dot"></div>
-                    <div className="loading-dot"></div>
+                <div className="flex justify-start">
+                  <div className="flex max-w-3xl items-start">
+                    <div className="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center mr-3 overflow-hidden">
+                      <img
+                        src="./src/assets/cakra.png"
+                        alt="CAKRA"
+                        className="w-8 h-8 object-cover"
+                      />
+                    </div>
+                    <div className="px-4 py-3 bg-white border border-gray-200 rounded-2xl rounded-tl-none">
+                      <div className="flex space-x-1">
+                        <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
+                        <div
+                          className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"
+                          style={{ animationDelay: "0.1s" }}
+                        ></div>
+                        <div
+                          className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"
+                          style={{ animationDelay: "0.2s" }}
+                        ></div>
+                      </div>
+                    </div>
                   </div>
                 </div>
               )}
@@ -1050,7 +1078,7 @@ function App() {
       {/* Input Area */}
       <div className="border-t border-gray-200 bg-white px-4 py-4 sticky bottom-0">
         <div className="max-w-3xl mx-auto">
-          {/* Di bagian header, setelah status connection */}
+          {/* Mode indicator */}
           <div className="flex items-center space-x-2 mb-2">
             {currentMode !== "normal" && (
               <span
@@ -1066,8 +1094,9 @@ function App() {
               </span>
             )}
           </div>
+
           <div className="relative">
-            <div className="bg-gray-50 rounded-2xl p-3">
+            <div className="bg-gray-100 rounded-2xl p-3">
               <textarea
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
@@ -1093,90 +1122,106 @@ function App() {
                     Math.min(e.target.scrollHeight, 120) + "px";
                 }}
               />
-            </div>
+              <div className="flex items-center justify-between mt-2">
+                <div className="flex space-x-2">
+                  <button
+                    onClick={() => switchMode("document")}
+                    className={`px-3 py-1 text-sm rounded-full transition-colors ${
+                      currentMode === "document"
+                        ? "bg-blue-600 text-white"
+                        : "bg-gray-200 hover:bg-gray-400 text-gray-800"
+                    }`}
+                  >
+                    <span className="text-xs">📄</span> Document
+                  </button>
+                  <button
+                    onClick={() => switchMode("search")}
+                    className={`px-3 py-1 text-sm rounded-full transition-colors ${
+                      currentMode === "search"
+                        ? "bg-purple-600 text-white"
+                        : "bg-gray-200 hover:bg-gray-400 text-gray-800"
+                    }`}
+                  >
+                    <span className="text-xs">🌐</span> Search
+                  </button>
+                </div>
 
-            <div className="flex items-center justify-between mt-2">
-              <div className="flex space-x-2">
-                <button
-                  onClick={() => switchMode("document")}
-                  className={`px-3 py-1.5 text-sm rounded-full transition-colors ${
-                    currentMode === "document"
-                      ? "bg-blue-600 text-white"
-                      : "bg-gray-100 hover:bg-gray-200 text-gray-800"
-                  }`}
-                >
-                  <span className="text-xs">📄</span> Document
-                </button>
-                <button
-                  onClick={() => switchMode("search")}
-                  className={`px-3 py-1.5 text-sm rounded-full transition-colors ${
-                    currentMode === "search"
-                      ? "bg-purple-600 text-white"
-                      : "bg-gray-100 hover:bg-gray-200 text-gray-800"
-                  }`}
-                >
-                  <span className="text-xs">🌐</span> Search
-                </button>
-              </div>
-
-              <div className="flex space-x-2">
-                <button
-                  onClick={() => setShowFileUpload(true)}
-                  className="p-2 text-gray-600 hover:text-blue-600 transition-colors"
-                  title="Upload file"
-                >
-                  <span className="text-xl">📁</span>
-                </button>
-                <button
-                  onClick={sendMessage}
-                  disabled={isLoading || !input.trim()}
-                  className={`p-2 rounded-lg transition-colors ${
-                    isLoading || !input.trim()
-                      ? "bg-gray-200 text-gray-400"
-                      : "bg-gradient-to-r from-blue-500 to-purple-600 text-white hover:opacity-90"
-                  }`}
-                >
-                  {isLoading ? (
-                    <svg
-                      className="w-5 h-5 animate-spin"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                    >
-                      <circle
-                        className="opacity-25"
-                        cx="12"
-                        cy="12"
-                        r="10"
+                <div className="flex space-x-2">
+                  <button
+                    onClick={() => setShowFileUpload(true)}
+                    className="p-2 text-gray-600 hover:text-blue-600 transition-colors"
+                    title="Upload file"
+                  >
+                    <span className="text-xl">📁</span>
+                  </button>
+                  <button
+                    onClick={sendMessage}
+                    disabled={isLoading || !input.trim()}
+                    className={`px-4 py-1 rounded-xl font-medium transition-colors ${
+                      isLoading || !input.trim()
+                        ? "bg-gray-200 text-gray-400 cursor-not-allowed"
+                        : "bg-gradient-to-r from-blue-500 to-purple-600 text-white hover:opacity-90"
+                    }`}
+                  >
+                    {isLoading ? (
+                      <svg
+                        className="w-5 h-5 animate-spin"
+                        xmlns="http://www.w3.org/2000/svg"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                      >
+                        <circle
+                          className="opacity-25"
+                          cx="12"
+                          cy="12"
+                          r="10"
+                          stroke="currentColor"
+                          strokeWidth="4"
+                        ></circle>
+                        <path
+                          className="opacity-75"
+                          fill="currentColor"
+                          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                        ></path>
+                      </svg>
+                    ) : (
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        className="w-5 h-5"
+                        fill="none"
+                        viewBox="0 0 24 24"
                         stroke="currentColor"
-                        strokeWidth="4"
-                      ></circle>
-                      <path
-                        className="opacity-75"
-                        fill="currentColor"
-                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                      ></path>
-                    </svg>
-                  ) : (
-                    <svg
-                      className="w-5 h-5"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth="2"
-                        d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"
-                      ></path>
-                    </svg>
-                  )}
-                </button>
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"
+                        />
+                      </svg>
+                    )}
+                  </button>
+                </div>
               </div>
             </div>
           </div>
         </div>
       </div>
+
+      {/* Notification Toast */}
+      {notification && (
+        <div
+          className={`fixed top-4 right-4 z-50 px-6 py-3 rounded-lg shadow-lg text-white font-medium transition-opacity duration-300 ${
+            notification.type === "success"
+              ? "bg-green-500"
+              : notification.type === "error"
+              ? "bg-red-500"
+              : "bg-blue-500"
+          }`}
+        >
+          {notification.message}
+        </div>
+      )}
     </div>
   );
 }
