@@ -49,31 +49,6 @@ const extractCodeBlocks = (text) => {
   };
 };
 
-// Function untuk render teks dengan styling Markdown
-const renderStyledText = (text) => {
-  if (!text || typeof text !== "string") return text;
-
-  let processedText = text;
-
-  processedText = processedText.replace(
-    /\*\*(.*?)\*\*/g,
-    "<strong>$1</strong>"
-  );
-  processedText = processedText.replace(/__(.*?)__/g, "<strong>$1</strong>");
-  processedText = processedText.replace(/\*(.*?)\*/g, "<em>$1</em>");
-  processedText = processedText.replace(/_(.*?)_/g, "<em>$1</em>");
-  processedText = processedText.replace(/~~(.*?)~~/g, "<del>$1</del>");
-  processedText = processedText.replace(
-    /`([^`]+)`/g,
-    '<code class="inline-code">$1</code>'
-  );
-  processedText = processedText.replace(
-    /\[([^\]]+)\]\(([^)]+)\)/g,
-    '<a href="$2" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:text-blue-800 hover:underline">$1</a>'
-  );
-
-  return processedText;
-};
 
 // Komponen untuk Code Block
 const CodeBlockComponent = ({
@@ -118,145 +93,103 @@ const CodeBlockComponent = ({
 };
 
 // Komponen untuk menampilkan teks dengan format list dan styling
-function FormattedMessage({ text, showNotification }) {
-  if (!text || typeof text !== "string") return null;
+function FormattedMessage({ text, showNotification, isAI }) {
+  if (!text) return null;
 
-  let cleanText = text;
-  if (typeof text !== "string") {
-    cleanText = String(text);
-  }
+  let cleanText = typeof text !== "string" ? String(text) : text;
+  cleanText = cleanText.replace(/&nbsp;/g, " ").replace(/<br\s*\/?>/gi, "\n").trim();
 
-  cleanText = cleanText
-    .replace(/&nbsp;/g, " ")
-    .replace(/<br\s*\/?>/gi, "\n")
-    .replace(/<\/?div[^>]*>/gi, "\n")
-    .replace(/<\/?[^>]+(>|$)/g, "")
-    .replace(/^[-_]{3,}\s*$/gm, "")
-    .replace(/^\s*[-_]{2,}\s*/gm, "")
-    .trim();
-
-  const styledText = renderStyledText(cleanText);
+  // Kirim isAI ke renderStyledText
+  const styledText = renderStyledText(cleanText, isAI);
   const lines = styledText.split("\n").filter((line) => line.trim() !== "");
 
+  // TENTUKAN WARNA DI SINI
+  const baseTextColor = isAI ? "text-gray-800" : "text-white";
+  const accentColor = isAI ? "text-blue-600" : "text-blue-200";
+
   return (
-    <div className="space-y-2">
+    <div className={`markdown-body space-y-2 leading-relaxed ${baseTextColor}`}>
       {lines.map((line, lineIndex) => {
         const trimmedLine = line.trim();
 
+        // HR Line
+        if (trimmedLine === "---" || trimmedLine === "***") {
+          return <hr key={lineIndex} className={`my-4 border-t ${isAI ? 'border-gray-200' : 'border-white/20'}`} />;
+        }
+
         const numberMatch = trimmedLine.match(/^(\d+)\.\s+(.+)/);
-        const letterMatch = trimmedLine.match(/^([a-z])\.\s+(.+)/i);
         const bulletMatch = trimmedLine.match(/^[-*•]\s+(.+)/);
+        const isHTML = /<(h1|h2|h3|blockquote)/.test(trimmedLine);
 
-        const wrapText = (textToWrap, maxLength = 100) => {
-          if (!textToWrap || textToWrap.length <= maxLength)
-            return [textToWrap];
-
-          const words = textToWrap.split(" ");
-          const wrappedLines = [];
-          let currentLine = [];
-          let currentLength = 0;
-
-          for (const word of words) {
-            if (
-              currentLength + word.length + 1 <= maxLength ||
-              currentLine.length === 0
-            ) {
-              currentLine.push(word);
-              currentLength += word.length + 1;
-            } else {
-              wrappedLines.push(currentLine.join(" "));
-              currentLine = [word];
-              currentLength = word.length;
-            }
-          }
-
-          if (currentLine.length > 0) {
-            wrappedLines.push(currentLine.join(" "));
-          }
-
-          return wrappedLines;
-        };
-
-        let content;
-
-        if (numberMatch) {
+        if (isHTML) {
+          return <div key={lineIndex} dangerouslySetInnerHTML={{ __html: trimmedLine }} />;
+        } else if (numberMatch) {
           const [, number, contentText] = numberMatch;
-          const wrappedContent = wrapText(contentText, 65);
-          content = (
-            <div className="flex">
-              <span className="font-semibold min-w-[0.8rem]">{number}.</span>
-              <div className="ml-2">
-                {wrappedContent.map((wrappedLine, idx) => (
-                  <div
-                    key={idx}
-                    dangerouslySetInnerHTML={{ __html: wrappedLine }}
-                  />
-                ))}
-              </div>
-            </div>
-          );
-        } else if (letterMatch) {
-          const [, letter, contentText] = letterMatch;
-          const wrappedContent = wrapText(contentText, 60);
-          content = (
-            <div className="flex ml-4">
-              <span className="font-semibold min-w-[1rem]">{letter}.</span>
-              <div className="ml-2">
-                {wrappedContent.map((wrappedLine, idx) => (
-                  <div
-                    key={idx}
-                    dangerouslySetInnerHTML={{ __html: wrappedLine }}
-                  />
-                ))}
-              </div>
+          return (
+            <div className="flex" key={lineIndex}>
+              <span className={`font-bold min-w-[1.2rem] ${accentColor}`}>{number}.</span>
+              <div className="ml-2" dangerouslySetInnerHTML={{ __html: contentText }} />
             </div>
           );
         } else if (bulletMatch) {
           const [, contentText] = bulletMatch;
-          const wrappedContent = wrapText(contentText, 65);
-          content = (
-            <div className="flex ml-5">
-              <span className="mr-2">•</span>
-              <div>
-                {wrappedContent.map((wrappedLine, idx) => (
-                  <div
-                    key={idx}
-                    dangerouslySetInnerHTML={{ __html: wrappedLine }}
-                  />
-                ))}
-              </div>
-            </div>
-          );
-        } else {
-          const wrappedContent = wrapText(trimmedLine, 75);
-          content = (
-            <div>
-              {wrappedContent.map((wrappedLine, idx) => (
-                <div
-                  key={idx}
-                  dangerouslySetInnerHTML={{ __html: wrappedLine }}
-                />
-              ))}
+          return (
+            <div className="flex ml-5" key={lineIndex}>
+              <span className={`${accentColor} mr-2`}>•</span>
+              <div dangerouslySetInnerHTML={{ __html: contentText }} />
             </div>
           );
         }
-
-        return (
-          <div key={lineIndex} className="leading-relaxed">
-            {content}
-          </div>
-        );
+        return <div key={lineIndex} dangerouslySetInnerHTML={{ __html: trimmedLine }} />;
       })}
     </div>
   );
 }
 
+const renderStyledText = (text, isAI) => {
+  if (!text || typeof text !== "string") return text;
+
+  let processedText = text;
+  
+  // Warna dinamis tetap kita jaga supaya kontras
+  const hColor = isAI ? "text-gray-900" : "text-white";
+  const bColor = isAI ? "border-gray-300 text-gray-600" : "border-blue-300 text-blue-100";
+  const linkColor = isAI ? "text-blue-600 hover:underline" : "text-blue-200 hover:text-white underline";
+
+  // 1. Headings (H1 - H4)
+  processedText = processedText.replace(/^#### (.*$)/gm, `<h4 class="text-base font-bold mt-3 mb-1 ${hColor}">$1</h4>`);
+  processedText = processedText.replace(/^### (.*$)/gm, `<h3 class="text-lg font-bold mt-4 mb-1 ${hColor}">$1</h3>`);
+  processedText = processedText.replace(/^## (.*$)/gm, `<h2 class="text-xl font-bold mt-5 mb-2 ${hColor}">$1</h2>`);
+  processedText = processedText.replace(/^# (.*$)/gm, `<h1 class="text-2xl font-extrabold mt-6 mb-3 ${hColor}">$1</h1>`);
+
+  // 2. Blockquotes
+  processedText = processedText.replace(/^> (.*$)/gm, `<blockquote class="border-l-4 ${bColor} pl-4 italic my-2">$1</blockquote>`);
+
+  // 3. Links [text](url)
+  processedText = processedText.replace(/\[([^\]]+)\]\(([^)]+)\)/g, `<a href="$2" target="_blank" rel="noopener noreferrer" class="${linkColor}">$1</a>`);
+
+  // 4. Bold, Italic, Strikethrough
+  processedText = processedText.replace(/\*\*\*(.*?)\*\*\*/g, '<strong><em>$1</em></strong>'); // Bold Italic
+  processedText = processedText.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');          // Bold
+  processedText = processedText.replace(/\*(.*?)\*/g, '<em>$1</em>');                      // Italic
+  processedText = processedText.replace(/~~(.*?)~~/g, '<del>$1</del>');                    // Strikethrough
+
+  // 5. Inline Code
+  const codeClass = isAI ? "bg-gray-200 text-red-600" : "bg-blue-800 text-blue-100";
+  processedText = processedText.replace(/`([^`]+)`/g, `<code class="${codeClass} px-1 rounded font-mono text-xs break-all">$1</code>`);
+
+  // 6. Horizontal Rule (--- atau ***)
+  const hrColor = isAI ? "border-gray-200" : "border-white/20";
+  processedText = processedText.replace(/^(--[-]+|\*\*[\*]+)$/gm, `<hr class="my-4 border-t ${hrColor}" />`);
+
+  return processedText;
+};
+
 // Main component untuk render message dengan typing animation
-const MessageRenderer = ({ text, showNotification, isTyping = false }) => {
+const MessageRenderer = ({ text, showNotification, isTyping = false, isAI = false }) => {
   const [displayText, setDisplayText] = useState("");
   const [isAnimating, setIsAnimating] = useState(false);
 
-  // 1. Ekstrak struktur blok dari teks ASLI (full text)
   const { codeBlocks: originalBlocks } = extractCodeBlocks(text || "");
 
   useEffect(() => {
@@ -280,15 +213,14 @@ const MessageRenderer = ({ text, showNotification, isTyping = false }) => {
     }
   }, [text, isTyping]);
 
-  // 2. Fungsi pembantu untuk menentukan apa yang tampil
   const renderContent = () => {
-    // Jika tidak ada code blocks, render biasa
     if (originalBlocks.length === 0) {
       return (
         <>
           <FormattedMessage
             text={displayText}
             showNotification={showNotification}
+            isAI={isAI} // Kirim status ke sini
           />
           {isAnimating && <span className="typing-cursor"></span>}
         </>
@@ -341,6 +273,7 @@ const MessageRenderer = ({ text, showNotification, isTyping = false }) => {
             key={index}
             text={visiblePart}
             showNotification={showNotification}
+            isAI={isAI}
           />
         );
       }
@@ -1012,14 +945,15 @@ function App() {
                   <div
                      className={`${
                       msg.sender === "user"
-                        ? "bg-blue-600 text-white rounded-xl px-4 py-1 max-w-xs sm:max-w-sm md:max-w-md ml-auto"
-                        : "max-w-3xl"
+                        ? "bg-blue-600 text-white rounded-4xl px-4 py-2 ml-auto flex items-center justify-center"
+                        : "max-w-3xl ml-4"
                     }`}
                   >
                       <MessageRenderer
                         text={msg.text}
                         showNotification={showNotification}
                         isTyping={msg.isTyping}
+                        isAI={msg.sender === "ai"}
                       />
                       {msg.sender === "ai" && (
                         <PdfButtons
@@ -1038,7 +972,6 @@ function App() {
                         >
                         </div>
                       )}
-              
                   </div>
                 </div>
               ))}
