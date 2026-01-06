@@ -46,13 +46,90 @@ app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024  # 16MB
 # CORS
 app = cors(app, allow_origin=["http://192.168.11.80:5173", "http://localhost:5173"])
 
-# Database configuration
+
+# ========== KONFIGURASI DB RAG (PostgreSQL Lokal) ==========
 DB_CONFIG = {
     "host": "localhost",
     "database": "ragdb",
     "user": "pindadai",
     "password": "Pindad123!",
 }
+
+# ========== KONFIGURASI DB LOGIN (PostgreSQL Server 11.55) ==========
+DB_LOGIN_CONFIG = {
+    "host": "192.168.11.55",
+    "database": "qa_payroll_db",
+    "user": "qisthi",  # Sesuaikan user DB di server .55
+    "password": "q1sthi",  # Sesuaikan password DB di server .55
+}
+
+
+@app.route("/api/login", methods=["POST"])
+async def login():
+    data = await request.get_json()
+    npp = data.get("username")
+    password_input = data.get("password")
+
+    if not npp or not password_input:
+        return jsonify(
+            {"status": "error", "message": "NPP dan Password wajib diisi"}
+        ), 400
+
+    # PROSES HASHING MD5
+    # Password yang diinput user diubah ke MD5 agar cocok dengan yang ada di tabel_user
+    password_md5 = hashlib.md5(password_input.encode()).hexdigest()
+
+    conn = None
+    try:
+        conn = psycopg2.connect(**DB_LOGIN_CONFIG)
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            # Cari berdasarkan NPP
+            query = """
+                SELECT
+                    tu.nama,
+                    tu.npp,
+                    tu.password,
+                    split_part(ref_unit.unit_path::text, '->'::text, 2) AS divisi
+                FROM master_unit unit
+                JOIN temp_ref_unit ref_unit ON ref_unit.kode_unit = unit.kode_unit
+                LEFT JOIN master_personil mp ON mp.kode_unit = unit.kode_unit
+                LEFT JOIN tabel_user tu ON tu.npp = mp.npp
+                WHERE tu.npp = %s
+            """
+            cur.execute(query, (npp,))
+            user = cur.fetchone()
+
+        if user:
+            # Bandingkan hasil hash MD5 input dengan password di DB
+            if user["password"] == password_md5:
+                # Tambahkan log sukses, informasikan nama dan username
+                logging.info(
+                    f"Login sukses: Nama='{user['nama']}', Username='{user['npp']}'"
+                )
+                return jsonify(
+                    {
+                        "status": "success",
+                        "data": {
+                            "username": user["npp"],
+                            "fullname": user["nama"],
+                            "divisi": user["divisi"],
+                        },
+                    }
+                ), 200
+            else:
+                return jsonify({"status": "error", "message": "Password salah"}), 401
+        else:
+            return jsonify({"status": "error", "message": "NPP tidak terdaftar"}), 404
+
+    except Exception as e:
+        logging.error(f"Login Database Error: {e}")
+        return jsonify(
+            {"status": "error", "message": "Gagal terhubung ke server login"}
+        ), 500
+    finally:
+        if conn:
+            conn.close()
+
 
 # Ollama endpoints
 OLLAMA_URL = "http://localhost:11434/api/chat"
@@ -934,11 +1011,11 @@ Ringkasan:"""
 # ========== SMART CHAT FUNCTION ==========
 async def smart_chat_with_context(user_message, active_file=None, mode=MODE_NORMAL):
     """Smart chat that can detect and handle different modes"""
-    
+
     # Inisialisasi pdf_info sebagai None
     pdf_info = None
     should_include_pdf = False
-    
+
     if mode == MODE_SEARCH:
         # Search mode: Get information from www.pindad.com
         search_result = await scrape_pindad_website(user_message)
@@ -962,11 +1039,12 @@ Tolong jawab pertanyaan pengguna:
     elif mode == MODE_DOCUMENT:
         # Document mode: Hybrid search through database
         search_result = await search_documents(user_message)
-        
+
         # --- LOGIKA FALLBACK LEBIH CERDAS ---
         MIN_RELEVANT_CHUNKS = 1
         relevant_chunks = [
-            c for c in search_result["chunks"] 
+            c
+            for c in search_result["chunks"]
             if c["similarity"] >= SIMILARITY_THRESHOLD
         ]
 
@@ -974,14 +1052,33 @@ Tolong jawab pertanyaan pengguna:
         # Jika user hanya menyapa atau bertanya umum, jangan tampilkan PDF
         user_message_lower = user_message.lower()
         greeting_keywords = [
-            'hai', 'hello', 'halo', 'hi', 'hey', 'selamat', 'pagi', 'siang', 'sore', 'malam',
-            'apa kabar', 'how are you', 'bisa bantu', 'help', 'tolong',
-            'terima kasih', 'thanks', 'makasih',
-            'bye', 'sampai jumpa', 'goodbye'
+            "hai",
+            "hello",
+            "halo",
+            "hi",
+            "hey",
+            "selamat",
+            "pagi",
+            "siang",
+            "sore",
+            "malam",
+            "apa kabar",
+            "how are you",
+            "bisa bantu",
+            "help",
+            "tolong",
+            "terima kasih",
+            "thanks",
+            "makasih",
+            "bye",
+            "sampai jumpa",
+            "goodbye",
         ]
-        
-        is_greeting = any(keyword in user_message_lower for keyword in greeting_keywords)
-        
+
+        is_greeting = any(
+            keyword in user_message_lower for keyword in greeting_keywords
+        )
+
         if is_greeting:
             # User hanya menyapa, berikan respons biasa tanpa dokumen
             logging.info("🔍 User hanya menyapa, berikan respons normal")
@@ -990,7 +1087,7 @@ Tolong jawab pertanyaan pengguna:
             
             Berikan respons yang ramah dan sopan dalam Bahasa Indonesia.
             Jangan menyebutkan dokumen apapun karena user hanya menyapa."""
-            
+
             reply = await ask_qwen3_vl(prompt, stream=True)
             return reply, None, False
 
@@ -1003,12 +1100,14 @@ Tolong jawab pertanyaan pengguna:
                 if doc["id"] == first_chunk["dokumen_id"]:
                     document_info = doc
                     break
-            
+
             # --- BUAT PDF_INFO UNTUK RESPONSE ---
             if document_info and relevant_chunks:
                 filename = document_info.get("filename", "")
-                if filename.lower().endswith('.pdf'):
-                    filepath = os.path.join(app.config.get("DB_DOC_FOLDER", "./db_doc"), filename)
+                if filename.lower().endswith(".pdf"):
+                    filepath = os.path.join(
+                        app.config.get("DB_DOC_FOLDER", "./db_doc"), filename
+                    )
                     if os.path.exists(filepath):
                         pdf_info = {
                             "filename": filename,
@@ -1017,9 +1116,9 @@ Tolong jawab pertanyaan pengguna:
                             "tanggal": document_info.get("tanggal", ""),
                             "tempat": document_info.get("tempat", ""),
                             "url": f"/db_doc/{filename}",
-                            "download_url": f"/db_doc/{filename}"
+                            "download_url": f"/db_doc/{filename}",
                         }
-                        
+
                         # TANDAI BAHWA PDF HARUS DITAMPILKAN
                         should_include_pdf = True
                         logging.info(f"✅ PDF akan ditampilkan: {filename}")
@@ -1056,7 +1155,7 @@ Tolong jawab pertanyaan pengguna:
                 Relevansi (Vector): {chunk["similarity"]:.4f} ---""")
 
         context_text = "\n".join(context_parts)
-        
+
         # Ambil info sumber dari dokumen pertama
         source_info = ""
         doc_metadata = {}
@@ -1070,9 +1169,9 @@ Tolong jawab pertanyaan pengguna:
                 doc_metadata = {
                     "judul": source_doc.get("judul", ""),
                     "nomor": source_doc.get("nomor", ""),
-                    "tanggal": source_doc.get("tanggal", "")
+                    "tanggal": source_doc.get("tanggal", ""),
                 }
-                
+
                 jenis_dokumen_map = {
                     1: "SURAT KEPUTUSAN",
                     2: "SURAT EDARAN",
@@ -1091,7 +1190,7 @@ Tolong jawab pertanyaan pengguna:
                     - Tanggal: {source_doc.get("tanggal", "Tidak tersedia")}
                     - Tempat: {source_doc.get("tempat", "Tidak tersedia")}
                     - File: {source_doc.get("filename", "Tidak tersedia")}"""
-                    
+
                 referensi_doc = f"""Sumber Informasi:
                     - Dokumen: {jenis_dokumen}{source_doc.get("judul", "Tidak tersedia")}
                     - Nomor: {source_doc.get("nomor", "Tidak tersedia")}"""
@@ -1116,51 +1215,78 @@ Tolong jawab pertanyaan pengguna:
             4. Jangan lupa menyebutkan nomor dokumen dan judulnya
             5. Jawab dalam Bahasa Indonesia yang natural
         """
-        
+
         reply = await ask_qwen3_vl(doc_prompt, stream=True)
-        
+
         # --- DETEKSI YANG LEBIH CERDAS ---
         # 1. Cek apakah AI menyebut referensi dokumen
         reply_lower = reply.lower()
-        
+
         # Kata kunci yang menunjukkan AI menggunakan dokumen
         doc_references = [
-            'berdasarkan dokumen', 'sesuai dokumen', 'dalam dokumen', 
-            'menurut dokumen', 'dokumen menyebutkan', 'disebutkan dalam',
-            'nomor', 'tanggal', 'surat keputusan', 'instruksi kerja',
-            'prosedur', 'sumber:', 'mengacu pada', 'referensi',
-            'informasi ini berdasarkan', 'berdasarkan instruksi',
-            'dokumen i-', 'dokumen no.', 'dokumen nomor'
+            "berdasarkan dokumen",
+            "sesuai dokumen",
+            "dalam dokumen",
+            "menurut dokumen",
+            "dokumen menyebutkan",
+            "disebutkan dalam",
+            "nomor",
+            "tanggal",
+            "surat keputusan",
+            "instruksi kerja",
+            "prosedur",
+            "sumber:",
+            "mengacu pada",
+            "referensi",
+            "informasi ini berdasarkan",
+            "berdasarkan instruksi",
+            "dokumen i-",
+            "dokumen no.",
+            "dokumen nomor",
         ]
-        
+
         # 2. Cek apakah AI menyebut nomor dokumen spesifik
         ai_used_document = False
-        
+
         # Cek kata kunci umum
         for ref in doc_references:
             if ref in reply_lower:
                 ai_used_document = True
                 break
-        
+
         # 3. Cek apakah AI menyebut metadata dokumen (judul/nomor)
         if doc_metadata.get("nomor") and doc_metadata["nomor"].lower() in reply_lower:
             ai_used_document = True
             logging.info(f"✅ AI menyebut nomor dokumen: {doc_metadata['nomor']}")
-        
-        if doc_metadata.get("judul") and any(word in reply_lower for word in doc_metadata["judul"].lower().split()[:3]):
+
+        if doc_metadata.get("judul") and any(
+            word in reply_lower for word in doc_metadata["judul"].lower().split()[:3]
+        ):
             ai_used_document = True
             logging.info(f"✅ AI menyebut judul dokumen: {doc_metadata['judul']}")
-        
+
         # 4. Cek apakah jawaban mengandung informasi spesifik (bukan general)
         # Kata kunci yang menunjukkan informasi spesifik
         specific_info_keywords = [
-            'langkah-langkah', 'prosedur', 'instruksi', 'tahapan',
-            'cara', 'teknis', 'operasional', 'suhu', 'saklar',
-            'tombol', 'panel', 'mesin', 'alat'
+            "langkah-langkah",
+            "prosedur",
+            "instruksi",
+            "tahapan",
+            "cara",
+            "teknis",
+            "operasional",
+            "suhu",
+            "saklar",
+            "tombol",
+            "panel",
+            "mesin",
+            "alat",
         ]
-        
-        has_specific_info = any(keyword in reply_lower for keyword in specific_info_keywords)
-        
+
+        has_specific_info = any(
+            keyword in reply_lower for keyword in specific_info_keywords
+        )
+
         # Logika akhir: Tampilkan PDF jika:
         # 1. Ada PDF info yang valid
         # 2. DAN (AI menyebut dokumen ATAU jawaban mengandung info spesifik)
@@ -1168,10 +1294,14 @@ Tolong jawab pertanyaan pengguna:
         if pdf_info and should_include_pdf:
             if ai_used_document or has_specific_info:
                 final_should_include = True
-                logging.info(f"✅ Final: PDF akan ditampilkan. AI used doc: {ai_used_document}, Has specific info: {has_specific_info}")
+                logging.info(
+                    f"✅ Final: PDF akan ditampilkan. AI used doc: {ai_used_document}, Has specific info: {has_specific_info}"
+                )
             else:
-                logging.info(f"⚠️ Final: PDF TIDAK ditampilkan. AI used doc: {ai_used_document}, Has specific info: {has_specific_info}")
-        
+                logging.info(
+                    f"⚠️ Final: PDF TIDAK ditampilkan. AI used doc: {ai_used_document}, Has specific info: {has_specific_info}"
+                )
+
         if final_should_include:
             return reply, pdf_info, True
         else:
@@ -1223,16 +1353,18 @@ async def chat():
             active_file = file_contexts[last_file_id]
 
         # Panggil SMART chat function (sekarang mengembalikan 3 values)
-        reply, pdf_info, should_include_pdf = await smart_chat_with_context(user_message, active_file, mode)
+        reply, pdf_info, should_include_pdf = await smart_chat_with_context(
+            user_message, active_file, mode
+        )
 
         # Format response - HANYA sertakan pdf_info jika should_include_pdf True
         response = {
-            "reply": reply, 
+            "reply": reply,
             "mode": mode,
             "pdf_info": pdf_info if should_include_pdf else None,  # <-- KUNCI UTAMA
-            "is_from_document": should_include_pdf  # <-- Gunakan should_include_pdf
+            "is_from_document": should_include_pdf,  # <-- Gunakan should_include_pdf
         }
-        
+
         if active_file:
             response["file_info"] = {
                 "id": active_file["id"],
@@ -1240,7 +1372,9 @@ async def chat():
             }
 
         # Debug log
-        logging.info(f"📤 Response - Mode: {mode}, Should Include PDF: {should_include_pdf}, PDF Info: {pdf_info is not None}")
+        logging.info(
+            f"📤 Response - Mode: {mode}, Should Include PDF: {should_include_pdf}, PDF Info: {pdf_info is not None}"
+        )
 
         return jsonify(response)
 
