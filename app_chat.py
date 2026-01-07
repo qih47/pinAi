@@ -59,77 +59,9 @@ DB_CONFIG = {
 DB_LOGIN_CONFIG = {
     "host": "192.168.11.55",
     "database": "qa_payroll_db",
-    "user": "qisthi",  # Sesuaikan user DB di server .55
-    "password": "q1sthi",  # Sesuaikan password DB di server .55
+    "user": "qisthi",
+    "password": "q1sthi",
 }
-
-
-@app.route("/api/login", methods=["POST"])
-async def login():
-    data = await request.get_json()
-    npp = data.get("username")
-    password_input = data.get("password")
-
-    if not npp or not password_input:
-        return jsonify(
-            {"status": "error", "message": "NPP dan Password wajib diisi"}
-        ), 400
-
-    # PROSES HASHING MD5
-    # Password yang diinput user diubah ke MD5 agar cocok dengan yang ada di tabel_user
-    password_md5 = hashlib.md5(password_input.encode()).hexdigest()
-
-    conn = None
-    try:
-        conn = psycopg2.connect(**DB_LOGIN_CONFIG)
-        with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            # Cari berdasarkan NPP
-            query = """
-                SELECT
-                    tu.nama,
-                    tu.npp,
-                    tu.password,
-                    split_part(ref_unit.unit_path::text, '->'::text, 2) AS divisi
-                FROM master_unit unit
-                JOIN temp_ref_unit ref_unit ON ref_unit.kode_unit = unit.kode_unit
-                LEFT JOIN master_personil mp ON mp.kode_unit = unit.kode_unit
-                LEFT JOIN tabel_user tu ON tu.npp = mp.npp
-                WHERE tu.npp = %s
-            """
-            cur.execute(query, (npp,))
-            user = cur.fetchone()
-
-        if user:
-            # Bandingkan hasil hash MD5 input dengan password di DB
-            if user["password"] == password_md5:
-                # Tambahkan log sukses, informasikan nama dan username
-                logging.info(
-                    f"Login sukses: Nama='{user['nama']}', Username='{user['npp']}'"
-                )
-                return jsonify(
-                    {
-                        "status": "success",
-                        "data": {
-                            "username": user["npp"],
-                            "fullname": user["nama"],
-                            "divisi": user["divisi"],
-                        },
-                    }
-                ), 200
-            else:
-                return jsonify({"status": "error", "message": "Password salah"}), 401
-        else:
-            return jsonify({"status": "error", "message": "NPP tidak terdaftar"}), 404
-
-    except Exception as e:
-        logging.error(f"Login Database Error: {e}")
-        return jsonify(
-            {"status": "error", "message": "Gagal terhubung ke server login"}
-        ), 500
-    finally:
-        if conn:
-            conn.close()
-
 
 # Ollama endpoints
 OLLAMA_URL = "http://localhost:11434/api/chat"
@@ -144,6 +76,220 @@ VISION_MODEL = "qwen3-vl:8b"  # 🎯 MODEL VISUAL
 MODE_NORMAL = "normal"
 MODE_DOCUMENT = "document"
 MODE_SEARCH = "search"
+
+
+@app.route("/api/login", methods=["POST"])
+async def login():
+    data = await request.get_json()
+    npp = data.get("username")
+    password_input = data.get("password")
+
+    if not npp or not password_input:
+        return jsonify(
+            {"status": "error", "message": "NPP dan Password wajib diisi"}
+        ), 400
+
+    password_md5 = hashlib.md5(password_input.encode()).hexdigest()
+
+    conn_hris = None
+    conn_local = None
+
+    try:
+        # --- LANGKAH 1: CEK KE DB HRIS (LUAR) ---
+        conn_hris = psycopg2.connect(**DB_LOGIN_CONFIG)
+        with conn_hris.cursor(cursor_factory=RealDictCursor) as cur:
+            query_hris = """
+                SELECT 
+                    mp.nama_lengkap as nama, tu.npp, tu.password, 
+                    split_part(ref_unit.unit_path::text, '->'::text, 2) AS divisi
+                FROM master_unit unit
+                JOIN temp_ref_unit ref_unit ON ref_unit.kode_unit = unit.kode_unit
+                LEFT JOIN master_personil mp ON mp.kode_unit = unit.kode_unit
+                LEFT JOIN tabel_user tu ON tu.npp = mp.npp
+                WHERE tu.npp = %s
+            """
+            cur.execute(query_hris, (npp,))
+            user_hris = cur.fetchone()
+
+        # Validasi User & Password
+        if not user_hris:
+            return jsonify({"status": "error", "message": "NPP tidak terdaftar"}), 404
+
+        if user_hris["password"] != password_md5:
+            return jsonify({"status": "error", "message": "Password salah"}), 401
+
+        # --- LANGKAH 2: SIMPAN SESSION KE DB LOKAL ---
+        conn_local = psycopg2.connect(**DB_CONFIG)  # DB Lokal RAG
+        session_token = str(uuid.uuid4())
+        user_ip = request.remote_addr
+        u_agent = request.headers.get("User-Agent")
+
+        with conn_local.cursor() as cur_local:
+            # A. Update/Insert data user lokal
+            cur_local.execute(
+                """
+                INSERT INTO users (npp, fullname, divisi) 
+                VALUES (%s, %s, %s)
+                ON CONFLICT (npp) DO UPDATE SET fullname = EXCLUDED.fullname, divisi = EXCLUDED.divisi;
+            """,
+                (user_hris["npp"], user_hris["nama"], user_hris["divisi"]),
+            )
+
+            # B. Update/Insert Session Aktif (Satu NPP satu session)
+            cur_local.execute(
+                """
+                INSERT INTO session_login (npp, session_token, ip_address, is_login, last_activity)
+                VALUES (%s, %s, %s, TRUE, CURRENT_TIMESTAMP)
+                ON CONFLICT (npp) DO UPDATE SET 
+                    session_token = EXCLUDED.session_token, 
+                    is_login = TRUE, 
+                    last_activity = CURRENT_TIMESTAMP;
+            """,
+                (user_hris["npp"], session_token, user_ip),
+            )
+
+            # C. Tambah ke History Login
+            cur_local.execute(
+                """
+                INSERT INTO history_login (npp, action, ip_address, user_agent)
+                VALUES (%s, 'LOGIN', %s, %s);
+            """,
+                (user_hris["npp"], user_ip, u_agent),
+            )
+
+            conn_local.commit()
+
+        logging.info(f"Login sukses: {user_hris['nama']} ({user_hris['npp']})")
+
+        return jsonify(
+            {
+                "status": "success",
+                "data": {
+                    "token": session_token,
+                    "username": user_hris["npp"],
+                    "fullname": user_hris["nama"],
+                    "divisi": user_hris["divisi"],
+                },
+            }
+        ), 200
+
+    except Exception as e:
+        if conn_local:
+            conn_local.rollback()
+        logging.error(f"Login Error: {e}")
+        return jsonify({"status": "error", "message": f"System Error: {str(e)}"}), 500
+    finally:
+        if conn_hris:
+            conn_hris.close()
+        if conn_local:
+            conn_local.close()
+
+
+@app.route("/api/logout", methods=["POST"])
+async def logout():
+    conn_local = None
+    try:
+        data = await request.get_json()
+        token = data.get("token")
+
+        conn_local = psycopg2.connect(**DB_CONFIG)
+        with conn_local.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(
+                "SELECT npp FROM session_login WHERE session_token = %s", (token,)
+            )
+            row = cur.fetchone()
+
+            if row:
+                npp = row["npp"]
+                # GANTI NULL MENJADI '' (String Kosong) agar tidak melanggar constraint
+                cur.execute(
+                    "UPDATE session_login SET is_login = FALSE, session_token = '' WHERE npp = %s",
+                    (npp,),
+                )
+
+                cur.execute(
+                    """
+                    INSERT INTO history_login (npp, action, ip_address)
+                    VALUES (%s, 'LOGOUT', %s);
+                    """,
+                    (npp, request.remote_addr),
+                )
+
+                conn_local.commit()
+                return jsonify({"status": "success", "message": "Logged out"}), 200
+
+            # Jika token tidak ditemukan, anggap saja sudah logout
+            return jsonify({"status": "success", "message": "Token already gone"}), 200
+
+    except Exception as e:
+        if conn_local:
+            conn_local.rollback()
+        print(f"❌ LOGOUT ERROR: {str(e)}")  # Ini yang tadi muncul di log lu
+        return jsonify({"status": "error", "message": str(e)}), 500
+    finally:
+        if conn_local:
+            conn_local.close()
+
+
+@app.route("/api/verify-session", methods=["GET"])
+async def verify_session():
+    token = request.args.get("token")
+    if not token:
+        return jsonify({"status": "error", "message": "Token missing"}), 401
+
+    conn_local = None
+    try:
+        conn_local = psycopg2.connect(**DB_CONFIG)
+        with conn_local.cursor(cursor_factory=RealDictCursor) as cur:
+            # Join ke tabel users untuk ambil data lengkap
+            query = """
+                SELECT u.npp, u.fullname, u.divisi 
+                FROM session_login s
+                JOIN users u ON s.npp = u.npp
+                WHERE s.session_token = %s AND s.is_login = TRUE
+            """
+            cur.execute(query, (token,))
+            user = cur.fetchone()
+
+            if user:
+                # Update last_activity setiap kali user akses
+                cur.execute(
+                    "UPDATE session_login SET last_activity = CURRENT_TIMESTAMP WHERE session_token = %s",
+                    (token,),
+                )
+                conn_local.commit()
+
+                return jsonify(
+                    {
+                        "status": "success",
+                        "data": {
+                            "username": user["npp"],
+                            "fullname": user["fullname"],
+                            "divisi": user["divisi"],
+                        },
+                    }
+                ), 200
+            else:
+                return jsonify(
+                    {"status": "error", "message": "Session expired or invalid"}
+                ), 401
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+    finally:
+        if conn_local:
+            conn_local.close()
+
+
+@app.route("/api/available-models", methods=["GET"])
+def get_available_models():
+    models = [
+        {"id": "qwen3:8b", "name": "Qwen 3 (8B)"},
+        {"id": "qwen2.5:14b-instruct", "name": "Qwen 2.5-Instruct (14b)"},
+        {"id": "qwen3-vl:8b", "name": "qwen 3 vl (8b)"},
+        {"id": "llama3.1:8b", "name": "Llama 3.1 (8b)"},
+    ]
+    return jsonify({"status": "success", "data": models})
+
 
 # Context-aware storage
 file_contexts = {}  # {file_id: {metadata, text, embeddings}}
@@ -923,24 +1069,30 @@ async def extract_with_qwen3_vl(filepath, filetype):
         return await extract_fallback(filepath, filetype)
 
 
-async def ask_qwen3_vl(prompt, images=None, stream=False, file_type=None):
+async def ask_qwen3_vl(
+    prompt, images=None, stream=False, file_type=None, override_model=None
+):
     """Helper untuk bertanya ke model yang sesuai berdasarkan konten"""
-    # Pilih model berdasarkan apakah ada gambar atau file PDF
-    selected_model = (
-        VISION_MODEL
-        if images or (file_type and file_type in ["pdf", "png", "jpg", "jpeg"])
-        else PRIMARY_MODEL
-    )
+
+    # 1. LOGIKA PEMILIHAN MODEL
+    if images or (file_type and file_type in ["pdf", "png", "jpg", "jpeg"]):
+        # Jika ada konten visual, wajib pakai VISION_MODEL
+        target_model = VISION_MODEL
+    else:
+        # Jika hanya teks, pakai model dari FE, kalau kosong pakai PRIMARY_MODEL global
+        target_model = override_model if override_model else PRIMARY_MODEL
 
     messages = [{"role": "user", "content": prompt}]
     if images:
         messages[0]["images"] = images
 
+    print(f"--- Ollama Request: Using model {target_model} ---")
+
     async with aiohttp.ClientSession() as session:
         async with session.post(
             OLLAMA_URL,
             json={
-                "model": selected_model,
+                "model": target_model,  # <--- Pake hasil pilihan logika di atas
                 "messages": messages,
                 "stream": stream,
                 "options": {"temperature": 0.1},
@@ -1008,379 +1160,578 @@ Ringkasan:"""
 
 
 # ========== SMART CHAT FUNCTION ==========
-# ========== SMART CHAT FUNCTION ==========
-async def smart_chat_with_context(user_message, active_file=None, mode=MODE_NORMAL):
-    """Smart chat that can detect and handle different modes"""
+async def smart_chat_with_context(
+    user_message, active_file=None, mode=MODE_NORMAL, model=None, session_id=None
+):
+    """
+    Smart chat with:
+    1. Session-based History (Contextual Awareness)
+    2. Analysis & Query Rewriting
+    3. Gatekeeper Relevance Verification
+    """
 
-    # Inisialisasi pdf_info sebagai None
+    # Inisialisasi awal
     pdf_info = None
     should_include_pdf = False
+    history_context = ""
 
+    # --- 0. LOAD HISTORY BERDASARKAN SESSION_ID ---
+    # Menarik history agar AI paham konteks pembicaraan sebelumnya (misal: rekrutmen)
+    if session_id:
+        try:
+            # Fungsi ini diasumsikan mengambil history terakhir dari database Anda
+            history_messages = await get_chat_history_from_db(session_id, limit=5)
+            if history_messages:
+                history_context = "\n".join(
+                    [f"{m['role'].upper()}: {m['content']}" for m in history_messages]
+                )
+        except Exception as e:
+            logging.error(f"Gagal memuat history untuk session {session_id}: {e}")
+
+    # =========================================================================
+    # MODE SEARCH (Pindad Website Scraper)
+    # =========================================================================
     if mode == MODE_SEARCH:
-        # Search mode: Get information from www.pindad.com
-        search_result = await scrape_pindad_website(user_message)
+        # Gunakan history untuk mempertajam search query ke website
+        refinement_prompt = f"History:\n{history_context}\nUser: {user_message}\nBuat 1 search query singkat untuk mencari informasi terbaru di web."
+        web_query = await ask_qwen3_vl(
+            refinement_prompt, stream=False, override_model=model
+        )
+
+
+# Fungsi Helper History (Pastikan ditaruh di luar smart_chat_with_context)
+def get_chat_history_from_db(session_uuid, limit=5):
+    """Mengambil history percakapan terakhir menggunakan psycopg2"""
+    history = []
+    conn_hist = None
+    try:
+        conn_hist = psycopg2.connect(**DB_CONFIG)
+        cur = conn_hist.cursor(cursor_factory=RealDictCursor)
+
+        # Query join ke sessions untuk memastikan session_uuid yang dipakai
+        query = """
+            SELECT d.user_text, d.assistant_text 
+            FROM ai_dialogue_corpus d
+            JOIN chat_sessions s ON d.session_id = s.id
+            WHERE s.session_uuid = %s
+            ORDER BY d.created_at DESC 
+            LIMIT %s
+        """
+        cur.execute(query, (session_uuid, limit))
+        rows = cur.fetchall()
+
+        # Balik urutan agar kronologis: Lama -> Baru
+        for row in reversed(rows):
+            history.append({"role": "user", "content": row["user_text"]})
+            history.append({"role": "assistant", "content": row["assistant_text"]})
+
+        return history
+    except Exception as e:
+        logging.error(f"❌ Error fetch history: {e}")
+        return []
+    finally:
+        if conn_hist:
+            conn_hist.close()
+
+
+# ========== SMART CHAT FUNCTION ==========
+async def smart_chat_with_context(
+    user_message, active_file=None, mode=MODE_NORMAL, model=None, session_uuid=None
+):
+    """Smart chat with History Context, Analysis, and Verification flow"""
+
+    # Inisialisasi awal
+    pdf_info = None
+    should_include_pdf = False
+    history_context = ""
+
+    # --- 0. LOAD HISTORY DARI DB ---
+    if session_uuid:
+        history_messages = get_chat_history_from_db(session_uuid, limit=3)
+        if history_messages:
+            history_context = "\n".join(
+                [f"{m['role'].upper()}: {m['content']}" for m in history_messages]
+            )
+
+    # =========================================================================
+    # MODE SEARCH (Pindad Website Scraper)
+    # =========================================================================
+    if mode == MODE_SEARCH:
+        # Step: Refine search query berdasarkan history
+        refine_prompt = f"History:\n{history_context}\n\nUser: {user_message}\nBuat query search singkat untuk website."
+        web_query = await ask_qwen3_vl(
+            refine_prompt, stream=False, override_model=model
+        )
+
+        search_result = await scrape_pindad_website(
+            web_query if web_query else user_message
+        )
         search_prompt = f"""Kamu adalah asisten AI untuk PT Pindad. Berdasarkan informasi dari www.pindad.com:
 
 {search_result}
 
-Tolong jawab pertanyaan pengguna: 
+KONTEKS PERCAKAPAN SEBELUMNYA:
+{history_context}
 
+Tolong jawab pertanyaan pengguna: 
     PERTANYAAN: "{user_message}"
 
     INSTRUKSI:
     1. Jika jawaban ada, berikan jawaban detail
-    2. Jika tidak ada, JAWAB: "Tidak ditemukan informasi spesifik tentang hal ini dalam dokumen perusahaan" (bisa improvisasi tapi jangan memberikan informasi dokumen apapun)
+    2. Jika tidak ada, JAWAB: "Tidak ditemukan informasi spesifik tentang hal ini dalam dokumen perusahaan"
     3. Gunakan Bahasa Indonesia yang baik dan benar dan jawab dengan natural
-
 """
-        reply = await ask_qwen3_vl(search_prompt, stream=True)
+        reply = await ask_qwen3_vl(search_prompt, stream=True, override_model=model)
         return reply, None, False
 
+    # =========================================================================
+    # MODE DOCUMENT (RAG dengan Analisa & Verifikasi)
+    # =========================================================================
     elif mode == MODE_DOCUMENT:
-        # Document mode: Hybrid search through database
-        search_result = await search_documents(user_message)
+        # --- 1. TAHAP ANALISA AWAL (Contextual / History Aware) ---
+        analysis_prompt = f"""Analisis pertanyaan pengguna.
+HISTORY PERCAKAPAN:
+{history_context}
 
-        # --- LOGIKA FALLBACK LEBIH CERDAS ---
-        MIN_RELEVANT_CHUNKS = 1
+PERTANYAAN BARU: "{user_message}"
+
+Tugas:
+1. Hubungkan dengan history jika masih relevan.
+2. Berikan kata kunci pencarian (search query) yang efektif.
+
+Jawaban format: ANALISIS | KATA_KUNCI
+"""
+        analysis_res = await ask_qwen3_vl(
+            analysis_prompt, stream=False, override_model=model
+        )
+
+        # Parsing Analisa 1
+        parts = (
+            analysis_res.split("|")
+            if "|" in analysis_res
+            else ["Tidak ada analisa", user_message]
+        )
+        reasoning = parts[0].strip()
+        search_query = parts[1].strip()
+
+        print("\n🔍 " + "─" * 40)
+        print(f"🤖 AI ANALYSIS 1 (With Context)")
+        print(f"🧠 Reasoning : {reasoning}")
+        print(f"🔑 Query 1   : {search_query}")
+
+        # --- 2. TAHAP CARI 1 ---
+        search_result = await search_documents(search_query)
         relevant_chunks = [
             c
             for c in search_result["chunks"]
             if c["similarity"] >= SIMILARITY_THRESHOLD
         ]
 
-        # --- DETEKSI JENIS PERTANYAAN USER ---
-        # Jika user hanya menyapa atau bertanya umum, jangan tampilkan PDF
+        # --- 3. VERIFIKASI RELEVANSI (SELF-CORRECTION) ---
+        # Kita cek apakah hasil pencarian tahap 1 benar-benar mengandung inti dari pertanyaan user
+        is_truly_relevant = False
+        if relevant_chunks:
+            # AI mengevaluasi hasil database sendiri
+            eval_prompt = f"""User bertanya tentang: "{user_message}"
+Hasil pencarian database: "{relevant_chunks[0]["content"][:500]}..."
+
+Tugas: Apakah hasil pencarian tersebut BENAR-BENAR relevan dan menjawab pertanyaan user?
+Contoh: Jika user tanya 'efisiensi' tapi hasilnya 'mesin painting', maka JAWAB: TIDAK.
+Jawaban: YA atau TIDAK"""
+
+            eval_res = await ask_qwen3_vl(
+                eval_prompt, stream=False, override_model=model
+            )
+            if "YA" in eval_res.upper():
+                is_truly_relevant = True
+
+        # --- 4. TAHAP RE-ANALISA (Jika Cari 1 Gagal atau Gak Nyambung) ---
+        if not is_truly_relevant:
+            print(
+                f"⚠️  [VERIFIKASI 2] Hasil Tahap 1 tidak relevan. Melakukan Re-Analisa..."
+            )
+
+            # Reset Analisa: AI dipaksa membuat query baru TANPA history
+            re_analysis_prompt = f"""Pertanyaan user: "{user_message}"
+Hasil pencarian sebelumnya tidak relevan karena tercampur konteks lama.
+Tugas: Buat kata kunci pencarian baru yang murni hanya fokus pada pertanyaan user tersebut (abaikan topik sebelumnya).
+
+Jawaban format: ANALISIS_ULANG | KATA_KUNCI_MURNI
+"""
+            re_analysis_res = await ask_qwen3_vl(
+                re_analysis_prompt, stream=False, override_model=model
+            )
+            re_parts = (
+                re_analysis_res.split("|")
+                if "|" in re_analysis_res
+                else ["Cari ulang", user_message]
+            )
+
+            search_query = re_parts[1].strip()
+            print(f"🧠 Re-Analisa : {re_parts[0].strip()}")
+            print(f"🔑 Query Baru : {search_query}")
+
+            # Cari ulang menggunakan query murni
+            search_result = await search_documents(search_query)
+            relevant_chunks = [
+                c
+                for c in search_result["chunks"]
+                if c["similarity"] >= SIMILARITY_THRESHOLD
+            ]
+
+        # Logging Hit Akhir
+        if relevant_chunks:
+            top_chunk = relevant_chunks[0]
+            print(
+                f"✅ HIT FINAL: {top_chunk.get('judul')} ({top_chunk.get('similarity'):.4f})"
+            )
+        else:
+            print(f"❌ [LOG] Tetap tidak ada data relevan di database.")
+        print("─" * 43 + "\n")
+
+        # --- 5. TAHAP RESPONS ---
+        # Deteksi Greeting (tetap ada agar asisten ramah)
         user_message_lower = user_message.lower()
-        greeting_keywords = [
-            "hai",
-            "hello",
-            "halo",
-            "hi",
-            "hey",
-            "selamat",
-            "pagi",
-            "siang",
-            "sore",
-            "malam",
-            "apa kabar",
-            "how are you",
-            "bisa bantu",
-            "help",
-            "tolong",
-            "terima kasih",
-            "thanks",
-            "makasih",
-            "bye",
-            "sampai jumpa",
-            "goodbye",
-        ]
-
-        is_greeting = any(
-            keyword in user_message_lower for keyword in greeting_keywords
-        )
-
-        if is_greeting:
-            # User hanya menyapa, berikan respons biasa tanpa dokumen
-            logging.info("🔍 User hanya menyapa, berikan respons normal")
-            prompt = f"""Kamu adalah asisten AI untuk PT Pindad. 
-            User berkata: "{user_message}"
-            
-            Berikan respons yang ramah dan sopan dalam Bahasa Indonesia.
-            Jangan menyebutkan dokumen apapun karena user hanya menyapa."""
-
-            reply = await ask_qwen3_vl(prompt, stream=True)
+        greeting_keywords = ["hai", "halo", "selamat pagi", "thanks", "terima kasih"]
+        if (
+            any(kw in user_message_lower for kw in greeting_keywords)
+            and not relevant_chunks
+        ):
+            reply = await ask_qwen3_vl(
+                f"Sapa user dengan ramah: {user_message}", stream=True
+            )
             return reply, None, False
 
-        # --- AMBIL INFORMASI DOKUMEN UNTUK PDF ---
+        # Fallback jika benar-benar tidak ada data
+        if not relevant_chunks:
+            prompt = f"Beritahu user bahwa dokumen terkait '{user_message}' tidak ditemukan di database internal."
+            reply = await ask_qwen3_vl(prompt, stream=True, override_model=model)
+            return reply, None, False
+
+        # Ambil Metadata Dokumen
         document_info = None
-        if relevant_chunks and search_result.get("documents"):
-            # Ambil dokumen pertama yang relevan
-            first_chunk = relevant_chunks[0]
+        target_doc_id = relevant_chunks[0]["dokumen_id"]
+        if search_result.get("documents"):
             for doc in search_result["documents"]:
-                if doc["id"] == first_chunk["dokumen_id"]:
+                if doc["id"] == target_doc_id:
                     document_info = doc
                     break
 
-            # --- BUAT PDF_INFO UNTUK RESPONSE ---
-            if document_info and relevant_chunks:
-                filename = document_info.get("filename", "")
-                if filename.lower().endswith(".pdf"):
-                    filepath = os.path.join(
-                        app.config.get("DB_DOC_FOLDER", "./db_doc"), filename
-                    )
-                    if os.path.exists(filepath):
-                        pdf_info = {
-                            "filename": filename,
-                            "title": document_info.get("judul", filename),
-                            "nomor": document_info.get("nomor", ""),
-                            "tanggal": document_info.get("tanggal", ""),
-                            "tempat": document_info.get("tempat", ""),
-                            "url": f"/db_doc/{filename}",
-                            "download_url": f"/db_doc/{filename}",
-                        }
+        referensi_doc = ""
+        if document_info:
+            jenis_map = {
+                1: "SURAT KEPUTUSAN",
+                2: "SURAT EDARAN",
+                3: "INSTRUKSI KERJA",
+                4: "PROSEDUR",
+            }
+            jenis = jenis_map.get(document_info.get("id_jenis"), "DOKUMEN")
+            referensi_doc = f"{jenis} {document_info.get('judul')} Nomor {document_info.get('nomor')}"
 
-                        # TANDAI BAHWA PDF HARUS DITAMPILKAN
-                        should_include_pdf = True
-                        logging.info(f"✅ PDF akan ditampilkan: {filename}")
-
-        if not relevant_chunks or len(relevant_chunks) < MIN_RELEVANT_CHUNKS:
-            # Tidak ada dokumen relevan
-            logging.info("🔍 Tidak ada dokumen relevan yang ditemukan")
-            if not active_file:
-                reply = await ask_qwen3_vl(user_message, stream=True)
-                return reply, None, False
-            context_text = active_file["text"][:2500]
-            prompt = f"""Tugas: Jawab pertanyaan pengguna dengan cerdas.
-                INFORMASI FILE TERSEDIA (gunakan JIKA PERTANYAAN TENTANG FILE INI):
-                📁 File: {active_file["filename"]}
-                📄 Konten: {context_text}
-                PERTANYAAN PENGGUNA: "{user_message}"
-                INSTRUKSI:
-                1. Analisis: Apakah pertanyaan ini tentang file di atas?
-                2. Jika YA: Jawab berdasarkan konten file
-                3. Jika TIDAK: Abaikan file, jawab sebagai AI assistant biasa
-                4. Gunakan Bahasa Indonesia
-                5. Jangan sebut "berdasarkan file" kecuali pertanyaan tentang file
-                """
-            reply = await ask_qwen3_vl(prompt, stream=True)
-            return reply, None, False
-
-        # --- BANGUN PROMPT DENGAN DOKUMEN ---
-        context_parts = []
-        for chunk in relevant_chunks[:3]:
-            doc_title = chunk.get("judul") or "Dokumen Tanpa Judul"
-            context_parts.append(f"""=== DOKUMEN: {doc_title} ===
-                Isi:
-                {chunk["content"]}
-                Relevansi (Vector): {chunk["similarity"]:.4f} ---""")
-
-        context_text = "\n".join(context_parts)
-
-        # Ambil info sumber dari dokumen pertama
-        source_info = ""
-        doc_metadata = {}
-        if relevant_chunks:
-            first_doc_id = relevant_chunks[0]["dokumen_id"]
-            source_doc = next(
-                (d for d in search_result["documents"] if d["id"] == first_doc_id), None
-            )
-            if source_doc:
-                # Simpan metadata dokumen untuk deteksi nanti
-                doc_metadata = {
-                    "judul": source_doc.get("judul", ""),
-                    "nomor": source_doc.get("nomor", ""),
-                    "tanggal": source_doc.get("tanggal", ""),
-                }
-
-                jenis_dokumen_map = {
-                    1: "SURAT KEPUTUSAN",
-                    2: "SURAT EDARAN",
-                    3: "INSTRUKSI KERJA",
-                    4: "PROSEDUR",
-                }
-                jenis_dokumen = "DOKUMEN"
-                if source_doc.get("id_jenis"):
-                    jenis_dokumen = jenis_dokumen_map.get(
-                        source_doc["id_jenis"], "DOKUMEN"
-                    )
-                source_info = f"""Sumber Informasi:
-                    - Dokumen: {jenis_dokumen}
-                    - Judul Dokumen: {source_doc.get("judul", "Tidak tersedia")}
-                    - Nomor: {source_doc.get("nomor", "Tidak tersedia")}
-                    - Tanggal: {source_doc.get("tanggal", "Tidak tersedia")}
-                    - Tempat: {source_doc.get("tempat", "Tidak tersedia")}
-                    - File: {source_doc.get("filename", "Tidak tersedia")}"""
-
-                referensi_doc = f"""Sumber Informasi:
-                    - Dokumen: {jenis_dokumen}{source_doc.get("judul", "Tidak tersedia")}
-                    - Nomor: {source_doc.get("nomor", "Tidak tersedia")}"""
-
-        # Bangun prompt yang MEMAKSA AI untuk menyebut referensi
-        doc_prompt = f"""
-            Anda adalah AI internal PT Pindad.
-
-            INFORMASI DOKUMEN:
-            ====================================================
-            {context_text}         
-            {source_info}         
-            ====================================================
-
-            PERTANYAAN PENGGUNA: "{user_message}"
-
-            INSTRUKSI SANGAT PENTING:
-            1. Gunakan informasi dari dokumen di atas untuk menjawab
-            2. Jangan mengubah makna konten dari dokumen 
-            3. Di AKHIR jawaban, SEBUTKAN referensi dokumen dengan format:
-               "Informasi ini berdasarkan dokumen {referensi_doc}"
-            4. Jangan lupa menyebutkan nomor dokumen dan judulnya
-            5. Jawab dalam Bahasa Indonesia yang natural
-        """
-
-        reply = await ask_qwen3_vl(doc_prompt, stream=True)
-
-        # --- DETEKSI YANG LEBIH CERDAS ---
-        # 1. Cek apakah AI menyebut referensi dokumen
-        reply_lower = reply.lower()
-
-        # Kata kunci yang menunjukkan AI menggunakan dokumen
-        doc_references = [
-            "berdasarkan dokumen",
-            "sesuai dokumen",
-            "dalam dokumen",
-            "menurut dokumen",
-            "dokumen menyebutkan",
-            "disebutkan dalam",
-            "nomor",
-            "tanggal",
-            "surat keputusan",
-            "instruksi kerja",
-            "prosedur",
-            "sumber:",
-            "mengacu pada",
-            "referensi",
-            "informasi ini berdasarkan",
-            "berdasarkan instruksi",
-            "dokumen i-",
-            "dokumen no.",
-            "dokumen nomor",
-        ]
-
-        # 2. Cek apakah AI menyebut nomor dokumen spesifik
-        ai_used_document = False
-
-        # Cek kata kunci umum
-        for ref in doc_references:
-            if ref in reply_lower:
-                ai_used_document = True
-                break
-
-        # 3. Cek apakah AI menyebut metadata dokumen (judul/nomor)
-        if doc_metadata.get("nomor") and doc_metadata["nomor"].lower() in reply_lower:
-            ai_used_document = True
-            logging.info(f"✅ AI menyebut nomor dokumen: {doc_metadata['nomor']}")
-
-        if doc_metadata.get("judul") and any(
-            word in reply_lower for word in doc_metadata["judul"].lower().split()[:3]
-        ):
-            ai_used_document = True
-            logging.info(f"✅ AI menyebut judul dokumen: {doc_metadata['judul']}")
-
-        # 4. Cek apakah jawaban mengandung informasi spesifik (bukan general)
-        # Kata kunci yang menunjukkan informasi spesifik
-        specific_info_keywords = [
-            "langkah-langkah",
-            "prosedur",
-            "instruksi",
-            "tahapan",
-            "cara",
-            "teknis",
-            "operasional",
-            "suhu",
-            "saklar",
-            "tombol",
-            "panel",
-            "mesin",
-            "alat",
-        ]
-
-        has_specific_info = any(
-            keyword in reply_lower for keyword in specific_info_keywords
+        # Susun Jawaban Akhir
+        context_text = "\n".join(
+            [f"DOKUMEN: {c.get('judul')}\n{c['content']}" for c in relevant_chunks[:3]]
         )
+        doc_prompt = f"""Anda adalah AI internal PT Pindad.
+DOKUMEN TERBARU:
+{context_text}
 
-        # Logika akhir: Tampilkan PDF jika:
-        # 1. Ada PDF info yang valid
-        # 2. DAN (AI menyebut dokumen ATAU jawaban mengandung info spesifik)
-        final_should_include = False
-        if pdf_info and should_include_pdf:
-            if ai_used_document or has_specific_info:
-                final_should_include = True
-                logging.info(
-                    f"✅ Final: PDF akan ditampilkan. AI used doc: {ai_used_document}, Has specific info: {has_specific_info}"
-                )
-            else:
-                logging.info(
-                    f"⚠️ Final: PDF TIDAK ditampilkan. AI used doc: {ai_used_document}, Has specific info: {has_specific_info}"
-                )
+PERTANYAAN USER: "{user_message}"
 
-        if final_should_include:
-            return reply, pdf_info, True
-        else:
-            return reply, None, False
+INSTRUKSI:
+1. Gunakan informasi dari DOKUMEN TERBARU di atas untuk menjawab
+2. JANGAN bahas topik lama (seperti mesin painting) jika dokumen ini membahas hal baru (seperti efisiensi).
+3. Di akhir sebutkan: "Informasi ini berdasarkan dokumen {referensi_doc}"
+4. Jawab dalam Bahasa Indonesia yang natural
+"""
+        reply = await ask_qwen3_vl(doc_prompt, stream=True, override_model=model)
 
+        # --- 6. LOGIK DISPLAY PDF (VALIDASI AKHIR) ---
+        reply_lower = reply.lower()
+        doc_match = False
+        if document_info:
+            nomor_doc = str(document_info.get("nomor", "")).lower()
+            judul_doc = str(document_info.get("judul", "")).lower()
+            if (nomor_doc != "" and nomor_doc in reply_lower) or (
+                judul_doc != "" and judul_doc in reply_lower
+            ):
+                doc_match = True
+
+        final_pdf_info = None
+        if doc_match and document_info:
+            final_pdf_info = {
+                "filename": document_info["filename"],
+                "title": document_info.get("judul", document_info["filename"]),
+                "nomor": document_info.get("nomor", ""),
+                "tanggal": document_info.get("tanggal", ""),
+                "tempat": document_info.get("tempat", ""),
+                "url": f"/db_doc/{document_info['filename']}",
+                "download_url": f"/db_doc/{document_info['filename']}",
+            }
+
+        return reply, final_pdf_info, doc_match
+
+    # =========================================================================
+    # MODE NORMAL
+    # =========================================================================
     elif mode == MODE_NORMAL:
-        # Normal mode: Direct chat without special context
         if not active_file:
-            reply = await ask_qwen3_vl(user_message, stream=True)
+            prompt = f"History:\n{history_context}\n\nUser: {user_message}"
+            reply = await ask_qwen3_vl(prompt, stream=True, override_model=model)
             return reply, None, False
 
         context_text = active_file["text"][:2500]
-        prompt = f"""Tugas: Jawab pertanyaan pengguna dengan cerdas.
-
-INFORMASI FILE TERSEDIA (gunakan JIKA PERTANYAAN TENTANG FILE INI):
-📁 File: {active_file["filename"]}
-📄 Konten: {context_text}
-
-PERTANYAAN PENGGUNA: "{user_message}"
-
-INSTRUKSI:
-1. Analisis: Apakah pertanyaan ini tentang file di atas?
-2. Jika YA: Jawab berdasarkan konten file
-3. Jika TIDAK: Abaikan file, jawab sebagai AI assistant biasa
-4. Gunakan Bahasa Indonesia
-5. Jangan sebut "berdasarkan file" kecuali pertanyaan tentang file
-
-"""
-        reply = await ask_qwen3_vl(prompt, stream=True)
+        prompt = f"File: {active_file['filename']}\nKonten: {context_text}\nHistory: {history_context}\nUser: {user_message}"
+        reply = await ask_qwen3_vl(prompt, stream=True, override_model=model)
         return reply, None, False
 
 
-# ========== ROUTES ==========
+async def generate_judul_ai(message):
+    try:
+        prompt = (
+            f"Buat judul singkat 3-6 kata untuk pesan ini: '{message}'\n"
+            "Judul harus mewakili topik utama. Hanya kembalikan judulnya saja."
+        )
+
+        # Menggunakan requests (Synchronous)
+        response = requests.post(
+            OLLAMA_GENERATE_URL,
+            json={"model": PRIMARY_MODEL, "prompt": prompt, "stream": False},
+            timeout=10,
+        )
+
+        if response.status_code == 200:
+            result = response.json()
+            return result.get("response", "").strip() or message[:30] + "..."
+        return message[:30] + "..."
+
+    except Exception as e:
+        logging.error(f"Gagal generate judul via requests: {e}")
+        return message[:30] + "..."
+
+
+# --- HELPER EMBEDDING ---
+def get_embedding(text):
+    if not text:
+        return None
+    try:
+        # Generate embedding menggunakan SentenceTransformer
+        embedding = EMBEDDING_MODEL.encode(text, normalize_embeddings=True)
+        # Convert dari numpy array ke list biasa agar bisa dibaca psycopg2
+        return embedding.tolist()
+    except Exception as e:
+        logging.error(f"Embedding Error: {e}")
+        return None
+
+
 @app.route("/api/chat", methods=["POST"])
 async def chat():
-    """Endpoint chat utama dengan SMART context handling"""
+    global PRIMARY_MODEL
+
+    conn_local = None
     try:
         data = await request.get_json()
         user_message = data.get("message", "")
         file_id = data.get("file_id", None)
-        mode = data.get("mode", MODE_NORMAL)
+        mode = data.get("mode", "normal")
+        session_uuid = data.get("session_uuid")
 
-        # Cek file context
-        active_file = None
-        if file_id and file_id in file_contexts:
-            active_file = file_contexts[file_id]
-        elif file_contexts and mode == MODE_NORMAL:
-            last_file_id = list(file_contexts.keys())[-1]
-            active_file = file_contexts[last_file_id]
+        # Ambil identitas
+        npp = data.get("npp")  # Bisa None/Null
+        username = data.get("fullname", "Guest")  # Default Guest jika fullname kosong
 
-        # Panggil SMART chat function (sekarang mengembalikan 3 values)
+        # --- LOGIKA PEMBATASAN UNTUK NON-LOGIN ---
+        if not npp:
+            mode = "normal"  # Paksa mode normal
+            selected_model = PRIMARY_MODEL  # Paksa model default
+            file_id = None  # Tidak bisa akses file upload pribadi
+        else:
+            selected_model = data.get("model", PRIMARY_MODEL)
+
+        # LOG LOGGING (Tetap tampil)
+        print("\n" + "=" * 50)
+        print(f"🚀 INCOMING CHAT REQUEST ({'AUTHENTICATED' if npp else 'GUEST'})")
+        print(f"👤 User: {username} | NPP: {npp}")
+        print(f"🧠 Model Used: {selected_model}")
+        print(f"💬 Message: {user_message[:50]}...")
+        print("=" * 50 + "\n")
+
+        conn_local = psycopg2.connect(**DB_CONFIG)
+        cur = conn_local.cursor(cursor_factory=RealDictCursor)
+
+        # 1. LOGIKA MANAJEMEN SESI
+        current_session_id = None
+        judul_baru = None
+
+        if session_uuid:
+            cur.execute(
+                "SELECT id FROM chat_sessions WHERE session_uuid = %s", (session_uuid,)
+            )
+            sess = cur.fetchone()
+            if sess:
+                current_session_id = sess["id"]
+
+        if not current_session_id:
+            if not session_uuid:
+                session_uuid = str(uuid.uuid4())
+
+            judul_baru = await generate_judul_ai(user_message)
+
+            # Simpan Sesi (NPP akan tersimpan sebagai NULL jika tidak login)
+            cur.execute(
+                """
+                INSERT INTO chat_sessions (session_uuid, user_name, npp, judul, model_name, is_active)
+                VALUES (%s, %s, %s, %s, %s, TRUE) RETURNING id
+                """,
+                (session_uuid, username, npp, judul_baru, selected_model),
+            )
+            current_session_id = cur.fetchone()["id"]
+
+        # 2. LOGIKA RAG / CHAT
+        active_file = file_contexts.get(file_id) if file_id else None
+
         reply, pdf_info, should_include_pdf = await smart_chat_with_context(
-            user_message, active_file, mode
+            user_message,
+            active_file,
+            mode,
+            model=selected_model,
+            session_uuid=session_uuid,
         )
 
-        # Format response - HANYA sertakan pdf_info jika should_include_pdf True
-        response = {
-            "reply": reply,
-            "mode": mode,
-            "pdf_info": pdf_info if should_include_pdf else None,  # <-- KUNCI UTAMA
-            "is_from_document": should_include_pdf,  # <-- Gunakan should_include_pdf
-        }
+        # 3. GENERATE EMBEDDINGS (Penting untuk memory/pencarian masa depan)
+        vector_user = get_embedding(user_message)
+        vector_assistant = get_embedding(reply)
 
-        if active_file:
-            response["file_info"] = {
-                "id": active_file["id"],
-                "name": active_file["filename"],
+        # 4. SIMPAN KE ai_dialogue_corpus
+        cur.execute(
+            """
+            INSERT INTO ai_dialogue_corpus (
+                session_id, user_text, assistant_text, 
+                embedding_user, embedding_assistant, metadata
+            )
+            VALUES (%s, %s, %s, %s, %s, %s)
+            """,
+            (
+                current_session_id,
+                user_message,
+                reply,
+                vector_user,
+                vector_assistant,
+                json.dumps(
+                    {
+                        "mode": mode,
+                        "file_id": file_id,
+                        "npp": npp,
+                        "model": selected_model,
+                        "is_guest": npp is None,
+                    }
+                ),
+            ),
+        )
+
+        conn_local.commit()
+
+        return jsonify(
+            {
+                "reply": reply,
+                "session_uuid": session_uuid,
+                "judul": judul_baru,
+                "pdf_info": pdf_info if (should_include_pdf and npp) else None,
+                "is_from_document": should_include_pdf if npp else False,
+                "model_used": selected_model,
             }
-
-        # Debug log
-        logging.info(
-            f"📤 Response - Mode: {mode}, Should Include PDF: {should_include_pdf}, PDF Info: {pdf_info is not None}"
         )
-
-        return jsonify(response)
 
     except Exception as e:
-        logging.error(f"Chat error: {e}")
+        if conn_local:
+            conn_local.rollback()
+        logging.error(f"Chat Error: {e}")
         return jsonify({"error": str(e)}), 500
+    finally:
+        if conn_local:
+            conn_local.close()
+
+
+@app.route("/api/chat-history/<npp>", methods=["GET"])
+async def get_chat_history(npp):
+    try:
+        conn = psycopg2.connect(**DB_CONFIG)
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(
+                """
+                SELECT session_uuid, judul, started_at 
+                FROM chat_sessions 
+                WHERE npp = %s AND is_active = TRUE 
+                ORDER BY started_at DESC
+            """,
+                (npp,),
+            )
+            sessions = cur.fetchall()
+            return jsonify({"status": "success", "data": sessions})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+    finally:
+        if conn:
+            conn.close()
+
+
+@app.route("/api/chat-messages/<session_uuid>", methods=["GET"])
+async def get_session_messages(session_uuid):
+    conn = None
+    try:
+        conn = psycopg2.connect(**DB_CONFIG)
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            # Cari session_id berdasarkan UUID
+            cur.execute(
+                "SELECT id FROM chat_sessions WHERE session_uuid = %s", (session_uuid,)
+            )
+            sess = cur.fetchone()
+            if not sess:
+                return jsonify(
+                    {"status": "error", "message": "Sesi tidak ditemukan"}
+                ), 404
+
+            # Ambil semua pesan dari ai_dialogue_corpus berdasarkan session_id
+            cur.execute(
+                """
+                SELECT user_text, assistant_text, created_at 
+                FROM ai_dialogue_corpus 
+                WHERE session_id = %s 
+                ORDER BY created_at ASC
+            """,
+                (sess["id"],),
+            )
+
+            rows = cur.fetchall()
+
+            # Format ulang data agar sesuai dengan state 'messages' di React
+            formatted_messages = []
+            for row in rows:
+                # Pesan User
+                formatted_messages.append(
+                    {
+                        "id": f"u-{row['created_at'].timestamp()}",
+                        "sender": "user",
+                        "text": row["user_text"],
+                        "timestamp": row["created_at"].strftime("%H:%M"),
+                    }
+                )
+                # Pesan AI
+                formatted_messages.append(
+                    {
+                        "id": f"a-{row['created_at'].timestamp()}",
+                        "sender": "ai",
+                        "text": row["assistant_text"],
+                        "timestamp": row["created_at"].strftime("%H:%M"),
+                    }
+                )
+
+            return jsonify({"status": "success", "data": formatted_messages})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+    finally:
+        if conn:
+            conn.close()
 
 
 @app.route("/db_doc/<filename>", methods=["GET"])

@@ -6,9 +6,33 @@ const Sidebar = ({
   setShowDocumentList,
   isOpen,
   setIsOpen,
-  setIsLoggedIn,
   userData,
+  handleLogout,
+  loadChatSession,
+  currentSessionId,
+  chatHistory,    
+  setChatHistory,
+  triggerLogout
 }) => {
+  // Fetch history chat saat user login (userData tersedia)
+  useEffect(() => {
+    const fetchHistory = async () => {
+      if (userData?.username) {
+        try {
+          const res = await fetch(
+            `http://192.168.11.80:5000/api/chat-history/${userData.username}`
+          );
+          const result = await res.json();
+          if (result.status === "success") {
+            setChatHistory(result.data);
+          }
+        } catch (err) {
+          console.error("Gagal ambil history chat:", err);
+        }
+      }
+    };
+    fetchHistory();
+  }, [userData]);
   // Tambah state ini buat deteksi hover pas lagi ciut
   const [isHovered, setIsHovered] = useState(false);
   // Tambah state untuk toggle popup logout
@@ -92,14 +116,14 @@ const Sidebar = ({
       >
         <button
           onClick={clearChat}
-          className={`flex items-center rounded-xl hover:bg-black-800 transition-colors group overflow-hidden border border-black-700 ${
+          className={`flex items-center rounded-xl hover:bg-gray-200 transition-colors group overflow-hidden text-[14px] ${
             isOpen ? "p-1 w-full space-x-3" : "p-1 justify-center"
           }`}
           title="New Chat"
         >
           <svg
             xmlns="http://www.w3.org/2000/svg"
-            className="h-5 w-5 text-black-400 group-hover:text-blue-400 flex-shrink-0"
+            className="h-5 w-5 text-black-400 group-hover:text-blue-400 flex-shrink-0 "
             fill="none"
             viewBox="0 0 24 24"
             stroke="currentColor"
@@ -122,7 +146,7 @@ const Sidebar = ({
 
         <button
           onClick={() => setShowDocumentList(true)}
-          className={`flex items-center rounded-xl hover:bg-black-800 transition-colors group overflow-hidden border border-black-700 ${
+          className={`flex items-center rounded-xl hover:bg-gray-200 transition-colors group overflow-hidden text-[14px] ${
             isOpen ? "p-1 w-full space-x-3" : "p-1 justify-center"
           }`}
           title="Documents"
@@ -141,28 +165,47 @@ const Sidebar = ({
       </div>
       {/* History Sections */}
       <div
-        className={`flex-1 overflow-y-auto px-4 py-2 space-y-4 transition-opacity duration-300 ${
+        className={`flex-1 overflow-y-auto px-2 py-2 space-y-4 transition-opacity duration-300 ${
           !isOpen ? "opacity-0 pointer-events-none hidden" : "opacity-100"
         }`}
       >
-        <div className="px-0 py-2 border-black-700">
-          <div className="flex items-center justify-between cursor-pointer hover:text-blue-400">
-            <span className="font-medium">All chats</span>
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              className="h-4 w-4"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M19 9l-7 7-7-7"
-              />
-            </svg>
+        {/* SEKSI SEMUA CHAT */}
+        <div
+          className={`flex-1 overflow-y-auto px-2 py-2 space-y-1 transition-opacity duration-300 ${
+            !isOpen ? "opacity-0 pointer-events-none hidden" : "opacity-100"
+          }`}
+        >
+          <div className="px-1 py-1 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+            Semua Chat
           </div>
+
+          {chatHistory.length > 0 ? (
+            chatHistory.map((chat) => (
+              <div
+                key={chat.session_uuid}
+                // GUNAKAN loadChatSession yang dikirim dari App.jsx
+                onClick={() => loadChatSession(chat.session_uuid)}
+                className={`group flex items-center px-2 py-2 text-sm font-medium rounded-lg cursor-pointer transition-all border border-transparent ${
+                  // Kasih warna berbeda jika chat sedang aktif
+                  currentSessionId === chat.session_uuid
+                    ? "bg-blue-50 text-blue-600 border-blue-200"
+                    : "text-gray-700 hover:bg-gray-200"
+                }`}
+                title={chat.judul}
+              >
+                <span className="mr-3 opacity-70 group-hover:scale-110 transition-transform">
+                  {currentSessionId === chat.session_uuid ? "🔵" : "💬"}
+                </span>
+                <span className="truncate flex-1 text-left">
+                  {chat.judul || "Chat Baru"}
+                </span>
+              </div>
+            ))
+          ) : (
+            <div className="text-xs text-gray-400 px-3 py-4 italic text-left">
+              Belum ada history chat
+            </div>
+          )}
         </div>
       </div>
       {/* Footer Profile */}
@@ -202,13 +245,16 @@ const Sidebar = ({
               </p>
             </div>
 
+            {/* Logout */}
             <button
-              onClick={() => setIsLoggedIn(false)}
+              onClick={() => {
+                setShowLogoutPopup(false); // Tutup popup profil
+                triggerLogout();           // Buka modal konfirmasi
+              }}
               className="w-full flex items-center space-x-3 px-4 py-1 text-red-400 hover:bg-gray-100 transition-colors"
               style={{
                 borderTop: "1px solid #E0E0E0",
                 borderRadius: "10px",
-                // boxShadow: "0 0 10px 0 rgba(0, 0, 0, 0.1)",
               }}
             >
               <svg
@@ -264,7 +310,7 @@ const Sidebar = ({
               !isOpen ? "opacity-0 w-0 overflow-hidden" : "opacity-100"
             }`}
           >
-            <span className="text-sm font-medium truncate w-40 ml-3">
+            <span className="text-xs font-medium truncate w-40 ml-3">
               {userData?.fullname || "Loading..."}
             </span>
             <span className="text-[9px] text-black-500  text-left ml-3">
@@ -275,7 +321,7 @@ const Sidebar = ({
 
         {isOpen && (
           <button
-            className="text-black-500 group-hover:text-black ml-auto absolute right-3"
+            className="text-black-500 group-hover:text-black ml-auto absolute right-3 bottom-2"
             onClick={() => setShowLogoutPopup(!showLogoutPopup)}
           >
             <svg

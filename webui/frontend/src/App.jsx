@@ -30,6 +30,7 @@ function App() {
   const [isUserScrollingUp, setIsUserScrollingUp] = useState(false);
   const wheelTimeoutRef = useRef(null); // <-- TAMBAHKAN INI
   const scrollTimeoutRef = useRef(null);
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
 
   // Effect untuk reset auto-scroll ketika user kirim pesan
   useEffect(() => {
@@ -228,11 +229,15 @@ function App() {
     setCurrentMode(nextMode);
   };
 
+  // Tambahkan state ini jika belum ada di level App.jsx
+  // const [currentSessionId, setCurrentSessionId] = useState(null);
+
   const sendMessage = async () => {
     if (!input.trim() || isLoading) return;
     autoScrollEnabled.current = true;
     const userMessage = input.trim();
     setInput("");
+
     const userMsgId = Date.now();
     setMessages((prev) => [
       ...prev,
@@ -246,8 +251,11 @@ function App() {
         }),
       },
     ]);
+
     setIsLoading(true);
     const aiMsgId = Date.now() + 1;
+
+    // Pesan placeholder AI
     setMessages((prev) => [
       ...prev,
       {
@@ -261,21 +269,51 @@ function App() {
         isTyping: false,
       },
     ]);
+
     try {
-      const payload = { message: userMessage, mode: currentMode };
+      // --- MODIFIKASI PAYLOAD DI SINI ---
+      const payload = {
+        message: userMessage,
+        mode: currentMode,
+        model: selectedModel,
+        npp: userData?.username, // Ambil NPP dari userData login
+        session_uuid: currentSessionId, // Kirim UUID sesi jika ada (bisa null untuk chat baru)
+        fullname: userData?.fullname,
+      };
+
       if (uploadedFiles.length > 0 && currentMode === "normal") {
         payload.file_id = uploadedFiles[uploadedFiles.length - 1].id;
       }
+
       const res = await fetch(`${API_BASE}/api/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
+
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
+
+      // --- UPDATE SESSION ID JIKA INI CHAT PERTAMA ---
+      if (data.session_uuid && !currentSessionId) {
+        setCurrentSessionId(data.session_uuid);
+
+        // BUAT OBJEK CHAT BARU UNTUK SIDEBAR
+        const newChatEntry = {
+          session_uuid: data.session_uuid,
+          judul: userMessage.substring(0, 50),
+          created_at: new Date().toISOString(),
+        };
+
+        // PAKSA SIDEBAR UPDATE DETIK INI JUGA
+        // Kita pakai callback (prev) => [...] supaya datanya paling update
+        setChatHistory((prev) => [newChatEntry, ...prev]);
+      }
+
       const aiResponse = data.reply || "No response from AI.";
       const pdfInfo = data.pdf_info || null;
       const isFromDocument = data.is_from_document || false;
+
       setMessages((prev) =>
         prev.map((msg) =>
           msg.id === aiMsgId
@@ -289,6 +327,7 @@ function App() {
             : msg
         )
       );
+
       setTimeout(() => {
         setMessages((prev) =>
           prev.map((msg) =>
@@ -321,11 +360,15 @@ function App() {
     }
   };
 
-  const clearChat = () => {
-    if (messages.length > 0 && window.confirm("Clear all messages?")) {
-      setMessages([]);
-      setUploadedFiles([]);
-    }
+  const handleNewChat = () => {
+    // 1. Kosongkan daftar pesan di layar
+    setMessages([]);
+
+    // 2. Reset ID sesi menjadi null agar backend tahu ini chat baru
+    setCurrentSessionId(null);
+
+    // 3. (Opsional) Reset file context jika kamu ingin memulai dari nol
+    // setSelectedFile(null);
   };
 
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
@@ -335,6 +378,28 @@ function App() {
   const [loginForm, setLoginForm] = useState({ username: "", password: "" });
   const [loginError, setLoginError] = useState("");
   const [userData, setUserData] = useState(null);
+  const [currentSessionId, setCurrentSessionId] = useState(null);
+  const [isInitializing, setIsInitializing] = useState(true);
+  const [modelList, setModelList] = useState([]);
+  const [selectedModel, setSelectedModel] = useState("qwen3:8b");
+  const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
+
+  useEffect(() => {
+    const fetchModels = async () => {
+      try {
+        const res = await fetch(
+          "http://192.168.11.80:5000/api/available-models"
+        );
+        const result = await res.json();
+        if (result.status === "success") {
+          setModelList(result.data);
+        }
+      } catch (err) {
+        console.error("Gagal ambil model list:", err);
+      }
+    };
+    fetchModels();
+  }, []);
 
   // Handler Login
   const handleLoginSubmit = async (e) => {
@@ -343,7 +408,6 @@ function App() {
 
     try {
       const response = await fetch("http://192.168.11.80:5000/api/login", {
-        // Sesuaikan IP backend kamu
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ username, password }),
@@ -352,16 +416,20 @@ function App() {
       const result = await response.json();
 
       if (response.ok && result.status === "success") {
+        // 1. Ambil data lengkap termasuk token dari backend
         const newUser = {
           username: result.data.username,
           fullname: result.data.fullname,
           divisi: result.data.divisi,
         };
 
+        // 2. Update React State
         setIsLoggedIn(true);
         setUserData(newUser);
 
-        // SIMPAN KE LOCALSTORAGE (Agar tidak hilang saat reload)
+        // 3. SIMPAN KE LOCALSTORAGE
+        // Simpan token secara terpisah agar mudah diambil saat verifikasi sesi (auto-login)
+        localStorage.setItem("session_token", result.data.token);
         localStorage.setItem("userSession", JSON.stringify(newUser));
         localStorage.setItem("isLoggedIn", "true");
 
@@ -374,7 +442,80 @@ function App() {
         setLoginError(result.message || "Login gagal");
       }
     } catch (error) {
+      console.error("Login Error:", error);
       setLoginError("Server login tidak merespon");
+    }
+  };
+
+  // Cek session
+  useEffect(() => {
+    const checkSession = async () => {
+      const token = localStorage.getItem("session_token");
+      const lastSessionId = localStorage.getItem("lastSessionId");
+
+      try {
+        if (token) {
+          const response = await fetch(
+            `http://192.168.11.80:5000/api/verify-session?token=${token}`
+          );
+          const result = await response.json();
+
+          if (response.ok && result.status === "success") {
+            setUserData(result.data);
+            setIsLoggedIn(true);
+
+            if (lastSessionId) {
+              // Tunggu sampai chat session beneran ke-load
+              await loadChatSession(lastSessionId);
+            }
+          } else {
+            localStorage.clear();
+          }
+        }
+      } catch (error) {
+        console.error("Initialization failed", error);
+      } finally {
+        // APAPUN HASILNYA, matikan loading preload setelah 500ms biar smooth
+        setTimeout(() => {
+          setIsInitializing(false);
+        }, 500);
+      }
+    };
+
+    checkSession();
+  }, []);
+
+  // Fungsi yang dipicu tombol di Sidebar
+  const triggerLogout = () => {
+    setIsLogoutModalOpen(true);
+  };
+
+  // Fungsi eksekusi (Kode asli lu yang dimodifikasi sedikit)
+  const handleLogout = async () => {
+    const token = localStorage.getItem("session_token");
+
+    try {
+      if (token) {
+        await fetch("http://192.168.11.80:5000/api/logout", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token }),
+        });
+      }
+    } catch (error) {
+      console.error("Gagal logout ke server:", error);
+    } finally {
+      // Bersihkan semua
+      localStorage.clear();
+      setIsLoggedIn(false);
+      setUserData(null);
+      setMessages([]);
+      setCurrentSessionId(null);
+      setChatHistory([]);
+      setInput("");
+
+      // Tutup modal setelah selesai
+      setIsLogoutModalOpen(false);
     }
   };
 
@@ -385,6 +526,68 @@ function App() {
     if (hour < 18) return "Selamat Sore";
     return "Selamat Malam";
   };
+
+  // Di dalam function App() { ... }
+
+  const loadChatSession = async (sessionUuid) => {
+    if (!sessionUuid) return;
+
+    setIsLoading(true); // Opsional: tampilkan loading spinner
+    setCurrentSessionId(sessionUuid); // Update state ID sesi aktif
+
+    try {
+      const res = await fetch(
+        `http://192.168.11.80:5000/api/chat-messages/${sessionUuid}`
+      );
+      const result = await res.json();
+
+      if (result.status === "success") {
+        // SET MESSAGES: Ini yang bikin chat lama muncul di layar
+        setMessages(result.data);
+      } else {
+        console.error("Sesi tidak ditemukan di database");
+      }
+    } catch (err) {
+      console.error("Gagal ambil history pesan:", err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const [chatHistory, setChatHistory] = useState([]);
+
+  // Simpan sessionId ke localStorage setiap kali berubah
+  useEffect(() => {
+    if (currentSessionId) {
+      localStorage.setItem("lastSessionId", currentSessionId);
+    } else {
+      localStorage.removeItem("lastSessionId");
+    }
+  }, [currentSessionId]);
+
+  if (isInitializing) {
+    return (
+      <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-white">
+        {/* Logo Pindad / Cakra AI */}
+        <div className="relative">
+          <img
+            src="./src/assets/cakra.png"
+            alt="Loading..."
+            className="w-20 h-20 animate-pulse"
+          />
+          {/* Spinner di sekeliling logo */}
+          <div className="absolute inset-0 border-4 border-blue-100 border-t-blue-600 rounded-full animate-spin"></div>
+        </div>
+
+        <h2 className="mt-6 text-xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent animate-bounce">
+          CAKRA AI
+        </h2>
+        <p className="text-gray-400 text-sm mt-2">
+          Menyiapkan ruang kerja Anda...
+        </p>
+      </div>
+    );
+  }
 
   return (
     // Di dalam return() App.js
@@ -398,7 +601,101 @@ function App() {
           setIsOpen={setIsSidebarOpen}
           setIsLoggedIn={setIsLoggedIn}
           userData={userData}
+          handleLogout={handleLogout}
+          setShowDocumentList={setShowDocumentList}
+          setCurrentSessionId={setCurrentSessionId}
+          currentSessionId={currentSessionId}
+          loadChatSession={loadChatSession}
+          clearChat={handleNewChat}
+          chatHistory={chatHistory}
+          setChatHistory={setChatHistory}
+          triggerLogout={triggerLogout}
         />
+      )}
+      {/* MODEL SELECTOR - HANYA MUNCUL JIKA SUDAH LOGIN */}
+      {isLoggedIn && (
+        <div className="absolute flex flex-col flex-1 top-4 left-4 z-30 flex items-center space-x-2">
+          <div
+            className={`relative flex items-center bg-white border border-gray-200 rounded-full px-4 py-1.5 shadow-sm transition-all duration-300 ${
+              typeof isOpen !== "undefined"
+                ? isOpen
+                  ? "ml-60"
+                  : "ml-16"
+                : "ml-60"
+            }`}
+          >
+            {/* Dot indikator */}
+            <div className="w-2 h-2 bg-blue-500 rounded-full mr-2 animate-pulse"></div>
+
+            {/* Trigger Dropdown */}
+            <button
+              onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+              className="flex items-center gap-1 text-sm font-semibold text-gray-700 focus:outline-none"
+            >
+              {modelList.find((m) => m.id === selectedModel)?.name ||
+                "Select Model"}
+              <svg
+                className={`w-4 h-4 transition-transform ${
+                  isDropdownOpen ? "rotate-180" : ""
+                }`}
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M19 9l-7 7-7-7"
+                />
+              </svg>
+            </button>
+
+            {/* Dropdown List */}
+            {isDropdownOpen && (
+              <div className="absolute top-full left-0 mt-2 w-56 rounded-xl bg-white border border-gray-200 shadow-xl overflow-hidden z-50 animate-in fade-in zoom-in duration-200">
+                <div className="px-4 py-2 border-b border-gray-50 bg-gray-50/50">
+                  <span className="text-[10px] font-bold text-blue-600 uppercase tracking-wider">
+                    Engine System
+                  </span>
+                </div>
+
+                <div className="max-h-60 overflow-y-auto">
+                  {modelList.map((m) => (
+                    <button
+                      key={m.id}
+                      onClick={() => {
+                        setSelectedModel(m.id);
+                        setIsDropdownOpen(false);
+                      }}
+                      className={`w-full px-4 py-3 flex items-center justify-between text-left transition ${
+                        selectedModel === m.id
+                          ? "bg-blue-50/50 text-blue-700"
+                          : "text-gray-700 hover:bg-gray-100"
+                      }`}
+                    >
+                      <span className="text-sm font-medium">{m.name}</span>
+
+                      {selectedModel === m.id && (
+                        <svg
+                          className="w-4 h-4 text-blue-600"
+                          fill="currentColor"
+                          viewBox="0 0 20 20"
+                        >
+                          <path
+                            fillRule="evenodd"
+                            d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                            clipRule="evenodd"
+                          />
+                        </svg>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
       )}
 
       {/* Content Container */}
@@ -644,15 +941,10 @@ function App() {
           </div>
         </div>
 
-        {/* Input Area: Sekarang tetap di bawah karena container di atasnya flex-1 */}
+        {/* Input Area */}
         <div className="bg-white px-4 py-4">
-          <div
-            className="max-w-3xl mx-auto rounded-4xl"
-            style={{
-              background: "#F7F8FC",
-            }}
-          >
-            {/* Bagian Mode & Textarea Lu Tetap Sama */}
+          <div className="max-w-3xl mx-auto rounded-4xl">
+            {/* Label Mode di atas (Tetap muncul jika mode aktif) */}
             {currentMode !== "normal" && (
               <div className="flex items-center space-x-2 mb-2">
                 <span
@@ -668,8 +960,14 @@ function App() {
                 </span>
               </div>
             )}
+
             <div className="relative">
-              <div className="rounded-3xl p-3">
+              <div
+                className={`rounded-3xl transition-all duration-300 ${
+                  isLoggedIn ? "p-3" : "px-3 py-2" // <-- Jika GAK LOGIN, padding atas-bawah jadi lebih tipis
+                }`}
+                style={{ background: "#F7F8FC" }}
+              >
                 <textarea
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
@@ -680,7 +978,7 @@ function App() {
                       ? "Tanya apapun terkait dokumen PT Pindad..."
                       : "Tanya CAKRA AI..."
                   }
-                  className="w-full border-none bg-transparent resize-none focus:outline-none text-gray-900 ml-3 mt-2"
+                  className="w-full border-none bg-transparent resize-none focus:outline-none text-gray-900 ml-3 mt-1" // mt-2 dikurangin dikit
                   rows="1"
                   style={{ minHeight: "30px", maxHeight: "120px" }}
                   onInput={(e) => {
@@ -689,9 +987,10 @@ function App() {
                       Math.min(e.target.scrollHeight, 120) + "px";
                   }}
                 />
+
                 <div
-                  className={`flex items-center mt-2 ${
-                    isLoggedIn ? "justify-between" : "justify-end"
+                  className={`flex items-center ${
+                    isLoggedIn ? "mt-2 justify-between" : "mt-0 justify-end" // <-- mt-0 jika tidak login biar gak berjarak
                   }`}
                 >
                   {/* Bagian Mode (Hanya muncul jika Login) */}
@@ -721,22 +1020,23 @@ function App() {
                     </div>
                   )}
 
-                  {/* Bagian Aksi (Selalu di Kanan) */}
-                  <div className="flex space-x-2">
+                  {/* Bagian Aksi */}
+                  <div className="flex items-center space-x-1">
+                    {/* Tombol File juga bisa di-handle jika ingin Guest bisa upload file mandiri */}
                     <button
                       onClick={() => setShowFileUpload(true)}
-                      className="p-2 text-gray-600 hover:text-blue-600 transition-colors"
+                      className="p-1.5 text-gray-500 hover:text-blue-600 transition-colors"
                     >
-                      <span className="text-xl">📁</span>
+                      <span className="text-lg">📁</span>
                     </button>
 
                     <button
                       onClick={sendMessage}
                       disabled={isLoading || !input.trim()}
-                      className={`px-4 py-1 rounded-xl font-medium transition-colors ${
+                      className={`px-4 py-1.5 rounded-xl font-medium transition-all ${
                         isLoading || !input.trim()
                           ? "bg-gray-200 text-gray-400 cursor-not-allowed"
-                          : "bg-gradient-to-r from-blue-500 to-purple-600 text-white hover:opacity-90"
+                          : "bg-gradient-to-r from-blue-500 to-purple-600 text-white hover:opacity-90 shadow-md active:scale-95"
                       }`}
                     >
                       {isLoading ? (
@@ -744,7 +1044,7 @@ function App() {
                       ) : (
                         <svg
                           xmlns="http://www.w3.org/2000/svg"
-                          className="w-5 h-5"
+                          className="w-4 h-4" // Dikecilkan sedikit biar pas dengan input ramping
                           fill="none"
                           viewBox="0 0 24 24"
                           stroke="currentColor"
@@ -777,6 +1077,38 @@ function App() {
             }`}
           >
             {notification.message}
+          </div>
+        )}
+        {isLogoutModalOpen && (
+          <div className="fixed inset-0 z-[999] flex items-center justify-center bg-black/40 backdrop-blur-sm animate-fade-in">
+            <div className="bg-white rounded-3xl p-6 max-w-sm w-full mx-4 shadow-2xl animate-zoom-in border border-gray-100">
+              <div className="text-center">
+                <div className="w-16 h-16 bg-red-50 text-red-500 rounded-full flex items-center justify-center mx-auto mb-4 text-2xl">
+                  ⚠️
+                </div>
+                <h3 className="text-lg font-bold text-gray-900">
+                  Konfirmasi Keluar
+                </h3>
+                <p className="text-gray-500 mt-2 text-sm leading-relaxed">
+                  Anda yakin ingin keluar? dalam mode guest anda tidak bisa melihat dokumen peraturan PT Pindad.
+                </p>
+              </div>
+
+              <div className="flex space-x-3 mt-8">
+                <button
+                  onClick={() => setIsLogoutModalOpen(false)}
+                  className="flex-1 px-4 py-3 bg-gray-100 text-gray-700 rounded-2xl font-semibold hover:bg-gray-200 transition-all active:scale-95"
+                >
+                  Batal
+                </button>
+                <button
+                  onClick={handleLogout} // Eksekusi fungsi logout lu di sini
+                  className="flex-1 px-4 py-3 bg-red-600 text-white rounded-2xl font-semibold hover:bg-red-700 transition-all shadow-lg shadow-red-200 active:scale-95"
+                >
+                  Ya, Keluar
+                </button>
+              </div>
+            </div>
           </div>
         )}
       </div>
