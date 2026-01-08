@@ -12,21 +12,36 @@ const FormattedMessage = ({ text, showNotification, isAI }) => {
   const styledText = renderStyledText(cleanText, isAI);
   const lines = styledText.split("\n").filter((line) => line.trim() !== "");
 
-  const baseTextColor = isAI ? "text-gray-800" : "text-white";
-  const accentColor = isAI ? "text-blue-600" : "text-blue-200";
+  // Handler Dark Mode untuk Text Utama
+  // AI: Abu gelap (light mode) -> Abu terang (dark mode)
+  const baseTextColor = isAI 
+    ? "text-gray-800 dark:text-gray-200" 
+    : "text-white";
+
+  // Handler Dark Mode untuk Angka (1.) dan Bullet (•)
+  const accentColor = isAI 
+    ? "text-blue-600 dark:text-blue-400" 
+    : "text-blue-200";
 
   return (
     <div className={`markdown-body space-y-2 leading-relaxed ${baseTextColor}`}>
       {lines.map((line, lineIndex) => {
         const trimmedLine = line.trim();
+        
+        // Handler Horizontal Rule
         if (trimmedLine === "---" || trimmedLine === "***") {
           return (
             <hr
               key={lineIndex}
-              className={`my-4 border-t ${isAI ? "border-gray-200" : "border-white/20"}`}
+              className={`my-4 border-t ${
+                isAI 
+                  ? "border-gray-200 dark:border-[#2E2E33]" 
+                  : "border-white/20"
+              }`}
             />
           );
         }
+
         const numberMatch = trimmedLine.match(/^(\d+)\.\s+(.+)/);
         const bulletMatch = trimmedLine.match(/^[-*•]\s+(.+)/);
         const isHTML = /<(h1|h2|h3|blockquote)/.test(trimmedLine);
@@ -50,6 +65,7 @@ const FormattedMessage = ({ text, showNotification, isAI }) => {
             </div>
           );
         }
+        
         return <div key={lineIndex} dangerouslySetInnerHTML={{ __html: trimmedLine }} />;
       })}
     </div>

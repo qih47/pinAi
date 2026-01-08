@@ -623,20 +623,16 @@ function App() {
 
   if (isInitializing) {
     return (
-      <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-white">
-        <div className="relative">
-          <img
-            src="./src/assets/cakra.png"
-            alt="Loading..."
-            className="w-20 h-20 animate-pulse"
-          />
-          <div className="absolute inset-0 border-4 border-blue-100 border-t-blue-600 rounded-full animate-spin"></div>
-        </div>
-
-        <h2 className="mt-6 text-xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent animate-bounce">
+      <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-white dark:bg-[#232326] transition-colors">
+        <img
+          src="./src/assets/cakra.png"
+          alt="Loading..."
+          className="w-20 h-20 animate-spin"
+        />
+        <h2 className="mt-6 text-xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 dark:from-blue-400 dark:to-purple-500 bg-clip-text text-transparent animate-bounce">
           CAKRA AI
         </h2>
-        <p className="text-gray-400 text-sm mt-2">
+        <p className="text-gray-400 dark:text-gray-300 text-sm mt-2">
           Menyiapkan ruang kerja Anda...
         </p>
       </div>
@@ -648,7 +644,7 @@ function App() {
   // =========================================================================
 
   return (
-    <div className="flex h-screen bg-gray-50 overflow-hidden">
+    <div className="border-t border-t-[#E0E0E0] dark:border-t-[#1A1A1C] bg-[#F7F8FC] dark:bg-[#232326] flex h-screen overflow-hidden text-gray-900 dark:text-gray-200 transition-colors duration-300">
       {/* Sidebar hanya muncul jika sudah login */}
       {isLoggedIn && (
         <Sidebar
@@ -668,17 +664,19 @@ function App() {
           triggerLogout={triggerLogout}
         />
       )}
-      <div className="absolute top-4 left-4 flex items-center z-50">
-        {/* Logo di pojok kiri atas, spin hanya sekali ketika reload */}
-        <img
-          src="./src/assets/cakra.png"
-          alt="CAKRA AI Logo"
-          className="w-10 h-10 object-cover rounded-full"
-          style={{
-            animation: "spin-once 2s cubic-bezier(0.4,0,0.2,1) 1",
-          }}
-        />
-      </div>
+      {!isLoggedIn && (
+        <div className="absolute top-4 left-4 flex items-center z-50">
+          {/* Logo di pojok kiri atas, spin hanya sekali ketika reload */}
+          <img
+            src="./src/assets/cakra.png"
+            alt="CAKRA AI Logo"
+            className="w-10 h-10 object-cover rounded-full"
+            style={{
+              animation: "spin-once 2s cubic-bezier(0.4,0,0.2,1) 1",
+            }}
+          />
+        </div>
+      )}
       {/* Model Selector - Hanya muncul jika sudah login */}
       {isLoggedIn && (
         <div
@@ -687,12 +685,13 @@ function App() {
             left: isSidebarOpen ? "295px" : "75px",
           }}
         >
-          <div className="relative flex items-center bg-white border border-gray-200 rounded-full px-4 py-1.5 shadow-sm transition-all duration-300">
+          <div className="border-t border-t-[#E0E0E0] dark:border-t-[#1A1A1C] bg-[#F7F8FC] dark:bg-[#1A1A1C] relative flex items-center border border-gray-200 dark:border-[#27272a] rounded-full px-4 py-1.5 shadow-sm transition-all duration-300">
             <div className="w-2 h-2 bg-blue-500 rounded-full mr-2 animate-pulse"></div>
 
             <button
               onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-              className="flex items-center gap-1 text-sm font-semibold text-gray-700 focus:outline-none"
+              className="flex items-center gap-1 text-sm font-semibold text-gray-700 dark:text-gray-200 focus:outline-none"
+              style={{ transition: "color 0.3s" }}
             >
               {modelList.find((m) => m.id === selectedModel)?.name ||
                 "Select Model"}
@@ -714,9 +713,9 @@ function App() {
             </button>
 
             {isDropdownOpen && (
-              <div className="absolute top-full left-0 mt-2 w-56 rounded-xl bg-white border border-gray-200 shadow-xl overflow-hidden z-50 animate-in fade-in zoom-in duration-200">
-                <div className="px-4 py-2 border-b border-gray-50 bg-gray-50/50">
-                  <span className="text-[10px] font-bold text-blue-600 uppercase tracking-wider">
+              <div className="absolute top-full left-0 mt-2 w-56 rounded-xl bg-white dark:bg-[#1A1A1C] border border-gray-200 dark:border-[#27272a] shadow-xl overflow-hidden z-50 animate-in fade-in zoom-in duration-200">
+                <div className="px-4 py-2 border-b border-gray-50 dark:border-[#232326] bg-gray-50/50 dark:bg-[#232326]/50">
+                  <span className="text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase tracking-wider">
                     Engine System
                   </span>
                 </div>
@@ -729,17 +728,18 @@ function App() {
                         setSelectedModel(m.id);
                         setIsDropdownOpen(false);
                       }}
-                      className={`w-full px-4 py-3 flex items-center justify-between text-left transition ${
-                        selectedModel === m.id
-                          ? "bg-blue-50/50 text-blue-700"
-                          : "text-gray-700 hover:bg-gray-100"
-                      }`}
+                      className={`w-full px-4 py-3 flex items-center justify-between text-left transition
+                        ${
+                          selectedModel === m.id
+                            ? "bg-blue-50/70 dark:bg-blue-600/10 text-blue-700 dark:text-blue-300"
+                            : "text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-[#232326]"
+                        }`}
                     >
                       <span className="text-sm font-medium">{m.name}</span>
 
                       {selectedModel === m.id && (
                         <svg
-                          className="w-4 h-4 text-blue-600"
+                          className="w-4 h-4 text-blue-600 dark:text-blue-400"
                           fill="currentColor"
                           viewBox="0 0 20 20"
                         >
@@ -781,35 +781,35 @@ function App() {
           {/* MODAL LOGIN */}
           {showLoginModal && (
             <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm">
-              <div className="bg-white rounded-2xl shadow-2xl p-8 relative">
+              <div className="bg-white dark:bg-[#232326] rounded-2xl shadow-2xl p-8 relative border border-gray-100 dark:border-[#232326]">
                 <button
                   onClick={() => setShowLoginModal(false)}
-                  className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"
+                  className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
                 >
                   ✕
                 </button>
 
                 <div className="text-center mb-8">
-                  <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4 text-2xl">
+                  <div className="w-16 h-16 bg-blue-100 dark:bg-blue-900/40 rounded-full flex items-center justify-center mx-auto mb-4 text-2xl">
                     👤
                   </div>
-                  <h2 className="text-2xl font-bold text-gray-800">
+                  <h2 className="text-2xl font-bold text-gray-800 dark:text-blue-200">
                     Login CAKRA AI
                   </h2>
-                  <p className="text-gray-500 text-sm">
+                  <p className="text-gray-500 dark:text-gray-400 text-sm">
                     Gunakan username dan password ESS
                   </p>
                 </div>
 
                 <form onSubmit={handleLoginSubmit} className="space-y-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                       Username
                     </label>
                     <input
                       type="text"
                       required
-                      className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                      className="w-full px-4 py-2 border border-gray-300 dark:border-[#232326] rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none bg-white dark:bg-[#1a1a1c] text-gray-900 dark:text-gray-100"
                       value={loginForm.username}
                       onChange={(e) =>
                         setLoginForm({ ...loginForm, username: e.target.value })
@@ -818,13 +818,13 @@ function App() {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                       Password
                     </label>
                     <input
                       type="password"
                       required
-                      className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                      className="w-full px-4 py-2 border border-gray-300 dark:border-[#232326] rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none bg-white dark:bg-[#1a1a1c] text-gray-900 dark:text-gray-100"
                       value={loginForm.password}
                       onChange={(e) =>
                         setLoginForm({ ...loginForm, password: e.target.value })
@@ -885,21 +885,19 @@ function App() {
         {/* Area Pesan */}
         <div
           ref={messagesContainerRef}
-          className="flex-1 overflow-y-auto px-4 py-6"
-          style={{ background: "#FFFFFF" }}
+          className="flex-1 overflow-y-auto px-4 py-6 bg-white dark:bg-[#232326] transition-colors duration-300"
         >
           <div className="max-w-3xl mx-auto">
             {messages.length === 0 ? (
               // Welcome Screen
               <div className="flex flex-col items-center justify-center h-full text-center py-60">
-
-                <h2 className="text-2xl font-semibold text-gray-900 mb-3">
+                <h2 className="text-2xl font-semibold text-gray-900 dark:text-gray-100 mb-3 transition-colors duration-300">
                   {isLoggedIn
                     ? `${getGreeting()}, ${userData.fullname}`
                     : "Hai, saya CAKRA (Pindad AI)"}
                 </h2>
 
-                <p className="text-gray-600 max-w-md mb-8">
+                <p className="text-gray-600 dark:text-gray-300 max-w-md mb-8 transition-colors duration-300">
                   {isLoggedIn
                     ? "Ada yang bisa saya bantu hari ini?"
                     : "Saya bisa membantu menjawab pertanyaan anda..."}
@@ -915,7 +913,7 @@ function App() {
                     <button
                       key={idx}
                       onClick={() => setInput(suggestion)}
-                      className="text-left p-4 bg-white border border-gray-200 rounded-xl hover:border-blue-300 hover:bg-blue-50 transition-colors text-sm text-gray-700"
+                      className="text-left p-4 bg-white dark:bg-[#2E2E33] border border-gray-200 dark:border-[#232326] rounded-xl hover:border-blue-300 hover:bg-blue-50 dark:hover:bg-blue-700/10 transition-colors text-sm text-gray-700 dark:text-gray-200"
                     >
                       {suggestion}
                     </button>
@@ -936,7 +934,7 @@ function App() {
                   >
                     {/* --- PESAN USER --- */}
                     {msg.sender === "user" && (
-                      <div className="bg-blue-600 text-white rounded-4xl px-4 py-1 ml-auto flex items-center justify-center mt-5">
+                      <div className="bg-blue-600 dark:bg-[#2E2E33] text-white rounded-4xl px-4 py-1 ml-auto flex items-center justify-center mt-5">
                         <MessageRenderer
                           text={msg.text}
                           showNotification={showNotification}
@@ -973,7 +971,7 @@ function App() {
                               />
                             </div>
                             <span
-                              className={`text-gray-400 text-xs flex items-center justify-center ml-2${
+                              className={`text-gray-400 dark:text-gray-300 text-xs flex items-center justify-center ml-2${
                                 !isLoading ? "" : "hidden"
                               }`}
                               style={{ alignSelf: "center" }}
@@ -1009,7 +1007,7 @@ function App() {
                       </div>
 
                       {/* Teks Loading opsional agar user tahu AI sedang memproses */}
-                      <span className="text-xs text-gray-400 font-medium tracking-wide">
+                      <span className="text-xs text-gray-400 dark:text-gray-300 font-medium tracking-wide">
                         CAKRA lagi mikir nih...
                       </span>
                     </div>
@@ -1023,7 +1021,7 @@ function App() {
         </div>
 
         {/* Input Area */}
-        <div className="bg-white px-4 py-4">
+        <div className="bg-white dark:bg-[#232326] px-4 py-4 transition-colors duration-300">
           <div className="max-w-3xl mx-auto rounded-4xl">
             {/* Label Mode */}
             {currentMode !== "normal" && (
@@ -1031,8 +1029,8 @@ function App() {
                 <span
                   className={`text-xs px-2 py-1 rounded-full ${
                     currentMode === "document"
-                      ? "bg-blue-100 text-blue-800"
-                      : "bg-purple-100 text-purple-800"
+                      ? "bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-300"
+                      : "bg-purple-100 dark:bg-purple-900 text-purple-800 dark:text-purple-300"
                   }`}
                 >
                   {currentMode === "document"
@@ -1046,8 +1044,7 @@ function App() {
               <div
                 className={`rounded-3xl transition-all duration-300 ${
                   isLoggedIn ? "p-3" : "px-3 py-2"
-                }`}
-                style={{ background: "#F7F8FC" }}
+                } bg-[#F7F8FC] dark:bg-[#2E2E33]`}
               >
                 <textarea
                   value={input}
@@ -1059,7 +1056,7 @@ function App() {
                       ? "Tanya apapun terkait dokumen PT Pindad..."
                       : "Tanya CAKRA AI..."
                   }
-                  className="w-full border-none bg-transparent resize-none focus:outline-none text-gray-900 ml-3 mt-1"
+                  className="w-full border-none bg-transparent resize-none focus:outline-none text-gray-900 dark:text-gray-100 ml-3 mt-1"
                   rows="1"
                   style={{ minHeight: "30px", maxHeight: "120px" }}
                   onInput={(e) => {
@@ -1082,7 +1079,7 @@ function App() {
                         className={`px-3 py-1 text-sm rounded-full transition-colors flex items-center gap-1.5 ${
                           currentMode === "document"
                             ? "bg-blue-600 text-white shadow-sm"
-                            : "bg-gray-200 hover:bg-gray-300 text-gray-800"
+                            : "bg-gray-200 dark:bg-[#232326] hover:bg-gray-300 dark:hover:bg-[#29293a] text-gray-800 dark:text-gray-200"
                         }`}
                       >
                         <span className="text-xs">📄</span> Document
@@ -1093,7 +1090,7 @@ function App() {
                         className={`px-3 py-1 text-sm rounded-full transition-colors flex items-center gap-1.5 ${
                           currentMode === "search"
                             ? "bg-purple-600 text-white shadow-sm"
-                            : "bg-gray-200 hover:bg-gray-300 text-gray-800"
+                            : "bg-gray-200 dark:bg-[#232326] hover:bg-gray-300 dark:hover:bg-[#29293a] text-gray-800 dark:text-gray-200"
                         }`}
                       >
                         <span className="text-xs">🌐</span> Search
@@ -1105,7 +1102,7 @@ function App() {
                   <div className="flex items-center space-x-1">
                     <button
                       onClick={() => setShowFileUpload(true)}
-                      className="p-1.5 text-gray-500 hover:text-blue-600 transition-colors"
+                      className="p-1.5 text-gray-500 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
                     >
                       <span className="text-lg">📁</span>
                     </button>
@@ -1115,7 +1112,7 @@ function App() {
                       disabled={isLoading || !input.trim()}
                       className={`px-4 py-1.5 rounded-xl font-medium transition-all ${
                         isLoading || !input.trim()
-                          ? "bg-gray-200 text-gray-400 cursor-not-allowed"
+                          ? "bg-gray-200 dark:bg-[#29293a] text-gray-400 cursor-not-allowed"
                           : "bg-gradient-to-r from-blue-500 to-purple-600 text-white hover:opacity-90 shadow-md active:scale-95"
                       }`}
                     >
@@ -1163,15 +1160,15 @@ function App() {
         {/* Logout Modal */}
         {isLogoutModalOpen && (
           <div className="fixed inset-0 z-[999] flex items-center justify-center bg-black/40 backdrop-blur-sm animate-fade-in">
-            <div className="bg-white rounded-3xl p-6 max-w-sm w-full mx-4 shadow-2xl animate-zoom-in border border-gray-100">
+            <div className="bg-white dark:bg-[#18181e] rounded-3xl p-6 max-w-sm w-full mx-4 shadow-2xl animate-zoom-in border border-gray-100 dark:border-[#232326]">
               <div className="text-center">
-                <div className="w-16 h-16 bg-red-50 text-red-500 rounded-full flex items-center justify-center mx-auto mb-4 text-2xl">
+                <div className="w-16 h-16 bg-red-50 dark:bg-red-900/30 text-red-500 dark:text-red-400 rounded-full flex items-center justify-center mx-auto mb-4 text-2xl">
                   ⚠️
                 </div>
-                <h3 className="text-lg font-bold text-gray-900">
+                <h3 className="text-lg font-bold text-gray-900 dark:text-gray-100">
                   Konfirmasi Keluar
                 </h3>
-                <p className="text-gray-500 mt-2 text-sm leading-relaxed">
+                <p className="text-gray-500 dark:text-gray-300 mt-2 text-sm leading-relaxed">
                   Anda yakin ingin keluar? dalam mode guest anda tidak bisa
                   melihat dokumen peraturan PT Pindad.
                 </p>
@@ -1180,7 +1177,7 @@ function App() {
               <div className="flex space-x-3 mt-8">
                 <button
                   onClick={() => setIsLogoutModalOpen(false)}
-                  className="flex-1 px-4 py-3 bg-gray-100 text-gray-700 rounded-2xl font-semibold hover:bg-gray-200 transition-all active:scale-95"
+                  className="flex-1 px-4 py-3 bg-gray-100 dark:bg-[#232326] text-gray-700 dark:text-gray-200 rounded-2xl font-semibold hover:bg-gray-200 dark:hover:bg-[#29293a] transition-all active:scale-95"
                 >
                   Batal
                 </button>

@@ -1194,44 +1194,52 @@ def get_chat_history_from_db(session_uuid, limit=5):
             conn_hist.close()
 
 
-async def search_dialogue_corpus(query, limit=2):
-    """Mencari referensi percakapan masa lalu di dialogue corpus"""
-    logging.info(f"🧠 [search_dialogue] Mencari referensi di corpus: '{query}'")
+async def search_dialogue_corpus(query, npp, limit=2):
+    """
+    Mencari referensi percakapan masa lalu di dialogue corpus 
+    yang hanya dimiliki oleh user berdasarkan NPP.
+    """
+    logging.info(f"🧠 [search_dialogue] Mencari referensi di corpus (NPP: {npp}): '{query}'")
     try:
-        # Generate embedding untuk query
-        query_embedding = EMBEDDING_MODEL.encode([query], normalize_embeddings=True)[
-            0
-        ].tolist()
+        # 1. Generate embedding untuk query
+        query_embedding = EMBEDDING_MODEL.encode([query], normalize_embeddings=True)[0].tolist()
         query_vector_str = embedding_to_pgvector_str(query_embedding)
 
         conn = get_db_connection()
         cur = conn.cursor(cursor_factory=RealDictCursor)
 
-        # Cari berdasarkan kemiripan embedding_user
+        # 2. SQL JOIN menggunakan session_id dan filter NPP
         sql = """
         SELECT 
-            user_text, 
-            assistant_text,
-            (embedding_user <#> %s::vector) as distance
-        FROM ai_dialogue_corpus
+            adc.user_text, 
+            adc.assistant_text,
+            (adc.embedding_user <#> %s::vector) as distance
+        FROM ai_dialogue_corpus adc
+        JOIN chat_sessions cs ON adc.session_id = cs.id
+        WHERE cs.npp = %s
         ORDER BY distance ASC
         LIMIT %s;
         """
-        cur.execute(sql, (query_vector_str, limit))
+        
+        cur.execute(sql, (query_vector_str, npp, limit))
         results = cur.fetchall()
 
-        # Filter threshold (misal similarity > 0.7 atau distance < 0.3)
+        # 3. Filter threshold relevansi
         relevant_dialogues = []
         for r in results:
             similarity = 1.0 - r["distance"]
-            if similarity >= 0.7:  # Threshold bisa disesuaikan
+            if similarity >= 0.7:  
                 relevant_dialogues.append(r)
+                print(f"[DEBUG] Found Relevant Data (Sim: {similarity:.2f}): {r['user_text'][:50]}...")
 
         cur.close()
         conn.close()
+        
         return relevant_dialogues
+
     except Exception as e:
         logging.error(f"Error searching dialogue corpus: {e}")
+        if 'conn' in locals(): conn.close()
         return []
 
 

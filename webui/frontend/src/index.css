@@ -37,3 +37,175 @@
     transform: rotate(360deg);
   }
 }
+
+@layer base {
+  :root {
+    --bg-main: #ffffff;
+    --text-main: #1f2937;
+    --sidebar-bg: #f9fafb;
+  }
+
+  /* Ini akan otomatis aktif jika browser user mode Dark */
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg-main: #0f172a;
+      --text-main: #f8fafc;
+      --sidebar-bg: #1e293b;
+    }
+  }
+
+  body {
+    background-color: var(--bg-main);
+    color: var(--text-main);
+    transition: background-color 0.3s ease;
+  }
+}
+/* RESET SEMUA WARNA BAWAAN HLJS */
+.hljs {
+  background: transparent !important;
+  color: #ABB2BF !important; /* Warna teks standar (abu-abu IDE) */
+}
+
+/*--- DARK MODE THEME ala IDE ---*/
+.dark .hljs-tag, 
+.dark .hljs-name { 
+  color: #E06C75 !important; /* Tag HTML, nama elemen: Soft Pink/Red */
+}
+
+.dark .hljs-attr { 
+  color: #D19A66 !important; /* Atribut: Orange */
+}
+
+.dark .hljs-string { 
+  color: #98C379 !important; /* String: Hijau Soft */
+}
+
+.dark .hljs-keyword { 
+  color: #C678DD !important; /* Keyword (for, if, return): Ungu */
+}
+
+.dark .hljs-title, 
+.dark .hljs-function { 
+  color: #61AFEF !important; /* Nama function & title: Biru Muda */
+}
+
+.dark .hljs-variable, 
+.dark .hljs-template-variable { 
+  color: #E06C75 !important; /* Variabel PHP/Javascript: Soft Pink/Red */
+}
+
+.dark .hljs-comment { 
+  color: #7F848E !important; /* Komentar: Abu-abu Terang */
+  font-style: italic;
+}
+
+.dark .hljs-punctuation,
+.dark .hljs-subst {
+  color: #ABB2BF !important; /* Simbol: Default abu-abu */
+}
+
+.dark .hljs-number {
+  color: #D19A66 !important; /* Angka: Orange */
+}
+
+.dark .hljs-operator {
+  color: #56B6C2 !important; /* Operator: Biru Toska */
+}
+
+.dark .hljs-property {
+  color: #E5C07B !important; /* Property: Kuning Muda */
+}
+
+.dark .hljs-literal {
+  color: #56B6C2 !important; /* Literal: Biru Toska */
+}
+
+.dark .hljs-built_in,
+.dark .hljs-class { 
+  color: #E5C07B !important; /* Class/Built-in Fnc: Kuning */
+}
+
+.dark .hljs-meta {
+  color: #56B6C2 !important; /* Meta: Toska */
+}
+
+.dark .hljs-doctag {
+  color: #D19A66 !important;
+  font-style: italic;
+}
+
+/*--- LIGHT MODE ala VSCode/OneLight ---*/
+.hljs-tag, 
+.hljs-name { 
+  color: #ca1247 !important; /* Tag HTML, nama elemen: pink/merah terang */
+}
+
+.hljs-attr {
+  color: #986801 !important; /* Atribut: orange tua */
+}
+
+.hljs-string {
+  color: #2ea043 !important; /* String: hijau klasik */
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-weight: 500;
+}
+
+.hljs-keyword {
+  color: #a626a4 !important; /* Keyword: ungu */
+}
+
+.hljs-title, 
+.hljs-function {
+  color: #4078f2 !important; /* Biru klasik function */
+}
+
+.hljs-variable,
+.hljs-template-variable {
+  color: #ca1247 !important; /* Variabel: merah/pink */
+}
+
+.hljs-comment {
+  color: #a0a1a7 !important; /* Komentar: abu muda */
+  font-style: italic;
+}
+
+.hljs-punctuation,
+.hljs-subst {
+  color: #383a42 !important; /* Simbol: hampir hitam */
+}
+
+.hljs-number {
+  color: #986801 !important; /* Angka: orange tua */
+}
+
+.hljs-operator {
+  color: #0184bc !important; /* Operator: biru tosca */
+}
+
+.hljs-property {
+  color: #c18401 !important; /* Property: kuning tua */
+}
+
+.hljs-literal {
+  color: #0184bc !important; /* Literal: biru tosca */
+}
+
+.hljs-built_in,
+.hljs-class {
+  color: #c18401 !important; /* Class & Built-in: kuning */
+}
+
+.hljs-meta {
+  color: #0184bc !important; /* Meta: biru tosca */
+}
+
+.hljs-doctag {
+  color: #986801 !important;
+  font-style: italic;
+}
+
+/* Cursor kontras untuk code-block block animasi: */
+.code-block-container code span.inline-block.animate-pulse {
+  border-radius: 2px;
+  background: #3477f6 !important;
+}
