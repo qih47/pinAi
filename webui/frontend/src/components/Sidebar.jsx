@@ -10,10 +10,127 @@ const Sidebar = ({
   handleLogout,
   loadChatSession,
   currentSessionId,
-  chatHistory,    
+  chatHistory,
   setChatHistory,
-  triggerLogout
+  triggerLogout,
 }) => {
+  const [hoveredChatId, setHoveredChatId] = useState(null);
+  const [activeMenuId, setActiveMenuId] = useState(null);
+  const [editingSessionId, setEditingSessionId] = useState(null);
+  const [tempTitle, setTempTitle] = useState("");
+  const menuRef = useRef(null);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [sessionToDelete, setSessionToDelete] = useState(null);
+
+  // Close menu saat klik di luar
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (menuRef.current && !menuRef.current.contains(event.target)) {
+        setActiveMenuId(null);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const togglePinChat = async (e, sessionUuid) => {
+    e.stopPropagation(); // Biar gak trigger loadChatSession
+    try {
+      const res = await fetch(
+        `http://192.168.11.80:5000/api/chat/pin/${sessionUuid}`,
+        {
+          method: "POST",
+        }
+      );
+      const result = await res.json();
+      if (result.status === "success") {
+        // Update local state chatHistory
+        setChatHistory((prev) =>
+          prev.map((chat) =>
+            chat.session_uuid === sessionUuid
+              ? { ...chat, is_pinned: !chat.is_pinned }
+              : chat
+          )
+        );
+        setActiveMenuId(null);
+      }
+    } catch (err) {
+      console.error("Gagal menyematkan chat:", err);
+    }
+  };
+
+  const handleRename = async (sessionUuid) => {
+    if (!tempTitle.trim()) return;
+    try {
+      const res = await fetch(
+        `http://192.168.11.80:5000/api/chat/rename/${sessionUuid}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ judul: tempTitle }),
+        }
+      );
+      const result = await res.json();
+      if (result.status === "success") {
+        setChatHistory((prev) =>
+          prev.map((chat) =>
+            chat.session_uuid === sessionUuid
+              ? { ...chat, judul: tempTitle }
+              : chat
+          )
+        );
+        setEditingSessionId(null);
+      }
+    } catch (err) {
+      console.error("Gagal rename chat:", err);
+    }
+  };
+
+  // Fungsi untuk memicu modal muncul
+  const confirmDelete = (e, sessionUuid) => {
+    e.stopPropagation();
+    setSessionToDelete(sessionUuid);
+    setShowDeleteModal(true);
+    setActiveMenuId(null); // Tutup popup menu titik tiga
+  };
+
+  // Fungsi eksekusi hapus yang dipanggil dari dalam modal
+  const [isDeletingId, setIsDeletingId] = useState(null); // Tambah ini di deretan state atas
+
+  const executeDelete = async () => {
+    if (!sessionToDelete) return;
+
+    try {
+      // 1. Trigger animasi di UI dulu
+      setIsDeletingId(sessionToDelete);
+      setShowDeleteModal(false);
+
+      // 2. Tunggu sebentar biar animasinya kelihatan (400ms sesuai durasi CSS)
+      await new Promise((resolve) => setTimeout(resolve, 400));
+
+      // 3. Baru panggil API dan hapus dari state
+      const res = await fetch(
+        `http://192.168.11.80:5000/api/chat/delete/${sessionToDelete}`,
+        {
+          method: "POST",
+        }
+      );
+      const result = await res.json();
+
+      if (result.status === "success") {
+        setChatHistory((prev) =>
+          prev.filter((c) => c.session_uuid !== sessionToDelete)
+        );
+        if (currentSessionId === sessionToDelete) clearChat();
+      }
+    } catch (err) {
+      console.error("Gagal menghapus:", err);
+    } finally {
+      setIsDeletingId(null);
+      setSessionToDelete(null);
+    }
+  };
+
   // Fetch history chat saat user login (userData tersedia)
   useEffect(() => {
     const fetchHistory = async () => {
@@ -53,7 +170,7 @@ const Sidebar = ({
   return (
     <div
       className={`fixed left-0 top-0 h-screen bg-white-900 text-black flex flex-col transition-all duration-300 z-40 ${
-        isOpen ? "w-60" : "w-15"
+        isOpen ? "w-70" : "w-15"
       }`}
       style={{ background: "#F7F8FC", borderRight: "1px solid #E0E0E0" }}
     >
@@ -112,12 +229,12 @@ const Sidebar = ({
       </div>
       {/* Menu - Tombol New Chat */}
       <div
-        className={`p-3 space-y-2 ${!isOpen && "flex flex-col items-center"}`}
+        className={`p-3 space-y-3 ${!isOpen && "flex flex-col items-center"}`}
       >
         <button
           onClick={clearChat}
-          className={`flex items-center rounded-xl hover:bg-gray-200 transition-colors group overflow-hidden text-[14px] ${
-            isOpen ? "p-1 w-full space-x-3" : "p-1 justify-center"
+          className={`flex items-center rounded-full hover:bg-gray-200 transition-colors group overflow-hidden text-[14px] ${
+            isOpen ? "p-2 w-full space-x-3" : "p-2 justify-center"
           }`}
           title="New Chat"
         >
@@ -146,8 +263,8 @@ const Sidebar = ({
 
         <button
           onClick={() => setShowDocumentList(true)}
-          className={`flex items-center rounded-xl hover:bg-gray-200 transition-colors group overflow-hidden text-[14px] ${
-            isOpen ? "p-1 w-full space-x-3" : "p-1 justify-center"
+          className={`flex items-center rounded-full hover:bg-gray-200 transition-colors group overflow-hidden text-[14px] ${
+            isOpen ? "p-2 w-full space-x-3" : "p-2 justify-center"
           }`}
           title="Documents"
         >
@@ -165,48 +282,127 @@ const Sidebar = ({
       </div>
       {/* History Sections */}
       <div
-        className={`flex-1 overflow-y-auto px-2 py-2 space-y-4 transition-opacity duration-300 ${
+        className={`flex-1 overflow-y-auto px-2 py-2 space-y-0.5 transition-opacity duration-300 no-scrollbar ${
           !isOpen ? "opacity-0 pointer-events-none hidden" : "opacity-100"
         }`}
+        style={{
+          msOverflowStyle: "none" /* IE/Edge */,
+          scrollbarWidth: "none" /* Firefox */,
+        }}
       >
         {/* SEKSI SEMUA CHAT */}
-        <div
-          className={`flex-1 overflow-y-auto px-2 py-2 space-y-1 transition-opacity duration-300 ${
-            !isOpen ? "opacity-0 pointer-events-none hidden" : "opacity-100"
-          }`}
-        >
-          <div className="px-1 py-1 text-xs font-semibold text-gray-500 uppercase tracking-wider">
-            Semua Chat
-          </div>
+        <div className="px-3 py-1 text-[11px] font-bold text-gray-500 uppercase tracking-widest mb-1">
+          Semua Chat
+        </div>
 
-          {chatHistory.length > 0 ? (
-            chatHistory.map((chat) => (
+        {chatHistory.length > 0 ? (
+          [...chatHistory]
+            .sort((a, b) => (b.is_pinned ? 1 : 0) - (a.is_pinned ? 1 : 0))
+            .map((chat) => (
               <div
                 key={chat.session_uuid}
-                // GUNAKAN loadChatSession yang dikirim dari App.jsx
+                onMouseEnter={() => setHoveredChatId(chat.session_uuid)}
+                onMouseLeave={() => setHoveredChatId(null)}
                 onClick={() => loadChatSession(chat.session_uuid)}
-                className={`group flex items-center px-2 py-2 text-sm font-medium rounded-lg cursor-pointer transition-all border border-transparent ${
-                  // Kasih warna berbeda jika chat sedang aktif
+                className={`group relative flex items-center px-3 py-2 text-sm rounded-full cursor-pointer transition-all ${
                   currentSessionId === chat.session_uuid
-                    ? "bg-blue-50 text-blue-600 border-blue-200"
-                    : "text-gray-700 hover:bg-gray-200"
+                    ? "bg-blue-200 text-blue-600 font-bold"
+                    : "text-gray-600 hover:bg-gray-200 font-bold"
+                } ${
+                  isDeletingId === chat.session_uuid ? "animate-delete" : ""
                 }`}
                 title={chat.judul}
               >
-                <span className="mr-3 opacity-70 group-hover:scale-110 transition-transform">
-                  {currentSessionId === chat.session_uuid ? "🔵" : "💬"}
+                {/* Ikon Lebih Kecil & Rapat */}
+                <span className="mr-2 text-[12px] opacity-70 flex-shrink-0">
+                  {chat.is_pinned ? "📌" : "💬"}
                 </span>
-                <span className="truncate flex-1 text-left">
-                  {chat.judul || "Chat Baru"}
+
+                {/* Judul Chat dengan Font Lebih Kecil */}
+                <span className="truncate flex-1 text-left pr-4 text-[13px] leading-relaxed">
+                  {editingSessionId === chat.session_uuid ? (
+                    <input
+                      autoFocus
+                      className="w-full bg-white border border-blue-400 rounded px-1 outline-none text-black text-xs py-0"
+                      value={tempTitle}
+                      onChange={(e) => setTempTitle(e.target.value)}
+                      onBlur={() => handleRename(chat.session_uuid)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") handleRename(chat.session_uuid);
+                        if (e.key === "Escape") setEditingSessionId(null);
+                      }}
+                      onClick={(e) => e.stopPropagation()}
+                    />
+                  ) : (
+                    chat.judul || "Chat Baru"
+                  )}
                 </span>
+
+                {/* Tombol Menu Titik Tiga (Muncul saat hover) */}
+                {(hoveredChatId === chat.session_uuid ||
+                  activeMenuId === chat.session_uuid) && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setActiveMenuId(
+                        activeMenuId === chat.session_uuid
+                          ? null
+                          : chat.session_uuid
+                      );
+                    }}
+                    className="absolute right-1 p-1 hover:bg-gray-300 rounded transition-colors"
+                  >
+                    <svg
+                      className="h-3 w-3 text-gray-500"
+                      fill="currentColor"
+                      viewBox="0 0 20 20"
+                    >
+                      <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
+                    </svg>
+                  </button>
+                )}
+
+                {/* Popup Menu Tetap Sama */}
+                {activeMenuId === chat.session_uuid && (
+                  <div
+                    ref={menuRef}
+                    className="absolute right-0 top-7 w-32 bg-white border border-gray-200 rounded-md shadow-lg z-[100] py-1 text-[11px]"
+                  >
+                    <button
+                      onClick={(e) => togglePinChat(e, chat.session_uuid)}
+                      className="w-full text-left px-3 py-1.5 hover:bg-gray-100 flex justify-between items-center"
+                    >
+                      <span>{chat.is_pinned ? "Lepas" : "Pin"}</span>
+                      <span>📌</span>
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setEditingSessionId(chat.session_uuid);
+                        setTempTitle(chat.judul || "");
+                        setActiveMenuId(null);
+                      }}
+                      className="w-full text-left px-3 py-1.5 hover:bg-gray-100 flex justify-between items-center"
+                    >
+                      <span>Rename</span>
+                      <span>✏️</span>
+                    </button>
+                    <button
+                      onClick={(e) => confirmDelete(e, chat.session_uuid)}
+                      className="w-full text-left px-3 py-1.5 hover:bg-red-50 text-red-600 flex justify-between items-center font-semibold"
+                    >
+                      <span>Hapus</span>
+                      <span>🗑️</span>
+                    </button>
+                  </div>
+                )}
               </div>
             ))
-          ) : (
-            <div className="text-xs text-gray-400 px-3 py-4 italic text-left">
-              Belum ada history chat
-            </div>
-          )}
-        </div>
+        ) : (
+          <div className="text-[11px] text-gray-400 px-3 py-4 italic">
+            Belum ada history
+          </div>
+        )}
       </div>
       {/* Footer Profile */}
       <div
@@ -249,7 +445,7 @@ const Sidebar = ({
             <button
               onClick={() => {
                 setShowLogoutPopup(false); // Tutup popup profil
-                triggerLogout();           // Buka modal konfirmasi
+                triggerLogout(); // Buka modal konfirmasi
               }}
               className="w-full flex items-center space-x-3 px-4 py-1 text-red-400 hover:bg-gray-100 transition-colors"
               style={{
@@ -339,6 +535,38 @@ const Sidebar = ({
               />
             </svg>
           </button>
+        )}
+        {/* MODAL CUSTOM DELETE */}
+        {showDeleteModal && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
+            <div className="bg-white rounded-2xl p-6 w-80 shadow-2xl transform animate-in zoom-in-95 duration-200">
+              <div className="flex flex-col items-center text-center">
+                <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mb-4">
+                  <span className="text-xl">🗑️</span>
+                </div>
+                <h3 className="text-lg font-bold text-gray-900">Hapus Chat?</h3>
+                <p className="text-sm text-gray-500 mt-2">
+                  Chat ini akan dihapus dari riwayat Anda. Tindakan ini tidak
+                  dapat dibatalkan.
+                </p>
+              </div>
+
+              <div className="flex space-x-3 mt-6">
+                <button
+                  onClick={() => setShowDeleteModal(false)}
+                  className="flex-1 px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-medium transition-colors"
+                >
+                  Batal
+                </button>
+                <button
+                  onClick={executeDelete}
+                  className="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl font-medium transition-colors shadow-lg shadow-red-200"
+                >
+                  Hapus
+                </button>
+              </div>
+            </div>
+          </div>
         )}
       </div>
     </div>
