@@ -1159,46 +1159,6 @@ Ringkasan:"""
         return "Ringkasan tidak tersedia."
 
 
-# ========== SMART CHAT FUNCTION ==========
-async def smart_chat_with_context(
-    user_message, active_file=None, mode=MODE_NORMAL, model=None, session_id=None
-):
-    """
-    Smart chat with:
-    1. Session-based History (Contextual Awareness)
-    2. Analysis & Query Rewriting
-    3. Gatekeeper Relevance Verification
-    """
-
-    # Inisialisasi awal
-    pdf_info = None
-    should_include_pdf = False
-    history_context = ""
-
-    # --- 0. LOAD HISTORY BERDASARKAN SESSION_ID ---
-    # Menarik history agar AI paham konteks pembicaraan sebelumnya (misal: rekrutmen)
-    if session_id:
-        try:
-            # Fungsi ini diasumsikan mengambil history terakhir dari database Anda
-            history_messages = await get_chat_history_from_db(session_id, limit=5)
-            if history_messages:
-                history_context = "\n".join(
-                    [f"{m['role'].upper()}: {m['content']}" for m in history_messages]
-                )
-        except Exception as e:
-            logging.error(f"Gagal memuat history untuk session {session_id}: {e}")
-
-    # =========================================================================
-    # MODE SEARCH (Pindad Website Scraper)
-    # =========================================================================
-    if mode == MODE_SEARCH:
-        # Gunakan history untuk mempertajam search query ke website
-        refinement_prompt = f"History:\n{history_context}\nUser: {user_message}\nBuat 1 search query singkat untuk mencari informasi terbaru di web."
-        web_query = await ask_qwen3_vl(
-            refinement_prompt, stream=False, override_model=model
-        )
-
-
 # Fungsi Helper History (Pastikan ditaruh di luar smart_chat_with_context)
 def get_chat_history_from_db(session_uuid, limit=5):
     """Mengambil history percakapan terakhir menggunakan psycopg2"""
@@ -1234,6 +1194,47 @@ def get_chat_history_from_db(session_uuid, limit=5):
             conn_hist.close()
 
 
+async def search_dialogue_corpus(query, limit=2):
+    """Mencari referensi percakapan masa lalu di dialogue corpus"""
+    logging.info(f"🧠 [search_dialogue] Mencari referensi di corpus: '{query}'")
+    try:
+        # Generate embedding untuk query
+        query_embedding = EMBEDDING_MODEL.encode([query], normalize_embeddings=True)[
+            0
+        ].tolist()
+        query_vector_str = embedding_to_pgvector_str(query_embedding)
+
+        conn = get_db_connection()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+
+        # Cari berdasarkan kemiripan embedding_user
+        sql = """
+        SELECT 
+            user_text, 
+            assistant_text,
+            (embedding_user <#> %s::vector) as distance
+        FROM ai_dialogue_corpus
+        ORDER BY distance ASC
+        LIMIT %s;
+        """
+        cur.execute(sql, (query_vector_str, limit))
+        results = cur.fetchall()
+
+        # Filter threshold (misal similarity > 0.7 atau distance < 0.3)
+        relevant_dialogues = []
+        for r in results:
+            similarity = 1.0 - r["distance"]
+            if similarity >= 0.7:  # Threshold bisa disesuaikan
+                relevant_dialogues.append(r)
+
+        cur.close()
+        conn.close()
+        return relevant_dialogues
+    except Exception as e:
+        logging.error(f"Error searching dialogue corpus: {e}")
+        return []
+
+
 # ========== SMART CHAT FUNCTION ==========
 async def smart_chat_with_context(
     user_message, active_file=None, mode=MODE_NORMAL, model=None, session_uuid=None
@@ -1241,8 +1242,6 @@ async def smart_chat_with_context(
     """Smart chat with History Context, Analysis, and Verification flow"""
 
     # Inisialisasi awal
-    pdf_info = None
-    should_include_pdf = False
     history_context = ""
 
     # --- 0. LOAD HISTORY DARI DB ---
@@ -1475,15 +1474,87 @@ INSTRUKSI:
     # MODE NORMAL
     # =========================================================================
     elif mode == MODE_NORMAL:
-        if not active_file:
-            prompt = f"History:\n{history_context}\n\nUser: {user_message}"
-            reply = await ask_qwen3_vl(prompt, stream=True, override_model=model)
-            return reply, None, False
+            print(f"\n[DEBUG] === MEMULAI ANALISIS PESAN (MODE NORMAL) ===")
+            print(f"[DEBUG] User Message: {user_message}")
 
-        context_text = active_file["text"][:2500]
-        prompt = f"File: {active_file['filename']}\nKonten: {context_text}\nHistory: {history_context}\nUser: {user_message}"
-        reply = await ask_qwen3_vl(prompt, stream=True, override_model=model)
-        return reply, None, False
+            # --- LAYER 1: ANALISIS NIAT USER ---
+            analysis_prompt = f"""
+            Tugas: Analisis apakah pesan user memerlukan pencarian data di database peraturan/corpus atau tidak.
+            History: {history_context[-500:]}
+            User: {user_message}
+
+            Kriteria mencari ke database:
+            - Menanyakan aturan, prosedur, batas usia, gaji, atau info spesifik perusahaan.
+            - Menanyakan sesuatu yang AI tidak tahu dari history.
+
+            Kriteria TIDAK perlu mencari:
+            - Instruksi menyimpan/mencatat (save, keep, catat).
+            - Ngobrol biasa (hi, apa kabar, terimakasih).
+            - Menanyakan hal umum yang tidak butuh data internal.
+
+            Jawab dengan format JSON:
+            {{
+            "perlu_cari": true/false,
+            "alasan": "jelaskan secara singkat kenapa",
+            "keyword_pencarian": "kata kunci untuk search"
+            }}
+            """
+            
+            # Panggil AI analis (non-stream untuk mendapatkan JSON)
+            analysis_res = await ask_qwen3_vl(analysis_prompt, stream=False, override_model="qwen2.5:14b-instruct")
+            
+            # Logging Respon Mentah Analis
+            print(f"[DEBUG] Raw Analyst Response: {analysis_res}")
+
+            try:
+                # Parsing JSON
+                clean_json = analysis_res.replace('```json', '').replace('```', '').strip()
+                analysis_data = json.loads(clean_json)
+                
+                # Log Hasil Analisis yang sudah di-parse
+                print(f"[LOG ANALIS]")
+                print(f"  > Perlu Cari: {analysis_data.get('perlu_cari')}")
+                print(f"  > Alasan: {analysis_data.get('alasan')}")
+                print(f"  > Keyword: {analysis_data.get('keyword_pencarian')}")
+                
+            except Exception as e:
+                print(f"[ERROR] Gagal parsing JSON analis: {e}")
+                analysis_data = {"perlu_cari": True, "keyword_pencarian": user_message}
+
+            # --- LAYER 2: EKSEKUSI BERDASARKAN ANALISIS ---
+            corpus_context = ""
+            
+            if analysis_data.get("perlu_cari"):
+                search_query = analysis_data.get("keyword_pencarian", user_message)
+                print(f"[DEBUG] Mencari di database dengan keyword: '{search_query}'...")
+                
+                dialogue_ref = await search_dialogue_corpus(search_query)
+
+                if dialogue_ref:
+                    print(f"[DEBUG] Berhasil menemukan {len(dialogue_ref)} referensi relevan.")
+                    relevance_context = "\n".join([
+                        f"User: {d['user_text']}\nAI: {d['assistant_text']}" 
+                        for d in dialogue_ref
+                    ])
+                    corpus_context = f"REFERENSI DATA INTERNAL:\n{relevance_context}\n\n"
+                else:
+                    print(f"[DEBUG] Tidak ada data relevan di database.")
+                    corpus_context = "INFO: Tidak ditemukan data relevan di database.\n"
+            else:
+                print(f"[DEBUG] Jalur Normal: Tidak melakukan pencarian database (Sesuai saran analis).")
+
+            # --- LAYER 3: GENERATE RESPON AKHIR ---
+            if not active_file:
+                prompt = f"{corpus_context}\nHistory:\n{history_context}\n\nUser: {user_message}"
+            else:
+                context_text = active_file["text"][:2500]
+                prompt = f"File: {active_file['filename']}\nKonten: {context_text}\n{corpus_context}\nHistory: {history_context}\nUser: {user_message}"
+
+            print(f"[DEBUG] Mengirim prompt final ke model...")
+            reply = await ask_qwen3_vl(prompt, stream=True, override_model=model)
+            
+            print(f"[DEBUG] === ANALISIS SELESAI ===\n")
+            return reply, None, False
 
 
 async def generate_judul_ai(message):
@@ -1661,7 +1732,8 @@ async def get_chat_history(npp):
                 """
                 SELECT session_uuid, judul, started_at 
                 FROM chat_sessions 
-                WHERE npp = %s AND is_active = TRUE 
+                WHERE npp = %s AND is_active = TRUE
+                AND is_deleted = false  
                 ORDER BY started_at DESC
             """,
                 (npp,),
@@ -2204,6 +2276,92 @@ async def health():
         return jsonify({"status": "unhealthy", "error": str(e)}), 500
 
 
+@app.route("/api/chat/pin/<uuid:session_uuid>", methods=["POST"])
+def toggle_pin_chat(session_uuid):
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+
+        # Logika TOGGLE: kalau true jadi false, kalau false jadi true
+        sql = """
+            UPDATE chat_sessions 
+            SET is_pinned = NOT is_pinned 
+            WHERE session_uuid = %s 
+            RETURNING is_pinned
+        """
+        cur.execute(sql, (str(session_uuid),))
+        result = cur.fetchone()
+
+        if result:
+            conn.commit()
+            new_status = result[0]
+            cur.close()
+            conn.close()
+            return jsonify(
+                {
+                    "status": "success",
+                    "message": f"Chat {'disematkan' if new_status else 'dilepas'}",
+                    "is_pinned": new_status,
+                }
+            )
+        else:
+            return jsonify(
+                {"status": "error", "message": "Session tidak ditemukan"}
+            ), 404
+
+    except Exception as e:
+        print(f"Error toggle pin: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route('/api/chat/rename/<session_uuid>', methods=['POST'])
+async def rename_chat(session_uuid): # Tambahkan async
+    try:
+        # WAJIB pakai await di sini karena ini coroutine
+        data = await request.get_json() 
+        
+        if not data:
+            return jsonify({"status": "error", "message": "Data tidak ditemukan"}), 400
+            
+        new_judul = data.get('judul')
+        
+        # Koneksi DB (Gunakan koneksi standar lu)
+        conn = get_db_connection()
+        cur = conn.cursor()
+        
+        cur.execute(
+            "UPDATE chat_sessions SET judul = %s WHERE session_uuid = %s",
+            (new_judul, str(session_uuid))
+        )
+        
+        conn.commit()
+        cur.close()
+        conn.close()
+        
+        return jsonify({"status": "success", "message": "Judul berhasil diubah"})
+    except Exception as e:
+        print(f"Error Rename: {str(e)}")
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/api/chat/delete/<session_uuid>', methods=['POST'])
+async def delete_chat(session_uuid):
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        
+        # Soft delete: cuma ubah flag is_deleted
+        sql = "UPDATE chat_sessions SET is_deleted = true WHERE session_uuid = %s"
+        cur.execute(sql, (str(session_uuid),))
+        
+        conn.commit()
+        cur.close()
+        conn.close()
+        
+        return jsonify({"status": "success", "message": "Chat berhasil dihapus (soft delete)"})
+    except Exception as e:
+        print(f"Error Delete: {str(e)}")
+        return jsonify({"status": "error", "message": str(e)}), 500
+    
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
 
