@@ -70,13 +70,13 @@ function App() {
   const autoScrollEnabled = useRef(true);
   const typingAnimationRef = useRef(null);
   const isUserScrolling = useRef(false);
-
-  // =========================================================================
-  // AUTO-SCROLL LOGIC (MODULAR RESUME VERSION)
-  // =========================================================================
-
-  // Ref tambahan untuk memantau status AI ngetik secara real-time di handleScroll
+  const [showScrollTop, setShowScrollTop] = useState(false);
+  const [showScrollBottom, setShowScrollBottom] = useState(false);
   const isAiTypingRef = useRef(false);
+  const [isAtBottom, setIsAtBottom] = useState(true);
+  // =========================================================================
+  // AUTO-SCROLL LOGIC
+  // =========================================================================
 
   // Fungsi buat start interval scroll (Modular)
   const startAutoScroll = () => {
@@ -115,22 +115,31 @@ function App() {
       const { scrollTop, scrollHeight, clientHeight } = container;
       const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
 
-      // USER NAIK -> Stop Auto Scroll
-      if (distanceFromBottom > 100) { 
+      // UPDATE STATE UNTUK ICON TOMBOL
+      setIsAtBottom(distanceFromBottom < 100);
+
+      // 1. Logic Munculkan/Sembunyikan Tombol
+      // Munculkan tombol "Ke Atas" jika sudah scroll lebih dari 400px dari puncak
+      setShowScrollTop(scrollTop > 400);
+
+      // Munculkan tombol "Ke Bawah" jika jarak dari dasar lebih dari 200px
+      setShowScrollBottom(distanceFromBottom > 200);
+
+      // 2. USER NAIK -> Stop Auto Scroll
+      if (distanceFromBottom > 100) {
         if (!isUserScrolling.current) {
           isUserScrolling.current = true;
           autoScrollEnabled.current = false;
-          // Interval otomatis mati di cycle berikutnya karena check status
         }
       }
 
-      // USER BALIK KE BAWAH -> Resume Auto Scroll
-      if (distanceFromBottom < 100) { 
+      // 3. USER BALIK KE BAWAH -> Resume Auto Scroll
+      if (distanceFromBottom < 100) {
         if (isUserScrolling.current) {
           isUserScrolling.current = false;
           autoScrollEnabled.current = true;
 
-          // Tarik ke bawah sekali
+          // Tarik ke bawah sekali (instant)
           container.scrollTop = container.scrollHeight;
 
           // 🔥 RESTART AUTO SCROLL KALO AI MASIH NGETIK
@@ -152,12 +161,12 @@ function App() {
 
     const lastMessage = messages[messages.length - 1];
     const isTypingNow = lastMessage?.sender === "ai" && lastMessage?.isTyping;
-    
+
     // Simpan di Ref biar handleScroll bisa baca nilai terbaru
     isAiTypingRef.current = isTypingNow;
 
     if (isTypingNow && autoScrollEnabled.current && !isUserScrolling.current) {
-      startAutoScroll(); 
+      startAutoScroll();
     } else if (!isTypingNow) {
       // Bersihkan jika AI sudah selesai
       if (typingAnimationRef.current) {
@@ -168,7 +177,10 @@ function App() {
       // Smooth scroll sekali pas AI selesai
       if (autoScrollEnabled.current && !isUserScrolling.current) {
         setTimeout(() => {
-          container.scrollTo({ top: container.scrollHeight, behavior: "smooth" });
+          container.scrollTo({
+            top: container.scrollHeight,
+            behavior: "smooth",
+          });
         }, 100);
       }
     }
@@ -632,10 +644,6 @@ function App() {
   };
 
   // =========================================================================
-  // RENDER LOADING SCREEN
-  // =========================================================================
-
-  // =========================================================================
   // MAIN RENDER
   // =========================================================================
 
@@ -673,6 +681,61 @@ function App() {
           />
         </div>
       )}
+      {/* FLOATING TOGGLE BUTTON */}
+      <div className="fixed bottom-[130px] right-1/5 -translate-x-1/2 z-[9999]">
+        <button
+          onClick={() => {
+            const container = messagesContainerRef.current;
+            if (!container) return;
+
+            if (isAtBottom) {
+              // AKSI: Ke Paling Atas
+              container.scrollTo({ top: 0, behavior: "smooth" });
+            } else {
+              // AKSI: Ke Paling Bawah
+              container.scrollTo({
+                top: container.scrollHeight,
+                behavior: "smooth",
+              });
+
+              // SYNC DENGAN LOGIC AUTO-SCROLL LU
+              autoScrollEnabled.current = true;
+              isUserScrolling.current = false;
+
+              // Jika AI lagi ngetik, langsung jalankan lagi mesin scroll-nya
+              if (isAiTypingRef.current) {
+                startAutoScroll();
+              }
+            }
+          }}
+          className="group p-3 bg-white dark:bg-[#2e2e33] border border-gray-200 dark:border-gray-700 rounded-full shadow-2xl hover:scale-110 transition-all active:scale-95"
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            className={`w-5 h-5 text-gray-600 dark:text-gray-300 transition-transform duration-500 ${
+              isAtBottom ? "" : "rotate-180"
+            }`}
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M5 15l7-7 7 7"
+            />
+          </svg>
+
+          {/* Indikator Typing - Tetap muncul kalau kita lagi di atas */}
+          {!isAtBottom && isAiTypingRef.current && (
+            <span className="absolute -top-1 -right-1 flex h-3 w-3">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
+            </span>
+          )}
+        </button>
+      </div>
       {/* Model Selector - Hanya muncul jika sudah login */}
       {isLoggedIn && (
         <div
@@ -893,10 +956,11 @@ function App() {
         {/* Area Pesan */}
         <div
           ref={messagesContainerRef}
-          className="flex-1 overflow-y-auto px-4 py-6 bg-white dark:bg-[#232326] transition-colors duration-300"
+          className="flex-1 overflow-y-auto px-4 no-scrollbar py-6 bg-white dark:bg-[#232326] transition-colors duration-300"
           style={{
             overflowAnchor: "none", // Ini kuncinya bro!
             scrollBehavior: "auto",
+            height: "100%",
           }}
         >
           <div className="max-w-3xl mx-auto">
