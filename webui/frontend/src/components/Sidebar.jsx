@@ -421,21 +421,16 @@ const Sidebar = ({
         {showLogoutPopup && (
           <div
             ref={popupRef}
-            className={`absolute bottom-full left-2 mb-2 w-48 rounded-xl shadow-2xl py-2 z-50 transition-all dark:bg-gray-800 dark:border-gray-700 ${
+            className={`absolute bottom-full left-2 mb-2 w-48 rounded-xl shadow-2xl py-2 z-50 transition-all bg-[#F7F8FC] dark:bg-[#232326]  ${
               !isOpen && "left-full ml-2 bottom-2"
             }`}
-            style={{
-              background: "#ffffff",
-              border: "1px solid #E0E0E0",
-              borderRadius: "10px",
-              boxShadow: "0 0 10px 0 rgba(0, 0, 0, 0.1)",
-            }}
+
           >
             <div className="px-4 py-2 ">
               <p className="text-xs text-black-400 dark:text-gray-400">
                 Akun Anda
               </p>
-              <p className="text-sm font-semibold truncate dark:text-white">
+              <p className="text-xs font-semibold truncate dark:text-white">
                 {userData?.fullname || "Loading..."}
               </p>
             </div>
@@ -446,11 +441,7 @@ const Sidebar = ({
                 setShowLogoutPopup(false);
                 triggerLogout();
               }}
-              className="w-full flex items-center space-x-3 px-4 py-1 text-red-400 hover:bg-gray-100 transition-colors dark:hover:bg-gray-700"
-              style={{
-                borderTop: "1px solid #E0E0E0",
-                borderRadius: "10px",
-              }}
+              className="w-full flex items-center space-x-3 px-4 py-1 text-red-400 hover:bg-gray-100 transition-colors dark:hover:bg-gray-900 border-t border-t-[#E0E0E0] dark:border-t-[#1A1A1C]"
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"

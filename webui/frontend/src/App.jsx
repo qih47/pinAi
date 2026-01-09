@@ -72,10 +72,32 @@ function App() {
   const isUserScrolling = useRef(false);
 
   // =========================================================================
-  // AUTO-SCROLL LOGIC
+  // AUTO-SCROLL LOGIC (MODULAR RESUME VERSION)
   // =========================================================================
 
-  // Reset auto-scroll saat user kirim pesan
+  // Ref tambahan untuk memantau status AI ngetik secara real-time di handleScroll
+  const isAiTypingRef = useRef(false);
+
+  // Fungsi buat start interval scroll (Modular)
+  const startAutoScroll = () => {
+    const container = messagesContainerRef.current;
+    if (!container) return;
+
+    if (typingAnimationRef.current) {
+      clearInterval(typingAnimationRef.current);
+    }
+
+    typingAnimationRef.current = setInterval(() => {
+      if (autoScrollEnabled.current && !isUserScrolling.current) {
+        container.scrollTop = container.scrollHeight;
+      } else {
+        clearInterval(typingAnimationRef.current);
+        typingAnimationRef.current = null;
+      }
+    }, 50);
+  };
+
+  // 1. Reset status saat user kirim pesan baru
   useEffect(() => {
     const lastMessage = messages[messages.length - 1];
     if (lastMessage?.sender === "user") {
@@ -84,7 +106,7 @@ function App() {
     }
   }, [messages]);
 
-  // Track scroll behavior user
+  // 2. Track scroll behavior user (Detection & Resume)
   useEffect(() => {
     const container = messagesContainerRef.current;
     if (!container) return;
@@ -93,75 +115,67 @@ function App() {
       const { scrollTop, scrollHeight, clientHeight } = container;
       const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
 
-      // user naik
-      if (distanceFromBottom > 150) {
+      // USER NAIK -> Stop Auto Scroll
+      if (distanceFromBottom > 100) { 
         if (!isUserScrolling.current) {
           isUserScrolling.current = true;
           autoScrollEnabled.current = false;
-
-          if (typingAnimationRef.current) {
-            clearInterval(typingAnimationRef.current);
-            typingAnimationRef.current = null;
-          }
+          // Interval otomatis mati di cycle berikutnya karena check status
         }
       }
 
-      // user balik ke bawah
-      if (distanceFromBottom < 20) {
-        isUserScrolling.current = false;
-        autoScrollEnabled.current = true;
+      // USER BALIK KE BAWAH -> Resume Auto Scroll
+      if (distanceFromBottom < 100) { 
+        if (isUserScrolling.current) {
+          isUserScrolling.current = false;
+          autoScrollEnabled.current = true;
+
+          // Tarik ke bawah sekali
+          container.scrollTop = container.scrollHeight;
+
+          // 🔥 RESTART AUTO SCROLL KALO AI MASIH NGETIK
+          if (isAiTypingRef.current) {
+            startAutoScroll();
+          }
+        }
       }
     };
 
     container.addEventListener("scroll", handleScroll);
     return () => container.removeEventListener("scroll", handleScroll);
-  }, []);
+  }, []); // Cukup sekali mount
 
-  // Auto-scroll ketika ada message baru atau AI selesai mengetik
+  // 3. Eksekusi & Update Ref status ngetik
   useEffect(() => {
     const container = messagesContainerRef.current;
     if (!container) return;
 
-    const aiMessages = messages.filter((m) => m.sender === "ai");
-    const lastAiMessage = aiMessages[aiMessages.length - 1];
-    const isAiTyping = lastAiMessage?.isTyping === true;
+    const lastMessage = messages[messages.length - 1];
+    const isTypingNow = lastMessage?.sender === "ai" && lastMessage?.isTyping;
+    
+    // Simpan di Ref biar handleScroll bisa baca nilai terbaru
+    isAiTypingRef.current = isTypingNow;
 
-    // AI sedang mengetik → AUTO (tanpa smooth)
-    if (isAiTyping && autoScrollEnabled.current && !isUserScrolling.current) {
-      if (typingAnimationRef.current) {
-        clearInterval(typingAnimationRef.current);
-      }
-
-      typingAnimationRef.current = setInterval(() => {
-        if (autoScrollEnabled.current && !isUserScrolling.current) {
-          container.scrollTop = container.scrollHeight;
-        }
-      }, 100);
-
-      return () => {
-        if (typingAnimationRef.current) {
-          clearInterval(typingAnimationRef.current);
-          typingAnimationRef.current = null;
-        }
-      };
-    }
-
-    // AI selesai → smooth sekali
-    if (!isAiTyping && autoScrollEnabled.current && !isUserScrolling.current) {
+    if (isTypingNow && autoScrollEnabled.current && !isUserScrolling.current) {
+      startAutoScroll(); 
+    } else if (!isTypingNow) {
+      // Bersihkan jika AI sudah selesai
       if (typingAnimationRef.current) {
         clearInterval(typingAnimationRef.current);
         typingAnimationRef.current = null;
       }
 
-      setTimeout(() => {
-        if (autoScrollEnabled.current && !isUserScrolling.current) {
-          container.scrollTo({
-            top: container.scrollHeight,
-            behavior: "smooth",
-          });
-        }
-      }, 100);
+      // Smooth scroll sekali pas AI selesai
+      if (autoScrollEnabled.current && !isUserScrolling.current) {
+        setTimeout(() => {
+          container.scrollTo({ top: container.scrollHeight, behavior: "smooth" });
+        }, 100);
+      }
     }
+
+    return () => {
+      if (typingAnimationRef.current) clearInterval(typingAnimationRef.current);
+    };
   }, [messages]);
 
   // Cleanup interval
@@ -621,24 +635,6 @@ function App() {
   // RENDER LOADING SCREEN
   // =========================================================================
 
-  if (isInitializing) {
-    return (
-      <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-white dark:bg-[#232326] transition-colors">
-        <img
-          src="./src/assets/cakra.png"
-          alt="Loading..."
-          className="w-20 h-20 animate-spin"
-        />
-        <h2 className="mt-6 text-xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 dark:from-blue-400 dark:to-purple-500 bg-clip-text text-transparent animate-bounce">
-          CAKRA AI
-        </h2>
-        <p className="text-gray-400 dark:text-gray-300 text-sm mt-2">
-          Menyiapkan ruang kerja Anda...
-        </p>
-      </div>
-    );
-  }
-
   // =========================================================================
   // MAIN RENDER
   // =========================================================================
@@ -758,7 +754,19 @@ function App() {
           </div>
         </div>
       )}
-
+      {/* LOADING SCREEN SEBAGAI OVERLAY */}
+      {isInitializing && (
+        <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-white dark:bg-[#232326]">
+          <img
+            src="./src/assets/cakra.png"
+            alt="Loading..."
+            className="w-20 h-20 animate-spin"
+          />
+          <h2 className="mt-6 text-xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent animate-bounce">
+            CAKRA AI
+          </h2>
+        </div>
+      )}
       {/* Content Container */}
       <div
         className={`flex flex-col flex-1 h-full transition-all duration-300 ${
@@ -886,6 +894,10 @@ function App() {
         <div
           ref={messagesContainerRef}
           className="flex-1 overflow-y-auto px-4 py-6 bg-white dark:bg-[#232326] transition-colors duration-300"
+          style={{
+            overflowAnchor: "none", // Ini kuncinya bro!
+            scrollBehavior: "auto",
+          }}
         >
           <div className="max-w-3xl mx-auto">
             {messages.length === 0 ? (

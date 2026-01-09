@@ -203,9 +203,22 @@
   color: #986801 !important;
   font-style: italic;
 }
+.hljs-subst {
+  color: #ec13b6 !important;
+  font-style: italic;
+}
 
 /* Cursor kontras untuk code-block block animasi: */
 .code-block-container code span.inline-block.animate-pulse {
   border-radius: 2px;
   background: #3477f6 !important;
 }
+
+.messages-container {
+  overflow-y: auto;
+  overflow-x: hidden;
+  /* Jangan pake scroll-behavior: smooth di CSS, bikin JS telat ngitung scrollHeight */
+  scroll-behavior: auto !important; 
+  overscroll-behavior-y: contain;
+}
+
