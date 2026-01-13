@@ -23,6 +23,7 @@ from sentence_transformers import SentenceTransformer
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 from quart import send_file
+from webui.backend.ocr.ocr_processor import process_pdf_attachment_to_ocr
 
 # Konstanta
 # Gunakan SIMILARITY_THRESHOLD yang sesuai, misalnya 0.7
@@ -1072,14 +1073,12 @@ async def extract_with_qwen3_vl(filepath, filetype):
 async def ask_qwen3_vl(
     prompt, images=None, stream=False, file_type=None, override_model=None
 ):
-    """Helper untuk bertanya ke model yang sesuai berdasarkan konten"""
+    """Helper untuk bertanya ke model yang sesuai dengan jaminan return string"""
 
     # 1. LOGIKA PEMILIHAN MODEL
     if images or (file_type and file_type in ["pdf", "png", "jpg", "jpeg"]):
-        # Jika ada konten visual, wajib pakai VISION_MODEL
         target_model = VISION_MODEL
     else:
-        # Jika hanya teks, pakai model dari FE, kalau kosong pakai PRIMARY_MODEL global
         target_model = override_model if override_model else PRIMARY_MODEL
 
     messages = [{"role": "user", "content": prompt}]
@@ -1088,29 +1087,48 @@ async def ask_qwen3_vl(
 
     print(f"--- Ollama Request: Using model {target_model} ---")
 
-    async with aiohttp.ClientSession() as session:
-        async with session.post(
-            OLLAMA_URL,
-            json={
-                "model": target_model,  # <--- Pake hasil pilihan logika di atas
-                "messages": messages,
-                "stream": stream,
-                "options": {"temperature": 0.1},
-            },
-        ) as resp:
-            if stream:
-                reply = ""
-                async for line in resp.content:
-                    if line:
-                        try:
-                            obj = json.loads(line.decode("utf-8"))
-                            reply += obj.get("message", {}).get("content", "")
-                        except:
-                            continue
-                return reply
-            else:
-                result = await resp.json()
-                return result.get("message", {}).get("content", "")
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                OLLAMA_URL,
+                json={
+                    "model": target_model,
+                    "messages": messages,
+                    "stream": stream,
+                    "options": {"temperature": 0.1},
+                },
+                timeout=120,
+            ) as resp:
+                if resp.status != 200:
+                    err_msg = await resp.text()
+                    print(f"Ollama Error ({resp.status}): {err_msg}")
+                    return f"Error dari Ollama: {resp.status}"
+
+                if stream:
+                    full_reply = ""
+                    async for line in resp.content:
+                        if line:
+                            try:
+                                obj = json.loads(line.decode("utf-8"))
+                                chunk = obj.get("message", {}).get("content", "")
+                                full_reply += chunk
+                                if obj.get("done"):
+                                    break
+                            except:
+                                continue
+                    return (
+                        full_reply
+                        if full_reply
+                        else "Model memberikan respon kosong (stream)."
+                    )
+                else:
+                    result = await resp.json()
+                    return result.get("message", {}).get(
+                        "content", "Model memberikan respon kosong."
+                    )
+    except Exception as e:
+        print(f"Critical Error in ask_qwen3_vl: {str(e)}")
+        return f"Sistem AI sedang sibuk atau error: {str(e)}"
 
 
 async def extract_fallback(filepath, filetype):
@@ -1194,71 +1212,113 @@ def get_chat_history_from_db(session_uuid, limit=5):
             conn_hist.close()
 
 
-async def search_dialogue_corpus(query, npp, limit=2):
-    """
-    Mencari referensi percakapan masa lalu di dialogue corpus 
-    yang hanya dimiliki oleh user berdasarkan NPP.
-    """
-    logging.info(f"🧠 [search_dialogue] Mencari referensi di corpus (NPP: {npp}): '{query}'")
-    try:
-        # 1. Generate embedding untuk query
-        query_embedding = EMBEDDING_MODEL.encode([query], normalize_embeddings=True)[0].tolist()
-        query_vector_str = embedding_to_pgvector_str(query_embedding)
-
-        conn = get_db_connection()
-        cur = conn.cursor(cursor_factory=RealDictCursor)
-
-        # 2. SQL JOIN menggunakan session_id dan filter NPP
-        sql = """
-        SELECT 
-            adc.user_text, 
-            adc.assistant_text,
-            (adc.embedding_user <#> %s::vector) as distance
-        FROM ai_dialogue_corpus adc
-        JOIN chat_sessions cs ON adc.session_id = cs.id
-        WHERE cs.npp = %s
-        ORDER BY distance ASC
-        LIMIT %s;
-        """
-        
-        cur.execute(sql, (query_vector_str, npp, limit))
-        results = cur.fetchall()
-
-        # 3. Filter threshold relevansi
-        relevant_dialogues = []
-        for r in results:
-            similarity = 1.0 - r["distance"]
-            if similarity >= 0.7:  
-                relevant_dialogues.append(r)
-                print(f"[DEBUG] Found Relevant Data (Sim: {similarity:.2f}): {r['user_text'][:50]}...")
-
-        cur.close()
-        conn.close()
-        
-        return relevant_dialogues
-
-    except Exception as e:
-        logging.error(f"Error searching dialogue corpus: {e}")
-        if 'conn' in locals(): conn.close()
-        return []
-
-
 # ========== SMART CHAT FUNCTION ==========
+# Fungsi helper untuk memformat input ke Qwen2-VL
+def format_vlm_payload(user_message, base64_image):
+    # Gunakan parameter 'base64_image', bukan 'img_obj'
+    raw_base64 = base64_image.split(",")[1] if "," in base64_image else base64_image
+
+    return [
+        {
+            "role": "user",
+            "content": [
+                {"type": "image", "image": raw_base64},
+                {"type": "text", "text": user_message},
+            ],
+        }
+    ]
+
+
 async def smart_chat_with_context(
-    user_message, active_file=None, mode=MODE_NORMAL, model=None, session_uuid=None
+    user_message, active_file, mode, model, session_uuid, npp=None, attachments=None
 ):
-    """Smart chat with History Context, Analysis, and Verification flow"""
-
-    # Inisialisasi awal
-    history_context = ""
-
     # --- 0. LOAD HISTORY DARI DB ---
+    history_context = ""
     if session_uuid:
         history_messages = get_chat_history_from_db(session_uuid, limit=3)
         if history_messages:
             history_context = "\n".join(
                 [f"{m['role'].upper()}: {m['content']}" for m in history_messages]
             )
+
+    # =========================================================================
+    # 1. JALUR DOKUMEN AKTIF (BYPASS PDF/OCR) - PRIORITAS UTAMA
+    # =========================================================================
+    if active_file and active_file.get("text"):
+        print(f"[DEBUG] BYPASS: Menggunakan Teks PaddleOCR untuk PDF")
+
+        # Gabungkan instruksi di sini agar AI fokus
+        prompt_ocr = f"""Tugas: {user_message if user_message else "Rangkum dokumen ini"}
+
+Gunakan teks hasil scan OCR di bawah ini untuk menjawab pertanyaan/tugas tersebut.
+---
+[ISI DOKUMEN]:
+{active_file["text"][:15000]} 
+---
+[HISTORY PERCAKAPAN]:
+{history_context[-500:]}
+
+INSTRUKSI KHUSUS:
+- Analisis teks di atas dan jawab pertanyaan user dengan detail.
+- Jika user minta rangkuman, buatkan poin-poin pentingnya.
+- Jika jawaban tidak ada di dokumen, beri tahu user secara jujur.
+"""
+        # Panggil AI dengan instruksi lengkap
+        reply = await ask_qwen3_vl(prompt_ocr, stream=True, override_model=model)
+        return reply, None, False
+
+    # =========================================================================
+    # 2. MULTIMODAL LAYER (Handle Images)
+    # =========================================================================
+    has_images = attachments and any(
+        a and "image" in a.get("type", "").lower() for a in attachments
+    )
+
+    if has_images:
+        try:
+            # Ambil gambar pertama
+            img_obj = next(
+                a for a in attachments if "image" in a.get("type", "").lower()
+            )
+            img_data = img_obj.get("data", "")
+            raw_base64 = img_data.split(",")[1] if "," in img_data else img_data
+
+            # --- STEP A: ANALISIS NIAT (Pake Model Instruct Biar Cepet) ---
+            vlm_intent_prompt = f"""Tugas: Analisis apakah pertanyaan user tentang gambar ini memerlukan referensi data internal perusahaan atau hanya ekstraksi gambar biasa.
+            User Message: {user_message}
+            Jawab dengan format JSON: {{"use_rag": true, "focus_instruction": "instruksi"}}"""
+
+            # Panggil analis
+            intent_res = await ask_qwen3_vl(
+                vlm_intent_prompt, stream=False, override_model="qwen2.5:14b-instruct"
+            )
+
+            # Parsing JSON (Safely)
+            try:
+                clean_json = (
+                    intent_res.replace("```json", "").replace("```", "").strip()
+                )
+                intent_data = json.loads(clean_json)
+            except:
+                intent_data = {
+                    "use_rag": False,
+                    "focus_instruction": "Ekstrak data secara objektif.",
+                }
+
+            # --- STEP B: EKSEKUSI VLM SEBENARNYA ---
+            vlm_final_prompt = (
+                f"{intent_data.get('focus_instruction')}\n\nUser: {user_message}"
+            )
+
+            reply = await ask_qwen3_vl(
+                prompt=vlm_final_prompt,
+                images=[raw_base64],
+                stream=True,
+                override_model=VISION_MODEL,  # Model Vision (misal: qwen2-vl)
+            )
+            return reply, None, False
+        except Exception as e:
+            print(f"[ERROR] Multimodal Layer Error: {e}")
 
     # =========================================================================
     # MODE SEARCH (Pindad Website Scraper)
@@ -1482,87 +1542,174 @@ INSTRUKSI:
     # MODE NORMAL
     # =========================================================================
     elif mode == MODE_NORMAL:
-            print(f"\n[DEBUG] === MEMULAI ANALISIS PESAN (MODE NORMAL) ===")
-            print(f"[DEBUG] User Message: {user_message}")
+        print(f"\n[DEBUG] === MEMULAI ANALISIS PESAN (MODE NORMAL) ===")
 
-            # --- LAYER 1: ANALISIS NIAT USER ---
-            analysis_prompt = f"""
-            Tugas: Analisis apakah pesan user memerlukan pencarian data di database peraturan/corpus atau tidak.
+        # --- LAYER 1: ANALISIS NIAT USER ---
+        # (Tetap seperti kodingan lu, ini sudah bagus untuk hemat token)
+        analysis_prompt = f"""
+            Tugas: Analisis apakah pesan user memerlukan pencarian data di database perusahaan (aturan/dokumen/history).
             History: {history_context[-500:]}
             User: {user_message}
 
-            Kriteria mencari ke database:
-            - Menanyakan aturan, prosedur, batas usia, gaji, atau info spesifik perusahaan.
-            - Menanyakan sesuatu yang AI tidak tahu dari history.
-
-            Kriteria TIDAK perlu mencari:
-            - Instruksi menyimpan/mencatat (save, keep, catat).
-            - Ngobrol biasa (hi, apa kabar, terimakasih).
-            - Menanyakan hal umum yang tidak butuh data internal.
-
-            Jawab dengan format JSON:
+            Jawab hanya dengan format JSON:
             {{
             "perlu_cari": true/false,
-            "alasan": "jelaskan secara singkat kenapa",
-            "keyword_pencarian": "kata kunci untuk search"
+            "keyword_pencarian": "kata kunci search"
             }}
-            """
-            
-            # Panggil AI analis (non-stream untuk mendapatkan JSON)
-            analysis_res = await ask_qwen3_vl(analysis_prompt, stream=False, override_model="qwen2.5:14b-instruct")
-            
-            # Logging Respon Mentah Analis
-            print(f"[DEBUG] Raw Analyst Response: {analysis_res}")
+        """
 
-            try:
-                # Parsing JSON
-                clean_json = analysis_res.replace('```json', '').replace('```', '').strip()
-                analysis_data = json.loads(clean_json)
-                
-                # Log Hasil Analisis yang sudah di-parse
-                print(f"[LOG ANALIS]")
-                print(f"  > Perlu Cari: {analysis_data.get('perlu_cari')}")
-                print(f"  > Alasan: {analysis_data.get('alasan')}")
-                print(f"  > Keyword: {analysis_data.get('keyword_pencarian')}")
-                
-            except Exception as e:
-                print(f"[ERROR] Gagal parsing JSON analis: {e}")
-                analysis_data = {"perlu_cari": True, "keyword_pencarian": user_message}
+        analysis_res = await ask_qwen3_vl(
+            analysis_prompt, stream=False, override_model="qwen2.5:14b-instruct"
+        )
 
-            # --- LAYER 2: EKSEKUSI BERDASARKAN ANALISIS ---
-            corpus_context = ""
-            
-            if analysis_data.get("perlu_cari"):
-                search_query = analysis_data.get("keyword_pencarian", user_message)
-                print(f"[DEBUG] Mencari di database dengan keyword: '{search_query}'...")
-                
-                dialogue_ref = await search_dialogue_corpus(search_query)
+        try:
+            clean_json = analysis_res.replace("```json", "").replace("```", "").strip()
+            analysis_data = json.loads(clean_json)
+        except Exception:
+            analysis_data = {"perlu_cari": True, "keyword_pencarian": user_message}
 
-                if dialogue_ref:
-                    print(f"[DEBUG] Berhasil menemukan {len(dialogue_ref)} referensi relevan.")
-                    relevance_context = "\n".join([
-                        f"User: {d['user_text']}\nAI: {d['assistant_text']}" 
-                        for d in dialogue_ref
-                    ])
-                    corpus_context = f"REFERENSI DATA INTERNAL:\n{relevance_context}\n\n"
-                else:
-                    print(f"[DEBUG] Tidak ada data relevan di database.")
-                    corpus_context = "INFO: Tidak ditemukan data relevan di database.\n"
+        # --- LAYER 2: UNIVERSAL SEARCH (SYNC CHUNKS & CORPUS) ---
+        corpus_context = ""
+        if analysis_data.get("perlu_cari"):
+            search_query = analysis_data.get("keyword_pencarian", user_message)
+
+            # Ini fungsi sakti yang kita buat tadi (UNION SQL)
+            universal_refs = await search_universal_knowledge(search_query, npp)
+
+            if universal_refs:
+                formatted_refs = []
+                for ref in universal_refs:
+                    # Bedakan cara menampilkan info Chunks vs History
+                    if ref["source"] == "CHAT":
+                        formatted_refs.append(
+                            f"[MEMORI CHAT]: User tanya '{ref['primary_content']}' -> AI jawab '{ref['secondary_content']}'"
+                        )
+                    else:
+                        formatted_refs.append(
+                            f"[DOKUMEN {ref['secondary_content']}]: {ref['primary_content']}"
+                        )
+
+                corpus_context = (
+                    "REFERENSI DATA INTERNAL PERUSAHAAN:\n"
+                    + "\n---\n".join(formatted_refs)
+                    + "\n\n"
+                )
             else:
-                print(f"[DEBUG] Jalur Normal: Tidak melakukan pencarian database (Sesuai saran analis).")
+                corpus_context = (
+                    "INFO: Tidak ada referensi dokumen lama yang relevan.\n"
+                )
 
-            # --- LAYER 3: GENERATE RESPON AKHIR ---
-            if not active_file:
-                prompt = f"{corpus_context}\nHistory:\n{history_context}\n\nUser: {user_message}"
-            else:
-                context_text = active_file["text"][:2500]
-                prompt = f"File: {active_file['filename']}\nKonten: {context_text}\n{corpus_context}\nHistory: {history_context}\nUser: {user_message}"
+        # --- LAYER 3: GENERATE RESPON AKHIR ---
+        # Jika ada file yang sedang di-upload (Active File), ia jadi prioritas #1
+        if active_file:
+            context_text = active_file.get("text", "")[
+                :7000
+            ]  # Gue naikin dikit limitnya karena A40 kuat
+            file_name = active_file.get("name", "Dokumen Terlampir")
 
-            print(f"[DEBUG] Mengirim prompt final ke model...")
-            reply = await ask_qwen3_vl(prompt, stream=True, override_model=model)
+            prompt = f"""Kamu adalah CAKRA (Cerdas Terpercaya), AI PT Pindad.
+
+DOKUMEN YANG SEDANG DIBUKA (PRIORITAS UTAMA):
+Nama File: {file_name}
+Konten: {context_text}
+
+{corpus_context}
+
+HISTORY CHAT TERAKHIR:
+{history_context}
+
+INSTRUKSI:
+1. Jawab pertanyaan user: "{user_message}"
+2. Berikan jawaban paling akurat berdasarkan 'DOKUMEN YANG SEDANG DIBUKA'.
+3. Jika tidak ada di dokumen tersebut, gunakan 'REFERENSI DATA INTERNAL PERUSAHAAN'.
+4. Gunakan gaya bahasa yang profesional namun membantu.
+"""
+        else:
+            # Jika tidak ada file upload, murni pakai Universal RAG
+            prompt = f"""Kamu adalah CAKRA, AI PT Pindad.
             
-            print(f"[DEBUG] === ANALISIS SELESAI ===\n")
-            return reply, None, False
+{corpus_context}
+
+HISTORY CHAT TERAKHIR:
+{history_context}
+
+User: {user_message}
+
+Tugas: Jawab dengan jujur berdasarkan referensi data internal yang tersedia.
+"""
+
+        # EKSEKUSI FINAL
+        reply = await ask_qwen3_vl(prompt, stream=True, override_model=model)
+
+        if reply is None:
+            reply = "Maaf bro, sistem sedang sibuk. Coba ulangi lagi ya."
+
+        return reply, None, False
+
+
+async def search_universal_knowledge(query, npp, limit=4):
+    """
+    Hybrid Search: Mencari di AI_DIALOGUE_CORPUS (History)
+    dan AI_DOCUMENT_CHUNKS (Isi Dokumen OCR) secara bersamaan.
+    """
+    logging.info(f"🧠 [Universal Search] NPP: {npp} | Query: '{query}'")
+    try:
+        # 1. Generate embedding (Pastikan modelnya sama dengan saat simpan)
+        query_embedding = EMBEDDING_MODEL.encode([query], normalize_embeddings=True)[
+            0
+        ].tolist()
+        query_vector_str = embedding_to_pgvector_str(query_embedding)
+
+        conn = get_db_connection()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+
+        # 2. SQL Gabungan: NPP User + NPP Global (Data dari anonim/tanpa login)
+        sql = """
+        WITH combined_knowledge AS (
+            -- Sumber A: History Chat
+            SELECT 
+                'CHAT' as source,
+                adc.user_text as primary_content,
+                adc.assistant_text as secondary_content,
+                (adc.embedding_user <=> %s::vector) as distance
+            FROM ai_dialogue_corpus adc
+            JOIN chat_sessions cs ON adc.session_id = cs.id
+            WHERE (cs.npp = %s OR cs.npp IS NULL OR cs.npp = '') -- Chat user + Chat Anonim
+
+            UNION ALL
+
+            -- Sumber B: Isi Dokumen OCR
+            SELECT 
+                'DOCUMENT' as source,
+                content as primary_content,
+                metadata->>'filename' as secondary_content,
+                (embedding <=> %s::vector) as distance
+            FROM ai_document_chunks
+            WHERE (npp = %s OR npp IS NULL OR npp = '') -- Dokumen user + Dokumen Anonim
+        )
+        SELECT * FROM combined_knowledge
+        WHERE (1 - distance) >= 0.7
+        ORDER BY distance ASC
+        LIMIT %s;
+        """
+
+        cur.execute(sql, (query_vector_str, npp, query_vector_str, npp, limit))
+        results = cur.fetchall()
+
+        # 3. Format hasil agar siap dikonsumsi LLM
+        relevant_data = []
+        for r in results:
+            similarity = 1.0 - r["distance"]
+            relevant_data.append(r)
+            print(f"[DEBUG] Universal Hit ({r['source']}) Sim: {similarity:.2f}")
+
+        cur.close()
+        conn.close()
+        return relevant_data
+
+    except Exception as e:
+        logging.error(f"Error in universal search: {e}")
+        return []
 
 
 async def generate_judul_ai(message):
@@ -1606,39 +1753,27 @@ def get_embedding(text):
 @app.route("/api/chat", methods=["POST"])
 async def chat():
     global PRIMARY_MODEL
-
     conn_local = None
+
     try:
         data = await request.get_json()
         user_message = data.get("message", "")
         file_id = data.get("file_id", None)
         mode = data.get("mode", "normal")
         session_uuid = data.get("session_uuid")
+        attachments = data.get("attachments", [])
+        npp = data.get("npp")
+        username = data.get("fullname", "Guest")
+        selected_model = data.get("model", PRIMARY_MODEL) if npp else PRIMARY_MODEL
 
-        # Ambil identitas
-        npp = data.get("npp")  # Bisa None/Null
-        username = data.get("fullname", "Guest")  # Default Guest jika fullname kosong
-
-        # --- LOGIKA PEMBATASAN UNTUK NON-LOGIN ---
-        if not npp:
-            mode = "normal"  # Paksa mode normal
-            selected_model = PRIMARY_MODEL  # Paksa model default
-            file_id = None  # Tidak bisa akses file upload pribadi
-        else:
-            selected_model = data.get("model", PRIMARY_MODEL)
-
-        # LOG LOGGING (Tetap tampil)
-        print("\n" + "=" * 50)
-        print(f"🚀 INCOMING CHAT REQUEST ({'AUTHENTICATED' if npp else 'GUEST'})")
-        print(f"👤 User: {username} | NPP: {npp}")
-        print(f"🧠 Model Used: {selected_model}")
-        print(f"💬 Message: {user_message[:50]}...")
-        print("=" * 50 + "\n")
+        print(
+            f"\n🚀 CHAT INCOMING | User: {username} | Attachments: {len(attachments)}"
+        )
 
         conn_local = psycopg2.connect(**DB_CONFIG)
         cur = conn_local.cursor(cursor_factory=RealDictCursor)
 
-        # 1. LOGIKA MANAJEMEN SESI
+        # --- 1. LOGIKA MANAJEMEN SESI ---
         current_session_id = None
         judul_baru = None
 
@@ -1653,43 +1788,86 @@ async def chat():
         if not current_session_id:
             if not session_uuid:
                 session_uuid = str(uuid.uuid4())
-
             judul_baru = await generate_judul_ai(user_message)
-
-            # Simpan Sesi (NPP akan tersimpan sebagai NULL jika tidak login)
             cur.execute(
                 """
                 INSERT INTO chat_sessions (session_uuid, user_name, npp, judul, model_name, is_active)
                 VALUES (%s, %s, %s, %s, %s, TRUE) RETURNING id
-                """,
+            """,
                 (session_uuid, username, npp, judul_baru, selected_model),
             )
             current_session_id = cur.fetchone()["id"]
 
-        # 2. LOGIKA RAG / CHAT
-        active_file = file_contexts.get(file_id) if file_id else None
+        # --- 2. MULTIMODAL LAYER (OCR PROCESSOR) ---
+        ocr_context = ""
+        for att in attachments:
+            mime_type = att.get("type", "").lower()
+            if "application/pdf" in mime_type or att.get("name", "").endswith(".pdf"):
+                print(f"[*] Processing PDF with PaddleOCR: {att.get('name')}")
+                extracted_text = await process_pdf_attachment_to_ocr(
+                    attachment=att,
+                    npp=npp,
+                    session_id=current_session_id,
+                    get_embedding_func=get_embedding,
+                )
+                if extracted_text:
+                    ocr_context += extracted_text
 
+        # --- 3. LOGIKA GABUNG PROMPT (DI SINI KUNCINYA) ---
+        active_file = None
+        final_message_to_ai = user_message  # Default pakai pesan asli
+
+        if ocr_context and len(ocr_context.strip()) > 10:
+            print(f"[*] OCR SUKSES: {len(ocr_context)} karakter ditemukan.")
+            active_file = {"text": ocr_context, "name": "Dokumen Terlampir"}
+
+            # Kita bungkus user_message asli lu dengan konteks OCR
+            # Agar AI langsung dapet perintah + datanya dalam satu tarikan napas
+            final_message_to_ai = f"""
+INSTRUKSI USER: {user_message if user_message else "Rangkum dokumen ini"}
+
+DATA DOKUMEN HASIL SCAN:
+{ocr_context}
+
+Tolong jawab instruksi di atas berdasarkan data dokumen tersebut secara detail.
+"""
+
+        # --- 4. PANGGIL SMART CHAT ---
         reply, pdf_info, should_include_pdf = await smart_chat_with_context(
-            user_message,
-            active_file,
-            mode,
+            user_message=final_message_to_ai,  # Masukin yang sudah digabung
+            active_file=active_file,  # Tetap dikirim buat cadangan di smart_chat
+            mode=mode,
             model=selected_model,
             session_uuid=session_uuid,
+            npp=npp,
+            attachments=attachments,
         )
 
-        # 3. GENERATE EMBEDDINGS (Penting untuk memory/pencarian masa depan)
-        vector_user = get_embedding(user_message)
-        vector_assistant = get_embedding(reply)
+        # --- 4. GENERATE EMBEDDINGS & SAVE HISTORY ---
+        try:
+            # Ambil embedding (pastikan get_embedding lu return list [0.1, 0.2, ...])
+            vector_user = get_embedding(user_message)
+            vector_assistant = get_embedding(reply)
 
-        # 4. SIMPAN KE ai_dialogue_corpus
+            # Jika return None (error dari model embedding), buat dummy
+            if vector_user is None:
+                vector_user = [0.0] * 768
+            if vector_assistant is None:
+                vector_assistant = [0.0] * 768
+
+        except Exception as emb_e:
+            print(f"[WARNING] Gagal generate embedding: {emb_e}")
+            vector_user = [0.0] * 768
+            vector_assistant = [0.0] * 768
+
         cur.execute(
             """
             INSERT INTO ai_dialogue_corpus (
                 session_id, user_text, assistant_text, 
-                embedding_user, embedding_assistant, metadata
+                embedding_user, embedding_assistant, metadata, files
             )
-            VALUES (%s, %s, %s, %s, %s, %s)
-            """,
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+        """,
             (
                 current_session_id,
                 user_message,
@@ -1702,22 +1880,25 @@ async def chat():
                         "file_id": file_id,
                         "npp": npp,
                         "model": selected_model,
-                        "is_guest": npp is None,
+                        "has_ocr": ocr_context != "",
                     }
                 ),
+                json.dumps(attachments),
             ),
         )
 
         conn_local.commit()
 
+        # --- 5. RESPONSE KE FRONTEND ---
         return jsonify(
             {
                 "reply": reply,
                 "session_uuid": session_uuid,
                 "judul": judul_baru,
                 "pdf_info": pdf_info if (should_include_pdf and npp) else None,
-                "is_from_document": should_include_pdf if npp else False,
+                "is_from_document": (should_include_pdf or ocr_context != ""),
                 "model_used": selected_model,
+                "attachments": attachments,
             }
         )
 
@@ -1761,7 +1942,7 @@ async def get_session_messages(session_uuid):
     try:
         conn = psycopg2.connect(**DB_CONFIG)
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            # Cari session_id berdasarkan UUID
+            # 1. Cari session_id berdasarkan UUID
             cur.execute(
                 "SELECT id FROM chat_sessions WHERE session_uuid = %s", (session_uuid,)
             )
@@ -1771,10 +1952,10 @@ async def get_session_messages(session_uuid):
                     {"status": "error", "message": "Sesi tidak ditemukan"}
                 ), 404
 
-            # Ambil semua pesan dari ai_dialogue_corpus berdasarkan session_id
+            # 2. Ambil user_text, assistant_text, created_at, dan kolom FILES
             cur.execute(
                 """
-                SELECT user_text, assistant_text, created_at 
+                SELECT user_text, assistant_text, created_at, files
                 FROM ai_dialogue_corpus 
                 WHERE session_id = %s 
                 ORDER BY created_at ASC
@@ -1784,29 +1965,34 @@ async def get_session_messages(session_uuid):
 
             rows = cur.fetchall()
 
-            # Format ulang data agar sesuai dengan state 'messages' di React
             formatted_messages = []
             for row in rows:
-                # Pesan User
+                # Ambil data files (jika None, set jadi array kosong)
+                attachments = row.get("files") if row.get("files") else []
+
+                # --- Pesan User ---
                 formatted_messages.append(
                     {
                         "id": f"u-{row['created_at'].timestamp()}",
                         "sender": "user",
                         "text": row["user_text"],
+                        "attachments": attachments,  # MASUKKAN DATA FILE DI SINI
                         "timestamp": row["created_at"].strftime("%H:%M"),
                     }
                 )
-                # Pesan AI
+
+                # --- Pesan AI ---
                 formatted_messages.append(
                     {
                         "id": f"a-{row['created_at'].timestamp()}",
-                        "sender": "ai",
+                        "sender": "user" if False else "ai",  # Fix typo logic sender
                         "text": row["assistant_text"],
                         "timestamp": row["created_at"].strftime("%H:%M"),
                     }
                 )
 
             return jsonify({"status": "success", "data": formatted_messages})
+
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
     finally:
@@ -2322,54 +2508,58 @@ def toggle_pin_chat(session_uuid):
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
-@app.route('/api/chat/rename/<session_uuid>', methods=['POST'])
-async def rename_chat(session_uuid): # Tambahkan async
+@app.route("/api/chat/rename/<session_uuid>", methods=["POST"])
+async def rename_chat(session_uuid):  # Tambahkan async
     try:
         # WAJIB pakai await di sini karena ini coroutine
-        data = await request.get_json() 
-        
+        data = await request.get_json()
+
         if not data:
             return jsonify({"status": "error", "message": "Data tidak ditemukan"}), 400
-            
-        new_judul = data.get('judul')
-        
+
+        new_judul = data.get("judul")
+
         # Koneksi DB (Gunakan koneksi standar lu)
         conn = get_db_connection()
         cur = conn.cursor()
-        
+
         cur.execute(
             "UPDATE chat_sessions SET judul = %s WHERE session_uuid = %s",
-            (new_judul, str(session_uuid))
+            (new_judul, str(session_uuid)),
         )
-        
+
         conn.commit()
         cur.close()
         conn.close()
-        
+
         return jsonify({"status": "success", "message": "Judul berhasil diubah"})
     except Exception as e:
         print(f"Error Rename: {str(e)}")
         return jsonify({"status": "error", "message": str(e)}), 500
 
-@app.route('/api/chat/delete/<session_uuid>', methods=['POST'])
+
+@app.route("/api/chat/delete/<session_uuid>", methods=["POST"])
 async def delete_chat(session_uuid):
     try:
         conn = get_db_connection()
         cur = conn.cursor()
-        
+
         # Soft delete: cuma ubah flag is_deleted
         sql = "UPDATE chat_sessions SET is_deleted = true WHERE session_uuid = %s"
         cur.execute(sql, (str(session_uuid),))
-        
+
         conn.commit()
         cur.close()
         conn.close()
-        
-        return jsonify({"status": "success", "message": "Chat berhasil dihapus (soft delete)"})
+
+        return jsonify(
+            {"status": "success", "message": "Chat berhasil dihapus (soft delete)"}
+        )
     except Exception as e:
         print(f"Error Delete: {str(e)}")
         return jsonify({"status": "error", "message": str(e)}), 500
-    
+
+
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
 
