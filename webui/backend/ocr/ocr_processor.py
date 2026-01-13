@@ -3,25 +3,22 @@ import os
 import uuid
 import json
 import psycopg2
+from psycopg2.extensions import ISOLATION_LEVEL_READ_COMMITTED
 import logging
 from datetime import datetime
 import tempfile
 
-from webui.backend.ocr.ocr_agent import (
-    extract_text_per_page,
-)  # Fungsi PaddleOCR yang kita buat sebelumnya
-
-# Pastikan DB_CONFIG diimport atau didefinisikan di sini
+from webui.backend.ocr.ocr_agent import extract_text_per_page
 from database.db import DB_CONFIG
 
 
-async def process_pdf_attachment_to_ocr(attachment, npp, session_id, get_embedding_func):
+async def process_pdf_attachment_to_ocr(
+    attachment, npp, session_id, get_embedding_func
+):
     filename = attachment.get("name", f"upload_{uuid.uuid4()}.pdf")
     base64_data = attachment.get("data", "")
     file_id = attachment.get("file_id")
 
-    # Gunakan context manager untuk file sementara
-    # Ini menjamin file ter-create dan path-nya valid
     with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tf:
         temp_path = tf.name
         try:
@@ -30,33 +27,48 @@ async def process_pdf_attachment_to_ocr(attachment, npp, session_id, get_embeddi
 
             pdf_bytes = base64.b64decode(base64_data)
             tf.write(pdf_bytes)
-            tf.flush() # Pastikan data beneran ketulis ke disk
-            
-            print(f"[DEBUG] File PDF beneran ada di: {temp_path}")
-            print(f"[DEBUG] Ukuran file: {os.path.getsize(temp_path)} bytes")
+            tf.flush()
 
             # 1. Jalankan OCR
-            # Pastikan fungsi ini SUDAH tidak pakai CUDA_VISIBLE_DEVICES="-1"
             pages_content = extract_text_per_page(temp_path)
-            
+
             if not pages_content:
-                print("[WARNING] OCR balikin list kosong. Cek log ocr_agent!")
+                print("[WARNING] OCR balikin list kosong.")
                 return ""
 
             all_text_for_chat = ""
+
+            # KONEKSI KE DATABASE
             conn = psycopg2.connect(**DB_CONFIG)
+            # Paksa koneksi untuk bisa membaca data yang baru di-commit transaksi lain
+            conn.set_session(
+                isolation_level=ISOLATION_LEVEL_READ_COMMITTED, autocommit=False
+            )
             cur = conn.cursor()
 
             try:
+                # --- VALIDASI ULANG DI DALAM KONEKSI INI ---
+                final_session_id = None
+                if session_id:
+                    cur.execute(
+                        "SELECT id FROM chat_sessions WHERE id = %s", (session_id,)
+                    )
+                    row = cur.fetchone()
+                    if row:
+                        final_session_id = row[0]
+                        print(
+                            f"[DEBUG] Validasi DB: Session {final_session_id} ditemukan."
+                        )
+                    else:
+                        print(
+                            f"[WARNING] Session {session_id} tidak terlihat oleh koneksi ini. Menggunakan NULL."
+                        )
+
                 for i, content in enumerate(pages_content):
                     if not content.strip():
                         continue
 
-                    # 2. Vektorisasi
                     embedding_vector = get_embedding_func(content)
-                    
-                    # Pastikan format vector bener (PostgreSQL pgvector biasanya butuh list/array)
-                    # Jika kolom embedding lu tipe 'vector', json.dumps(list) sudah benar.
 
                     metadata = {
                         "filename": filename,
@@ -65,6 +77,7 @@ async def process_pdf_attachment_to_ocr(attachment, npp, session_id, get_embeddi
                         "timestamp": datetime.now().isoformat(),
                     }
 
+                    # INSERT
                     cur.execute(
                         """
                         INSERT INTO ai_document_chunks 
@@ -72,7 +85,7 @@ async def process_pdf_attachment_to_ocr(attachment, npp, session_id, get_embeddi
                         VALUES (%s, %s, %s, %s, %s, %s)
                         """,
                         (
-                            session_id,
+                            final_session_id,
                             file_id if file_id else 0,
                             npp,
                             content,
@@ -98,10 +111,9 @@ async def process_pdf_attachment_to_ocr(attachment, npp, session_id, get_embeddi
         except Exception as e:
             print(f"[CRITICAL] Gagal proses OCR: {e}")
             import traceback
+
             traceback.print_exc()
             return ""
         finally:
-            # Hapus file temp setelah selesai
             if os.path.exists(temp_path):
                 os.remove(temp_path)
-                print(f"[DEBUG] File temp dihapus: {temp_path}")
