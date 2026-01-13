@@ -698,14 +698,27 @@ function App() {
   const [selectedFiles, setSelectedFiles] = useState([]); // File asli untuk dikirim ke API
   const [previews, setPreviews] = useState([]); // URL untuk tampilan preview (blob)
 
-  const handleDragEnter = (e) => {
+  const handleDragOver = (e) => {
     e.preventDefault();
-    setIsDragging(true);
+    e.stopPropagation();
+    if (!isDragging) setIsDragging(true);
   };
 
   const handleDragLeave = (e) => {
     e.preventDefault();
+    e.stopPropagation();
+    // Logika krusial: Hanya matikan dragging jika kursor benar-benar keluar dari container
+    if (!e.currentTarget.contains(e.relatedTarget)) {
+      setIsDragging(false);
+    }
+  };
+
+  const onDrop = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
     setIsDragging(false);
+    const files = e.dataTransfer.files;
+    if (files.length > 0) handleFiles(files);
   };
 
   const handleFiles = (files) => {
@@ -730,6 +743,16 @@ function App() {
     });
   };
 
+  const handleFileChange = (e) => {
+    const selectedFiles = Array.from(e.target.files);
+    if (selectedFiles.length > 0) {
+      // Fungsi handleFiles ini harusnya udah lu punya buat proses preview/upload
+      handleFiles(selectedFiles);
+    }
+    // Reset value biar bisa pilih file yang sama berulang kali
+    e.target.value = null;
+  };
+
   // Handler untuk Paste (Ctrl+V)
   const handlePaste = (e) => {
     const items = e.clipboardData.items;
@@ -746,8 +769,14 @@ function App() {
   const handleDrop = (e) => {
     e.preventDefault();
     e.stopPropagation();
+
+    // RESET STATE DI SINI BIAR OVERLAY HILANG
+    setIsDragging(false);
+
     const files = e.dataTransfer.files;
-    if (files.length > 0) handleFiles(files);
+    if (files.length > 0) {
+      handleFiles(files);
+    }
   };
 
   // =========================================================================
@@ -1403,14 +1432,30 @@ function App() {
                 </span>
               </div>
             )}
-            <div className="relative">
+            <div
+              className="relative w-full"
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onDrop={onDrop}
+            >
+              {/* --- OVERLAY VISUAL --- */}
+              {/* Gunakan pointer-events-none agar overlay ini "tembus pandang" bagi kursor */}
+              {isDragging && (
+                <div className="absolute inset-0 z-[60] pointer-events-none flex items-center justify-center">
+                  <div className="absolute inset-0 bg-blue-500/10 backdrop-blur-[2px] border-2 border-dashed border-blue-500 rounded-3xl" />
+                  <div className="relative bg-white dark:bg-gray-800 px-6 py-3 rounded-2xl shadow-2xl flex items-center gap-3 border border-blue-200">
+                    <span className="text-2xl animate-bounce">📥</span>
+                    <span className="font-semibold text-blue-600">
+                      Lepaskan file di sini
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {/* --- KONTEN INPUT ASLI --- */}
               <div
-                onDragEnter={handleDragEnter}
-                onDragLeave={handleDragLeave}
                 className={`rounded-3xl transition-all duration-300 ${
-                  isDragging
-                    ? "ring-2 ring-blue-500 bg-blue-50/50 dark:bg-blue-900/20"
-                    : ""
+                  isDragging ? "ring-2 ring-blue-500 opacity-50" : ""
                 } ${
                   isLoggedIn ? "p-3" : "px-3 py-2"
                 } bg-[#F7F8FC] dark:bg-[#2E2E33]`}
@@ -1430,7 +1475,31 @@ function App() {
                           />
                         ) : (
                           <div className="w-full h-full flex flex-col items-center justify-center bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700">
-                            <span className="text-2xl">📄</span>
+                            <span className="text-2xl">
+                              {/* PDF Icon SVG */}
+                              <svg
+                                width="32"
+                                height="32"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                              >
+                                <rect
+                                  x="3"
+                                  y="3"
+                                  width="18"
+                                  height="18"
+                                  rx="2.5"
+                                  fill="#E53935"
+                                />
+                                <path
+                                  d="M7.5 17V7H10C11.3807 7 12.5 8.11929 12.5 9.5V9.5C12.5 10.8807 11.3807 12 10 12H7.5M16.5 7V17M16.5 10.5H14.5M16.5 13.5H14.5"
+                                  stroke="white"
+                                  strokeWidth="1.2"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                />
+                              </svg>
+                            </span>
                             <span className="text-[8px] mt-1 px-1 truncate w-full text-center">
                               {file.name}
                             </span>
@@ -1468,7 +1537,7 @@ function App() {
                       ? "Tanya apapun terkait dokumen PT Pindad..."
                       : "Tanya CAKRA AI..."
                   }
-                  className="w-full border-none bg-transparent resize-none focus:outline-none text-gray-900 dark:text-gray-100 ml-3 mt-1 custom-scrollbar"
+                  className="w-full border-none bg-transparent resize-none focus:outline-none text-gray-900 dark:text-gray-100 ml-3 mt-1 custom-scrollbar pointer-events-auto"
                   rows="1"
                   style={{
                     minHeight: "30px",
@@ -1512,11 +1581,20 @@ function App() {
                       </button>
                     </div>
                   )}
-
+                  {/* --- INPUT FILE TERSEMBUNYI --- */}
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    onChange={handleFileChange}
+                    accept="image/*,.pdf" // Batasin cuma image dan pdf
+                    multiple // Biar bisa pilih banyak sekaligus
+                    className="hidden"
+                  />
                   {/* Action Buttons */}
                   <div className="flex items-center space-x-1">
                     <button
-                      onClick={() => setShowFileUpload(true)}
+                      type="button" // Biasain kasih type button biar gak trigger submit form
+                      onClick={() => fileInputRef.current.click()} // Memicu klik pada input hidden
                       className="p-1.5 text-gray-500 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
                     >
                       <span className="text-lg">📁</span>
