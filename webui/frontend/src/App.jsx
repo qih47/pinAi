@@ -3,8 +3,8 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 // Komponen
 import MessageRenderer from "./components/MessageRenderer";
 import PdfButtons from "./components/PdfButtons";
-import FileUploadPanel from "./components/FileUploadPanel";
-import FilePreviewPanel from "./components/FilePreviewPanel";
+// import FileUploadPanel from "./components/FileUploadPanel";
+// import FilePreviewPanel from "./components/FilePreviewPanel";
 import DocumentListPanel from "./components/DocumentListPanel";
 import Sidebar from "./components/Sidebar";
 
@@ -74,6 +74,22 @@ function App() {
   const [showScrollBottom, setShowScrollBottom] = useState(false);
   const isAiTypingRef = useRef(false);
   const [isAtBottom, setIsAtBottom] = useState(true);
+  const [canScroll, setCanScroll] = useState(false);
+
+  // Fungsi untuk ngecek apakah container punya scrollbar
+  const checkScrollable = () => {
+    const container = messagesContainerRef.current;
+    if (container) {
+      const isScrollable = container.scrollHeight > container.clientHeight;
+      setCanScroll(isScrollable);
+    }
+  };
+
+  // Jalankan setiap kali ada pesan baru
+  useEffect(() => {
+    checkScrollable();
+  }, [messages]);
+
   // =========================================================================
   // AUTO-SCROLL LOGIC
   // =========================================================================
@@ -434,15 +450,28 @@ function App() {
   // MESSAGE HANDLING
   // =========================================================================
 
-  // Kirim pesan ke backend
   const sendMessage = async () => {
-    if (!input.trim() || isLoading) return;
+    if ((!input.trim() && selectedFiles.length === 0) || isLoading) return;
 
+    // 1. Logic Scroll
     autoScrollEnabled.current = true;
-    const userMessage = input.trim();
-    setInput("");
+    isUserScrolling.current = false;
+    setTimeout(() => {
+      messagesContainerRef.current?.scrollTo({
+        top: messagesContainerRef.current.scrollHeight,
+        behavior: "smooth",
+      });
+    }, 10);
 
-    // Tambah pesan user ke state
+    const userMessage = input.trim();
+    const currentPreviews = [...previews]; // Simpan untuk bubble chat
+
+    // 2. RESET INPUT (Hanya reset state, jangan revoke URL)
+    setInput("");
+    setSelectedFiles([]);
+    setPreviews([]);
+
+    // 3. TAMBAH KE UI
     const userMsgId = Date.now();
     setMessages((prev) => [
       ...prev,
@@ -450,6 +479,7 @@ function App() {
         id: userMsgId,
         sender: "user",
         text: userMessage,
+        attachments: currentPreviews, // Preview dikirim ke sini
         timestamp: new Date().toLocaleTimeString([], {
           hour: "2-digit",
           minute: "2-digit",
@@ -476,7 +506,9 @@ function App() {
     ]);
 
     try {
-      // Siapkan payload untuk API
+      // --- 4. SIAPKAN PAYLOAD ---
+      // Jika ada file hasil paste, lu mungkin perlu upload ke API upload dulu
+      // atau kirim base64. Di sini kita ikuti logic awal lu:
       const payload = {
         message: userMessage,
         mode: currentMode,
@@ -484,13 +516,20 @@ function App() {
         npp: userData?.username,
         session_uuid: currentSessionId,
         fullname: userData?.fullname,
+        // TAMBAHKAN INI
+        attachments: currentPreviews.map((p) => ({
+          name: p.name,
+          type: p.type,
+          data: p.url, // Ini adalah Base64 string dari FileReader
+        })),
       };
 
+      // Jika ada file dari sistem upload yang sudah ada
       if (uploadedFiles.length > 0 && currentMode === "normal") {
         payload.file_id = uploadedFiles[uploadedFiles.length - 1].id;
       }
 
-      // Kirim ke API
+      // --- 5. KIRIM KE API ---
       const res = await fetch(`${API_BASE}/api/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -503,21 +542,19 @@ function App() {
       // Update session ID jika ini chat pertama
       if (data.session_uuid && !currentSessionId) {
         setCurrentSessionId(data.session_uuid);
-
         const newChatEntry = {
           session_uuid: data.session_uuid,
-          judul: userMessage.substring(0, 50),
+          judul: userMessage.substring(0, 50) || "New Chat",
           created_at: new Date().toISOString(),
         };
-
         setChatHistory((prev) => [newChatEntry, ...prev]);
       }
 
-      // Update AI message dengan response
       const aiResponse = data.reply || "No response from AI.";
       const pdfInfo = data.pdf_info || null;
       const isFromDocument = data.is_from_document || false;
 
+      // Update AI message dengan response
       setMessages((prev) =>
         prev.map((msg) =>
           msg.id === aiMsgId
@@ -643,6 +680,76 @@ function App() {
     }
   };
 
+  // State untuk melacak pesan mana yang di-expand
+  const [expandedMessages, setExpandedMessages] = React.useState({});
+
+  // Fungsi untuk toggle buka/tutup
+  const toggleExpand = (id) => {
+    setExpandedMessages((prev) => ({
+      ...prev,
+      [id]: !prev[id],
+    }));
+  };
+
+  // =========================================================================
+  // Handle Files
+  // =========================================================================
+  const [isDragging, setIsDragging] = useState(false);
+  const [selectedFiles, setSelectedFiles] = useState([]); // File asli untuk dikirim ke API
+  const [previews, setPreviews] = useState([]); // URL untuk tampilan preview (blob)
+
+  const handleDragEnter = (e) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e) => {
+    e.preventDefault();
+    setIsDragging(false);
+  };
+
+  const handleFiles = (files) => {
+    const fileArray = Array.from(files);
+
+    fileArray.forEach((file) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        // e.target.result inilah Base64 yang asli dan permanen
+        const base64Data = e.target.result;
+
+        const newFile = {
+          url: base64Data, // Simpan base64 ke URL untuk preview & DB
+          name: file.name,
+          type: file.type.startsWith("image/") ? "image" : "pdf",
+        };
+
+        setPreviews((prev) => [...prev, newFile]);
+        setSelectedFiles((prev) => [...prev, file]);
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
+  // Handler untuk Paste (Ctrl+V)
+  const handlePaste = (e) => {
+    const items = e.clipboardData.items;
+    const files = [];
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].kind === "file") {
+        files.push(items[i].getAsFile());
+      }
+    }
+    if (files.length > 0) handleFiles(files);
+  };
+
+  // Handler untuk Drag & Drop
+  const handleDrop = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const files = e.dataTransfer.files;
+    if (files.length > 0) handleFiles(files);
+  };
+
   // =========================================================================
   // MAIN RENDER
   // =========================================================================
@@ -681,61 +788,6 @@ function App() {
           />
         </div>
       )}
-      {/* FLOATING TOGGLE BUTTON */}
-      <div className="fixed bottom-[130px] right-1/5 -translate-x-1/2 z-[9999]">
-        <button
-          onClick={() => {
-            const container = messagesContainerRef.current;
-            if (!container) return;
-
-            if (isAtBottom) {
-              // AKSI: Ke Paling Atas
-              container.scrollTo({ top: 0, behavior: "smooth" });
-            } else {
-              // AKSI: Ke Paling Bawah
-              container.scrollTo({
-                top: container.scrollHeight,
-                behavior: "smooth",
-              });
-
-              // SYNC DENGAN LOGIC AUTO-SCROLL LU
-              autoScrollEnabled.current = true;
-              isUserScrolling.current = false;
-
-              // Jika AI lagi ngetik, langsung jalankan lagi mesin scroll-nya
-              if (isAiTypingRef.current) {
-                startAutoScroll();
-              }
-            }
-          }}
-          className="group p-3 bg-white dark:bg-[#2e2e33] border border-gray-200 dark:border-gray-700 rounded-full shadow-2xl hover:scale-110 transition-all active:scale-95"
-        >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            className={`w-5 h-5 text-gray-600 dark:text-gray-300 transition-transform duration-500 ${
-              isAtBottom ? "" : "rotate-180"
-            }`}
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M5 15l7-7 7 7"
-            />
-          </svg>
-
-          {/* Indikator Typing - Tetap muncul kalau kita lagi di atas */}
-          {!isAtBottom && isAiTypingRef.current && (
-            <span className="absolute -top-1 -right-1 flex h-3 w-3">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
-            </span>
-          )}
-        </button>
-      </div>
       {/* Model Selector - Hanya muncul jika sudah login */}
       {isLoggedIn && (
         <div
@@ -931,7 +983,7 @@ function App() {
           className="hidden"
         />
 
-        {showFileUpload && (
+        {/* {showFileUpload && (
           <FileUploadPanel
             fileInputRef={fileInputRef}
             setShowFileUpload={setShowFileUpload}
@@ -944,7 +996,7 @@ function App() {
             cancelUpload={cancelUpload}
             confirmUpload={confirmUpload}
           />
-        )}
+        )} */}
 
         {showDocumentList && (
           <DocumentListPanel
@@ -1004,19 +1056,189 @@ function App() {
                     key={msg.id}
                     className={`flex ${
                       msg.sender === "user"
-                        ? "justify-end pl-12"
-                        : "justify-start pr-12"
+                        ? "justify-end pl-5 max-w-lg ml-auto"
+                        : "justify-start pr-5 max-w-2xl mr-auto"
                     }`}
                   >
-                    {/* --- PESAN USER --- */}
+                    {/* --- PESAN USER (GEMINI STYLE) --- */}
                     {msg.sender === "user" && (
-                      <div className="bg-blue-600 dark:bg-[#2E2E33] text-white rounded-4xl px-4 py-1 ml-auto flex items-center justify-center mt-5">
-                        <MessageRenderer
-                          text={msg.text}
-                          showNotification={showNotification}
-                          isTyping={msg.isTyping}
-                          isAI={false}
-                        />
+                      <div className="flex justify-end mt-5">
+                        <div
+                          onClick={() => toggleExpand(msg.id)}
+                          className={`
+        relative cursor-pointer
+        bg-blue-600 dark:bg-[#2A2A2E]
+        text-gray-100
+        rounded-3xl
+        px-4 py-3
+        shadow-sm
+        transition-all duration-300 ease-in-out
+        overflow-hidden
+        ${expandedMessages[msg.id] ? "max-w-[90%]" : "max-w-[300px]"}
+      `}
+                        >
+                          {/* 1. --- AREA ATTACHMENT/GAMBAR --- */}
+                          {msg.attachments && msg.attachments.length > 0 && (
+                            <div className="flex flex-wrap gap-2 mb-3">
+                              {msg.attachments.map((file, i) => (
+                                <div key={i} className="relative group">
+                                  {file.type === "image" && (
+                                    <img
+                                      src={file.data || file.url}
+                                      alt={file.name}
+                                      className="w-24 h-24 object-cover rounded-xl border border-white/20 shadow-sm 
+                       cursor-zoom-in hover:scale-105 active:scale-95 transition-all duration-200"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        const imageData = file.data || file.url;
+
+                                        // Bikin elemen link bayangan
+                                        const link =
+                                          document.createElement("a");
+                                        link.href = imageData;
+                                        link.target = "_blank";
+
+                                        // Khusus base64, kita kasih instruksi download atau buka di tab baru via blob
+                                        if (imageData.startsWith("data:")) {
+                                          const image = new Image();
+                                          image.src = imageData;
+                                          const w = window.open("");
+                                          w.document.write(image.outerHTML);
+                                          w.document.body.style.backgroundColor =
+                                            "#000";
+                                          w.document.body.style.margin = "0";
+                                          w.document.body.style.display =
+                                            "flex";
+                                          w.document.body.style.alignItems =
+                                            "center";
+                                          w.document.body.style.justifyContent =
+                                            "center";
+                                          w.document.title =
+                                            file.name || "Preview";
+                                        } else {
+                                          window.open(imageData, "_blank");
+                                        }
+                                      }}
+                                    />
+                                  )}
+                                  {/* Jika tipe lain seperti PDF */}
+                                  {file.type === "pdf" && (
+                                    <div className="w-20 h-20 bg-gray-700/50 rounded-xl flex flex-col items-center justify-center border border-white/10">
+                                      {/* PDF SVG Icon */}
+                                      <svg
+                                        xmlns="http://www.w3.org/2000/svg"
+                                        className="w-7 h-7 mb-1 opacity-80"
+                                        fill="none"
+                                        viewBox="0 0 24 24"
+                                        stroke="currentColor"
+                                        strokeWidth={2}
+                                      >
+                                        <rect
+                                          x="4"
+                                          y="2"
+                                          width="16"
+                                          height="20"
+                                          rx="2"
+                                          ry="2"
+                                          fill="#fff"
+                                          stroke="#c53030"
+                                        />
+                                        <path
+                                          d="M8 10v4"
+                                          stroke="#c53030"
+                                          strokeWidth={2}
+                                        />
+                                        <path
+                                          d="M12 10v4"
+                                          stroke="#c53030"
+                                          strokeWidth={2}
+                                        />
+                                        <path
+                                          d="M16 10v4"
+                                          stroke="#c53030"
+                                          strokeWidth={2}
+                                        />
+                                        <text
+                                          x="7"
+                                          y="17"
+                                          fill="#c53030"
+                                          fontSize="6"
+                                          fontFamily="sans-serif"
+                                          fontWeight="bold"
+                                        >
+                                          PDF
+                                        </text>
+                                      </svg>
+                                      <span className="text-[8px] mt-0.5 px-1 truncate w-full text-center text-gray-200">
+                                        {file.name}
+                                      </span>
+                                    </div>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                          {/* Icon Expand SVG Arrow */}
+
+                          {msg.text?.length > 100 && (
+                            <div
+                              className="absolute top-2 right-2 text-gray-100 dark:text-gray-300 text-xs cursor-pointer group"
+                              style={{ borderRadius: "50%" }}
+                            >
+                              <div className="p-1 transition-all duration-150 group-hover:bg-blue-500 dark:group-hover:bg-gray-500 rounded-full">
+                                {expandedMessages[msg.id] ? (
+                                  // Arrow Up SVG
+
+                                  <svg
+                                    width="24"
+                                    height="24"
+                                    viewBox="0 0 20 20"
+                                    fill="none"
+                                  >
+                                    <path
+                                      d="M6 12l4-4 4 4"
+                                      stroke="currentColor"
+                                      strokeWidth="2"
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                    />
+                                  </svg>
+                                ) : (
+                                  // Arrow Down SVG
+
+                                  <svg
+                                    width="24"
+                                    height="24"
+                                    viewBox="0 0 20 20"
+                                    fill="none"
+                                  >
+                                    <path
+                                      d="M6 8l4 4 4-4"
+                                      stroke="currentColor"
+                                      strokeWidth="2"
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                    />
+                                  </svg>
+                                )}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* 3. --- KONTEN PESAN TEKS (BAWAAN LU) --- */}
+                          <div
+                            className={`text-sm leading-relaxed pr-4 ${
+                              expandedMessages[msg.id] ? "" : "line-clamp-3"
+                            }`}
+                          >
+                            <MessageRenderer
+                              text={msg.text}
+                              showNotification={showNotification}
+                              isTyping={msg.isTyping}
+                              isAI={false}
+                            />
+                          </div>
+                        </div>
                       </div>
                     )}
 
@@ -1025,12 +1247,6 @@ function App() {
                       <div className="max-w-3xl ml-0 md:ml-4">
                         {/* PdfButtons dan Logo nangkring di atas MessageRenderer sesuai request sebelumnya */}
                         <React.Fragment>
-                          <PdfButtons
-                            pdfInfo={msg.pdfInfo}
-                            isFromDocument={msg.isFromDocument}
-                            isTyping={msg.isTyping}
-                          />
-
                           <div
                             className={`flex items-start mb-2 mt-5 ${
                               !isLoading ? "" : "hidden"
@@ -1062,6 +1278,11 @@ function App() {
                           showNotification={showNotification}
                           isTyping={msg.isTyping}
                           isAI={true}
+                        />
+                        <PdfButtons
+                          pdfInfo={msg.pdfInfo}
+                          isFromDocument={msg.isFromDocument}
+                          isTyping={msg.isTyping}
                         />
                       </div>
                     )}
@@ -1098,7 +1319,74 @@ function App() {
 
         {/* Input Area */}
         <div className="bg-white dark:bg-[#232326] px-4 py-4 transition-colors duration-300">
-          <div className="max-w-3xl mx-auto rounded-4xl">
+          <div className="max-w-3xl mx-auto rounded-4xl relative">
+            {/* --- FLOATING TOGGLE BUTTON --- */}
+            {/* 1. Cek apakah kontainer sudah ada dan memiliki konten yang bisa di-scroll (nyelem) */}
+            {messagesContainerRef.current &&
+              messagesContainerRef.current.scrollHeight >
+                messagesContainerRef.current.clientHeight && (
+                <div className="absolute bottom-full right-0 md:-right-5 z-[9999] pointer-events-none animate-in fade-in slide-in-from-bottom-2 duration-300">
+                  {/* 2. Logic Tampil: Hanya muncul jika sedang TIDAK di bawah (mau ke bawah) 
+        ATAU sudah jauh di bawah (mau ke atas) */}
+                  {(!isAtBottom ||
+                    (isAtBottom &&
+                      messagesContainerRef.current.scrollTop > 300)) && (
+                    <button
+                      onClick={() => {
+                        const container = messagesContainerRef.current;
+                        if (!container) return;
+
+                        if (isAtBottom) {
+                          // Aksi: Kembali ke paling atas
+                          container.scrollTo({ top: 0, behavior: "smooth" });
+                        } else {
+                          // Aksi: Loncat ke chat terbaru (bawah)
+                          container.scrollTo({
+                            top: container.scrollHeight,
+                            behavior: "smooth",
+                          });
+                          if (autoScrollEnabled)
+                            autoScrollEnabled.current = true;
+                          if (isUserScrolling) isUserScrolling.current = false;
+                          if (
+                            isAiTypingRef.current &&
+                            typeof startAutoScroll === "function"
+                          ) {
+                            startAutoScroll();
+                          }
+                        }
+                      }}
+                      className="pointer-events-auto relative group p-2.5 bg-white dark:bg-[#2e2e33] border border-gray-200 dark:border-gray-700 rounded-full shadow-lg hover:scale-110 transition-all active:scale-95 flex items-center justify-center mb-4"
+                    >
+                      {/* Icon Panah: Otomatis balik arah berdasarkan posisi */}
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        className={`w-4 h-4 text-gray-600 dark:text-gray-300 transition-transform duration-500 ${
+                          isAtBottom ? "" : "rotate-180"
+                        }`}
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2.5}
+                          d="M5 15l7-7 7 7"
+                        />
+                      </svg>
+
+                      {/* Notif Merah: Hanya muncul jika ada chat baru (AI typing) tapi user lagi scroll di atas */}
+                      {!isAtBottom && isAiTypingRef.current && (
+                        <span className="absolute -top-1 -right-1 flex h-4 w-4">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                          <span className="relative inline-flex rounded-full h-4 w-4 bg-red-500 border-2 border-white dark:border-[#2e2e33]"></span>
+                        </span>
+                      )}
+                    </button>
+                  )}
+                </div>
+              )}
             {/* Label Mode */}
             {currentMode !== "normal" && (
               <div className="flex items-center space-x-2 mb-2">
@@ -1115,33 +1403,84 @@ function App() {
                 </span>
               </div>
             )}
-
             <div className="relative">
               <div
+                onDragEnter={handleDragEnter}
+                onDragLeave={handleDragLeave}
                 className={`rounded-3xl transition-all duration-300 ${
+                  isDragging
+                    ? "ring-2 ring-blue-500 bg-blue-50/50 dark:bg-blue-900/20"
+                    : ""
+                } ${
                   isLoggedIn ? "p-3" : "px-3 py-2"
                 } bg-[#F7F8FC] dark:bg-[#2E2E33]`}
               >
+                {/* --- BARIS PREVIEW (Muncul pas di-paste/drop) --- */}
+                {previews.length > 0 && (
+                  <div className="flex flex-wrap gap-3 mb-3 px-2 border-b border-gray-200 dark:border-gray-700 pb-3">
+                    {previews.map((file, index) => (
+                      <div
+                        key={index}
+                        className="relative group w-20 h-20 animate-in zoom-in duration-200"
+                      >
+                        {file.type === "image" ? (
+                          <img
+                            src={file.url}
+                            className="w-full h-full object-cover rounded-xl border-2 border-white dark:border-gray-600 shadow-sm"
+                          />
+                        ) : (
+                          <div className="w-full h-full flex flex-col items-center justify-center bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700">
+                            <span className="text-2xl">📄</span>
+                            <span className="text-[8px] mt-1 px-1 truncate w-full text-center">
+                              {file.name}
+                            </span>
+                          </div>
+                        )}
+                        {/* Tombol Hapus */}
+                        <button
+                          onClick={() => {
+                            setPreviews((prev) =>
+                              prev.filter((_, i) => i !== index)
+                            );
+                            setSelectedFiles((prev) =>
+                              prev.filter((_, i) => i !== index)
+                            );
+                          }}
+                          className="absolute -top-2 -right-2 bg-black/70 text-white rounded-full w-5 h-5 flex items-center justify-center hover:bg-red-500 transition-colors shadow-md"
+                        >
+                          <span className="text-[10px]">✕</span>
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {/* Textarea dan Button Send tetap di sini */}
                 <textarea
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
                   onKeyDown={handleKeyPress}
+                  onPaste={handlePaste}
+                  onDrop={handleDrop}
+                  onDragOver={(e) => e.preventDefault()}
                   disabled={isLoading}
                   placeholder={
                     currentMode === "document"
                       ? "Tanya apapun terkait dokumen PT Pindad..."
                       : "Tanya CAKRA AI..."
                   }
-                  className="w-full border-none bg-transparent resize-none focus:outline-none text-gray-900 dark:text-gray-100 ml-3 mt-1"
+                  className="w-full border-none bg-transparent resize-none focus:outline-none text-gray-900 dark:text-gray-100 ml-3 mt-1 custom-scrollbar"
                   rows="1"
-                  style={{ minHeight: "30px", maxHeight: "120px" }}
+                  style={{
+                    minHeight: "30px",
+                    maxHeight: "120px",
+                    overflowY: "auto",
+                  }}
                   onInput={(e) => {
                     e.target.style.height = "auto";
                     e.target.style.height =
                       Math.min(e.target.scrollHeight, 120) + "px";
                   }}
                 />
-
                 <div
                   className={`flex items-center ${
                     isLoggedIn ? "mt-2 justify-between" : "mt-0 justify-end"

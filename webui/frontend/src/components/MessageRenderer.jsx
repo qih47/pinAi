@@ -68,7 +68,8 @@ const MessageRenderer = ({ text, showNotification, isTyping = false, isAI = fals
     });
   };
 
-  return <div className="space-y-3 message-renderer">{renderContent()}</div>;
+// Menggunakan nilai 720px (di antara 672px dan 768px)
+return <div className="space-y-3 message-renderer max-w-[720px] mx-auto">{renderContent()}</div>;
 };
 
 export default MessageRenderer;

@@ -232,3 +232,26 @@
   -ms-overflow-style: none;  /* IE and Edge */
   scrollbar-width: none;  /* Firefox */
 }
+/* Styling Scrollbar Elegan */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px; /* Lebar scrollbar sangat tipis */
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent; /* Background track transparan */
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(156, 163, 175, 0.5); /* Warna abu-abu soft (tailwind gray-400) */
+  border-radius: 10px; /* Membuat scrollbar membulat */
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(107, 114, 128, 0.8); /* Warna agak gelap saat di-hover */
+}
+
+/* Dukungan untuk Firefox */
+.custom-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(156, 163, 175, 0.5) transparent;
+}

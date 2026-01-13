@@ -90,4 +90,5 @@ htmlcov/
 *.tar.bz2
 *.tar.xz
 *.tar.zst
-```
+```cuda_11.8.0_520.61.05_linux.run
+*.run
