@@ -302,19 +302,16 @@ def chunk_prosedur(text: str) -> List[str]:
     """Chunk Prosedur per bagian utama (1., 2., 3., dst)"""
     return chunk_ik(text)  # struktur mirip IK
 
-def chunk_document(text: str) -> List[Dict[str, str]]:
+def chunk_document(text: str, doc_type: str) -> List[Dict[str, str]]:
     """
-    Returns list of uniform chunk dicts.
-    For SKEP: includes section_type, section_title, parent_title.
-    For others: section_title = fallback, parent_title = None.
+    Chunk teks berdasarkan jenis dokumen yang DIPILIH USER.
+    doc_type: "SKEP", "SE", "IK", "PROSEDUR"
     """
     text = re.sub(r'={5,}\s*PAGE\s+\d+\s*={5,}', '', text, flags=re.IGNORECASE)
     text = re.sub(r'\n{3,}', '\n\n', text)
 
-    doc_type = detect_document_type(text)
     metadata = extract_metadata(text, doc_type)
 
-    # Handle each document type → always return List[Dict]
     if doc_type == "SE":
         raw_strings = chunk_se(text)
         structured = []
@@ -322,12 +319,12 @@ def chunk_document(text: str) -> List[Dict[str, str]]:
             structured.append({
                 "content": content,
                 "section_type": "butir",
-                "title": f"Butir {i+1}",  # ← gunakan "title", bukan "section_title"
+                "title": f"Butir {i+1}",
                 "parent_title": None
             })
 
     elif doc_type == "SKEP":
-        structured = chunk_skep(text)  # ← sudah return dict dengan "title", "type", "parent_title"
+        structured = chunk_skep(text)
 
     elif doc_type == "IK":
         raw_strings = chunk_ik(text)
@@ -338,7 +335,7 @@ def chunk_document(text: str) -> List[Dict[str, str]]:
             structured.append({
                 "content": content,
                 "section_type": "bagian",
-                "title": title,  # ← gunakan "title"
+                "title": title,
                 "parent_title": None
             })
 
@@ -351,19 +348,20 @@ def chunk_document(text: str) -> List[Dict[str, str]]:
             structured.append({
                 "content": content,
                 "section_type": "bagian",
-                "title": title,  # ← gunakan "title"
+                "title": title,
                 "parent_title": None
             })
 
     else:
+        # Fallback
         structured = [{
             "content": text.strip(),
             "section_type": "dokumen",
-            "title": "Dokumen Lengkap",  # ← gunakan "title"
+            "title": "Dokumen Lengkap",
             "parent_title": None
         }]
 
-    # Final: merge with metadata and add chunk_id
+    # Tambahkan metadata & chunk_id
     final_chunks = []
     for i, sec in enumerate(structured):
         if not sec["content"].strip():
@@ -373,9 +371,9 @@ def chunk_document(text: str) -> List[Dict[str, str]]:
             "chunk_id": i + 1,
             "content": sec["content"],
             "section_type": sec.get("section_type", "bagian"),
-            "section_title": sec.get("title", f"Bagian {i+1}"),  # ← INI YANG DIPAKAI DI DATABASE!
+            "section_title": sec.get("title", f"Bagian {i+1}"),  # <-- PAKAI "title"
             "parent_title": sec.get("parent_title", None)
         })
         final_chunks.append(chunk_meta)
 
-    return final_chunks if final_chunks else [{"content": text.strip(), "chunk_id": 1, **metadata, "section_type": "dokumen", "section_title": "Fallback", "parent_title": None}]
+    return final_chunks

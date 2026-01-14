@@ -1,144 +1,535 @@
-import { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
+
+// Komponen
+import MessageRenderer from "./components/MessageRenderer";
+import PdfButtons from "./components/PdfButtons";
+// import FileUploadPanel from "./components/FileUploadPanel";
+// import FilePreviewPanel from "./components/FilePreviewPanel";
+import DocumentListPanel from "./components/DocumentListPanel";
+import Sidebar from "./components/Sidebar";
+
+// Utils
+import { copyToClipboard } from "./utils/copyToClipboard";
+
+// Konfigurasi API
+const API_BASE = "http://192.168.11.80:5000";
 
 function App() {
+  // =========================================================================
+  // STATE MANAGEMENT
+  // =========================================================================
+
+  // Chat State
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [backendStatus, setBackendStatus] = useState("checking");
+  const [currentSessionId, setCurrentSessionId] = useState(null);
+  const [chatHistory, setChatHistory] = useState([]);
+
+  // File & Document State
   const [uploadedFiles, setUploadedFiles] = useState([]);
+  const [documents, setDocuments] = useState([]);
+  const [showFileUpload, setShowFileUpload] = useState(false);
+  const [showPreview, setShowPreview] = useState(false);
+  const [previewFile, setPreviewFile] = useState(null);
+  const [tempFileId, setTempFileId] = useState(null);
+  const [showDocumentList, setShowDocumentList] = useState(false);
+
+  // UI State
+  const [currentMode, setCurrentMode] = useState("normal");
+  const [notification, setNotification] = useState(null);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [isUserScrollingUp, setIsUserScrollingUp] = useState(false);
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+
+  // Auth State
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [showLoginModal, setShowLoginModal] = useState(false);
+  const [loginForm, setLoginForm] = useState({ username: "", password: "" });
+  const [loginError, setLoginError] = useState("");
+  const [userData, setUserData] = useState(null);
+  const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
+
+  // Model State
+  const [modelList, setModelList] = useState([]);
+  const [selectedModel, setSelectedModel] = useState("qwen3:8b");
+
+  // System State
+  const [backendStatus, setBackendStatus] = useState("connected");
+  const [isInitializing, setIsInitializing] = useState(true);
+
+  // =========================================================================
+  // REF MANAGEMENT
+  // =========================================================================
+
   const messagesEndRef = useRef(null);
   const fileInputRef = useRef(null);
-  const [showFileUpload, setShowFileUpload] = useState(false);
+  const messagesContainerRef = useRef(null);
+  const wheelTimeoutRef = useRef(null);
+  const scrollTimeoutRef = useRef(null);
+  const autoScrollEnabled = useRef(true);
+  const typingAnimationRef = useRef(null);
+  const isUserScrolling = useRef(false);
+  const [showScrollTop, setShowScrollTop] = useState(false);
+  const [showScrollBottom, setShowScrollBottom] = useState(false);
+  const isAiTypingRef = useRef(false);
+  const [isAtBottom, setIsAtBottom] = useState(true);
+  const [canScroll, setCanScroll] = useState(false);
 
-  const API_BASE = "http://192.168.11.80:5000";
-
-  // Auto-scroll to bottom
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
-
-  // Check backend on load
-  useEffect(() => {
-    checkBackend();
-  }, []);
-
-  const checkBackend = async () => {
-    try {
-      const res = await fetch(`${API_BASE}/health`);
-      setBackendStatus(res.ok ? "connected" : "error");
-    } catch {
-      setBackendStatus("disconnected");
+  // Fungsi untuk ngecek apakah container punya scrollbar
+  const checkScrollable = () => {
+    const container = messagesContainerRef.current;
+    if (container) {
+      const isScrollable = container.scrollHeight > container.clientHeight;
+      setCanScroll(isScrollable);
     }
   };
 
-  // Handle file upload
-  const handleFileUpload = async (e) => {
+  // Jalankan setiap kali ada pesan baru
+  useEffect(() => {
+    checkScrollable();
+  }, [messages]);
+
+  // =========================================================================
+  // AUTO-SCROLL LOGIC
+  // =========================================================================
+
+  // Fungsi buat start interval scroll (Modular)
+  const startAutoScroll = () => {
+    const container = messagesContainerRef.current;
+    if (!container) return;
+
+    if (typingAnimationRef.current) {
+      clearInterval(typingAnimationRef.current);
+    }
+
+    typingAnimationRef.current = setInterval(() => {
+      if (autoScrollEnabled.current && !isUserScrolling.current) {
+        container.scrollTop = container.scrollHeight;
+      } else {
+        clearInterval(typingAnimationRef.current);
+        typingAnimationRef.current = null;
+      }
+    }, 50);
+  };
+
+  // 1. Reset status saat user kirim pesan baru
+  useEffect(() => {
+    const lastMessage = messages[messages.length - 1];
+    if (lastMessage?.sender === "user") {
+      autoScrollEnabled.current = true;
+      isUserScrolling.current = false;
+    }
+  }, [messages]);
+
+  // 2. Track scroll behavior user (Detection & Resume)
+  useEffect(() => {
+    const container = messagesContainerRef.current;
+    if (!container) return;
+
+    const handleScroll = () => {
+      const { scrollTop, scrollHeight, clientHeight } = container;
+      const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
+
+      // UPDATE STATE UNTUK ICON TOMBOL
+      setIsAtBottom(distanceFromBottom < 100);
+
+      // 1. Logic Munculkan/Sembunyikan Tombol
+      // Munculkan tombol "Ke Atas" jika sudah scroll lebih dari 400px dari puncak
+      setShowScrollTop(scrollTop > 400);
+
+      // Munculkan tombol "Ke Bawah" jika jarak dari dasar lebih dari 200px
+      setShowScrollBottom(distanceFromBottom > 200);
+
+      // 2. USER NAIK -> Stop Auto Scroll
+      if (distanceFromBottom > 100) {
+        if (!isUserScrolling.current) {
+          isUserScrolling.current = true;
+          autoScrollEnabled.current = false;
+        }
+      }
+
+      // 3. USER BALIK KE BAWAH -> Resume Auto Scroll
+      if (distanceFromBottom < 100) {
+        if (isUserScrolling.current) {
+          isUserScrolling.current = false;
+          autoScrollEnabled.current = true;
+
+          // Tarik ke bawah sekali (instant)
+          container.scrollTop = container.scrollHeight;
+
+          // 🔥 RESTART AUTO SCROLL KALO AI MASIH NGETIK
+          if (isAiTypingRef.current) {
+            startAutoScroll();
+          }
+        }
+      }
+    };
+
+    container.addEventListener("scroll", handleScroll);
+    return () => container.removeEventListener("scroll", handleScroll);
+  }, []); // Cukup sekali mount
+
+  // 3. Eksekusi & Update Ref status ngetik
+  useEffect(() => {
+    const container = messagesContainerRef.current;
+    if (!container) return;
+
+    const lastMessage = messages[messages.length - 1];
+    const isTypingNow = lastMessage?.sender === "ai" && lastMessage?.isTyping;
+
+    // Simpan di Ref biar handleScroll bisa baca nilai terbaru
+    isAiTypingRef.current = isTypingNow;
+
+    if (isTypingNow && autoScrollEnabled.current && !isUserScrolling.current) {
+      startAutoScroll();
+    } else if (!isTypingNow) {
+      // Bersihkan jika AI sudah selesai
+      if (typingAnimationRef.current) {
+        clearInterval(typingAnimationRef.current);
+        typingAnimationRef.current = null;
+      }
+
+      // Smooth scroll sekali pas AI selesai
+      if (autoScrollEnabled.current && !isUserScrolling.current) {
+        setTimeout(() => {
+          container.scrollTo({
+            top: container.scrollHeight,
+            behavior: "smooth",
+          });
+        }, 100);
+      }
+    }
+
+    return () => {
+      if (typingAnimationRef.current) clearInterval(typingAnimationRef.current);
+    };
+  }, [messages]);
+
+  // Cleanup interval
+  useEffect(() => {
+    return () => {
+      if (typingAnimationRef.current) {
+        clearInterval(typingAnimationRef.current);
+      }
+    };
+  }, []);
+
+  // =========================================================================
+  // INITIALIZATION & SESSION MANAGEMENT
+  // =========================================================================
+
+  // Check backend & load documents
+  useEffect(() => {
+    const checkBackend = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/health`);
+        setBackendStatus(res.ok ? "connected" : "error");
+      } catch {
+        setBackendStatus("disconnected");
+      }
+    };
+    checkBackend();
+    loadDocuments();
+  }, []);
+
+  // Cek session saat aplikasi pertama kali load
+  useEffect(() => {
+    const checkSession = async () => {
+      const token = localStorage.getItem("session_token");
+      const lastSessionId = localStorage.getItem("lastSessionId");
+
+      try {
+        if (token) {
+          const response = await fetch(
+            `${API_BASE}/api/verify-session?token=${token}`
+          );
+          const result = await response.json();
+
+          if (response.ok && result.status === "success") {
+            setUserData(result.data);
+            setIsLoggedIn(true);
+
+            if (lastSessionId) {
+              await loadChatSession(lastSessionId);
+            }
+          } else {
+            localStorage.clear();
+          }
+        }
+      } catch (error) {
+        console.error("Initialization failed", error);
+      } finally {
+        setTimeout(() => {
+          setIsInitializing(false);
+        }, 500);
+      }
+    };
+
+    checkSession();
+  }, []);
+
+  // Simpan sessionId ke localStorage setiap kali berubah
+  useEffect(() => {
+    if (currentSessionId) {
+      localStorage.setItem("lastSessionId", currentSessionId);
+    } else {
+      localStorage.removeItem("lastSessionId");
+    }
+  }, [currentSessionId]);
+
+  // Fetch model list
+  useEffect(() => {
+    const fetchModels = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/available-models`);
+        const result = await res.json();
+        if (result.status === "success") {
+          setModelList(result.data);
+        }
+      } catch (err) {
+        console.error("Gagal ambil model list:", err);
+      }
+    };
+    fetchModels();
+  }, []);
+
+  // =========================================================================
+  // UTILITY FUNCTIONS
+  // =========================================================================
+
+  // Menampilkan notifikasi
+  const showNotification = useCallback((message, type = "info") => {
+    setNotification({ id: Date.now(), message, type });
+    setTimeout(() => setNotification(null), 3000);
+  }, []);
+
+  // Mendapatkan greeting berdasarkan waktu
+  const getGreeting = () => {
+    const hour = new Date().getHours();
+    if (hour < 11) return "Selamat Pagi";
+    if (hour < 15) return "Selamat Siang";
+    if (hour < 18) return "Selamat Sore";
+    return "Selamat Malam";
+  };
+
+  // =========================================================================
+  // DOCUMENT MANAGEMENT
+  // =========================================================================
+
+  // Load documents dari backend
+  const loadDocuments = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/documents`);
+      if (res.ok) {
+        const data = await res.json();
+        setDocuments(data.documents || []);
+      }
+    } catch (err) {
+      console.error("Error loading documents:", err);
+    }
+  };
+
+  // =========================================================================
+  // FILE UPLOAD FUNCTIONS
+  // =========================================================================
+
+  // Preview file sebelum upload
+  const handleFilePreview = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
-
-    // Sembunyikan panel upload
-    setShowFileUpload(false);
 
     const formData = new FormData();
     formData.append("file", file);
 
-    // Tampilkan pesan "uploading"
-    setMessages((prev) => [
-      ...prev,
-      {
-        sender: "system",
-        text: `📁 Uploading "${file.name}"...`,
-        isSystem: true,
-      },
-    ]);
-
     try {
-      const res = await fetch(`${API_BASE}/api/upload`, {
+      const res = await fetch(`${API_BASE}/api/upload-preview`, {
         method: "POST",
         body: formData,
       });
-
       const data = await res.json();
 
       if (res.ok) {
-        // Update pesan upload
-        setMessages((prev) =>
-          prev.map((msg) =>
-            msg.text.includes("Uploading") && msg.sender === "system"
-              ? {
-                  sender: "system",
-                  text: `✅ File "${data.filename}" uploaded successfully!\n\nYou can now ask questions about this file.`,
-                  isSystem: true,
-                }
-              : msg
-          )
-        );
-
-        // Simpan info file
-        setUploadedFiles((prev) => [
-          ...prev,
-          {
-            id: data.file_id,
-            name: data.filename,
-            type: data.file_type,
-          },
-        ]);
+        setTempFileId(data.file_id);
+        setPreviewFile({
+          name: data.filename,
+          type: data.file_type,
+          size: data.size,
+          previewText: data.preview_text,
+        });
+        setShowPreview(true);
       } else {
-        setMessages((prev) => [
-          ...prev,
-          {
-            sender: "system",
-            text: `❌ Upload failed: ${data.error}`,
-            isSystem: true,
-            isError: true,
-          },
-        ]);
+        showNotification(`Preview failed: ${data.error}`, "error");
       }
     } catch (err) {
-      setMessages((prev) => [
-        ...prev,
-        {
-          sender: "system",
-          text: `❌ Upload error: ${err.message}`,
-          isSystem: true,
-          isError: true,
-        },
-      ]);
+      showNotification(`Preview error: ${err.message}`, "error");
     }
   };
 
-  // Main chat function
+  // Konfirmasi upload file
+  const confirmUpload = async () => {
+    if (!tempFileId) return;
+
+    try {
+      const res = await fetch(`${API_BASE}/api/confirm-upload`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ file_id: tempFileId }),
+      });
+      const data = await res.json();
+
+      if (res.ok) {
+        setUploadedFiles((prev) => [
+          ...prev,
+          { id: data.file_id, name: data.filename, type: data.file_type },
+        ]);
+        showNotification(`File "${data.filename}" uploaded!`, "success");
+        setShowPreview(false);
+        setPreviewFile(null);
+        setTempFileId(null);
+      }
+    } catch (err) {
+      showNotification(`Upload error: ${err.message}`, "error");
+    }
+  };
+
+  // Batalkan upload file
+  const cancelUpload = async () => {
+    if (tempFileId) {
+      await fetch(`${API_BASE}/api/cancel-upload`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ file_id: tempFileId }),
+      });
+    }
+    setShowPreview(false);
+    setPreviewFile(null);
+    setTempFileId(null);
+  };
+
+  // =========================================================================
+  // CHAT SESSION FUNCTIONS
+  // =========================================================================
+
+  // Load chat session berdasarkan session UUID
+  const loadChatSession = async (sessionUuid) => {
+    if (!sessionUuid) return;
+
+    setIsLoading(true);
+    setCurrentSessionId(sessionUuid);
+
+    try {
+      const res = await fetch(`${API_BASE}/api/chat-messages/${sessionUuid}`);
+      const result = await res.json();
+
+      if (result.status === "success") {
+        setMessages(result.data);
+      } else {
+        console.error("Sesi tidak ditemukan di database");
+      }
+    } catch (err) {
+      console.error("Gagal ambil history pesan:", err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Buat chat baru
+  const handleNewChat = () => {
+    setMessages([]);
+    setCurrentSessionId(null);
+  };
+
+  // Ganti mode chat (normal/document/search)
+  const switchMode = (mode) => {
+    const nextMode = currentMode === mode ? "normal" : mode;
+    setCurrentMode(nextMode);
+  };
+
+  // =========================================================================
+  // MESSAGE HANDLING
+  // =========================================================================
+
   const sendMessage = async () => {
-    if (!input.trim() || isLoading) return;
+    if ((!input.trim() && selectedFiles.length === 0) || isLoading) return;
+
+    // 1. Logic Scroll
+    autoScrollEnabled.current = true;
+    isUserScrolling.current = false;
+    setTimeout(() => {
+      messagesContainerRef.current?.scrollTo({
+        top: messagesContainerRef.current.scrollHeight,
+        behavior: "smooth",
+      });
+    }, 10);
 
     const userMessage = input.trim();
+    const currentPreviews = [...previews]; // Simpan untuk bubble chat
+
+    // 2. RESET INPUT (Hanya reset state, jangan revoke URL)
+    setInput("");
+    setSelectedFiles([]);
+    setPreviews([]);
+
+    // 3. TAMBAH KE UI
+    const userMsgId = Date.now();
     setMessages((prev) => [
       ...prev,
       {
+        id: userMsgId,
         sender: "user",
         text: userMessage,
+        attachments: currentPreviews, // Preview dikirim ke sini
         timestamp: new Date().toLocaleTimeString([], {
           hour: "2-digit",
           minute: "2-digit",
         }),
       },
     ]);
-    setInput("");
+
     setIsLoading(true);
+    const aiMsgId = Date.now() + 1;
+
+    // Tambah placeholder AI message
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: aiMsgId,
+        sender: "ai",
+        text: "",
+        timestamp: new Date().toLocaleTimeString([], {
+          hour: "2-digit",
+          minute: "2-digit",
+        }),
+        isTyping: false,
+      },
+    ]);
 
     try {
-      // Cek apakah ada file yang diupload
-      const hasFiles = uploadedFiles.length > 0;
-      const lastFileId = hasFiles
-        ? uploadedFiles[uploadedFiles.length - 1].id
-        : null;
+      // --- 4. SIAPKAN PAYLOAD ---
+      // Jika ada file hasil paste, lu mungkin perlu upload ke API upload dulu
+      // atau kirim base64. Di sini kita ikuti logic awal lu:
+      const payload = {
+        message: userMessage,
+        mode: currentMode,
+        model: selectedModel,
+        npp: userData?.username,
+        session_uuid: currentSessionId,
+        fullname: userData?.fullname,
+        // TAMBAHKAN INI
+        attachments: currentPreviews.map((p) => ({
+          name: p.name,
+          type: p.type,
+          data: p.url, // Ini adalah Base64 string dari FileReader
+        })),
+      };
 
-      // Chat dengan backend
-      const payload = { message: userMessage };
-      if (lastFileId) {
-        payload.file_id = lastFileId;
+      // Jika ada file dari sistem upload yang sudah ada
+      if (uploadedFiles.length > 0 && currentMode === "normal") {
+        payload.file_id = uploadedFiles[uploadedFiles.length - 1].id;
       }
 
+      // --- 5. KIRIM KE API ---
       const res = await fetch(`${API_BASE}/api/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -146,37 +537,65 @@ function App() {
       });
 
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-
       const data = await res.json();
-      setMessages((prev) => [
-        ...prev,
-        {
-          sender: "ai",
-          text: data.reply,
-          timestamp: new Date().toLocaleTimeString([], {
-            hour: "2-digit",
-            minute: "2-digit",
-          }),
-        },
-      ]);
+
+      // Update session ID jika ini chat pertama
+      if (data.session_uuid && !currentSessionId) {
+        setCurrentSessionId(data.session_uuid);
+        const newChatEntry = {
+          session_uuid: data.session_uuid,
+          judul: userMessage.substring(0, 50) || "New Chat",
+          created_at: new Date().toISOString(),
+        };
+        setChatHistory((prev) => [newChatEntry, ...prev]);
+      }
+
+      const aiResponse = data.reply || "No response from AI.";
+      const pdfInfo = data.pdf_info || null;
+      const isFromDocument = data.is_from_document || false;
+
+      // Update AI message dengan response
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.id === aiMsgId
+            ? {
+                ...msg,
+                text: aiResponse,
+                pdfInfo,
+                isFromDocument,
+                isTyping: true,
+              }
+            : msg
+        )
+      );
+
+      // Simulasi typing animation
+      setTimeout(() => {
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === aiMsgId ? { ...msg, isTyping: false } : msg
+          )
+        );
+      }, aiResponse.length * 15 + 500);
     } catch (err) {
-      setMessages((prev) => [
-        ...prev,
-        {
-          sender: "ai",
-          text: `Sorry, I encountered an error: ${err.message}`,
-          timestamp: new Date().toLocaleTimeString([], {
-            hour: "2-digit",
-            minute: "2-digit",
-          }),
-          isError: true,
-        },
-      ]);
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.id === aiMsgId
+            ? {
+                ...msg,
+                text: `Error: ${err.message}`,
+                isTyping: false,
+                isError: true,
+              }
+            : msg
+        )
+      );
     } finally {
       setIsLoading(false);
     }
   };
 
+  // Handle keyboard event untuk enter key
   const handleKeyPress = (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -184,120 +603,242 @@ function App() {
     }
   };
 
-  const clearChat = () => {
-    if (messages.length > 0 && window.confirm("Clear all messages?")) {
-      setMessages([]);
-      setUploadedFiles([]);
+  // =========================================================================
+  // AUTHENTICATION FUNCTIONS
+  // =========================================================================
+
+  // Submit login form
+  const handleLoginSubmit = async (e) => {
+    e.preventDefault();
+    const { username, password } = loginForm;
+
+    try {
+      const response = await fetch(`${API_BASE}/api/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, password }),
+      });
+
+      const result = await response.json();
+
+      if (response.ok && result.status === "success") {
+        const newUser = {
+          username: result.data.username,
+          fullname: result.data.fullname,
+          divisi: result.data.divisi,
+        };
+
+        setIsLoggedIn(true);
+        setUserData(newUser);
+
+        localStorage.setItem("session_token", result.data.token);
+        localStorage.setItem("userSession", JSON.stringify(newUser));
+        localStorage.setItem("isLoggedIn", "true");
+
+        showNotification(`Selamat datang, ${newUser.fullname}!`, "success");
+
+        setShowLoginModal(false);
+        setLoginForm({ username: "", password: "" });
+        setLoginError("");
+      } else {
+        setLoginError(result.message || "Login gagal");
+      }
+    } catch (error) {
+      console.error("Login Error:", error);
+      setLoginError("Server login tidak merespon");
     }
   };
 
-  // File upload panel component
-  const FileUploadPanel = () => (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-semibold text-gray-900">Upload File</h3>
-          <button
-            onClick={() => setShowFileUpload(false)}
-            className="p-1 hover:bg-gray-100 rounded-lg"
-          >
-            ✕
-          </button>
-        </div>
+  // Trigger logout modal
+  const triggerLogout = () => {
+    setIsLogoutModalOpen(true);
+  };
 
-        <div
-          onClick={() => fileInputRef.current?.click()}
-          className="border-2 border-dashed border-gray-300 rounded-xl p-8 text-center hover:border-blue-400 hover:bg-blue-50 cursor-pointer transition-colors"
-        >
-          <div className="flex flex-col items-center">
-            <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center mb-3">
-              <span className="text-2xl">📁</span>
-            </div>
-            <p className="font-medium text-gray-900">Click to select file</p>
-            <p className="text-sm text-gray-500 mt-1">
-              PDF, PNG, JPG, TXT up to 16MB
-            </p>
-            <p className="text-xs text-gray-400 mt-2">Or drag and drop here</p>
-          </div>
-        </div>
+  // Eksekusi logout
+  const handleLogout = async () => {
+    const token = localStorage.getItem("session_token");
 
-        <div className="mt-4 grid grid-cols-2 gap-2">
-          {[
-            { type: "PDF", desc: "Document text extraction", icon: "📄" },
-            { type: "Image", desc: "OCR text recognition", icon: "🖼️" },
-            { type: "TXT", desc: "Plain text reading", icon: "📝" },
-            { type: "DOCX", desc: "Word document", icon: "📘" },
-          ].map((item, idx) => (
-            <div key={idx} className="p-3 bg-gray-50 rounded-lg">
-              <div className="flex items-center space-x-2">
-                <span className="text-lg">{item.icon}</span>
-                <div>
-                  <p className="font-medium text-sm">{item.type}</p>
-                  <p className="text-xs text-gray-500">{item.desc}</p>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
+    try {
+      if (token) {
+        await fetch(`${API_BASE}/api/logout`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token }),
+        });
+      }
+    } catch (error) {
+      console.error("Gagal logout ke server:", error);
+    } finally {
+      localStorage.clear();
+      setIsLoggedIn(false);
+      setUserData(null);
+      setMessages([]);
+      setCurrentSessionId(null);
+      setChatHistory([]);
+      setInput("");
+      setIsLogoutModalOpen(false);
+    }
+  };
 
-        <p className="text-xs text-gray-500 mt-4 text-center">
-          After uploading, ask questions about the file
-        </p>
-      </div>
-    </div>
-  );
+  // State untuk melacak pesan mana yang di-expand
+  const [expandedMessages, setExpandedMessages] = React.useState({});
+
+  // Fungsi untuk toggle buka/tutup
+  const toggleExpand = (id) => {
+    setExpandedMessages((prev) => ({
+      ...prev,
+      [id]: !prev[id],
+    }));
+  };
+
+  // =========================================================================
+  // Handle Files
+  // =========================================================================
+  const [isDragging, setIsDragging] = useState(false);
+  const [selectedFiles, setSelectedFiles] = useState([]); // File asli untuk dikirim ke API
+  const [previews, setPreviews] = useState([]); // URL untuk tampilan preview (blob)
+
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!isDragging) setIsDragging(true);
+  };
+
+  const handleDragLeave = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    // Logika krusial: Hanya matikan dragging jika kursor benar-benar keluar dari container
+    if (!e.currentTarget.contains(e.relatedTarget)) {
+      setIsDragging(false);
+    }
+  };
+
+  const onDrop = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+    const files = e.dataTransfer.files;
+    if (files.length > 0) handleFiles(files);
+  };
+
+  const handleFiles = (files) => {
+    const fileArray = Array.from(files);
+
+    fileArray.forEach((file) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        // e.target.result inilah Base64 yang asli dan permanen
+        const base64Data = e.target.result;
+
+        const newFile = {
+          url: base64Data, // Simpan base64 ke URL untuk preview & DB
+          name: file.name,
+          type: file.type.startsWith("image/") ? "image" : "pdf",
+        };
+
+        setPreviews((prev) => [...prev, newFile]);
+        setSelectedFiles((prev) => [...prev, file]);
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const handleFileChange = (e) => {
+    const selectedFiles = Array.from(e.target.files);
+    if (selectedFiles.length > 0) {
+      // Fungsi handleFiles ini harusnya udah lu punya buat proses preview/upload
+      handleFiles(selectedFiles);
+    }
+    // Reset value biar bisa pilih file yang sama berulang kali
+    e.target.value = null;
+  };
+
+  // Handler untuk Paste (Ctrl+V)
+  const handlePaste = (e) => {
+    const items = e.clipboardData.items;
+    const files = [];
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].kind === "file") {
+        files.push(items[i].getAsFile());
+      }
+    }
+    if (files.length > 0) handleFiles(files);
+  };
+
+  // Handler untuk Drag & Drop
+  const handleDrop = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    // RESET STATE DI SINI BIAR OVERLAY HILANG
+    setIsDragging(false);
+
+    const files = e.dataTransfer.files;
+    if (files.length > 0) {
+      handleFiles(files);
+    }
+  };
+
+  // =========================================================================
+  // MAIN RENDER
+  // =========================================================================
 
   return (
-    <div className="flex flex-col h-screen bg-gray-50">
-      {/* Hidden file input */}
-      <input
-        type="file"
-        ref={fileInputRef}
-        onChange={handleFileUpload}
-        accept=".pdf,.png,.jpg,.jpeg,.txt,.docx"
-        className="hidden"
-      />
+    <div className="border-t border-t-[#E0E0E0] dark:border-t-[#1A1A1C] bg-[#F7F8FC] dark:bg-[#232326] flex h-screen overflow-hidden text-gray-900 dark:text-gray-200 transition-colors duration-300">
+      {/* Sidebar hanya muncul jika sudah login */}
+      {isLoggedIn && (
+        <Sidebar
+          backendStatus={backendStatus}
+          isOpen={isSidebarOpen}
+          setIsOpen={setIsSidebarOpen}
+          setIsLoggedIn={setIsLoggedIn}
+          userData={userData}
+          handleLogout={handleLogout}
+          setShowDocumentList={setShowDocumentList}
+          setCurrentSessionId={setCurrentSessionId}
+          currentSessionId={currentSessionId}
+          loadChatSession={loadChatSession}
+          clearChat={handleNewChat}
+          chatHistory={chatHistory}
+          setChatHistory={setChatHistory}
+          triggerLogout={triggerLogout}
+        />
+      )}
+      {!isLoggedIn && (
+        <div className="absolute top-4 left-4 flex items-center z-50">
+          {/* Logo di pojok kiri atas, spin hanya sekali ketika reload */}
+          <img
+            src="./src/assets/cakra.png"
+            alt="CAKRA AI Logo"
+            className="w-10 h-10 object-cover rounded-full"
+            style={{
+              animation: "spin-once 2s cubic-bezier(0.4,0,0.2,1) 1",
+            }}
+          />
+        </div>
+      )}
+      {/* Model Selector - Hanya muncul jika sudah login */}
+      {isLoggedIn && (
+        <div
+          className="absolute top-4 z-30 flex items-center transition-all duration-300 ease-in-out"
+          style={{
+            left: isSidebarOpen ? "295px" : "75px",
+          }}
+        >
+          <div className="border-t border-t-[#E0E0E0] dark:border-t-[#1A1A1C] bg-[#F7F8FC] dark:bg-[#1A1A1C] relative flex items-center border border-gray-200 dark:border-[#27272a] rounded-full px-4 py-1.5 shadow-sm transition-all duration-300">
+            <div className="w-2 h-2 bg-blue-500 rounded-full mr-2 animate-pulse"></div>
 
-      {/* File upload modal */}
-      {showFileUpload && <FileUploadPanel />}
-
-      {/* Header - SIMPLIFIED, TANPA UPLOAD BUTTON */}
-      <div className="bg-white border-b border-gray-200 px-4 py-3">
-        <div className="max-w-3xl mx-auto flex items-center justify-between">
-          <div className="flex items-center space-x-3">
-            <img src="./src/assets/cakra.png" alt="CAKRA AI Logo" className="w-10 h-10 rounded-full object-cover" />
-            <div>
-              <h1 className="text-lg font-semibold text-gray-900">CAKRA AI</h1>
-              <div className="flex items-center space-x-2">
-                <span
-                  className={`w-2 h-2 rounded-full ${
-                    backendStatus === "connected"
-                      ? "bg-green-500"
-                      : backendStatus === "disconnected"
-                      ? "bg-red-500"
-                      : "bg-yellow-500"
-                  }`}
-                ></span>
-                <span className="text-xs text-gray-500">
-                  {backendStatus === "connected"
-                    ? "Connected"
-                    : "Connecting..."}{" "}
-                  • Qwen3-VL 8B
-                </span>
-              </div>
-            </div>
-          </div>
-
-          {/* HANYA BUTTON CLEAR CHAT */}
-          <div className="flex items-center space-x-2">
             <button
-              onClick={clearChat}
-              className="p-1.5 hover:bg-gray-100 rounded-lg text-gray-500"
-              title="New chat"
+              onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+              className="flex items-center gap-1 text-sm font-semibold text-gray-700 dark:text-gray-200 focus:outline-none"
+              style={{ transition: "color 0.3s" }}
             >
+              {modelList.find((m) => m.id === selectedModel)?.name ||
+                "Select Model"}
               <svg
-                xmlns="http://www.w3.org/2000/svg"
-                className="h-5 w-5"
+                className={`w-4 h-4 transition-transform ${
+                  isDropdownOpen ? "rotate-180" : ""
+                }`}
                 fill="none"
                 viewBox="0 0 24 24"
                 stroke="currentColor"
@@ -306,240 +847,843 @@ function App() {
                   strokeLinecap="round"
                   strokeLinejoin="round"
                   strokeWidth={2}
-                  d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                  d="M19 9l-7 7-7-7"
                 />
               </svg>
             </button>
+
+            {isDropdownOpen && (
+              <div className="absolute top-full left-0 mt-2 w-56 rounded-xl bg-white dark:bg-[#1A1A1C] border border-gray-200 dark:border-[#27272a] shadow-xl overflow-hidden z-50 animate-in fade-in zoom-in duration-200">
+                <div className="px-4 py-2 border-b border-gray-50 dark:border-[#232326] bg-gray-50/50 dark:bg-[#232326]/50">
+                  <span className="text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase tracking-wider">
+                    Engine System
+                  </span>
+                </div>
+
+                <div className="max-h-60 overflow-y-auto">
+                  {modelList.map((m) => (
+                    <button
+                      key={m.id}
+                      onClick={() => {
+                        setSelectedModel(m.id);
+                        setIsDropdownOpen(false);
+                      }}
+                      className={`w-full px-4 py-3 flex items-center justify-between text-left transition
+                        ${
+                          selectedModel === m.id
+                            ? "bg-blue-50/70 dark:bg-blue-600/10 text-blue-700 dark:text-blue-300"
+                            : "text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-[#232326]"
+                        }`}
+                    >
+                      <span className="text-sm font-medium">{m.name}</span>
+
+                      {selectedModel === m.id && (
+                        <svg
+                          className="w-4 h-4 text-blue-600 dark:text-blue-400"
+                          fill="currentColor"
+                          viewBox="0 0 20 20"
+                        >
+                          <path
+                            fillRule="evenodd"
+                            d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                            clipRule="evenodd"
+                          />
+                        </svg>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
-      </div>
-
-      {/* Chat Messages */}
-      <div className="flex-1 overflow-y-auto px-4 py-6">
-        <div className="max-w-3xl mx-auto">
-          {messages.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full text-center py-12">
-              <div className="w-20 h-20 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full flex items-center justify-center mb-6">
-                <span className="text-3xl">🤖</span>
-              </div>
-              <h2 className="text-2xl font-semibold text-gray-900 mb-3">
-                Hai saya CAKRA (Pindad AI)
-              </h2>
-              <p className="text-gray-600 max-w-md mb-8">
-                Saya bisa membantu menjawab pertanyaan anda, memberikan informasi terkait rekrutmen, peraturan perusahaan,
-                dan lain lain. Kamu juga bisa mengupload file untuk dianalisa.
-              </p>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-w-lg mb-8">
-                {[
-                  "Berikan informasi terkait PT Pindad",
-                  "Tahapan rekrutmen di PT Pindad seperti apa?",
-                  "Apa itu daerah terlarang, tertutup dan terbatas di PT Pindad?",
-                  "Apakah masyarakat umum bisa membeli produk pindad?",
-                ].map((suggestion, idx) => (
-                  <button
-                    key={idx}
-                    onClick={() => setInput(suggestion)}
-                    className="text-left p-4 bg-white border border-gray-200 rounded-xl hover:border-blue-300 hover:bg-blue-50 transition-colors text-sm text-gray-700"
-                  >
-                    {suggestion}
-                  </button>
-                ))}
-              </div>
-
+      )}
+      {/* LOADING SCREEN SEBAGAI OVERLAY */}
+      {isInitializing && (
+        <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-white dark:bg-[#232326]">
+          <img
+            src="./src/assets/cakra.png"
+            alt="Loading..."
+            className="w-20 h-20 animate-spin"
+          />
+          <h2 className="mt-6 text-xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent animate-bounce">
+            CAKRA AI
+          </h2>
+        </div>
+      )}
+      {/* Content Container */}
+      <div
+        className={`flex flex-col flex-1 h-full transition-all duration-300 ${
+          isLoggedIn ? (isSidebarOpen ? "ml-60" : "ml-15") : "ml-0"
+        }`}
+      >
+        {/* HEADER AREA: Tombol Login/Logout */}
+        <div className="absolute right-4 z-20">
+          {!isLoggedIn && (
+            <div className="absolute top-2 right-2 z-20">
               <button
-                onClick={() => setShowFileUpload(true)}
-                className="flex items-center space-x-2 px-4 py-3 bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-xl hover:opacity-90 transition-opacity"
+                onClick={() => setShowLoginModal(true)}
+                className="px-5 py-1 bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-full font-semibold shadow-lg hover:bg-blue-700 transition-all"
               >
-                <span className="text-lg">📁</span>
-                <div className="text-left">
-                  <p className="font-medium">Upload file untuk dianalisa</p>
-                  <p className="text-sm opacity-90">
-                    PDF, gambar, dokumen text
-                  </p>
-                </div>
+                Login
               </button>
             </div>
-          ) : (
-            <div className="space-y-6">
-              {messages.map((msg, idx) => (
-                <div
-                  key={idx}
-                  className={`flex ${
-                    msg.sender === "user" ? "justify-end" : "justify-start"
-                  }`}
-                >
-                  <div
-                    className={`flex max-w-3xl ${
-                      msg.sender === "user" ? "flex-row-reverse" : "flex-row"
-                    } items-start`}
-                  >
-                    <div
-                      className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-medium ${
-                        msg.sender === "user"
-                          ? "bg-blue-600 ml-3"
-                          : msg.sender === "system"
-                          ? "bg-gray-500 ml-3"
-                          : "mr-3"
-                      }`}
-                    >
-                      {msg.sender === "user"
-                        ? "You"
-                        : msg.sender === "system"
-                        ? "📁"
-                        : (
-                          <img
-                            src="src/assets/cakra.png"
-                            alt="CAKRA"
-                            className="w-8 h-8 object-cover rounded-full"
-                          />
-                        )}
-                    </div>
-                    <div
-                      className={`px-4 py-3 rounded-2xl ${
-                        msg.sender === "user"
-                          ? "bg-blue-600 text-white rounded-tr-none"
-                          : msg.sender === "system"
-                          ? "bg-gray-100 text-gray-800 rounded-tl-none border border-gray-200"
-                          : "bg-white border border-gray-200 text-gray-800 rounded-tl-none"
-                      } ${msg.isError ? "border-red-200 bg-red-50" : ""}`}
-                    >
-                      <div className="whitespace-pre-wrap break-words">
-                        {msg.text}
-                      </div>
-                      {msg.timestamp && (
-                        <div
-                          className={`text-xs mt-2 ${
-                            msg.sender === "user"
-                              ? "text-blue-200"
-                              : "text-gray-500"
-                          }`}
-                        >
-                          {msg.timestamp}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              ))}
+          )}
 
-              {isLoading && (
-                <div className="flex justify-start">
-                  <div className="flex max-w-3xl items-start">
-                    <div className="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-medium mr-3 overflow-hidden">
-                      <img src="src/assets/cakra.png" alt="CAKRA" className="w-8 h-8 object-cover" />
-                    </div>
-                    <div className="px-4 py-3 bg-white border border-gray-200 rounded-2xl rounded-tl-none">
-                      <div className="flex space-x-1">
-                        <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
-                        <div
-                          className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"
-                          style={{ animationDelay: "0.1s" }}
-                        ></div>
-                        <div
-                          className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"
-                          style={{ animationDelay: "0.2s" }}
-                        ></div>
-                      </div>
-                    </div>
+          {/* MODAL LOGIN */}
+          {showLoginModal && (
+            <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm">
+              <div className="bg-white dark:bg-[#232326] rounded-2xl shadow-2xl p-8 relative border border-gray-100 dark:border-[#232326]">
+                <button
+                  onClick={() => setShowLoginModal(false)}
+                  className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                >
+                  ✕
+                </button>
+
+                <div className="text-center mb-8">
+                  <div className="w-16 h-16 bg-blue-100 dark:bg-blue-900/40 rounded-full flex items-center justify-center mx-auto mb-4 text-2xl">
+                    👤
                   </div>
+                  <h2 className="text-2xl font-bold text-gray-800 dark:text-blue-200">
+                    Login CAKRA AI
+                  </h2>
+                  <p className="text-gray-500 dark:text-gray-400 text-sm">
+                    Gunakan username dan password ESS
+                  </p>
                 </div>
-              )}
-              <div ref={messagesEndRef} />
+
+                <form onSubmit={handleLoginSubmit} className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      Username
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      className="w-full px-4 py-2 border border-gray-300 dark:border-[#232326] rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none bg-white dark:bg-[#1a1a1c] text-gray-900 dark:text-gray-100"
+                      value={loginForm.username}
+                      onChange={(e) =>
+                        setLoginForm({ ...loginForm, username: e.target.value })
+                      }
+                      placeholder="username"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      Password
+                    </label>
+                    <input
+                      type="password"
+                      required
+                      className="w-full px-4 py-2 border border-gray-300 dark:border-[#232326] rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none bg-white dark:bg-[#1a1a1c] text-gray-900 dark:text-gray-100"
+                      value={loginForm.password}
+                      onChange={(e) =>
+                        setLoginForm({ ...loginForm, password: e.target.value })
+                      }
+                      placeholder="••••••"
+                    />
+                  </div>
+
+                  {loginError && (
+                    <p className="text-red-500 text-xs mt-1 animate-pulse">
+                      {loginError}
+                    </p>
+                  )}
+
+                  <button
+                    type="submit"
+                    className="w-full py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-xl font-bold hover:opacity-90 transition-opacity mt-4"
+                  >
+                    Masuk Sekarang
+                  </button>
+                </form>
+              </div>
             </div>
           )}
         </div>
-      </div>
 
-      {/* Input Area - DENGAN UPLOAD BUTTON */}
-      <div className="border-t border-gray-200 bg-white px-4 py-4">
-        <div className="max-w-3xl mx-auto">
-          <div className="relative">
-            <textarea
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={handleKeyPress}
-              disabled={isLoading}
-              placeholder={
-                uploadedFiles.length > 0
-                  ? `Ask about "${
-                      uploadedFiles[uploadedFiles.length - 1].name
-                    }" or type a message...`
-                  : "Message CAKRA AI or upload a file..."
-              }
-              className="w-full border border-gray-300 rounded-2xl px-4 py-3 pr-28 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-50"
-              rows="1"
-              style={{ minHeight: "52px", maxHeight: "120px" }}
-            />
+        {/* Hidden file input & Modals */}
+        <input
+          type="file"
+          ref={fileInputRef}
+          onChange={handleFilePreview}
+          accept=".pdf,.png,.jpg,.jpeg,.txt,.docx"
+          className="hidden"
+        />
 
-            <div className="absolute right-2 bottom-2 flex items-center space-x-2">
-              {/* UPLOAD BUTTON DI SINI */}
-              <button
-                onClick={() => setShowFileUpload(true)}
-                disabled={isLoading}
-                className="p-2 text-gray-600 hover:text-blue-600 disabled:opacity-50 transition-colors"
-                title="Upload file"
-              >
-                <span className="text-xl">📁</span>
-              </button>
+        {/* {showFileUpload && (
+          <FileUploadPanel
+            fileInputRef={fileInputRef}
+            setShowFileUpload={setShowFileUpload}
+          />
+        )}
 
-              {/* SEND BUTTON */}
-              <button
-                onClick={sendMessage}
-                disabled={isLoading || !input.trim()}
-                className={`px-4 py-2 rounded-xl font-medium transition-colors ${
-                  isLoading || !input.trim()
-                    ? "bg-gray-200 text-gray-400 cursor-not-allowed"
-                    : "bg-gradient-to-r from-blue-500 to-purple-600 text-white hover:opacity-90"
-                }`}
-              >
-                {isLoading ? (
-                  <svg
-                    className="w-5 h-5 animate-spin"
-                    xmlns="http://www.w3.org/2000/svg"
-                    fill="none"
-                    viewBox="0 0 24 24"
+        {showPreview && (
+          <FilePreviewPanel
+            previewFile={previewFile}
+            cancelUpload={cancelUpload}
+            confirmUpload={confirmUpload}
+          />
+        )} */}
+
+        {showDocumentList && (
+          <DocumentListPanel
+            documents={documents}
+            setShowDocumentList={setShowDocumentList}
+          />
+        )}
+
+        {/* Area Pesan */}
+        <div
+          ref={messagesContainerRef}
+          className="flex-1 overflow-y-auto px-4 no-scrollbar py-6 bg-white dark:bg-[#232326] transition-colors duration-300"
+          style={{
+            overflowAnchor: "none", // Ini kuncinya bro!
+            scrollBehavior: "auto",
+            height: "100%",
+          }}
+        >
+          <div className="max-w-3xl mx-auto">
+            {messages.length === 0 ? (
+              // Welcome Screen
+              <div className="flex flex-col items-center justify-center h-full text-center py-60">
+                <h2 className="text-2xl font-semibold text-gray-900 dark:text-gray-100 mb-3 transition-colors duration-300">
+                  {isLoggedIn
+                    ? `${getGreeting()}, ${userData.fullname}`
+                    : "Hai, saya CAKRA (Pindad AI)"}
+                </h2>
+
+                <p className="text-gray-600 dark:text-gray-300 max-w-md mb-8 transition-colors duration-300">
+                  {isLoggedIn
+                    ? "Ada yang bisa saya bantu hari ini?"
+                    : "Saya bisa membantu menjawab pertanyaan anda..."}
+                </p>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-w-lg mb-8">
+                  {[
+                    "Berikan informasi terkait PT Pindad",
+                    "Tahapan rekrutmen di PT Pindad seperti apa?",
+                    "Apa itu daerah terlarang, tertutup dan terbatas di PT Pindad?",
+                    "Apakah masyarakat umum bisa membeli produk pindad?",
+                  ].map((suggestion, idx) => (
+                    <button
+                      key={idx}
+                      onClick={() => setInput(suggestion)}
+                      className="text-left p-4 bg-white dark:bg-[#2E2E33] border border-gray-200 dark:border-[#232326] rounded-xl hover:border-blue-300 hover:bg-blue-50 dark:hover:bg-blue-700/10 transition-colors text-sm text-gray-700 dark:text-gray-200"
+                    >
+                      {suggestion}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              // Chat Messages
+              <div className="space-y-6">
+                {messages.map((msg) => (
+                  <div
+                    key={msg.id}
+                    className={`flex ${
+                      msg.sender === "user"
+                        ? "justify-end pl-5 max-w-lg ml-auto"
+                        : "justify-start pr-5 max-w-2xl mr-auto"
+                    }`}
                   >
-                    <circle
-                      className="opacity-25"
-                      cx="12"
-                      cy="12"
-                      r="10"
-                      stroke="currentColor"
-                      strokeWidth="4"
-                    ></circle>
-                    <path
-                      className="opacity-75"
-                      fill="currentColor"
-                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                    ></path>
-                  </svg>
-                ) : (
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    className="w-5 h-5"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"
-                    />
-                  </svg>
+                    {/* --- PESAN USER (GEMINI STYLE) --- */}
+                    {msg.sender === "user" && (
+                      <div className="flex justify-end mt-5">
+                        <div
+                          onClick={() => toggleExpand(msg.id)}
+                          className={`
+        relative cursor-pointer
+        bg-blue-600 dark:bg-[#2A2A2E]
+        text-gray-100
+        rounded-3xl
+        px-4 py-3
+        shadow-sm
+        transition-all duration-300 ease-in-out
+        overflow-hidden
+        ${expandedMessages[msg.id] ? "max-w-[90%]" : "max-w-[300px]"}
+      `}
+                        >
+                          {/* 1. --- AREA ATTACHMENT/GAMBAR --- */}
+                          {msg.attachments && msg.attachments.length > 0 && (
+                            <div className="flex flex-wrap gap-2 mb-3">
+                              {msg.attachments.map((file, i) => (
+                                <div key={i} className="relative group">
+                                  {file.type === "image" && (
+                                    <img
+                                      src={file.data || file.url}
+                                      alt={file.name}
+                                      className="w-24 h-24 object-cover rounded-xl border border-white/20 shadow-sm 
+                       cursor-zoom-in hover:scale-105 active:scale-95 transition-all duration-200"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        const imageData = file.data || file.url;
+
+                                        // Bikin elemen link bayangan
+                                        const link =
+                                          document.createElement("a");
+                                        link.href = imageData;
+                                        link.target = "_blank";
+
+                                        // Khusus base64, kita kasih instruksi download atau buka di tab baru via blob
+                                        if (imageData.startsWith("data:")) {
+                                          const image = new Image();
+                                          image.src = imageData;
+                                          const w = window.open("");
+                                          w.document.write(image.outerHTML);
+                                          w.document.body.style.backgroundColor =
+                                            "#000";
+                                          w.document.body.style.margin = "0";
+                                          w.document.body.style.display =
+                                            "flex";
+                                          w.document.body.style.alignItems =
+                                            "center";
+                                          w.document.body.style.justifyContent =
+                                            "center";
+                                          w.document.title =
+                                            file.name || "Preview";
+                                        } else {
+                                          window.open(imageData, "_blank");
+                                        }
+                                      }}
+                                    />
+                                  )}
+                                  {/* Jika tipe lain seperti PDF */}
+                                  {file.type === "pdf" && (
+                                    <div className="w-20 h-20 bg-gray-700/50 rounded-xl flex flex-col items-center justify-center border border-white/10">
+                                      {/* PDF SVG Icon */}
+                                      <svg
+                                        xmlns="http://www.w3.org/2000/svg"
+                                        className="w-7 h-7 mb-1 opacity-80"
+                                        fill="none"
+                                        viewBox="0 0 24 24"
+                                        stroke="currentColor"
+                                        strokeWidth={2}
+                                      >
+                                        <rect
+                                          x="4"
+                                          y="2"
+                                          width="16"
+                                          height="20"
+                                          rx="2"
+                                          ry="2"
+                                          fill="#fff"
+                                          stroke="#c53030"
+                                        />
+                                        <path
+                                          d="M8 10v4"
+                                          stroke="#c53030"
+                                          strokeWidth={2}
+                                        />
+                                        <path
+                                          d="M12 10v4"
+                                          stroke="#c53030"
+                                          strokeWidth={2}
+                                        />
+                                        <path
+                                          d="M16 10v4"
+                                          stroke="#c53030"
+                                          strokeWidth={2}
+                                        />
+                                        <text
+                                          x="7"
+                                          y="17"
+                                          fill="#c53030"
+                                          fontSize="6"
+                                          fontFamily="sans-serif"
+                                          fontWeight="bold"
+                                        >
+                                          PDF
+                                        </text>
+                                      </svg>
+                                      <span className="text-[8px] mt-0.5 px-1 truncate w-full text-center text-gray-200">
+                                        {file.name}
+                                      </span>
+                                    </div>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                          {/* Icon Expand SVG Arrow */}
+
+                          {msg.text?.length > 100 && (
+                            <div
+                              className="absolute top-2 right-2 text-gray-100 dark:text-gray-300 text-xs cursor-pointer group"
+                              style={{ borderRadius: "50%" }}
+                            >
+                              <div className="p-1 transition-all duration-150 group-hover:bg-blue-500 dark:group-hover:bg-gray-500 rounded-full">
+                                {expandedMessages[msg.id] ? (
+                                  // Arrow Up SVG
+
+                                  <svg
+                                    width="24"
+                                    height="24"
+                                    viewBox="0 0 20 20"
+                                    fill="none"
+                                  >
+                                    <path
+                                      d="M6 12l4-4 4 4"
+                                      stroke="currentColor"
+                                      strokeWidth="2"
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                    />
+                                  </svg>
+                                ) : (
+                                  // Arrow Down SVG
+
+                                  <svg
+                                    width="24"
+                                    height="24"
+                                    viewBox="0 0 20 20"
+                                    fill="none"
+                                  >
+                                    <path
+                                      d="M6 8l4 4 4-4"
+                                      stroke="currentColor"
+                                      strokeWidth="2"
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                    />
+                                  </svg>
+                                )}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* 3. --- KONTEN PESAN TEKS (BAWAAN LU) --- */}
+                          <div
+                            className={`text-sm leading-relaxed pr-4 ${
+                              expandedMessages[msg.id] ? "" : "line-clamp-3"
+                            }`}
+                          >
+                            <MessageRenderer
+                              text={msg.text}
+                              showNotification={showNotification}
+                              isTyping={msg.isTyping}
+                              isAI={false}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* --- PESAN AI --- */}
+                    {msg.sender === "ai" && (
+                      <div className="max-w-3xl ml-0 md:ml-4">
+                        {/* PdfButtons dan Logo nangkring di atas MessageRenderer sesuai request sebelumnya */}
+                        <React.Fragment>
+                          <div
+                            className={`flex items-start mb-2 mt-5 ${
+                              !isLoading ? "" : "hidden"
+                            }`}
+                          >
+                            <div className="flex-shrink-0 w-8 h-8 xs:mr-5 -ml-1">
+                              <img
+                                src="./src/assets/cakra.png"
+                                alt="CAKRA Loading"
+                                className={`w-8 h-8 object-cover rounded-full ${
+                                  msg.isTyping ? "animate-spin" : ""
+                                }`}
+                                style={{ animationDuration: "2s" }}
+                              />
+                            </div>
+                            <span
+                              className={`text-gray-400 dark:text-gray-300 text-xs flex items-center justify-center ml-2${
+                                !isLoading ? "" : "hidden"
+                              }`}
+                              style={{ alignSelf: "center" }}
+                            >
+                              CAKRA AI
+                            </span>
+                          </div>
+                        </React.Fragment>
+
+                        <MessageRenderer
+                          text={msg.text}
+                          showNotification={showNotification}
+                          isTyping={msg.isTyping}
+                          isAI={true}
+                        />
+                        <PdfButtons
+                          pdfInfo={msg.pdfInfo}
+                          isFromDocument={msg.isFromDocument}
+                          isTyping={msg.isTyping}
+                        />
+                      </div>
+                    )}
+                  </div>
+                ))}
+
+                {/* Loading Indicator */}
+                {isLoading && (
+                  <div className="flex justify-start items-center py-2 animate-pulse">
+                    <div className="flex items-center">
+                      {/* Container Logo dengan Animasi Spin */}
+                      <div className="flex-shrink-0 w-8 h-8 mr-3">
+                        <img
+                          src="./src/assets/cakra.png"
+                          alt="CAKRA Loading"
+                          className="w-8 h-8 object-cover rounded-full animate-spin"
+                          style={{ animationDuration: "2s" }}
+                        />
+                      </div>
+
+                      {/* Teks Loading opsional agar user tahu AI sedang memproses */}
+                      <span className="text-xs text-gray-400 dark:text-gray-300 font-medium tracking-wide">
+                        CAKRA lagi mikir nih...
+                      </span>
+                    </div>
+                  </div>
                 )}
-              </button>
+
+                <div ref={messagesEndRef} />
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Input Area */}
+        <div className="bg-white dark:bg-[#232326] px-4 py-4 transition-colors duration-300">
+          <div className="max-w-3xl mx-auto rounded-4xl relative">
+            {/* --- FLOATING TOGGLE BUTTON --- */}
+            {/* 1. Cek apakah kontainer sudah ada dan memiliki konten yang bisa di-scroll (nyelem) */}
+            {messagesContainerRef.current &&
+              messagesContainerRef.current.scrollHeight >
+                messagesContainerRef.current.clientHeight && (
+                <div className="absolute bottom-full right-0 md:-right-5 z-[9999] pointer-events-none animate-in fade-in slide-in-from-bottom-2 duration-300">
+                  {/* 2. Logic Tampil: Hanya muncul jika sedang TIDAK di bawah (mau ke bawah) 
+        ATAU sudah jauh di bawah (mau ke atas) */}
+                  {(!isAtBottom ||
+                    (isAtBottom &&
+                      messagesContainerRef.current.scrollTop > 300)) && (
+                    <button
+                      onClick={() => {
+                        const container = messagesContainerRef.current;
+                        if (!container) return;
+
+                        if (isAtBottom) {
+                          // Aksi: Kembali ke paling atas
+                          container.scrollTo({ top: 0, behavior: "smooth" });
+                        } else {
+                          // Aksi: Loncat ke chat terbaru (bawah)
+                          container.scrollTo({
+                            top: container.scrollHeight,
+                            behavior: "smooth",
+                          });
+                          if (autoScrollEnabled)
+                            autoScrollEnabled.current = true;
+                          if (isUserScrolling) isUserScrolling.current = false;
+                          if (
+                            isAiTypingRef.current &&
+                            typeof startAutoScroll === "function"
+                          ) {
+                            startAutoScroll();
+                          }
+                        }
+                      }}
+                      className="pointer-events-auto relative group p-2.5 bg-white dark:bg-[#2e2e33] border border-gray-200 dark:border-gray-700 rounded-full shadow-lg hover:scale-110 transition-all active:scale-95 flex items-center justify-center mb-4"
+                    >
+                      {/* Icon Panah: Otomatis balik arah berdasarkan posisi */}
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        className={`w-4 h-4 text-gray-600 dark:text-gray-300 transition-transform duration-500 ${
+                          isAtBottom ? "" : "rotate-180"
+                        }`}
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2.5}
+                          d="M5 15l7-7 7 7"
+                        />
+                      </svg>
+
+                      {/* Notif Merah: Hanya muncul jika ada chat baru (AI typing) tapi user lagi scroll di atas */}
+                      {!isAtBottom && isAiTypingRef.current && (
+                        <span className="absolute -top-1 -right-1 flex h-4 w-4">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                          <span className="relative inline-flex rounded-full h-4 w-4 bg-red-500 border-2 border-white dark:border-[#2e2e33]"></span>
+                        </span>
+                      )}
+                    </button>
+                  )}
+                </div>
+              )}
+            {/* Label Mode */}
+            {currentMode !== "normal" && (
+              <div className="flex items-center space-x-2 mb-2">
+                <span
+                  className={`text-xs px-2 py-1 rounded-full ${
+                    currentMode === "document"
+                      ? "bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-300"
+                      : "bg-purple-100 dark:bg-purple-900 text-purple-800 dark:text-purple-300"
+                  }`}
+                >
+                  {currentMode === "document"
+                    ? "📄 Document Mode"
+                    : "🌐 Search Mode"}
+                </span>
+              </div>
+            )}
+            <div
+              className="relative w-full"
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onDrop={onDrop}
+            >
+              {/* --- OVERLAY VISUAL --- */}
+              {/* Gunakan pointer-events-none agar overlay ini "tembus pandang" bagi kursor */}
+              {isDragging && (
+                <div className="absolute inset-0 z-[60] pointer-events-none flex items-center justify-center">
+                  <div className="absolute inset-0 bg-blue-500/10 backdrop-blur-[2px] border-2 border-dashed border-blue-500 rounded-3xl" />
+                  <div className="relative bg-white dark:bg-gray-800 px-6 py-3 rounded-2xl shadow-2xl flex items-center gap-3 border border-blue-200">
+                    <span className="text-2xl animate-bounce">📥</span>
+                    <span className="font-semibold text-blue-600">
+                      Lepaskan file di sini
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {/* --- KONTEN INPUT ASLI --- */}
+              <div
+                className={`rounded-3xl transition-all duration-300 ${
+                  isDragging ? "ring-2 ring-blue-500 opacity-50" : ""
+                } ${
+                  isLoggedIn ? "p-3" : "px-3 py-2"
+                } bg-[#F7F8FC] dark:bg-[#2E2E33]`}
+              >
+                {/* --- BARIS PREVIEW (Muncul pas di-paste/drop) --- */}
+                {previews.length > 0 && (
+                  <div className="flex flex-wrap gap-3 mb-3 px-2 border-b border-gray-200 dark:border-gray-700 pb-3">
+                    {previews.map((file, index) => (
+                      <div
+                        key={index}
+                        className="relative group w-20 h-20 animate-in zoom-in duration-200"
+                      >
+                        {file.type === "image" ? (
+                          <img
+                            src={file.url}
+                            className="w-full h-full object-cover rounded-xl border-2 border-white dark:border-gray-600 shadow-sm"
+                          />
+                        ) : (
+                          <div className="w-full h-full flex flex-col items-center justify-center bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700">
+                            <span className="text-2xl">
+                              {/* PDF Icon SVG */}
+                              <svg
+                                width="32"
+                                height="32"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                              >
+                                <rect
+                                  x="3"
+                                  y="3"
+                                  width="18"
+                                  height="18"
+                                  rx="2.5"
+                                  fill="#E53935"
+                                />
+                                <path
+                                  d="M7.5 17V7H10C11.3807 7 12.5 8.11929 12.5 9.5V9.5C12.5 10.8807 11.3807 12 10 12H7.5M16.5 7V17M16.5 10.5H14.5M16.5 13.5H14.5"
+                                  stroke="white"
+                                  strokeWidth="1.2"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                />
+                              </svg>
+                            </span>
+                            <span className="text-[8px] mt-1 px-1 truncate w-full text-center">
+                              {file.name}
+                            </span>
+                          </div>
+                        )}
+                        {/* Tombol Hapus */}
+                        <button
+                          onClick={() => {
+                            setPreviews((prev) =>
+                              prev.filter((_, i) => i !== index)
+                            );
+                            setSelectedFiles((prev) =>
+                              prev.filter((_, i) => i !== index)
+                            );
+                          }}
+                          className="absolute -top-2 -right-2 bg-black/70 text-white rounded-full w-5 h-5 flex items-center justify-center hover:bg-red-500 transition-colors shadow-md"
+                        >
+                          <span className="text-[10px]">✕</span>
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {/* Textarea dan Button Send tetap di sini */}
+                <textarea
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyDown={handleKeyPress}
+                  onPaste={handlePaste}
+                  onDrop={handleDrop}
+                  onDragOver={(e) => e.preventDefault()}
+                  disabled={isLoading}
+                  placeholder={
+                    currentMode === "document"
+                      ? "Tanya apapun terkait dokumen PT Pindad..."
+                      : "Tanya CAKRA AI..."
+                  }
+                  className="w-full border-none bg-transparent resize-none focus:outline-none text-gray-900 dark:text-gray-100 ml-3 mt-1 custom-scrollbar pointer-events-auto"
+                  rows="1"
+                  style={{
+                    minHeight: "30px",
+                    maxHeight: "120px",
+                    overflowY: "auto",
+                  }}
+                  onInput={(e) => {
+                    e.target.style.height = "auto";
+                    e.target.style.height =
+                      Math.min(e.target.scrollHeight, 120) + "px";
+                  }}
+                />
+                <div
+                  className={`flex items-center ${
+                    isLoggedIn ? "mt-2 justify-between" : "mt-0 justify-end"
+                  }`}
+                >
+                  {/* Mode Selector (Hanya untuk yang login) */}
+                  {isLoggedIn && (
+                    <div className="flex space-x-2 animate-fade-in">
+                      <button
+                        onClick={() => switchMode("document")}
+                        className={`px-3 py-1 text-sm rounded-full transition-colors flex items-center gap-1.5 ${
+                          currentMode === "document"
+                            ? "bg-blue-600 text-white shadow-sm"
+                            : "bg-gray-200 dark:bg-[#232326] hover:bg-gray-300 dark:hover:bg-[#29293a] text-gray-800 dark:text-gray-200"
+                        }`}
+                      >
+                        <span className="text-xs">📄</span> Document
+                      </button>
+
+                      <button
+                        onClick={() => switchMode("search")}
+                        className={`px-3 py-1 text-sm rounded-full transition-colors flex items-center gap-1.5 ${
+                          currentMode === "search"
+                            ? "bg-purple-600 text-white shadow-sm"
+                            : "bg-gray-200 dark:bg-[#232326] hover:bg-gray-300 dark:hover:bg-[#29293a] text-gray-800 dark:text-gray-200"
+                        }`}
+                      >
+                        <span className="text-xs">🌐</span> Search
+                      </button>
+                    </div>
+                  )}
+                  {/* --- INPUT FILE TERSEMBUNYI --- */}
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    onChange={handleFileChange}
+                    accept="image/*,.pdf" // Batasin cuma image dan pdf
+                    multiple // Biar bisa pilih banyak sekaligus
+                    className="hidden"
+                  />
+                  {/* Action Buttons */}
+                  <div className="flex items-center space-x-1">
+                    <button
+                      type="button" // Biasain kasih type button biar gak trigger submit form
+                      onClick={() => fileInputRef.current.click()} // Memicu klik pada input hidden
+                      className="p-1.5 text-gray-500 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+                    >
+                      <span className="text-lg">📁</span>
+                    </button>
+
+                    <button
+                      onClick={sendMessage}
+                      disabled={isLoading || !input.trim()}
+                      className={`px-4 py-1.5 rounded-xl font-medium transition-all ${
+                        isLoading || !input.trim()
+                          ? "bg-gray-200 dark:bg-[#29293a] text-gray-400 cursor-not-allowed"
+                          : "bg-gradient-to-r from-blue-500 to-purple-600 text-white hover:opacity-90 shadow-md active:scale-95"
+                      }`}
+                    >
+                      {isLoading ? (
+                        <div className="w-5 h-5 border-2 border-white/20 border-t-white rounded-full animate-spin" />
+                      ) : (
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          className="w-4 h-4"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"
+                          />
+                        </svg>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
-
-          <p className="text-xs text-gray-500 mt-2 text-center">
-            Press Enter to send • Upload files and ask questions naturally
-            {uploadedFiles.length > 0 &&
-              ` • ${uploadedFiles.length} file(s) uploaded`}
-          </p>
         </div>
+
+        {/* Notification Toast */}
+        {notification && (
+          <div
+            className={`fixed top-4 right-4 z-50 px-6 py-3 rounded-lg shadow-lg text-white font-medium transition-opacity duration-300 ${
+              notification.type === "success"
+                ? "bg-green-500"
+                : notification.type === "error"
+                ? "bg-red-500"
+                : "bg-blue-500"
+            }`}
+          >
+            {notification.message}
+          </div>
+        )}
+
+        {/* Logout Modal */}
+        {isLogoutModalOpen && (
+          <div className="fixed inset-0 z-[999] flex items-center justify-center bg-black/40 backdrop-blur-sm animate-fade-in">
+            <div className="bg-white dark:bg-[#18181e] rounded-3xl p-6 max-w-sm w-full mx-4 shadow-2xl animate-zoom-in border border-gray-100 dark:border-[#232326]">
+              <div className="text-center">
+                <div className="w-16 h-16 bg-red-50 dark:bg-red-900/30 text-red-500 dark:text-red-400 rounded-full flex items-center justify-center mx-auto mb-4 text-2xl">
+                  ⚠️
+                </div>
+                <h3 className="text-lg font-bold text-gray-900 dark:text-gray-100">
+                  Konfirmasi Keluar
+                </h3>
+                <p className="text-gray-500 dark:text-gray-300 mt-2 text-sm leading-relaxed">
+                  Anda yakin ingin keluar? dalam mode guest anda tidak bisa
+                  melihat dokumen peraturan PT Pindad.
+                </p>
+              </div>
+
+              <div className="flex space-x-3 mt-8">
+                <button
+                  onClick={() => setIsLogoutModalOpen(false)}
+                  className="flex-1 px-4 py-3 bg-gray-100 dark:bg-[#232326] text-gray-700 dark:text-gray-200 rounded-2xl font-semibold hover:bg-gray-200 dark:hover:bg-[#29293a] transition-all active:scale-95"
+                >
+                  Batal
+                </button>
+                <button
+                  onClick={handleLogout}
+                  className="flex-1 px-4 py-3 bg-red-600 text-white rounded-2xl font-semibold hover:bg-red-700 transition-all shadow-lg shadow-red-200 active:scale-95"
+                >
+                  Ya, Keluar
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

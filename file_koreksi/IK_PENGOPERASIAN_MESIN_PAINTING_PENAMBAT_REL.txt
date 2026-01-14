@@ -1,0 +1,90 @@
+INSTRUKSI KERJA
+PENGOPERASIAN MESIN PAINTING PENAMBAT REL
+DEP. PRASKA DIV. MANUFAKTUR DAN REKAYASA INDUSTRI
+
+I-03-MI-555
+Edisi/Revisi :001/000
+
+1. TUJUAN
+a. Sebagai panduan operator dalam mengoperasikan mesin painting penambat rel
+b. Menjadi standar kerja untuk semua operator dalam mengoperasikan mesin
+c. Mencegah terjadi kerusakan mesin akibat kesalahan prosedur pengoperasian
+d. Meningkatkan life time mesin
+
+2. DEFINISI
+a. Mesin painting penambat rel adalah mesin yang digunakan untuk proses pengecat penambat rel dengan sistem pencelupan dan pengeringan dengan sistem udara dan heater
+b. Penambat rel adalah pengikat rel ke bantalan rel kereta api
+c. Temperatur adalah alat yang menunjukkan derajat atau ukuran panas suatu benda
+d. Heater adalah alat yang berfungsi untuk memanaskan udara atau air
+e. Blower adalah mesin atau alat yang berfungsi untuk menggerakan bau dari cat ke arah tertentu
+f. CW (ClockWise) adalah putaran searah jarum jam
+g. CCW (Counter ClockWise) adalah putaran berlawanan arah jarum jam
+
+3. URAIAN INSTRUKSI
+a. Izin Kerja
+Personil yang diijinkan menggunakan mesin painting adalah personil yang memiliki kemampuan pengecat berdasarkan matrix kompetensi terbaru yang telah divalidasi
+b. Mesin yang Digunakan
+1) Mesin Painting Penambat Rel.
+c. Alat Keselamatan Kerja
+1) Wearpack,
+2) Safety helmet,
+3) Safety shoes,
+4) Sarung Tangan,
+5) Masker.
+Alat keselamatan kerja yang diperlukan lainnya dituangkan dalam dokumen IBARD (Identifikasi Bahaya/Aspek dan penilaian Risiko/Dampak) terkait.
+d. Langkah Kerja
+1) Pemeriksaan Kondisi Mesin
+- Periksa apakah masih ada penambat rel yang masih tersangkut di dalam mesin
+- Periksa apakah rantai pembawa berada pada jalurnya
+- Periksa kondisi gantungan penambat rel dari sisa cat, bersihkan jika sudah menggumpal
+- Pastikan area pengecatan bebas dari ceceran cat dan thinner.
+2) Gambar Mesin
+Keterangan:
+a) Saklar mesin,
+b) Saklar heater
+c) Saklar temperatur,
+d) Saklar blower
+e) Tombol on,
+f) Tombol of,
+g) Saklar arah putaran rantai
+h) Blower
+3) Persiapan
+- Siapkan cat simacylic dipping red dan thinner dipping
+- Campurkan cat simacylic dipping red dan thinner dipping dengan perbandingan 1:1
+- Tuangkan cat yang telah dicampurkan pada bak penampung cat di mesin
+4) Menyalakan Mesin
+- Naikkan saklar mesin pada panel utama
+- Naikkan saklar (1) blower
+- Naikkan saklar heater dan lampu
+- Naikkan saklar temperatur
+- Setting temperature di suhu 230°C - 250°C
+5) Pengoperasian
+- Nyalakan saklar (2) blower
+- Tekan tombol on untuk menyalakan mesin
+- Putar switch putaran pembawa penambat rel ke kanan untuk melakukan proses pengecat (putaran CW)
+- Jika diperlukan penyesuaian, putaran pembawa penambat rel dapat diputar CCW dengan memutar switch putaran pembawa ke kiri
+- Gantungkan penambat rel pada gantungan pembawa penambat rel
+- Lakukan berulang dan bertahap hingga penambat rel dalam container habis
+6) Mematikan Mesin
+- Pastikan semua penambat rel yang sedang di cat telah selesai dan keluar dari mesin
+- Posisikan switch putaran pembawa penambat rel ke tengah
+- Tekan tombol off untuk mematikan mesin
+- Matikan saklar (2) blower
+- Naikkan saklar temperatur
+- Naikkan saklar heater dan lampu
+- Naikkan saklar mesin pada panel utama
+e. Yang Harus Diperhatikan
+1) Dilarang merokok disekitar area mesin,
+2) Pastikan area mesin bebas dari ceceran cat dan thinner,
+3) Simpan kembali cat yang masih tersisa di bak penampung cat ke dalam kaleng setiap selesai bekerja,
+4) Bersihkan gantungan penambat rel dari sisa cat jika sudah menggumpal.
+f. Kondisi Darurat
+1) Jika rantai pembawa penambat rel keluar dari jalur, segera matikan mesin dan hubungi fungsi pemeliharaan mesin.
+4. REFERENSI DOKUMEN TERKAIT
+a. Surat Keputusan Direksi PT. Pindad nomor SKEP/4/P/BD/X/2022 dan SKEP/4a/P/BD/X/2022 tanggal 6 April 2023 tentang Ketentuan Pelaksanaan Produksi Beserta Perubahannya.
+b. Surat Keputusan Direksi PT. Pindad nomor: S kep/13/P/BD/V/2023 tentang Kebijakan Mutu & K3LH PT Pindad.
+c. Prosedur nomor P-02-P-059 tentang Prosedur Produksi.
+
+LEMBAR PENGESAHAN
+NO DISI |NO REVISI |DESKRIPSI                                                 |TANGGAL    |STATUS *) |DISETUJUI OLEH                                        |DISAHKAN OLEH
+001     | 000      | Instruksi Kerja Pengoperasian Mesin Painting Penambat Rel| 11-09-2015| Baru     | WS. MANAGER TEMPA & PRODUKSI PRASARANA KA OMA PURNAMA| GM MANUFAKTUR DAN REKAYASA INDUSTRI AMBAR MARDIYOTO, ST
