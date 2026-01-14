@@ -1,31 +1,64 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
+// 🔥 Tambahkan ini
+import {
+  BrowserRouter,
+  Routes,
+  Route,
+  Navigate,
+  useParams,
+  useNavigate,
+} from "react-router-dom";
 
+import cakraLogo from "./assets/cakra.png";
 // Komponen
 import MessageRenderer from "./components/MessageRenderer";
 import PdfButtons from "./components/PdfButtons";
-// import FileUploadPanel from "./components/FileUploadPanel";
-// import FilePreviewPanel from "./components/FilePreviewPanel";
 import DocumentListPanel from "./components/DocumentListPanel";
 import Sidebar from "./components/Sidebar";
-
-// Utils
-import { copyToClipboard } from "./utils/copyToClipboard";
 
 // Konfigurasi API
 const API_BASE = "http://192.168.11.80:5000";
 
-function App() {
+function generateUUID() {
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, function (c) {
+    const r = (Math.random() * 16) | 0;
+    const v = c === "x" ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
+
+function RootRedirect() {
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    const lastSessionId = localStorage.getItem("lastSessionId");
+    if (lastSessionId) {
+      // Ada session aktif → arahkan ke situ
+      navigate(`/chat/${lastSessionId}`, { replace: true });
+    } else {
+      // Tidak ada → buat baru
+      navigate(`/chat/${generateUUID()}`, { replace: true });
+    }
+  }, [navigate]);
+
+  return null; // Komponen ini cuma buat redirect, gak render apa-apa
+}
+
+// 🔥 Ganti nama function utama
+function ChatContent({ isNew, isGuest }) {
+  // 🔥 Ambil sessionId dari URL
+  const { sessionId } = useParams();
+  const navigate = useNavigate();
+
   // =========================================================================
   // STATE MANAGEMENT
   // =========================================================================
-
   // Chat State
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [currentSessionId, setCurrentSessionId] = useState(null);
   const [chatHistory, setChatHistory] = useState([]);
-
   // File & Document State
   const [uploadedFiles, setUploadedFiles] = useState([]);
   const [documents, setDocuments] = useState([]);
@@ -34,14 +67,12 @@ function App() {
   const [previewFile, setPreviewFile] = useState(null);
   const [tempFileId, setTempFileId] = useState(null);
   const [showDocumentList, setShowDocumentList] = useState(false);
-
   // UI State
   const [currentMode, setCurrentMode] = useState("normal");
   const [notification, setNotification] = useState(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isUserScrollingUp, setIsUserScrollingUp] = useState(false);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
-
   // Auth State
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [showLoginModal, setShowLoginModal] = useState(false);
@@ -49,11 +80,10 @@ function App() {
   const [loginError, setLoginError] = useState("");
   const [userData, setUserData] = useState(null);
   const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
-
+  const [showPassword, setShowPassword] = useState(false);
   // Model State
   const [modelList, setModelList] = useState([]);
   const [selectedModel, setSelectedModel] = useState("qwen3:8b");
-
   // System State
   const [backendStatus, setBackendStatus] = useState("connected");
   const [isInitializing, setIsInitializing] = useState(true);
@@ -61,7 +91,6 @@ function App() {
   // =========================================================================
   // REF MANAGEMENT
   // =========================================================================
-
   const messagesEndRef = useRef(null);
   const fileInputRef = useRef(null);
   const messagesContainerRef = useRef(null);
@@ -85,7 +114,6 @@ function App() {
     }
   };
 
-  // Jalankan setiap kali ada pesan baru
   useEffect(() => {
     checkScrollable();
   }, [messages]);
@@ -93,16 +121,12 @@ function App() {
   // =========================================================================
   // AUTO-SCROLL LOGIC
   // =========================================================================
-
-  // Fungsi buat start interval scroll (Modular)
   const startAutoScroll = () => {
     const container = messagesContainerRef.current;
     if (!container) return;
-
     if (typingAnimationRef.current) {
       clearInterval(typingAnimationRef.current);
     }
-
     typingAnimationRef.current = setInterval(() => {
       if (autoScrollEnabled.current && !isUserScrolling.current) {
         container.scrollTop = container.scrollHeight;
@@ -113,7 +137,6 @@ function App() {
     }, 50);
   };
 
-  // 1. Reset status saat user kirim pesan baru
   useEffect(() => {
     const lastMessage = messages[messages.length - 1];
     if (lastMessage?.sender === "user") {
@@ -122,75 +145,49 @@ function App() {
     }
   }, [messages]);
 
-  // 2. Track scroll behavior user (Detection & Resume)
   useEffect(() => {
     const container = messagesContainerRef.current;
     if (!container) return;
-
     const handleScroll = () => {
       const { scrollTop, scrollHeight, clientHeight } = container;
       const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
-
-      // UPDATE STATE UNTUK ICON TOMBOL
       setIsAtBottom(distanceFromBottom < 100);
-
-      // 1. Logic Munculkan/Sembunyikan Tombol
-      // Munculkan tombol "Ke Atas" jika sudah scroll lebih dari 400px dari puncak
       setShowScrollTop(scrollTop > 400);
-
-      // Munculkan tombol "Ke Bawah" jika jarak dari dasar lebih dari 200px
       setShowScrollBottom(distanceFromBottom > 200);
-
-      // 2. USER NAIK -> Stop Auto Scroll
       if (distanceFromBottom > 100) {
         if (!isUserScrolling.current) {
           isUserScrolling.current = true;
           autoScrollEnabled.current = false;
         }
       }
-
-      // 3. USER BALIK KE BAWAH -> Resume Auto Scroll
       if (distanceFromBottom < 100) {
         if (isUserScrolling.current) {
           isUserScrolling.current = false;
           autoScrollEnabled.current = true;
-
-          // Tarik ke bawah sekali (instant)
           container.scrollTop = container.scrollHeight;
-
-          // 🔥 RESTART AUTO SCROLL KALO AI MASIH NGETIK
           if (isAiTypingRef.current) {
             startAutoScroll();
           }
         }
       }
     };
-
     container.addEventListener("scroll", handleScroll);
     return () => container.removeEventListener("scroll", handleScroll);
-  }, []); // Cukup sekali mount
+  }, []);
 
-  // 3. Eksekusi & Update Ref status ngetik
   useEffect(() => {
     const container = messagesContainerRef.current;
     if (!container) return;
-
     const lastMessage = messages[messages.length - 1];
     const isTypingNow = lastMessage?.sender === "ai" && lastMessage?.isTyping;
-
-    // Simpan di Ref biar handleScroll bisa baca nilai terbaru
     isAiTypingRef.current = isTypingNow;
-
     if (isTypingNow && autoScrollEnabled.current && !isUserScrolling.current) {
       startAutoScroll();
     } else if (!isTypingNow) {
-      // Bersihkan jika AI sudah selesai
       if (typingAnimationRef.current) {
         clearInterval(typingAnimationRef.current);
         typingAnimationRef.current = null;
       }
-
-      // Smooth scroll sekali pas AI selesai
       if (autoScrollEnabled.current && !isUserScrolling.current) {
         setTimeout(() => {
           container.scrollTo({
@@ -200,13 +197,11 @@ function App() {
         }, 100);
       }
     }
-
     return () => {
       if (typingAnimationRef.current) clearInterval(typingAnimationRef.current);
     };
   }, [messages]);
 
-  // Cleanup interval
   useEffect(() => {
     return () => {
       if (typingAnimationRef.current) {
@@ -216,10 +211,38 @@ function App() {
   }, []);
 
   // =========================================================================
+  // SESSION SYNC DARI URL (AMAN: hanya load session yang valid)
+  // =========================================================================
+  useEffect(() => {
+    // A. Jika di mode Chat Baru atau Guest
+    if (
+      sessionId === "new" ||
+      sessionId === "guest" ||
+      (sessionId === "guest" && isGuest)
+    ) {
+      setMessages([]);
+      setCurrentSessionId(null);
+      return;
+    }
+
+    // B. Jika User klik riwayat (SessionID berupa UUID)
+    if (sessionId && sessionId !== currentSessionId) {
+      // 🔥 GUARD: Jika URL sudah berubah tapi sebenarnya ini session yang sedang aktif
+      // (Artinya baru saja terjadi peralihan dari /new ke UUID via replaceState)
+      // Maka JANGAN load dari database karena state messages sudah benar.
+      if (sessionId === currentSessionId) {
+        return;
+      }
+
+      // Jika benar-benar pindah ke session lain, baru load
+      loadChatSession(sessionId);
+      setCurrentSessionId(sessionId);
+    }
+  }, [sessionId, currentSessionId]); // Tambahkan currentSessionId di dependency // Cukup pantau URL (sessionId) dan status Guest
+
+  // =========================================================================
   // INITIALIZATION & SESSION MANAGEMENT
   // =========================================================================
-
-  // Check backend & load documents
   useEffect(() => {
     const checkBackend = async () => {
       try {
@@ -233,26 +256,18 @@ function App() {
     loadDocuments();
   }, []);
 
-  // Cek session saat aplikasi pertama kali load
   useEffect(() => {
     const checkSession = async () => {
       const token = localStorage.getItem("session_token");
-      const lastSessionId = localStorage.getItem("lastSessionId");
-
       try {
         if (token) {
           const response = await fetch(
             `${API_BASE}/api/verify-session?token=${token}`
           );
           const result = await response.json();
-
           if (response.ok && result.status === "success") {
             setUserData(result.data);
             setIsLoggedIn(true);
-
-            if (lastSessionId) {
-              await loadChatSession(lastSessionId);
-            }
           } else {
             localStorage.clear();
           }
@@ -265,11 +280,9 @@ function App() {
         }, 500);
       }
     };
-
     checkSession();
   }, []);
 
-  // Simpan sessionId ke localStorage setiap kali berubah
   useEffect(() => {
     if (currentSessionId) {
       localStorage.setItem("lastSessionId", currentSessionId);
@@ -278,7 +291,6 @@ function App() {
     }
   }, [currentSessionId]);
 
-  // Fetch model list
   useEffect(() => {
     const fetchModels = async () => {
       try {
@@ -297,14 +309,11 @@ function App() {
   // =========================================================================
   // UTILITY FUNCTIONS
   // =========================================================================
-
-  // Menampilkan notifikasi
   const showNotification = useCallback((message, type = "info") => {
     setNotification({ id: Date.now(), message, type });
     setTimeout(() => setNotification(null), 3000);
   }, []);
 
-  // Mendapatkan greeting berdasarkan waktu
   const getGreeting = () => {
     const hour = new Date().getHours();
     if (hour < 11) return "Selamat Pagi";
@@ -316,8 +325,6 @@ function App() {
   // =========================================================================
   // DOCUMENT MANAGEMENT
   // =========================================================================
-
-  // Load documents dari backend
   const loadDocuments = async () => {
     try {
       const res = await fetch(`${API_BASE}/api/documents`);
@@ -333,22 +340,17 @@ function App() {
   // =========================================================================
   // FILE UPLOAD FUNCTIONS
   // =========================================================================
-
-  // Preview file sebelum upload
   const handleFilePreview = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
-
     const formData = new FormData();
     formData.append("file", file);
-
     try {
       const res = await fetch(`${API_BASE}/api/upload-preview`, {
         method: "POST",
         body: formData,
       });
       const data = await res.json();
-
       if (res.ok) {
         setTempFileId(data.file_id);
         setPreviewFile({
@@ -366,10 +368,8 @@ function App() {
     }
   };
 
-  // Konfirmasi upload file
   const confirmUpload = async () => {
     if (!tempFileId) return;
-
     try {
       const res = await fetch(`${API_BASE}/api/confirm-upload`, {
         method: "POST",
@@ -377,7 +377,6 @@ function App() {
         body: JSON.stringify({ file_id: tempFileId }),
       });
       const data = await res.json();
-
       if (res.ok) {
         setUploadedFiles((prev) => [
           ...prev,
@@ -393,7 +392,6 @@ function App() {
     }
   };
 
-  // Batalkan upload file
   const cancelUpload = async () => {
     if (tempFileId) {
       await fetch(`${API_BASE}/api/cancel-upload`, {
@@ -410,18 +408,13 @@ function App() {
   // =========================================================================
   // CHAT SESSION FUNCTIONS
   // =========================================================================
-
-  // Load chat session berdasarkan session UUID
   const loadChatSession = async (sessionUuid) => {
     if (!sessionUuid) return;
-
     setIsLoading(true);
     setCurrentSessionId(sessionUuid);
-
     try {
       const res = await fetch(`${API_BASE}/api/chat-messages/${sessionUuid}`);
       const result = await res.json();
-
       if (result.status === "success") {
         setMessages(result.data);
       } else {
@@ -434,13 +427,23 @@ function App() {
     }
   };
 
-  // Buat chat baru
+  // 🔥 UPDATE handleNewChat biar ganti URL
   const handleNewChat = () => {
+    // Reset semua state chat
     setMessages([]);
     setCurrentSessionId(null);
+    setInput(""); // pastikan input juga dikosongin
+    setSelectedFiles([]);
+    setPreviews([]);
+    setUploadedFiles([]);
+
+    if (!isLoggedIn) {
+      navigate("/chat/guest");
+    } else {
+      navigate("/chat/new");
+    }
   };
 
-  // Ganti mode chat (normal/document/search)
   const switchMode = (mode) => {
     const nextMode = currentMode === mode ? "normal" : mode;
     setCurrentMode(nextMode);
@@ -449,11 +452,83 @@ function App() {
   // =========================================================================
   // MESSAGE HANDLING
   // =========================================================================
+  const [expandedMessages, setExpandedMessages] = React.useState({});
+  const toggleExpand = (id) => {
+    setExpandedMessages((prev) => ({
+      ...prev,
+      [id]: !prev[id],
+    }));
+  };
+
+  const [isDragging, setIsDragging] = useState(false);
+  const [selectedFiles, setSelectedFiles] = useState([]);
+  const [previews, setPreviews] = useState([]);
+
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!isDragging) setIsDragging(true);
+  };
+  const handleDragLeave = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!e.currentTarget.contains(e.relatedTarget)) {
+      setIsDragging(false);
+    }
+  };
+  const onDrop = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+    const files = e.dataTransfer.files;
+    if (files.length > 0) handleFiles(files);
+  };
+  const handleFiles = (files) => {
+    const fileArray = Array.from(files);
+    fileArray.forEach((file) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const base64Data = e.target.result;
+        const newFile = {
+          url: base64Data,
+          name: file.name,
+          type: file.type.startsWith("image/") ? "image" : "pdf",
+        };
+        setPreviews((prev) => [...prev, newFile]);
+        setSelectedFiles((prev) => [...prev, file]);
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+  const handleFileChange = (e) => {
+    const selectedFiles = Array.from(e.target.files);
+    if (selectedFiles.length > 0) {
+      handleFiles(selectedFiles);
+    }
+    e.target.value = null;
+  };
+  const handlePaste = (e) => {
+    const items = e.clipboardData.items;
+    const files = [];
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].kind === "file") {
+        files.push(items[i].getAsFile());
+      }
+    }
+    if (files.length > 0) handleFiles(files);
+  };
+  const handleDrop = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+    const files = e.dataTransfer.files;
+    if (files.length > 0) {
+      handleFiles(files);
+    }
+  };
 
   const sendMessage = async () => {
     if ((!input.trim() && selectedFiles.length === 0) || isLoading) return;
-
-    // 1. Logic Scroll
     autoScrollEnabled.current = true;
     isUserScrolling.current = false;
     setTimeout(() => {
@@ -462,16 +537,11 @@ function App() {
         behavior: "smooth",
       });
     }, 10);
-
     const userMessage = input.trim();
-    const currentPreviews = [...previews]; // Simpan untuk bubble chat
-
-    // 2. RESET INPUT (Hanya reset state, jangan revoke URL)
+    const currentPreviews = [...previews];
     setInput("");
     setSelectedFiles([]);
     setPreviews([]);
-
-    // 3. TAMBAH KE UI
     const userMsgId = Date.now();
     setMessages((prev) => [
       ...prev,
@@ -479,18 +549,15 @@ function App() {
         id: userMsgId,
         sender: "user",
         text: userMessage,
-        attachments: currentPreviews, // Preview dikirim ke sini
+        attachments: currentPreviews,
         timestamp: new Date().toLocaleTimeString([], {
           hour: "2-digit",
           minute: "2-digit",
         }),
       },
     ]);
-
     setIsLoading(true);
     const aiMsgId = Date.now() + 1;
-
-    // Tambah placeholder AI message
     setMessages((prev) => [
       ...prev,
       {
@@ -504,11 +571,7 @@ function App() {
         isTyping: false,
       },
     ]);
-
     try {
-      // --- 4. SIAPKAN PAYLOAD ---
-      // Jika ada file hasil paste, lu mungkin perlu upload ke API upload dulu
-      // atau kirim base64. Di sini kita ikuti logic awal lu:
       const payload = {
         message: userMessage,
         mode: currentMode,
@@ -516,45 +579,44 @@ function App() {
         npp: userData?.username,
         session_uuid: currentSessionId,
         fullname: userData?.fullname,
-        // TAMBAHKAN INI
         attachments: currentPreviews.map((p) => ({
           name: p.name,
           type: p.type,
-          data: p.url, // Ini adalah Base64 string dari FileReader
+          data: p.url,
         })),
       };
-
-      // Jika ada file dari sistem upload yang sudah ada
       if (uploadedFiles.length > 0 && currentMode === "normal") {
         payload.file_id = uploadedFiles[uploadedFiles.length - 1].id;
       }
-
-      // --- 5. KIRIM KE API ---
       const res = await fetch(`${API_BASE}/api/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
 
-      // Update session ID jika ini chat pertama
       if (data.session_uuid && !currentSessionId) {
         setCurrentSessionId(data.session_uuid);
         const newChatEntry = {
           session_uuid: data.session_uuid,
           judul: userMessage.substring(0, 50) || "New Chat",
           created_at: new Date().toISOString(),
+          is_pinned: false,
         };
         setChatHistory((prev) => [newChatEntry, ...prev]);
-      }
+        localStorage.setItem("lastSessionId", data.session_uuid);
 
+        // 🔥 JANGAN GANTI URL KALAU GUEST
+        if (isLoggedIn) {
+          // navigate(`/chat/${data.session_uuid}`); // Ganti baris ini
+          window.history.replaceState(null, "", `/chat/${data.session_uuid}`);
+        }
+        // Kalau guest, biarkan URL tetap /chat/guest
+      }
       const aiResponse = data.reply || "No response from AI.";
       const pdfInfo = data.pdf_info || null;
       const isFromDocument = data.is_from_document || false;
-
-      // Update AI message dengan response
       setMessages((prev) =>
         prev.map((msg) =>
           msg.id === aiMsgId
@@ -568,8 +630,6 @@ function App() {
             : msg
         )
       );
-
-      // Simulasi typing animation
       setTimeout(() => {
         setMessages((prev) =>
           prev.map((msg) =>
@@ -595,7 +655,6 @@ function App() {
     }
   };
 
-  // Handle keyboard event untuk enter key
   const handleKeyPress = (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -606,40 +665,37 @@ function App() {
   // =========================================================================
   // AUTHENTICATION FUNCTIONS
   // =========================================================================
-
-  // Submit login form
   const handleLoginSubmit = async (e) => {
     e.preventDefault();
     const { username, password } = loginForm;
-
     try {
       const response = await fetch(`${API_BASE}/api/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ username, password }),
       });
-
       const result = await response.json();
-
       if (response.ok && result.status === "success") {
         const newUser = {
           username: result.data.username,
           fullname: result.data.fullname,
           divisi: result.data.divisi,
         };
-
         setIsLoggedIn(true);
         setUserData(newUser);
-
         localStorage.setItem("session_token", result.data.token);
         localStorage.setItem("userSession", JSON.stringify(newUser));
         localStorage.setItem("isLoggedIn", "true");
-
         showNotification(`Selamat datang, ${newUser.fullname}!`, "success");
-
         setShowLoginModal(false);
         setLoginForm({ username: "", password: "" });
         setLoginError("");
+
+        // 🔥 Cek apakah sebelumnya di mode guest
+        const currentPath = window.location.pathname;
+        if (currentPath === "/chat/guest") {
+          navigate("/chat/new"); // arahkan ke new chat setelah login
+        }
       } else {
         setLoginError(result.message || "Login gagal");
       }
@@ -649,15 +705,12 @@ function App() {
     }
   };
 
-  // Trigger logout modal
   const triggerLogout = () => {
     setIsLogoutModalOpen(true);
   };
 
-  // Eksekusi logout
   const handleLogout = async () => {
     const token = localStorage.getItem("session_token");
-
     try {
       if (token) {
         await fetch(`${API_BASE}/api/logout`, {
@@ -677,112 +730,13 @@ function App() {
       setChatHistory([]);
       setInput("");
       setIsLogoutModalOpen(false);
-    }
-  };
-
-  // State untuk melacak pesan mana yang di-expand
-  const [expandedMessages, setExpandedMessages] = React.useState({});
-
-  // Fungsi untuk toggle buka/tutup
-  const toggleExpand = (id) => {
-    setExpandedMessages((prev) => ({
-      ...prev,
-      [id]: !prev[id],
-    }));
-  };
-
-  // =========================================================================
-  // Handle Files
-  // =========================================================================
-  const [isDragging, setIsDragging] = useState(false);
-  const [selectedFiles, setSelectedFiles] = useState([]); // File asli untuk dikirim ke API
-  const [previews, setPreviews] = useState([]); // URL untuk tampilan preview (blob)
-
-  const handleDragOver = (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (!isDragging) setIsDragging(true);
-  };
-
-  const handleDragLeave = (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    // Logika krusial: Hanya matikan dragging jika kursor benar-benar keluar dari container
-    if (!e.currentTarget.contains(e.relatedTarget)) {
-      setIsDragging(false);
-    }
-  };
-
-  const onDrop = (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragging(false);
-    const files = e.dataTransfer.files;
-    if (files.length > 0) handleFiles(files);
-  };
-
-  const handleFiles = (files) => {
-    const fileArray = Array.from(files);
-
-    fileArray.forEach((file) => {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        // e.target.result inilah Base64 yang asli dan permanen
-        const base64Data = e.target.result;
-
-        const newFile = {
-          url: base64Data, // Simpan base64 ke URL untuk preview & DB
-          name: file.name,
-          type: file.type.startsWith("image/") ? "image" : "pdf",
-        };
-
-        setPreviews((prev) => [...prev, newFile]);
-        setSelectedFiles((prev) => [...prev, file]);
-      };
-      reader.readAsDataURL(file);
-    });
-  };
-
-  const handleFileChange = (e) => {
-    const selectedFiles = Array.from(e.target.files);
-    if (selectedFiles.length > 0) {
-      // Fungsi handleFiles ini harusnya udah lu punya buat proses preview/upload
-      handleFiles(selectedFiles);
-    }
-    // Reset value biar bisa pilih file yang sama berulang kali
-    e.target.value = null;
-  };
-
-  // Handler untuk Paste (Ctrl+V)
-  const handlePaste = (e) => {
-    const items = e.clipboardData.items;
-    const files = [];
-    for (let i = 0; i < items.length; i++) {
-      if (items[i].kind === "file") {
-        files.push(items[i].getAsFile());
-      }
-    }
-    if (files.length > 0) handleFiles(files);
-  };
-
-  // Handler untuk Drag & Drop
-  const handleDrop = (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-
-    // RESET STATE DI SINI BIAR OVERLAY HILANG
-    setIsDragging(false);
-
-    const files = e.dataTransfer.files;
-    if (files.length > 0) {
-      handleFiles(files);
+      navigate("/chat/guest"); // 🔥 Arahkan ke root → auto-generate UUID baru
     }
   };
 
   // =========================================================================
   // MAIN RENDER
   // =========================================================================
-
   return (
     <div className="border-t border-t-[#E0E0E0] dark:border-t-[#1A1A1C] bg-[#F7F8FC] dark:bg-[#232326] flex h-screen overflow-hidden text-gray-900 dark:text-gray-200 transition-colors duration-300">
       {/* Sidebar hanya muncul jika sudah login */}
@@ -802,13 +756,14 @@ function App() {
           chatHistory={chatHistory}
           setChatHistory={setChatHistory}
           triggerLogout={triggerLogout}
+          cakraLogo={cakraLogo}
+          navigate={navigate}
         />
       )}
       {!isLoggedIn && (
         <div className="absolute top-4 left-4 flex items-center z-50">
-          {/* Logo di pojok kiri atas, spin hanya sekali ketika reload */}
           <img
-            src="./src/assets/cakra.png"
+            src={cakraLogo}
             alt="CAKRA AI Logo"
             className="w-10 h-10 object-cover rounded-full"
             style={{
@@ -817,7 +772,6 @@ function App() {
           />
         </div>
       )}
-      {/* Model Selector - Hanya muncul jika sudah login */}
       {isLoggedIn && (
         <div
           className="absolute top-4 z-30 flex items-center transition-all duration-300 ease-in-out"
@@ -827,7 +781,6 @@ function App() {
         >
           <div className="border-t border-t-[#E0E0E0] dark:border-t-[#1A1A1C] bg-[#F7F8FC] dark:bg-[#1A1A1C] relative flex items-center border border-gray-200 dark:border-[#27272a] rounded-full px-4 py-1.5 shadow-sm transition-all duration-300">
             <div className="w-2 h-2 bg-blue-500 rounded-full mr-2 animate-pulse"></div>
-
             <button
               onClick={() => setIsDropdownOpen(!isDropdownOpen)}
               className="flex items-center gap-1 text-sm font-semibold text-gray-700 dark:text-gray-200 focus:outline-none"
@@ -851,7 +804,6 @@ function App() {
                 />
               </svg>
             </button>
-
             {isDropdownOpen && (
               <div className="absolute top-full left-0 mt-2 w-56 rounded-xl bg-white dark:bg-[#1A1A1C] border border-gray-200 dark:border-[#27272a] shadow-xl overflow-hidden z-50 animate-in fade-in zoom-in duration-200">
                 <div className="px-4 py-2 border-b border-gray-50 dark:border-[#232326] bg-gray-50/50 dark:bg-[#232326]/50">
@@ -859,7 +811,6 @@ function App() {
                     Engine System
                   </span>
                 </div>
-
                 <div className="max-h-60 overflow-y-auto">
                   {modelList.map((m) => (
                     <button
@@ -869,14 +820,13 @@ function App() {
                         setIsDropdownOpen(false);
                       }}
                       className={`w-full px-4 py-3 flex items-center justify-between text-left transition
-                        ${
-                          selectedModel === m.id
-                            ? "bg-blue-50/70 dark:bg-blue-600/10 text-blue-700 dark:text-blue-300"
-                            : "text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-[#232326]"
-                        }`}
+                      ${
+                        selectedModel === m.id
+                          ? "bg-blue-50/70 dark:bg-blue-600/10 text-blue-700 dark:text-blue-300"
+                          : "text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-[#232326]"
+                      }`}
                     >
                       <span className="text-sm font-medium">{m.name}</span>
-
                       {selectedModel === m.id && (
                         <svg
                           className="w-4 h-4 text-blue-600 dark:text-blue-400"
@@ -898,11 +848,10 @@ function App() {
           </div>
         </div>
       )}
-      {/* LOADING SCREEN SEBAGAI OVERLAY */}
       {isInitializing && (
         <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-white dark:bg-[#232326]">
           <img
-            src="./src/assets/cakra.png"
+            src={cakraLogo}
             alt="Loading..."
             className="w-20 h-20 animate-spin"
           />
@@ -911,13 +860,11 @@ function App() {
           </h2>
         </div>
       )}
-      {/* Content Container */}
       <div
         className={`flex flex-col flex-1 h-full transition-all duration-300 ${
           isLoggedIn ? (isSidebarOpen ? "ml-60" : "ml-15") : "ml-0"
         }`}
       >
-        {/* HEADER AREA: Tombol Login/Logout */}
         <div className="absolute right-4 z-20">
           {!isLoggedIn && (
             <div className="absolute top-2 right-2 z-20">
@@ -929,8 +876,6 @@ function App() {
               </button>
             </div>
           )}
-
-          {/* MODAL LOGIN */}
           {showLoginModal && (
             <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm">
               <div className="bg-white dark:bg-[#232326] rounded-2xl shadow-2xl p-8 relative border border-gray-100 dark:border-[#232326]">
@@ -940,23 +885,28 @@ function App() {
                 >
                   ✕
                 </button>
-
                 <div className="text-center mb-8">
-                  <div className="w-16 h-16 bg-blue-100 dark:bg-blue-900/40 rounded-full flex items-center justify-center mx-auto mb-4 text-2xl">
-                    👤
+                  <div className="absolute top-4 left-4 flex items-center z-50">
+                    <img
+                      src={cakraLogo}
+                      alt="CAKRA AI Logo"
+                      className="w-10 h-10 object-cover rounded-full"
+                      style={{
+                        animation: "spin-once 2s cubic-bezier(0.4,0,0.2,1) 1",
+                      }}
+                    />
                   </div>
-                  <h2 className="text-2xl font-bold text-gray-800 dark:text-blue-200">
+                  <h2 className="mt-2 text-2xl font-bold text-gray-800 dark:text-blue-200">
                     Login CAKRA AI
                   </h2>
                   <p className="text-gray-500 dark:text-gray-400 text-sm">
-                    Gunakan username dan password ESS
+                    Gunakan NPP dan password ESS
                   </p>
                 </div>
-
                 <form onSubmit={handleLoginSubmit} className="space-y-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                      Username
+                      NPP
                     </label>
                     <input
                       type="text"
@@ -966,31 +916,81 @@ function App() {
                       onChange={(e) =>
                         setLoginForm({ ...loginForm, username: e.target.value })
                       }
-                      placeholder="username"
+                      placeholder="NPP"
                     />
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                       Password
                     </label>
-                    <input
-                      type="password"
-                      required
-                      className="w-full px-4 py-2 border border-gray-300 dark:border-[#232326] rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none bg-white dark:bg-[#1a1a1c] text-gray-900 dark:text-gray-100"
-                      value={loginForm.password}
-                      onChange={(e) =>
-                        setLoginForm({ ...loginForm, password: e.target.value })
-                      }
-                      placeholder="••••••"
-                    />
+                    <div className="relative">
+                      {" "}
+                      {/* Tambahkan relative di sini */}
+                      <input
+                        type={showPassword ? "text" : "password"} // 🔥 Tipe input dinamis
+                        required
+                        className="w-full px-4 py-2 border border-gray-300 dark:border-[#232326] rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none bg-white dark:bg-[#1a1a1c] text-gray-900 dark:text-gray-100 pr-12" // Tambah padding kanan (pr-12)
+                        value={loginForm.password}
+                        onChange={(e) =>
+                          setLoginForm({
+                            ...loginForm,
+                            password: e.target.value,
+                          })
+                        }
+                        placeholder="••••••"
+                      />
+                      {/* 🔥 Tombol Mata */}
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-blue-500 transition-colors"
+                      >
+                        {showPassword ? (
+                          // Ikon Mata Terbuka
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            strokeWidth={1.5}
+                            stroke="currentColor"
+                            className="w-5 h-5"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z"
+                            />
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                            />
+                          </svg>
+                        ) : (
+                          // Ikon Mata Tertutup
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            strokeWidth={1.5}
+                            stroke="currentColor"
+                            className="w-5 h-5"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              d="M3.98 8.223A10.477 10.477 0 001.934 12C3.226 16.338 7.244 19.5 12 19.5c.993 0 1.953-.138 2.863-.395M6.228 6.228A10.45 10.45 0 0112 4.5c4.756 0 8.773 3.162 10.065 7.498a10.523 10.523 0 01-4.293 5.774M6.228 6.228L3 3m3.228 3.228l3.65 3.65m7.894 7.894L21 21m-3.228-3.228l-3.65-3.65m0 0a3 3 0 10-4.243-4.243m4.242 4.242L9.88 9.88"
+                            />
+                          </svg>
+                        )}
+                      </button>
+                    </div>
                   </div>
-
                   {loginError && (
                     <p className="text-red-500 text-xs mt-1 animate-pulse">
                       {loginError}
                     </p>
                   )}
-
                   <button
                     type="submit"
                     className="w-full py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-xl font-bold hover:opacity-90 transition-opacity mt-4"
@@ -1002,8 +1002,6 @@ function App() {
             </div>
           )}
         </div>
-
-        {/* Hidden file input & Modals */}
         <input
           type="file"
           ref={fileInputRef}
@@ -1011,55 +1009,34 @@ function App() {
           accept=".pdf,.png,.jpg,.jpeg,.txt,.docx"
           className="hidden"
         />
-
-        {/* {showFileUpload && (
-          <FileUploadPanel
-            fileInputRef={fileInputRef}
-            setShowFileUpload={setShowFileUpload}
-          />
-        )}
-
-        {showPreview && (
-          <FilePreviewPanel
-            previewFile={previewFile}
-            cancelUpload={cancelUpload}
-            confirmUpload={confirmUpload}
-          />
-        )} */}
-
         {showDocumentList && (
           <DocumentListPanel
             documents={documents}
             setShowDocumentList={setShowDocumentList}
           />
         )}
-
-        {/* Area Pesan */}
         <div
           ref={messagesContainerRef}
           className="flex-1 overflow-y-auto px-4 no-scrollbar py-6 bg-white dark:bg-[#232326] transition-colors duration-300"
           style={{
-            overflowAnchor: "none", // Ini kuncinya bro!
+            overflowAnchor: "none",
             scrollBehavior: "auto",
             height: "100%",
           }}
         >
           <div className="max-w-3xl mx-auto">
             {messages.length === 0 ? (
-              // Welcome Screen
               <div className="flex flex-col items-center justify-center h-full text-center py-60">
                 <h2 className="text-2xl font-semibold text-gray-900 dark:text-gray-100 mb-3 transition-colors duration-300">
                   {isLoggedIn
                     ? `${getGreeting()}, ${userData.fullname}`
                     : "Hai, saya CAKRA (Pindad AI)"}
                 </h2>
-
                 <p className="text-gray-600 dark:text-gray-300 max-w-md mb-8 transition-colors duration-300">
                   {isLoggedIn
                     ? "Ada yang bisa saya bantu hari ini?"
                     : "Saya bisa membantu menjawab pertanyaan anda..."}
                 </p>
-
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-w-lg mb-8">
                   {[
                     "Berikan informasi terkait PT Pindad",
@@ -1078,7 +1055,6 @@ function App() {
                 </div>
               </div>
             ) : (
-              // Chat Messages
               <div className="space-y-6">
                 {messages.map((msg) => (
                   <div
@@ -1089,24 +1065,26 @@ function App() {
                         : "justify-start pr-5 max-w-2xl mr-auto"
                     }`}
                   >
-                    {/* --- PESAN USER (GEMINI STYLE) --- */}
                     {msg.sender === "user" && (
                       <div className="flex justify-end mt-5">
                         <div
                           onClick={() => toggleExpand(msg.id)}
                           className={`
-        relative cursor-pointer
-        bg-blue-600 dark:bg-[#2A2A2E]
-        text-gray-100
-        rounded-3xl
-        px-4 py-3
-        shadow-sm
-        transition-all duration-300 ease-in-out
-        overflow-hidden
-        ${expandedMessages[msg.id] ? "max-w-[90%]" : "max-w-[300px]"}
-      `}
+                            relative cursor-pointer
+                            bg-blue-600 dark:bg-[#2A2A2E]
+                            text-gray-100
+                            rounded-3xl
+                            px-4 py-3
+                            shadow-sm
+                            transition-all duration-300 ease-in-out
+                            overflow-hidden
+                            ${
+                              expandedMessages[msg.id]
+                                ? "max-w-[90%]"
+                                : "max-w-[300px]"
+                            }
+                          `}
                         >
-                          {/* 1. --- AREA ATTACHMENT/GAMBAR --- */}
                           {msg.attachments && msg.attachments.length > 0 && (
                             <div className="flex flex-wrap gap-2 mb-3">
                               {msg.attachments.map((file, i) => (
@@ -1115,19 +1093,15 @@ function App() {
                                     <img
                                       src={file.data || file.url}
                                       alt={file.name}
-                                      className="w-24 h-24 object-cover rounded-xl border border-white/20 shadow-sm 
-                       cursor-zoom-in hover:scale-105 active:scale-95 transition-all duration-200"
+                                      className="w-24 h-24 object-cover rounded-xl border border-white/20 shadow-sm
+                                          cursor-zoom-in hover:scale-105 active:scale-95 transition-all duration-200"
                                       onClick={(e) => {
                                         e.stopPropagation();
                                         const imageData = file.data || file.url;
-
-                                        // Bikin elemen link bayangan
                                         const link =
                                           document.createElement("a");
                                         link.href = imageData;
                                         link.target = "_blank";
-
-                                        // Khusus base64, kita kasih instruksi download atau buka di tab baru via blob
                                         if (imageData.startsWith("data:")) {
                                           const image = new Image();
                                           image.src = imageData;
@@ -1150,10 +1124,8 @@ function App() {
                                       }}
                                     />
                                   )}
-                                  {/* Jika tipe lain seperti PDF */}
                                   {file.type === "pdf" && (
                                     <div className="w-20 h-20 bg-gray-700/50 rounded-xl flex flex-col items-center justify-center border border-white/10">
-                                      {/* PDF SVG Icon */}
                                       <svg
                                         xmlns="http://www.w3.org/2000/svg"
                                         className="w-7 h-7 mb-1 opacity-80"
@@ -1207,8 +1179,6 @@ function App() {
                               ))}
                             </div>
                           )}
-                          {/* Icon Expand SVG Arrow */}
-
                           {msg.text?.length > 100 && (
                             <div
                               className="absolute top-2 right-2 text-gray-100 dark:text-gray-300 text-xs cursor-pointer group"
@@ -1216,8 +1186,6 @@ function App() {
                             >
                               <div className="p-1 transition-all duration-150 group-hover:bg-blue-500 dark:group-hover:bg-gray-500 rounded-full">
                                 {expandedMessages[msg.id] ? (
-                                  // Arrow Up SVG
-
                                   <svg
                                     width="24"
                                     height="24"
@@ -1233,8 +1201,6 @@ function App() {
                                     />
                                   </svg>
                                 ) : (
-                                  // Arrow Down SVG
-
                                   <svg
                                     width="24"
                                     height="24"
@@ -1253,8 +1219,6 @@ function App() {
                               </div>
                             </div>
                           )}
-
-                          {/* 3. --- KONTEN PESAN TEKS (BAWAAN LU) --- */}
                           <div
                             className={`text-sm leading-relaxed pr-4 ${
                               expandedMessages[msg.id] ? "" : "line-clamp-3"
@@ -1270,11 +1234,8 @@ function App() {
                         </div>
                       </div>
                     )}
-
-                    {/* --- PESAN AI --- */}
                     {msg.sender === "ai" && (
                       <div className="max-w-3xl ml-0 md:ml-4">
-                        {/* PdfButtons dan Logo nangkring di atas MessageRenderer sesuai request sebelumnya */}
                         <React.Fragment>
                           <div
                             className={`flex items-start mb-2 mt-5 ${
@@ -1283,7 +1244,7 @@ function App() {
                           >
                             <div className="flex-shrink-0 w-8 h-8 xs:mr-5 -ml-1">
                               <img
-                                src="./src/assets/cakra.png"
+                                src={cakraLogo}
                                 alt="CAKRA Loading"
                                 className={`w-8 h-8 object-cover rounded-full ${
                                   msg.isTyping ? "animate-spin" : ""
@@ -1301,7 +1262,6 @@ function App() {
                             </span>
                           </div>
                         </React.Fragment>
-
                         <MessageRenderer
                           text={msg.text}
                           showNotification={showNotification}
@@ -1317,46 +1277,34 @@ function App() {
                     )}
                   </div>
                 ))}
-
-                {/* Loading Indicator */}
                 {isLoading && (
                   <div className="flex justify-start items-center py-2 animate-pulse">
                     <div className="flex items-center">
-                      {/* Container Logo dengan Animasi Spin */}
                       <div className="flex-shrink-0 w-8 h-8 mr-3">
                         <img
-                          src="./src/assets/cakra.png"
+                          src={cakraLogo}
                           alt="CAKRA Loading"
                           className="w-8 h-8 object-cover rounded-full animate-spin"
                           style={{ animationDuration: "2s" }}
                         />
                       </div>
-
-                      {/* Teks Loading opsional agar user tahu AI sedang memproses */}
                       <span className="text-xs text-gray-400 dark:text-gray-300 font-medium tracking-wide">
                         CAKRA lagi mikir nih...
                       </span>
                     </div>
                   </div>
                 )}
-
                 <div ref={messagesEndRef} />
               </div>
             )}
           </div>
         </div>
-
-        {/* Input Area */}
         <div className="bg-white dark:bg-[#232326] px-4 py-4 transition-colors duration-300">
           <div className="max-w-3xl mx-auto rounded-4xl relative">
-            {/* --- FLOATING TOGGLE BUTTON --- */}
-            {/* 1. Cek apakah kontainer sudah ada dan memiliki konten yang bisa di-scroll (nyelem) */}
             {messagesContainerRef.current &&
               messagesContainerRef.current.scrollHeight >
                 messagesContainerRef.current.clientHeight && (
                 <div className="absolute bottom-full right-0 md:-right-5 z-[9999] pointer-events-none animate-in fade-in slide-in-from-bottom-2 duration-300">
-                  {/* 2. Logic Tampil: Hanya muncul jika sedang TIDAK di bawah (mau ke bawah) 
-        ATAU sudah jauh di bawah (mau ke atas) */}
                   {(!isAtBottom ||
                     (isAtBottom &&
                       messagesContainerRef.current.scrollTop > 300)) && (
@@ -1364,19 +1312,15 @@ function App() {
                       onClick={() => {
                         const container = messagesContainerRef.current;
                         if (!container) return;
-
                         if (isAtBottom) {
-                          // Aksi: Kembali ke paling atas
                           container.scrollTo({ top: 0, behavior: "smooth" });
                         } else {
-                          // Aksi: Loncat ke chat terbaru (bawah)
                           container.scrollTo({
                             top: container.scrollHeight,
                             behavior: "smooth",
                           });
-                          if (autoScrollEnabled)
-                            autoScrollEnabled.current = true;
-                          if (isUserScrolling) isUserScrolling.current = false;
+                          autoScrollEnabled.current = true;
+                          isUserScrolling.current = false;
                           if (
                             isAiTypingRef.current &&
                             typeof startAutoScroll === "function"
@@ -1387,7 +1331,6 @@ function App() {
                       }}
                       className="pointer-events-auto relative group p-2.5 bg-white dark:bg-[#2e2e33] border border-gray-200 dark:border-gray-700 rounded-full shadow-lg hover:scale-110 transition-all active:scale-95 flex items-center justify-center mb-4"
                     >
-                      {/* Icon Panah: Otomatis balik arah berdasarkan posisi */}
                       <svg
                         xmlns="http://www.w3.org/2000/svg"
                         className={`w-4 h-4 text-gray-600 dark:text-gray-300 transition-transform duration-500 ${
@@ -1404,8 +1347,6 @@ function App() {
                           d="M5 15l7-7 7 7"
                         />
                       </svg>
-
-                      {/* Notif Merah: Hanya muncul jika ada chat baru (AI typing) tapi user lagi scroll di atas */}
                       {!isAtBottom && isAiTypingRef.current && (
                         <span className="absolute -top-1 -right-1 flex h-4 w-4">
                           <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
@@ -1416,7 +1357,6 @@ function App() {
                   )}
                 </div>
               )}
-            {/* Label Mode */}
             {currentMode !== "normal" && (
               <div className="flex items-center space-x-2 mb-2">
                 <span
@@ -1438,8 +1378,6 @@ function App() {
               onDragLeave={handleDragLeave}
               onDrop={onDrop}
             >
-              {/* --- OVERLAY VISUAL --- */}
-              {/* Gunakan pointer-events-none agar overlay ini "tembus pandang" bagi kursor */}
               {isDragging && (
                 <div className="absolute inset-0 z-[60] pointer-events-none flex items-center justify-center">
                   <div className="absolute inset-0 bg-blue-500/10 backdrop-blur-[2px] border-2 border-dashed border-blue-500 rounded-3xl" />
@@ -1451,8 +1389,6 @@ function App() {
                   </div>
                 </div>
               )}
-
-              {/* --- KONTEN INPUT ASLI --- */}
               <div
                 className={`rounded-3xl transition-all duration-300 ${
                   isDragging ? "ring-2 ring-blue-500 opacity-50" : ""
@@ -1460,7 +1396,6 @@ function App() {
                   isLoggedIn ? "p-3" : "px-3 py-2"
                 } bg-[#F7F8FC] dark:bg-[#2E2E33]`}
               >
-                {/* --- BARIS PREVIEW (Muncul pas di-paste/drop) --- */}
                 {previews.length > 0 && (
                   <div className="flex flex-wrap gap-3 mb-3 px-2 border-b border-gray-200 dark:border-gray-700 pb-3">
                     {previews.map((file, index) => (
@@ -1476,7 +1411,6 @@ function App() {
                         ) : (
                           <div className="w-full h-full flex flex-col items-center justify-center bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700">
                             <span className="text-2xl">
-                              {/* PDF Icon SVG */}
                               <svg
                                 width="32"
                                 height="32"
@@ -1505,7 +1439,6 @@ function App() {
                             </span>
                           </div>
                         )}
-                        {/* Tombol Hapus */}
                         <button
                           onClick={() => {
                             setPreviews((prev) =>
@@ -1523,7 +1456,6 @@ function App() {
                     ))}
                   </div>
                 )}
-                {/* Textarea dan Button Send tetap di sini */}
                 <textarea
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
@@ -1555,7 +1487,6 @@ function App() {
                     isLoggedIn ? "mt-2 justify-between" : "mt-0 justify-end"
                   }`}
                 >
-                  {/* Mode Selector (Hanya untuk yang login) */}
                   {isLoggedIn && (
                     <div className="flex space-x-2 animate-fade-in">
                       <button
@@ -1568,7 +1499,6 @@ function App() {
                       >
                         <span className="text-xs">📄</span> Document
                       </button>
-
                       <button
                         onClick={() => switchMode("search")}
                         className={`px-3 py-1 text-sm rounded-full transition-colors flex items-center gap-1.5 ${
@@ -1581,25 +1511,22 @@ function App() {
                       </button>
                     </div>
                   )}
-                  {/* --- INPUT FILE TERSEMBUNYI --- */}
                   <input
                     type="file"
                     ref={fileInputRef}
                     onChange={handleFileChange}
-                    accept="image/*,.pdf" // Batasin cuma image dan pdf
-                    multiple // Biar bisa pilih banyak sekaligus
+                    accept="image/*,.pdf"
+                    multiple
                     className="hidden"
                   />
-                  {/* Action Buttons */}
                   <div className="flex items-center space-x-1">
                     <button
-                      type="button" // Biasain kasih type button biar gak trigger submit form
-                      onClick={() => fileInputRef.current.click()} // Memicu klik pada input hidden
+                      type="button"
+                      onClick={() => fileInputRef.current.click()}
                       className="p-1.5 text-gray-500 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
                     >
                       <span className="text-lg">📁</span>
                     </button>
-
                     <button
                       onClick={sendMessage}
                       disabled={isLoading || !input.trim()}
@@ -1634,8 +1561,6 @@ function App() {
             </div>
           </div>
         </div>
-
-        {/* Notification Toast */}
         {notification && (
           <div
             className={`fixed top-4 right-4 z-50 px-6 py-3 rounded-lg shadow-lg text-white font-medium transition-opacity duration-300 ${
@@ -1649,8 +1574,6 @@ function App() {
             {notification.message}
           </div>
         )}
-
-        {/* Logout Modal */}
         {isLogoutModalOpen && (
           <div className="fixed inset-0 z-[999] flex items-center justify-center bg-black/40 backdrop-blur-sm animate-fade-in">
             <div className="bg-white dark:bg-[#18181e] rounded-3xl p-6 max-w-sm w-full mx-4 shadow-2xl animate-zoom-in border border-gray-100 dark:border-[#232326]">
@@ -1666,7 +1589,6 @@ function App() {
                   melihat dokumen peraturan PT Pindad.
                 </p>
               </div>
-
               <div className="flex space-x-3 mt-8">
                 <button
                   onClick={() => setIsLogoutModalOpen(false)}
@@ -1689,4 +1611,26 @@ function App() {
   );
 }
 
-export default App;
+// 🔥 JANTUNG ROUTING
+// Di App.jsx
+export default function App() {
+  return (
+    <BrowserRouter>
+      <Routes>
+        <Route path="/" element={<Navigate to="/chat/guest" replace />} />
+        <Route
+          path="/chat/guest"
+          element={<ChatContent key="guest" isGuest={true} />}
+        />
+        <Route
+          path="/chat/new"
+          element={<ChatContent key="new" isGuest={false} />}
+        />
+        <Route
+          path="/chat/:sessionId"
+          element={<ChatContent key="session" isGuest={false} />}
+        />
+      </Routes>
+    </BrowserRouter>
+  );
+}

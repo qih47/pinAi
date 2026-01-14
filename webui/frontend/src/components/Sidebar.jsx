@@ -13,6 +13,8 @@ const Sidebar = ({
   chatHistory,
   setChatHistory,
   triggerLogout,
+  cakraLogo,
+  navigate,
 }) => {
   const [hoveredChatId, setHoveredChatId] = useState(null);
   const [activeMenuId, setActiveMenuId] = useState(null);
@@ -182,7 +184,7 @@ const Sidebar = ({
         <div className="flex items-center">
           {/* Logo dengan transisi ukuran saat collapse */}
           <img
-            src="./src/assets/cakra.png"
+            src={cakraLogo}
             alt="CAKRA AI Logo"
             className={`rounded-full object-cover transition-all duration-300 ${
               isOpen ? "w-10 h-10" : "w-7 h-7"
@@ -302,7 +304,10 @@ const Sidebar = ({
                 key={chat.session_uuid}
                 onMouseEnter={() => setHoveredChatId(chat.session_uuid)}
                 onMouseLeave={() => setHoveredChatId(null)}
-                onClick={() => loadChatSession(chat.session_uuid)}
+                onClick={() => {
+                  navigate(`/chat/${chat.session_uuid}`);
+                  setActiveMenuId(null);
+                }}
                 className={`group relative flex items-center px-3 py-2 text-sm rounded-full cursor-pointer transition-all ${
                   currentSessionId === chat.session_uuid
                     ? "bg-blue-200 text-blue-600 font-bold dark:bg-blue-900/40 dark:text-blue-400"
@@ -424,7 +429,6 @@ const Sidebar = ({
             className={`absolute bottom-full left-2 mb-2 w-48 rounded-xl shadow-2xl py-2 z-50 transition-all bg-[#F7F8FC] dark:bg-[#232326]  ${
               !isOpen && "left-full ml-2 bottom-2"
             }`}
-
           >
             <div className="px-4 py-2 ">
               <p className="text-xs text-black-400 dark:text-gray-400">

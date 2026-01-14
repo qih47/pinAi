@@ -13,7 +13,7 @@ const MessageRenderer = ({ text, showNotification, isTyping = false, isAI = fals
     if (isTyping) {
       setIsAnimating(true);
       let i = 0;
-      const typingSpeed = 20;
+      const typingSpeed = 10;
       const typeTimer = setInterval(() => {
         if (i < text.length) {
           setDisplayText(text.slice(0, i + 1));
