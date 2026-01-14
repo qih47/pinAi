@@ -91,52 +91,85 @@ async def login():
         ), 400
 
     password_md5 = hashlib.md5(password_input.encode()).hexdigest()
-
     conn_hris = None
     conn_local = None
 
     try:
-        # --- LANGKAH 1: CEK KE DB HRIS (LUAR) ---
-        conn_hris = psycopg2.connect(**DB_LOGIN_CONFIG)
-        with conn_hris.cursor(cursor_factory=RealDictCursor) as cur:
-            query_hris = """
-                SELECT 
-                    mp.nama_lengkap as nama, tu.npp, tu.password, 
-                    split_part(ref_unit.unit_path::text, '->'::text, 2) AS divisi
-                FROM master_unit unit
-                JOIN temp_ref_unit ref_unit ON ref_unit.kode_unit = unit.kode_unit
-                LEFT JOIN master_personil mp ON mp.kode_unit = unit.kode_unit
-                LEFT JOIN tabel_user tu ON tu.npp = mp.npp
-                WHERE tu.npp = %s
-            """
-            cur.execute(query_hris, (npp,))
-            user_hris = cur.fetchone()
+        user_hris = None
+        current_role = "USER"
 
-        # Validasi User & Password
-        if not user_hris:
-            return jsonify({"status": "error", "message": "NPP tidak terdaftar"}), 404
+        # --- LANGKAH 0: HANDLE SPECIAL ACCOUNT (LEARN DATA AI) ---
+        if str(npp) == "99999" and str(password_input) == "123456":
+            user_hris = {
+                "npp": "99999",
+                "nama": "Learn Data AI",
+                "username_alias": "LearnDataAI",
+                "divisi": "PINDAD",
+                "password": password_input,  # bypass check md5 nanti
+            }
+            current_role = "TRAINER"
+            logging.info("Login via Special Account: Learn Data AI")
 
-        if user_hris["password"] != password_md5:
-            return jsonify({"status": "error", "message": "Password salah"}), 401
+        else:
+            # --- LANGKAH 1: CEK KE DB HRIS (User Reguler) ---
+            conn_hris = psycopg2.connect(**DB_LOGIN_CONFIG)
+            with conn_hris.cursor(cursor_factory=RealDictCursor) as cur:
+                query_hris = """
+                    SELECT 
+                        mp.nama_lengkap as nama, tu.npp, tu.password, 
+                        split_part(ref_unit.unit_path::text, '->'::text, 2) AS divisi
+                    FROM master_unit unit
+                    JOIN temp_ref_unit ref_unit ON ref_unit.kode_unit = unit.kode_unit
+                    LEFT JOIN master_personil mp ON mp.kode_unit = unit.kode_unit
+                    LEFT JOIN tabel_user tu ON tu.npp = mp.npp
+                    WHERE tu.npp = %s
+                """
+                cur.execute(query_hris, (npp,))
+                user_hris = cur.fetchone()
 
-        # --- LANGKAH 2: SIMPAN SESSION KE DB LOKAL ---
-        conn_local = psycopg2.connect(**DB_CONFIG)  # DB Lokal RAG
+            if not user_hris:
+                return jsonify(
+                    {"status": "error", "message": "NPP tidak terdaftar"}
+                ), 404
+
+            # Validasi Password Reguler (MD5)
+            if user_hris["password"] != password_md5:
+                return jsonify({"status": "error", "message": "Password salah"}), 401
+
+        # --- LANGKAH 2: SIMPAN SESSION & SYNC KE DB LOKAL ---
+        conn_local = psycopg2.connect(**DB_CONFIG)
         session_token = str(uuid.uuid4())
         user_ip = request.remote_addr
         u_agent = request.headers.get("User-Agent")
 
-        with conn_local.cursor() as cur_local:
-            # A. Update/Insert data user lokal
+        with conn_local.cursor(cursor_factory=RealDictCursor) as cur_local:
+            # Jika bukan akun spesial, ambil role dari DB lokal (siapa tahu sudah di-set TRAINER sebelumnya)
+            if npp != "99999":
+                cur_local.execute(
+                    "SELECT role FROM users WHERE npp = %s", (user_hris["npp"],)
+                )
+                existing = cur_local.fetchone()
+                current_role = existing["role"] if existing else "USER"
+
+            # Sinkronisasi Data ke Tabel Users Lokal
             cur_local.execute(
                 """
-                INSERT INTO users (npp, fullname, divisi) 
-                VALUES (%s, %s, %s)
-                ON CONFLICT (npp) DO UPDATE SET fullname = EXCLUDED.fullname, divisi = EXCLUDED.divisi;
-            """,
-                (user_hris["npp"], user_hris["nama"], user_hris["divisi"]),
+                INSERT INTO users (npp, fullname, divisi, role) 
+                VALUES (%s, %s, %s, %s)
+                ON CONFLICT (npp) DO UPDATE SET 
+                    fullname = EXCLUDED.fullname, 
+                    divisi = EXCLUDED.divisi,
+                    role = EXCLUDED.role; 
+                """,
+                (
+                    user_hris["npp"],
+                    user_hris["nama"],
+                    user_hris["divisi"],
+                    current_role,
+                ),
             )
 
-            # B. Update/Insert Session Aktif (Satu NPP satu session)
+            # Insert Session
             cur_local.execute(
                 """
                 INSERT INTO session_login (npp, session_token, ip_address, is_login, last_activity)
@@ -145,31 +178,27 @@ async def login():
                     session_token = EXCLUDED.session_token, 
                     is_login = TRUE, 
                     last_activity = CURRENT_TIMESTAMP;
-            """,
+                """,
                 (user_hris["npp"], session_token, user_ip),
             )
 
-            # C. Tambah ke History Login
+            # History
             cur_local.execute(
-                """
-                INSERT INTO history_login (npp, action, ip_address, user_agent)
-                VALUES (%s, 'LOGIN', %s, %s);
-            """,
+                "INSERT INTO history_login (npp, action, ip_address, user_agent) VALUES (%s, 'LOGIN', %s, %s)",
                 (user_hris["npp"], user_ip, u_agent),
             )
-
             conn_local.commit()
-
-        logging.info(f"Login sukses: {user_hris['nama']} ({user_hris['npp']})")
 
         return jsonify(
             {
                 "status": "success",
                 "data": {
                     "token": session_token,
-                    "username": user_hris["npp"],
+                    "username": user_hris.get("username_alias", user_hris["npp"]),
+                    "npp": user_hris["npp"],
                     "fullname": user_hris["nama"],
                     "divisi": user_hris["divisi"],
+                    "role": current_role,
                 },
             }
         ), 200
@@ -1230,7 +1259,7 @@ def format_vlm_payload(user_message, base64_image):
 
 
 async def smart_chat_with_context(
-    user_message, active_file, mode, model, session_uuid, npp=None, attachments=None
+    user_message, active_file, mode, model, session_uuid, npp, role, attachments
 ):
     # --- 0. LOAD HISTORY DARI DB ---
     history_context = ""
@@ -1574,7 +1603,7 @@ INSTRUKSI:
             search_query = analysis_data.get("keyword_pencarian", user_message)
 
             # Ini fungsi sakti yang kita buat tadi (UNION SQL)
-            universal_refs = await search_universal_knowledge(search_query, npp)
+            universal_refs = await search_universal_knowledge(search_query, npp, role)
 
             if universal_refs:
                 formatted_refs = []
@@ -1647,14 +1676,15 @@ Tugas: Jawab dengan jujur berdasarkan referensi data internal yang tersedia.
         return reply, None, False
 
 
-async def search_universal_knowledge(query, npp, limit=4):
+async def search_universal_knowledge(query, npp, role, limit=4):
     """
-    Hybrid Search: Mencari di AI_DIALOGUE_CORPUS (History)
-    dan AI_DOCUMENT_CHUNKS (Isi Dokumen OCR) secara bersamaan.
+    Hybrid Search dengan 3 Kondisi:
+    1. USER: Data Sendiri + Data Publik (Tanpa NPP) + Data milik TRAINER.
+    2. GUEST: Data Publik (Tanpa NPP) + Data milik TRAINER.
+    3. TRAINER: Semua Data (Tanpa Filter).
     """
-    logging.info(f"🧠 [Universal Search] NPP: {npp} | Query: '{query}'")
+    logging.info(f"🧠 [Universal Search] NPP: {npp} | Role: {role} | Query: '{query}'")
     try:
-        # 1. Generate embedding (Pastikan modelnya sama dengan saat simpan)
         query_embedding = EMBEDDING_MODEL.encode([query], normalize_embeddings=True)[
             0
         ].tolist()
@@ -1663,7 +1693,9 @@ async def search_universal_knowledge(query, npp, limit=4):
         conn = get_db_connection()
         cur = conn.cursor(cursor_factory=RealDictCursor)
 
-        # 2. SQL Gabungan: NPP User + NPP Global (Data dari anonim/tanpa login)
+        # Flag apakah pencari adalah TRAINER
+        is_trainer = (role.upper() == "TRAINER") if role else False
+
         sql = """
         WITH combined_knowledge AS (
             -- Sumber A: History Chat
@@ -1671,10 +1703,17 @@ async def search_universal_knowledge(query, npp, limit=4):
                 'CHAT' as source,
                 adc.user_text as primary_content,
                 adc.assistant_text as secondary_content,
-                (adc.embedding_user <=> %s::vector) as distance
+                (adc.embedding_user <=> %s::vector) as distance,
+                cs.npp as owner_npp
             FROM ai_dialogue_corpus adc
             JOIN chat_sessions cs ON adc.session_id = cs.id
-            WHERE (cs.npp = %s OR cs.npp IS NULL OR cs.npp = '') -- Chat user + Chat Anonim
+            LEFT JOIN users u ON cs.npp = u.npp -- Join ke tabel user untuk cek role pemilik data
+            WHERE (
+                %s = TRUE OR                         -- Kondisi 3: Pencari adalah TRAINER (Akses Semua)
+                cs.npp = %s OR                       -- Kondisi 1: Data milik sendiri
+                cs.npp IS NULL OR cs.npp = '' OR     -- Kondisi 1 & 2: Data Publik/Guest
+                u.role = 'TRAINER'                   -- Kondisi 1 & 2: Data milik user ber-role TRAINER
+            )
 
             UNION ALL
 
@@ -1683,9 +1722,16 @@ async def search_universal_knowledge(query, npp, limit=4):
                 'DOCUMENT' as source,
                 content as primary_content,
                 metadata->>'filename' as secondary_content,
-                (embedding <=> %s::vector) as distance
-            FROM ai_document_chunks
-            WHERE (npp = %s OR npp IS NULL OR npp = '') -- Dokumen user + Dokumen Anonim
+                (embedding <=> %s::vector) as distance,
+                adc_chunks.npp as owner_npp
+            FROM ai_document_chunks adc_chunks
+            LEFT JOIN users u ON adc_chunks.npp = u.npp
+            WHERE (
+                %s = TRUE OR                         -- Kondisi 3: Pencari adalah TRAINER (Akses Semua)
+                adc_chunks.npp = %s OR               -- Kondisi 1: Data milik sendiri
+                adc_chunks.npp IS NULL OR adc_chunks.npp = '' OR 
+                u.role = 'TRAINER'                   -- Kondisi 1 & 2: Data milik TRAINER
+            )
         )
         SELECT * FROM combined_knowledge
         WHERE (1 - distance) >= 0.7
@@ -1693,19 +1739,25 @@ async def search_universal_knowledge(query, npp, limit=4):
         LIMIT %s;
         """
 
-        cur.execute(sql, (query_vector_str, npp, query_vector_str, npp, limit))
+        # Eksekusi dengan parameter yang sesuai
+        cur.execute(
+            sql,
+            (
+                query_vector_str,
+                is_trainer,
+                npp,  # Params untuk Chat
+                query_vector_str,
+                is_trainer,
+                npp,  # Params untuk Document
+                limit,
+            ),
+        )
+
         results = cur.fetchall()
-
-        # 3. Format hasil agar siap dikonsumsi LLM
-        relevant_data = []
-        for r in results:
-            similarity = 1.0 - r["distance"]
-            relevant_data.append(r)
-            print(f"[DEBUG] Universal Hit ({r['source']}) Sim: {similarity:.2f}")
-
         cur.close()
         conn.close()
-        return relevant_data
+
+        return results
 
     except Exception as e:
         logging.error(f"Error in universal search: {e}")
@@ -1754,7 +1806,9 @@ def get_embedding(text):
 async def chat():
     global PRIMARY_MODEL
     conn_local = None
-
+    role = "GUEST" 
+    npp = None
+    username = "Guest"
     try:
         data = await request.get_json()
         user_message = data.get("message", "")
@@ -1763,11 +1817,12 @@ async def chat():
         session_uuid = data.get("session_uuid")
         attachments = data.get("attachments", [])
         npp = data.get("npp")
+        role = data.get("role", "GUEST")
         username = data.get("fullname", "Guest")
         selected_model = data.get("model", PRIMARY_MODEL) if npp else PRIMARY_MODEL
 
         print(
-            f"\n🚀 CHAT INCOMING | User: {username} | Attachments: {len(attachments)}"
+            f"\n🚀 CHAT INCOMING | User: {username} | NPP: {npp} | Role: {role} | Attachments: {len(attachments)}"
         )
 
         conn_local = psycopg2.connect(**DB_CONFIG)
@@ -1840,6 +1895,7 @@ Tolong jawab instruksi di atas berdasarkan data dokumen tersebut secara detail.
             model=selected_model,
             session_uuid=session_uuid,
             npp=npp,
+            role=role,
             attachments=attachments,
         )
 
@@ -1879,6 +1935,7 @@ Tolong jawab instruksi di atas berdasarkan data dokumen tersebut secara detail.
                         "mode": mode,
                         "file_id": file_id,
                         "npp": npp,
+                        "role": role,
                         "model": selected_model,
                         "has_ocr": ocr_context != "",
                     }
