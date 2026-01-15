@@ -1806,7 +1806,7 @@ def get_embedding(text):
 async def chat():
     global PRIMARY_MODEL
     conn_local = None
-    role = "GUEST" 
+    role = "GUEST"
     npp = None
     username = "Guest"
     try:
@@ -1976,11 +1976,11 @@ async def get_chat_history(npp):
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute(
                 """
-                SELECT session_uuid, judul, started_at 
+                SELECT session_uuid, judul, started_at, is_pinned  
                 FROM chat_sessions 
                 WHERE npp = %s AND is_active = TRUE
                 AND is_deleted = false  
-                ORDER BY started_at DESC
+                ORDER BY is_pinned DESC, started_at DESC 
             """,
                 (npp,),
             )

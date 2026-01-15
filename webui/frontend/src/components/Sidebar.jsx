@@ -36,24 +36,28 @@ const Sidebar = ({
   }, []);
 
   const togglePinChat = async (e, sessionUuid) => {
-    e.stopPropagation(); // Biar gak trigger loadChatSession
+    e.stopPropagation();
     try {
       const res = await fetch(
         `http://192.168.11.80:5000/api/chat/pin/${sessionUuid}`,
-        {
-          method: "POST",
-        }
+        { method: "POST" }
       );
       const result = await res.json();
+
       if (result.status === "success") {
-        // Update local state chatHistory
-        setChatHistory((prev) =>
-          prev.map((chat) =>
+        // Update local state agar UI langsung berubah tanpa reload
+        setChatHistory((prev) => {
+          const newHistory = prev.map((chat) =>
             chat.session_uuid === sessionUuid
-              ? { ...chat, is_pinned: !chat.is_pinned }
+              ? { ...chat, is_pinned: !chat.is_pinned } // Toggle nilai
               : chat
-          )
-        );
+          );
+
+          // Langsung sortir di sini supaya chat yang baru di-pin naik ke atas
+          return [...newHistory].sort(
+            (a, b) => (b.is_pinned ? 1 : 0) - (a.is_pinned ? 1 : 0)
+          );
+        });
         setActiveMenuId(null);
       }
     } catch (err) {

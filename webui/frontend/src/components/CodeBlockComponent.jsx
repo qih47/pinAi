@@ -31,7 +31,7 @@ const CodeBlockComponent = ({ language, content, showNotification, isAnimatingBl
 
       {/* Code Content */}
       <pre 
-        className="m-0 p-5 overflow-x-auto text-sm !bg-[#E9EEF6] dark:!bg-[#232326] transition-all duration-300"
+        className="m-0 p-5 overflow-x-auto text-sm !bg-[#E9EEF6] dark:!bg-[#232326] transition-all duration-300 custom-scrollbar pointer-events-auto"
         style={{ 
             fontFamily: "'JetBrains Mono', 'Fira Code', monospace", 
             lineHeight: '1.8' 
