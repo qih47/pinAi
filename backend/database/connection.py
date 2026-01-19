@@ -1,56 +1,58 @@
 import asyncpg
-import logging
-from backend.core.config import settings
+from typing import Optional
+from ..core.config import DB_RAG_CONFIG, DB_LOGIN_CONFIG
 
-logger = logging.getLogger(__name__)
 
-# Connection pools
-local_pool = None
-login_pool = None
+class DatabaseManager:
+    def __init__(self):
+        self.rag_pool: Optional[asyncpg.Pool] = None
+        self.login_pool: Optional[asyncpg.Pool] = None
 
-async def get_local_db_pool():
-    global local_pool
-    if local_pool is None:
-        local_pool = await asyncpg.create_pool(
-            host=settings.LOCAL_DB_HOST,
-            database=settings.LOCAL_DB_NAME,
-            user=settings.LOCAL_DB_USER,
-            password=settings.LOCAL_DB_PASSWORD,
+    async def init_rag_pool(self):
+        """Initialize connection pool for RAG database"""
+        self.rag_pool = await asyncpg.create_pool(
+            host=DB_RAG_CONFIG["host"],
+            database=DB_RAG_CONFIG["database"],
+            user=DB_RAG_CONFIG["user"],
+            password=DB_RAG_CONFIG["password"],
+            port=DB_RAG_CONFIG["port"],
             min_size=5,
             max_size=20,
             command_timeout=60
         )
-    return local_pool
 
-async def get_login_db_pool():
-    global login_pool
-    if login_pool is None:
-        login_pool = await asyncpg.create_pool(
-            host=settings.LOGIN_DB_HOST,
-            database=settings.LOGIN_DB_NAME,
-            user=settings.LOGIN_DB_USER,
-            password=settings.LOGIN_DB_PASSWORD,
+    async def init_login_pool(self):
+        """Initialize connection pool for login database"""
+        self.login_pool = await asyncpg.create_pool(
+            host=DB_LOGIN_CONFIG["host"],
+            database=DB_LOGIN_CONFIG["database"],
+            user=DB_LOGIN_CONFIG["user"],
+            password=DB_LOGIN_CONFIG["password"],
+            port=DB_LOGIN_CONFIG["port"],
             min_size=5,
             max_size=20,
             command_timeout=60
         )
-    return login_pool
+    
+    async def close_pools(self):
+        """Close both connection pools"""
+        if self.rag_pool:
+            await self.rag_pool.close()
+        if self.login_pool:
+            await self.login_pool.close()
 
-async def init_db():
-    """Initialize database pools"""
-    try:
-        await get_local_db_pool()
-        await get_login_db_pool()
-        logger.info("Database pools initialized successfully")
-    except Exception as e:
-        logger.error(f"Failed to initialize database pools: {e}")
-        raise
+    async def get_rag_connection(self) -> asyncpg.Pool:
+        """Get the RAG pool"""
+        if not self.rag_pool:
+            await self.init_rag_pool()
+        return self.rag_pool
 
-async def close_db_pools():
-    """Close database pools"""
-    global local_pool, login_pool
-    if local_pool:
-        await local_pool.close()
-    if login_pool:
-        await login_pool.close()
-    logger.info("Database pools closed")
+    async def get_login_connection(self) -> asyncpg.Pool:
+        """Get the login pool"""
+        if not self.login_pool:
+            await self.init_login_pool()
+        return self.login_pool
+
+
+# Global database manager instance
+db_manager = DatabaseManager()
