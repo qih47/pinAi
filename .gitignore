@@ -1,51 +1,34 @@
 ```
 # Python
 __pycache__/
-*.pyc
-*.pyo
-*.pyd
+*.py[cod]
+*$py.class
+*.so
 .Python
-venv/
-.venv/
-.env
-.env.local
-.env.*
-
-
-# Ignore isi rag_env tapi tetap push foldernya
-rag_env/*
-!rag_env/.gitkeep
-
-# Ignore isi db_doc tapi tetap push foldernya
-db_doc/*
-!db_doc/.gitkeep
-
-# Ignore isi file_koreksi tapi tetap push foldernya
-file_koreksi/*
-!file_koreksi/.gitkeep
-
-# Ignore isi uploads tapi tetap push foldernya
-uploads/*
-!uploads/.gitkeep
-
-
-# Ignore isi ocr_file tapi tetap push foldernya
-ocr_file/*
-!ocr_file/.gitkeep
-
-
-# Node.js/JavaScript
-node_modules/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-
-# Build/dist directories
-dist/
 build/
-target/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
 
-# IDE specific
+# Virtual environments
+venv/
+env/
+ENV/
+.venv/
+.env/
+
+# IDE
 .vscode/
 .idea/
 *.swp
@@ -54,18 +37,31 @@ target/
 # Logs
 *.log
 
-# OS generated files
+# OS
 .DS_Store
 Thumbs.db
 
-# Coverage reports
+# Environment variables
+.env
+.env.local
+*.env.*
+
+# Coverage
+.coverage
 coverage/
 htmlcov/
-.coverage
 
-# Temporary files
-*.tmp
-*.temp
+# MyPy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# PyTest
+.pytest_cache/
+
+# FastAPI/Servers
+*.db
+*.db-journal
 
 # Compressed files
 *.zip
@@ -90,5 +86,4 @@ htmlcov/
 *.tar.bz2
 *.tar.xz
 *.tar.zst
-```cuda_11.8.0_520.61.05_linux.run
-*.run
+```
