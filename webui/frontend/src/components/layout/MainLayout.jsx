@@ -1,5 +1,5 @@
 // src/components/layout/MainLayout.jsx
-import React, { useRef } from "react"; // 1. Pastikan useRef di-import
+import React, { useRef } from "react";
 import Sidebar from "../Sidebar";
 import HeaderBar from "./HeaderBar";
 import MessageList from "./MessageList";
@@ -8,9 +8,11 @@ import FloatingButtons from "./FloatingButtons";
 import LoginModal from "../modals/LoginModal";
 import LogoutModal from "../modals/LogoutModal";
 import NotificationToast from "../ui/NotificationToast";
+import DocumentListPanel from "../DocumentListPanel";
 
 export default function MainLayout({
   // Props Identitas & Auth
+  isInitializing, // Tambahkan ini agar MainLayout tahu kapan harus loading
   isLoggedIn,
   userData,
   cakraLogo,
@@ -19,6 +21,7 @@ export default function MainLayout({
   // Props Sidebar & Navigasi
   isSidebarOpen,
   setIsSidebarOpen,
+  showDocumentList,
   setShowDocumentList,
   currentSessionId,
   loadChatSession,
@@ -58,6 +61,7 @@ export default function MainLayout({
   handleKeyPress,
   handlePaste,
   switchMode,
+  documents,
 
   // Props Modals & UI
   showLoginModal,
@@ -84,7 +88,6 @@ export default function MainLayout({
   isUserScrolling: propIsUserScrolling,
 }) {
   // 2. INTERNAL REFS (Safety Net)
-  // Jika parent lupa kirim refs, kita pakai yang internal supaya .current tidak undefined
   const internalAutoScroll = useRef(true);
   const internalIsUserScrolling = useRef(false);
 
@@ -92,150 +95,175 @@ export default function MainLayout({
   const finalIsUserScrolling = propIsUserScrolling || internalIsUserScrolling;
 
   return (
-    <div className="bg-[#F7F8FC] dark:bg-[#232326] flex h-screen overflow-hidden text-gray-900 dark:text-gray-200 transition-colors duration-300">
-      {/* 1. SIDEBAR */}
-      {isLoggedIn && (
-        <Sidebar
-          backendStatus={backendStatus}
-          isOpen={isSidebarOpen}
-          setIsOpen={setIsSidebarOpen}
-          userData={userData}
-          setShowDocumentList={setShowDocumentList}
-          currentSessionId={currentSessionId}
-          loadChatSession={loadChatSession}
-          clearChat={handleNewChat}
-          chatHistory={chatHistory}
-          setChatHistory={setChatHistory}
-          triggerLogout={triggerLogout}
-          cakraLogo={cakraLogo}
-          navigate={navigate}
-        />
-      )}
-
-      {/* 2. GUEST LOGO (Hanya muncul jika belum login) */}
-      {!isLoggedIn && (
-        <div className="absolute top-4 left-4 flex items-center z-50">
+    <>
+      {/* ==========================================================
+          0. INITIALIZING OVERLAY (Layer Paling Atas / Z-100)
+          Muncul saat aplikasi pertama kali dimuat (isInitializing: true)
+          ========================================================== */}
+      {isInitializing && (
+        <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-white dark:bg-[#232326]">
           <img
             src={cakraLogo}
-            alt="Logo"
-            className="w-10 h-10 object-cover rounded-full shadow-md"
+            alt="Loading..."
+            className="w-20 h-20 animate-spin"
           />
+          <h2 className="mt-6 text-xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent animate-bounce">
+            CAKRA AI
+          </h2>
         </div>
       )}
 
-      {/* 3. MAIN CONTENT AREA */}
-      <div
-        className={`flex flex-col flex-1 h-full transition-all duration-300 relative w-full ${
-          isLoggedIn
-            ? isSidebarOpen
-              ? "md:ml-64 ml-0"
-              : "md:ml-20 ml-0"
-            : "ml-0"
-        }`}
-      >
-        {/* HEADER BAR (Model Selector) */}
+      {/* MAIN CONTAINER */}
+      <div className="bg-[#F7F8FC] dark:bg-[#232326] flex h-screen overflow-hidden text-gray-900 dark:text-gray-200 transition-colors duration-300">
+        {/* 1. SIDEBAR */}
         {isLoggedIn && (
-          <HeaderBar
-            isSidebarOpen={isSidebarOpen}
-            modelList={modelList}
-            selectedModel={selectedModel}
-            setSelectedModel={setSelectedModel}
-            isDropdownOpen={isDropdownOpen}
-            setIsDropdownOpen={setIsDropdownOpen}
+          <Sidebar
+            backendStatus={backendStatus}
+            isOpen={isSidebarOpen}
+            setIsOpen={setIsSidebarOpen}
+            userData={userData}
+            showDocumentList={showDocumentList}
+            setShowDocumentList={setShowDocumentList}
+            currentSessionId={currentSessionId}
+            loadChatSession={loadChatSession}
+            clearChat={handleNewChat}
+            chatHistory={chatHistory}
+            setChatHistory={setChatHistory}
+            triggerLogout={triggerLogout}
+            cakraLogo={cakraLogo}
+            navigate={navigate}
           />
         )}
-
-        {/* LOGIN BUTTON FOR GUEST */}
+        {/* 2. GUEST LOGO (Hanya muncul jika belum login) */}
         {!isLoggedIn && (
-          <div className="absolute top-4 right-4 z-50">
-            <button
-              onClick={() => setShowLoginModal(true)}
-              className="px-5 py-1.5 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-full font-bold shadow-lg hover:shadow-blue-500/20 hover:scale-105 transition-all active:scale-95"
-            >
-              Login
-            </button>
+          <div className="absolute top-4 left-4 flex items-center z-50">
+            <img
+              src={cakraLogo}
+              alt="Logo"
+              className="w-10 h-10 object-cover rounded-full shadow-md"
+            />
           </div>
         )}
+        {/* 3. MAIN CONTENT AREA */}
+        <div
+          className={`flex flex-col flex-1 h-full transition-all duration-300 relative w-full ${
+            isLoggedIn
+              ? isSidebarOpen
+                ? "md:ml-64 ml-0"
+                : "md:ml-20 ml-0"
+              : "ml-0"
+          }`}
+        >
+          {/* HEADER BAR (Model Selector) */}
+          {isLoggedIn && (
+            <HeaderBar
+              isSidebarOpen={isSidebarOpen}
+              modelList={modelList}
+              selectedModel={selectedModel}
+              setSelectedModel={setSelectedModel}
+              isDropdownOpen={isDropdownOpen}
+              setIsDropdownOpen={setIsDropdownOpen}
+            />
+          )}
 
-        {/* --- WRAPPER CHAT & FLOATING BUTTON --- */}
-        <div className="flex-1 relative overflow-hidden flex flex-col mt-2">
-          <MessageList
-            messagesContainerRef={messagesContainerRef}
-            messages={messages}
-            isLoading={isLoading}
-            expandedMessages={expandedMessages}
-            toggleExpand={toggleExpand}
-            handleCopy={handleCopy}
-            showNotification={showNotification}
-            cakraLogo={cakraLogo}
-            isLoggedIn={isLoggedIn}
-            userData={userData}
-            getGreeting={getGreeting}
-            isAtBottom={isAtBottom}
-            isAiTypingRef={isAiTypingRef}
-            startAutoScroll={startAutoScroll}
-            autoScrollEnabled={finalAutoScroll}
-            isUserScrolling={finalIsUserScrolling}
+          {/* LOGIN BUTTON FOR GUEST */}
+          {!isLoggedIn && (
+            <div className="absolute top-4 right-4 z-50">
+              <button
+                onClick={() => setShowLoginModal(true)}
+                className="px-5 py-1.5 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-full font-bold shadow-lg hover:shadow-blue-500/20 hover:scale-105 transition-all active:scale-95"
+              >
+                Login
+              </button>
+            </div>
+          )}
+
+          {/* --- WRAPPER CHAT & FLOATING BUTTON --- */}
+          <div className="flex-1 relative overflow-hidden flex flex-col mt-2">
+            <MessageList
+              messagesContainerRef={messagesContainerRef}
+              messages={messages}
+              isLoading={isLoading}
+              expandedMessages={expandedMessages}
+              toggleExpand={toggleExpand}
+              handleCopy={handleCopy}
+              showNotification={showNotification}
+              cakraLogo={cakraLogo}
+              isLoggedIn={isLoggedIn}
+              userData={userData}
+              getGreeting={getGreeting}
+              isAtBottom={isAtBottom}
+              isAiTypingRef={isAiTypingRef}
+              startAutoScroll={startAutoScroll}
+              autoScrollEnabled={finalAutoScroll}
+              isUserScrolling={finalIsUserScrolling}
+              setInput={setInput}
+            />
+          </div>
+
+          {/* FLOATING ACTION BUTTONS (Scroll to bottom/top) */}
+          <div className="relative right-2 z-40">
+            <FloatingButtons
+              messagesContainerRef={messagesContainerRef}
+              isAtBottom={isAtBottom}
+              isAiTypingRef={isAiTypingRef}
+              startAutoScroll={startAutoScroll}
+              autoScrollEnabled={finalAutoScroll}
+              isUserScrolling={finalIsUserScrolling}
+            />
+          </div>
+
+          {/* INPUT AREA */}
+          <InputArea
+            currentMode={currentMode}
+            input={input}
             setInput={setInput}
+            previews={previews}
+            setPreviews={setPreviews}
+            selectedFiles={selectedFiles}
+            setSelectedFiles={setSelectedFiles}
+            isDragging={isDragging}
+            handleDragOver={handleDragOver}
+            handleDragLeave={handleDragLeave}
+            handleDrop={handleDrop}
+            fileInputRef={fileInputRef}
+            handleFileChange={handleFileChange}
+            sendMessage={sendMessage}
+            handleKeyPress={handleKeyPress}
+            handlePaste={handlePaste}
+            isLoading={isLoading}
+            isLoggedIn={isLoggedIn}
+            switchMode={switchMode}
           />
         </div>
-        {/* FLOATING ACTION BUTTONS (Scroll to bottom/top) */}
-        <div className="relative right-2 z-40">
-          <FloatingButtons
-            messagesContainerRef={messagesContainerRef}
-            isAtBottom={isAtBottom}
-            isAiTypingRef={isAiTypingRef}
-            startAutoScroll={startAutoScroll}
-            autoScrollEnabled={finalAutoScroll}
-            isUserScrolling={finalIsUserScrolling}
+        {/* 4. MODALS & OVERLAYS */}
+        {showLoginModal && (
+          <LoginModal
+            setShowLoginModal={setShowLoginModal}
+            loginForm={loginForm}
+            setLoginForm={setLoginForm}
+            loginError={loginError}
+            handleLoginSubmit={handleLoginSubmit}
+            showPassword={showPassword}
+            setShowPassword={setShowPassword}
+            cakraLogo={cakraLogo}
           />
-        </div>
-        {/* INPUT AREA */}
-        <InputArea
-          currentMode={currentMode}
-          input={input}
-          setInput={setInput}
-          previews={previews}
-          setPreviews={setPreviews}
-          selectedFiles={selectedFiles}
-          setSelectedFiles={setSelectedFiles}
-          isDragging={isDragging}
-          handleDragOver={handleDragOver}
-          handleDragLeave={handleDragLeave}
-          handleDrop={handleDrop}
-          fileInputRef={fileInputRef}
-          handleFileChange={handleFileChange}
-          sendMessage={sendMessage}
-          handleKeyPress={handleKeyPress}
-          handlePaste={handlePaste}
-          isLoading={isLoading}
-          isLoggedIn={isLoggedIn}
-          switchMode={switchMode}
-        />
+        )}
+        {isLogoutModalOpen && (
+          <LogoutModal
+            setIsLogoutModalOpen={setIsLogoutModalOpen}
+            handleLogout={handleLogout}
+          />
+        )}
+
+        {showDocumentList && (
+          <DocumentListPanel
+            documents={documents}
+            setShowDocumentList={setShowDocumentList}
+          />
+        )}
+        {notification && <NotificationToast notification={notification} />}
       </div>
-
-      {/* 4. MODALS & OVERLAYS */}
-      {showLoginModal && (
-        <LoginModal
-          setShowLoginModal={setShowLoginModal}
-          loginForm={loginForm}
-          setLoginForm={setLoginForm}
-          loginError={loginError}
-          handleLoginSubmit={handleLoginSubmit}
-          showPassword={showPassword}
-          setShowPassword={setShowPassword}
-          cakraLogo={cakraLogo}
-        />
-      )}
-
-      {isLogoutModalOpen && (
-        <LogoutModal
-          setIsLogoutModalOpen={setIsLogoutModalOpen}
-          handleLogout={handleLogout}
-        />
-      )}
-
-      {notification && <NotificationToast notification={notification} />}
-    </div>
+    </>
   );
 }

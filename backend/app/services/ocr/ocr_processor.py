@@ -8,7 +8,7 @@ import logging
 from datetime import datetime
 import tempfile
 
-from webui.backend.ocr.ocr_agent import extract_text_per_page
+from .ocr_agent import extract_text_per_page
 from database.db import DB_CONFIG
 
 

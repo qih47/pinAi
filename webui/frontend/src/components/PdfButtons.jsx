@@ -11,15 +11,9 @@ const PdfButtons = ({ pdfInfo, isFromDocument, isTyping = false }) => {
 
   const API_BASE = "http://192.168.11.80:5000";
 
-  const handleView = () => {
+  const handlePreview = () => {
     if (pdfInfo.url) {
       window.open(`${API_BASE}${pdfInfo.url}`, "_blank", "noopener,noreferrer");
-    }
-  };
-
-  const handleDownload = () => {
-    if (pdfInfo.download_url) {
-      window.open(`${API_BASE}${pdfInfo.download_url}`, "_blank", "noopener,noreferrer");
     }
   };
 
@@ -50,18 +44,10 @@ const PdfButtons = ({ pdfInfo, isFromDocument, isTyping = false }) => {
       <div className="flex justify-end mt-2 gap-2">
         {pdfInfo.url && (
           <button
-            onClick={handleView}
+            onClick={handlePreview}
             className="px-2 py-0.5 text-xs bg-white dark:bg-blue-950 text-blue-600 dark:text-blue-300 border border-blue-300 dark:border-blue-700 rounded-full hover:bg-blue-50 dark:hover:bg-blue-900"
           >
-            Lihat
-          </button>
-        )}
-        {pdfInfo.download_url && (
-          <button
-            onClick={handleDownload}
-            className="px-2 py-0.5 text-xs bg-blue-600 dark:bg-blue-800 text-white rounded-full hover:bg-blue-700 dark:hover:bg-blue-900"
-          >
-            Download
+            Preview
           </button>
         )}
       </div>

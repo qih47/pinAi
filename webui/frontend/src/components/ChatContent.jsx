@@ -18,6 +18,8 @@ import LogoutModal from "./modals/LogoutModal";
 import NotificationToast from "./ui/NotificationToast";
 import GuestWelcome from "./ui/GuestWelcome";
 
+import DocumentListPanel from "./DocumentListPanel";
+
 // Konfigurasi API
 const API_BASE = "http://192.168.11.80:5000";
 
@@ -285,73 +287,6 @@ function ChatContent({ isNew, isGuest }) {
     }
   };
 
-  // =========================================================================
-  // FILE UPLOAD FUNCTIONS
-  // =========================================================================
-  const handleFilePreview = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    const formData = new FormData();
-    formData.append("file", file);
-    try {
-      const res = await fetch(`${API_BASE}/api/upload-preview`, {
-        method: "POST",
-        body: formData,
-      });
-      const data = await res.json();
-      if (res.ok) {
-        setTempFileId(data.file_id);
-        setPreviewFile({
-          name: data.filename,
-          type: data.file_type,
-          size: data.size,
-          previewText: data.preview_text,
-        });
-        setShowPreview(true);
-      } else {
-        showNotification(`Preview failed: ${data.error}`, "error");
-      }
-    } catch (err) {
-      showNotification(`Preview error: ${err.message}`, "error");
-    }
-  };
-
-  const confirmUpload = async () => {
-    if (!tempFileId) return;
-    try {
-      const res = await fetch(`${API_BASE}/api/confirm-upload`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ file_id: tempFileId }),
-      });
-      const data = await res.json();
-      if (res.ok) {
-        setUploadedFiles((prev) => [
-          ...prev,
-          { id: data.file_id, name: data.filename, type: data.file_type },
-        ]);
-        showNotification(`File "${data.filename}" uploaded!`, "success");
-        setShowPreview(false);
-        setPreviewFile(null);
-        setTempFileId(null);
-      }
-    } catch (err) {
-      showNotification(`Upload error: ${err.message}`, "error");
-    }
-  };
-
-  const cancelUpload = async () => {
-    if (tempFileId) {
-      await fetch(`${API_BASE}/api/cancel-upload`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ file_id: tempFileId }),
-      });
-    }
-    setShowPreview(false);
-    setPreviewFile(null);
-    setTempFileId(null);
-  };
 
   // =========================================================================
   // CHAT SESSION FUNCTIONS
@@ -608,7 +543,9 @@ function ChatContent({ isNew, isGuest }) {
   const handleKeyPress = (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      sendMessage();
+      if (!isLoading && input.trim()) {
+        sendMessage();
+      }
     }
   };
 
@@ -781,8 +718,6 @@ function ChatContent({ isNew, isGuest }) {
     triggerLogout,
     handleLogout,
     handleCopy,
-    confirmUpload,
-    cancelUpload,
     setShowDocumentList,
     setIsSidebarOpen,
     setIsDropdownOpen,

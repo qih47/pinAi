@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useRef } from "react";
 
 export default function InputArea({
   currentMode,
@@ -21,6 +21,15 @@ export default function InputArea({
   isLoggedIn,
   switchMode,
 }) {
+  const textareaRef = useRef(null);
+
+  // Efek untuk reset tinggi textarea ketika input kosong (setelah kirim pesan)
+  useEffect(() => {
+    if (input === "" && textareaRef.current) {
+      textareaRef.current.style.height = "44px";
+    }
+  }, [input]);
+
   return (
     <div className="bg-white dark:bg-[#232326] px-4 pb-6 pt-2 transition-colors duration-300">
       <div className="max-w-3xl mx-auto relative">
@@ -41,13 +50,13 @@ export default function InputArea({
           </div>
         )}
 
-        {/* Container Utama Input - SEKARANG BISA DIKLIK GUEST */}
+        {/* Container Utama Input */}
         <div
           className={`relative rounded-3xl transition-all duration-300 border ${
             isDragging
               ? "border-blue-500 ring-4 ring-blue-500/10 bg-blue-50/50 dark:bg-blue-900/10"
               : "border-gray-200 dark:border-gray-700 bg-[#F7F8FC] dark:bg-[#2E2E33]"
-          } ${!isLoggedIn ? "opacity-100" : ""}`} // Hapus pointer-events-none
+          }`}
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
@@ -105,11 +114,12 @@ export default function InputArea({
           {/* Input Area (Textarea) */}
           <div className="flex flex-col p-2">
             <textarea
+              ref={textareaRef}
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyPress}
               onPaste={handlePaste}
-              disabled={isLoading} // Hanya disable saat loading, bukan saat Guest
+              disabled={false} // User tetap bisa mengetik pesan selanjutnya saat AI loading
               placeholder={
                 !isLoggedIn
                   ? "Apa yang bisa CAKRA bantu?"
@@ -156,7 +166,7 @@ export default function InputArea({
                   </svg>
                 </button>
 
-                {/* Mode Switchers */}
+                {/* Mode Switchers - Selalu muncul jika login */}
                 {isLoggedIn && (
                   <div className="flex bg-gray-200/50 dark:bg-gray-700/50 p-1 rounded-full ml-1">
                     <button
@@ -183,13 +193,13 @@ export default function InputArea({
                 )}
               </div>
 
-              {/* Send Button */}
+              {/* Send Button - Hanya block tombol kirim saat loading */}
               <button
                 onClick={sendMessage}
                 disabled={isLoading || !input.trim()}
                 className={`flex items-center justify-center w-10 h-10 rounded-full transition-all ${
                   isLoading || !input.trim()
-                    ? "bg-gray-200 dark:bg-gray-700 text-gray-400"
+                    ? "bg-gray-200 dark:bg-gray-700 text-gray-400 cursor-not-allowed"
                     : "bg-blue-600 text-white shadow-lg hover:bg-blue-700 active:scale-90"
                 }`}
               >

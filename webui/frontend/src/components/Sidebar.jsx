@@ -3,6 +3,7 @@ import React, { useState, useRef, useEffect } from "react";
 const Sidebar = ({
   backendStatus,
   clearChat,
+  showDocumentList,
   setShowDocumentList,
   isOpen,
   setIsOpen,
@@ -267,7 +268,7 @@ const Sidebar = ({
         </button>
 
         <button
-          onClick={() => setShowDocumentList(true)}
+          onClick={() => setShowDocumentList(!showDocumentList)}
           className={`flex items-center rounded-full hover:bg-gray-200 transition-colors group overflow-hidden text-[14px] dark:hover:bg-gray-800 ${
             isOpen ? "p-2 w-full space-x-3" : "p-2 justify-center"
           }`}
