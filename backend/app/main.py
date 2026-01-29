@@ -1,8 +1,9 @@
 import logging
-import os  # Tambahkan ini
+import os
+import asyncio # Tambahkan ini untuk Semaphore
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles  # Tambahkan ini
+from fastapi.staticfiles import StaticFiles
 from .config import settings
 
 # 1. Configure logging
@@ -19,14 +20,14 @@ app = FastAPI(
     redoc_url="/redoc",
 )
 
-# --- TAMBAHKAN INI COK ---
-# Pastikan folder db_doc ada biar nggak error pas startup
+# --- GLOBAL SEMAPHORE ---
+app.state.gpu_limit = asyncio.Semaphore(2)
+# -------------------------
+
 if not os.path.exists("db_doc"):
     os.makedirs("db_doc")
 
-# Ini kuncinya: Mount folder 'db_doc' ke URL path '/db_doc'
 app.mount("/db_doc", StaticFiles(directory="db_doc"), name="db_doc")
-# -------------------------
 
 # 2. CORS Setup
 origins = getattr(
@@ -66,8 +67,11 @@ async def startup_event():
     except Exception as e:
         logger.error(f"❌ Failed to initialize DB on startup: {e}")
 
+    # Set parallel settings untuk Ollama via Environment jika memungkinkan
+    # atau informasikan spek load di log
     print(f"\n" + "=" * 50)
     print(f"🤖 Primary Model: {settings.primary_model}")
+    print(f"⚡ GPU Concurrency Limit: 1 Requests")
     print(f"🌐 API running on: http://192.168.11.80:5000")
     print(f"=" * 50 + "\n")
 

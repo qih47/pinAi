@@ -1,10 +1,11 @@
-from fastapi import APIRouter, HTTPException, Depends, Body
-from pydantic import BaseModel
-from typing import Optional, List, Dict, Any
-import json
 import uuid
-import logging
+import json
 import traceback
+import logging
+from datetime import datetime
+from fastapi import APIRouter, HTTPException, Depends, Body, Request, BackgroundTasks
+from pydantic import BaseModel
+from typing import Optional, List, Dict
 
 # Relative imports
 from ..database import get_db
@@ -20,8 +21,7 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 
-# --- HELPER FOR DEPENDENCY INJECTION ---
-# Ini menjembatani @asynccontextmanager dengan FastAPI Depends
+# --- DATABASE DEPENDENCY ---
 async def get_db_conn():
     async with get_db() as conn:
         yield conn
@@ -48,41 +48,56 @@ async def get_available_models():
     models = [
         {"id": "qwen3:8b", "name": "Qwen 3 (8B)"},
         {"id": "qwen2.5:14b-instruct", "name": "Qwen 2.5-Instruct (14b)"},
-        {"id": "qwen3-vl:8b", "name": "qwen 3 vl (8b)"},
-        {"id": "llama3.1:8b", "name": "Llama 3.1 (8b)"},
+        {"id": "qwen3-vl:8b", "name": "Qwen 3 VL (8B)"},
+        {"id": "llama3.1:8b", "name": "Llama 3.1 (8B)"},
     ]
     return {"status": "success", "data": models}
 
 
 @router.post("/chat")
-async def chat(request: ChatRequest, conn=Depends(get_db_conn)):
-    try:
-        user_message = request.message or ""
-        selected_model = request.model if request.npp else settings.primary_model
-        session_uuid = request.session_uuid
-        username = request.fullname
-        npp = request.npp
-        role = request.role
+async def chat(
+    request: Request,
+    chat_data: ChatRequest,
+    background_tasks: BackgroundTasks,
+    conn=Depends(get_db_conn),
+):
+    gpu_limit = request.app.state.gpu_limit
 
-        print(
-            f"\n🚀 CHAT INCOMING | User: {username} | NPP: {npp} | Attachments: {len(request.attachments)}"
-        )
+    try:
+        user_message = chat_data.message or ""
+        selected_model = chat_data.model if chat_data.npp else settings.primary_model
+        session_uuid = chat_data.session_uuid
+        username = chat_data.fullname
+        npp = chat_data.npp
+        role = chat_data.role
 
         current_session_id = None
-        judul_baru = None
+        judul_baru = "Percakapan Baru"
 
         # 1. Handle Session
         if session_uuid:
             sess = await conn.fetchrow(
-                "SELECT id FROM chat_sessions WHERE session_uuid = $1", session_uuid
+                "SELECT id, judul FROM chat_sessions WHERE session_uuid = $1",
+                session_uuid,
             )
             if sess:
                 current_session_id = sess["id"]
+                judul_baru = sess["judul"]
 
         if not current_session_id:
             if not session_uuid:
                 session_uuid = str(uuid.uuid4())
-            judul_baru = await generate_judul_ai(user_message)
+
+            # ✅ Optimasi: Hanya generate judul AI untuk user login
+            if npp:
+                judul_baru = await generate_judul_ai(user_message)
+            else:
+                judul_baru = (
+                    (user_message[:30] + "...")
+                    if user_message.strip()
+                    else "Percakapan Baru"
+                )
+
             current_session_id = await conn.fetchval(
                 """
                 INSERT INTO chat_sessions (session_uuid, user_name, npp, judul, model_name, is_active)
@@ -95,53 +110,59 @@ async def chat(request: ChatRequest, conn=Depends(get_db_conn)):
                 selected_model,
             )
 
-        # 2. OCR Logic
-        ocr_context = ""
-        for att in request.attachments:
-            mime_type = att.get("type", "").lower()
-            if "application/pdf" in mime_type or att.get("name", "").endswith(".pdf"):
-                extracted_text = await process_pdf_attachment_to_ocr(
-                    attachment=att,
-                    npp=npp,
-                    session_id=current_session_id,
-                    get_embedding_func=get_embedding,
+        # --- AREA ANTREAN GPU (Semaphore) ---
+        async with gpu_limit:
+            logger.info(f"🔒 [GPU LOCK] Processing request for: {username}")
+
+            # 2. OCR Logic (✅ Optimasi validasi)
+            ocr_context = ""
+            for att in chat_data.attachments:
+                if not att or not isinstance(att, dict):
+                    continue
+
+                mime_type = att.get("type", "").lower()
+                file_name = att.get("name", "")
+
+                if mime_type == "application/pdf" or (
+                    file_name and file_name.lower().endswith(".pdf")
+                ):
+                    extracted_text = await process_pdf_attachment_to_ocr(
+                        attachment=att,
+                        npp=npp,
+                        session_id=current_session_id,
+                        get_embedding_func=get_embedding,
+                    )
+                    if extracted_text:
+                        ocr_context += extracted_text
+
+            # 3. Message Prep
+            active_file = None
+            final_message_to_ai = user_message
+            if ocr_context and len(ocr_context.strip()) > 10:
+                active_file = {"text": ocr_context, "name": "Dokumen Terlampir"}
+                final_message_to_ai = (
+                    f"INSTRUKSI USER: {user_message}\n\nDATA DOKUMEN:\n{ocr_context}"
                 )
-                if extracted_text:
-                    ocr_context += extracted_text
 
-        # 3. Final Message Prep
-        active_file = None
-        final_message_to_ai = user_message
+            # 4. Get AI Response
+            reply, pdf_info, should_include_pdf = await smart_chat_with_context(
+                user_message=final_message_to_ai,
+                active_file=active_file,
+                mode=chat_data.mode,
+                model=selected_model,
+                session_uuid=session_uuid,
+                npp=npp,
+                role=role,
+                attachments=chat_data.attachments,
+                background_tasks=background_tasks,
+            )
 
-        if ocr_context and len(ocr_context.strip()) > 10:
-            active_file = {"text": ocr_context, "name": "Dokumen Terlampir"}
-            final_message_to_ai = f"INSTRUKSI USER: {user_message}\n\nDATA DOKUMEN HASIL SCAN:\n{ocr_context}"
+            logger.info(f"🔓 [GPU UNLOCK] Finished request for: {username}")
 
-        # 4. Get AI Response
-        reply, pdf_info, should_include_pdf = await smart_chat_with_context(
-            user_message=final_message_to_ai,
-            active_file=active_file,
-            mode=request.mode,
-            model=selected_model,
-            session_uuid=session_uuid,
-            npp=npp,
-            role=role,
-            attachments=request.attachments,
-        )
+        # --- END AREA ANTREAN GPU ---
 
-        # 5. Handle Embeddings
-        try:
-            # Gunakan helper format dari database.py jika perlu,
-            # atau pastikan string format vector sesuai '[0.1, 0.2, ...]'
-            v_user = get_embedding(user_message) or ([0.0] * 768)
-            v_assistant = get_embedding(reply) or ([0.0] * 768)
-            vector_user = f"[{','.join(map(str, v_user))}]"
-            vector_assistant = f"[{','.join(map(str, v_assistant))}]"
-        except Exception as emb_e:
-            logger.warning(f"Gagal embedding: {emb_e}")
-            vector_user = vector_assistant = f"[{','.join(['0.0'] * 768)}]"
-
-        # 6. Simpan ke ai_dialogue_corpus
+        # 5. Simpan Dialogue DULU tanpa embedding (isi dummy)
+        dummy_vector = str([0.0] * 1024)
         await conn.execute(
             """
             INSERT INTO ai_dialogue_corpus (
@@ -153,10 +174,17 @@ async def chat(request: ChatRequest, conn=Depends(get_db_conn)):
             current_session_id,
             user_message,
             reply,
-            vector_user,
-            vector_assistant,
-            json.dumps({"mode": request.mode, "model": selected_model}),
-            json.dumps(request.attachments),
+            dummy_vector,
+            dummy_vector,
+            json.dumps({"mode": chat_data.mode, "model": selected_model}),
+            json.dumps(chat_data.attachments),
+        )
+
+        # 6. Jalankan embedding di background
+        from ..services.background_tasks import update_dialogue_embeddings
+
+        background_tasks.add_task(
+            update_dialogue_embeddings, current_session_id, user_message, reply
         )
 
         return {
@@ -166,7 +194,7 @@ async def chat(request: ChatRequest, conn=Depends(get_db_conn)):
             "pdf_info": pdf_info if (should_include_pdf and npp) else None,
             "is_from_document": (should_include_pdf or ocr_context != ""),
             "model_used": selected_model,
-            "attachments": request.attachments,
+            "attachments": chat_data.attachments,
         }
 
     except Exception as e:
@@ -205,29 +233,23 @@ async def get_session_messages(session_uuid: str, conn=Depends(get_db_conn)):
     for row in rows:
         ts = row["created_at"].strftime("%H:%M")
 
-        # --- PERBAIKAN DI SINI ---
+        # Parse Attachments safely
         raw_files = row.get("files")
         attachments = []
-
         if raw_files:
             try:
-                # Jika data berupa string (JSON), kita parse jadi list
-                if isinstance(raw_files, str):
-                    attachments = json.loads(raw_files)
-                # Jika sudah berupa list (otomatis diparse asyncpg)
-                elif isinstance(raw_files, list):
-                    attachments = raw_files
-            except Exception as e:
-                logger.error(f"Gagal parse attachments: {e}")
+                attachments = (
+                    raw_files if isinstance(raw_files, list) else json.loads(raw_files)
+                )
+            except:
                 attachments = []
-        # --------------------------
 
         formatted_messages.append(
             {
                 "id": f"u-{row['created_at'].timestamp()}",
                 "sender": "user",
                 "text": row["user_text"],
-                "attachments": attachments,  # Pastikan ini selalu LIST []
+                "attachments": attachments,
                 "timestamp": ts,
             }
         )
@@ -236,7 +258,7 @@ async def get_session_messages(session_uuid: str, conn=Depends(get_db_conn)):
                 "id": f"a-{row['created_at'].timestamp()}",
                 "sender": "ai",
                 "text": row["assistant_text"],
-                "attachments": [],  # Assistant biasanya kosong
+                "attachments": [],
                 "timestamp": ts,
             }
         )

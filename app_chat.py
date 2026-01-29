@@ -23,7 +23,7 @@ from sentence_transformers import SentenceTransformer
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 from urllib.parse import urljoin
-from webui.backend.ocr.ocr_processor import process_pdf_attachment_to_ocr
+from backend.app.services.ocr.ocr_processor import process_pdf_attachment_to_ocr
 
 # Konstanta
 SIMILARITY_THRESHOLD = 0.7

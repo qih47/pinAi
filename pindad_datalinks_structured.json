@@ -1,0 +1,861 @@
+{
+    "total": 107,
+    "data": [
+        {
+            "id": 1,
+            "category_name": "KARIR",
+            "sub_category": "INFORMASI KARIR",
+            "isPrimary": "Primary",
+            "label": "INFORMASI KARIR",
+            "url": "https://www.pindad.com/career-info"
+        },
+        {
+            "id": 2,
+            "category_name": "PERUSAHAAN",
+            "sub_category": "TENTANG PERUSAHAAN > PROFIL PERUSAHAAN",
+            "isPrimary": "Primary",
+            "label": "PROFIL PERUSAHAAN",
+            "url": "https://www.pindad.com/profil-perusahaan"
+        },
+        {
+            "id": 3,
+            "category_name": "PERUSAHAAN",
+            "sub_category": "TENTANG PERUSAHAAN > VISI DAN MISI",
+            "isPrimary": "Primary",
+            "label": "VISI DAN MISI",
+            "url": "https://www.pindad.com/vision-and-mission"
+        },
+        {
+            "id": 4,
+            "category_name": "PERUSAHAAN",
+            "sub_category": "TENTANG PERUSAHAAN > TUJUAN DAN SASARAN PERUSAHAAN",
+            "isPrimary": "Primary",
+            "label": "TUJUAN DAN SASARAN PERUSAHAAN",
+            "url": "https://www.pindad.com/company-objective-and-target"
+        },
+        {
+            "id": 5,
+            "category_name": "PERUSAHAAN",
+            "sub_category": "TENTANG PERUSAHAAN > BUDAYA PERUSAHAAN",
+            "isPrimary": "Primary",
+            "label": "BUDAYA PERUSAHAAN",
+            "url": "https://www.pindad.com/corporate-culture"
+        },
+        {
+            "id": 6,
+            "category_name": "PERUSAHAAN",
+            "sub_category": "TENTANG PERUSAHAAN > BIDANG USAHA DAN PERKEMBANGAN USAHA",
+            "isPrimary": "Primary",
+            "label": "BIDANG USAHA DAN PERKEMBANGAN USAHA",
+            "url": "https://www.pindad.com/business-field-and-business-development"
+        },
+        {
+            "id": 7,
+            "category_name": "PERUSAHAAN",
+            "sub_category": "TENTANG PERUSAHAAN > LEGALITAS",
+            "isPrimary": "Primary",
+            "label": "LEGALITAS",
+            "url": "https://www.pindad.com/legality"
+        },
+        {
+            "id": 8,
+            "category_name": "PERUSAHAAN",
+            "sub_category": "TENTANG PERUSAHAAN > PERATURAN DAN KETENTUAN PERUSAHAAN",
+            "isPrimary": "Primary",
+            "label": "PERATURAN DAN KETENTUAN PERUSAHAAN",
+            "url": "https://www.pindad.com/law-and-regulation"
+        },
+        {
+            "id": 9,
+            "category_name": "PERUSAHAAN",
+            "sub_category": "TENTANG PERUSAHAAN > SISTEM MANAJEMEN MUTU DAN KOMITMEN TERHADAP LINGKUNGAN",
+            "isPrimary": "Primary",
+            "label": "SISTEM MANAJEMEN MUTU DAN KOMITMEN TERHADAP LINGKUNGAN",
+            "url": "https://www.pindad.com/quality-and-environment"
+        },
+        {
+            "id": 10,
+            "category_name": "PERUSAHAAN",
+            "sub_category": "TENTANG PERUSAHAAN > KEUANGAN",
+            "isPrimary": "Primary",
+            "label": "KEUANGAN",
+            "url": "https://www.pindad.com/finance"
+        },
+        {
+            "id": 11,
+            "category_name": "PERUSAHAAN",
+            "sub_category": "SEJARAH > MASA KOLONIAL BELANDA DAN PENDUDUKAN JEPANG",
+            "isPrimary": "Primary",
+            "label": "MASA KOLONIAL BELANDA DAN PENDUDUKAN JEPANG",
+            "url": "https://www.pindad.com/masa-kolonial-belanda-dan-pendudukan-jepang"
+        },
+        {
+            "id": 12,
+            "category_name": "PERUSAHAAN",
+            "sub_category": "SEJARAH > PINDAD SEBAGAI BAGIAN DARI TNI AD",
+            "isPrimary": "Primary",
+            "label": "PINDAD SEBAGAI BAGIAN DARI TNI AD",
+            "url": "https://www.pindad.com/bagian-dari-tni-ad"
+        },
+        {
+            "id": 13,
+            "category_name": "PERUSAHAAN",
+            "sub_category": "SEJARAH > PINDAD SEBAGAI PERSEROAN",
+            "isPrimary": "Primary",
+            "label": "PINDAD SEBAGAI PERSEROAN",
+            "url": "https://www.pindad.com/pindad-sebagai-perseroan"
+        },
+        {
+            "id": 14,
+            "category_name": "PERUSAHAAN",
+            "sub_category": "MANAJEMEN > STRUKTUR ORGANISASI",
+            "isPrimary": "Primary",
+            "label": "STRUKTUR ORGANISASI",
+            "url": "https://www.pindad.com/organization-structure"
+        },
+        {
+            "id": 15,
+            "category_name": "PERUSAHAAN",
+            "sub_category": "MANAJEMEN > DEWAN KOMISARIS",
+            "isPrimary": "Primary",
+            "label": "DEWAN KOMISARIS",
+            "url": "https://www.pindad.com/dewan-komisaris"
+        },
+        {
+            "id": 16,
+            "category_name": "PERUSAHAAN",
+            "sub_category": "MANAJEMEN > DIREKSI",
+            "isPrimary": "Primary",
+            "label": "DIREKSI",
+            "url": "https://www.pindad.com/direksi"
+        },
+        {
+            "id": 17,
+            "category_name": "PERUSAHAAN",
+            "sub_category": "MANAJEMEN > SESPER DAN KEPALA SPI",
+            "isPrimary": "Primary",
+            "label": "SESPER DAN KEPALA SPI",
+            "url": "https://www.pindad.com/sesper-dan-kepala-spi"
+        },
+        {
+            "id": 18,
+            "category_name": "PERUSAHAAN",
+            "sub_category": "MANAJEMEN > KOMITE AUDIT",
+            "isPrimary": "Primary",
+            "label": "KOMITE AUDIT",
+            "url": "https://www.pindad.com/komite-audit"
+        },
+        {
+            "id": 19,
+            "category_name": "PERUSAHAAN",
+            "sub_category": "MANAJEMEN > KOMITE MANAJEMEN RISIKO & GCG",
+            "isPrimary": "Primary",
+            "label": "KOMITE MANAJEMEN RISIKO & GCG",
+            "url": "https://www.pindad.com/komite-manajemen-risiko-gcg"
+        },
+        {
+            "id": 20,
+            "category_name": "PERUSAHAAN",
+            "sub_category": "MANAJEMEN > ANAK PERUSAHAAN",
+            "isPrimary": "Primary",
+            "label": "ANAK PERUSAHAAN",
+            "url": "https://www.pindad.com/subsidiaries"
+        },
+        {
+            "id": 21,
+            "category_name": "PERUSAHAAN",
+            "sub_category": "TATA KELOLA PERUSAHAAN & MANAJEMEN RISIKO",
+            "isPrimary": "Primary",
+            "label": "TATA KELOLA PERUSAHAAN & MANAJEMEN RISIKO",
+            "url": "https://www.pindad.com/good-corporate-governance-and-risk-management"
+        },
+        {
+            "id": 22,
+            "category_name": "PERUSAHAAN",
+            "sub_category": "TJSL",
+            "isPrimary": "Primary",
+            "label": "TJSL",
+            "url": "https://www.pindad.com/tjsl"
+        },
+        {
+            "id": 23,
+            "category_name": "PERUSAHAAN",
+            "sub_category": "CORPORATE COMMUNICATION > ANNUAL REPORT",
+            "isPrimary": "Primary",
+            "label": "ANNUAL REPORT",
+            "url": "https://www.pindad.com/annual-report"
+        },
+        {
+            "id": 24,
+            "category_name": "PERUSAHAAN",
+            "sub_category": "CORPORATE COMMUNICATION > ACHIEVEMENT",
+            "isPrimary": "Primary",
+            "label": "ACHIEVEMENT",
+            "url": "https://www.pindad.com/achievement"
+        },
+        {
+            "id": 25,
+            "category_name": "PERUSAHAAN",
+            "sub_category": "INOVASI > INOVASI BARU",
+            "isPrimary": "Primary",
+            "label": "INOVASI BARU",
+            "url": "https://www.pindad.com/new-innovations"
+        },
+        {
+            "id": 26,
+            "category_name": "PERUSAHAAN",
+            "sub_category": "E-LHKPN",
+            "isPrimary": "Primary",
+            "label": "E-LHKPN",
+            "url": "https://www.pindad.com/elhkpn"
+        },
+        {
+            "id": 27,
+            "category_name": "PERUSAHAAN",
+            "sub_category": "DIGITAL SIGNATURE",
+            "isPrimary": "Primary",
+            "label": "DIGITAL SIGNATURE",
+            "url": "https://www.pindad.com/digital-signature"
+        },
+        {
+            "id": 28,
+            "category_name": "PERUSAHAAN",
+            "sub_category": "KEHATI HUTAN PINDAD",
+            "isPrimary": "Primary",
+            "label": "KEHATI HUTAN PINDAD",
+            "url": "https://www.pindad.com/kehati-hutan-pindad"
+        },
+        {
+            "id": 29,
+            "category_name": "HOME",
+            "sub_category": "HOME",
+            "isPrimary": "Primary",
+            "label": "HOME",
+            "url": "https://www.pindad.com/home"
+        },
+        {
+            "id": 30,
+            "category_name": "RUANG PUBLIK",
+            "sub_category": "BERITA",
+            "isPrimary": "Primary",
+            "label": "BERITA",
+            "url": "https://www.pindad.com/news"
+        },
+        {
+            "id": 31,
+            "category_name": "RUANG PUBLIK",
+            "sub_category": "SIARAN PERS",
+            "isPrimary": "Primary",
+            "label": "SIARAN PERS",
+            "url": "https://www.pindad.com/press-release"
+        },
+        {
+            "id": 32,
+            "category_name": "RUANG PUBLIK",
+            "sub_category": "KATALOG DAN BROSUR",
+            "isPrimary": "Primary",
+            "label": "KATALOG DAN BROSUR",
+            "url": "https://www.pindad.com/catalog-and-brochures"
+        },
+        {
+            "id": 33,
+            "category_name": "RUANG PUBLIK",
+            "sub_category": "MAJALAH",
+            "isPrimary": "Primary",
+            "label": "MAJALAH",
+            "url": "https://www.pindad.com/majalah"
+        },
+        {
+            "id": 34,
+            "category_name": "RUANG PUBLIK",
+            "sub_category": "GALLERY",
+            "isPrimary": "Primary",
+            "label": "GALLERY",
+            "url": "https://www.pindad.com/gallery"
+        },
+        {
+            "id": 35,
+            "category_name": "RUANG PUBLIK",
+            "sub_category": "VIDEO",
+            "isPrimary": "Primary",
+            "label": "VIDEO",
+            "url": "https://www.pindad.com/video"
+        },
+        {
+            "id": 36,
+            "category_name": "RUANG PUBLIK",
+            "sub_category": "PENGHARGAAN",
+            "isPrimary": "Primary",
+            "label": "PENGHARGAAN",
+            "url": "https://www.pindad.com/penghargaan"
+        },
+        {
+            "id": 37,
+            "category_name": "PRODUK & JASA",
+            "sub_category": "SENJATA",
+            "isPrimary": "Primary",
+            "label": "SENJATA",
+            "url": "https://www.pindad.com/weapon"
+        },
+        {
+            "id": 38,
+            "category_name": "PRODUK & JASA",
+            "sub_category": "MUNISI",
+            "isPrimary": "Primary",
+            "label": "MUNISI",
+            "url": "https://www.pindad.com/ammunition"
+        },
+        {
+            "id": 39,
+            "category_name": "PRODUK & JASA",
+            "sub_category": "KENDARAAN KHUSUS",
+            "isPrimary": "Primary",
+            "label": "KENDARAAN KHUSUS",
+            "url": "https://www.pindad.com/special-vehicles"
+        },
+        {
+            "id": 40,
+            "category_name": "PRODUK & JASA",
+            "sub_category": "ALAT BERAT",
+            "isPrimary": "Primary",
+            "label": "ALAT BERAT",
+            "url": "https://www.pindad.com/alat-berat"
+        },
+        {
+            "id": 41,
+            "category_name": "PRODUK & JASA",
+            "sub_category": "INFRASTRUKTUR PERHUBUNGAN",
+            "isPrimary": "Primary",
+            "label": "INFRASTRUKTUR PERHUBUNGAN",
+            "url": "https://www.pindad.com/infrastruktur-perhubungan"
+        },
+        {
+            "id": 42,
+            "category_name": "PRODUK & JASA",
+            "sub_category": "LAYANAN PERTAMBANGAN",
+            "isPrimary": "Primary",
+            "label": "LAYANAN PERTAMBANGAN",
+            "url": "https://www.pindad.com/layanan-pertambangan"
+        },
+        {
+            "id": 43,
+            "category_name": "PRODUK & JASA",
+            "sub_category": "CYBER SECURITY",
+            "isPrimary": "Primary",
+            "label": "CYBER SECURITY",
+            "url": "https://www.pindad.com/cyber-security"
+        },
+        {
+            "id": 44,
+            "category_name": "PRODUK & JASA",
+            "sub_category": "PRODUK ANAK PERUSAHAAN",
+            "isPrimary": "Primary",
+            "label": "PRODUK ANAK PERUSAHAAN",
+            "url": "https://www.pindad.com/produk-anak-perusahaan"
+        },
+        {
+            "id": 45,
+            "category_name": "PRODUK & JASA",
+            "sub_category": "PROSEDUR PEMESANAN PRODUK INDUSTRIAL",
+            "isPrimary": "Primary",
+            "label": "PROSEDUR PEMESANAN PRODUK INDUSTRIAL",
+            "url": "https://www.pindad.com/inquiry-process"
+        },
+        {
+            "id": 46,
+            "category_name": "PENGADAAN",
+            "sub_category": "E-PROCUREMENT",
+            "isPrimary": "Primary",
+            "label": "E-PROCUREMENT",
+            "url": "https://eproc.pindad.com"
+        },
+        {
+            "id": 47,
+            "category_name": "PENGADAAN",
+            "sub_category": "INFORMASI PENGADAAN",
+            "isPrimary": "Primary",
+            "label": "INFORMASI PENGADAAN",
+            "url": "https://www.pindad.com/procurement-info"
+        },
+        {
+            "id": 48,
+            "category_name": "KIP",
+            "sub_category": "KIP",
+            "isPrimary": "Primary",
+            "label": "KIP",
+            "url": "https://e-ppid.pindad.com"
+        },
+        {
+            "id": 49,
+            "category_name": "HUBUNGI",
+            "sub_category": "HUBUNGI",
+            "isPrimary": "Primary",
+            "label": "HUBUNGI",
+            "url": "https://www.pindad.com/contact-us"
+        },
+        {
+            "id": 50,
+            "category_name": "KARIR",
+            "sub_category": "INFORMASI KARIR",
+            "isPrimary": "Sublink",
+            "label": "JOB VACANCY 2020",
+            "url": "https://www.pindad.com/job-vacancy-2020-pt-pindad-pesero"
+        },
+        {
+            "id": 51,
+            "category_name": "KARIR",
+            "sub_category": "INFORMASI KARIR",
+            "isPrimary": "Sublink",
+            "label": "JOB VACANCY 2019",
+            "url": "https://www.pindad.com/job-vacancy-2019"
+        },
+        {
+            "id": 52,
+            "category_name": "KARIR",
+            "sub_category": "INFORMASI KARIR",
+            "isPrimary": "Sublink",
+            "label": "PENGUMUMAN HASIL TES POTENSI AKADEMIK PT PINDAD (PERSERO) TAHUN 2018",
+            "url": "https://www.pindad.com/pengumuman-hasil-tes-potensi-akademik-pt-pindad-persero-tahun-2018"
+        },
+        {
+            "id": 53,
+            "category_name": "PERUSAHAAN",
+            "sub_category": "TENTANG PERUSAHAAN > PROFIL PERUSAHAAN",
+            "isPrimary": "Sublink",
+            "label": "Pindad",
+            "url": "https://www.pindad.com"
+        },
+        {
+            "id": 54,
+            "category_name": "PERUSAHAAN",
+            "sub_category": "TENTANG PERUSAHAAN > PROFIL PERUSAHAAN",
+            "isPrimary": "Sublink",
+            "label": "info@pindad.com",
+            "url": "https://www.pindad.com/info@pindad.com"
+        },
+        {
+            "id": 55,
+            "category_name": "PERUSAHAAN",
+            "sub_category": "TENTANG PERUSAHAAN > PROFIL PERUSAHAAN",
+            "isPrimary": "Sublink",
+            "label": "divmu@pindad.com",
+            "url": "https://www.pindad.com/divmu@pindad.com"
+        },
+        {
+            "id": 56,
+            "category_name": "PERUSAHAAN",
+            "sub_category": "TENTANG PERUSAHAAN > PERATURAN DAN KETENTUAN PERUSAHAAN",
+            "isPrimary": "Sublink",
+            "label": "Kebijakan Pengembangan Masyarakat (Community Development) PT. Pindad (Persero).pdf",
+            "url": "https://www.pindad.com/downloads/division/Kebijakan_Pengembangan_Masyarakat_(Community_Development)_PT._Pindad_(Persero)_.pdf"
+        },
+        {
+            "id": 57,
+            "category_name": "PERUSAHAAN",
+            "sub_category": "TENTANG PERUSAHAAN > PERATURAN DAN KETENTUAN PERUSAHAAN",
+            "isPrimary": "Sublink",
+            "label": "Kebijakan Mutu & K3LH",
+            "url": "https://www.pindad.com/downloads/division/Skep_22_25092010_tentang_Kebijakan_Mutu_K3LH.pdf"
+        },
+        {
+            "id": 58,
+            "category_name": "PERUSAHAAN",
+            "sub_category": "TENTANG PERUSAHAAN > PERATURAN DAN KETENTUAN PERUSAHAAN",
+            "isPrimary": "Sublink",
+            "label": "Kebijakan Energi",
+            "url": "https://www.pindad.com/downloads/division/SKEP_40_P_BD_IX_2011_Kebijakan_Energi.pdf"
+        },
+        {
+            "id": 59,
+            "category_name": "PERUSAHAAN",
+            "sub_category": "TENTANG PERUSAHAAN > PERATURAN DAN KETENTUAN PERUSAHAAN",
+            "isPrimary": "Sublink",
+            "label": "Kebijakan Konservasi Air",
+            "url": "https://www.pindad.com/downloads/division/Skep_8-P-BD-X-2012_Kebijakan_Konservasi_air.pdf"
+        },
+        {
+            "id": 60,
+            "category_name": "PERUSAHAAN",
+            "sub_category": "TENTANG PERUSAHAAN > PERATURAN DAN KETENTUAN PERUSAHAAN",
+            "isPrimary": "Sublink",
+            "label": "Kebijakan Teknologi Informasi",
+            "url": "https://www.pindad.com/downloads/division/kebijakan_teknologi_informas__pt_pindad.pdf"
+        },
+        {
+            "id": 61,
+            "category_name": "PERUSAHAAN",
+            "sub_category": "TENTANG PERUSAHAAN > PERATURAN DAN KETENTUAN PERUSAHAAN",
+            "isPrimary": "Sublink",
+            "label": "skep_0003_10_05_alih.pdf",
+            "url": "https://www.pindad.com/downloads/division/skep_0003_10_05_alih.pdf"
+        },
+        {
+            "id": 62,
+            "category_name": "PERUSAHAAN",
+            "sub_category": "TENTANG PERUSAHAAN > PERATURAN DAN KETENTUAN PERUSAHAAN",
+            "isPrimary": "Sublink",
+            "label": "SKEP.19.P.BD.VIII.2017_NEW.pdf",
+            "url": "https://www.pindad.com/downloads/division/SKEP.19_.P_.BD_.VIII_.2017_NEW_.pdf"
+        },
+        {
+            "id": 63,
+            "category_name": "PERUSAHAAN",
+            "sub_category": "TENTANG PERUSAHAAN > PERATURAN DAN KETENTUAN PERUSAHAAN",
+            "isPrimary": "Sublink",
+            "label": "Ketentuan_LOGO SKEP_10_P_BD_III_2014.compressed.pdf",
+            "url": "https://www.pindad.com/downloads/division/Ketentuan_LOGO_SKEP_10_P_BD_III_2014.compressed_.pdf"
+        },
+        {
+            "id": 64,
+            "category_name": "PERUSAHAAN",
+            "sub_category": "TENTANG PERUSAHAAN > PERATURAN DAN KETENTUAN PERUSAHAAN",
+            "isPrimary": "Sublink",
+            "label": "Kebijakan Mutu dan K3LH",
+            "url": "https://www.pindad.com/uploads/downloads/division/Skep_22_25092010_tentang_Kebijakan_Mutu_K3LH.pdf"
+        },
+        {
+            "id": 65,
+            "category_name": "PERUSAHAAN",
+            "sub_category": "TENTANG PERUSAHAAN > PERATURAN DAN KETENTUAN PERUSAHAAN",
+            "isPrimary": "Sublink",
+            "label": "Kebijakan energi",
+            "url": "https://www.pindad.com/uploads/downloads/division/SKEP_40_P_BD_IX_2011_Kebijakan_Energi.pdf"
+        },
+        {
+            "id": 66,
+            "category_name": "PERUSAHAAN",
+            "sub_category": "TENTANG PERUSAHAAN > PERATURAN DAN KETENTUAN PERUSAHAAN",
+            "isPrimary": "Sublink",
+            "label": "konservasi air",
+            "url": "https://www.pindad.com/uploads/downloads/division/Skep_8-P-BD-X-2012_Kebijakan_Konservasi_air.pdf"
+        },
+        {
+            "id": 67,
+            "category_name": "PERUSAHAAN",
+            "sub_category": "TENTANG PERUSAHAAN > PERATURAN DAN KETENTUAN PERUSAHAAN",
+            "isPrimary": "Sublink",
+            "label": "Kebijakan alih teknologi",
+            "url": "https://www.pindad.com/uploads/downloads/division/skep_0003_10_05_alih.pdf"
+        },
+        {
+            "id": 68,
+            "category_name": "PERUSAHAAN",
+            "sub_category": "TENTANG PERUSAHAAN > PERATURAN DAN KETENTUAN PERUSAHAAN",
+            "isPrimary": "Sublink",
+            "label": "Kebijakan teknologi informasi",
+            "url": "https://www.pindad.com/uploads/downloads/division/kebijakan_teknologi_informas__pt_pindad.pdf"
+        },
+        {
+            "id": 69,
+            "category_name": "PERUSAHAAN",
+            "sub_category": "TENTANG PERUSAHAAN > PERATURAN DAN KETENTUAN PERUSAHAAN",
+            "isPrimary": "Sublink",
+            "label": "Ketentuan Praktek Kerja Industri Di PT Pindad (PERSERO)",
+            "url": "https://www.pindad.com/uploads/downloads/division/SKEP.19_.P_.BD_.VIII_.2017_NEW_.pdf"
+        },
+        {
+            "id": 70,
+            "category_name": "PERUSAHAAN",
+            "sub_category": "TENTANG PERUSAHAAN > PERATURAN DAN KETENTUAN PERUSAHAAN",
+            "isPrimary": "Sublink",
+            "label": "Ketentuan Logo Perusahaan",
+            "url": "https://www.pindad.com/uploads/downloads/division/Ketentuan_LOGO_SKEP_10_P_BD_III_2014.compressed_.pdf"
+        },
+        {
+            "id": 71,
+            "category_name": "PERUSAHAAN",
+            "sub_category": "TATA KELOLA PERUSAHAAN & MANAJEMEN RISIKO",
+            "isPrimary": "Sublink",
+            "label": "Pedoman Pengendalian Gratifikasi",
+            "url": "https://www.pindad.com/downloads/division/2_SKEP_7_P_BD_II_2024_NEW_Pedoman_Pengendalian_Gratifikasi.pdf"
+        },
+        {
+            "id": 72,
+            "category_name": "PERUSAHAAN",
+            "sub_category": "TATA KELOLA PERUSAHAAN & MANAJEMEN RISIKO",
+            "isPrimary": "Sublink",
+            "label": "Dokumen Pengawasan Intern",
+            "url": "https://www.pindad.com/downloads/division/SKEP.39__.P__.BD__.X__.2020_Piagam_Pengawasan_Intern_Internal_Audit_Charter__.pdf"
+        },
+        {
+            "id": 73,
+            "category_name": "PERUSAHAAN",
+            "sub_category": "TATA KELOLA PERUSAHAAN & MANAJEMEN RISIKO",
+            "isPrimary": "Sublink",
+            "label": "Pedoman Etika Usaha dan Tata Perilaku (CODE OF CONDUCT)",
+            "url": "https://www.pindad.com/downloads/division/4_SKEP_23_P_BD_X_2023_PEDOMAN_ETIKA_USAHA_DAN_TATA_PERILAKU.pdf"
+        },
+        {
+            "id": 74,
+            "category_name": "PERUSAHAAN",
+            "sub_category": "TATA KELOLA PERUSAHAAN & MANAJEMEN RISIKO",
+            "isPrimary": "Sublink",
+            "label": "Pedoman Penerapan Manajemen Risiko",
+            "url": "https://www.pindad.com/downloads/division/5_KEP_16_P_BD_X_2023_PEDOIIAN_PENERAPAN_MANAJEMEN_RISIKO.pdf"
+        },
+        {
+            "id": 75,
+            "category_name": "PERUSAHAAN",
+            "sub_category": "TATA KELOLA PERUSAHAAN & MANAJEMEN RISIKO",
+            "isPrimary": "Sublink",
+            "label": "Board Manual",
+            "url": "https://www.pindad.com/downloads/division/6_SKEP_24_P_BD_X_2023_BOARD_MANUAL.pdf"
+        },
+        {
+            "id": 76,
+            "category_name": "PERUSAHAAN",
+            "sub_category": "TATA KELOLA PERUSAHAAN & MANAJEMEN RISIKO",
+            "isPrimary": "Sublink",
+            "label": "Pedoman Penerapan Whistle Blowing System (WBS)",
+            "url": "https://www.pindad.com/downloads/division/7_SKEP_22_P_BD_X_2023__PEDOMAN_PENERAPAN_WHISTLEBLOWING_SYSTEM_(WBS).pdf"
+        },
+        {
+            "id": 77,
+            "category_name": "PERUSAHAAN",
+            "sub_category": "TATA KELOLA PERUSAHAAN & MANAJEMEN RISIKO",
+            "isPrimary": "Sublink",
+            "label": "Pedoman Tata Kelola Perusahaan Yang Baik (GOOD CORPORATE GOVERNANCE)",
+            "url": "https://www.pindad.com/downloads/division/8_SKEP_12_P_BD_XII_2023_PEDOMAN_PEDOMAN_TATA_KELOLA_PERUSAHAAN_YANG_BAIK.pdf"
+        },
+        {
+            "id": 78,
+            "category_name": "PERUSAHAAN",
+            "sub_category": "TATA KELOLA PERUSAHAAN & MANAJEMEN RISIKO",
+            "isPrimary": "Sublink",
+            "label": "Ketentuan Pengadaan Barang dan Jasa",
+            "url": "https://www.pindad.com/downloads/division/9_SKEP_4_P_BD_VII_2024_Ketentuan_Pengadaan_Barang_Jasa.pdf"
+        },
+        {
+            "id": 79,
+            "category_name": "PERUSAHAAN",
+            "sub_category": "TATA KELOLA PERUSAHAAN & MANAJEMEN RISIKO",
+            "isPrimary": "Sublink",
+            "label": "Panduan Sistem Manajemen Anti Penyuapan",
+            "url": "https://www.pindad.com/downloads/division/FULL_PAGE_skep_PANDUAN_SISTEM_MANAJEMEN_ANTI_PENYUAPAN_compressed.pdf"
+        },
+        {
+            "id": 80,
+            "category_name": "PERUSAHAAN",
+            "sub_category": "TATA KELOLA PERUSAHAAN & MANAJEMEN RISIKO",
+            "isPrimary": "Sublink",
+            "label": "Pedoman Benturan Kepentingan (CODE OF CONFLICT OF INTEREST)",
+            "url": "https://www.pindad.com/downloads/division/11_SKEP_25_P_BD_X_2023_FINAL_SKEP_BENTURAN_KEPENTINGAN.pdf"
+        },
+        {
+            "id": 81,
+            "category_name": "PERUSAHAAN",
+            "sub_category": "TATA KELOLA PERUSAHAAN & MANAJEMEN RISIKO",
+            "isPrimary": "Sublink",
+            "label": "Pedoman Strategis Tata Kelola",
+            "url": "https://www.pindad.com/downloads/division/12_SKEP_17_P_BD_XII_2023_Pedoman_Strategis_Tata_Kelola.pdf"
+        },
+        {
+            "id": 82,
+            "category_name": "PERUSAHAAN",
+            "sub_category": "TATA KELOLA PERUSAHAAN & MANAJEMEN RISIKO",
+            "isPrimary": "Sublink",
+            "label": "Laporan Harta Kekayaan Negara (LHKPN) Bagi Pejabat di Lingkungan PT Pindad",
+            "url": "https://www.pindad.com/downloads/division/13_SKEP_24_P__BD_IX_2020_Laporan_Harta_Kekayaan_Penyelenggara_Negara_LHKPN_Bagi_Pejabat_di_Lingkungan_PT_Pindad_Persero.pdf"
+        },
+        {
+            "id": 83,
+            "category_name": "PERUSAHAAN",
+            "sub_category": "TATA KELOLA PERUSAHAAN & MANAJEMEN RISIKO",
+            "isPrimary": "Sublink",
+            "label": "Ketentuan Anti Kecurangan (FRAUD)",
+            "url": "https://www.pindad.com/downloads/division/14_SKEP_13_P_BD_VIII_2023_SKEP_KETENTUAN_ANTI_KECURANGAN_FRAUD.pdf"
+        },
+        {
+            "id": 84,
+            "category_name": "PERUSAHAAN",
+            "sub_category": "CORPORATE COMMUNICATION > ANNUAL REPORT",
+            "isPrimary": "Sublink",
+            "label": "Download Sustainability Report Pindad 2023.pdf",
+            "url": "https://www.pindad.com/downloads/article/Sustainability_Report_Pindad_2023.pdf"
+        },
+        {
+            "id": 85,
+            "category_name": "PERUSAHAAN",
+            "sub_category": "CORPORATE COMMUNICATION > ANNUAL REPORT",
+            "isPrimary": "Sublink",
+            "label": "Download Annual Report PT Pindad 2023_Final Updated_compressed-1.pdf",
+            "url": "https://www.pindad.com/downloads/article/Annual_Report_PT_Pindad_2023_Final_Updated_compressed-1.pdf"
+        },
+        {
+            "id": 86,
+            "category_name": "PERUSAHAAN",
+            "sub_category": "CORPORATE COMMUNICATION > ANNUAL REPORT",
+            "isPrimary": "Sublink",
+            "label": "Download Annual Report Tahun 2022 Final.pdf",
+            "url": "https://www.pindad.com/downloads/article/Annual_Report_Tahun_2022_Final.pdf"
+        },
+        {
+            "id": 87,
+            "category_name": "PERUSAHAAN",
+            "sub_category": "CORPORATE COMMUNICATION > ANNUAL REPORT",
+            "isPrimary": "Sublink",
+            "label": "Download PT Pindad - Annual Report 2021.pdf",
+            "url": "https://www.pindad.com/downloads/article/PT_Pindad_-_Annual_Report_2021.pdf"
+        },
+        {
+            "id": 88,
+            "category_name": "PERUSAHAAN",
+            "sub_category": "CORPORATE COMMUNICATION > ANNUAL REPORT",
+            "isPrimary": "Sublink",
+            "label": "Download Annual Report Pindad 2020.pdf",
+            "url": "https://www.pindad.com/downloads/article/Annual_Report_Pindad_2020.pdf"
+        },
+        {
+            "id": 89,
+            "category_name": "PERUSAHAAN",
+            "sub_category": "CORPORATE COMMUNICATION > ANNUAL REPORT",
+            "isPrimary": "Sublink",
+            "label": "Download ANNUAL REPORT 2019",
+            "url": "https://www.pindad.com/downloads/article/1._Annual_Report_2019_.pdf"
+        },
+        {
+            "id": 90,
+            "category_name": "PERUSAHAAN",
+            "sub_category": "CORPORATE COMMUNICATION > ANNUAL REPORT",
+            "isPrimary": "Sublink",
+            "label": "Download Annual Report Pindad 2018.pdf",
+            "url": "https://www.pindad.com/downloads/article/Annual_Report_Pindad_2018.pdf"
+        },
+        {
+            "id": 91,
+            "category_name": "PERUSAHAAN",
+            "sub_category": "CORPORATE COMMUNICATION > ANNUAL REPORT",
+            "isPrimary": "Sublink",
+            "label": "Download Annual Report 2017.pdf",
+            "url": "https://www.pindad.com/downloads/article/Annual_Report_2017.pdf"
+        },
+        {
+            "id": 92,
+            "category_name": "PERUSAHAAN",
+            "sub_category": "CORPORATE COMMUNICATION > ANNUAL REPORT",
+            "isPrimary": "Sublink",
+            "label": "Download ar2016pindad_low4.pdf",
+            "url": "https://www.pindad.com/downloads/article/ar2016pindad_low4.pdf"
+        },
+        {
+            "id": 93,
+            "category_name": "PERUSAHAAN",
+            "sub_category": "CORPORATE COMMUNICATION > ANNUAL REPORT",
+            "isPrimary": "Sublink",
+            "label": "Download Annual_Report_2015.pdf",
+            "url": "https://www.pindad.com/downloads/article/Annual_Report_2015.pdf"
+        },
+        {
+            "id": 94,
+            "category_name": "PERUSAHAAN",
+            "sub_category": "CORPORATE COMMUNICATION > ANNUAL REPORT",
+            "isPrimary": "Sublink",
+            "label": "Download Annual Report 2014.pdf",
+            "url": "https://www.pindad.com/downloads/article/Annual_Report_2014.pdf"
+        },
+        {
+            "id": 95,
+            "category_name": "PERUSAHAAN",
+            "sub_category": "CORPORATE COMMUNICATION > ANNUAL REPORT",
+            "isPrimary": "Sublink",
+            "label": "Download ARPindad2013 resize.pdf",
+            "url": "https://www.pindad.com/downloads/article/ARPindad2013_resize.pdf"
+        },
+        {
+            "id": 96,
+            "category_name": "PERUSAHAAN",
+            "sub_category": "CORPORATE COMMUNICATION > ANNUAL REPORT",
+            "isPrimary": "Sublink",
+            "label": "Download Annual Report 2012",
+            "url": "https://www.pindad.com/downloads/article/AnnualReport2012.pdf"
+        },
+        {
+            "id": 97,
+            "category_name": "PERUSAHAAN",
+            "sub_category": "CORPORATE COMMUNICATION > ANNUAL REPORT",
+            "isPrimary": "Sublink",
+            "label": "Download Annual Report 2011.pdf",
+            "url": "https://www.pindad.com/downloads/article/Annual_Report_2011.pdf"
+        },
+        {
+            "id": 98,
+            "category_name": "PERUSAHAAN",
+            "sub_category": "CORPORATE COMMUNICATION > ANNUAL REPORT",
+            "isPrimary": "Sublink",
+            "label": "Download Annual Report 2010",
+            "url": "https://www.pindad.com/downloads/article/AnnualReport2010.pdf"
+        },
+        {
+            "id": 99,
+            "category_name": "PERUSAHAAN",
+            "sub_category": "INOVASI > INOVASI BARU",
+            "isPrimary": "Sublink",
+            "label": "MORINO EV",
+            "url": "https://www.pindad.com/morino-ev"
+        },
+        {
+            "id": 100,
+            "category_name": "PERUSAHAAN",
+            "sub_category": "INOVASI > INOVASI BARU",
+            "isPrimary": "Sublink",
+            "label": "MORINO MV CRUISER",
+            "url": "https://www.pindad.com/morino-mv-cruiser"
+        },
+        {
+            "id": 101,
+            "category_name": "PERUSAHAAN",
+            "sub_category": "INOVASI > INOVASI BARU",
+            "isPrimary": "Sublink",
+            "label": "MUNISI FRANGIBLE KALIBER 9X19 MM",
+            "url": "https://www.pindad.com/munisi-frangible-kaliber-9x19-mm"
+        },
+        {
+            "id": 102,
+            "category_name": "PERUSAHAAN",
+            "sub_category": "INOVASI > INOVASI BARU",
+            "isPrimary": "Sublink",
+            "label": "PISTOL P3A",
+            "url": "https://www.pindad.com/pistol-p3a"
+        },
+        {
+            "id": 103,
+            "category_name": "PERUSAHAAN",
+            "sub_category": "INOVASI > INOVASI BARU",
+            "isPrimary": "Sublink",
+            "label": "RANTIS RINGAN 4X4 MAUNG",
+            "url": "https://www.pindad.com/ranits-ringan-4x4-maung"
+        },
+        {
+            "id": 104,
+            "category_name": "PERUSAHAAN",
+            "sub_category": "INOVASI > INOVASI BARU",
+            "isPrimary": "Sublink",
+            "label": "SS2 V5-A1",
+            "url": "https://www.pindad.com/ss2-v5a1"
+        },
+        {
+            "id": 105,
+            "category_name": "PERUSAHAAN",
+            "sub_category": "INOVASI > INOVASI BARU",
+            "isPrimary": "Sublink",
+            "label": "SB2 V5-A1",
+            "url": "https://www.pindad.com/sb2-v5a1"
+        },
+        {
+            "id": 106,
+            "category_name": "PERUSAHAAN",
+            "sub_category": "INOVASI > INOVASI BARU",
+            "isPrimary": "Sublink",
+            "label": "SS AMPHIBIOUS",
+            "url": "https://www.pindad.com/ss-amphibious"
+        },
+        {
+            "id": 107,
+            "category_name": "PERUSAHAAN",
+            "sub_category": "INOVASI > INOVASI BARU",
+            "isPrimary": "Sublink",
+            "label": "NEXT PAGE",
+            "url": "https://www.pindad.com/new-innovations/2"
+        }
+    ]
+}

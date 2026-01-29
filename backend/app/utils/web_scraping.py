@@ -1,14 +1,23 @@
-import aiohttp
-import requests
-from bs4 import BeautifulSoup
+import asyncio
 import logging
+import requests
+import re
+import json
+import os
+from bs4 import BeautifulSoup
 from playwright.async_api import async_playwright
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
-from ..config import settings
+from difflib import SequenceMatcher
+
+# Setup logging
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+)
+
 
 def create_news_session():
-    """Membuat session untuk web scraping"""
+    """Membuat session requests dengan retry strategy dan headers manusiawi"""
     session = requests.Session()
     retry_strategy = Retry(
         total=3,
@@ -19,365 +28,382 @@ def create_news_session():
     adapter = HTTPAdapter(max_retries=retry_strategy)
     session.mount("https://", adapter)
     session.mount("http://", adapter)
+    session.headers.update(
+        {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        }
+    )
     return session
+
 
 news_session = create_news_session()
 
+
 async def get_article_content_playwright(url):
-    """Ambil konten artikel menggunakan Playwright (fallback)"""
+    """Fallback: Ambil konten artikel menggunakan Playwright jika requests gagal"""
     try:
         async with async_playwright() as p:
             browser = await p.chromium.launch(headless=True)
-            page = await browser.new_page()
-            await page.set_extra_http_headers({
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-            })
-            await page.set_default_timeout(15000)
-            await page.goto(url, wait_until="domcontentloaded")
-            await page.wait_for_timeout(2000)
+            context = await browser.new_context(
+                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            )
+            page = await context.new_page()
+            await page.route(
+                "**/*.{png,jpg,jpeg,css,svg,woff2}", lambda route: route.abort()
+            )
+            await page.goto(url, wait_until="domcontentloaded", timeout=15000)
+            await asyncio.sleep(1)
             content_html = await page.content()
             await browser.close()
-
             soup = BeautifulSoup(content_html, "html.parser")
             content_div = soup.select_one("div.blog-detail-article")
             if content_div:
                 return content_div.get_text(separator="\n\n", strip=True)
     except Exception as e:
-        logging.warning(f"Playwright fallback failed for {url}: {e}")
+        logging.warning(f"⚠️ Playwright fallback failed for {url}: {e}")
     return ""
 
+
 async def scrape_pindad_news():
-    """Scrape berita dari website Pindad"""
+    """Scrape daftar berita terbaru secara paralel dengan penyajian data favorit lo"""
     url = "https://www.pindad.com/news"
-    results = []
-    page_number = 1
-    max_pages = 1
-
-    logging.info(f"🔍 [scrape_pindad_news] Mulai scraping berita dari {url}")
-
-    while page_number <= max_pages:
-        current_url = url if page_number == 1 else f"{url}/{page_number}"
-        logging.info(f"🔍 Memproses halaman: {current_url}")
-
-        try:
-            response = news_session.get(current_url, timeout=20)
-            if response.status_code != 200:
-                logging.warning(
-                    f"Status {response.status_code} saat mengakses {current_url}"
-                )
-                break
-
-            soup = BeautifulSoup(response.content, "html.parser")
-            news_items = soup.select("div.blog-post.style-3")
-
-            if not news_items:
-                logging.info(f"Tidak ada berita ditemukan di halaman {current_url}")
-                break
-
-            logging.info(
-                f"🔍 Ditemukan {len(news_items)} artikel di halaman {page_number}."
-            )
-
-            for item in news_items:
-                try:
-                    title_tag = item.select_one("a.title")
-                    title = (
-                        title_tag.get_text(strip=True)
-                        if title_tag
-                        else "Tidak ada judul"
-                    )
-                    link = title_tag["href"] if title_tag else ""
-                    if link and not link.startswith("http"):
-                        link = "https://www.pindad.com" + link
-
-                    date_div = item.select_one("div.date")
-                    date_str = (
-                        " ".join(date_div.stripped_strings)
-                        if date_div
-                        else "Tanggal tidak ditemukan"
-                    )
-
-                    img_tag = item.select_one("a.thumbnail-entry img")
-                    img_src = ""
-                    if img_tag:
-                        img_src = img_tag.get("src", "")
-                        if img_src and not img_src.startswith("http"):
-                            img_src = "https://www.pindad.com" + img_src
-
-                    konten_lengkap = ""
-                    if link:
-                        try:
-                            detail_response = news_session.get(link, timeout=15)
-                            if detail_response.status_code == 200:
-                                detail_soup = BeautifulSoup(
-                                    detail_response.content, "html.parser"
-                                )
-                                content_div = detail_soup.select_one(
-                                    "div.blog-detail-article"
-                                )
-                                if content_div:
-                                    konten_lengkap = content_div.get_text(
-                                        separator="\n\n", strip=True
-                                    )
-                                else:
-                                    konten_lengkap = (
-                                        await get_article_content_playwright(link)
-                                    )
-                            else:
-                                konten_lengkap = await get_article_content_playwright(
-                                    link
-                                )
-                        except Exception as req_e:
-                            konten_lengkap = await get_article_content_playwright(link)
-
-                    news_object = {
-                        "judul": title,
-                        "tanggal": date_str,
-                        "gambar": img_src,
-                        "link": link,
-                        "konten": konten_lengkap,
-                    }
-                    results.append(news_object)
-
-                except Exception as e_item:
-                    logging.warning(f"Error memproses item berita: {e_item}")
-                    continue
-
-            page_number += 1
-
-        except Exception as e_page:
-            logging.error(f"Error memproses halaman {current_url}: {e_page}")
-            break
-
-    logging.info(f"✅ Selesai scraping. Ditemukan {len(results)} artikel.")
-    return results
-
-async def get_all_pindad_links():
-    """Dapatkan semua link dari homepage Pindad"""
+    logging.info(f"🔍 [scrape_pindad_news] Memulai penarikan berita terbaru...")
     try:
-        BASE_URL = "https://www.pindad.com"
-        TARGET_URL = "https://www.pindad.com"
+        response = news_session.get(url, timeout=20)
+        if response.status_code != 200:
+            return []
+        soup = BeautifulSoup(response.content, "html.parser")
+        news_items = soup.select("div.blog-post.style-3")
+        if not news_items:
+            return []
 
+        async def fetch_item_detail(item):
+            try:
+                title_tag = item.select_one("a.title")
+                title = title_tag.get_text(strip=True) if title_tag else "N/A"
+                link = title_tag["href"] if title_tag else ""
+                if link and not link.startswith("http"):
+                    link = "https://www.pindad.com" + link
+                date_div = item.select_one("div.date")
+                date_str = " ".join(date_div.stripped_strings) if date_div else "N/A"
+                img_tag = item.select_one("a.thumbnail-entry img")
+                img_src = img_tag.get("src", "") if img_tag else ""
+                if img_src and not img_src.startswith("http"):
+                    img_src = "https://www.pindad.com" + img_src
+
+                konten_lengkap = ""
+                if link:
+                    try:
+                        res = news_session.get(link, timeout=10)
+                        if res.status_code == 200:
+                            d_soup = BeautifulSoup(res.content, "html.parser")
+                            c_div = d_soup.select_one("div.blog-detail-article")
+                            if c_div:
+                                konten_lengkap = c_div.get_text(
+                                    separator="\n\n", strip=True
+                                )
+                    except:
+                        pass
+                    if not konten_lengkap:
+                        konten_lengkap = await get_article_content_playwright(link)
+
+                return {
+                    "judul": title,
+                    "tanggal": date_str,
+                    "gambar": img_src,
+                    "link": link,
+                    "konten": konten_lengkap,
+                }
+            except Exception as e:
+                logging.error(f"Error detail item: {e}")
+                return None
+
+        tasks = [fetch_item_detail(item) for item in news_items[:6]]
+        results = await asyncio.gather(*tasks)
+        return [r for r in results if r]
+    except Exception as e:
+        logging.error(f"Error scrape_pindad_news: {e}")
+        return []
+
+
+async def get_homepage_map():
+    """Stage 1: Ambil semua link dan teks navigasi dari homepage"""
+    BASE_URL = "https://www.pindad.com"
+    try:
         async with async_playwright() as p:
             browser = await p.chromium.launch(headless=True)
             page = await browser.new_page()
-            await page.goto(TARGET_URL, wait_until="networkidle", timeout=30000)
-
-            links = await page.evaluate(
-                """(baseUrl) => {
-                const allLinks = new Set();
-                const anchors = document.querySelectorAll('a[href]');
+            await page.goto(BASE_URL, wait_until="domcontentloaded", timeout=20000)
+            map_data = await page.evaluate("""() => {
+            return Array.from(document.querySelectorAll('a[href]')).map(a => {
+                // Ambil teks dari innerText, atau alt image kalau di dalamnya ada gambar, atau title
+                let linkText = a.innerText || a.getAttribute('title') || "";
                 
-                anchors.forEach(a => {
-                    let href = a.getAttribute('href').trim();
-                    if (!href || href.startsWith('#') || href.startsWith('javascript:')) {
-                        return;
-                    }
-                    
-                    try {
-                        const absoluteUrl = new URL(href, baseUrl).href;
-                        if (absoluteUrl.includes('pindad.com')) {
-                            allLinks.add(absoluteUrl);
-                        }
-                    } catch (e) {
-                        console.log('Invalid URL:', href);
-                    }
-                });
-                
-                return Array.from(allLinks);
-            }""",
-                BASE_URL,
-            )
+                // Jika teks kosong, coba cari image di dalamnya (misal ikon kontak)
+                if (!linkText.trim()) {
+                    const img = a.querySelector('img');
+                    if (img) linkText = img.getAttribute('alt') || img.getAttribute('title') || "";
+                }
 
+                return {
+                    text: linkText.toLowerCase().trim(),
+                    href: a.href
+                };
+            }).filter(item => item.text.length > 2 && item.href.includes('pindad.com'));
+        }""")
             await browser.close()
-
-            unique_links = list(set(links))[:50]
-            logging.info(f"Found {len(unique_links)} unique links from homepage")
-            return unique_links
-
+            return map_data
     except Exception as e:
-        logging.error(f"Error getting links: {e}")
+        logging.error(f"Error Mapping Homepage: {e}")
         return []
 
-async def scrape_pindad_website(query):
-    """Scrape informasi dari www.pindad.com berdasarkan query"""
-    try:
-        query_lower = query.lower()
 
-        news_keywords = [
-            "berita",
-            "news",
-            "artikel",
-            "publikasi",
-            "terbaru",
-            "terkini",
-            "update",
-            "informasi terbaru",
-            "artikel terbaru",
-        ]
-        is_news_query = any(keyword in query_lower for keyword in news_keywords)
+# ==========================================
+# GLOBAL CACHE & DB LOADER
+# ==========================================
+_DB_CACHE = None
 
-        if is_news_query:
-            logging.info(f"🔍 Query '{query}' terdeteksi sebagai pencarian berita.")
-            news_results = await scrape_pindad_news()
-            if news_results:
-                formatted_news = ""
-                for i, item in enumerate(news_results[:3]):
-                    formatted_news += f"\n{'=' * 50}\n"
-                    formatted_news += f"📰 Berita {i + 1}: {item['judul']}\n"
-                    formatted_news += f"📎 URL: {item['link']}\n"
-                    formatted_news += f"📅 Tanggal: {item['tanggal']}\n"
-                    formatted_news += f"📝 Deskripsi: {item['konten'][:150]}...\n"
-                    if item.get("gambar"):
-                        formatted_news += f"🖼️ Gambar: {item['gambar']}\n"
-                    formatted_news += f"{'-' * 30}\n"
-                return f"""**BERITA TERBARU DARI PT PINDAD**
-                
-🔍 Query: "{query}"
 
-📊 **Hasil Pencarian Berita**:
-Sistem telah mengambil {len(news_results)} artikel berita terbaru.
-
-{formatted_news}
-
-**CATATAN**: Informasi diambil secara otomatis dari halaman berita resmi PT Pindad."""
-            else:
-                return f"""**TIDAK DITEMUKAN BERITA RELEVAN**
-                
-Sistem telah mencari berita terbaru di PT Pindad, 
-namun tidak menemukan artikel yang sesuai dengan "{query}" atau tidak ada berita baru."""
-
-        logging.info(f"🔍 Query '{query}' terdeteksi sebagai pencarian umum.")
-        all_links = await get_all_pindad_links()
-
-        if not all_links:
-            return "Tidak dapat menemukan link dari website Pindad."
-
-        relevant_links = []
-        for link in all_links:
-            link_lower = link.lower()
-            if (
-                query_lower in link_lower
-                or any(
-                    keyword in link_lower
-                    for keyword in ["produk", "product", "senjata"]
-                    if "produk" in query_lower
+def load_pindad_db():
+    global _DB_CACHE
+    if _DB_CACHE is None:
+        json_path = "backend/app/nosql/pindad_scrap_website.json"
+        try:
+            with open(json_path, "r", encoding="utf-8") as f:
+                # Cache hanya field "data" supaya pencarian cepat
+                _DB_CACHE = json.load(f).get("data", [])
+                logging.info(
+                    f"📂 [CACHE] Database loaded to memory. Total: {len(_DB_CACHE)} entries."
                 )
-                or any(
-                    keyword in link_lower
-                    for keyword in ["tentang", "about", "profil"]
-                    if "tentang" in query_lower or "profil" in query_lower
-                )
-                or any(
-                    keyword in link_lower
-                    for keyword in ["karir", "career", "rekrutmen"]
-                    if "karir" in query_lower
-                )
-            ):
-                relevant_links.append(link)
+        except Exception as e:
+            logging.error(f"❌ [DB ERROR] Gagal load JSON: {e}")
+            _DB_CACHE = []
+    return _DB_CACHE
 
-        if not relevant_links:
-            relevant_links = all_links[:10]
 
-        scraped_content = []
-        async with async_playwright() as p:
-            browser = await p.chromium.launch(headless=True)
+# ==========================================
+# HELPERS
+# ==========================================
+def similarity_score(a, b):
+    return SequenceMatcher(None, a.lower(), b.lower()).ratio()
 
-            for url in relevant_links[:5]:
-                try:
-                    page = await browser.new_page()
-                    await page.goto(url, wait_until="domcontentloaded", timeout=15000)
 
-                    content = await page.evaluate("""
-                        () => {
-                            const elementsToRemove = document.querySelectorAll(
-                                'script, style, nav, header, footer, aside, iframe, noscript, button'
-                            );
-                            elementsToRemove.forEach(el => el.remove());
-                            
-                            const mainSelectors = [
-                                'main', 'article', 'div.content', 
-                                'div.post-content', 'section', 'div.container'
-                            ];
-                            
-                            let mainContent = document.body;
-                            for (const selector of mainSelectors) {
-                                const element = document.querySelector(selector);
-                                if (element && element.textContent.length > 200) {
-                                    mainContent = element;
-                                    break;
-                                }
-                            }
-                            
-                            return {
-                                title: document.title,
-                                url: window.location.href,
-                                content: mainContent.innerText.replace(/\\s+/g, ' ').trim()
-                            };
-                        }
-                    """)
+def normalize(text):
+    return re.sub(r"[^a-zA-Z0-9]", "", text).lower()
 
-                    content_lower = content["content"].lower()
-                    relevance_score = 0
 
-                    for word in query_lower.split():
-                        if word in content_lower:
-                            relevance_score += content_lower.count(word) * 2
+# ==========================================
+# MAIN FUNCTION (SCRAPE PINDAD)
+# ==========================================
+async def scrape_pindad_website(query, is_retry=False):
+    from .ai_helpers import ask_qwen3_vl
 
-                    if relevance_score > 0 or len(content["content"]) > 300:
-                        scraped_content.append(
-                            {
-                                "url": content["url"],
-                                "title": content["title"],
-                                "content": content["content"][:2500],
-                                "relevance": relevance_score,
-                            }
-                        )
+    # 1. CLEANING & PRE-PROCESS (REVISED)
+    logging.info(f"📥 [RAW QUERY] Masuk ke fungsi (Retry={is_retry}): {repr(query)}")
 
-                    await page.close()
-                except Exception as e:
-                    continue
+    if is_retry:
+        clean_text = query
+    else:
+        # STEP A: Hapus pengantar kaku dari AI (tapi jangan hapus konten di dalam bintang dulu)
+        temp_query = re.sub(
+            r"(?i)Query Search:|Maksimal.*?\.|Penjelasan:.*?\.", "", query
+        )
 
-            await browser.close()
+        # STEP B: Hapus URL karena URL pasti bukan keyword pencarian label
+        temp_query = re.sub(r"https?://\S+", "", temp_query)
 
-        scraped_content.sort(key=lambda x: x["relevance"], reverse=True)
+        # STEP C: Buang karakter markdown sisa tapi pertahankan teksnya
+        temp_query = (
+            temp_query.replace("**", "")
+            .replace("`", "")
+            .replace("[", "")
+            .replace("]", "")
+        )
 
-        if scraped_content:
-            formatted_content = ""
-            for i, item in enumerate(scraped_content[:3]):
-                highlighted = item["content"]
-                for word in query_lower.split():
-                    if word in highlighted.lower() and len(word) > 3:
-                        highlighted = highlighted.replace(word, f"**{word}**")
+        # STEP D: Hapus kurung BESERTA isinya (karena biasanya itu narasi tambahan AI)
+        temp_query = re.sub(r"\(.*?\)", "", temp_query).strip()
 
-                formatted_content += f"\n{'=' * 50}\n"
-                formatted_content += f"🔗 Sumber {i + 1}: {item['title']}\n"
-                formatted_content += f"📎 URL: {item['url']}\n"
-                formatted_content += f"📊 Relevansi: {item['relevance']} poin\n"
-                formatted_content += f"{'-' * 30}\n"
-                formatted_content += f"{highlighted[:1000]}...\n"
-                if len(item["content"]) > 1000:
-                    formatted_content += (
-                        f"[... dan {len(item['content']) - 1000} karakter lainnya]\n"
-                    )
+        # STEP E: Buang kata-kata sampah percakapan
+        slang = ["ada bro", "kalau ga salah", "bro", "dong", "nih", "deh", "ya"]
+        for s in slang:
+            temp_query = re.sub(rf"(?i)\b{s}\b", "", temp_query)
 
-            return f"""**INFORMASI DARI PT PINDAD WEBSITE**
-            
-🔍 Query: "{query}"
+        # Ambil baris pertama yang punya teks
+        lines = [l.strip() for l in temp_query.split("\n") if l.strip()]
+        clean_text = lines[0] if lines else temp_query
 
-📊 **Hasil Pencarian Dinamis**:
-Sistem telah menelusuri {len(relevant_links)} halaman dan menemukan {len(scraped_content)} halaman relevan.
+        # Ambil maksimal 4 kata kunci inti agar Pintu 2 & 3 bekerja
+        words = [w for w in clean_text.split() if len(w) > 2]
+        clean_text = " ".join(words[:4]).strip()
 
-{formatted_content}
+    query_upper = clean_text.upper()
+    logging.info(f"🚀 [INIT] Fixed Clean Query: '{query_upper}'")
 
-**CATATAN**: Informasi diambil secara dinamis dari website resmi PT Pindad."""
+    # 2. LOAD DATA FROM CACHE (FAST)
+    data_list = load_pindad_db()
+    if not data_list:
+        return "Database error atau file tidak ditemukan."
 
+    # 3. INTERNAL WATERFALL LOGIC
+    async def run_waterfall(target_query):
+        target_upper = target_query.upper()
+
+        # --- ✅ HARD-CODED ROUTING UNTUK TOPIK KRITIS ---
+        if any(kw in target_upper for kw in ["DIREKTUR", "DIREKSI", "JAJARAN DIREKSI"]):
+            logging.info("⚡ [HARD-CODED] Mengarahkan ke halaman 'direksi'")
+            target_label = "DIREKSI"
+        elif any(
+            kw in target_upper
+            for kw in ["KOMISARIS", "DEWAN KOMISARIS", "JAJARAN DEWAN KOMISARIS"]
+        ):
+            logging.info("⚡ [HARD-CODED] Mengarahkan ke halaman 'dewan-komisaris'")
+            target_label = "DEWAN KOMISARIS"
+        elif any(
+            kw in target_upper
+            for kw in [
+                "ALAMAT",
+                "KONTAK",
+                "HUBUNGI",
+                "LOKASI",
+                "KANTOR",
+                "TELEPON",
+                "EMAIL",
+            ]
+        ):
+            logging.info("⚡ [HARD-CODED] Mengarahkan ke halaman 'profil-perusahaan'")
+            target_label = "PROFIL PERUSAHAAN"
         else:
-            return f"""**TIDAK DITEMUKAN INFORMASI RELEVAN**
-            
-Sistem telah menelusuri {len(relevant_links)} halaman dari website Pindad, 
-namun tidak menemukan konten yang cukup relevan dengan "{query}"."""
+            target_label = None
 
-    except Exception as e:
-        logging.error(f"Error during dynamic scraping: {e}")
-        return f"**ERROR**: Terjadi kesalahan: {str(e)}"
+        if target_label:
+            exact_match = next(
+                (
+                    d
+                    for d in data_list
+                    if d.get("label", "").upper() == target_label.upper()
+                ),
+                None,
+            )
+            if exact_match:
+                return (
+                    f"Berikut informasi resmi dari website PT Pindad:\n\n"
+                    f"{exact_match['content']}\n\n"
+                    f"🌐 Sumber: {exact_match.get('url', 'https://www.pindad.com')}"
+                )
+
+        # --- PINTU 1: GLOBAL ---
+        keywords_umum = [
+            "APA SAJA",
+            "DAFTAR",
+            "LIST",
+            "KATALOG",
+            "SEMUA",
+            "PRODUK",
+            "BERITA",
+            "INFO",
+        ]
+        if any(kw in target_upper for kw in keywords_umum):
+            logging.info(f"🔍 [PINTU 1] Checking Global Keywords")
+            global_data = [d for d in data_list if d.get("isPrimary") == "Primary"]
+            category_in_query = next(
+                (d for d in global_data if d["label"].upper() in target_upper), None
+            )
+
+            if not category_in_query:
+                logging.info("🚪 [PINTU 1] Jalur Umum Global Aktif")
+                context = "\n".join([f"- {i['label']}" for i in global_data])
+                return await ask_qwen3_vl(
+                    f"Daftar kategori: {context}. Jawab permintaan: {target_query}",
+                    stream=False,
+                )
+            else:
+                logging.info(
+                    f"⏭️ [PINTU 1] Kategori '{category_in_query['label']}' terdeteksi, skip ke Pintu 2"
+                )
+
+        # --- PINTU 2: KATEGORI UTAMA ---
+        ignore = [
+            "DAN",
+            "DARI",
+            "APA",
+            "SAJA",
+            "PINDAD",
+            "PRODUK",
+            "TERBARU",
+            "TERKINI",
+            "PERUSAHAAN",
+        ]
+        q_words = [w for w in target_upper.split() if w not in ignore and len(w) > 3]
+
+        category_match = None
+        logging.info(f"🔎 [PINTU 2] Scanning categories with: {q_words}")
+        for d in data_list:
+            if d.get("isPrimary") == "Primary":
+                label_norm = d["label"].upper()
+                if (
+                    any(kw in label_norm for kw in q_words)
+                    or label_norm in target_upper
+                ):
+                    category_match = d
+                    break
+
+        if category_match:
+            logging.info(f"🚪 [PINTU 2] HIT Kategori: '{category_match['label']}'")
+            return (
+                f"Berikut informasi tentang {category_match['label']}:\n\n"
+                f"{category_match['content']}\n\n"
+                f"🌐 Sumber: {category_match.get('url', 'https://www.pindad.com')}"
+            )
+
+        # --- PINTU 3: DETAIL (DIPERLUAS KE SEMUA DATA) ---
+        # Bersihkan karakter non-alphanumeric
+        clean_kw = re.sub(r"[^A-Z0-9\s]", "", target_upper).strip()
+        logging.info(f"🔎 [PINTU 3] Cleaned Keyword: '{clean_kw}'")
+
+        # Cari di SEMUA entri (Primary + Sublink)
+        all_entries = [d for d in data_list if "label" in d]
+        potential = []
+        for d in all_entries:
+            label_upper = d["label"].upper()
+            # Cek partial match
+            if clean_kw in label_upper or any(
+                w in label_upper for w in clean_kw.split()
+            ):
+                potential.append(d)
+
+        if potential:
+            # Urutkan berdasarkan similarity
+            potential.sort(
+                key=lambda x: similarity_score(clean_kw, x["label"].upper()),
+                reverse=True,
+            )
+            top = potential[0]
+            logging.info(f"🎁 [PINTU 3] MATCH FOUND: '{top['label']}'")
+            return (
+                f"Detail {top['label']}:\n\n{top['content']}\n\n"
+                f"🌐 Sumber: {top.get('url', 'https://www.pindad.com')}"
+            )
+
+        return None
+
+    # 4. EXECUTE WATERFALL
+    result = await run_waterfall(clean_text)
+    if result:
+        return result
+
+    # 5. RE-INJECTION (KONDISI NIHIL)
+    if not is_retry:
+        logging.warning(f"⚠️ [FAILED] Waterfall nihil. Mencoba analisa ulang...")
+        available_labels = [
+            d["label"] for d in data_list if d.get("isPrimary") == "Primary"
+        ]
+
+        analysis_prompt = f"User mencari: '{clean_text}'. Kategori tersedia: {available_labels}. Pilih satu label kategori yang paling relevan. Jawab HANYA labelnya saja."
+        new_keyword = await ask_qwen3_vl(analysis_prompt, stream=False)
+        new_keyword = re.sub(r'["\'.]', "", new_keyword).strip().upper()
+
+        logging.info(f"🔄 [RE-INJECT] Keyword baru: '{new_keyword}'")
+        return await scrape_pindad_website(new_keyword, is_retry=True)
+
+    logging.error(f"💀 [TOTAL FAILED] Data '{clean_text}' tidak ditemukan.")
+    return f"Maaf bro, setelah gue cek secara mendalam, informasi tentang '{clean_text}' emang nggak ada di database gue."

@@ -29,8 +29,8 @@ class Settings(BaseSettings):
     # Application Settings
     allowed_extensions: set = {"pdf", "png", "jpg", "jpeg", "txt", "docx", "pptx", "xlsx"}
     max_content_length: int = 16 * 1024 * 1024
-    similarity_threshold: float = 0.7
-    search_limit: int = 10
+    similarity_threshold: float = 0.75
+    search_limit: int = 5
     
     # CORS
     cors_origins: list = ["http://192.168.11.80:5173", "http://localhost:5173"]
