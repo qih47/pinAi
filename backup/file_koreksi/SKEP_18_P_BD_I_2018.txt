@@ -1,0 +1,265 @@
+SURAT KEPUTUSAN  
+Nomor : SKEP/18/P/BD/I/2018  
+tentang  
+PERATURAN URUSAN DALAM DI LINGKUNGAN PERUSAHAAN
+  
+DIREKSI PT. PINDAD (PERSERO)  
+Menimbang : 1. Bahwa dalam rangka kepentingan kelancaran tugas dan kegiatan di bidang pengamanan, telah ditetapkan Surat Keputusan Direksi Nomor: Skeep/15/P/BD/VIII/2015 tentang Peraturan Urusan Dalam di Lingkungan Perusahaan.  
+2. Bahwa sebagai kebijakan Direksi yang bersifat dinamis, maka Peraturan Urusan Dalam di Lingkungan Perusahaan perlu untuk disempurnakan dan disesuaikan dengan kondisi Perusahaan saat ini.  
+3. Bahwa berdasarkan pertimbangan sebagaimana dimaksud pada butir 1 dan 2 di atas, dipandang perlu menetapkan kembali Surat Keputusan Direksi tentang Peraturan Urusan Dalam di Lingkungan Perusahaan.  
+Mengingat : 1. Surat Keputusan Direksi PT.Pindad (Persero) nomor: Skeep/4/P/BD/II/2006 tanggal 8 Pebruari 2006 tentang Ketentuan Pengamanan PT.Pindad (Persero).  
+2. Surat Keputusan Direksi PT.Pindad (Persero) nomor: Skeep/425/P/BD/XII/1993 tanggal 23 Desember 1993 tentang Petunjuk Pelaksanaan Dinas Penjagaan PT.Pindad (Persero).  
+3. Surat Keputusan Direksi PT Pindad (Persero) Nomor: Skeep/2/P/BD/III/2017 tanggal 10 Februari 2017 tentang Organisasi dan Tata Kerja PT Pindad (Persero).  
+MEMUTUSKAN  
+Menetapkan : Surat Keputusan Direksi PT Pindad (Persero) tentang Peraturan Urusan Dalam di Lingkungan Perusahaan sebagai berikut:  
+
+BAB I
+PENDAHULUAN
+Pasal 1
+Pengertian
+
+Dalam peraturan ini, yang dimaksud dengan :
+1. Daerah terlarang adalah daerah di dalam komplek Perusahaan yang terletak/ berada di sebelah dalam pagar pengamanan keliling luar instansi, dimana orang, material dan kendaraan non organik yang berada di daerah ini harus mendapat ijin akses masuk dan keluar dari Fungsi Pengamanan.
+2. Daerah terbatas adalah daerah di dalam komplek Perusahaan yang terletak di dalam daerah terlarang, di mana lalu lintas personil, material dan kendaraan non organik diawasi serta dikendalikan dengan pemberian ijin akses masuk dan keluar melalui prosedur khusus daerah terbatas.
+3. Daerah tertutup adalah sebagian daerah yang dapat terletak di daerah terbatas atau daerah terlarang, dimana lalu lintas orang, material dan kendaraan non organik diawasi serta dikendalikan dengan pemberian ijin akses masuk dan keluar melalui prosedur khusus daerah tertutup.
+4. Ijin keluar kompleks adalah ijin keluar daerah terlarang dalam waktu jam kerja yang dipergunakan oleh para pegawai untuk keperluan dinas maupun bukan dinas.
+5. Instalasi adalah suatu area lokasi, dimana di dalamnya terkumpul semua prasarana, sarana, harta kekayaan dan kegiatan-kegiatan.
+6. Kendaraan organik adalah kendaraan milik Perusahaan.
+7. Kendaraan non organik adalah kendaraan milik pribadi / perorangan / tamu / kendaraan perusahaan lain di dalam Perusahaan.
+8. Kompleks Perusahaan adalah daerah instalasi pabrik, kantor dan gedung yang dibatasi dengan pagar pengamanan keliling luar instalasi dan merupakan daerah terlarang bagi umum.
+9. Material adalah barang-barang yang berupa bahan, produk, perkakas, sarana maupun jasa.
+10. Network Operation Center (NOC) adalah tempat administrator server dan network untuk mengawasi, memantau, mengamankan dan memelihara jaringan komunikasi yang berisi visualisasi dari jaringan atau jaringan yang sedang dipantau.
+11. Pegawai adalah semua pegawai tetap Perusahaan yang bekerja pada dan/ atau di luar Perusahaan berdasarkan keputusan Direksi.
+12. Pengamanan adalah semua usaha dan kegiatan secara terus menerus serta tindakan untuk mencegah, mengusut, mengagalkan dan menghancurkan usaha-usaha penyelidikan, spionase, sabotase, bencana alam, pemogokan / unjuk rasa, slow down action, teror dan penggalangan dari lawan.
+13. Peraturan Urusan Dalam (disingkat PUD) adalah ketentuan-ketentuan/ peraturan yang berlaku khusus dalam perusahaan yang tidak bertentangan dengan norma-norma hukum yang ada.
+14. Perusahaan adalah PT Pindad (Persero).
+15. Ruang Server adalah sebuah ruangan yang digunakan untuk menyimpan server (aplikasi dan database), perangkat jaringan (route, switch dll) dan perangkat lainnya yang terkait dengan operasional sistem sehari-hari seperti UPS, AC dan lain-lain.
+16. Tamu adalah orang/ sekumpulan orang yang melaksanakan kunjungan ke Perusahaan baik secara pribadi atau atas nama perusahaan/ instansi atau negara.
+
+Pasal 2
+Maksud dan Tujuan
+
+1. Peraturan Urusan Dalam ini disusun dengan maksud sebagai pedoman kerja bagi setiap fungsi atau bagian organisasi yang terkait dengan urusan dalam di lingkungan perusahaan.
+2. Peraturan ini disusun dengan tujuan agar pelaksanaan urusan dalam dapat berjalan sesuai dengan ketentuan yang berlaku sehingga menambah daya guna dan hasil guna yang maksimal.
+
+Pasal 3
+Ruang Lingkup
+
+Peraturan ini mendefinisikan kegiatan yang meliputi :
+1. Pengendalian Kompleks Perusahaan
+2. Pengaturan Lalulintas Pegawai dan Tamu
+3. Pengaturan Lalulintas Kendaraan
+4. Pengaturan Lalulintas Barang/ Jasa
+5. Pengaturan Pihak Lain yang berlokasi di dalam komplek perusahaan
+
+Pasal 4
+Tanggung Jawab
+
+Pelaksanaan peraturan ini menjadi tanggung jawab Divisi/ Unit yang membudangi pengamanan.
+
+BAB II
+PERATURAN URUSAN DALAM
+
+Pasal 5
+Pengendalian Kompleks Perusahaan
+
+1. Untuk pelaksanaan pengendalian Perusahaan dilakukan klasifikasi daerah, yang meliputi :
+a. Daerah terlarang, meliputi seluruh kompleks Perusahaan yang dibatasi pagar pengamanan keliling luar (di Bandung ± 66 Ha , Turen ± 160 Ha dan Kantor Penwakilan Jakarta serta kantor penwakilan lain sesuai kebutuhan Perusahaan).
+b. Daerah terbatas, meliputi daerah di dalam daerah terlarang di luar daerah tertutup.
+c. Daerah tertutup, meliputi :
+1) Divisi Senjata
+2) Divisi Munisi (perpabrikkan dan gudang dalam komplek metalik, pyroteknik, filling plant dan gudang munisi Gunung Layar)
+3) Kompleks Laboratorium dan uji coba dengan lingkungannya.
+4) Divisi Handakom
+5) Divisi Tekbang
+6) Divisi Kendaraan Khusus
+7) Divisi Sistem Informasi Manajemen (khusus ruang server dan NOC).
+8) Sumber tenaga, sumber air, sentral telepon, dan unit-unit lain sesuai perkembangan.
+
+2. Pelaksanaan tugas dan tanggungjawab pengendalian diatas sebagai berikut :
+a. Divisi/ Unit yang bersangkutan bertanggung jawab terhadap bangunan/ gedung/ pabrik dan lingkungannya. Dalam pelaksanaan tugas dan tanggungjawabnya Divisi/ Unit yang bersangkutan berkoordinasi dengan Divisi/ Unit yang membudangi Pengamanan untuk penegakan ketertiban sebagai berikut :
+
+1) Pembinaan personil
+a) Penegakan pemakaian seragam anggotanya.
+b) Penegakan pemakaian pengenal anggotanya.
+c) Penggunaan sarana keselamatan & kesehatan kerja.
+d) Disiplin kerja tepat waktu para anggotanya berada di tempat kerja (menjamin keberadaan pegawai di tempat kerja sesuai dengan ketentuan jam kerja pegawai).
+e) Memfasilitasi administrasi personil.
+f) Merapatkan ketentuan perusahaan (sanksi) bagi para pelanggar di unitnya.
+g) Dalam hal terdapat pegawai yang tidak dapat dilakukan pembinaan, maka Divisi/ Unit terkait dapat berkoordinasi dengan Divisi/ Unit yang membidangi pengamanan untuk dilakukan pemeriksaan lebih lanjut yang dituangkan dalam BAP (Berita Acara Pemeriksaan), guna penyelesaian selanjutnya.
+h) Melaporkan/ memberitahukan pada pihak Divisi yang membidangi Pengamanan, jika terjadi tindakan pelanggaran oleh pegawai.
+
+2) Pengaturan material
+a) Menjamin penempatan material yang ada di Divisi/ Unit yang bersangkutan sesuai dengan ketentuan.
+b) Menjamin keberadaan material yang ada di Divisi/ Unit yang bersangkutan teradminstrasi.
+c) Menjamin lalu-lintas material disertai administrasi.
+
+3) Pengendalian dokumen
+a) Terdatanya dokumen serta menunjuk penanggungjawab pemegang dokumen dan sarana informasi (komputer).
+b) Penempatan server computer sesuai dengan ketentuan.
+c) Melakukan backup data-data yang dipandang penting.
+d) Adakan up-date data anti virus terjadwal.
+
+4) Pengendalian Instalasi
+a) Menjamin penguncian gedung dilakukan saat tidak ada kegiatan.
+b) Terkendalinya aliran instalasi listrik dan air di Divisi/ Unit yang bersangkutan.
+c) Teridentifikasinya semua personil yang berada di Divisi/ Unit yang bersangkutan baik personil dari unit lain maupun tamu.
+
+5) Melaksanakan pengendalian K3 dan Lingkungan
+b. Divisi/ Unit yang membidangi pengamanan bertanggung jawab terhadap kompleks Perusahaan. Dalam tugas dan tanggungjawabnya Divisi/ Unit yang membidangi pengamanan dapat melibatkan Divisi/unit yang bersangkutan untuk pengawasan pengamanan dan ketentuan sebagai berikut:
+1) Melaksanakan tugas pokoknya dalam rangka menjamin kondisi pengamanan di perusahaan dengan menjalankan pengaturan, penjagaan, pengawalan dan patroli
+2) Mengidentifikasi kendaraan dan personil yang masuk dan keluar area perusahaan.
+3) Mengidentifikasi lalu-lintas material yang masuk maupun keluar perusahaan.
+4) Menjamin ketertiban kegiatan personil yang berada di kompleks Perusahaan sesuai dengan ketentuan dan peruntukannya.
+5) Menjamin keberadaan material yang ada di kompleks Perusahaan sesuai dengan peruntukan dan administrasi.
+6) Menjamin kondisi sarana pelindung instalasi tidak terjadi perusakan, atau penyimpangan.
+7) Menjamin lalu-lintas dokumen dan peralatan yang dapat memuat dokumen teridentifikasi sesuai dengan peruntukan dan ketentuan.
+8) Diwajibkan bagi petugas jaga gerbang melaksanakan pemeriksaan terhadap lalu-lintas para personil (pegawai maupun tamu).
+9) Melaksanakan penindakan terhadap penyimpangan dan pelanggaran
+10) Mengkoordinir penyimpanan kunci gedung instalasi di perusahaan.
+
+c. Di luar batas pengamanan keliling luar instalasi Perusahaan. Penanggung jawab sepenuhnya pada aparat keamanan wilayah / teritorial dengan unsur pengamanan Perusahaan sebagai unsur pendukung.
+
+3. Penggunaan pintu gerbang.
+a. Pintu aktif:
+(1) Merupakan pintu gerbang utama.
+(2) Beroperasi 24 jam terus-menerus.
+(3) Dijaga, dikendalikan dan diawasi.
+b. Pintu semi aktif:
+(1) Digunakan untuk keperluan khusus, dibuka jika ada kegiatan.
+(2) ditutup dengan digembok.
+c. Pintu tidak aktif:
+(1) Merupakan pintu darurat/bahaya.
+(2) dibuka jika ada bahaya.
+(3) Ditutup dengan digembok.
+d. Penanggung jawab kunci adalah Dinas Jaga Harian.
+
+4. Bagan pembagian daerah pengamanan instalasi Perusahaan, baik di Lokasi Bandung maupun Turen sebagaimana pada lampiran “A” dan “B”.
+
+Pasal 6
+Pengaturan Lalu-lintas Pegawai dan Tamu
+
+1. Pegawai:
+a. Diwajibkan mengenakan pakaian seragam sesuai dengan ketentuan yang berlaku
+b. Diwajibkan memakai tanda pengenal sesuai dengan ketentuan yang berlaku.
+c. Diwajibkan melaksanakan absensi menggunakan mesin pencatat kehadiran (Finger Print) yang telah disediakan, baik pada saat masuk kerja, keluar komplek (keluar dan kembali), dan pada saat pulang kerja sesuai ketentuan yang berlaku.
+d. Diwajibkan masuk dan pulang kerja sesuai dengan ketentuan yang berlaku.
+e. Diwajibkan mendapat ijin keluar komplek dari Divisi/Unitnya masing-masing dan melaporkannya di pos I / pos depan, untuk lokasi Turen disesuaikan dengan Pos masing-masing, untuk dicatat baik waktu keluar maupun masuk kembali apabila keluar di dalam jam kerja.
+f. Diwajibkan memeriksakan barang bawaan kepada petugas saat melewati pintu gerbang pos II untuk lokasi Bandung dan Lokasi Turen menyesuaikan.
+g. Diwajibkan melepas jaket dan kaca mata hitam saat melewati pos penjagaan untuk lokasi Turen atau pos II untuk lokasi Bandung.
+
+2. Tamu:
+a. Petugas gerbang utama berkewajiban mengarahkan tamu:
+1) Menanyakan tujuan tamu.
+2) Memberikan akses dan mengidentifikasi kendaraan tamu, sesuai dengan ketentuan yang disajikan melalui rambu-rambu.
+b. Penerimaan tamu:
+1) Mencatat identitas dan tujuannya tamu.
+2) Menerangkan kepada tamu tentang ketentuan tamu yang ada di Perusahaan yaitu:
+a) Setiap tamu harus meninggalkan kartu identitas.
+b) Setiap tamu diberi formulir tamu dan ID card tamu dan dipersilakan untuk digunakan tamu agar selalu menggunakan ID card tamu selama berada di lingkungan Perusahaan.
+c) Khusus untuk tamu non-bisnis diterima di ruang Auditorium.
+d) Bagi tamu yang mengirim barang akan diberikan akses khusus oleh petugas pemeriksaan material di pos II untuk lokasi Bandung dan Lokasi Turen menyesuaikan, setelah selesai dikembalikan pada tempat semula.
+e) Setiap tamu wajib untuk menitipkan senjata api, senjata tajam, munisi / bahan peledak, tustel dan alat / bahan berbahaya di tempat pencatatan tamu, kecuali untuk tujuan perbaikan / penjualan, yang telah diijinkan pihak Direksi / Manajemen.
+f) Tidak dibenarkan masuk ke daerah terbatas dan tertutup tanpa izin Divisi yang membidangi Pengamanan.
+g) Bagi tamu yang akan memasuki daerah tertutup harus seizin Direksi.
+h) Tamu diharuskan berpakaian sopan dan rapi sesuai norma-norma yang berlaku Nasional.
+i) Tamu harus mengembalikan ID card tamu / formulir tamu yang telah ditandatangani oleh pihak yang dikunjungi. Jika sudah lewat jam kerja agar dikembalikan di Pos II (gerbang dua), untuk lokasi Turen di Pos Utama.
+
+c. Bagi tamu yang melakukan kegiatan di Perusahaan secara rutin berturut turut 5 (lima) hari kerja atau lebih diwajibkan dibuatkan ID card dan dilakukan screening oleh pihak Divisi yang membidangi Pengamanan. Khusus pembuatan ID card untuk kegiatan yang melibatkan kontraktor Divisi yang membidangi Pengamanan wajib meminta ke kontraktor JSEA.
+
+Pasal 7
+Pengaturan Lalu-lintas Kendaraan
+
+1. Semua kendaraan baik organik maupun non-organik yang memasuki wilayah komplek Perusahaan harus melalui pintu aktif sebagai pintu gerbang utama yang dijaga, dikendalikan dan diawasi oleh petugas jaga.
+
+2. Semua kendaraan baik organik maupun non-organik diwajibkan menggunakan stiker parkir Perusahaan atau tanda akses parkir (khusus tamu), kecuali kendaraan organik yang memakai plat nomor militer.
+
+3. Pengaturan pemberian stiker dilaksanakan oleh Divisi yang membidangi Pengamanan.
+
+4. Bentuk, Isi, Jenis dan penggunaan stiker parkir :
+a. Bentuk stiker disesuaikan dengan kebutuhan.
+b. Isi stiker meliputi logo Perusahaan dengan tulisan "Parkir".
+c. Jenis stiker :
+1) Stiker dengan warna dasar hijau muda.
+2) Stiker dengan warna dasar kuning.
+3) Stiker dengan warna dasar merah.
+d. Penggunaan stiker parkir.
+1) Stiker parkir warna dasar hijau muda diperuntukkan bagi kendaraan-kendaraan yang diperbolehkan untuk masuk ke daerah terlarang.
+2) Stiker parkir warna dasar kuning diperuntukkan bagi kendaraan-kendaraan yang diperbolehkan untuk masuk ke daerah terlarang dan daerah terbatas.
+3) Stiker parkir warna dasar merah diperuntukkan bagi kendaraan-kendaraan yang diperbolehkan untuk masuk ke daerah terlarang, daerah terbatas dan daerah tertutup.
+4) Stiker yang menggunakan warna dasar kuning hanya diberikan kepada pejabat teras Perusahaan yang berkantor di daerah terbatas dan warna merah diberikan pada pejabat teras yang berkantor pada daerah tertutup.
+5) Untuk perusahaan lain, Kopkar dan LIKP yang berada di daerah terbatas, hanya diberikan kepada pimpinannya dan kendaraan operasional perusahaan sebanyak-banyaknya 4 unit.
+6) Untuk kendaraan operasional anak Perusahaan dan aliansinya yang berlokasi di dalam komplek akses parkir diatur tersendiri oleh Divisi yang membidangi Pengamanan.
+
+5. Pemasangan stiker parkir dan pemberian tanda akses parkir (khusus tamu)
+a. Kendaraan Roda 4 atau lebih
+1) Bagi kendaraan organik dan non-organik stiker parkir Perusahaan dipasang pada kaca depan sebelah kanan bawah.
+2) Bagi kendaraan tamu supaya menyimpan tanda akses parkir di dalam kendaraannya di tempat yang dapat dilihat petugas.
+b. Kendaraan Roda 2
+Pemasangan stiker parkir dipasang dibagian depan kendaraan bermotor
+c. Tanda akses parkir kendaraan tamu wajib dikembalikan ditempat pencatatan tamu.
+
+6. Pengawasan dan pemeriksaan keluar masuk kendaraan
+a. Setiap kendaraan yang keluar / masuk daerah terbatas diadakan pemeriksaan di gerbang pos II untuk lokasi Bandung dan Lokasi Turen menyesuaikan.
+b. Setiap kendaraan roda 4, pada waktu melewati pintu-pintu penjagaan diwajibkan membuka kaca pintu depan kendaraannya.
+
+7. Ketentuan Parkir Kendaraan :
+a. Setiap Kendaraan diwajibkan diparkir pada tempat yang telah ditentukan, serta kendaraan yang diparkir dalam keadaan dikunci dengan aman.
+b. Tidak meninggalkan barang berharga / berbahaya di dalam kendaraan yang diparkir tanpa penjaga / penunggu.
+c. Kehilangan /kerusakan sepenuhnya menjadi tanggung-jawab pemilik.
+d. Pegawai tidak dibenarkan memarkir kendaraannya saat pegawai yang bersangkutan sudah pulang atau meninggalkan pekerjaannya tanpa alasan yang dapat diterima.
+
+8. Tempat parkir kendaraan
+a. Di Lokasi Pindad Bandung:
+1) Kendaraan non organik pegawai, diparkir di area parkir daerah yang ditentukan.
+2) Kendaraan non organik Direksi dan Pejabat Teras, diparkir di daerah tulisan daerah terbatas atau daerah tertutup sesuai dengan tempat kerja masing-masing.
+3) Selain kendaraan non organik Direksi/ Pejabat Teras serta kendaraan organik, dilarang memasuki daerah terbatas dan tertutup tanpa izin yang berwenang.
+4) Kendaraan tamu Direksi, Non Direksi, kunjungan, pengangkut barang baik kendaraan roda dua atau tidak ada, tetap ikuti apa yang ada di gambar.
+
+9. Kendaraan Organik tidak diperkenankan dibawa pulang tanpa ijin dari pejabat yang berwenang.
+
+Pasal 8
+Pengaturan Lalu-lintas Barang / Jasa
+1. Barang yang akan masuk maupun keluar kompleks Perusahaan wajib didaftarkan ke petugas Divisi yang membiddangi Pengamananpada jam kerja.
+2. Barang yang keluar maupun masuk diluar jam kerja wajib diberitahukan terlebih dahulu dengan surat yang ditujukan pada pihak Divisi yang membiddangi Pengamanan.
+3. Pembawa barang masuk ke kompleks Perusahaan diwajibkan meninggalkan kartu identitas untuk mendapatkan tanda pengenal tamu.
+4. Semua barang yang keluar maupun masuk wajib diperiksa disesuaikan dengan dokumen material oleh petugas Divisi yang membiddangi Pengamanan.
+
+Pasal 9
+Pihak Lain yang Berlokasi
+di Dalam Kompleks Perusahaan
+
+1. Pihak Lain yang berlokasi di dalam kompleks Perusahaan diwajibkan mematuhi Peraturan
+Urusan Dalam ini, kecuali pakaian seragam dan jam kerja disesuaikan dengan ketentuan
+kebutuhan setempat, namun untuk pakaian harus tetap berseragam dan memenuhi
+norma dan kesopanan secara nasional.
+2. Pembuatan ID card dilakukan oleh pihak Divisi yang membidangi Pengamanan, adapun
+grafis dan logo dapat diusulkan oleh pihak perusahaan setempat.
+
+BAB III
+LAIN-LAIN DAN PENUTUP
+
+Pasal 10
+Lain-lain
+
+Pengaturan lalu-lintas pegawai dan tamu, pengaturan lalu lintas kendaraan, pengaturan lalu-
+lintas barang / jasa di Perusahaan khususnya wilayah Jakarta disesuaikan dengan kondisi
+setempat.
+
+Pasal 11
+Penutup
+
+1. Dengan ditetapkannya Surat Keputusan ini, maka Surat Keputusan Direksi PT. Pindad
+(Persero) Nomor: Skep/15/P/BD/VIII/2015 tanggal 20 Agustus 2015 tentang Peraturan
+Urusan Dalam di Lingkungan Perusahaan dicabut dan dinyatakan tidak berlaku lagi.
+2. Surat Keputusan ini mulai berlaku terhitung sejak tanggal ditetapkan, dengan ketentuan
+apabila dikemudian hari terdapat kekeliruan akan diadakan perbaikan sebagaimana
+mestinya.
+
+Ditetapkan di : Bandung
+Pada tanggal : 15 Januari 2018
+
+PT. PINDAD (PERSERO)
+DIREKSI
+ABRAHAM MOSE
+DIREKTUR UTAMA

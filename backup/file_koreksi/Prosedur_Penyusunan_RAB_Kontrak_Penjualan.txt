@@ -1,0 +1,194 @@
+PROSEDUR
+PENYUSUNAN RAB KONTRAK PENJUALAN
+P–11–PP–070
+Edisi/ Revisi: 001/000
+
+1. TUJUAN
+Prosedur ini disusun sebagai pedoman kerja bagi fungsi organisasi terkait dalam melaksanakan penyusunan RAB kontrak penjualan.
+
+2. DEFINISI
+a. Monitoring adalah proses pemantauan yang dilakukan untuk mengetahui progres suatu proses.
+b. Kontrak Penjualan adalah suatu transaksi yang dilakukan oleh para pihak yang berisi hak dan kewajiban masing-masing terkait penjualan suatu barang/jasa.
+c. RAB adalah Rencana Anggaran Biaya yang dibuat untuk memperkirakan kebutuhan biaya suatu kontrak penjualan.
+d. RKAP adalah Rencana Kerja dan Anggaran Perusahaan yang dibuat perusahaan sebagai pedoman pelaksanaan kerja selama periode tertentu biasanya satu tahun.
+e. RUPS adalah Rapat Umum Pemegang Saham yang merupakan kekuasaan tertinggi perseroan untuk mengetahui kinerja Direksi selama satu tahun buku.
+f. Kode Proyek merupakan kode identik dalam RAB Kontrak Penjualan.
+g. EIS (Executive Information System) adalah aplikasi yang menampilkan Dashboard Monitoring Kontrak Penjualan.
+
+3. KETENTUAN / PERSYARATAN TEKNIK
+1) Tujuan penyusunan RAB adalah:
+a. Mengetahui potensi profitabilitas setiap Kontrak Penjualan, sebagai referensi Manajemen untuk pengambilan keputusan (“Go or No Go” Kontrak)
+b. Mengawal realisasi biaya sesuai dengan RAB
+2) Penyusunan RAB dibuat berdasarkan :
+a. Rencana perolehan Kontrak Penjualan dalam RKAP yang telah disahkan oleh RUPS
+b. Potensi Kontrak Penjualan yang muncul di tahun berjalan, yang tidak termasuk dalam RKAP
+3) RAB disusun setelah RKAP disahkan oleh RUPS dan/atau sebagai referensi untuk penawaran harga produk kepada calon konsumen, dengan menggunakan rencana biaya per produk.
+4) Divisi Manajemen Risiko dan Perencanaan Perusahaan menyajikan data pendukung untuk referensi dalam penyusunan RAB Potensi Kontrak & RAB Kontrak, yang terdiri dari :
+a. Target RKAP
+b. Target Profit Before Tax per Divisi / Target Gross Profit Margin
+5) Ketentuan penyusunan RAB merujuk pada :
+a. Potensi kontrak kurang dari Rp 25 Milyar, RAB langsung dibuat dengan pertimbangan review teknis & review costing tervalidasi, kemudian kontrak penjualan dapat langsung diajukan proses persetujuan.
+b. Apabila potensi kontrak nilainya Rp 25 Milyar – 100 Milyar, maka dibuatkan RAB Potensi Kontrak untuk kemudian di review oleh Komite HPP (Tinjauan kontrak kelas sedang)
+c. Apabila potensi kontrak nilainya lebih dari Rp 100 Milyar, maka dibuatkan RAB Potensi Kontrak untuk kemudian di review oleh Komite HPP (Tinjauan kontrak kelas besar)
+6) RAB dapat digunakan dalam pelaksanaan review kontrak oleh Tim Komite HPP yang prosedur dan ketentuannya diatur terpisah
+7) Formulir RAB terdiri dari 5 bagian, yaitu:
+a. Gambaran Umum Kontrak (Profile),
+b. Ringkasan RAB (Summary),
+c. Rincian RAB (Details),
+d. Rincian Biaya Usaha,
+e. Kertas Kerja Perhitungan Harga Pokok Produksi.
+8) Gambaran Umum Kontrak (Profile) memuat keterangan/informasi umum terkait Kontrak Penjualan, diantaranya:
+a. Nama Divisi
+b. Kode Proyek
+c. Periode RAB
+d. Nomor Kontrak
+e. Nilai Kontrak
+f. Customer
+g. Produk
+h. Jumlah Produk
+i. PP Contract No.
+j. Tempat dan Tanggal Penandatanganan Dokumen
+k. Kolom tanda tangan “Disusun Oleh,”
+l. Kolom tanda tangan “Disetujui Oleh,”
+9) Ringkasan RAB (Summary) memuat informasi profitabilitas kontrak serta ringkasan informasi dari keseluruhan komponen biaya yang bersumber dari Rincian RAB (Details)
+10) Rincian RAB (Details) meliputi keseluruhan biaya yang mengacu pada kebijakan akuntansi dalam peraturan No. SKEP/14/P/BD/XI/2019 yang terkait dengan Kontrak Penjualan, diantaranya:
+a. Harga Pokok Produksi (HPP),
+b. Beban Usaha Divisi, dan
+c. Beban Keuangan Divisi.
+11) HPP merupakan Harga Pokok Produksi dengan komponen sebagai berikut:
+a. Beban Bahan Baku/Material, dan
+b. Beban Proses, yang terdiri dari:
+(1) Upah Langsung.
+(2) Tarif Mesin,
+(3) Beban Tidak Langsung (Overhead),
+(4) Subkontrak (Maklon).
+12) Beban Usaha Divisi terdiri dari:
+a. Beban Distribusi, dan
+b. Beban Administrasi dan Umum Tanggal Penandatanganan Dokumen
+k. Kolom tanda tangan “Disusun Oleh,”
+l. Kolom tanda tangan “Disetujui Oleh,”
+9) Ringkasan RAB (Summary) memuat informasi profitabilitas kontrak serta ringkasan informasi dari keseluruhan komponen biaya yang bersumber dari Rincian RAB (Details)
+10) Rincian RAB (Details) meliputi keseluruhan biaya yang mengacu pada kebijakan akuntansi dalam peraturan No. SKEP/14/P/BD/XI/2019 yang terkait dengan Kontrak Penjualan, diantaranya:
+a. Harga Pokok Produksi (HPP),
+b. Beban Usaha Divisi, dan
+c. Beban Keuangan Divisi.
+11) HPP merupakan Harga Pokok Produksi dengan komponen sebagai berikut:
+a. Beban Bahan Baku/Material, dan
+b. Beban Proses, yang terdiri dari:
+(1) Upah Langsung.
+(2) Tarif Mesin,
+(3) Beban Tidak Langsung (Overhead),
+(4) Subkontrak (Maklon).
+12) Beban Usaha Divisi terdiri dari:
+a. Beban Distribusi, dan
+b. Beban Administrasi dan Umum.
+13) Besaran nilai Beban Usaha Divisi dimaksud dapat mengacu pada:
+a. Rencana beban usaha untuk menunjang Kontrak Penjualan, atau
+b. Nilai persentase biaya terhadap penjualan maksimal sesuai dengan persentase beban usaha divisi terhadap penjualan pada RKAP RUPS.
+14) Besaran nilai Beban Keuangan Divisi dapat mengacu pada:
+a. Rencana beban keuangan atas pendanaan modal kerja yang dikeluarkan untuk menunjang Kontrak Penjualan, atau
+b. Nilai persentase beban keuangan terhadap penjualan maksimal sesuai dengan persentase beban keuangan terhadap penjualan pada RKAP RUPS
+4. URAIAN PROSEDUR
+1) RAB Kontrak > 25 Miliar
+a. Berdasarkan RKAP dan Potensi Kontrak, Fungsi Pemasaran & Penjualan menginisiasi dan berkoordinasi dengan Fungsi Manajemen Risiko & Perencanaan Perusahaan terkait penyusunan RAB Kontrak.
+b. Setelah mendapatkan data referensi RAB dari Fungsi Manajemen Risiko & Perencanaan Perusahaan, Fungsi Pemasaran & Penjualan melakukan Pengisian Gambaran Umum Kontrak dan/atau rencana Beban Usaha per Kontrak, untuk kemudian mendistribusikan Form RAB tersebut kepada Fungsi Perencanaan dan Pengendalian Produksi
+c. Fungsi Rendalprod melengkapi RAB dari Fungsi Pemasaran & Penjualan dengan perhitungan HPP per Produk sehingga menjadi dokumen Draft RAB Kontrak
+d. Dokumen Draft RAB Kontrak didistribusikan kembali ke Fungsi Pemasaran & Penjualan
+e. Fungsi Pemasaran dan Penjualan mengagendakan rapat review kontrak dengan Tim Komite HPP untuk pengambilan keputusan (“Go or No Go” Kontrak)
+f. Jika RAB tersebut sesuai dengan ketentuan, maka dapat dilakukan pengisian pada template Potensi Kontrak yang terintegrasi ke Sistem Monitoring Kontrak (EIS). Jika RAB tidak sesuai ketentuan, maka RAB tersebut dievaluasi kembali oleh Fungsi Pemasaran dan Penjualan serta Fungsi Rendalprod.
+g. Setelah Kontrak terbit, draft RAB Kontrak dimaintain kembali untuk diisi kelengkapan datanya.
+h. RAB Kontrak didistribusikan kepada Fungsi Rendalprod dan Fungsi Manajemen Risiko dan Perencanaan Perusahaan
+2) RAB Kontrak < 25 Miliar
+a. Berdasarkan RKAP dan Potensi Kontrak, Fungsi Pemasaran & Penjualan menginisiasi dan berkoordinasi dengan Fungsi Manajemen Risiko & Perencanaan Perusahaan terkait penyusunan RAB Kontrak.
+b. Setelah mendapatkan data referensi RAB dari Fungsi Manajemen Risiko & Perencanaan Perusahaan, Fungsi Pemasaran & Penjualan melakukan Pengisian Gambaran Umum Kontrak dan/atau rencana Beban Usaha per Kontrak, untuk kemudian mendistribusikan Form RAB tersebut kepada Fungsi Perencanaan dan Pengendalian Produksi
+c. Fungsi Rendalprod melengkapi RAB dari Fungsi Pemasaran & Penjualan dengan perhitungan HPP per Produk sehingga menjadi dokumen Draft RAB Kontrak
+d. Dokumen Draft RAB Kontrak didistribusikan kembali ke Fungsi Pemasaran & Penjualan
+e. Fungsi Pemasaran dan Penjualan melakukan review teknis dan review costing dengan Anggota Tim Komite HPP untuk pengambilan keputusan (“Go or No Go” Kontrak)
+f. Jika RAB tersebut sesuai dengan ketentuan, maka dapat dilakukan pengisian pada template Potensi Kontrak yang terintegrasi ke Sistem Monitoring Kontrak (EIS). Jika RAB tidak sesuai ketentuan, maka RAB tersebut dievaluasi kembali oleh Fungsi Pemasaran dan Penjualan serta Fungsi Rendalprod.
+g. Setelah Kontrak terbit, draft RAB Kontrak dimaintain kembali untuk diisi kelengkapan datanya.
+h. RAB Kontrak didistribusikan kepada Fungsi Rendalprod dan Fungsi Manajemen Risiko dan Perencanaan Perusahaan
+
+A. FLOWCHART PROSEDUR PENYUSUNAN RAB (KONTRAK > 25 Miliar)
+FUNGSI PEMASARAN & PENJUALAN
+Mulai
+RKAP Potensi Kontrak
+Menginisiasi dan berkoordinasi penyusunan RAB
+Data Referensi RAB
+Pengisian Gambaran Umum RAB Potensi Kontrak
+Draft RAB Kontrak
+RAB tidak sesuai
+Evaluasi RAB
+RAB telah sesuai
+Pengisian dokumen Potensi Kontrak
+Ungah dokumen Potensi Kontrak ke Sistem EIS
+List Potensi Kontrak
+Kontrak
+Updating Draft RAB Kontrak
+RAB Kontrak
+Selesai
+FUNGSI RENDALPROD DIVISI PRODUKSI
+Draft RAB Kontrak
+Melakukan Pengisian Rincian RAB Kontrak
+Draft RAB Kontrak
+Mendistribusikan Draft RAB Kontrak
+RAB tidak sesuai
+Evaluasi RAB
+RAB Kontrak
+FUNGSI MANAJEMEN RISIKO & PERENCANAAN PERUSAHAAN
+Melakukan koordinasi penyusunan RAB
+Menyajikan Data Pendukung untuk Referensi RAB : Target RKAP
+Data Referensi RAB
+Pembahasan RAB di Komite HPP
+Keputusan RAB?
+RAB Kontrak
+KOMITE HPP
+Pembahasan RAB di Komite HPP
+Keputusan RAB?
+RAB Kontrak
+
+B. FLOWCHART PROSEDUR PENYUSUNAN RAB (KONTRAK < 25 Miliar)  
+FUNGSI PEMASARAN & PENJUALAN  
+FUNGSI RENDALPROD DIVISI PRODUKSI  
+FUNGSI MANAJEMEN RISIKO & PERENCANAAN PERUSAHAAN  
+KOMITE HPP  
+Mulai  
+RKAIP Potensi Kontrak  
+Menginisiasi dan berkoordinasi penyusunan RAB  
+Data Referensi RAB  
+Pengisian Gambaran Umum RAB Potensi Kontrak  
+Draft RAB Kontrak  
+Draft RAB Kontrak  
+Review Teknis & Costing  
+Keputusan RAB?  
+Tidak  
+Ya  
+RAB telah sesuai  
+Pengisian dokumen Potensi Kontrak  
+Unggah dokumen Potensi Kontrak ke System EIS  
+List Potensi Kontrak  
+Kontrak  
+Updating Draft RAB Kontrak  
+RAB Kontrak  
+Selesai  
+Menginisiasi dan berkoordinasi penyusunan RAB  
+Draft RAB Kontrak  
+Melakukan Pengisian Rincian RAB Kontrak  
+Draft RAB Kontrak  
+Mendistribusikan Draft RAB Kontrak  
+Review Teknis & Costing  
+RAB Kontrak  
+Melakukan koordinasi penyusunan RAB  
+Menyajikan Data Pendukung untuk Referensi RAB : Target RKAP  
+Data Referensi RAB  
+Review Teknis & Costing  
+RAB Kontrak  
+Review Teknis & Costing  
+RAB Kontrak
+
+5. REFERENSI DOKUMEN
+a. Surat Keputusan, Penjualan, dan Layanan Purna Jual
+b. Surat Keputusan Direksi Nomor: Skeep/4/P/BD/X/2022 tanggal 7 Oktober 2022 beserta perubahannya tanggal 6 April 2023 tentang Ketentuan Pelaksanaan Produksi
+
+LEMBAR PENGESAHAN
+NO EDISI |NO REVISI |DESKRIPSI                                  |STATUS *)|TANGGAL      |DISIAPKAN OLEH                             |DISETUJU OLEH
+001      |000       |Prosedur Penyusunan RAB Kontrak Penjualan  |Baru     |1 Juli 2025  |VP PEMASARAN & PENJUALAN YANTO SUGIHARTO   |DIREKTUR KOMERSIAL BUDHIARTO

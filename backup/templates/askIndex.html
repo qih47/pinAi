@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PinAI RAG System</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar -->
+        <div class="sidebar">
+            <div class="sidebar-header">
+                <h2>🤖 PinAI</h2>
+                <button class="new-chat-btn" onclick="createNewChat()">
+                    + New Chat
+                </button>
+            </div>
+            
+            <div class="sessions-list">
+                <h3>Recent Chats</h3>
+                {% for session in sessions %}
+                <div class="session-item" onclick="location.href='/chat/{{ session.id }}'">
+                    <div class="session-info">
+                        <strong>{{ session.model_name }}</strong>
+                        <span>{{ session.message_count }} messages</span>
+                    </div>
+                    <small>{{ session.started_at.strftime('%d/%m %H:%M') }}</small>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="main-content">
+            <div class="welcome-container">
+                <h1>Welcome to PinAI RAG System</h1>
+                <p>Ask questions about your documents and get AI-powered answers</p>
+                
+                <div class="model-selector">
+                    <label for="model-select">Select AI Model:</label>
+                    <select id="model-select">
+                        {% for model in models %}
+                        <option value="{{ model }}">{{ model }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                
+                <button class="start-chat-btn" onclick="createNewChat()">
+                    Start New Chat
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        async function createNewChat() {
+            const modelSelect = document.getElementById('model-select');
+            const selectedModel = modelSelect.value;
+            
+            try {
+                const response = await fetch('/api/new_chat', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ model: selectedModel })
+                });
+                
+                const data = await response.json();
+                if (data.success) {
+                    window.location.href = data.redirect_url;
+                }
+            } catch (error) {
+                console.error('Error creating new chat:', error);
+                alert('Error creating new chat');
+            }
+        }
+    </script>
+</body>
+</html>

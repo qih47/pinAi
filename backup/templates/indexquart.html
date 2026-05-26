@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>PDF Processing Tool</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+        }
+        .upload-area {
+            border: 2px dashed #ccc;
+            border-radius: 10px;
+            padding: 40px;
+            text-align: center;
+            margin: 20px 0;
+            background: #fafafa;
+            cursor: pointer;
+        }
+        .upload-area:hover {
+            border-color: #007bff;
+            background: #f0f8ff;
+        }
+        .upload-area.dragover {
+            border-color: #007bff;
+            background: #e3f2fd;
+        }
+        .btn {
+            background: #007bff;
+            color: white;
+            padding: 12px 30px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 10px;
+        }
+        .btn:hover {
+            background: #0056b3;
+        }
+        .btn:disabled {
+            background: #6c757d;
+            cursor: not-allowed;
+        }
+        .progress {
+            width: 100%;
+            height: 20px;
+            background: #f0f0f0;
+            border-radius: 10px;
+            margin: 20px 0;
+            overflow: hidden;
+        }
+        .progress-bar {
+            height: 100%;
+            background: #007bff;
+            width: 0%;
+            transition: width 0.3s;
+        }
+        .log-container {
+            background: #1e1e1e;
+            color: #00ff00;
+            padding: 15px;
+            border-radius: 5px;
+            max-height: 300px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 12px;
+            margin: 20px 0;
+        }
+        .result {
+            background: #d4edda;
+            border: 1px solid #c3e6cb;
+            border-radius: 5px;
+            padding: 15px;
+            margin: 20px 0;
+        }
+        .error {
+            background: #f8d7da;
+            border: 1px solid #f5c6cb;
+            border-radius: 5px;
+            padding: 15px;
+            margin: 20px 0;
+        }
+        .download-links {
+            margin: 15px 0;
+        }
+        .download-links a {
+            display: block;
+            background: #28a745;
+            color: white;
+            padding: 10px 15px;
+            text-decoration: none;
+            border-radius: 5px;
+            margin: 5px 0;
+        }
+        .download-links a:hover {
+            background: #218838;
+        }
+        .hidden {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📄 PDF Processing Tool</h1>
+        <p>Upload file PDF untuk diproses menjadi chunks dengan embedding</p>
+        
+        <div class="upload-area" id="uploadArea">
+            <input type="file" id="fileInput" accept=".pdf" style="display: none;">
+            <div>
+                <h3>📁 Klik atau drop file PDF di sini</h3>
+                <p>Format yang didukung: PDF</p>
+                <button class="btn" onclick="document.getElementById('fileInput').click()">
+                    Pilih File PDF
+                </button>
+            </div>
+        </div>
+
+        <div id="fileInfo" class="hidden"></div>
+
+        <div id="progressSection" class="hidden">
+            <h3>🔄 Sedang Memproses...</h3>
+            <div class="progress">
+                <div class="progress-bar" id="progressBar"></div>
+            </div>
+            <div class="log-container" id="logContainer">
+                <div>Log akan muncul di sini...</div>
+            </div>
+        </div>
+
+        <div id="resultSection" class="hidden">
+            <h3>✅ Proses Selesai!</h3>
+            <div class="result">
+                <div id="resultContent"></div>
+            </div>
+        </div>
+
+        <div id="errorSection" class="hidden">
+            <h3>❌ Terjadi Error</h3>
+            <div class="error">
+                <div id="errorContent"></div>
+            </div>
+        </div>
+
+        <div style="text-align: center; margin-top: 20px;">
+            <a href="/logs" class="btn" style="background: #6c757d; display: inline-block;">View Logs</a>
+            <a href="/status" class="btn" style="background: #6c757d; display: inline-block;">Status</a>
+        </div>
+    </div>
+
+    <script>
+        const fileInput = document.getElementById('fileInput');
+        const uploadArea = document.getElementById('uploadArea');
+        const fileInfo = document.getElementById('fileInfo');
+        const progressSection = document.getElementById('progressSection');
+        const resultSection = document.getElementById('resultSection');
+        const errorSection = document.getElementById('errorSection');
+        const progressBar = document.getElementById('progressBar');
+        const logContainer = document.getElementById('logContainer');
+        const resultContent = document.getElementById('resultContent');
+        const errorContent = document.getElementById('errorContent');
+
+        // Drag and drop functionality
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadArea.classList.add('dragover');
+        });
+
+        uploadArea.addEventListener('dragleave', () => {
+            uploadArea.classList.remove('dragover');
+        });
+
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                handleFileSelect(files[0]);
+            }
+        });
+
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                handleFileSelect(e.target.files[0]);
+            }
+        });
+
+        function handleFileSelect(file) {
+            if (file.type !== 'application/pdf') {
+                alert('Hanya file PDF yang didukung!');
+                return;
+            }
+
+            fileInfo.innerHTML = `<strong>File terpilih:</strong> ${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB)`;
+            fileInfo.classList.remove('hidden');
+
+            // Reset UI
+            progressSection.classList.remove('hidden');
+            resultSection.classList.add('hidden');
+            errorSection.classList.add('hidden');
+            progressBar.style.width = '0%';
+            logContainer.innerHTML = '<div>Memulai proses...</div>';
+
+            uploadFile(file);
+        }
+
+        function uploadFile(file) {
+            const formData = new FormData();
+            formData.append('file', file);
+
+            fetch('/process', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    showResult(data);
+                } else {
+                    showError(data.error || 'Terjadi kesalahan');
+                }
+            })
+            .catch(error => {
+                showError('Error: ' + error.message);
+            });
+        }
+
+        function showResult(data) {
+            progressSection.classList.add('hidden');
+            resultSection.classList.remove('hidden');
+            
+            const results = data.results;
+            let html = `
+                <h4>📊 Hasil Processing</h4>
+                <p><strong>File:</strong> ${results.filename}</p>
+                <p><strong>Tipe PDF:</strong> ${results.pdf_type}</p>
+                <p><strong>Total Chunks:</strong> ${results.total_chunks}</p>
+                <p><strong>Waktu Processing:</strong> ${data.processing_time}</p>
+                
+                <div class="download-links">
+                    <h5>📥 Download Hasil:</h5>
+                    <a href="${results.download_links.json_result}" target="_blank">
+                        📄 Download JSON Result (Embeddings)
+                    </a>
+                    <a href="${results.download_links.preview}" target="_blank">
+                        📝 Download Preview (Teks Lengkap)
+                    </a>
+                    <a href="${results.download_links.full_chunks}" target="_blank">
+                        📋 Download Full Chunks (Text Only)
+                    </a>
+                    <a href="${results.download_links.corrected_full}" target="_blank">
+                        📝 Download Full Corrected Text
+                    </a>
+                </div>
+            `;
+
+            if (results.sample_chunk) {
+                html += `
+                    <h5>👀 Sample Chunk #1:</h5>
+                    <div style="background: #f8f9fa; padding: 10px; border-radius: 5px; margin: 10px 0;">
+                        <strong>Original (${results.sample_chunk.original_length} chars):</strong><br>
+                        <pre style="white-space: pre-wrap; font-size: 11px; max-height: 200px; overflow-y: auto;">${results.sample_chunk.original_full}</pre>
+                        <strong>Corrected (${results.sample_chunk.corrected_length} chars):</strong><br>
+                        <pre style="white-space: pre-wrap; font-size: 11px; max-height: 200px; overflow-y: auto;">${results.sample_chunk.corrected_full}</pre>
+                    </div>
+                `;
+            }
+
+            resultContent.innerHTML = html;
+        }
+
+        function showError(message) {
+            progressSection.classList.add('hidden');
+            errorSection.classList.remove('hidden');
+            errorContent.innerHTML = message;
+        }
+
+        // Real-time log updates (simple version)
+        function updateLogs() {
+            fetch('/logs')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.logs) {
+                        logContainer.innerHTML = '<div>' + data.logs.replace(/\\n/g, '<br>') + '</div>';
+                        logContainer.scrollTop = logContainer.scrollHeight;
+                    }
+                });
+        }
+
+        // Update logs every 2 seconds during processing
+        setInterval(updateLogs, 2000);
+    </script>
+</body>
+</html>
