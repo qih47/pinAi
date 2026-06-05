@@ -45,6 +45,9 @@ dist/
 build/
 target/
 
+# Backup folder
+aibackup/
+
 # IDE specific
 .vscode/
 .idea/
@@ -66,6 +69,9 @@ htmlcov/
 # Temporary files
 *.tmp
 *.temp
+
+*.env
+
 
 # Compressed files
 *.zip
