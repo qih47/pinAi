@@ -1,17 +1,27 @@
 import { create } from "zustand";
 
 const API_BASE = "http://192.168.11.80:5000";
+let _sessionLoadSeq = 0;
 
-async function _performStream(set, get, messagesToSend, assistantMessage) {
+function _buildAuthHeaders(npp) {
+    const headers = { 'Content-Type': 'application/json' };
+    const cleanNpp = (npp || '').trim();
+    const isPlaceholder = !cleanNpp || cleanNpp.startsWith('NPP');
+    if (!isPlaceholder) {
+        headers['X-NPP-Header'] = cleanNpp;
+    }
+    return headers;
+}
+
+async function _performStream(set, get, messagesToSend, assistantMessage, forcedSessionUuid = null, npp = null) {
     try {
+        const activeSessionUuid = forcedSessionUuid || get().sessionUuid;
+
         const response = await fetch(`${API_BASE}/api/chat/stream`, {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-NPP-Header': ''
-            },
+            headers: _buildAuthHeaders(npp),
             body: JSON.stringify({
-                session_uuid: get().sessionUuid,
+                session_uuid: activeSessionUuid, 
                 messages: messagesToSend,
                 mode: 'normal',
                 temperature: 0.7
@@ -47,7 +57,6 @@ async function _performStream(set, get, messagesToSend, assistantMessage) {
 
                         if (!renderTimeout) {
                             renderTimeout = requestAnimationFrame(() => {
-                                // 🔥 FIX 1: Begitu chunk pertama masuk, matikan isThinking biar bubble pindah ke mode ngetik text stream
                                 set({
                                     messages: [...get().messages],
                                     isThinking: false
@@ -75,12 +84,52 @@ export const useChatStore = create((set, get) => ({
     messages: [],
     isLoading: false,
     isStreaming: false,
-    isThinking: false, // 👈 Sedia kolom state isThinking di store global
+    isThinking: false, 
     sessionUuid: null,
 
-    sendMessage: async (content) => {
+    sendMessage: async (content, npp, onSessionCreatedCallback) => {
         if (!content.trim() || get().isStreaming) return;
 
+        let currentSessionUuid = get().sessionUuid;
+
+        // 🧠 TRANSMISI OTOMATIS SESI BARU (Lurus dari lahir)
+        if (!currentSessionUuid || currentSessionUuid === "new") {
+            try {
+                // Peras 4 kata pertama chat user buat dijadikan judul valid
+                const generatedTitle = content.split(" ").slice(0, 4).join(" ") + "...";
+
+                // 🔥 SUNTIK PARAMETER ?judul=... ke endpoint create session resmi bawaan FastAPI lu bolo!
+                const response = await fetch(`${API_BASE}/api/chat/sessions/create?judul=${encodeURIComponent(generatedTitle)}`, {
+                    method: 'POST',
+                    headers: _buildAuthHeaders(npp),
+                });
+                const result = await response.json();
+                
+                if (result.status === "success") {
+                    currentSessionUuid = result.data.session_uuid;
+                    
+                    // 1. Injeksi instan baris baru ke state array sidebar agar tampilan langsung berubah tanpa nunggu stream beres
+                    if (onSessionCreatedCallback) {
+                        onSessionCreatedCallback({
+                            session_uuid: currentSessionUuid,
+                            judul: generatedTitle,
+                            is_pinned: false,
+                            started_at: new Date().toISOString()
+                        });
+                    }
+
+                    // 2. Kunci UUID baru ke state store global (useEffect di ChatPage akan pindahin URL secara pasif)
+                    set({ sessionUuid: currentSessionUuid });
+                } else {
+                    throw new Error("Gagal booking session id dari backend.");
+                }
+            } catch (err) {
+                console.error("❌ [STREAM AUTH SESSION ERROR]:", err);
+                return;
+            }
+        }
+
+        // Jalur normal pengaliran pesan regular
         const userMessage = { role: 'user', content };
         const updatedMessages = [...get().messages, userMessage];
         const assistantMessage = { role: 'assistant', content: '' };
@@ -89,13 +138,13 @@ export const useChatStore = create((set, get) => ({
             messages: [...updatedMessages, assistantMessage],
             isStreaming: true,
             isLoading: true,
-            isThinking: true // 🔥 Set true pas kirim biasa
+            isThinking: true
         });
 
         await new Promise(resolve => setTimeout(resolve, 100));
-        await _performStream(set, get, updatedMessages, assistantMessage);
+        await _performStream(set, get, updatedMessages, assistantMessage, currentSessionUuid, npp);
     },
-
+    
     editAndRegenerate: async (index, newContent) => {
         if (!newContent.trim() || get().isStreaming) return;
 
@@ -110,8 +159,6 @@ export const useChatStore = create((set, get) => ({
             currentMessages.splice(index + 1, 0, assistantMessage);
         }
 
-        // 🔥 FIX 2: Lu wajib oper `isThinking: true` di sini asu!
-        // Biar pas edit disubmit, view lu langsung tau kalau AI masuk fase mikir ulang.
         set({
             messages: currentMessages,
             isStreaming: true,
@@ -122,38 +169,66 @@ export const useChatStore = create((set, get) => ({
         await new Promise(resolve => setTimeout(resolve, 100));
 
         const messagesToSend = currentMessages.slice(0, index + 1);
-        await _performStream(set, get, messagesToSend, assistantMessage);
+        const npp = JSON.parse(localStorage.getItem('cakra_user') || '{}')?.npp || null;
+        await _performStream(set, get, messagesToSend, assistantMessage, null, npp);
     },
 
-    clearChat: () => set({ messages: [], sessionUuid: null, isThinking: false }),
+    clearChat: () => {
+        set({ messages: [], sessionUuid: null, isThinking: false });
+    },
 
-    // =========================================================================
-    // ⚙️ SEKTOR ADAPTASI SIDEBAR: SINKRONISASI MURNI SESUAI ENDPOINT FASTAPI LU
-    // =========================================================================
     fetchChatHistory: async (npp) => {
+        if (!npp) return { status: "error", data: [] };
         try {
-            // 🔥 MURNI FETCH NATIVE: Tanpa apiClient, aman dari ReferenceError!
             const response = await fetch(`${API_BASE}/api/chat/sessions`, {
                 method: 'GET',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Accept': 'application/json',
-                    // Kirim NPP lo biar divalidasi dan ngebuka riwayat dari RAGDB
-                    'X-NPP-Header': npp || ''
+                    'X-NPP-Header': npp
                 }
             });
-
-            if (!response.ok) throw new Error("Gagal mengambil data riwayat");
-            return await response.json();
+            if (!response.ok) throw new Error("Gagal mengambil data");
+            const result = await response.json();
+            return result;
         } catch (err) {
-            console.error("❌ [STORE HISTORY ERROR]:", err);
+            console.error("❌ [FETCH ERROR]:", err);
             return { status: "error", data: [] };
+        }
+    },
+
+    loadChatSession: async (sessionUuid) => {
+        if (!sessionUuid || sessionUuid === 'new') return;
+
+        const seq = ++_sessionLoadSeq;
+        console.log('📥 [STORE] Loading session:', sessionUuid);
+        set({ sessionUuid, messages: [], isLoading: true });
+
+        try {
+            const npp = JSON.parse(localStorage.getItem('cakra_user'))?.npp || '';
+            const response = await fetch(`${API_BASE}/api/chat/sessions/${sessionUuid}/messages`, {
+                headers: { 'X-NPP-Header': npp }
+            });
+            const result = await response.json();
+
+            if (seq !== _sessionLoadSeq) return;
+
+            if (result.status === "success") {
+                set({
+                    messages: result.data || [],
+                    isLoading: false
+                });
+            } else {
+                set({ messages: [], isLoading: false });
+            }
+        } catch (err) {
+            if (seq !== _sessionLoadSeq) return;
+            console.error("❌ Gagal load session:", err);
+            set({ isLoading: false });
         }
     },
 
     pinChat: async (sessionUuid, isPinnedCurrentValue) => {
         try {
-            // 🔥 SINKRON BE: Menggunakan method PUT ke /sessions/{uuid}/pin?is_pinned=...
             const nextPinState = !isPinnedCurrentValue;
             const response = await fetch(`${API_BASE}/api/chat/sessions/${sessionUuid}/pin?is_pinned=${nextPinState}`, {
                 method: 'PUT'
@@ -167,7 +242,6 @@ export const useChatStore = create((set, get) => ({
 
     renameChat: async (sessionUuid, tempTitle) => {
         try {
-            // 🔥 SINKRON BE: Menggunakan method PUT ke /sessions/{uuid}/title dengan body JSON
             const response = await fetch(`${API_BASE}/api/chat/sessions/${sessionUuid}/title`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
@@ -180,14 +254,33 @@ export const useChatStore = create((set, get) => ({
         }
     },
 
-    deleteChat: async (sessionUuid) => {
+    createNewSession: async (npp) => {
         try {
-            // 🔥 Coba buang '/chat' di sini, kemungkinan besar prefix-nya udah d handle main router lo
+            const response = await fetch(`${API_BASE}/api/chat/sessions/create`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-NPP-Header': npp || ''
+                }
+            });
+            const result = await response.json();
+            if (result.status === 'success') {
+                set({ sessionUuid: result.data.session_uuid, messages: [] });
+                return result.data.session_uuid;
+            }
+            throw new Error('Gagal membuat sesi baru');
+        } catch (err) {
+            console.error('❌ [CREATE SESSION ERROR]:', err);
+            return null;
+        }
+    },
+
+    deleteChat: async (sessionUuid, npp) => {
+        try {
             const response = await fetch(`${API_BASE}/api/chat/sessions/${sessionUuid}`, {
                 method: 'DELETE',
                 headers: {
-                    // Tambahin header NPP juga buat jaga-jaga kalau dia butuh validasi
-                    'X-NPP-Header': JSON.parse(localStorage.getItem('cakra_user'))?.npp || ''
+                    'X-NPP-Header': npp || ''
                 }
             });
             return await response.json();
@@ -196,23 +289,5 @@ export const useChatStore = create((set, get) => ({
             return { status: "error" };
         }
     },
-    // Tambahin ini di dalam useChatStore (src/stores/chatStore.js)
-    loadChatSession: async (sessionUuid) => {
-        set({ isLoading: true });
-        try {
-            // Nembak ke endpoint untuk ambil isi chat detail
-            const response = await fetch(`${API_BASE}/api/chat/sessions/${sessionUuid}/messages`, {
-                headers: { 'X-NPP-Header': JSON.parse(localStorage.getItem('cakra_user'))?.npp || '' }
-            });
-            const result = await response.json();
-
-            if (result.status === "success") {
-                set({ messages: result.data, sessionUuid: sessionUuid, isLoading: false });
-            }
-        } catch (err) {
-            console.error("Gagal load session chat:", err);
-            set({ isLoading: false });
-        }
-    }
 
 }));

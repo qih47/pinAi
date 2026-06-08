@@ -17,17 +17,19 @@ function SessionRouteWrapper({ isGuest }) {
     return <Navigate to="/login" replace />;
   }
 
+  if (isGuest && isAuthenticated) {
+    const lastSession = localStorage.getItem("cakra_last_session");
+    return <Navigate to={lastSession ? `/chat/${lastSession}` : "/chat/new"} replace />;
+  }
+
   useEffect(() => {
     if (isGuest) {
       useChatStore.setState({ sessionUuid: null, messages: [] });
-      console.log("👤 [ROUTE WRAPPER] Masuk Sektor Guest Mode, state disterilkan.");
-    } else if (sessionId) {
-      useChatStore.setState({ sessionUuid: sessionId });
-      console.log(`🆔 [ROUTE WRAPPER] Mengunci Sesi Aktif UUID: ${sessionId}`);
-    } else {
-      useChatStore.setState({ sessionUuid: null });
-      console.log("➕ [ROUTE WRAPPER] Menyiapkan Slot Sesi Obrolan Baru.");
+    } else if (sessionId === "new") {
+      // Hanya reset untuk halaman obrolan baru; UUID session ditangani ChatPage via URL
+      useChatStore.setState({ sessionUuid: "new", messages: [] });
     }
+    // Untuk /chat/:uuid — jangan timpa store di sini agar tidak bentrok dengan load sidebar
   }, [sessionId, isGuest]);
 
   return <ChatPage isGuest={isGuest} />;

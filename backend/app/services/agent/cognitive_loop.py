@@ -1,6 +1,6 @@
 import json
 import logging
-from typing import AsyncGenerator, List, Dict
+from typing import AsyncGenerator, List, Dict, Optional
 import httpx
 from fastapi import Request
 from backend.app.core.config import settings
@@ -17,10 +17,11 @@ class CognitiveLoop:
         print("⚙️  [COGNITIVE LOOP] Orkestrator DeepSeek-R1 (Slot 2) siap merajut pemikiran, bolo!")
 
     async def stream_reasoning_engine(
-        self, 
-        messages: List[Dict[str, str]], 
+        self,
+        messages: List[Dict[str, str]],
         request: Request,
-        temperature: float = 0.6
+        temperature: float = 0.6,
+        session_uuid: Optional[str] = None,
     ) -> AsyncGenerator[str, None]:
         
         gpu_semaphore = request.app.state.gpu_limit
@@ -64,16 +65,37 @@ class CognitiveLoop:
                             done = chunk.get("done", False)
                             
                             full_response += content
+                            yield json.dumps({"chunk": content, "done": done}) + "\n"
                             
-                            yield json.dumps({
-                                "chunk": content,
-                                "done": done
-                            }) + "\n"
-                            
+                            # ==============================================================================
+                            # 🦾 SINKRONISASI COGNITIVE SAKTI MULTI-TABEL AMAN KENDALI (SLOT 2)
+                            # ==============================================================================
                             if done:
                                 print("\n" + "═"*50)
                                 print(f"🧠 [DEEPSEEK REASONING COMPLETE]")
                                 print("═"*50)
+                                
+                                if session_uuid and session_uuid != "GLOBAL_SESSION":
+                                    try:
+                                        from backend.app.services.chat_history_service import chat_history_service
+
+                                        user_query = next((m["content"] for m in reversed(messages) if m["role"] == "user"), "Kueri analitik")
+
+                                        await chat_history_service.save_chat_message(
+                                            session_id=session_uuid,
+                                            role="assistant",
+                                            text=full_response,
+                                            thought="Processed via Slot 2 [DeepSeek-R1 Reasoning Engine]",
+                                        )
+
+                                        await chat_history_service.save_dialogue_corpus(
+                                            session_uuid=session_uuid,
+                                            user_text=user_query,
+                                            assistant_text=full_response,
+                                        )
+                                        print(f"📝 [COGNITIVE SAVE SUCCESS] Data analitik sesi {session_uuid[:8]} aman di database!")
+                                    except Exception as save_err:
+                                        print(f"⚠️ [MULTI-TABEL WARNING] Gagal auto-save Slot 2: {str(save_err)}")
                                 
                 except httpx.TimeoutException:
                     print("🚨 [COGNITIVE LOOP] Timeout! DeepSeek mikirnya kelamaan.")

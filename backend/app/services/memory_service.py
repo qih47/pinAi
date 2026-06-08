@@ -3,7 +3,7 @@ import json
 import httpx
 from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional
-from backend.app.core.database import get_db, get_hris_db
+from backend.app.core.database import get_db
 from backend.app.core.config import settings
 
 logger = logging.getLogger("CAKRA_MEMORY_SERVICE")
@@ -22,7 +22,7 @@ class MemoryService:
         Menarik ringkasan memori masa lalu terkait pegawai berdasarkan NPP.
         Hasilnya bakal disuntikkan ke System Prompt agar AI ingat preferensi user.
         """
-        if npp == "GUEST":
+        if npp == "GUEST" or not npp:
             return ""
 
         async with get_db() as conn:
@@ -55,11 +55,11 @@ class MemoryService:
         
         # Cari batas waktu chat 24 jam ke belakang
         one_day_ago = datetime.utcnow() - timedelta(days=1)
+        chats_per_employee: Dict[str, List[str]] = {}
         
+        # PHASE 1: Ambil data chat mentah secepat mungkin, lalu langsung tutup koneksi DB awal
         async with get_db() as conn:
             try:
-                # 1. Tarik semua chat user dalam 24 jam terakhir yang belum dikonsolidasi
-                # Kita kelompokkan berdasarkan NPP pegawai
                 query_get_chats = """
                     SELECT s.npp, m.message_text 
                     FROM chat_messages m
@@ -72,61 +72,74 @@ class MemoryService:
                     print("💤 [MEMORY WORKER] Tidak ada obrolan baru dalam 24 jam terakhir. Siklus dilewati.")
                     return {"status": "skipped", "message": "No new chats to consolidate."}
 
-                # Grouping teks obrolan per NPP
-                chats_per_employee: Dict[str, List[str]] = {}
+                # Grouping teks obrolan per NPP (Bypass Guest)
                 for row in rows:
                     npp = row['npp']
-                    if npp == "GUEST": # Mode tamu tidak disimpan memorinya demi privasi
+                    if npp == "GUEST" or not npp: 
                         continue
                     if npp not in chats_per_employee:
                         chats_per_employee[npp] = []
                     chats_per_employee[npp].append(row['message_text'])
+            except Exception as read_err:
+                logger.error(f"💥 [MEMORY WORKER] Gagal membaca data obrolan harian: {str(read_err)}")
+                return {"status": "failed", "error": str(read_err)}
 
-                processed_count = 0
+        if not chats_per_employee:
+            return {"status": "skipped", "message": "No official employee chats to process."}
 
-                # 2. Peras obrolan per pegawai menggunakan Slot 1 Router Engine (Qwen)
-                url = f"{settings.OLLAMA_BASE_URL}/api/chat"
+        # PHASE 2: Peras obrolan per pegawai via LLM Qwen 2.5 (DB Connection aman terbebas)
+        url = f"{settings.OLLAMA_BASE_URL}/api/chat"
+        memories_to_save: List[Dict[str, str]] = []
+        
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            for npp, messages in chats_per_employee.items():
+                full_chat_log = "\n".join([f"User: {msg}" for msg in messages])
                 
-                for npp, messages in chats_per_employee.items():
-                    full_chat_log = "\n".join([f"User: {msg}" for msg in messages])
-                    
-                    system_prompt = (
-                        "Anda adalah modul ekstraksi memori jangka panjang CAKRA AI.\n"
-                        "Tugas Anda adalah merangkum log obrolan pegawai menjadi 1-2 kalimat ringkas "
-                        "berisi fakta penting seperti: proyek yang dikerjakan, error database yang dihadapi, "
-                        "atau preferensi sistem mereka. Hilangkan basa-basi dan gunakan sudut pandang ketiga.\n\n"
-                        "Contoh output: Pegawai sedang mengoptimasi database view_pengawasan_um dan mengalami masalah latensi tinggi."
-                    )
+                system_prompt = (
+                    "Anda adalah modul ekstraksi memori jangka panjang CAKRA AI.\n"
+                    "Tugas Anda adalah merangkum log obrolan pegawai menjadi 1-2 kalimat ringkas "
+                    "berisi fakta penting seperti: proyek yang dikerjakan, error database yang dihadapi, "
+                    "atau preferensi sistem mereka. Hilangkan basa-basi dan gunakan sudut pandang ketiga.\n\n"
+                    "Contoh output: Pegawai sedang mengoptimasi database view_pengawasan_um dan mengalami masalah latensi tinggi."
+                )
 
-                    payload = {
-                        "model": settings.MODEL_ROUTER, # Menggunakan qwen2.5:7b-instruct
-                        "messages": [
-                            {"role": "system", "content": system_prompt},
-                            {"role": "user", "content": f"Rangkum log obrolan ini:\n{full_chat_log}"}
-                        ],
-                        "stream": False,
-                        "options": {"temperature": 0.3}
-                    }
+                payload = {
+                    "model": settings.MODEL_ROUTER,
+                    "messages": [
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": f"Rangkum log obrolan ini:\n{full_chat_log}"}
+                    ],
+                    "stream": False,
+                    "options": {"temperature": 0.3}
+                }
 
-                    async with httpx.AsyncClient(timeout=60.0) as client:
-                        response = await client.post(url, json=payload)
-                        if response.status_code == 200:
-                            summary_text = response.json().get("message", {}).get("content", "").strip()
-                            
-                            if summary_text:
-                                # 3. Simpan rangkuman memori permanen ke database RAGDB
-                                query_insert_memory = """
-                                    INSERT INTO ai_memory (npp, memory_summary, created_at)
-                                    VALUES ($1, $2, NOW());
-                                """
-                                await conn.execute(query_insert_memory, npp, summary_text)
-                                print(f"💾 [MEMORY CONSOLIDATED] Berhasil mengunci ingatan baru untuk NPP {npp}!")
-                                processed_count += 1
-                                
-                return {"status": "success", "processed_employees": processed_count}
+                try:
+                    response = await client.post(url, json=payload)
+                    if response.status_code == 200:
+                        summary_text = response.json().get("message", {}).get("content", "").strip()
+                        if summary_text:
+                            memories_to_save.append({"npp": npp, "summary": summary_text})
+                except Exception as llm_err:
+                    logger.error(f"⚠️ [MEMORY WORKER] Gagal memproses LLM Summary untuk NPP {npp}: {str(llm_err)}")
 
-            except Exception as e:
-                logger.error(f"💥 [MEMORY WORKER CRITICAL] Gagal menjalankan konsolidasi malam: {str(e)}")
-                return {"status": "failed", "error": str(e)}
+        # PHASE 3: Buka kembali DB instant, eksekusi penyimpanan massal secara atomik
+        processed_count = 0
+        if memories_to_save:
+            async with get_db() as conn:
+                try:
+                    async with conn.transaction(): # Gunakan transaksi biar super aman dan lurus
+                        query_insert_memory = """
+                            INSERT INTO ai_memory (npp, memory_summary, created_at)
+                            VALUES ($1, $2, CURRENT_TIMESTAMP);
+                        """
+                        for mem in memories_to_save:
+                            await conn.execute(query_insert_memory, mem["npp"], mem["summary"])
+                            print(f"💾 [MEMORY CONSOLIDATED] Berhasil mengunci ingatan baru untuk NPP {mem['npp']}!")
+                            processed_count += 1
+                except Exception as write_err:
+                    logger.error(f"💥 [MEMORY WORKER] Gagal dumping data memori ke database: {str(write_err)}")
+                    return {"status": "failed", "error": str(write_err)}
+
+        return {"status": "success", "processed_employees": processed_count}
 
 memory_service = MemoryService()

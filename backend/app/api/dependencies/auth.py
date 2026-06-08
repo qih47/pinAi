@@ -6,6 +6,9 @@ from backend.app.core.database import get_db, get_hris_db
 
 logger = logging.getLogger("CAKRA_AUTH_DEPENDENCY")
 
+_GUEST_NPP_PLACEHOLDERS = frozenset({"NPP ------", "NPP -----", "NPP------", "GUEST"})
+
+
 async def get_current_user_npp(
     request: Request, 
     x_npp_header: Optional[str] = Header(None, alias="X-NPP-Header")
@@ -14,17 +17,19 @@ async def get_current_user_npp(
     Dependency Validator untuk membedakan Pegawai Resmi vs Guest Mode.
     """
     
-    # 1. Jika tidak ada header NPP, otomatis masuk GUEST MODE
+    # 1. Jika tidak ada header NPP atau placeholder UI guest, masuk GUEST MODE
     if not x_npp_header or x_npp_header.strip() == "":
         return None
 
     npp_clean = x_npp_header.strip()
+    if npp_clean in _GUEST_NPP_PLACEHOLDERS:
+        return None
 
     # 2. VALIDASI KE DATABASE HRIS REMOTE
     # 🔥 FIX SAKTI: Ganti get_db(pool_name="hris") dengan get_hris_db() bawaan asli lu bolo!
     async with get_hris_db() as conn:  
         try:
-            query = "SELECT npp, nama FROM master_pegawai WHERE npp = $1 AND status_aktif = TRUE LIMIT 1;"
+            query = "SELECT npp, nama_lengkap FROM master_personil WHERE npp = $1 AND kode_status_aktif = 1 LIMIT 1;"
             row = await conn.fetchrow(query, npp_clean)
             
             if not row:
@@ -34,7 +39,7 @@ async def get_current_user_npp(
                     detail=f"NPP Pegawai {npp_clean} tidak terdaftar atau sudah tidak aktif di PT Pindad, bolo!"
                 )
                 
-            print(f"👤 [AUTH SUCCESS] Akses tervalidasi: {row['nama']} (NPP: {row['npp']})")
+            print(f"👤 [AUTH SUCCESS] Akses tervalidasi: {row['nama_lengkap']} (NPP: {row['npp']})")
             return row['npp']
 
         except HTTPException as he:

@@ -78,7 +78,8 @@ async def verify_session(token: str = Query(None)):
 @router.post("/login", response_model=LoginResponse)
 async def login(request_body: LoginRequest, request: Request):
     """
-    Endpoint Login: Autentikasi via HRIS Remote dan sinkronisasi otomatis ke RAGDB Lokal.
+    Endpoint Login Optimal: Mengutamakan penarikan Role dari RAGDB Lokal, 
+    Validasi kredensial ke HRIS, dan Auto-Registrasi User Baru ke Lokal.
     """
     npp = request_body.username.strip()
     password_input = request_body.password
@@ -89,26 +90,43 @@ async def login(request_body: LoginRequest, request: Request):
         print("❌ [LOGIN] Gagal: Input NPP atau password kosong.")
         return LoginResponse(status="error", message="NPP dan Password wajib diisi")
 
-    # Hitung MD5 hash untuk dicocokkan ke database HRIS lo
+    # Hitung MD5 hash untuk dicocokkan ke database HRIS remote lo
     password_md5 = hashlib.md5(password_input.encode()).hexdigest()
-    user_hris = None
-    current_role = "USER"  # Default kasta dasar pegawai
+    
+    user_fullname = None
+    user_divisi = None
+    current_role = "USER"  # Default role bawaan orok untuk user baru
 
     try:
-        # 1. LOGIC BYPASS AKUN SPESIAL (TRAINER / ADMIN)
+        # =========================================================================
+        # SKEPTIS 1: LOGIC BYPASS AKUN SPESIAL (TRAINER / ADMIN)
+        # =========================================================================
         if str(npp) == "99999" and str(password_input) == "123456":
             print("👑 [LOGIN] Bypass Akun Spesial Terdeteksi. Mengalokasikan kasta TRAINER (Admin).")
-            user_hris = {
-                "npp": "99999",
-                "nama": "Learn Data AI",
-                "divisi": "PINDAD",
-                "password": password_input,
-            }
+            user_fullname = "Learn Data AI"
+            user_divisi = "PINDAD"
             current_role = "TRAINER"
 
         else:
-            # 2. QUERY KE DB HRIS REMOTE (IP: 192.168.11.55 via hris_pool)
-            print(f"🌐 [LOGIN] Menghubungi database HRIS Remote di 192.168.11.55...")
+            # =========================================================================
+            # SKEPTIS 2: CEK STATUS USER & ROLE DI RAGDB LOKAL DULU
+            # =========================================================================
+            print(f"💾 [LOGIN] Mengecek kasta role NPP {npp} di RAGDB Lokal...")
+            async with get_db() as conn:
+                local_user = await conn.fetchrow(
+                    "SELECT fullname, divisi, role FROM users WHERE npp = $1", npp
+                )
+                
+                if local_user:
+                    current_role = local_user["role"]
+                    print(f"🎖️  [LOGIN] User terdaftar di RAGDB Lokal. Role dikunci: {current_role}")
+                else:
+                    print(f"✨ [LOGIN] User baru (NPP: {npp}) belum terdaftar di RAGDB Lokal.")
+
+            # =========================================================================
+            # SKEPTIS 3: VALIDASI PASSWORD & KREDENSIAL KE DB HRIS REMOTE
+            # =========================================================================
+            print(f"🌐 [LOGIN] Menghubungi database HRIS Remote di 192.168.11.55 untuk verifikasi...")
             async with get_hris_db() as conn:
                 user_hris = await conn.fetchrow(
                     """
@@ -125,7 +143,7 @@ async def login(request_body: LoginRequest, request: Request):
                 )
 
             if not user_hris:
-                print(f"❌ [LOGIN] Otentikasi Gagal: NPP {npp} tidak ditemukan di DB HRIS.")
+                print(f"❌ [LOGIN] Otentikasi Gagal: NPP {npp} tidak ditemukan di DB HRIS remote.")
                 raise HTTPException(status_code=404, detail="NPP tidak terdaftar di HRIS")
 
             print(f"🔑 [LOGIN] Memverifikasi enkripsi MD5 password untuk NPP: {npp}...")
@@ -133,19 +151,13 @@ async def login(request_body: LoginRequest, request: Request):
                 print(f"❌ [LOGIN] Otentikasi Gagal: Password salah untuk NPP {npp}.")
                 raise HTTPException(status_code=401, detail="Password salah")
 
-            # 3. AMBIL KASTA ROLE ASLI DARI RAGDB LOKAL
-            print(f"💾 [LOGIN] Akun valid. Menarik status kasta role dari RAGDB Lokal...")
-            async with get_db() as conn:
-                existing = await conn.fetchrow(
-                    "SELECT role FROM users WHERE npp = $1", user_hris["npp"]
-                )
-                if existing:
-                    current_role = existing["role"]
-                    print(f"🎖️  [LOGIN] Kasta user ditemukan di lokal: {current_role}")
-                else:
-                    print(f"✨ [LOGIN] User baru terdeteksi! Kasta otomatis diset ke: {current_role}")
+            # Ambil data nama & divisi hasil balikan dari HRIS resmi
+            user_fullname = user_hris["nama"]
+            user_divisi = user_hris["divisi"] or "Umum"
 
-        # 4. GENERATE SESSION & ATOMIC TRANSACTION SYNC
+        # =========================================================================
+        # SKEPTIS 4: ATOMIC TRANSACTION SYNC (SINKRONISASI KE RAGDB LOKAL)
+        # =========================================================================
         session_token = str(uuid.uuid4())
         user_ip = request.client.host if request.client else "127.0.0.1"
         u_agent = request.headers.get("user-agent", "FastAPI Client")
@@ -153,24 +165,25 @@ async def login(request_body: LoginRequest, request: Request):
         print("📦 [LOGIN] Membuka transaksi aman untuk sinkronisasi data session lokal...")
         async with get_db() as conn:
             async with conn.transaction():
-                # Jalur Sinkronisasi data Pegawai ke RAGDB lokal
+                # 🚀 JALUR AMAN SINKRONISASI USER:
+                # Jika user belum ada di lokal, dia otomatis masuk dengan current_role ('USER').
+                # Jika user sudah ada (User Lama), role lokalnya tetap dipertahankan (TIDAK AKAN tertimpa jadi 'USER' lagi)
                 await conn.execute(
                     """
                     INSERT INTO users (npp, fullname, divisi, role) 
                     VALUES ($1, $2, $3, $4)
                     ON CONFLICT (npp) DO UPDATE SET 
                         fullname = EXCLUDED.fullname, 
-                        divisi = EXCLUDED.divisi,
-                        role = EXCLUDED.role;
+                        divisi = EXCLUDED.divisi;
                     """,
-                    user_hris["npp"],
-                    user_hris["nama"],
-                    user_hris["divisi"],
+                    npp,
+                    user_fullname,
+                    user_divisi,
                     current_role,
                 )
-                print("📝 [LOGIN] Sinkronisasi tabel 'users' berhasil dikunci.")
+                print("📝 [LOGIN] Sinkronisasi tabel 'users' lokal dikunci aman.")
 
-                # Insert atau update tabel session aktif
+                # Insert atau refresh token session aktif di tabel session_login sesuai ERD lo bolo
                 await conn.execute(
                     """
                     INSERT INTO session_login (npp, session_token, ip_address, is_login, last_activity)
@@ -180,30 +193,30 @@ async def login(request_body: LoginRequest, request: Request):
                         is_login = TRUE, 
                         last_activity = CURRENT_TIMESTAMP;
                     """,
-                    user_hris["npp"],
+                    npp,
                     session_token,
                     user_ip,
                 )
                 print("🔑 [LOGIN] State tabel 'session_login' berhasil direfresh.")
 
-                # Tulis jejak rekam audit ke history log
+                # Tulis rekam audit ke history_login
                 await conn.execute(
                     "INSERT INTO history_login (npp, action, ip_address, user_agent) VALUES ($1, 'LOGIN', $2, $3)",
-                    user_hris["npp"],
+                    npp,
                     user_ip,
                     u_agent,
                 )
-                print(f"🪵  [AUDIT] Log 'LOGIN' sukses ditulis untuk IP: {user_ip}")
+                print(f"🪵  [AUDIT] Log 'LOGIN' sukses ditulis untuk NPP: {npp}")
 
-        print(f"🟩 [SUCCESS] Login tuntas! {user_hris['nama']} masuk ke sistem CAKRA AI.")
+        print(f"🟩 [SUCCESS] Login tuntas! {user_fullname} [{current_role}] masuk ke sistem CAKRA AI.")
         return LoginResponse(
             status="success",
             data={
                 "token": session_token,
-                "npp": user_hris["npp"],
-                "fullname": user_hris["nama"],
-                "divisi": user_hris["divisi"],
-                "role": current_role,
+                "npp": npp,
+                "fullname": user_fullname,
+                "divisi": user_divisi,
+                "role": current_role,  # 🔥 Role lokal lo aman dikirim ke Frontend!
             },
         )
 
@@ -212,7 +225,6 @@ async def login(request_body: LoginRequest, request: Request):
     except Exception as e:
         logger.error(f"❌ Login Critical Error: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
-
 
 @router.post("/logout")
 async def logout(request: Request, payload: dict = Body(...)):

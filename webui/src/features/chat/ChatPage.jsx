@@ -4,29 +4,27 @@ import cakraLogo from '../../assets/cakra.png';
 import { styles, lightColors, darkColors } from './chatPage.styles';
 import ChatArea from './components/ChatArea';
 import GuestWelcome from '../../components/ui/GuestWelcome';
-import Sidebar from './components/Sidebar'; // import Sidebar
-import { useNavigate } from 'react-router-dom';
-// 🔥 TIMBAL BALIK: Ambil session otentikasi global dari store terminal login
+import Sidebar from './components/Sidebar';
+import { useNavigate, useParams } from 'react-router-dom';
 import { useChatAuthStore } from '../../stores/authStore';
 
 export default function ChatPage({ isGuest, isLoggedIn: propsIsLoggedIn, userData: propsUserData, getGreeting }) {
   const [input, setInput] = useState('');
+  const { sessionId } = useParams();
+  const navigate = useNavigate();
 
-  // 🔥 AMBIL DATA DARI STORE JIKA PROPS DARI APP NYA KOSONG
   const authUser = useChatAuthStore((state) => state.user);
   const isAuthenticated = useChatAuthStore((state) => state.isAuthenticated);
   const logout = useChatAuthStore((state) => state.logout);
 
-  // Konsolidasikan data user secara dinamis
   const currentIsLoggedIn = propsIsLoggedIn !== undefined ? propsIsLoggedIn : isAuthenticated;
   const currentUserData = propsUserData || {
     name: authUser?.name || 'Pegawai Pindad',
-    npp: authUser?.npp || 'NPP ------'
+    npp: authUser?.npp || 'NPP ------',
+    divisi: authUser?.divisi || 'Pegawai Resmi',
+    role: authUser?.role || 'user' // Injeksi kasta kognitif dari authStore
   };
 
-  // =========================================================================
-  // 🎨 THEME MANAGEMENT: System-Aware + Persistent
-  // =========================================================================
   const [darkMode, setDarkMode] = useState(() => {
     const savedTheme = localStorage.getItem('cakra-theme');
     if (savedTheme !== null) return savedTheme === 'dark';
@@ -34,21 +32,55 @@ export default function ChatPage({ isGuest, isLoggedIn: propsIsLoggedIn, userDat
     return false;
   });
 
-  const [sidebarOpen, setSidebarOpen] = useState(true);   // atau false, terserah
+  const [sidebarOpen, setSidebarOpen] = useState(true);
   const [showDocumentList, setShowDocumentList] = useState(false);
-  const navigate = useNavigate();
 
-  // Additional states for Sidebar integration
   const [chatHistory, setChatHistory] = useState([]);
-  const [currentSessionId, setCurrentSessionId] = useState(null);
+  const lastLoadedSessionRef = useRef(null);
 
-  const loadChatSession = (sessionId) => {
-    setCurrentSessionId(sessionId);
-    navigate(`/chat/${sessionId}`);
+  const {
+    messages,
+    isStreaming,
+    isLoading,
+    sendMessage,
+    clearChat: storeClearChat,
+    loadChatSession: storeLoadChatSession
+  } = useChatStore();
+
+  // URL (sessionId) = single source of truth; muat pesan saat route berubah
+  useEffect(() => {
+    if (!sessionId || sessionId === 'new') {
+      lastLoadedSessionRef.current = null;
+      return;
+    }
+    if (isStreaming) return;
+    if (lastLoadedSessionRef.current === sessionId) return;
+
+    lastLoadedSessionRef.current = sessionId;
+    storeLoadChatSession(sessionId);
+  }, [sessionId, isStreaming, storeLoadChatSession]);
+
+  const loadChatSession = (id) => {
+    if (!id || id === 'new' || id === sessionId) return;
+    lastLoadedSessionRef.current = null;
+    navigate(`/chat/${id}`);
   };
 
+  const handleClearChat = () => {
+    storeClearChat();
+    lastLoadedSessionRef.current = null;
+    navigate('/chat/new');
+  };
+
+  const activeSessionId = sessionId && sessionId !== 'new' ? sessionId : null;
+
+  useEffect(() => {
+    if (!isGuest && currentIsLoggedIn && sessionId && sessionId !== 'new') {
+      localStorage.setItem('cakra_last_session', sessionId);
+    }
+  }, [sessionId, isGuest, currentIsLoggedIn]);
+
   const triggerLogout = () => {
-    // 🚀 PANGGIL UTUH LOGOUT DARI CYBERPUNK STORE LO, BOLO!
     logout();
     window.location.href = '/login';
   };
@@ -67,12 +99,19 @@ export default function ChatPage({ isGuest, isLoggedIn: propsIsLoggedIn, userDat
     localStorage.setItem('cakra-theme', darkMode ? 'dark' : 'light');
   }, [darkMode]);
 
-  const { messages, isStreaming, sendMessage, clearChat } = useChatStore();
+
+  useEffect(() => {
+    if (darkMode) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+  }, [darkMode]);
+
   const bottomRef = useRef(null);
   const textareaRef = useRef(null);
   const messagesContainerRef = useRef(null);
 
-  const toggleTheme = () => setDarkMode(prev => !prev);
   const theme = darkMode ? darkColors : lightColors;
 
   const lastAssistantIndex = [...messages].reverse().findIndex(m => m.role === 'assistant');
@@ -80,6 +119,7 @@ export default function ChatPage({ isGuest, isLoggedIn: propsIsLoggedIn, userDat
   const isStreamingText = isStreaming && lastAssistantIndex === 0 && messages[messages.length - 1]?.content !== '';
 
   const isEmptyChat = messages.length === 0;
+  const showWelcome = isEmptyChat && !isLoading && (isGuest || !currentIsLoggedIn);
 
   useEffect(() => {
     if (textareaRef.current) {
@@ -91,7 +131,17 @@ export default function ChatPage({ isGuest, isLoggedIn: propsIsLoggedIn, userDat
   const handleSubmit = (e) => {
     if (e) e.preventDefault();
     if (!input.trim() || isStreaming) return;
-    sendMessage(input);
+
+    sendMessage(
+      input,
+      isGuest ? null : currentUserData?.npp,
+      isGuest ? null : (newSessionObj) => {
+        setChatHistory(prev => [newSessionObj, ...prev]);
+        lastLoadedSessionRef.current = newSessionObj.session_uuid;
+        navigate(`/chat/${newSessionObj.session_uuid}`, { replace: true });
+      }
+    );
+
     setInput('');
   };
 
@@ -110,7 +160,6 @@ export default function ChatPage({ isGuest, isLoggedIn: propsIsLoggedIn, userDat
     return 'Selamat Malam';
   };
 
-  // 🔥 Komponen input form (digunakan di dua tempat: tengah & bawah)
   const renderInputForm = (isCentered = false) => (
     <div style={{
       ...styles.inputArea,
@@ -166,8 +215,6 @@ export default function ChatPage({ isGuest, isLoggedIn: propsIsLoggedIn, userDat
     </div>
   );
 
-  // 🔥 FIX SYNC: Hitung margin kiri main berdasarkan status sidebar
-  // w-72 = 18rem, w-16 = 4rem (sesuai class Tailwind di Sidebar.jsx)
   const hasSidebar = !isGuest && currentIsLoggedIn;
   const mainMarginLeft = hasSidebar ? (sidebarOpen ? '18rem' : '4rem') : '0';
 
@@ -196,52 +243,27 @@ export default function ChatPage({ isGuest, isLoggedIn: propsIsLoggedIn, userDat
         textarea::-webkit-scrollbar { width: 6px; }
         textarea::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 3px; }
         * { box-sizing: border-box; }
-        @keyframes dotPulse {
-          0%, 20% { opacity: 0; transform: translateY(0); }
-          50% { opacity: 1; transform: translateY(-2px); }
-          100% { opacity: 0; transform: translateY(0); }
-        }
-        @keyframes fadeText {
-          0%, 100% { opacity: 0.4; }
-          50% { opacity: 1; }
-        }
-        .custom-scroll-gemini::-webkit-scrollbar {
-          width: 8px;
-          background-color: transparent;
-        }
-        .custom-scroll-gemini::-webkit-scrollbar-track {
-          background-color: transparent;
-        }
+        .custom-scroll-gemini::-webkit-scrollbar { width: 8px; background-color: transparent; }
         .custom-scroll-gemini::-webkit-scrollbar-thumb {
           background-color: ${darkMode ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.15)'};
           border-radius: 20px;
-          border: 2px solid transparent;
-          background-clip: padding-box;
-        }
-        .custom-scroll-gemini::-webkit-scrollbar-thumb:hover {
-          background-color: ${darkMode ? 'rgba(255, 255, 255, 0.3)' : 'rgba(0, 0, 0, 0.3)'};
-        }
-        .custom-scroll-gemini::-webkit-scrollbar-button {
-          display: none !important;
-          width: 0;
-          height: 0;
         }
       `}</style>
 
-      {/* SIDEBAR — 🔥 HANYA MUNCUL JIKA USER BUKAN GUEST DAN STATUS LOGIN VALID */}
       {!isGuest && currentIsLoggedIn && (
         <Sidebar
           isOpen={sidebarOpen}
           setIsOpen={setSidebarOpen}
-          darkMode={darkMode}
-          theme={theme}
-          clearChat={clearChat}
+          darkMode={darkMode}      // 🔥 Kirim state boolean tema
+          setDarkMode={setDarkMode}  // 🔥 Kirim setter fungsi tema
+          theme={theme}            // 🔥 Kirim objek warna dinamis (lightColors/darkColors)
+          clearChat={handleClearChat}
           showDocumentList={showDocumentList}
           setShowDocumentList={setShowDocumentList}
-          userData={currentUserData} 
+          userData={currentUserData}
           triggerLogout={triggerLogout}
           loadChatSession={loadChatSession}
-          currentSessionId={currentSessionId}
+          currentSessionId={activeSessionId}
           chatHistory={chatHistory}
           setChatHistory={setChatHistory}
           cakraLogo={cakraLogo}
@@ -249,16 +271,14 @@ export default function ChatPage({ isGuest, isLoggedIn: propsIsLoggedIn, userDat
         />
       )}
 
-      {/* 🔥 FIX SYNC: Tambahin marginLeft dinamis + transition 0.3s biar barengan sama sidebar */}
-      <main style={{ 
-        ...styles.main, 
+      <main style={{
+        ...styles.main,
         background: theme.mainBg,
         marginLeft: mainMarginLeft,
-        transition: 'margin-left 0.3s ease-in-out' 
+        transition: 'margin-left 0.3s ease-in-out'
       }}>
         <header style={styles.header}>
           <div style={styles.modelSelector}>
-            {/* 🔥 FIX: Sembunyikan logo kalau user udah login (sidebar muncul) */}
             {!hasSidebar && (
               <img
                 src={cakraLogo}
@@ -267,17 +287,14 @@ export default function ChatPage({ isGuest, isLoggedIn: propsIsLoggedIn, userDat
               />
             )}
           </div>
+          {/* 🔥 SEKTOR TOGGLE TEMA LAMA DI HEADER SUDAH DIHAPUS TOTAL BIAR AREA ATAS CHAT BERSIH */}
           <div style={styles.headerActions}>
-            <button onClick={toggleTheme} style={{ ...styles.iconBtn, color: theme.iconColor }} title="Toggle tema">
-              {darkMode ? '☀️' : '🌙'}
-            </button>
             {isGuest && (
               <button onClick={() => navigate('/login')} style={{ ...styles.loginBtn, color: theme.textColor, borderColor: theme.borderColor }}>Masuk</button>
             )}
           </div>
         </header>
 
-        {/* 🔥 CONTENT AREA - FIX LAYOUT */}
         <div style={{
           flex: 1,
           position: 'relative',
@@ -286,13 +303,12 @@ export default function ChatPage({ isGuest, isLoggedIn: propsIsLoggedIn, userDat
           minHeight: 0,
           overflow: 'hidden'
         }}>
-          {/* ChatArea - NORMAL FLOW (bukan absolute) */}
           <div style={{
             flex: 1,
             minHeight: 0,
-            opacity: isEmptyChat ? 0 : 1,
+            opacity: showWelcome ? 0 : 1,
             transition: 'opacity 0.2s ease',
-            pointerEvents: isEmptyChat ? 'none' : 'auto',
+            pointerEvents: showWelcome ? 'none' : 'auto',
             display: 'flex',
             flexDirection: 'column'
           }}>
@@ -310,8 +326,7 @@ export default function ChatPage({ isGuest, isLoggedIn: propsIsLoggedIn, userDat
             />
           </div>
 
-          {/* GuestWelcome - ABSOLUTE OVERLAY */}
-          {isEmptyChat && (
+          {showWelcome && (
             <div style={{
               position: 'absolute',
               inset: 0,
@@ -328,7 +343,7 @@ export default function ChatPage({ isGuest, isLoggedIn: propsIsLoggedIn, userDat
                 <GuestWelcome
                   isLoggedIn={currentIsLoggedIn}
                   userData={{
-                    fullname: authUser?.fullname || authUser?.name || "Pegawai", 
+                    fullname: authUser?.fullname || authUser?.name || "Pegawai",
                     npp: authUser?.npp || "NPP -----"
                   }}
                   getGreeting={getGreeting || defaultGetGreeting}
@@ -348,8 +363,7 @@ export default function ChatPage({ isGuest, isLoggedIn: propsIsLoggedIn, userDat
           )}
         </div>
 
-        {/* Input bawah hanya saat ada chat */}
-        {!isEmptyChat && renderInputForm(false)}
+        {!showWelcome && renderInputForm(false)}
       </main>
     </div>
   );

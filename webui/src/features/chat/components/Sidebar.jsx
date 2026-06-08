@@ -2,20 +2,23 @@ import React, { useState, useRef, useEffect } from "react";
 import { useChatStore } from "@/stores/chatStore";
 
 const Sidebar = ({
-    clearChat,
-    showDocumentList,
-    setShowDocumentList,
-    isOpen,
-    setIsOpen,
-    userData,
-    loadChatSession,
-    currentSessionId,
-    chatHistory,
-    setChatHistory,
-    triggerLogout,
-    cakraLogo,
-    navigate,
-  }) => {
+  clearChat,
+  showDocumentList,
+  setShowDocumentList,
+  isOpen,
+  setIsOpen,
+  userData,
+  loadChatSession,
+  currentSessionId,
+  chatHistory,
+  setChatHistory,
+  triggerLogout,
+  cakraLogo,
+  navigate,
+  darkMode,       // Props tema murni dari ChatPage
+  setDarkMode,     // Setter tema murni dari ChatPage
+  theme
+}) => {
   const [hoveredChatId, setHoveredChatId] = useState(null);
   const [activeMenuId, setActiveMenuId] = useState(null);
   const [editingSessionId, setEditingSessionId] = useState(null);
@@ -48,10 +51,10 @@ const Sidebar = ({
       // Cari data chat saat ini untuk tahu dia lagi di-pin atau kagak
       const currentChat = chatHistory.find(c => c.session_uuid === sessionUuid);
       const isPinnedCurrentValue = currentChat ? currentChat.is_pinned : false;
-  
-      // 🔥 SUNTIK KEDUA PARAMETER-NYA KE ACTIONS STORE LU BOLO
+
+      // SUNTIK KEDUA PARAMETER-NYA KE ACTIONS STORE LU BOLO
       const result = await chatStore.pinChat(sessionUuid, isPinnedCurrentValue);
-  
+
       if (result.status === "success") {
         setChatHistory((prev) => {
           const newHistory = prev.map((chat) =>
@@ -71,7 +74,7 @@ const Sidebar = ({
   const handleRename = async (sessionUuid) => {
     if (!tempTitle.trim()) return;
     try {
-      // 🚀 SINKRON: Panggil action dari chatStore bawaan lo
+      // SINKRON: Panggil action dari chatStore bawaan lo
       const result = await chatStore.renameChat(sessionUuid, tempTitle);
       if (result.status === "success") {
         setChatHistory((prev) =>
@@ -106,14 +109,19 @@ const Sidebar = ({
 
       await new Promise((resolve) => setTimeout(resolve, 400));
 
-      // 🚀 SINKRON: Panggil action dari chatStore bawaan lo
-      const result = await chatStore.deleteChat(sessionToDelete);
+      // SINKRON PERBAIKAN: Oper session_uuid beserta NPP user aktif lo ke store global
+      const result = await chatStore.deleteChat(sessionToDelete, userData?.npp);
 
       if (result.status === "success") {
         setChatHistory((prev) =>
           prev.filter((c) => c.session_uuid !== sessionToDelete)
         );
-        if (currentSessionId === sessionToDelete) clearChat();
+
+        // INDRA PENGINGAT RUTE: Jika chat yang dihapus adalah chat yang lagi dibuka
+        if (currentSessionId === sessionToDelete) {
+          clearChat();             // Bersihkan state messages & sessionUuid di store jadi null instant
+          navigate('/chat/new');   // Tendang rute URL browser langsung ke halaman baru, bolo!
+        }
       }
     } catch (err) {
       console.error("Gagal menghapus:", err);
@@ -123,10 +131,32 @@ const Sidebar = ({
     }
   };
 
+  // =========================================================================
+  // SEKTOR AMAN SIDEBAR: Fetch murni sekali pakai, anti-infinite loop!
+  // =========================================================================
+  useEffect(() => {
+    const initHistory = async () => {
+      if (userData?.npp && userData.npp !== 'NPP ------') {
+        try {
+          console.log("🔍 [SIDEBAR] Initializing history data untuk NPP:", userData.npp);
+          const result = await chatStore.fetchChatHistory(userData.npp);
+          if (result.status === "success") {
+            setChatHistory(result.data);
+          }
+        } catch (err) {
+          console.error("Gagal memuat riwayat awal:", err);
+        }
+      }
+    };
+    initHistory();
+    // PENTING: Kosongkan dependency array tambahan agar murni jalan SEKALI SAJA pas component mounted!
+  }, [userData?.npp]);
+
   // Fetch history chat pake NPP, panggil langsung dari actions store lo bolo
   useEffect(() => {
     const fetchHistory = async () => {
-      if (userData?.npp) {
+      // Cek dulu apakah history sudah ada untuk mencegah fetch berulang
+      if (userData?.npp && chatHistory.length === 0) {
         try {
           const result = await chatStore.fetchChatHistory(userData.npp);
           if (result.status === "success") {
@@ -137,8 +167,10 @@ const Sidebar = ({
         }
       }
     };
+
     fetchHistory();
-  }, [userData]);
+    // Gunakan userData?.npp agar cuma jalan pas NPP berubah saja
+  }, [userData?.npp]);
 
   const [isHovered, setIsHovered] = useState(false);
   const [showLogoutPopup, setShowLogoutPopup] = useState(false);
@@ -156,27 +188,38 @@ const Sidebar = ({
 
   return (
     <div
-      className={`fixed left-0 top-0 h-screen flex flex-col transition-all duration-300 z-40 
-      ${isOpen ? "w-72" : "w-16"} 
-      bg-[#F7F8FC] dark:bg-[#1A1A1C] border-r border-[#E0E0E0] dark:border-[#2E2E33] text-black dark:text-white`}
+      // 🔥 Hapus class border statis bawaan Tailwind yang kaku bolo
+      className={`fixed left-0 top-0 h-screen flex flex-col transition-all duration-300 z-40 ${isOpen ? "w-72" : "w-16"
+        }`}
+      style={{
+        // 🔥 MODE DARK: Gak hitam pekat bray, tapi abu silver arang (#1E1E22) biar beda dari ChatPage lo!
+        background: darkMode ? '#1E1E22' : (theme?.sidebarBg || '#F7F8FC'),
+        color: theme?.textColor || (darkMode ? '#e2e8f0' : '#1f2937'),
+
+        // 🔥 DYNAMIC BORDER: Pas mode dark TANPA BORDER, pas mode light SILVER INDAH!
+        borderRight: darkMode ? 'none' : '1px solid #E5E7EB'
+      }}
     >
       <div
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
-        className="p-3 p-4 border-black-700 relative flex flex-col justify-center dark:border-gray-700"
+        className="p-3 p-4 relative flex flex-col justify-center"
+        style={{
+          // 🔥 Pas mode dark tanpa border bawah, pas light mode dapet silver tipis kalem
+          borderBottom: darkMode ? 'none' : '1px solid #E5E7EB'
+        }}
       >
         <div className="flex items-center">
           <img
             src={cakraLogo}
             alt="CAKRA AI Logo"
-            className={`rounded-full object-cover transition-all duration-300 ${
-              isOpen ? "w-10 h-10" : "w-7 h-7"
-            } ${!isOpen && isHovered ? "opacity-0" : "opacity-100"}`}
+            className={`rounded-full object-cover transition-all duration-300 ${isOpen ? "w-10 h-10" : "w-7 h-7"
+              } ${!isOpen && isHovered ? "opacity-0" : "opacity-100"}`}
           />
           <h1
-            className={`font-bold text-lg text-black whitespace-nowrap transition-all duration-300 ml-2 dark:text-white ${
-              !isOpen ? "opacity-0 pointer-events-none w-0" : "opacity-100"
-            }`}
+            className={`font-bold text-lg whitespace-nowrap transition-all duration-300 ml-2 ${!isOpen ? "opacity-0 pointer-events-none w-0" : "opacity-100"
+              }`}
+            style={{ color: theme?.textColor }}
           >
             CAKRA AI
           </h1>
@@ -184,20 +227,21 @@ const Sidebar = ({
 
         <button
           onClick={() => setIsOpen(!isOpen)}
-          className={`absolute transition-all duration-300 p-1 hover:bg-black-700 rounded text-black-400 hover:text-black dark:text-gray-400 dark:hover:text-white ${
-            isOpen
-              ? "top-5 right-3 opacity-100"
-              : `top-3 left-1/2 -translate-x-1/2 ${
-                  isHovered
-                    ? "opacity-100 scale-110"
-                    : "opacity-0 pointer-events-none"
-                }`
-          }`}
+          className="absolute transition-all duration-300 p-1 hover:bg-gray-200 dark:hover:bg-gray-800 rounded"
+          style={{
+            color: theme?.iconColor,
+            top: isOpen ? "20px" : "12px",
+            right: isOpen ? "12px" : "auto",
+            left: isOpen ? "auto" : "50%",
+            transform: isOpen ? "none" : "translateX(-50%)",
+            opacity: isOpen ? 1 : (isHovered ? 1 : 0),
+            pointerEvents: isOpen ? "auto" : (isHovered ? "auto" : "none")
+          }}
           title={isOpen ? "Ciutkan" : "Lebarkan"}
         >
           <svg
             xmlns="http://www.w3.org/2000/svg"
-            className="h-5 w-5 text-black dark:text-white"
+            className="h-5 w-5"
             viewBox="0 0 24 24"
             fill="none"
             stroke="currentColor"
@@ -216,14 +260,18 @@ const Sidebar = ({
       >
         <button
           onClick={clearChat}
-          className={`flex items-center rounded-full hover:bg-gray-200 transition-colors group overflow-hidden text-[14px] dark:hover:bg-gray-800 ${
-            isOpen ? "p-2 w-full space-x-3" : "p-2 justify-center"
-          }`}
+          className="flex items-center rounded-full hover:bg-gray-200 dark:hover:bg-gray-800 transition-colors group overflow-hidden text-[14px]"
+          style={{
+            padding: isOpen ? "8px 12px" : "8px",
+            width: isOpen ? "100%" : "auto",
+            gap: isOpen ? "12px" : "0"
+          }}
           title="New Chat"
         >
           <svg
             xmlns="http://www.w3.org/2000/svg"
-            className="h-5 w-5 text-black-400 group-hover:text-blue-400 flex-shrink-0 dark:text-gray-400"
+            className="h-5 w-5 group-hover:text-blue-500 flex-shrink-0"
+            style={{ color: theme?.iconColor }}
             fill="none"
             viewBox="0 0 24 24"
             stroke="currentColor"
@@ -236,9 +284,9 @@ const Sidebar = ({
             />
           </svg>
           <span
-            className={`font-medium whitespace-nowrap transition-opacity duration-300 dark:text-white ${
-              !isOpen ? "hidden" : "opacity-100"
-            }`}
+            className={`font-medium whitespace-nowrap transition-opacity duration-300 ${!isOpen ? "hidden" : "opacity-100"
+              }`}
+            style={{ color: theme?.textColor }}
           >
             New Chat
           </span>
@@ -246,18 +294,21 @@ const Sidebar = ({
 
         <button
           onClick={() => setShowDocumentList(!showDocumentList)}
-          className={`flex items-center rounded-full hover:bg-gray-200 transition-colors group overflow-hidden text-[14px] dark:hover:bg-gray-800 ${
-            isOpen ? "p-2 w-full space-x-3" : "p-2 justify-center"
-          }`}
+          className="flex items-center rounded-full hover:bg-gray-200 dark:hover:bg-gray-800 transition-colors group overflow-hidden text-[14px]"
+          style={{
+            padding: isOpen ? "8px 12px" : "8px",
+            width: isOpen ? "100%" : "auto",
+            gap: isOpen ? "12px" : "0"
+          }}
           title="Documents"
         >
           <span className="h-5 w-5 flex items-center justify-center flex-shrink-0">
             📄
           </span>
           <span
-            className={`font-medium text-black-200 whitespace-nowrap transition-opacity duration-300 dark:text-gray-200 ${
-              !isOpen ? "hidden" : "opacity-100"
-            }`}
+            className={`font-medium whitespace-nowrap transition-opacity duration-300 ${!isOpen ? "hidden" : "opacity-100"
+              }`}
+            style={{ color: theme?.textColor }}
           >
             Documents
           </span>
@@ -265,15 +316,17 @@ const Sidebar = ({
       </div>
 
       <div
-        className={`flex-1 overflow-y-auto px-2 py-2 space-y-0.5 transition-opacity duration-300 no-scrollbar ${
-          !isOpen ? "opacity-0 pointer-events-none hidden" : "opacity-100"
-        }`}
+        className={`flex-1 overflow-y-auto px-2 py-2 space-y-0.5 transition-opacity duration-300 no-scrollbar ${!isOpen ? "opacity-0 pointer-events-none hidden" : "opacity-100"
+          }`}
         style={{
           msOverflowStyle: "none",
           scrollbarWidth: "none",
         }}
       >
-        <div className="px-3 py-1 text-[11px] font-bold text-gray-500 uppercase tracking-widest mb-1 dark:text-gray-400">
+        <div
+          className="px-3 py-1 text-[11px] font-bold uppercase tracking-widest mb-1"
+          style={{ color: theme?.secondaryText || '#6b7280' }}
+        >
           Semua Chat
         </div>
 
@@ -286,16 +339,20 @@ const Sidebar = ({
                 onMouseEnter={() => setHoveredChatId(chat.session_uuid)}
                 onMouseLeave={() => setHoveredChatId(null)}
                 onClick={() => {
-                  navigate(`/chat/${chat.session_uuid}`);
+                  loadChatSession(chat.session_uuid);
                   setActiveMenuId(null);
                 }}
-                className={`group relative flex items-center px-3 py-2 text-sm rounded-full cursor-pointer transition-all ${
-                  currentSessionId === chat.session_uuid
-                    ? "bg-blue-200 text-blue-600 font-bold dark:bg-blue-900/40 dark:text-blue-400"
-                    : "text-gray-600 hover:bg-gray-200 font-bold dark:text-gray-300 dark:hover:bg-gray-800"
-                } ${
-                  isDeletingId === chat.session_uuid ? "animate-delete" : ""
-                }`}
+                // 🔥 FIX TEXT BIRU ACTIVE: Perbaikan total warna text & background active yang kebalik bawaan orok lo!
+                className={`group relative flex items-center px-3 py-2 text-sm rounded-full cursor-pointer transition-all ${currentSessionId === chat.session_uuid
+                    ? "bg-blue-100 text-blue-600 font-bold dark:bg-blue-950/50 dark:text-blue-400"
+                    : "hover:bg-gray-200 dark:hover:bg-gray-800 font-medium"
+                  } ${isDeletingId === chat.session_uuid ? "animate-delete" : ""
+                  }`}
+                style={{
+                  color: currentSessionId === chat.session_uuid
+                    ? (darkMode ? '#60a5fa' : '#2563eb') // 🔥 Biru menyala terang benderang menyesuaikan mode!
+                    : theme?.textColor
+                }}
                 title={chat.judul}
               >
                 <span className="mr-2 text-[12px] opacity-70 flex-shrink-0">
@@ -323,26 +380,27 @@ const Sidebar = ({
 
                 {(hoveredChatId === chat.session_uuid ||
                   activeMenuId === chat.session_uuid) && (
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setActiveMenuId(
-                        activeMenuId === chat.session_uuid
-                          ? null
-                          : chat.session_uuid
-                      );
-                    }}
-                    className="absolute right-1 p-1 hover:bg-gray-300 rounded transition-colors dark:hover:bg-gray-700"
-                  >
-                    <svg
-                      className="h-3 w-3 text-gray-500 dark:text-gray-400"
-                      fill="currentColor"
-                      viewBox="0 0 20 20"
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setActiveMenuId(
+                          activeMenuId === chat.session_uuid
+                            ? null
+                            : chat.session_uuid
+                        );
+                      }}
+                      className="absolute right-1 p-1 hover:bg-gray-300 rounded transition-colors dark:hover:bg-gray-700"
                     >
-                      <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
-                    </svg>
-                  </button>
-                )}
+                      <svg
+                        className="h-3 w-3"
+                        style={{ color: theme?.secondaryText }}
+                        fill="currentColor"
+                        viewBox="0 0 20 20"
+                      >
+                        <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
+                      </svg>
+                    </button>
+                  )}
 
                 {activeMenuId === chat.session_uuid && (
                   <div
@@ -387,27 +445,34 @@ const Sidebar = ({
       </div>
 
       <div
-        className={`border-t border-t-[#E0E0E0] dark:border-t-[#1A1A1C] bg-[#F7F8FC] dark:bg-[#1A1A1C] border-black-700 relative flex flex-col dark:border-gray-700 ${
+        className={`relative flex items-center p-3 ${
           !isOpen
             ? "p-1 items-center absolute left-0 right-0 justify-center"
-            : "justify-center items-center p-2 p-3"
+            : "justify-center items-center py-3 px-2"
         }`}
         style={{
           position: "absolute",
           bottom: 0,
           left: 0,
           right: 0,
+          height: "60px",
+          // 🔥 Pas dark mode background-nya menyatu sempurna tanpa sekat border hitam!
+          background: darkMode ? '#1E1E22' : (theme?.sidebarBg || '#F7F8FC'),
+          borderTop: darkMode ? 'none' : '1px solid #E5E7EB'
         }}
       >
         {showLogoutPopup && (
           <div
             ref={popupRef}
-            className={`absolute bottom-full left-2 mb-2 w-48 rounded-xl shadow-2xl py-2 z-50 transition-all bg-[#F7F8FC] dark:bg-[#232326]  ${
-              !isOpen && "left-full ml-2 bottom-2"
-            }`}
+            className="absolute bottom-full left-2 mb-2 w-52 rounded-xl shadow-2xl py-2 z-50 transition-all bg-white border border-gray-200 dark:bg-[#232326] dark:border-gray-800"
+            style={{
+              left: !isOpen ? "100%" : "8px",
+              marginLeft: !isOpen ? "8px" : "0px",
+              bottom: !isOpen ? "8px" : "100%"
+            }}
           >
-            <div className="px-4 py-2 ">
-              <p className="text-xs text-black-400 dark:text-gray-400">
+            <div className="px-4 py-2">
+              <p className="text-xs text-gray-400 dark:text-gray-400">
                 Akun Anda
               </p>
               <p className="text-xs font-semibold truncate dark:text-white">
@@ -415,12 +480,30 @@ const Sidebar = ({
               </p>
             </div>
 
+            <div className="px-4 py-2 border-t border-gray-100 dark:border-gray-800 space-y-1">
+              <p className="text-[10px] uppercase font-bold tracking-wider text-gray-400 mb-1">Pilihan Tema</p>
+              <div className="flex bg-gray-100 dark:bg-gray-800 p-0.5 rounded-lg text-[11px]">
+                <button
+                  onClick={() => setDarkMode(false)}
+                  className={`flex-1 py-1 text-center rounded-md font-medium transition-all ${!darkMode ? 'bg-white text-black shadow-sm' : 'text-gray-500 hover:text-black dark:text-gray-400'}`}
+                >
+                  ☀️ Light
+                </button>
+                <button
+                  onClick={() => setDarkMode(true)}
+                  className={`flex-1 py-1 text-center rounded-md font-medium transition-all ${darkMode ? 'bg-white dark:bg-gray-700 text-black dark:text-white shadow-sm' : 'text-gray-500 hover:text-black dark:text-gray-400'}`}
+                >
+                  🌙 Dark
+                </button>
+              </div>
+            </div>
+
             <button
               onClick={() => {
                 setShowLogoutPopup(false);
                 triggerLogout();
               }}
-              className="w-full flex items-center space-x-3 px-4 py-1 text-red-400 hover:bg-gray-100 transition-colors dark:hover:bg-gray-900 border-t border-t-[#E0E0E0] dark:border-t-[#1A1A1C]"
+              className="w-full flex items-center space-x-3 px-4 py-2 text-red-500 hover:bg-gray-100 transition-colors dark:hover:bg-gray-900 border-t border-gray-100 dark:border-gray-800"
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
@@ -442,10 +525,10 @@ const Sidebar = ({
         )}
 
         <div
-          className="flex items-center cursor-pointer w-full"
+          className="flex items-center cursor-pointer flex-1 min-w-0"
           onClick={() => setShowLogoutPopup(!showLogoutPopup)}
         >
-          <div className="w-8 h-8 rounded-full overflow-hidden flex-shrink-0 ml-2 border border-gray-700 bg-gray-800 flex items-center justify-center shadow-inner">
+          <div className="w-8 h-8 rounded-full overflow-hidden flex-shrink-0 border border-gray-700 bg-gray-800 flex items-center justify-center shadow-inner">
             {userData?.npp ? (
               <>
                 <img
@@ -470,14 +553,13 @@ const Sidebar = ({
             )}
           </div>
           <div
-            className={`flex flex-col min-w-0 transition-all duration-300 ${
-              !isOpen ? "opacity-0 w-0 overflow-hidden" : "opacity-100"
-            }`}
+            className={`flex flex-col min-w-0 transition-all duration-300 ${!isOpen ? "opacity-0 w-0 overflow-hidden" : "opacity-100"
+              }`}
           >
-            <span className="text-xs font-medium truncate w-40 ml-3 dark:text-white">
+            <span className="text-xs font-medium truncate w-32 ml-3" style={{ color: theme?.textColor }}>
               {profileName}
             </span>
-            <span className="text-[9px] text-black-500 text-left ml-3 dark:text-gray-400">
+            <span className="text-[9px] text-left ml-3" style={{ color: theme?.secondaryText || '#6b7280' }}>
               {profileDivisi}
             </span>
           </div>
@@ -485,22 +567,22 @@ const Sidebar = ({
 
         {isOpen && (
           <button
-            className="text-black-500 group-hover:text-black ml-auto absolute right-3 bottom-2 dark:text-gray-400 dark:hover:text-white"
+            // 🔥 FIX WARNA GERIGI: Ganti text-gray-400 statis bawaan ke theme.iconColor murni biar sinkron saat dark/light!
+            className="hover:text-blue-500 ml-auto absolute right-3 top-0 bottom-0 my-auto h-fit p-1 transition-colors"
+            style={{ color: theme?.iconColor || '#9ca3af' }}
             onClick={() => setShowLogoutPopup(!showLogoutPopup)}
+            title="Pengaturan & Akun"
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"
-              className="h-4 w-4"
+              className="h-5 w-5 animate-[spin_20s_linear_infinite]"
               fill="none"
               viewBox="0 0 24 24"
               stroke="currentColor"
+              strokeWidth="2"
             >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M5 12h.01M12 12h.01M19 12h.01M6 12a1 1 0 11-2 0 1 1 0 012 0zm7 0a1 1 0 11-2 0 1 1 0 012 0zm7 0a1 1 0 11-2 0 1 1 0 012 0z"
-              />
+              <path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
             </svg>
           </button>
         )}
