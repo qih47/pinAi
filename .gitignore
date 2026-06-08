@@ -47,6 +47,12 @@ target/
 
 # Backup folder
 aibackup/
+webui/.vite
+webui/.vite/deps
+webui/.vite/deps/package.json
+webui/.vite/deps/package-lock.json
+webui/.vite/deps/package-lock.json
+
 
 # IDE specific
 .vscode/
@@ -56,6 +62,7 @@ aibackup/
 
 # Logs
 *.log
+logs/*
 
 # OS generated files
 .DS_Store
