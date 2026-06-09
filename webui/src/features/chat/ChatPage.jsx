@@ -17,12 +17,116 @@ export default function ChatPage({ isGuest, isLoggedIn: propsIsLoggedIn, userDat
   const isAuthenticated = useChatAuthStore((state) => state.isAuthenticated);
   const logout = useChatAuthStore((state) => state.logout);
 
+  const activeIsolatedTitle = useChatStore((state) => state.activeIsolatedTitle);
+  const setContextIsolation = useChatStore((state) => state.setContextIsolation);
+
+  const [selectedFiles, setSelectedFiles] = useState([]);
+  const [isUploadingFile, setIsUploadingFile] = useState(false);
+  const fileInputRef = useRef(null);
+  const [isDragOver, setIsDragOver] = useState(false);
+
+  // STATE: Deteksi apakah textarea sudah multi-line untuk urusan layout form
+  const [isMultiLine, setIsMultiLine] = useState(false);
+
+  // REF: Capture tinggi baseline 1 baris saat mount pertama
+  const baselineHeightRef = useRef(0);
+
+  const stagedAttachments = useChatStore((state) => state.stagedAttachments);
+  const setStagedAttachments = useChatStore((state) => state.setStagedAttachments);
+
   const currentIsLoggedIn = propsIsLoggedIn !== undefined ? propsIsLoggedIn : isAuthenticated;
   const currentUserData = propsUserData || {
     name: authUser?.name || 'Pegawai Pindad',
     npp: authUser?.npp || 'NPP ------',
     divisi: authUser?.divisi || 'Pegawai Resmi',
-    role: authUser?.role || 'user' // Injeksi kasta kognitif dari authStore
+    role: authUser?.role || 'user'
+  };
+
+  const activeSessionId = sessionId && sessionId !== 'new' ? sessionId : null;
+
+  const removeFilePreview = (indexToRemove) => {
+    setSelectedFiles(prev => prev.filter((_, idx) => idx !== indexToRemove));
+  };
+
+  // 🔥 2. RENDER LOCAL SAJA (TIDAK LANGSUNG UPLOAD KE SERVER)
+  const handleFileChange = (e) => {
+    const files = Array.from(e.target.files);
+    if (files.length === 0) return;
+
+    const limit = isGuest || !currentIsLoggedIn ? 1 : 5;
+    const availableSlots = limit - selectedFiles.length;
+    const targets = files.slice(0, availableSlots);
+
+    if (targets.length === 0) {
+      alert(`Slot penuh! Maksimal ${limit} file.`);
+      return;
+    }
+
+    setSelectedFiles(prev => [...prev, ...targets]);
+  };
+
+  // 🔥 2. PASTE IMAGE: Masuk state local untuk preview, bukan ke API port 5000
+  const handlePaste = (e) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    const imageItems = Array.from(items).filter(item => item.type.startsWith('image/'));
+    if (imageItems.length === 0) return;
+    e.preventDefault();
+
+    const limit = isGuest || !currentIsLoggedIn ? 1 : 5;
+    const availableSlots = limit - selectedFiles.length;
+    const targets = imageItems.slice(0, availableSlots);
+
+    const newFiles = [];
+    for (const item of targets) {
+      const file = item.getAsFile();
+      if (file) {
+        const uniqueFile = new File([file], `pasted-image-${Date.now()}-${Math.random().toString(36).substr(2, 9)}.png`, {
+          type: file.type
+        });
+        newFiles.push(uniqueFile);
+      }
+    }
+    if (newFiles.length === 0) return;
+
+    setSelectedFiles(prev => [...prev, ...newFiles]);
+  };
+
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(true);
+  };
+
+  const handleDragLeave = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(false);
+  };
+
+  // 🔥 2. DRAG DROP: Simpan file fisik di web dulu, upload pas klik kirim
+  const handleDrop = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(false);
+
+    const files = Array.from(e.dataTransfer.files).filter(file =>
+      file.type.startsWith('image/') || file.type === 'application/pdf'
+    );
+    if (files.length === 0) {
+      alert("Hanya bisa upload gambar atau PDF");
+      return;
+    }
+
+    const limit = isGuest || !currentIsLoggedIn ? 1 : 5;
+    const availableSlots = limit - selectedFiles.length;
+    const targets = files.slice(0, availableSlots);
+    if (targets.length === 0) {
+      alert(`Slot penuh! Maksimal ${limit} file.`);
+      return;
+    }
+
+    setSelectedFiles(prev => [...prev, ...targets]);
   };
 
   const [darkMode, setDarkMode] = useState(() => {
@@ -34,7 +138,6 @@ export default function ChatPage({ isGuest, isLoggedIn: propsIsLoggedIn, userDat
 
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [showDocumentList, setShowDocumentList] = useState(false);
-
   const [chatHistory, setChatHistory] = useState([]);
   const lastLoadedSessionRef = useRef(null);
 
@@ -47,7 +150,6 @@ export default function ChatPage({ isGuest, isLoggedIn: propsIsLoggedIn, userDat
     loadChatSession: storeLoadChatSession
   } = useChatStore();
 
-  // URL (sessionId) = single source of truth; muat pesan saat route berubah
   useEffect(() => {
     if (!sessionId || sessionId === 'new') {
       lastLoadedSessionRef.current = null;
@@ -55,7 +157,6 @@ export default function ChatPage({ isGuest, isLoggedIn: propsIsLoggedIn, userDat
     }
     if (isStreaming) return;
     if (lastLoadedSessionRef.current === sessionId) return;
-
     lastLoadedSessionRef.current = sessionId;
     storeLoadChatSession(sessionId);
   }, [sessionId, isStreaming, storeLoadChatSession]);
@@ -71,8 +172,6 @@ export default function ChatPage({ isGuest, isLoggedIn: propsIsLoggedIn, userDat
     lastLoadedSessionRef.current = null;
     navigate('/chat/new');
   };
-
-  const activeSessionId = sessionId && sessionId !== 'new' ? sessionId : null;
 
   useEffect(() => {
     if (!isGuest && currentIsLoggedIn && sessionId && sessionId !== 'new') {
@@ -99,7 +198,6 @@ export default function ChatPage({ isGuest, isLoggedIn: propsIsLoggedIn, userDat
     localStorage.setItem('cakra-theme', darkMode ? 'dark' : 'light');
   }, [darkMode]);
 
-
   useEffect(() => {
     if (darkMode) {
       document.documentElement.classList.add('dark');
@@ -111,26 +209,71 @@ export default function ChatPage({ isGuest, isLoggedIn: propsIsLoggedIn, userDat
   const bottomRef = useRef(null);
   const textareaRef = useRef(null);
   const messagesContainerRef = useRef(null);
-
   const theme = darkMode ? darkColors : lightColors;
 
   const lastAssistantIndex = [...messages].reverse().findIndex(m => m.role === 'assistant');
   const isThinking = isStreaming && lastAssistantIndex === 0 && messages[messages.length - 1]?.content === '';
   const isStreamingText = isStreaming && lastAssistantIndex === 0 && messages[messages.length - 1]?.content !== '';
-
   const isEmptyChat = messages.length === 0;
-  const showWelcome = isEmptyChat && !isLoading && (isGuest || !currentIsLoggedIn);
+  const showWelcome = isEmptyChat && !isLoading;
 
+  // CAPTURE BASELINE HEIGHT SEKALI SAAT MOUNT
+  useEffect(() => {
+    if (textareaRef.current && baselineHeightRef.current === 0) {
+      textareaRef.current.style.height = 'auto';
+      baselineHeightRef.current = textareaRef.current.scrollHeight;
+    }
+  }, []);
+
+  // 🔥 3. DINAMIS AUTO HEIGHT FIX: Kalkulasi tinggi DOM asli secara linear tanpa remounting komponen
   useEffect(() => {
     if (textareaRef.current) {
-      textareaRef.current.style.height = 'auto';
-      textareaRef.current.style.height = Math.min(textareaRef.current.scrollHeight, 220) + 'px';
+      textareaRef.current.style.height = 'auto'; // Reset paksa ke titik nol
+      const currentScrollHeight = textareaRef.current.scrollHeight;
+      
+      // Berikan tinggi aktualDOM langsung ke element style textarea
+      textareaRef.current.style.height = `${currentScrollHeight}px`;
+
+      const baseline = baselineHeightRef.current;
+      if (baseline > 0) {
+        setIsMultiLine(currentScrollHeight > baseline + 3);
+      }
     }
   }, [input]);
 
-  const handleSubmit = (e) => {
+  // 🔥 2. PROSES UPLOAD DIJALANKAN DI SINI SAAT TOMBOL SEND DI-KLIK
+  const handleSubmit = async (e) => {
     if (e) e.preventDefault();
-    if (!input.trim() || isStreaming) return;
+    if ((!input.trim() && selectedFiles.length === 0) || isStreaming || isUploadingFile) return;
+
+    let finalStagedData = [];
+
+    if (selectedFiles.length > 0) {
+      setIsUploadingFile(true);
+      const formData = new FormData();
+      selectedFiles.forEach(file => formData.append("files", file));
+      if (activeSessionId) formData.append("session_uuid", activeSessionId);
+
+      try {
+        const response = await fetch(`http://192.168.11.80:5000/api/documents/upload`, {
+          method: "POST",
+          body: formData,
+        });
+        if (!response.ok) throw new Error("Gagal mengunggah berkas");
+        const result = await response.json();
+        if (result.status === "success") {
+          finalStagedData = result.data;
+          setStagedAttachments(result.data);
+        }
+      } catch (err) {
+        console.error(err);
+        alert("Gagal memproses pengiriman karena upload file error, bolo!");
+        setIsUploadingFile(false);
+        return; // Hentikan pipeline agar chat tidak terkirim tanpa file
+      } finally {
+        setIsUploadingFile(false);
+      }
+    }
 
     sendMessage(
       input,
@@ -143,6 +286,12 @@ export default function ChatPage({ isGuest, isLoggedIn: propsIsLoggedIn, userDat
     );
 
     setInput('');
+    setSelectedFiles([]);
+    setStagedAttachments([]);
+    setIsMultiLine(false);
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+    }
   };
 
   const handleKeyDown = (e) => {
@@ -154,11 +303,70 @@ export default function ChatPage({ isGuest, isLoggedIn: propsIsLoggedIn, userDat
 
   const defaultGetGreeting = () => {
     const hour = new Date().getHours();
-    if (hour < 11) return 'Selamat Pagi';
-    if (hour < 15) return 'Selamat Siang';
-    if (hour < 19) return 'Selamat Sore';
-    return 'Selamat Malam';
+    if (hour < 11) return 'SELAMAT PAGI';
+    if (hour < 15) return 'SELAMAT SIANG';
+    if (hour < 19) return 'SELAMAT SORE';
+    return 'SELAMAT MALAM';
   };
+
+  const PlusButton = () => (
+    <button
+      type="button"
+      onClick={() => fileInputRef.current?.click()}
+      disabled={isStreaming || isUploadingFile}
+      style={{
+        background: selectedFiles.length > 0
+          ? (darkMode ? 'rgba(99, 102, 241, 0.2)' : 'rgba(37, 99, 235, 0.1)')
+          : 'transparent',
+        border: 'none',
+        borderRadius: '50%',
+        width: '36px',
+        height: '36px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        flexShrink: 0,
+        color: selectedFiles.length > 0 ? (darkMode ? '#818cf8' : '#2563eb') : (darkMode ? '#9ca3af' : '#6b7280'),
+        cursor: isStreaming ? 'not-allowed' : 'pointer',
+        transition: 'all 0.2s ease'
+      }}
+      onMouseEnter={(e) => { if (!isStreaming) e.currentTarget.style.background = darkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)'; }}
+      onMouseLeave={(e) => { e.currentTarget.style.background = selectedFiles.length > 0 ? (darkMode ? 'rgba(99, 102, 241, 0.2)' : 'rgba(37, 99, 235, 0.1)') : 'transparent'; }}
+      title="Lampirkan Berkas (PDF / Gambar) atau Paste (Ctrl+V) atau Drag-Drop"
+    >
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+        <line x1="12" y1="5" x2="12" y2="19" />
+        <line x1="5" y1="12" x2="19" y2="12" />
+      </svg>
+    </button>
+  );
+
+  const SendButton = () => (
+    <button
+      type="submit"
+      disabled={isStreaming || isUploadingFile || (!input.trim() && selectedFiles.length === 0)}
+      style={{
+        ...styles.sendBtn,
+        background: theme.sendBtnBg,
+        color: theme.sendBtnText,
+        opacity: isStreaming || isUploadingFile || (!input.trim() && selectedFiles.length === 0) ? 0.35 : 1,
+        cursor: (isStreaming || isUploadingFile) ? 'not-allowed' : 'pointer',
+        border: 'none',
+        borderRadius: '50%',
+        width: '36px',
+        height: '36px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        flexShrink: 0
+      }}
+    >
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+        <line x1="12" y1="19" x2="12" y2="5" />
+        <polyline points="5 12 12 5 19 12" />
+      </svg>
+    </button>
+  );
 
   const renderInputForm = (isCentered = false) => (
     <div style={{
@@ -171,43 +379,235 @@ export default function ChatPage({ isGuest, isLoggedIn: propsIsLoggedIn, userDat
       marginTop: isCentered ? '24px' : undefined
     }}>
       <div style={styles.inputContainer}>
-        <form onSubmit={handleSubmit} style={{ ...styles.inputForm, background: theme.inputBg, borderColor: theme.inputBorder, boxShadow: theme.inputShadow }}>
+        {activeIsolatedTitle && (
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            background: darkMode ? 'rgba(99, 102, 241, 0.15)' : 'rgba(37, 99, 235, 0.08)',
+            border: `1px solid ${darkMode ? '#6366f1' : '#2563eb'}`,
+            borderRadius: '12px',
+            padding: '8px 16px',
+            marginBottom: '10px',
+            fontSize: '13px',
+            fontWeight: 500,
+            color: darkMode ? '#a5b4fc' : '#1e3a8a'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+              <span>🔒</span>
+              <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                Mode Fokus: Menanyai isi <strong>{activeIsolatedTitle}</strong>
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setContextIsolation(null, null)}
+              style={{ background: 'transparent', border: 'none', color: darkMode ? '#9ca3af' : '#4b5563', cursor: 'pointer', fontWeight: 'bold' }}
+            >
+              ✕
+            </button>
+          </div>
+        )}
+
+        {/* 🔥 FIX RENDER PREVIEW DI ATAS FORM: Diubah menjadi thumbnail rounded ala Gemini sejati */}
+        {selectedFiles.length > 0 && (
+          <div style={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: '10px',
+            marginBottom: '12px',
+            padding: '4px 6px',
+            width: '100%'
+          }}>
+            {selectedFiles.map((file, idx) => {
+              const isPDF = file.name.endsWith('.pdf');
+              return (
+                <div key={idx} style={{
+                  position: 'relative',
+                  width: '64px',
+                  height: '64px',
+                  borderRadius: '12px',
+                  overflow: 'hidden',
+                  background: darkMode ? '#2d2d30' : '#f3f4f6',
+                  border: `1px solid ${darkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)'}`,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}>
+                  {isPDF ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1px' }}>
+                      <span style={{ fontSize: '24px' }}>📄</span>
+                      <span style={{ 
+                        fontSize: '9px', 
+                        fontWeight: 700, 
+                        color: '#ef4444',
+                        maxWidth: '52px',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap'
+                      }}>PDF</span>
+                    </div>
+                  ) : (
+                    <img 
+                      src={URL.createObjectURL(file)} 
+                      alt="preview" 
+                      style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
+                    />
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => removeFilePreview(idx)}
+                    style={{
+                      position: 'absolute',
+                      top: '2px',
+                      right: '2px',
+                      background: 'rgba(0,0,0,0.6)',
+                      border: 'none',
+                      borderRadius: '50%',
+                      width: '16px',
+                      height: '16px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: '#ffffff',
+                      fontSize: '9px',
+                      cursor: 'pointer',
+                      fontWeight: 'bold',
+                      zIndex: 2
+                    }}
+                  >
+                    ✕
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* 🔥 SASIS UTAMA FORM TUNGGAL: Menggunakan textarea mutlak di luar conditional re-mount React */}
+        <form
+          onSubmit={handleSubmit}
+          onPaste={handlePaste}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+          style={{
+            ...styles.inputForm,
+            background: theme.inputBg,
+            borderColor: isDragOver ? (darkMode ? '#6366f1' : '#2563eb') : theme.inputBorder,
+            borderWidth: isDragOver ? '2px' : '1px',
+            borderStyle: isDragOver ? 'dashed' : 'solid',
+            boxShadow: theme.inputShadow,
+            display: 'flex',
+            flexDirection: isMultiLine ? 'column' : 'row',
+            alignItems: isMultiLine ? 'stretch' : 'center',
+            justifyContent: 'space-between',
+            paddingBottom: '8px',
+            paddingTop: '8px',
+            paddingLeft: '8px',
+            paddingRight: '12px',
+            minHeight: '56px',
+            height: 'auto',
+            transition: 'all 0.15s ease',
+            position: 'relative',
+            gap: '8px'
+          }}
+        >
+          <input
+            type="file"
+            ref={fileInputRef}
+            onChange={handleFileChange}
+            multiple={!(isGuest || !currentIsLoggedIn)}
+            accept=".pdf,image/*"
+            style={{ display: 'none' }}
+          />
+
+          {/* Sasis Textarea Tunggal Abadi: Mampu meninggi dinamis penuh dari minHeight ke maxHeight tanpa terpotong */}
           <textarea
-            ref={isCentered ? textareaRef : undefined}
+            ref={textareaRef}
             value={input}
             disabled={isStreaming}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder={isStreaming ? "CAKRA sedang berpikir..." : "Tanyakan apa saja..."}
+            placeholder={isStreaming ? "CAKRA sedang berpikir..." : (activeIsolatedTitle ? "Tanyakan perihal isi dokumen ini..." : "Tanyakan apa saja...")}
             rows={1}
-            style={{ ...styles.textarea, color: theme.textColor, background: 'transparent' }}
+            style={{
+              width: '100%',
+              color: theme.textColor,
+              background: 'transparent',
+              border: 'none',
+              outline: 'none',
+              resize: 'none',
+              paddingLeft: '8px',
+              paddingRight: '8px',
+              paddingTop: '8px',
+              paddingBottom: '8px',
+              fontSize: '15px',
+              lineHeight: '1.5',
+              fontFamily: 'inherit',
+              minHeight: '36px',
+              height: 'auto',
+              maxHeight: '450px', // 🔥 Kunci Max Height Tinggi Sesuai Keinginan Lo Di Sini Bolo!
+              overflowY: 'auto',
+              wordWrap: 'break-word',
+              overflowWrap: 'break-word',
+              whiteSpace: 'pre-wrap'
+            }}
           />
-          <div style={styles.inputActions}>
-            <button type="button" style={{ ...styles.iconBtn, color: theme.iconColor }} title="Lampiran">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" />
-              </svg>
-            </button>
-            <button
-              type="submit"
-              disabled={isStreaming || !input.trim()}
-              style={{
-                ...styles.sendBtn,
-                background: theme.sendBtnBg,
-                color: theme.sendBtnText,
-                opacity: isStreaming || !input.trim() ? 0.35 : 1,
-                cursor: isStreaming || !input.trim() ? 'not-allowed' : 'pointer'
-              }}
-            >
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <line x1="12" y1="19" x2="12" y2="5" />
-                <polyline points="5 12 12 5 19 12" />
-              </svg>
-            </button>
-          </div>
+
+          {/* Urusan Layout Tombol Bawah (Hanya Aktif saat multi-line terdeteksi) */}
+          {isMultiLine ? (
+            <div style={{
+              display: 'flex',
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              width: '100%',
+              flexShrink: 0,
+              paddingTop: '4px'
+            }}>
+              <PlusButton />
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                {isUploadingFile && <span style={{ fontSize: '11px', color: '#6366f1', fontStyle: 'italic' }}>Mengunggah...</span>}
+                <SendButton />
+              </div>
+            </div>
+          ) : (
+            <>
+              <PlusButton />
+              <SendButton />
+            </>
+          )}
+
+          {/* DRAG DROP OVERLAY */}
+          {isDragOver && (
+            <div style={{
+              position: 'absolute',
+              inset: 0,
+              background: darkMode ? 'rgba(99, 102, 241, 0.15)' : 'rgba(37, 99, 235, 0.1)',
+              border: `2px dashed ${darkMode ? '#6366f1' : '#2563eb'}`,
+              borderRadius: '16px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              pointerEvents: 'none',
+              zIndex: 10
+            }}>
+              <span style={{
+                fontSize: '14px',
+                fontWeight: 600,
+                color: darkMode ? '#a5b4fc' : '#1e3a8a',
+                background: darkMode ? 'rgba(99, 102, 241, 0.9)' : 'rgba(37, 99, 235, 0.9)',
+                padding: '8px 16px',
+                borderRadius: '8px'
+              }}>
+                📂 Lepas file di sini
+              </span>
+            </div>
+          )}
         </form>
         {!isCentered && (
-          <div style={{ ...styles.inputFooter, color: theme.secondaryText }}>
+          <div style={{ ...styles.inputFooter, color: theme.secondaryText, marginTop: '8px' }}>
             CAKRA AI dapat membuat kesalahan. Pertimbangkan untuk memeriksa informasi penting.
           </div>
         )}
@@ -220,6 +620,7 @@ export default function ChatPage({ isGuest, isLoggedIn: propsIsLoggedIn, userDat
 
   return (
     <div style={{ ...styles.root, background: theme.rootBg }}>
+      {/* 1. KEMBALIKAN ANIMASI CAKRA BERPIKIR & STREAMING REVEAL */}
       <style>{`
         @keyframes cakraSpin {
           from { transform: rotate(0deg); }
@@ -237,11 +638,37 @@ export default function ChatPage({ isGuest, isLoggedIn: propsIsLoggedIn, userDat
           from { opacity: 0; transform: translateY(3px); filter: blur(2px); }
           to { opacity: 1; transform: translateY(0); filter: blur(0); }
         }
+        /* Kelas pulse/kedut berpikir asisten */
+        .thinking-pulse {
+          animation: geminiReveal 0.6s ease-in-out infinite alternate;
+          opacity: 0.6;
+        }
         .assistant-content-container p, .assistant-content-container pre {
           animation: geminiReveal 0.35s ease-out forwards;
         }
-        textarea::-webkit-scrollbar { width: 6px; }
-        textarea::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 3px; }
+        textarea {
+          scrollbar-width: thin;
+          scrollbar-color: ${darkMode ? '#4b5563' : '#9ca3af'} transparent;
+        }
+        textarea::-webkit-scrollbar {
+          width: 6px;
+          background: transparent;
+        }
+        textarea::-webkit-scrollbar-track {
+          background: transparent;
+        }
+        textarea::-webkit-scrollbar-thumb {
+          background: ${darkMode ? '#4b5563' : '#cbd5e1'};
+          border-radius: 3px;
+        }
+        textarea::-webkit-scrollbar-thumb:hover {
+          background: ${darkMode ? '#6b7280' : '#94a3b8'};
+        }
+        textarea::-webkit-scrollbar-button {
+          display: none;
+          width: 0;
+          height: 0;
+        }
         * { box-sizing: border-box; }
         .custom-scroll-gemini::-webkit-scrollbar { width: 8px; background-color: transparent; }
         .custom-scroll-gemini::-webkit-scrollbar-thumb {
@@ -254,9 +681,9 @@ export default function ChatPage({ isGuest, isLoggedIn: propsIsLoggedIn, userDat
         <Sidebar
           isOpen={sidebarOpen}
           setIsOpen={setSidebarOpen}
-          darkMode={darkMode}      // 🔥 Kirim state boolean tema
-          setDarkMode={setDarkMode}  // 🔥 Kirim setter fungsi tema
-          theme={theme}            // 🔥 Kirim objek warna dinamis (lightColors/darkColors)
+          darkMode={darkMode}
+          setDarkMode={setDarkMode}
+          theme={theme}
           clearChat={handleClearChat}
           showDocumentList={showDocumentList}
           setShowDocumentList={setShowDocumentList}
@@ -287,7 +714,6 @@ export default function ChatPage({ isGuest, isLoggedIn: propsIsLoggedIn, userDat
               />
             )}
           </div>
-          {/* 🔥 SEKTOR TOGGLE TEMA LAMA DI HEADER SUDAH DIHAPUS TOTAL BIAR AREA ATAS CHAT BERSIH */}
           <div style={styles.headerActions}>
             {isGuest && (
               <button onClick={() => navigate('/login')} style={{ ...styles.loginBtn, color: theme.textColor, borderColor: theme.borderColor }}>Masuk</button>
@@ -343,8 +769,8 @@ export default function ChatPage({ isGuest, isLoggedIn: propsIsLoggedIn, userDat
                 <GuestWelcome
                   isLoggedIn={currentIsLoggedIn}
                   userData={{
-                    fullname: authUser?.fullname || authUser?.name || "Pegawai",
-                    npp: authUser?.npp || "NPP -----"
+                    fullname: currentUserData?.name || currentUserData?.fullname || "Pegawai",
+                    npp: currentUserData?.npp || "NPP -----"
                   }}
                   getGreeting={getGreeting || defaultGetGreeting}
                   theme={theme}
