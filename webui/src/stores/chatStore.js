@@ -13,7 +13,8 @@ function _buildAuthHeaders(npp) {
     return headers;
 }
 
-async function _performStream(set, get, messagesToSend, assistantMessage, forcedSessionUuid = null, npp = null) {
+// 🔥 PERLUASAN PARAMETER: Menambahkan parameter isolatedDocId dan attachmentPaths tanpa merusak fungsi oroknya
+async function _performStream(set, get, messagesToSend, assistantMessage, forcedSessionUuid = null, npp = null, isolatedDocId = null, attachmentPaths = []) {
     try {
         const activeSessionUuid = forcedSessionUuid || get().sessionUuid;
 
@@ -24,7 +25,10 @@ async function _performStream(set, get, messagesToSend, assistantMessage, forced
                 session_uuid: activeSessionUuid, 
                 messages: messagesToSend,
                 mode: 'normal',
-                temperature: 0.7
+                temperature: 0.7,
+                // 🔥 TAMBAHAN PAYLOAD SAKTI UNTUK FASE 1 ATTACHMENT SUPPORT
+                isolated_doc_id: isolatedDocId,       // Mengunci mode chat dokumen spesifik (RAG)
+                attachment_paths: attachmentPaths      // Jalur file attachment biasa (User Upload)
             })
         });
 
@@ -87,6 +91,13 @@ export const useChatStore = create((set, get) => ({
     isThinking: false, 
     sessionUuid: null,
 
+    // ─────────────────────────────────────────────────────────────────────────
+    // 🔥 TAMBAHAN STATE BARU UNTUK SEKTOR ATTACHMENT SUPPORT & ISOLASI KONTEKS
+    // ─────────────────────────────────────────────────────────────────────────
+    stagedAttachments: [],     // Menampung metadata file yang sudah terupload ke backend sementara
+    activeIsolatedDocId: null, // ID dokumen RAG aktif untuk mode isolasi chat context
+    activeIsolatedTitle: null, // Judul dokumen RAG aktif untuk komponen penanda di UI input form
+
     sendMessage: async (content, npp, onSessionCreatedCallback) => {
         if (!content.trim() || get().isStreaming) return;
 
@@ -134,6 +145,10 @@ export const useChatStore = create((set, get) => ({
         const updatedMessages = [...get().messages, userMessage];
         const assistantMessage = { role: 'assistant', content: '' };
 
+        // Ambil data attachment paths dan isolated context saat ini sebelum dikirim
+        const currentAttachmentPaths = get().stagedAttachments.map(file => file.file_path) || [];
+        const currentIsolatedDocId = get().activeIsolatedDocId;
+
         set({
             messages: [...updatedMessages, assistantMessage],
             isStreaming: true,
@@ -142,7 +157,21 @@ export const useChatStore = create((set, get) => ({
         });
 
         await new Promise(resolve => setTimeout(resolve, 100));
-        await _performStream(set, get, updatedMessages, assistantMessage, currentSessionUuid, npp);
+        
+        // 🔥 TAMBAHAN OPERAN PARAMETER: Mengirimkan data isolasi dan attachment ke performStream
+        await _performStream(
+            set, 
+            get, 
+            updatedMessages, 
+            assistantMessage, 
+            currentSessionUuid, 
+            npp, 
+            currentIsolatedDocId, 
+            currentAttachmentPaths
+        );
+
+        // 🔥 AUTO CLEAR STAGED: Kosongkan list file staged attachments setelah pesan berhasil terkirim
+        set({ stagedAttachments: [] });
     },
     
     editAndRegenerate: async (index, newContent) => {
@@ -170,11 +199,21 @@ export const useChatStore = create((set, get) => ({
 
         const messagesToSend = currentMessages.slice(0, index + 1);
         const npp = JSON.parse(localStorage.getItem('cakra_user') || '{}')?.npp || null;
-        await _performStream(set, get, messagesToSend, assistantMessage, null, npp);
+        
+        // Tambahan parameter default null pada editAndRegenerate demi menjaga kestabilan sasis aslinya
+        await _performStream(set, get, messagesToSend, assistantMessage, null, npp, get().activeIsolatedDocId, []);
     },
 
     clearChat: () => {
-        set({ messages: [], sessionUuid: null, isThinking: false });
+        // 🔥 TAMBAHAN: Reset juga state isolasi dan attachments saat clear chat dilakukan
+        set({ 
+            messages: [], 
+            sessionUuid: null, 
+            isThinking: false, 
+            stagedAttachments: [], 
+            activeIsolatedDocId: null, 
+            activeIsolatedTitle: null 
+        });
     },
 
     fetchChatHistory: async (npp) => {
@@ -201,7 +240,8 @@ export const useChatStore = create((set, get) => ({
 
         const seq = ++_sessionLoadSeq;
         console.log('📥 [STORE] Loading session:', sessionUuid);
-        set({ sessionUuid, messages: [], isLoading: true });
+        // 🔥 TAMBAHAN: Reset state isolasi dokumen lama saat berpindah ke sesi obrolan yang berbeda
+        set({ sessionUuid, messages: [], isLoading: true, activeIsolatedDocId: null, activeIsolatedTitle: null });
 
         try {
             const npp = JSON.parse(localStorage.getItem('cakra_user'))?.npp || '';
@@ -265,7 +305,8 @@ export const useChatStore = create((set, get) => ({
             });
             const result = await response.json();
             if (result.status === 'success') {
-                set({ sessionUuid: result.data.session_uuid, messages: [] });
+                // 🔥 TAMBAHAN: Pastikan state isolasi dan attachment bersih total saat inisialisasi sesi baru murni
+                set({ sessionUuid: result.data.session_uuid, messages: [], stagedAttachments: [], activeIsolatedDocId: null, activeIsolatedTitle: null });
                 return result.data.session_uuid;
             }
             throw new Error('Gagal membuat sesi baru');
@@ -289,5 +330,24 @@ export const useChatStore = create((set, get) => ({
             return { status: "error" };
         }
     },
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // 🔥 TAMBAHAN BARIS ACTION MANAJEMEN BARU TANPA MERUSAK STRUKTUR DI ATAS
+    // ─────────────────────────────────────────────────────────────────────────
+    
+    // Action untuk menyimpan metadata berkas yang berhasil diunggah di chat form staged
+    setStagedAttachments: (attachments) => {
+        set({ stagedAttachments: attachments });
+    },
+
+    // Action sakti untuk toggle/mengunci/keluar dari mode isolasi pencarian dokumen RAG spesifik
+    setContextIsolation: (docId, docTitle) => {
+        // Jika dokumen yang diklik sama dengan yang sedang aktif, anggap user men-toggle untuk keluar (reset)
+        if (get().activeIsolatedDocId === docId || docId === null) {
+            set({ activeIsolatedDocId: null, activeIsolatedTitle: null });
+        } else {
+            set({ activeIsolatedDocId: docId, activeIsolatedTitle: docTitle });
+        }
+    }
 
 }));
