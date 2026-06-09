@@ -1,88 +1,182 @@
 // src/features/chat/components/SourceCitation.jsx
 import React, { useState } from 'react';
 
-const SourceCitation = ({ sources, darkMode, theme, onPreview }) => {
+const SourceCitation = ({ sources, darkMode, theme, onPreview, onActivateIsolation, activeIsolatedDocId }) => {
   const [hoveredIndex, setHoveredIndex] = useState(null);
 
   if (!sources || sources.length === 0) return null;
 
-  const handleClick = (source, idx) => {
+  const handleView = (e, source) => {
+    e.stopPropagation(); // Mencegah trigger click card utama
     if (onPreview) {
       onPreview(source);
     } else {
-      // fallback: open in new tab if source has url
-      if (source.url) window.open(source.url, '_blank');
+      // Fallback: Buka URL PDF langsung di tab baru jika ada properti url/file_path
+      const fileUrl = source.url || source.file_path;
+      if (fileUrl) window.open(fileUrl, '_blank');
     }
   };
 
-  const containerStyle = {
-    display: 'flex',
-    flexWrap: 'wrap',
-    gap: '10px',
-    marginTop: '16px',
-    marginBottom: '8px'
+  const handleChatIsolation = (e, source) => {
+    e.stopPropagation(); // Mencegah trigger click card utama
+    if (onActivateIsolation) {
+      // Pemicu callback menuju chatStore untuk mengunci context ke id dokumen ini
+      onActivateIsolation(source);
+    }
   };
 
-  const cardStyle = (isHovered) => ({
-    display: 'inline-flex',
-    alignItems: 'center',
-    gap: '8px',
-    padding: '6px 14px',
+  // Sasis utama grid layout responsif penampung kartu dokumen
+  const containerStyle = {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))',
+    gap: '12px',
+    marginTop: '16px',
+    marginBottom: '8px',
+    width: '100%'
+  };
+
+  const cardStyle = (isHovered, isCurrentlyIsolated) => ({
+    display: 'flex',
+    flexDirection: 'column',
+    padding: '12px 14px',
     background: darkMode
-      ? isHovered ? 'rgba(99, 102, 241, 0.15)' : 'rgba(255, 255, 255, 0.04)'
-      : isHovered ? 'rgba(99, 102, 241, 0.08)' : 'rgba(0, 0, 0, 0.03)',
-    borderRadius: '40px',
-    border: `1px solid ${darkMode ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.06)'}`,
-    fontSize: '12px',
-    fontWeight: 500,
-    color: theme?.textColor || (darkMode ? '#e2e8f0' : '#1f2937'),
-    cursor: 'pointer',
+      ? isCurrentlyIsolated ? 'rgba(99, 102, 241, 0.2)' : (isHovered ? 'rgba(255, 255, 255, 0.06)' : '#1E1E20')
+      : isCurrentlyIsolated ? 'rgba(99, 102, 241, 0.1)' : (isHovered ? 'rgba(0, 0, 0, 0.04)' : '#F3F4F6'),
+    borderRadius: '16px',
+    border: `1px solid ${
+      isCurrentlyIsolated 
+        ? '#6366f1' 
+        : (darkMode ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.06)')
+    }`,
     transition: 'all 0.2s cubic-bezier(0.2, 0.9, 0.4, 1.1)',
     transform: isHovered ? 'translateY(-2px)' : 'translateY(0)',
-    boxShadow: isHovered ? (darkMode ? '0 4px 12px rgba(0,0,0,0.3)' : '0 2px 8px rgba(0,0,0,0.08)') : 'none'
+    boxShadow: isHovered ? (darkMode ? '0 6px 16px rgba(0,0,0,0.4)' : '0 4px 12px rgba(0,0,0,0.06)') : 'none',
+    position: 'relative',
+    overflow: 'hidden'
   });
 
-  const iconStyle = {
-    width: '14px',
-    height: '14px',
-    opacity: 0.7
+  const headerRowStyle = {
+    display: 'flex',
+    alignItems: 'flex-start',
+    gap: '8px',
+    width: '100%',
+    marginBottom: '6px'
   };
 
-  const textStyle = {
-    maxWidth: '200px',
+  const iconStyle = {
+    fontSize: '16px',
+    flexShrink: 0,
+    marginTop: '2px'
+  };
+
+  const infoWrapStyle = {
+    display: 'flex',
+    flexDirection: 'column',
+    minWidth: 0,
+    flex: 1
+  };
+
+  const titleStyle = {
+    fontSize: '13px',
+    fontWeight: 600,
+    color: theme?.textColor || (darkMode ? '#e2e8f0' : '#1f2937'),
     whiteSpace: 'nowrap',
     overflow: 'hidden',
-    textOverflow: 'ellipsis'
+    textOverflow: 'ellipsis',
+    lineHeight: '1.4'
   };
 
-  const pageBadge = (page) => page ? ` (hal. ${page})` : '';
+  const metaStyle = {
+    fontSize: '11px',
+    color: theme?.secondaryText || (darkMode ? '#94a3b8' : '#6b7280'),
+    marginTop: '2px',
+    fontWeight: 500
+  };
+
+  const dividerStyle = {
+    height: '1px',
+    background: darkMode ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.06)',
+    width: '100%',
+    margin: '10px 0'
+  };
+
+  const actionsWrapStyle = {
+    display: 'flex',
+    gap: '8px',
+    width: '100%'
+  };
+
+  const btnStyle = (isPrimary, isHovered) => ({
+    flex: 1,
+    padding: '6px 10px',
+    borderRadius: '20px',
+    fontSize: '11px',
+    fontWeight: 600,
+    textAlign: 'center',
+    cursor: 'pointer',
+    border: isPrimary ? 'none' : `1px solid ${darkMode ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.12)'}`,
+    background: isPrimary 
+      ? (darkMode ? '#6366f1' : '#2563eb')
+      : (darkMode ? 'rgba(255,255,255,0.02)' : '#ffffff'),
+    color: isPrimary 
+      ? '#ffffff' 
+      : (theme?.textColor || (darkMode ? '#e2e8f0' : '#1f2937')),
+    transition: 'opacity 0.15s ease',
+    opacity: isHovered ? 0.85 : 1
+  });
 
   return (
     <div style={containerStyle}>
       {sources.map((src, idx) => {
         const title = src.title || src.filename || src.name || 'Dokumen';
+        const docId = src.id || src.dokumen_id;
+        const regNomor = src.nomor || 'No Regulasi ----';
         const page = src.page || src.page_number;
         const isHovered = hoveredIndex === idx;
+        
+        // Cek apakah kartu ini adalah dokumen yang sedang dikunci/diisolasi mode chat-nya
+        const isCurrentlyIsolated = activeIsolatedDocId === docId;
+
         return (
           <div
-            key={`source-${idx}`}
-            style={cardStyle(isHovered)}
-            onClick={() => handleClick(src, idx)}
+            key={`source-card-${idx}`}
+            style={cardStyle(isHovered, isCurrentlyIsolated)}
             onMouseEnter={() => setHoveredIndex(idx)}
             onMouseLeave={() => setHoveredIndex(null)}
           >
-            <span style={iconStyle}>
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                <polyline points="14 2 14 8 20 8" />
-                <line x1="16" y1="13" x2="8" y2="13" />
-                <line x1="16" y1="17" x2="8" y2="17" />
-                <polyline points="10 9 9 9 8 9" />
-              </svg>
-            </span>
-            <span style={textStyle} title={title + pageBadge(page)}>
-              {title}{pageBadge(page)}
-            </span>
+            {/* Informasi Utama Dokumen */}
+            <div style={headerRowStyle}>
+              <span style={iconStyle}>📄</span>
+              <div style={infoWrapStyle}>
+                <span style={titleStyle} title={title}>
+                  {title}
+                </span>
+                <span style={metaStyle}>
+                  {regNomor} {page ? `• Hal. ${page}` : ''}
+                </span>
+              </div>
+            </div>
+
+            {/* Garis Sekat Pembatas */}
+            <div style={dividerStyle} />
+
+            {/* Barisan Tombol Aksi Mandiri */}
+            <div style={actionsWrapStyle}>
+              <button
+                type="button"
+                onClick={(e) => handleView(e, src)}
+                style={btnStyle(false, isHovered)}
+              >
+                👁️ Lihat (PDF)
+              </button>
+              <button
+                type="button"
+                onClick={(e) => handleChatIsolation(e, src)}
+                style={btnStyle(true, isHovered)}
+              >
+                {isCurrentlyIsolated ? '🔒 Terfokus' : '💬 Chat'}
+              </button>
+            </div>
           </div>
         );
       })}

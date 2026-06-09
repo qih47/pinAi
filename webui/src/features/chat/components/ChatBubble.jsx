@@ -271,6 +271,8 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
     // Ambil status langsung dari store
     const globalIsThinking = useChatStore((state) => state.isThinking);
     const globalIsStreaming = useChatStore((state) => state.isStreaming);
+    const activeIsolatedDocId = useChatStore((state) => state.activeIsolatedDocId);
+    const setContextIsolation = useChatStore((state) => state.setContextIsolation);
 
     // Kunci target bubble pakai memori lokal
     const isReceivingRef = useRef(false);
@@ -361,9 +363,17 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
                                     sources={msg.citations || msg.sources}
                                     darkMode={darkMode}
                                     theme={theme}
+                                    // 🔥 ISI PROPS CONTEXT ISOLATION YANG BARUSAN KITA SUNTIK:
+                                    activeIsolatedDocId={activeIsolatedDocId}
+                                    onActivateIsolation={(source) => {
+                                        // Kunci target ID dokumen dan judul dokumennya ke store
+                                        const docId = source.id || source.dokumen_id;
+                                        const docTitle = source.title || source.filename || source.name;
+                                        setContextIsolation(docId, docTitle);
+                                    }}
                                     onPreview={(source) => {
-                                        // opsional: buka modal preview / console.log
-                                        console.log('Preview dokumen:', source);
+                                        const fileUrl = source.url || source.file_path;
+                                        if (fileUrl) window.open(fileUrl, '_blank');
                                     }}
                                 />
                             )}
