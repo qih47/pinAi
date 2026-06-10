@@ -34,7 +34,7 @@ function _buildAuthHeaders(npp) {
     return headers;
 }
 
-async function _performStream(set, get, messagesToSend, assistantMessage, forcedSessionUuid = null, npp = null, isolatedDocId = null, attachmentPaths = []) {
+async function _performStream(set, get, messagesToSend, assistantMessage, forcedSessionUuid = null, npp = null, isolatedDocId = null, attachmentPaths = [], chatMode = 'auto') {
     try {
         const activeSessionUuid = forcedSessionUuid || get().sessionUuid;
 
@@ -44,7 +44,7 @@ async function _performStream(set, get, messagesToSend, assistantMessage, forced
             body: JSON.stringify({
                 session_uuid: activeSessionUuid, 
                 messages: messagesToSend,
-                mode: 'normal',
+                mode: chatMode,
                 temperature: 0.7,
                 isolated_doc_id: isolatedDocId,      
                 attachment_paths: attachmentPaths      
@@ -75,15 +75,13 @@ async function _performStream(set, get, messagesToSend, assistantMessage, forced
                 try {
                     const parsedData = JSON.parse(cleanedLine);
 
-                    // 🧠 HANDLE STATUS DINAMIS (Muncul di indikator loading)
+                    // 🧠 HANDLE STATUS DINAMIS
                     if (parsedData.thinking) {
                         accumulatedThinking = parsedData.thinking;
-                        // 🔥 Buat objek message baru agar referensi berubah → React mendeteksi perubahan
                         const updatedAssistantMsg = { ...assistantMessage, thought: accumulatedThinking };
                         const updatedMessages = get().messages.map(msg =>
                             msg === assistantMessage ? updatedAssistantMsg : msg
                         );
-                        // Simpan referensi baru untuk digunakan di chunk berikutnya
                         assistantMessage = updatedAssistantMsg;
                         set({
                             currentThinking: accumulatedThinking,
@@ -92,7 +90,22 @@ async function _performStream(set, get, messagesToSend, assistantMessage, forced
                         });
                     }
 
-                    // 📝 HANDLE RESPONSE CHUNK (Stream jawaban utama)
+                    // 🔥 NEW: HANDLE SOURCES FROM RAG
+                    if (parsedData.sources && Array.isArray(parsedData.sources)) {
+                        console.log('📚 [SSE] Received sources:', parsedData.sources);
+                        const updatedAssistantMsg = { 
+                            ...assistantMessage, 
+                            sources: parsedData.sources,
+                            citations: parsedData.sources  // 🔥 Dual assignment untuk kompatibilitas
+                        };
+                        const updatedMessages = get().messages.map(msg =>
+                            msg === assistantMessage ? updatedAssistantMsg : msg
+                        );
+                        assistantMessage = updatedAssistantMsg;
+                        set({ messages: updatedMessages });
+                    }
+
+                    // 📝 HANDLE RESPONSE CHUNK
                     if (parsedData.chunk) {
                         accumulatedReply += parsedData.chunk;
                         assistantMessage.content = accumulatedReply;
@@ -101,8 +114,6 @@ async function _performStream(set, get, messagesToSend, assistantMessage, forced
                             renderTimeout = requestAnimationFrame(() => {
                                 set({
                                     messages: [...get().messages],
-                                    // Pas teks utama keluar, kita bisa set isThinking: false 
-                                    // agar UI loading berubah jadi status "sedang mengetik"
                                     isThinking: false 
                                 });
                                 renderTimeout = null;
@@ -114,7 +125,7 @@ async function _performStream(set, get, messagesToSend, assistantMessage, forced
                     if (parsedData.done === true) {
                         set({
                             isThinking: false,
-                            currentThinking: '' // Bersihkan status setelah selesai
+                            currentThinking: ''
                         });
                     }
                 } catch (jsonErr) {
@@ -143,16 +154,16 @@ export const useChatStore = create((set, get) => ({
     activeIsolatedDocId: null, 
     activeIsolatedTitle: null, 
 
-    sendMessage: async (content, npp, onSessionCreatedCallback, directUploadedFiles = null) => {
+    sendMessage: async (content, npp, onSessionCreatedCallback, directUploadedFiles = null, chatMode = 'auto') => {
         const hasAttachments = (directUploadedFiles?.length > 0) || (get().stagedAttachments?.length > 0);
         if ((!content.trim() && !hasAttachments) || get().isStreaming) return;
-
+    
         let currentSessionUuid = get().sessionUuid;
-
+    
         if (!currentSessionUuid || currentSessionUuid === "new") {
             try {
                 const generatedTitle = content.split(" ").slice(0, 4).join(" ") + "...";
-
+    
                 const response = await fetch(`${API_BASE}/api/chat/sessions/create?judul=${encodeURIComponent(generatedTitle)}`, {
                     method: 'POST',
                     headers: _buildAuthHeaders(npp),
@@ -170,7 +181,7 @@ export const useChatStore = create((set, get) => ({
                             started_at: new Date().toISOString()
                         });
                     }
-
+    
                     set({ sessionUuid: currentSessionUuid });
                 } else {
                     throw new Error("Gagal booking session id dari backend.");
@@ -180,10 +191,10 @@ export const useChatStore = create((set, get) => ({
                 return;
             }
         }
-
+    
         const targetFiles = directUploadedFiles !== null ? directUploadedFiles : get().stagedAttachments;
         const attachmentMeta = _normalizeAttachments(targetFiles);
-
+    
         const userMessage = {
             role: 'user',
             content: content.trim(),
@@ -191,20 +202,20 @@ export const useChatStore = create((set, get) => ({
         };
         const updatedMessages = [...get().messages, userMessage];
         const assistantMessage = { role: 'assistant', content: '' };
-
+    
         const currentAttachmentPaths = attachmentMeta
             .map((file) => file.file_path)
             .filter(Boolean);
-
+    
         const currentIsolatedDocId = get().activeIsolatedDocId;
-
+    
         set({
             messages: [...updatedMessages, assistantMessage],
             isStreaming: true,
             isLoading: true,
             isThinking: true
         });
-
+    
         await new Promise(resolve => setTimeout(resolve, 100));
         
         await _performStream(
@@ -215,9 +226,10 @@ export const useChatStore = create((set, get) => ({
             currentSessionUuid,
             npp,
             currentIsolatedDocId,
-            currentAttachmentPaths
+            currentAttachmentPaths,
+            chatMode // 🔥 Oper chatMode ke _performStream
         );
-
+    
         set({ stagedAttachments: [] });
     },
     

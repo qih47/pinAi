@@ -86,6 +86,8 @@ async def execute_layer_1_analyzer(
         "33. profanity_frustration_trigger (none|low_misuh|intense_angry)\n"
         "    * Deteksi kata umpatan lokal seperti 'asu', 'jancuk', dll. Jika luapan kekesalan biasa, setel 'low_misuh'.\n"
         "34. linguistic_mirroring_strategy (mirror_casual|stay_formal_safe|defuse_aggression|supportive_empathic)\n"
+        "35. is_coding (true|false)\n"
+        "    * ATURAN KRITIS VALUE: Setel menjadi true jika kueri user mengandung potongan kode pemrograman (React, Python, SQL, CSS, dll) atau menanyakan instruksi revisi kodingan secara spesifik."
     )
     
     user_message = messages[-1]["content"] if messages else ""
@@ -118,10 +120,10 @@ async def execute_layer_1_analyzer(
     
     if not json_result:
         logger.warning("⚠️ [LAYER 1] Failed to generate JSON, using fallback")
-        json_result = _get_fallback_cognitive_params()
+        # 🔥 FIX: Mengoper kueri fisik asli agar parameter pencarian tidak hilang saat timeout
+        json_result = _get_fallback_cognitive_params(user_message)
         
-    # Pastikan jika key bentukan baru absen di hasil generate LLM dasar, sasis default menyuntik masuk
-    fallback_ref = _get_fallback_cognitive_params()
+    fallback_ref = _get_fallback_cognitive_params(user_message)
     for key in fallback_ref:
         if key not in json_result:
             json_result[key] = fallback_ref[key]
@@ -137,20 +139,25 @@ async def execute_layer_2_planner(
     employee_npp: Optional[str]
 ) -> Dict[str, Any]:
     """
-    Layer 2: Strategic Planner (DeepSeek-R1)
-    Menerima parameter kognitif Kluster 1 (Logika & RAG) untuk merancang rencana aksi.
+    Layer 2: Strategic Planner - sekarang include rag_sources
     """
     logger.info("📋 [LAYER 2] Strategic Planner starting...")
     
     rag_context = None
+    rag_sources = []  # 🔥 NEW
+    
     if cognitive_params.get("need_rag"):
         logger.info(f"📚 [LAYER 2] Executing RAG search...")
-        rag_query = cognitive_params.get("rag_query", messages[-1]["content"])
-        rag_context = await rag_service.assemble_powerful_context(
+
+        raw_rag_query = cognitive_params.get("rag_query") or messages[-1]["content"]
+        rag_query = raw_rag_query.strip()[:200]
+
+        # 🔥 MODIFIED: Terima tuple (context, sources)
+        rag_context, rag_sources = await rag_service.assemble_powerful_context(
             query=rag_query,
-            limit=4
+            limit=5
         )
-        logger.info(f"✅ [LAYER 2] RAG complete | Context: {len(rag_context) if rag_context else 0} chars")
+        logger.info(f"✅ [LAYER 2] RAG complete | Context: {len(rag_context) if rag_context else 0} chars | Sources: {len(rag_sources)}")
     
     system_prompt = (
         "Anda adalah Strategic Planner CAKRA AI. Anda menerima data orkestrasi logika dan RAG dari gerbang utama.\n"
@@ -166,7 +173,6 @@ async def execute_layer_2_planner(
         "- rag_utilized: true|false\n"
     )
     
-    # Hanya kirimkan parameter Kluster 1 (Logika, Teknis, RAG) untuk dikonsumsi DeepSeek-R1
     cluster_1_keys = [
         "detected_intent", "estimated_vram_urgency", "need_rag", "rag_query", 
         "rag_retrieval_strategy", "regulation_hierarchy_target", "pindad_division_affinity", 
@@ -199,17 +205,15 @@ async def execute_layer_2_planner(
         logger.warning("⚠️ [LAYER 2] Failed to generate JSON, using fallback")
         json_result = _get_fallback_strategy_params()
     
+    # 🔥 MODIFIED: Include rag_sources
     if rag_context:
         json_result["rag_context"] = rag_context
+        json_result["rag_sources"] = rag_sources  # 🔥 NEW
         json_result["rag_utilized"] = True
     
-    logger.info(f"✅ [LAYER 2] Complete | Tone: {json_result.get('tone')}")
+    logger.info(f"✅ [LAYER 2] Complete | Tone: {json_result.get('tone')} | Sources: {len(rag_sources)}")
     return json_result
 
-
-# ==============================================================================
-# 🔥 KALIBRASI SIKAP SOSIAL GEMMA4 PADA FILE pipeline_layer_executor.py
-# ==============================================================================
 
 async def execute_layer_3_executor(
     request: Request,
@@ -219,11 +223,9 @@ async def execute_layer_3_executor(
 ) -> AsyncGenerator[str, None]:
     """
     Layer 3: Social Executor (Gemma4)
-    Menerima Kluster 2 (Psikologis, Sosiolinguistik, Gaya Bahasa) + Cetak Biru DeepSeek.
     """
     logger.info("✍️ [LAYER 3] Social Executor starting...")
     
-    # Ekstraksi parameter sosial linguistik dari Kluster 2
     pronoun = cognitive_params.get("user_pronoun_preference", "formal_saya_anda")
     slang_list = cognitive_params.get("slang_interjection_marker", [])
     profanity = cognitive_params.get("profanity_frustration_trigger", "none")
@@ -235,76 +237,120 @@ async def execute_layer_3_executor(
     goal = cognitive_params.get("interaction_goal", "seeking_information")
     ambiguity = cognitive_params.get("ambiguity_index", "clear_explicit")
     
+    # 🔥 BASE PROMPT YANG LEBIH TEGAS DAN EKSPLISIT
     base_prompt = (
-        "Anda adalah Social Executor CAKRA AI, sebuah asisten pintar inteligensia terpadu.\n"
-        "Tugas Anda adalah merubah rencana kerja taktis dari Strategic Planner menjadi teks obrolan "
-        "bahasa Indonesia yang sangat natural, responsif, ber-empati tinggi, dan khas lingkungan PT Pindad.\n\n"
-        "⚠️ INSTRUKSI ADAPTASI SOSIO-LINGUISTIK & LINGUISTIC MIRRORING (WAJIB DIPATUHI):\n"
+        "Anda adalah Social Executor CAKRA AI, asisten pintar PT Pindad.\n"
+        "Tugas Anda adalah mengubah rencana kerja dari Strategic Planner menjadi jawaban natural bahasa Indonesia.\n\n"
+        "⚠️ INSTRUKSI KRITIS WAJIB DIPATUHI:\n"
+        "1. JAWABAN ANDA HARUS 100% BERDASARKAN DOKUMEN RAG YANG DIBERIKAN DI BAWAH.\n"
+        "2. DILARANG KERAS mengarang, berasumsi, atau menambahkan informasi di luar konteks dokumen.\n"
+        "3. Jika informasi tidak ada di dokumen, katakan: 'Informasi tersebut tidak tersedia di dokumen internal.'\n"
+        "4. WAJIB sebutkan nomor regulasi/SKEP dan pasal yang relevan saat menjawab.\n"
+        "5. Ikuti struktur action_plan dari Strategic Planner secara ketat.\n\n"
     )
     
-    # 🔥 PERBAIKAN KRITIS: Logika Penyesuaian Slang Dinamis sesuai instruksi User
-    # Hanya gunakan kata slang lokal jika user secara eksplisit memicu kata slang tersebut dalam chatnya
+    # Socio-linguistic adaptation (tetap sama)
     if len(slang_list) > 0 and ("bolo" in slang_list or "cuy" in slang_list):
         base_prompt += (
-            "- Sasis Bahasa: User menyapa Anda menggunakan bahasa slang/kasual akrab yang terdeteksi di parameter sistem. "
-            "Anda diperbolehkan membalas dengan gaya santai yang setara, ikut menggunakan kata sapaan "
-            "seperti 'bolo' atau 'cuy' dalam porsi wajar untuk mengimbangi keakraban mereka.\n"
+            "- GAYA BAHASA: Casual akrab, boleh pakai 'bolo' atau 'cuy' secukupnya.\n"
         )
-    # Jika user menggunakan kata ganti informal gue/lo tapi tidak melempar slang ekstrim
     elif pronoun == "informal_gue_lo" or mirror_strat == "mirror_casual":
         base_prompt += (
-            "- Sasis Bahasa: Gunakan gaya santai, hangat, dan bersahabat. Gunakan panggilan kasual umum "
-            "yang sopan. Dilarang menggunakan kata 'bolo' atau 'cuy' jika tidak ada pemicu slang di kueri user.\n"
+            "- GAYA BAHASA: Santai dan bersahabat, tapi tetap sopan. Jangan pakai slang lokal.\n"
         )
-    # Jika user menggunakan sasis formal birokratis (Saya/Anda) atau bertindak sebagai pejabat struktural
     elif pronoun == "formal_saya_anda" or authority == "pejabat_struktural":
         base_prompt += (
-            "- Sasis Bahasa: Gunakan gaya bahasa formal birokratis yang rapi, santun, dan sangat hormat ('Saya', 'Anda', 'Bapak/Ibu'). "
-            "Dilarang keras memunculkan kata slang santai atau panggilan kasual apa pun.\n"
+            "- GAYA BAHASA: Formal birokratis, gunakan 'Saya' dan 'Anda/Bapak/Ibu'.\n"
         )
-    # Default aman: Ramah, profesional, suportif khas korporat (Tanpa bolo/cuy)
     else:
         base_prompt += (
-            "- Sasis Bahasa: Gunakan gaya bahasa profesional yang suportif, luwes, dan ramah lingkungan kerja. "
-            "Gunakan sapaan netral yang hangat tanpa menyisipkan kata slang lokal (Jangan gunakan bolo/cuy).\n"
+            "- GAYA BAHASA: Profesional suportif, ramah, tanpa slang.\n"
         )
         
-    # Aturan penanganan umpatan/misuh (profanity sensor)
     if profanity == "low_misuh":
         base_prompt += (
-            "- SENSOR SOSIAL: Terdeteksi user mengeluarkan umpatan kekesalan lokal ('asu', dll) karena frustrasi dengan keadaan/error. "
-            "Respons Anda WAJIB rendah hati (humble), tunjukkan solidaritas/empati yang kuat, redam suasana, dan fokus menenangkan user tanpa ikut kasar!\n"
+            "- RESPON RENDAH HATI: User frustrasi, redam suasana dengan empati dan solidaritas.\n"
         )
         
-    # Aturan penanganan ketidakjelasan konteks (Ambiguity handling)
     if ambiguity == "highly_vague" or ambiguity == "semi_ambiguous":
-        base_prompt += "- WAJIB TANYAKAN: Di akhir tanggapan, ajukan pertanyaan konfirmasi lanjutan secara halus untuk memancing kejelasan informasi dari user.\n"
+        base_prompt += "- TANYAKAN KONFIRMASI: Di akhir jawaban, ajukan pertanyaan klarifikasi.\n"
 
-    # Tambahkan metadata kondisi psikologis & logis ke prompt
-    base_prompt += f"\n[PANDUAN KONDISI PSIKOLOGIS USER]:\n- Emosi User: {emotion} | Urgensi Sesi: {urgency} | Gaya Bahasa User: {style} | Target Kepuasan: {goal}\n"
+    base_prompt += f"\n[KONDISI PSIKOLOGIS USER]:\n- Emosi: {emotion} | Urgensi: {urgency} | Gaya: {style} | Goal: {goal}\n"
 
-    # Ambil metadata rencana strategis aksi dari DeepSeek
+    # 🔥 PERBAIKAN: Extract action_plan dengan lebih robust
     raw_action_plan = strategy_params.get("action_plan", [])
     processed_actions = []
-    for item in raw_action_plan:
-        if isinstance(item, dict):
-            action_text = item.get("action") or item.get("step") or list(item.values())[0]
-            processed_actions.append(str(action_text))
-        else:
-            processed_actions.append(str(item))
+    
+    def extract_action_text(item, depth=0):
+        """Recursive extraction untuk nested action_plan"""
+        if depth > 3:  # Prevent infinite recursion
+            return None
             
+        if isinstance(item, str):
+            return item
+        elif isinstance(item, dict):
+            # Coba ambil dari key yang paling relevan
+            for key in ["action", "step", "description", "text"]:
+                if key in item:
+                    val = item[key]
+                    if isinstance(val, str):
+                        return val
+                    elif isinstance(val, dict):
+                        result = extract_action_text(val, depth + 1)
+                        if result:
+                            return result
+            # Fallback: ambil value pertama yang string
+            for val in item.values():
+                if isinstance(val, str):
+                    return val
+                elif isinstance(val, dict):
+                    result = extract_action_text(val, depth + 1)
+                    if result:
+                        return result
+        return None
+    
+    for item in raw_action_plan:
+        action_text = extract_action_text(item)
+        if action_text:
+            processed_actions.append(action_text)
+
     if processed_actions:
-        base_prompt += f"\n[INSTRUKSI STRATEGI AKSI KERJA]:\n- {'. '.join(processed_actions)}\n"
+        actions_text = "\n".join(f"• {a}" for a in processed_actions)
+        base_prompt += f"\n[STRUKTUR JAWABAN WAJIB DIKUTI]:\n{actions_text}\n"
         
     empathy = cognitive_params.get("empathy_phrase")
     if empathy:
-        base_prompt += f"- Kalimat empati jangkar pembuka: {empathy}\n"
+        base_prompt += f"• Kalimat empati pembuka: {empathy}\n"
     
+    # 🔥 CRITICAL: RAG context dengan instruksi yang SANGAT TEGAS
     rag_ctx = strategy_params.get("rag_context")
     if rag_ctx:
-        base_prompt += f"\n[DOKUMEN VALID INTERNAL SEBAGAI DASAR TANGGAPAN]:\n{rag_ctx}\nWajib sebutkan nomor regulasi/SKEP formal yang tertera di atas saat memaparkan jawaban."
+        base_prompt += (
+            f"\n{'='*70}\n"
+            f"[SUMBER DATA RESMI - WAJIB DIRUJUK]\n"
+            f"{'='*70}\n"
+            f"{rag_ctx}\n"
+            f"{'='*70}\n"
+            f"INSTRUKSI PENTING:\n"
+            f"1. Gunakan HANYA informasi dari dokumen di atas.\n"
+            f"2. Sebutkan nomor regulasi, pasal, dan halaman saat mengutip.\n"
+            f"3. JANGAN tambahkan informasi eksternal atau asumsi pribadi.\n"
+            f"4. Jika user tanya hal di luar dokumen, katakan tidak tersedia.\n"
+            f"{'='*70}\n"
+        )
 
-    base_prompt += "\n\nOutput HARUS berupa teks obrolan murni, dilarang memunculkan format JSON, tag '<think>' atau metadata sistem apa pun!"
+    if cognitive_params.get("is_coding"):
+        base_prompt += (
+            "\n[KONTEKS PEMROGRAMAN]:\n"
+            "User minta bantuan koding. Gunakan riwayat pesan untuk memahami kode asli.\n"
+            "Berikan solusi kode yang lengkap dan bisa langsung dipakai.\n"
+        )
+
+    base_prompt += (
+        "\n\nOUTPUT HARUS berupa teks obrolan natural bahasa Indonesia.\n"
+        "DILARANG memunculkan JSON, tag <think>, atau metadata sistem!\n"
+        "Mulai menjawab sekarang berdasarkan instruksi di atas."
+    )
     
     system_message = {"role": "system", "content": base_prompt}
     exec_messages = [system_message]
@@ -316,31 +362,35 @@ async def execute_layer_3_executor(
         model_name=settings.MODEL_PERSONA,
         messages=exec_messages,
         request=request,
-        temperature=0.7,
+        temperature=0.5,  # 🔥 TURUNKAN dari 0.7 ke 0.5 biar lebih fokus
         keep_alive=-1,
-        num_ctx=4096
+        num_ctx=8192
     ):
         yield chunk_line
 
 
-def _get_fallback_cognitive_params() -> Dict[str, Any]:
-    """Fallback Layer 1 output dengan skema lengkap 34 parameter kognitif kaya"""
+def _get_fallback_cognitive_params(user_message: str = "") -> Dict[str, Any]:
+    """
+    Fallback Layer 1 output dengan penyelamatan kueri fisik user.
+
+    [FIX #2] need_rag diset False dan detected_intent CHITCHAT agar pipeline
+    tidak memaksa RAG + DeepSeek-R1 ketika Layer 1 (Qwen) timeout.
+    Chat mode 'documents' di chat.py akan override need_rag=True jika memang diperlukan.
+    """
     return {
         "emotion": "neutral",
         "emotion_confidence": 0.5,
-        "empathy_phrase": "Saya mendengar Anda.",
+        "empathy_phrase": None,
         "need_rag": False,
-        "rag_query": None,
+        "rag_query": user_message if user_message else "",
         "need_analytics": False,
         "is_user_correction": False,
         "previous_response_was_wrong": False,
         "what_went_wrong": None,
-        "urgency_level": "sedang",
+        "urgency_level": "rendah",
         "context_summary": "Query dianalisis dengan parameter fallback 34 parameter.",
-        "detected_intent": "NORMAL",
+        "detected_intent": "CHITCHAT",
         "extracted_entities": [],
-        "requires_follow_up": False,
-        # --- Tambahan Parameter Baru ---
         "security_clearance_required": "low",
         "corporate_scope": "general_knowledge",
         "is_policy_query": False,
@@ -360,7 +410,8 @@ def _get_fallback_cognitive_params() -> Dict[str, Any]:
         "user_pronoun_preference": "unknown",
         "slang_interjection_marker": [],
         "profanity_frustration_trigger": "none",
-        "linguistic_mirroring_strategy": "stay_formal_safe"
+        "linguistic_mirroring_strategy": "stay_formal_safe",
+        "is_coding": False
     }
 
 

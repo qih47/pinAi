@@ -117,9 +117,12 @@ async def get_session_messages_endpoint(session_uuid: str):
 # ==============================================================================
 
 
-def _format_sse(chunk: str, thinking: str = "", done: bool = False) -> str:
-    """Format SSE response dengan thinking signal dan done flag"""
-    return json.dumps({"chunk": chunk, "thinking": thinking, "done": done}) + "\n"
+def _format_sse(chunk: str, thinking: str = "", done: bool = False, sources: list = None) -> str:
+    """Format SSE response dengan thinking signal, done flag, dan sources"""
+    payload = {"chunk": chunk, "thinking": thinking, "done": done}
+    if sources is not None:
+        payload["sources"] = sources
+    return json.dumps(payload, ensure_ascii=False) + "\n"
 
 
 async def _sequential_pipeline_generator(
@@ -247,7 +250,7 @@ async def _sequential_pipeline_generator(
             _get_fallback_cognitive_params,
         )
 
-        cognitive_params = _get_fallback_cognitive_params()
+        cognitive_params = _get_fallback_cognitive_params(user_message)
 
     # HARD HARDENING VALIDATION JIKA MODE BUKAN DOCUMENTS ATAU BUKAN RAG
     coding_tokens = [
@@ -290,12 +293,13 @@ async def _sequential_pipeline_generator(
     print("🧠 " * 20 + "\n")
 
     # READ FINAL PARAMETERS DETERMINATION
+    # [FIX #1] Hapus duplikasi deklarasi is_coding_task — cukup satu kali setelah semua override selesai
     need_rag_final = bool(cognitive_params.get("need_rag", False))
-    is_coding_task = bool(cognitive_params.get("is_coding", False))
-    # ========== INTERSEPTOR BYPASS & KENDALI ALIRAN PIPA ==========
     detected_intent_flag = str(cognitive_params.get("detected_intent", "NORMAL")).upper()
     vram_urgency = str(cognitive_params.get("estimated_vram_urgency", "low_bypass_safe")).lower()
     is_coding_task = bool(cognitive_params.get("is_coding", False))
+
+    # ========== INTERSEPTOR BYPASS & KENDALI ALIRAN PIPA ==========
 
     # 🔥 FIX MUTLAK: Jika terdeteksi CHITCHAT, langsung bypass ke Gemma4, tidak peduli mode documents atau auto!
     is_chitchat = "CHITCHAT" in detected_intent_flag or "CHIT_CHAT" in detected_intent_flag
@@ -354,6 +358,11 @@ async def _sequential_pipeline_generator(
         print("[LAYER 2 LOG DUMP] Cetak Biru Taktis Tindakan Hasil Perumusan Logika:")
         print(json.dumps(strategy_params, indent=2, ensure_ascii=False))
         print("📋 " * 20 + "\n")
+
+    if strategy_params.get("rag_sources"):
+        sources_data = strategy_params["rag_sources"]
+        print(f"📤 [SSE] Sending {len(sources_data)} sources to frontend")
+        yield _format_sse("", "", False, sources=sources_data)
 
     # ==========================================================================
     # ✍️ LAYER 3: SOCIAL EXECUTOR (MANDATORY - GEMMA 4 FUSION ENGINE)
