@@ -1,7 +1,28 @@
 import { create } from "zustand";
 
-const API_BASE = "http://192.168.11.80:5000";
+const DEFAULT_API_BASE = import.meta.env.VITE_API_BASE_URL || "";
+export const API_BASE = typeof window !== 'undefined' && !DEFAULT_API_BASE
+    ? `${window.location.protocol}//${window.location.hostname}:5000`
+    : DEFAULT_API_BASE;
 let _sessionLoadSeq = 0;
+
+export function getUploadUrl(filePath) {
+    if (!filePath) return '';
+    const filename = filePath.includes('/') ? filePath.split('/').pop() : filePath;
+    return `${API_BASE}/uploads/${filename}`;
+}
+
+function _normalizeAttachments(files) {
+    if (!files || !files.length) return [];
+    return files.map((f) => ({
+        id: f.id,
+        file_name: f.original_filename || f.file_name || 'lampiran',
+        file_path: f.file_path && f.file_path.includes('/')
+            ? f.file_path.split('/').pop()
+            : f.file_path,
+        mime_type: f.mime_type,
+    }));
+}
 
 function _buildAuthHeaders(npp) {
     const headers = { 'Content-Type': 'application/json' };
@@ -13,7 +34,6 @@ function _buildAuthHeaders(npp) {
     return headers;
 }
 
-// 🔥 PERLUASAN PARAMETER: Menambahkan parameter isolatedDocId dan attachmentPaths tanpa merusak fungsi oroknya
 async function _performStream(set, get, messagesToSend, assistantMessage, forcedSessionUuid = null, npp = null, isolatedDocId = null, attachmentPaths = []) {
     try {
         const activeSessionUuid = forcedSessionUuid || get().sessionUuid;
@@ -26,9 +46,8 @@ async function _performStream(set, get, messagesToSend, assistantMessage, forced
                 messages: messagesToSend,
                 mode: 'normal',
                 temperature: 0.7,
-                // 🔥 TAMBAHAN PAYLOAD SAKTI UNTUK FASE 1 ATTACHMENT SUPPORT
-                isolated_doc_id: isolatedDocId,       // Mengunci mode chat dokumen spesifik (RAG)
-                attachment_paths: attachmentPaths      // Jalur file attachment biasa (User Upload)
+                isolated_doc_id: isolatedDocId,      
+                attachment_paths: attachmentPaths      
             })
         });
 
@@ -39,6 +58,7 @@ async function _performStream(set, get, messagesToSend, assistantMessage, forced
         let accumulatedReply = '';
         let streamBuffer = '';
         let renderTimeout = null;
+        let accumulatedThinking = ''; 
 
         while (true) {
             const { value, done } = await reader.read();
@@ -55,6 +75,24 @@ async function _performStream(set, get, messagesToSend, assistantMessage, forced
                 try {
                     const parsedData = JSON.parse(cleanedLine);
 
+                    // 🧠 HANDLE STATUS DINAMIS (Muncul di indikator loading)
+                    if (parsedData.thinking) {
+                        accumulatedThinking = parsedData.thinking;
+                        // 🔥 Buat objek message baru agar referensi berubah → React mendeteksi perubahan
+                        const updatedAssistantMsg = { ...assistantMessage, thought: accumulatedThinking };
+                        const updatedMessages = get().messages.map(msg =>
+                            msg === assistantMessage ? updatedAssistantMsg : msg
+                        );
+                        // Simpan referensi baru untuk digunakan di chunk berikutnya
+                        assistantMessage = updatedAssistantMsg;
+                        set({
+                            currentThinking: accumulatedThinking,
+                            isThinking: true,
+                            messages: updatedMessages
+                        });
+                    }
+
+                    // 📝 HANDLE RESPONSE CHUNK (Stream jawaban utama)
                     if (parsedData.chunk) {
                         accumulatedReply += parsedData.chunk;
                         assistantMessage.content = accumulatedReply;
@@ -63,11 +101,21 @@ async function _performStream(set, get, messagesToSend, assistantMessage, forced
                             renderTimeout = requestAnimationFrame(() => {
                                 set({
                                     messages: [...get().messages],
-                                    isThinking: false
+                                    // Pas teks utama keluar, kita bisa set isThinking: false 
+                                    // agar UI loading berubah jadi status "sedang mengetik"
+                                    isThinking: false 
                                 });
                                 renderTimeout = null;
                             });
                         }
+                    }
+
+                    // 🏁 HANDLE COMPLETION
+                    if (parsedData.done === true) {
+                        set({
+                            isThinking: false,
+                            currentThinking: '' // Bersihkan status setelah selesai
+                        });
                     }
                 } catch (jsonErr) {
                     // Buffering
@@ -77,8 +125,8 @@ async function _performStream(set, get, messagesToSend, assistantMessage, forced
 
     } catch (error) {
         console.error('💥 [FE STREAM ERROR]:', error);
-        assistantMessage.content = '⚠️ Gagal memuat balasan. Pastikan backend FastAPI lo idup, bolo!';
-        set({ messages: [...get().messages], isThinking: false });
+        assistantMessage.content = '⚠️ Gagal memuat balasan.';
+        set({ messages: [...get().messages], isThinking: false, currentThinking: '' });
     } finally {
         set({ isStreaming: false, isLoading: false, isThinking: false });
     }
@@ -88,28 +136,23 @@ export const useChatStore = create((set, get) => ({
     messages: [],
     isLoading: false,
     isStreaming: false,
-    isThinking: false, 
+    isThinking: false,
+    currentThinking: '',  // New: current thinking signal from pipeline
     sessionUuid: null,
+    stagedAttachments: [],     
+    activeIsolatedDocId: null, 
+    activeIsolatedTitle: null, 
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // 🔥 TAMBAHAN STATE BARU UNTUK SEKTOR ATTACHMENT SUPPORT & ISOLASI KONTEKS
-    // ─────────────────────────────────────────────────────────────────────────
-    stagedAttachments: [],     // Menampung metadata file yang sudah terupload ke backend sementara
-    activeIsolatedDocId: null, // ID dokumen RAG aktif untuk mode isolasi chat context
-    activeIsolatedTitle: null, // Judul dokumen RAG aktif untuk komponen penanda di UI input form
-
-    sendMessage: async (content, npp, onSessionCreatedCallback) => {
-        if (!content.trim() || get().isStreaming) return;
+    sendMessage: async (content, npp, onSessionCreatedCallback, directUploadedFiles = null) => {
+        const hasAttachments = (directUploadedFiles?.length > 0) || (get().stagedAttachments?.length > 0);
+        if ((!content.trim() && !hasAttachments) || get().isStreaming) return;
 
         let currentSessionUuid = get().sessionUuid;
 
-        // 🧠 TRANSMISI OTOMATIS SESI BARU (Lurus dari lahir)
         if (!currentSessionUuid || currentSessionUuid === "new") {
             try {
-                // Peras 4 kata pertama chat user buat dijadikan judul valid
                 const generatedTitle = content.split(" ").slice(0, 4).join(" ") + "...";
 
-                // 🔥 SUNTIK PARAMETER ?judul=... ke endpoint create session resmi bawaan FastAPI lu bolo!
                 const response = await fetch(`${API_BASE}/api/chat/sessions/create?judul=${encodeURIComponent(generatedTitle)}`, {
                     method: 'POST',
                     headers: _buildAuthHeaders(npp),
@@ -119,7 +162,6 @@ export const useChatStore = create((set, get) => ({
                 if (result.status === "success") {
                     currentSessionUuid = result.data.session_uuid;
                     
-                    // 1. Injeksi instan baris baru ke state array sidebar agar tampilan langsung berubah tanpa nunggu stream beres
                     if (onSessionCreatedCallback) {
                         onSessionCreatedCallback({
                             session_uuid: currentSessionUuid,
@@ -129,7 +171,6 @@ export const useChatStore = create((set, get) => ({
                         });
                     }
 
-                    // 2. Kunci UUID baru ke state store global (useEffect di ChatPage akan pindahin URL secara pasif)
                     set({ sessionUuid: currentSessionUuid });
                 } else {
                     throw new Error("Gagal booking session id dari backend.");
@@ -140,13 +181,21 @@ export const useChatStore = create((set, get) => ({
             }
         }
 
-        // Jalur normal pengaliran pesan regular
-        const userMessage = { role: 'user', content };
+        const targetFiles = directUploadedFiles !== null ? directUploadedFiles : get().stagedAttachments;
+        const attachmentMeta = _normalizeAttachments(targetFiles);
+
+        const userMessage = {
+            role: 'user',
+            content: content.trim(),
+            ...(attachmentMeta.length > 0 ? { attachments: attachmentMeta } : {}),
+        };
         const updatedMessages = [...get().messages, userMessage];
         const assistantMessage = { role: 'assistant', content: '' };
 
-        // Ambil data attachment paths dan isolated context saat ini sebelum dikirim
-        const currentAttachmentPaths = get().stagedAttachments.map(file => file.file_path) || [];
+        const currentAttachmentPaths = attachmentMeta
+            .map((file) => file.file_path)
+            .filter(Boolean);
+
         const currentIsolatedDocId = get().activeIsolatedDocId;
 
         set({
@@ -158,19 +207,17 @@ export const useChatStore = create((set, get) => ({
 
         await new Promise(resolve => setTimeout(resolve, 100));
         
-        // 🔥 TAMBAHAN OPERAN PARAMETER: Mengirimkan data isolasi dan attachment ke performStream
         await _performStream(
-            set, 
-            get, 
-            updatedMessages, 
-            assistantMessage, 
-            currentSessionUuid, 
-            npp, 
-            currentIsolatedDocId, 
+            set,
+            get,
+            updatedMessages,
+            assistantMessage,
+            currentSessionUuid,
+            npp,
+            currentIsolatedDocId,
             currentAttachmentPaths
         );
 
-        // 🔥 AUTO CLEAR STAGED: Kosongkan list file staged attachments setelah pesan berhasil terkirim
         set({ stagedAttachments: [] });
     },
     
@@ -200,12 +247,10 @@ export const useChatStore = create((set, get) => ({
         const messagesToSend = currentMessages.slice(0, index + 1);
         const npp = JSON.parse(localStorage.getItem('cakra_user') || '{}')?.npp || null;
         
-        // Tambahan parameter default null pada editAndRegenerate demi menjaga kestabilan sasis aslinya
         await _performStream(set, get, messagesToSend, assistantMessage, null, npp, get().activeIsolatedDocId, []);
     },
 
     clearChat: () => {
-        // 🔥 TAMBAHAN: Reset juga state isolasi dan attachments saat clear chat dilakukan
         set({ 
             messages: [], 
             sessionUuid: null, 
@@ -240,7 +285,6 @@ export const useChatStore = create((set, get) => ({
 
         const seq = ++_sessionLoadSeq;
         console.log('📥 [STORE] Loading session:', sessionUuid);
-        // 🔥 TAMBAHAN: Reset state isolasi dokumen lama saat berpindah ke sesi obrolan yang berbeda
         set({ sessionUuid, messages: [], isLoading: true, activeIsolatedDocId: null, activeIsolatedTitle: null });
 
         try {
@@ -252,9 +296,25 @@ export const useChatStore = create((set, get) => ({
 
             if (seq !== _sessionLoadSeq) return;
 
-            if (result.status === "success") {
+            if (result.status === "success" && result.data) {
+                // 🔥 TAMBAHAN SAKTI 2: Saring total data riwayat lama di level Store agar nama filenya murni keping ujungnya doang!
+                const sanitizedMessages = result.data.map(msg => {
+                    if (msg.attachments && msg.attachments.length > 0) {
+                        return {
+                            ...msg,
+                            attachments: msg.attachments.map(file => ({
+                                ...file,
+                                file_path: file.file_path && file.file_path.includes('/') 
+                                    ? file.file_path.split('/').pop() 
+                                    : file.file_path
+                            }))
+                        };
+                    }
+                    return msg;
+                });
+
                 set({
-                    messages: result.data || [],
+                    messages: sanitizedMessages,
                     isLoading: false
                 });
             } else {
@@ -305,7 +365,6 @@ export const useChatStore = create((set, get) => ({
             });
             const result = await response.json();
             if (result.status === 'success') {
-                // 🔥 TAMBAHAN: Pastikan state isolasi dan attachment bersih total saat inisialisasi sesi baru murni
                 set({ sessionUuid: result.data.session_uuid, messages: [], stagedAttachments: [], activeIsolatedDocId: null, activeIsolatedTitle: null });
                 return result.data.session_uuid;
             }
@@ -330,24 +389,16 @@ export const useChatStore = create((set, get) => ({
             return { status: "error" };
         }
     },
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // 🔥 TAMBAHAN BARIS ACTION MANAJEMEN BARU TANPA MERUSAK STRUKTUR DI ATAS
-    // ─────────────────────────────────────────────────────────────────────────
     
-    // Action untuk menyimpan metadata berkas yang berhasil diunggah di chat form staged
     setStagedAttachments: (attachments) => {
         set({ stagedAttachments: attachments });
     },
 
-    // Action sakti untuk toggle/mengunci/keluar dari mode isolasi pencarian dokumen RAG spesifik
     setContextIsolation: (docId, docTitle) => {
-        // Jika dokumen yang diklik sama dengan yang sedang aktif, anggap user men-toggle untuk keluar (reset)
         if (get().activeIsolatedDocId === docId || docId === null) {
             set({ activeIsolatedDocId: null, activeIsolatedTitle: null });
         } else {
             set({ activeIsolatedDocId: docId, activeIsolatedTitle: docTitle });
         }
     }
-
 }));

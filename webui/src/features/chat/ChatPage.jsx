@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { useChatStore } from '../../stores/chatStore';
+import { useChatStore, API_BASE } from '../../stores/chatStore';
 import cakraLogo from '../../assets/cakra.png';
 import { styles, lightColors, darkColors } from './chatPage.styles';
 import ChatArea from './components/ChatArea';
@@ -145,6 +145,7 @@ export default function ChatPage({ isGuest, isLoggedIn: propsIsLoggedIn, userDat
     messages,
     isStreaming,
     isLoading,
+    currentThinking,
     sendMessage,
     clearChat: storeClearChat,
     loadChatSession: storeLoadChatSession
@@ -250,31 +251,48 @@ export default function ChatPage({ isGuest, isLoggedIn: propsIsLoggedIn, userDat
 
     if (selectedFiles.length > 0) {
       setIsUploadingFile(true);
+
+      let uploadSessionUuid = activeSessionId || useChatStore.getState().sessionUuid;
+      if (!uploadSessionUuid || uploadSessionUuid === 'new') {
+        const created = await useChatStore.getState().createNewSession(
+          isGuest ? null : currentUserData?.npp
+        );
+        if (created) {
+          uploadSessionUuid = created;
+          if (!isGuest && currentIsLoggedIn) {
+            lastLoadedSessionRef.current = created;
+            navigate(`/chat/${created}`, { replace: true });
+          }
+        }
+      }
+
       const formData = new FormData();
       selectedFiles.forEach(file => formData.append("files", file));
-      if (activeSessionId) formData.append("session_uuid", activeSessionId);
+      if (uploadSessionUuid) formData.append("session_uuid", uploadSessionUuid);
 
       try {
-        const response = await fetch(`http://192.168.11.80:5000/api/documents/upload`, {
+        const response = await fetch(`${API_BASE}/api/chat/documents/upload`, {
           method: "POST",
           body: formData,
         });
         if (!response.ok) throw new Error("Gagal mengunggah berkas");
         const result = await response.json();
+        
         if (result.status === "success") {
           finalStagedData = result.data;
-          setStagedAttachments(result.data);
+          setStagedAttachments(result.data); // Tetap simpan ke store untuk backup state
         }
       } catch (err) {
         console.error(err);
         alert("Gagal memproses pengiriman karena upload file error, bolo!");
         setIsUploadingFile(false);
-        return; // Hentikan pipeline agar chat tidak terkirim tanpa file
+        return; // Hentikan pipeline agar chat tidak terkirim pincang tanpa file
       } finally {
         setIsUploadingFile(false);
       }
     }
 
+    // 🔥 PERBAIKAN ESENSIAL: Oper parameter data file terupload langsung ke fungsi sendMessage
     sendMessage(
       input,
       isGuest ? null : currentUserData?.npp,
@@ -282,7 +300,8 @@ export default function ChatPage({ isGuest, isLoggedIn: propsIsLoggedIn, userDat
         setChatHistory(prev => [newSessionObj, ...prev]);
         lastLoadedSessionRef.current = newSessionObj.session_uuid;
         navigate(`/chat/${newSessionObj.session_uuid}`, { replace: true });
-      }
+      },
+      finalStagedData // Injeksi langsung datanya kesini, bolo!
     );
 
     setInput('');
@@ -747,6 +766,7 @@ export default function ChatPage({ isGuest, isLoggedIn: propsIsLoggedIn, userDat
               messagesContainerRef={messagesContainerRef}
               setInput={setInput}
               isThinking={isThinking}
+              currentThinking={currentThinking}
               isStreamingText={isStreamingText}
               lastAssistantIndex={lastAssistantIndex}
             />

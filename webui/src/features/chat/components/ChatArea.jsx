@@ -12,6 +12,7 @@ export default function ChatArea({
   messagesContainerRef,
   setInput,
   isThinking,
+  currentThinking,
   isStreamingText,
   lastAssistantIndex,
   sendMessage
@@ -61,13 +62,13 @@ export default function ChatArea({
             <p style={{ ...styles.emptySubtitle, color: theme.secondaryText }}>Ada yang bisa saya bantu hari ini?</p>
           </div>
         ) : (
-          <>
+          // 🔥 KUNCI SAKTI: Masukin class container ke pembungkus luar ini biar warning DOM murni hilang, dan Virtuoso ga re-render pas ngetik
+          <div className="assistant-content-container">
             <Virtuoso
               ref={virtuosoRef}
               data={messages}
               customScrollParent={messagesContainerRef?.current || undefined}
               useWindowScroll={false}
-              contentClassName="assistant-content-container"
               itemContent={itemContent}
               followOutput={(isAtBottom) => {
                 if (isAtBottom) {
@@ -89,19 +90,19 @@ export default function ChatArea({
                               <span style={{ ...styles.statusDot, background: '#ef4444', borderColor: theme.mainBg }} />
                             </div>
                             <span style={{ ...styles.thinkingInline, color: theme.secondaryText, marginLeft: 10 }}>
-                              CAKRA sedang berpikir...
+                              {currentThinking || 'CAKRA sedang berpikir...'}
                             </span>
                           </div>
                           <div style={styles.assistantContent}></div>
                         </div>
                       </div>
                     )}
-                    <div style={{ height: '0px', width: '100%', flexShrink: 0 }} />
+                    <div style={{ height: '60px', width: '100%', flexShrink: 0 }} />
                   </>
                 )
               }}
             />
-          </>
+          </div>
         )}
       </div>
     </div>

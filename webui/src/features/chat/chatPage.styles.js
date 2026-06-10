@@ -171,7 +171,10 @@ export const styles = {
         display: 'flex', alignItems: 'flex-start', animation: 'fadeInUp 0.3s ease-out'
     },
     assistantMessageWrapper: {
-        flex: 1, minWidth: 0
+        flex: 1, 
+        minWidth: 0,
+        // Smooth entrance untuk seluruh bubble
+        animation: 'geminiFadeIn 0.4s ease-out',
     },
     assistantHeader: {
         display: 'flex', alignItems: 'center', marginBottom: 6
@@ -208,16 +211,21 @@ export const styles = {
 
     // 🔥 IMPROVEMENT STREAMING: Transisi warna dan rendering text selembut Gemini
     assistantText: {
-        lineHeight: 1.75,
+        lineHeight: 1.8,
         whiteSpace: 'normal',
         margin: 0,
         fontSize: '15px',
         color: 'transparent', // Wajib transparent agar gradient-nya kelihatan
-        backgroundImage: 'linear-gradient(to right, #e2e8f0 80%, rgba(226, 232, 240, 0.1) 100%)', // Teks memudar di ujung kanan
         WebkitBackgroundClip: 'text',
         backgroundClip: 'text',
-        transition: 'all 0.08s ease-in-out',
-        animation: 'geminiReveal 0.4s ease-out forwards',
+
+        opacity: 0,  // Mulai dari invisible
+        animation: 'geminiReveal 0.5s cubic-bezier(0.22, 0.61, 0.36, 1) forwards',  // Easing natural
+        transition: 'all 0.3s ease-out',  // Smooth transition untuk update
+
+        // Optional: Gradient fade di ujung kanan (kayak Gemini)
+        backgroundImage: 'linear-gradient(to right, currentColor 85%, transparent 100%)',
+
     },
 
     inputArea: {
@@ -247,4 +255,5 @@ export const styles = {
     inputFooter: {
         textAlign: 'center', fontSize: 11, marginTop: 10, padding: '0 12px'
     }
+
 };

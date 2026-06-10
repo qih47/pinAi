@@ -1,8 +1,9 @@
 import axios from 'axios';
 
+const DEFAULT_API_BASE = import.meta.env.VITE_API_BASE_URL || '';
 const apiClient = axios.create({
-  // 🔥 KUNCI DI SINI: Samakan dengan IP server BE lo, port 8000, plus prefix /api
-  baseURL: import.meta.env.VITE_API_BASE_URL || 'http://192.168.11.80:5000/api', 
+  // 🔥 KUNCI DI SINI: Gunakan env var jika tersedia, jika tidak fallback ke port 5000 di host saat ini.
+  baseURL: DEFAULT_API_BASE || (typeof window !== 'undefined' ? `${window.location.protocol}//${window.location.hostname}:5000/api` : '/api'),
   timeout: 30000,
   headers: {
     'Content-Type': 'application/json',
