@@ -6,7 +6,16 @@ import logging
 from typing import List, Optional, AsyncGenerator
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, Request, HTTPException, UploadFile, File, Form, Query
+from fastapi import (
+    APIRouter,
+    Depends,
+    Request,
+    HTTPException,
+    UploadFile,
+    File,
+    Form,
+    Query,
+)
 from fastapi.responses import StreamingResponse
 from backend.app.api.dependencies.auth import get_current_user_npp
 from backend.app.core.llm_client import stream_ollama_chat
@@ -34,6 +43,7 @@ logger = logging.getLogger("CAKRA_CHAT_API")
 # ==============================================================================
 # 📂 SECTION 1: ENDPOINTS MANAJEMEN SESI (SIDEBAR FRONTEND)
 # ==============================================================================
+
 
 @router.get("/sessions", summary="Ambil Daftar Sesi Aktif Pegawai untuk Sidebar")
 async def get_history_sessions(
@@ -93,7 +103,10 @@ async def delete_chat_session(session_uuid: str):
     return {"status": "success", "message": "Sesi obrolan berhasil dihapus, bolo!"}
 
 
-@router.get("/sessions/{session_uuid}/messages", summary="Ambil Pesan dalam Sesi Chat beserta Attachment")
+@router.get(
+    "/sessions/{session_uuid}/messages",
+    summary="Ambil Pesan dalam Sesi Chat beserta Attachment",
+)
 async def get_session_messages_endpoint(session_uuid: str):
     messages = await chat_history_service.get_session_messages(session_uuid)
     return {"status": "success", "data": messages}
@@ -103,13 +116,10 @@ async def get_session_messages_endpoint(session_uuid: str):
 # 🚀 SECTION 2: ENDPOINT UTAMA SEQUENTIAL PIPELINE (LAYER 0→1→2→3)
 # ==============================================================================
 
+
 def _format_sse(chunk: str, thinking: str = "", done: bool = False) -> str:
     """Format SSE response dengan thinking signal dan done flag"""
-    return json.dumps({
-        "chunk": chunk,
-        "thinking": thinking,
-        "done": done
-    }) + "\n"
+    return json.dumps({"chunk": chunk, "thinking": thinking, "done": done}) + "\n"
 
 
 async def _sequential_pipeline_generator(
@@ -119,7 +129,7 @@ async def _sequential_pipeline_generator(
 ) -> AsyncGenerator[str, None]:
     """
     Sequential Cognitive Pipeline Generator Berbasis Inteligensia Tingkat Tinggi CAKRA AI
-    Mengorkestrasikan 34 Parameter Kognitif Lintas Layer Tanpa Degradasi Informasi.
+    Mengorkestrasikan 35 Parameter Kognitif Lintas Layer Sesuai Tipe Lampiran (Image/PDF).
     """
     user_label = (
         f"Pegawai (NPP: {current_user_npp})"
@@ -127,144 +137,235 @@ async def _sequential_pipeline_generator(
         else "GUEST (Mode Tamu)"
     )
     print(f"\n💬 [PIPELINE] Sequential pipeline starting dari {user_label}")
-    
+
     if not payload.messages:
         raise HTTPException(
             status_code=400, detail="Daftar urutan pesan tidak boleh kosong!"
         )
-    
+
     user_message = payload.messages[-1].content
     print("\n" + "═" * 50)
     print(f'👤 [USER MSG] "{user_message}"')
+
+    # AMBIL PARAMETER CHAT MODE DARI FRONTEND (auto | documents)
+    chat_mode = getattr(payload, "mode", "auto")
+    print(f"⚙️  [CHAT MODE] Mode Aktif FE: {chat_mode}")
     print("═" * 50)
-    
+
     # Convert messages to dict format
     messages_for_pipeline = [
         {"role": msg.role, "content": msg.content} for msg in payload.messages
     ]
-    
-    # ========== LAYER 0: Vision Preprocessor (OPTIONAL) ==========
+
+    # Klasifikasi Tipe Attachment Secara Taktis
     ocr_text = None
+    has_images = False
+    has_pdf = False
+    pdf_paths = []
+
     if payload.attachment_paths and len(payload.attachment_paths) > 0:
-        logger.info(f"[LAYER 0] Vision preprocessing starting for {len(payload.attachment_paths)} files...")
-        # 🔥 UI FIX: Kirim sinyal pendek membaca berkas lampiran
-        yield _format_sse("", "📄 Membaca lampiran berkas...", False)
-        
+        for path in payload.attachment_paths:
+            path_lower = path.lower()
+            if path_lower.endswith(".pdf"):
+                has_pdf = True
+                pdf_paths.append(path)
+            if any(
+                path_lower.endswith(ext)
+                for ext in [".jpg", ".jpeg", ".png", ".webp", ".bmp"]
+            ):
+                has_images = True
+
+    # ==========================================================================
+    # 🔥 STRATEGI PRE-PROCESSING LAYER 0 BERDASARKAN KONSEP BERKAS
+    # ==========================================================================
+    if has_pdf:
+        # Jika ada PDF: Konversi ke image internal, jalankan OCR MiniCPM-V, suapkan teksnya ke Qwen
+        logger.info(
+            f"[LAYER 0] PDF detected. Triggering MiniCPM OCR conversion for {len(pdf_paths)} file(s)..."
+        )
+        yield _format_sse("", "📄 Membaca lampiran berkas PDF...", False)
+
         try:
-            vision_result = await execute_layer_0_vision(request, payload.attachment_paths)
+            # Menggunakan array pdf_paths saja agar MiniCPM fokus meng-OCR PDF
+            vision_result = await execute_layer_0_vision(request, pdf_paths)
             ocr_text = vision_result.get("extracted_text", "")
-            
+
             if payload.session_uuid:
                 await chat_history_service.save_dialogue_corpus(
                     session_uuid=payload.session_uuid,
-                    user_text=f"{user_message} [Lampiran: {len(payload.attachment_paths)} file(s)]"
+                    user_text=f"{user_message} [PDF OCR Berhasil Dibuat]",
                 )
-            
-            logger.info(f"[LAYER 0] Complete | Pages: {vision_result.get('page_count', 0)}")
+            logger.info(
+                f"[LAYER 0] PDF OCR Complete | Pages: {vision_result.get('page_count', 0)}"
+            )
         except Exception as e:
-            logger.error(f"[LAYER 0] Error: {str(e)}")
+            logger.error(f"[LAYER 0] PDF OCR Failed: {str(e)}")
             ocr_text = "[File processing failed]"
-    
-    # Save user message ke chat_messages
+
+    elif has_images:
+        # Jika murni GAMBAR (tanpa PDF): Jangan panggil MiniCPM, biarkan gambar murni diantre untuk Gemma 4 Vision
+        logger.info(
+            "📸 [IMAGE QUEUED] Lampiran berupa gambar murni. Menahan file untuk native Gemma 4 Vision."
+        )
+        yield _format_sse("", "🖼️ Mengantre analisis visual gambar...", False)
+
+    # Save user message ke chat_messages history database
     if payload.session_uuid:
+        attachment_info = (
+            f" [Lampiran: {len(payload.attachment_paths)} file(s)]"
+            if payload.attachment_paths
+            else ""
+        )
         await chat_history_service.save_chat_message(
             session_id=payload.session_uuid,
             role="user",
-            text=user_message,
-            thought="Submitted to advanced socio-cognitive pipeline [34 parameters active]",
+            text=f"{user_message}{attachment_info}",
+            thought=f"Submitted to advanced socio-cognitive pipeline [Mode: {chat_mode}]",
         )
-    
-    # ========== LAYER 1: Cognitive Analyzer (MANDATORY) ==========
+
+    # ==========================================================================
+    # 🧠 LAYER 1: COGNITIVE ANALYZER (MANDATORY - ORKESTRATOR PARAMETER)
+    # ==========================================================================
     logger.info("[LAYER 1] Cognitive analysis starting...")
-    # 🔥 UI FIX: Kirim sinyal pendek analisis konteks kueri
     yield _format_sse("", "🧠 Menganalisis konteks kueri...", False)
-    
+
     try:
+        # Pipa mengalirkan ocr_text (hanya terisi jika berkasnya PDF) demi keakuratan kognitif Qwen
         cognitive_params = await execute_layer_1_analyzer(
             request=request,
             messages=messages_for_pipeline,
             chat_history=[],
             employee_npp=current_user_npp,
-            ocr_text=ocr_text
+            ocr_text=ocr_text,
         )
-        logger.info(f"[LAYER 1] Complete | Intent: {cognitive_params.get('detected_intent')}")
+        logger.info(
+            f"[LAYER 1] Complete | Intent: {cognitive_params.get('detected_intent')}"
+        )
     except Exception as e:
         logger.error(f"[LAYER 1] Error: {str(e)}")
-        from backend.app.services.pipeline_layer_executor import _get_fallback_cognitive_params
+        from backend.app.services.pipeline_layer_executor import (
+            _get_fallback_cognitive_params,
+        )
+
         cognitive_params = _get_fallback_cognitive_params()
-    
-    # 📑 LOG DUMP TERMINAL: Tetap cetak log parameter komplit di sisi console backend buat analitik lo
+
+    # HARD HARDENING VALIDATION JIKA MODE BUKAN DOCUMENTS ATAU BUKAN RAG
+    coding_tokens = [
+        "import ",
+        "export ",
+        "const ",
+        "async ",
+        "await ",
+        "function",
+        "def ",
+        "return ",
+        "create(",
+    ]
+    user_msg_lower = user_message.lower()
+
+    if any(token in user_msg_lower or token in user_message for token in coding_tokens):
+        cognitive_params["is_coding"] = True
+        logger.info("⚡ [HARDENING DETECTION] Token kodingan terdeteksi secara fisik.")
+
+    # KUNCI UTAMA CHAT MODE BE: Jika dari FE mengirimkan 'documents', paksa need_rag bernilai True!
+    if chat_mode == "documents":
+        cognitive_params["need_rag"] = True
+        logger.info(
+            "🔒 [MODE ENFORCEMENT] ChatMode dikunci ke 'documents'. Memaksa status need_rag = True!"
+        )
+
+    # 🔥 REGULASI ANTI-BENTROK: Jika mode document atau need_rag True, paksa is_coding MENJADI False (Mentalin!)
+    if chat_mode == "documents" or cognitive_params.get("need_rag") is True:
+        cognitive_params["is_coding"] = False
+        logger.info(
+            "🛡️  [ANTI-BENTROK LOCK] Zona RAG Aktif. Memaksa status is_coding = False secara mutlak!"
+        )
+
+    # 📑 LOG DUMP TERMINAL
     print("\n" + "🧠 " * 20)
-    print("[LAYER 1 LOG DUMP] Runtunan 34 Parameter Kognitif yang Dihasilkan Gerbang Utama (CAKRA AI):")
+    print(
+        "[LAYER 1 LOG DUMP] Runtunan 35 Parameter Kognitif yang Dihasilkan Gerbang Utama (CAKRA AI):"
+    )
     print(json.dumps(cognitive_params, indent=2, ensure_ascii=False))
     print("🧠 " * 20 + "\n")
-    
-    # Note: Blok string 'thinking_dump' lama yang panjang ke Accordion sengaja KITA HAPUS di sini biar UI bersih!
-    
+
+    # READ FINAL PARAMETERS DETERMINATION
+    need_rag_final = bool(cognitive_params.get("need_rag", False))
+    is_coding_task = bool(cognitive_params.get("is_coding", False))
     # ========== INTERSEPTOR BYPASS & KENDALI ALIRAN PIPA ==========
     detected_intent_flag = str(cognitive_params.get("detected_intent", "NORMAL")).upper()
     vram_urgency = str(cognitive_params.get("estimated_vram_urgency", "low_bypass_safe")).lower()
-    
-    # Jika terdeteksi CHITCHAT atau orkestrator menandai aman di-bypass demi efisiensi hardware
-    if "CHITCHAT" in detected_intent_flag or "CHIT_CHAT" in detected_intent_flag or vram_urgency == "low_bypass_safe":
-        print("⚡ [PIPELINE BYPASS] Terdeteksi sapaan santai / diskusi ringan. Melakukan bypass Layer 2 (DeepSeek-R1) untuk optimalisasi VRAM!")
-        # 🔥 UI FIX: Kirim sinyal pendek penyelarasan respon sosial
+    is_coding_task = bool(cognitive_params.get("is_coding", False))
+
+    # 🔥 FIX MUTLAK: Jika terdeteksi CHITCHAT, langsung bypass ke Gemma4, tidak peduli mode documents atau auto!
+    is_chitchat = "CHITCHAT" in detected_intent_flag or "CHIT_CHAT" in detected_intent_flag
+
+    if is_chitchat or (not is_coding_task and chat_mode != "documents" and vram_urgency == "low_bypass_safe"):
+        print("⚡ [PIPELINE BYPASS] Aliran dialihkan langsung ke Gemma4 (Bypass Layer 2 DeepSeek-R1)!")
         yield _format_sse("", "⚡ Menyelaraskan respon...", False)
-        
+
         strategy_params = {
             "action_plan": [
                 "Tanggapi sapaan atau obrolan ringan user dengan ramah dan penuh kehangatan sosial",
-                "Pastikan mendeklarasikan diri murni sebagai CAKRA AI, bukan sub-model bahasa dasar mana pun"
+                "Pastikan mendeklarasikan diri murni sebagai CAKRA AI, bukan sub-model bahasa dasar mana pun",
             ],
             "response_structure": {
                 "open_with": "greeting",
                 "middle": "narrative",
-                "close_with": "offer_help"
+                "close_with": "offer_help",
             },
-            "key_points_to_cover": ["Sapaan ramah", "Tanggapan kasual", "Identitas Cakra AI"],
+            "key_points_to_cover": [
+                "Sapaan ramah",
+                "Tanggapan kasual",
+                "Identitas Cakra AI",
+            ],
             "tone": "suportif",
             "estimated_response_length": "brief",
             "should_ask_followup": True,
             "rag_context": None,
-            "rag_utilized": False
+            "rag_utilized": False,
         }
     else:
-        # ========== LAYER 2: Strategic Planner (MANDATORY UNTUK NON-CHITCHAT / LOGIKA BERAT) ==========
-        logger.info("[LAYER 2] Strategic planning starting...")
-        
-        # 🔥 UI FIX: Bedakan status dinamis pendek berdasarkan deteksi kebutuhan RAG internal Pindad
-        if cognitive_params.get("need_rag"):
+        # KONDISI 2 & 3: Mode AUTO need_rag TRUE atau Mode DOCUMENTS -> Wajib Olah via DeepSeek-R1
+        logger.info("[LAYER 2] Strategic planning starting (KONDISI 2/3 Active)...")
+
+        if need_rag_final:
             yield _format_sse("", "📚 Menyelami basis data RAG Pindad...", False)
         else:
             yield _format_sse("", "📋 Menyusun rencana tindakan...", False)
-        
+
         try:
             strategy_params = await execute_layer_2_planner(
                 request=request,
                 messages=messages_for_pipeline,
                 cognitive_params=cognitive_params,
-                employee_npp=current_user_npp
+                employee_npp=current_user_npp,
             )
             logger.info(f"[LAYER 2] Complete | Tone: {strategy_params.get('tone')}")
         except Exception as e:
             logger.error(f"[LAYER 2] Error: {str(e)}")
-            from backend.app.services.pipeline_layer_executor import _get_fallback_strategy_params
+            from backend.app.services.pipeline_layer_executor import (
+                _get_fallback_strategy_params,
+            )
+
             strategy_params = _get_fallback_strategy_params()
-            
+
         print("\n" + "📋 " * 20)
         print("[LAYER 2 LOG DUMP] Cetak Biru Taktis Tindakan Hasil Perumusan Logika:")
         print(json.dumps(strategy_params, indent=2, ensure_ascii=False))
         print("📋 " * 20 + "\n")
-        
-    # ========== LAYER 3: Social Executor (MANDATORY) ==========
+
+    # ==========================================================================
+    # ✍️ LAYER 3: SOCIAL EXECUTOR (MANDATORY - GEMMA 4 FUSION ENGINE)
+    # ==========================================================================
     logger.info("[LAYER 3] Response generation starting...")
-    # 🔥 UI FIX: Kirim sinyal pendek tahap akhir perajutan narasi teks utama
     yield _format_sse("", "✍️ Sedang menggenerate narasi...", False)
-    
+
     full_response_text = ""
     start_time = datetime.now()
-    
+
     try:
+        # Jika murni lampiran gambar, execute_layer_3_executor akan otomatis menyuplai path fisik ke Gemma Vision secara native
         async for layer3_chunk in execute_layer_3_executor(
             request=request,
             messages=messages_for_pipeline,
@@ -274,7 +375,7 @@ async def _sequential_pipeline_generator(
             try:
                 chunk_data = json.loads(layer3_chunk.strip())
                 chunk_text = chunk_data.get("chunk", "")
-                
+
                 if chunk_text:
                     full_response_text += chunk_text
                 yield _format_sse(chunk_text, "", False)
@@ -282,47 +383,48 @@ async def _sequential_pipeline_generator(
                 if layer3_chunk:
                     full_response_text += layer3_chunk
                 yield _format_sse(layer3_chunk, "", False)
-        
+
         elapsed = (datetime.now() - start_time).total_seconds()
-        logger.info(f"[LAYER 3] Complete | Generated {len(full_response_text)} chars in {elapsed:.2f}s")
-        
+        logger.info(
+            f"[LAYER 3] Complete | Generated {len(full_response_text)} chars in {elapsed:.2f}s"
+        )
+
     except Exception as e:
         logger.error(f"[LAYER 3] Error: {str(e)}")
         error_msg = f"Gagal mengeksekusi tanggapan sosial: {str(e)}"
         yield _format_sse(error_msg, "", False)
         full_response_text = error_msg
-    
+
     # ========== DATABASE PERSISTENCE & ANALYTICS DATA BINDING ==========
     if payload.session_uuid:
         logger.info("[DATABASE] Saving chat messages & auto-titling...")
-        
-        # Pemicu judul otomatis jika sesi masih default
+
         await chat_history_service.auto_update_session_title(
             payload.session_uuid, user_message
         )
-        
-        # Menyimpan respon asisten AI beserta penanda thought terpadu
+
         await chat_history_service.save_chat_message(
             session_id=payload.session_uuid,
             role="assistant",
             text=full_response_text,
             thought="Processed via Layer 3 [Social Executor with Mirroring Strategy]",
         )
-        
-        # Penyimpanan massal korpus analitik internal (jika kasus no-attachments)
+
         if not (payload.attachment_paths and len(payload.attachment_paths) > 0):
             try:
                 await chat_history_service.save_dialogue_corpus(
                     session_uuid=payload.session_uuid,
                     user_text=user_message,
                     assistant_text=full_response_text,
-                    context_document=strategy_params.get("rag_context") or "No RAG context utilized"
+                    context_document=strategy_params.get("rag_context")
+                    or "No RAG context utilized",
                 )
             except Exception as e:
-                logger.warning(f"[DATABASE] Failed to save dialogue analytic corpus: {str(e)}")
-    
+                logger.warning(
+                    f"[DATABASE] Failed to save dialogue analytic corpus: {str(e)}"
+                )
+
     logger.info("[PIPELINE] Sequential pipeline complete ✅")
-    # Sinyal done bernilai true untuk memutuskan sasis koneksi SSE di FE
     yield _format_sse("", "", True)
 
 
@@ -345,7 +447,10 @@ async def chat_stream_endpoint(
 # 📎 SECTION 3: UPLOAD ATTACHMENT (SEMUA QUERY DI SERVICE)
 # ==============================================================================
 
-@router.post("/documents/upload", summary="Mengunggah Lampiran Chat (Gambar/PDF) ke RAGDB")
+
+@router.post(
+    "/documents/upload", summary="Mengunggah Lampiran Chat (Gambar/PDF) ke RAGDB"
+)
 async def upload_chat_attachments(
     files: List[UploadFile] = File(...),
     session_uuid: Optional[str] = Form(None),
@@ -356,7 +461,10 @@ async def upload_chat_attachments(
     uploaded_meta_list = []
 
     for file in files:
-        if not (file.content_type.startswith("image/") or file.content_type == "application/pdf"):
+        if not (
+            file.content_type.startswith("image/")
+            or file.content_type == "application/pdf"
+        ):
             raise HTTPException(
                 status_code=400,
                 detail=f"Format berkas '{file.filename}' salah! Cakra hanya menerima Gambar atau PDF, bolo!",
@@ -370,7 +478,9 @@ async def upload_chat_attachments(
                 shutil.copyfileobj(file.file, buffer)
 
             file_size = os.path.getsize(absolute_write_path)
-            extracted_text_placeholder = f"[OCR Korpus Berkas {file.filename}]: Ekstraksi taktis siap."
+            extracted_text_placeholder = (
+                f"[OCR Korpus Berkas {file.filename}]: Ekstraksi taktis siap."
+            )
 
             inserted_meta = await chat_history_service.save_chat_attachment(
                 session_uuid=session_uuid,
@@ -392,7 +502,9 @@ async def upload_chat_attachments(
         except HTTPException:
             raise
         except Exception as err:
-            logger.error(f"❌ [UPLOAD ERROR] Gagal memproses berkas {file.filename}: {str(err)}")
+            logger.error(
+                f"❌ [UPLOAD ERROR] Gagal memproses berkas {file.filename}: {str(err)}"
+            )
             if os.path.exists(absolute_write_path):
                 os.remove(absolute_write_path)
             raise HTTPException(
@@ -400,5 +512,7 @@ async def upload_chat_attachments(
                 detail=f"Gagal memproses lampiran berkas {file.filename}.",
             )
 
-    print(f"📦 [UPLOAD SUCCESS] {len(uploaded_meta_list)} Berkas sukses mengunci record 'chat_attachments'!")
+    print(
+        f"📦 [UPLOAD SUCCESS] {len(uploaded_meta_list)} Berkas sukses mengunci record 'chat_attachments'!"
+    )
     return {"status": "success", "data": uploaded_meta_list}

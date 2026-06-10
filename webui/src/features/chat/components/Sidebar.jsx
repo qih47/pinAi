@@ -260,7 +260,7 @@ const Sidebar = ({
       >
         <button
           onClick={clearChat}
-          className="flex items-center rounded-full hover:bg-gray-200 dark:hover:bg-gray-200 transition-colors group overflow-hidden text-[14px]"
+          className="flex items-center rounded-full hover:bg-gray-200 dark:hover:bg-gray-800 transition-colors group overflow-hidden text-[14px]"
           style={{
             padding: isOpen ? "8px 12px" : "8px",
             width: isOpen ? "100%" : "auto",
@@ -345,7 +345,7 @@ const Sidebar = ({
                 // 🔥 FIX TEXT BIRU ACTIVE: Perbaikan total warna text & background active yang kebalik bawaan orok lo!
                 className={`group relative flex items-center px-3 py-2 text-sm rounded-full cursor-pointer transition-all ${currentSessionId === chat.session_uuid
                     ? "bg-blue-100 text-blue-600 font-bold dark:bg-blue-500/50 dark:text-blue-600"
-                    : "hover:bg-gray-200 dark:hover:bg-gray-200 font-medium"
+                    : "hover:bg-gray-200 dark:hover:bg-gray-800 font-medium"
                   } ${isDeletingId === chat.session_uuid ? "animate-delete" : ""
                   }`}
                 style={{
