@@ -1,5 +1,6 @@
 import json
 import logging
+from datetime import datetime
 from typing import Dict, Any
 import httpx
 from backend.app.core.config import settings
@@ -21,6 +22,7 @@ class RouterEngine:
         Menganalisis kueri pegawai secara asinkronus menggunakan endpoint /api/chat
         yang lebih stabil untuk struktur JSON terisolasi.
         """
+        router_start_time = datetime.now()
         # 🔥 FIX SAKTI: Ubah ke endpoint /api/chat agar payload data user terpisah dari instruksi system
         url = f"{settings.OLLAMA_BASE_URL}/api/chat"
         
@@ -53,11 +55,12 @@ class RouterEngine:
             "format": "json",
             "options": {
                 "temperature": 0.1
-            }
+            },
+            "keep_alive": -1
         }
 
         # 🔥 FIX TIMEOUT: Longgarkan dari 20.0 ke 60.0 detik biar NVMe ke GPU gak kecekek pas cold-start
-        async with httpx.AsyncClient(timeout=60.0) as client:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(60.0, connect=10.0)) as client:
             try:
                 response = await client.post(url, json=payload)
                 if response.status_code != 200:
@@ -70,7 +73,9 @@ class RouterEngine:
                 # Parsing teks response menjadi dictionary python aktif
                 analysis_data = json.loads(message_content)
                 
-                print(f"\n⚡ [ROUTER ANALYSIS] Intent: {analysis_data.get('intent')} | Sentimen: {analysis_data.get('sentiment')}")
+                router_end_time = datetime.now()
+                elapsed_time = (router_end_time - router_start_time).total_seconds()
+                print(f"\n⚡ [ROUTER ANALYSIS] Intent: {analysis_data.get('intent')} | Sentimen: {analysis_data.get('sentiment')} (waktu: {elapsed_time:.2f}s)")
                 print(f"🪵  [ROUTER REASON] {analysis_data.get('reason')}")
                 return analysis_data
 
@@ -101,7 +106,7 @@ class RouterEngine:
             "keep_alive": -1 # Kunci di background GPU selamanya bolo!
         }
         print(f"💤 [ROUTER] Membangunkan model {settings.MODEL_ROUTER} dari tidur panjang (NVMe -> VRAM)...")
-        async with httpx.AsyncClient(timeout=120.0) as client: # Kasih nafas 2 menit khusus warm-up
+        async with httpx.AsyncClient(timeout=httpx.Timeout(120.0, connect=10.0)) as client: # Kasih nafas 2 menit khusus warm-up
             try:
                 response = await client.post(url, json=payload)
                 if response.status_code == 200:

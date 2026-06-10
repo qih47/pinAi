@@ -27,9 +27,9 @@ class MemoryService:
 
         async with get_db() as conn:
             try:
-                # Ambil 5 memori teratas yang paling relevan dan terbaru
+                # 🔥 FIX TAHAP 4: Ambil mem_key dan mem_value yang asli dari fisik tabel ai_memory
                 query = """
-                    SELECT memory_summary FROM ai_memory 
+                    SELECT mem_key, mem_value FROM ai_memory 
                     WHERE npp = $1 
                     ORDER BY created_at DESC LIMIT 5;
                 """
@@ -37,8 +37,8 @@ class MemoryService:
                 if not rows:
                     return ""
                 
-                # Gabungkan ringkasan memori menjadi satu string konteks
-                summaries = [row['memory_summary'] for row in rows]
+                # Gabungkan key dan value menjadi satu string narasi ringkas
+                summaries = [f"{row['mem_key']}: {row['mem_value']}" for row in rows]
                 memory_context = "\n- ".join(summaries)
                 print(f"🧠 [MEMORY RETRIEVAL] Sukses memuat {len(rows)} ingatan masa lalu untuk NPP: {npp}")
                 return f"\n[INGATAN MASA LALU PEGAWAI]:\n- {memory_context}"
@@ -63,9 +63,9 @@ class MemoryService:
                 query_get_chats = """
                     SELECT s.npp, m.message_text 
                     FROM chat_messages m
-                    JOIN chat_sessions s ON m.session_id = s.session_uuid
-                    WHERE m.role = 'user' AND m.created_at >= $1
-                    ORDER BY s.npp, m.created_at ASC;
+                    JOIN chat_sessions s ON m.session_id = s.id
+                    WHERE m.role = 'user' AND m.timestamp >= $1
+                    ORDER BY s.npp, m.timestamp ASC;
                 """
                 rows = await conn.fetch(query_get_chats, one_day_ago)
                 if not rows:
@@ -95,30 +95,43 @@ class MemoryService:
             for npp, messages in chats_per_employee.items():
                 full_chat_log = "\n".join([f"User: {msg}" for msg in messages])
                 
+                # Atur prompt agar Qwen memuntahkan subjek singkat (key) dan ringkasan ringkas (value)
                 system_prompt = (
                     "Anda adalah modul ekstraksi memori jangka panjang CAKRA AI.\n"
-                    "Tugas Anda adalah merangkum log obrolan pegawai menjadi 1-2 kalimat ringkas "
-                    "berisi fakta penting seperti: proyek yang dikerjakan, error database yang dihadapi, "
-                    "atau preferensi sistem mereka. Hilangkan basa-basi dan gunakan sudut pandang ketiga.\n\n"
-                    "Contoh output: Pegawai sedang mengoptimasi database view_pengawasan_um dan mengalami masalah latensi tinggi."
+                    "Tugas Anda adalah merangkum log obrolan pegawai menjadi format JSON murni dengan dua field:\n"
+                    "1. 'key': Topik/Proyek utama yang dibahas (singkat, maks 3 kata, contoh: 'Optimasi Database', 'Project Web Material').\n"
+                    "2. 'value': Ringkasan fakta krusial dalam 1-2 kalimat menggunakan sudut pandang ketiga (contoh: 'Pegawai sedang melakukan debugging fungsional pada form registrasi material menggunakan CodeIgniter 4.').\n\n"
+                    "Output WAJIB berupa JSON murni tanpa markdown!"
                 )
 
                 payload = {
                     "model": settings.MODEL_ROUTER,
                     "messages": [
                         {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": f"Rangkum log obrolan ini:\n{full_chat_log}"}
+                        {"role": "user", "content": f"Ekstrak memori dari log obrolan ini:\n{full_chat_log}"}
                     ],
                     "stream": False,
-                    "options": {"temperature": 0.3}
+                    "options": {"temperature": 0.2}
                 }
 
                 try:
                     response = await client.post(url, json=payload)
                     if response.status_code == 200:
-                        summary_text = response.json().get("message", {}).get("content", "").strip()
-                        if summary_text:
-                            memories_to_save.append({"npp": npp, "summary": summary_text})
+                        content_text = response.json().get("message", {}).get("content", "").strip()
+                        # Bersihkan tag markdown jika LLM nakal memunculkannya
+                        if content_text.startswith("```json"):
+                            content_text = content_text.split("```json")[1].split("```")[0].strip()
+                        
+                        parsed_json = json.loads(content_text)
+                        mem_key = parsed_json.get("key", "Aktivitas Umum")
+                        mem_value = parsed_json.get("value")
+                        
+                        if mem_value:
+                            memories_to_save.append({
+                                "npp": npp, 
+                                "mem_key": mem_key, 
+                                "mem_value": mem_value
+                            })
                 except Exception as llm_err:
                     logger.error(f"⚠️ [MEMORY WORKER] Gagal memproses LLM Summary untuk NPP {npp}: {str(llm_err)}")
 
@@ -128,13 +141,17 @@ class MemoryService:
             async with get_db() as conn:
                 try:
                     async with conn.transaction(): # Gunakan transaksi biar super aman dan lurus
+                        # 🔥 FIX TAHAP 4: Gunakan INSERT yang mengarah ke kolom mem_key dan mem_value. 
+                        # Dipasang ON CONFLICT agar jika kuncinya sama, nilainya otomatis ter-update terbaru.
                         query_insert_memory = """
-                            INSERT INTO ai_memory (npp, memory_summary, created_at)
-                            VALUES ($1, $2, CURRENT_TIMESTAMP);
+                            INSERT INTO ai_memory (npp, mem_key, mem_value, category, created_at, updated_at)
+                            VALUES ($1, $2, $3, 'personal', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                            ON CONFLICT (mem_key, npp) 
+                            DO UPDATE SET mem_value = EXCLUDED.mem_value, updated_at = CURRENT_TIMESTAMP;
                         """
                         for mem in memories_to_save:
-                            await conn.execute(query_insert_memory, mem["npp"], mem["summary"])
-                            print(f"💾 [MEMORY CONSOLIDATED] Berhasil mengunci ingatan baru untuk NPP {mem['npp']}!")
+                            await conn.execute(query_insert_memory, mem["npp"], mem["mem_key"], mem["mem_value"])
+                            print(f"💾 [MEMORY CONSOLIDATED] Berhasil mengunci ingatan baru untuk NPP {mem['npp']} -> [{mem['mem_key']}]")
                             processed_count += 1
                 except Exception as write_err:
                     logger.error(f"💥 [MEMORY WORKER] Gagal dumping data memori ke database: {str(write_err)}")

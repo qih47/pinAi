@@ -1,5 +1,6 @@
 import json
 import logging
+from datetime import datetime
 from typing import AsyncGenerator, List, Dict, Optional
 import httpx
 from fastapi import Request
@@ -29,6 +30,7 @@ class CognitiveLoop:
         model_name = settings.MODEL_REASONING  # deepseek-r1:8b
 
         print(f"\n🧠 [COGNITIVE LOOP] Memasuki mode berpikir mendalam. Menunggu antrean GPU...")
+        reasoning_start_time = datetime.now()
         
         async with gpu_semaphore:
             print(f"🔓 [HARDWARE GPU] Slot didapatkan! {model_name} mulai menganalisis masalah...")
@@ -40,12 +42,13 @@ class CognitiveLoop:
                 "options": {
                     "temperature": temperature,
                     "num_ctx": 8192 # Context window kita naikin 2x lipat buat nampung dokumen RAG nanti
-                }
+                },
+                "keep_alive": -1
             }
             
             limits = httpx.Limits(max_keepalive_connections=5, max_connections=10)
-            # Timeout dinaikkan ke 120 detik karena proses reasoning butuh mikir lama
-            async with httpx.AsyncClient(limits=limits, timeout=120.0) as client:
+            # Timeout dinaikkan ke 180 detik karena proses reasoning butuh mikir lama tanpa auto-timeout prematurely
+            async with httpx.AsyncClient(limits=limits, timeout=httpx.Timeout(180.0, connect=10.0)) as client:
                 try:
                     full_response = ""
                     async with client.stream("POST", url, json=payload) as response:
@@ -71,8 +74,10 @@ class CognitiveLoop:
                             # 🦾 SINKRONISASI COGNITIVE SAKTI MULTI-TABEL AMAN KENDALI (SLOT 2)
                             # ==============================================================================
                             if done:
+                                reasoning_end_time = datetime.now()
+                                elapsed_time = (reasoning_end_time - reasoning_start_time).total_seconds()
                                 print("\n" + "═"*50)
-                                print(f"🧠 [DEEPSEEK REASONING COMPLETE]")
+                                print(f"🧠 [DEEPSEEK REASONING COMPLETE] dalam {elapsed_time:.2f} detik")
                                 print("═"*50)
                                 
                                 if session_uuid and session_uuid != "GLOBAL_SESSION":

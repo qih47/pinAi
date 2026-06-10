@@ -11,9 +11,10 @@ def get_abs_path(relative_path: str) -> str:
 
 # Definisi jalur-jalur krusial
 DOCUMENTS_DIR = get_abs_path("db_doc")
+UPLOAD_DIR = get_abs_path("uploads")
 NOSQL_DATA_DIR = get_abs_path("data/nosql")
 LOGS_DIR = get_abs_path("logs")
 
 # Pastikan folder exist
-for directory in [DOCUMENTS_DIR, NOSQL_DATA_DIR, LOGS_DIR]:
+for directory in [DOCUMENTS_DIR, UPLOAD_DIR, NOSQL_DATA_DIR, LOGS_DIR]:
     os.makedirs(directory, exist_ok=True)

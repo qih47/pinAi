@@ -28,6 +28,9 @@ file_koreksi/*
 uploads/*
 !uploads/.gitkeep
 
+backend/uploads/*
+!backend/uploads/.gitkeep
+
 
 # Ignore isi ocr_file tapi tetap push foldernya
 ocr_file/*

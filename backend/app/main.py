@@ -27,22 +27,21 @@ from backend.app.core.config import settings
 from backend.app.core.database import init_db_pool, close_db_pool
 from backend.app.core.logging_setup import setup_root_logger
 from backend.app.api.router import api_router
-# 🔥 FIX SAKTI: Import router_engine agar fungsi warm-up tidak NameError!
-from backend.app.services.agent.router_engine import router_engine
+from backend.app.core.llm_client import warm_up_model
 from backend.app.core.hardware import check_gpu_status
-from backend.app.core.paths import DOCUMENTS_DIR
+from backend.app.core.paths import DOCUMENTS_DIR, UPLOAD_DIR
 
 # 1. Mengaktifkan konfigurasi log seragam kita
 setup_root_logger()
 logger = logging.getLogger("CAKRA_MAIN")
 
-# Menentukan jalur folder penyimpanan dokumen statis secara absolut di luar folder backend
 DB_DOC_DIR = os.path.join(ROOT_DIR, "db_doc")
 
 # Pembuatan folder dilakukan langsung di level compile/load time sebelum dimount
 if not os.path.exists(DB_DOC_DIR):
     os.makedirs(DB_DOC_DIR)
     print(f"📁 [STORAGE] Folder statis absolut '{DB_DOC_DIR}' berhasil dibuat otomatis, bolo!")
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -59,8 +58,15 @@ async def lifespan(app: FastAPI):
         await init_db_pool()
         logger.info("⚡ [BOOTSTRAP] Koneksi dual-pool database aman terkendali, bolo!")
         
-        # 🔥 Nyalain pemanas mesin buat Slot 1 Router di background task
-        asyncio.create_task(router_engine.warm_up_router())
+        # 🔥 New Sequential Pipeline Warmup Strategy:
+        # - Layer 3 (Gemma4 Persona) ALWAYS LOADED: Must be ready for instant response
+        # - Layer 1 (Qwen2.5 Router): ON-DEMAND lazy load in Layer 1 (saves VRAM)
+        # - Layer 2 (DeepSeek-R1): ON-DEMAND lazy load only when need_rag=true
+        # This reduces VRAM footprint and allows more concurrent requests
+        
+        asyncio.create_task(warm_up_model(settings.MODEL_PERSONA, "Warmup Layer 3 [Social Executor]."))
+        logger.info("🔥 [WARMUP] Layer 3 (Gemma4) warming up - will be locked permanently in VRAM")
+        logger.info("⏳ [WARMUP] Layer 1 (Qwen2.5) and Layer 2 (DeepSeek) will load on-demand")
     except Exception as e:
         logger.error(f"❌ [CRITICAL] Gagal booting database pool: {e}")
         raise e
@@ -72,6 +78,7 @@ async def lifespan(app: FastAPI):
     print("═"*60)
     await close_db_pool()
     print("✨ [SHUTDOWN] Semua resource pool dibersihkan dengan aman, bolo!")
+
 
 # 2. Inisialisasi FastAPI Instance
 app = FastAPI(
@@ -86,6 +93,10 @@ app = FastAPI(
 # 3. GLOBAL CONCURRENCY SEMAPHORE (Mengamankan VRAM GPU dari limitasi hardware)
 app.state.gpu_limit = asyncio.Semaphore(2)
 print("🔒 [HARDWARE] GPU Concurrency Semaphore dikunci pada limit maks: 2 Antrean.")
+
+# 🔥 FIX STORAGE 2: Menggunakan path absolut UPLOAD_DIR yang tervalidasi aman dari systemd daemon
+app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
+print(f"🌐 [MOUNT] Direktori absolut '{UPLOAD_DIR}' resmi dibuka untuk serving lampiran user (MiniCPM-V Ready).")
 
 # 4. Mount Folder Statis Dokumen menggunakan PATH ABSOLUT agar tidak terjebak WorkingDirectory
 app.mount("/db_doc", StaticFiles(directory=DB_DOC_DIR), name="db_doc")
@@ -111,6 +122,7 @@ print(f"🛡️  [SECURITY] CORS dikonfigurasi aman untuk origin Frontend: {orig
 app.include_router(api_router, prefix="/api")
 print("🔌 [ROUTING] Jalur lintas /api berhasil ditancapkan ke hub router.")
 
+
 @app.get("/", tags=["Root Route"])
 async def root_endpoint():
     """Endpoint dasar check status via browser"""
@@ -126,6 +138,7 @@ async def root_endpoint():
             "embedding": settings.MODEL_EMBEDDING
         }
     }
+
 
 # Perintah buat running via terminal jika file dieksekusi langsung
 if __name__ == "__main__":
