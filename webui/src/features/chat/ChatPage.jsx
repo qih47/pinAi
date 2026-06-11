@@ -332,7 +332,7 @@ export default function ChatPage({ isGuest, isLoggedIn: propsIsLoggedIn, userDat
   const CustomModeSelector = ({ value, onChange, disabled, darkMode }) => {
     const [isOpen, setIsOpen] = useState(false);
     const dropdownRef = useRef(null);
-  
+
     useEffect(() => {
       const handleClickOutside = (event) => {
         if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
@@ -342,14 +342,14 @@ export default function ChatPage({ isGuest, isLoggedIn: propsIsLoggedIn, userDat
       document.addEventListener('mousedown', handleClickOutside);
       return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
-  
+
     const options = [
       { value: 'auto', label: 'Auto' },
       { value: 'documents', label: 'Documents' }
     ];
-  
+
     const selectedOption = options.find(opt => opt.value === value);
-  
+
     return (
       <div ref={dropdownRef} style={{ position: 'relative', display: 'inline-block' }}>
         <button
@@ -382,14 +382,14 @@ export default function ChatPage({ isGuest, isLoggedIn: propsIsLoggedIn, userDat
           }}
         >
           <span>{selectedOption?.label}</span>
-          <svg 
-            width="12" 
-            height="12" 
-            viewBox="0 0 24 24" 
-            fill="none" 
-            stroke="currentColor" 
+          <svg
+            width="12"
+            height="12"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
             strokeWidth="2"
-            style={{ 
+            style={{
               transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)',
               transition: 'transform 0.2s'
             }}
@@ -397,7 +397,7 @@ export default function ChatPage({ isGuest, isLoggedIn: propsIsLoggedIn, userDat
             <polyline points="6 9 12 15 18 9"></polyline>
           </svg>
         </button>
-  
+
         {isOpen && (
           <div style={{
             position: 'absolute',
@@ -407,8 +407,8 @@ export default function ChatPage({ isGuest, isLoggedIn: propsIsLoggedIn, userDat
             background: darkMode ? '#1e1e20' : '#ffffff',
             border: `1px solid ${darkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'}`,
             borderRadius: '8px',
-            boxShadow: darkMode 
-              ? '0 4px 12px rgba(0,0,0,0.5)' 
+            boxShadow: darkMode
+              ? '0 4px 12px rgba(0,0,0,0.5)'
               : '0 4px 12px rgba(0,0,0,0.15)',
             minWidth: '120px',
             zIndex: 1000,
@@ -426,7 +426,7 @@ export default function ChatPage({ isGuest, isLoggedIn: propsIsLoggedIn, userDat
                 style={{
                   width: '100%',
                   padding: '8px 12px',
-                  background: value === option.value 
+                  background: value === option.value
                     ? (darkMode ? 'rgba(99, 102, 241, 0.15)' : 'rgba(99, 102, 241, 0.1)')
                     : 'transparent',
                   border: 'none',
@@ -446,7 +446,7 @@ export default function ChatPage({ isGuest, isLoggedIn: propsIsLoggedIn, userDat
                   }
                 }}
                 onMouseLeave={(e) => {
-                  e.currentTarget.style.background = value === option.value 
+                  e.currentTarget.style.background = value === option.value
                     ? (darkMode ? 'rgba(99, 102, 241, 0.15)' : 'rgba(99, 102, 241, 0.1)')
                     : 'transparent';
                 }}
@@ -524,6 +524,12 @@ export default function ChatPage({ isGuest, isLoggedIn: propsIsLoggedIn, userDat
     </button>
   );
 
+  // ============================================================
+  // PATCH: renderInputForm — satu textarea, layout via wrapper
+  // Single line: [+][textarea][Auto ▾][↑] dalam satu row
+  // Multi line:  textarea full width di atas, toolbar bawah
+  // ============================================================
+
   const renderInputForm = (isCentered = false) => (
     <div style={{
       ...styles.inputArea,
@@ -535,18 +541,15 @@ export default function ChatPage({ isGuest, isLoggedIn: propsIsLoggedIn, userDat
       marginTop: isCentered ? '24px' : undefined
     }}>
       <div style={styles.inputContainer}>
+
+        {/* Isolated doc banner */}
         {activeIsolatedTitle && (
           <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
             background: darkMode ? 'rgba(99, 102, 241, 0.15)' : 'rgba(37, 99, 235, 0.08)',
             border: `1px solid ${darkMode ? '#6366f1' : '#2563eb'}`,
-            borderRadius: '12px',
-            padding: '8px 16px',
-            marginBottom: '10px',
-            fontSize: '13px',
-            fontWeight: 500,
+            borderRadius: '12px', padding: '8px 16px', marginBottom: '10px',
+            fontSize: '13px', fontWeight: 500,
             color: darkMode ? '#a5b4fc' : '#1e3a8a'
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
@@ -555,92 +558,46 @@ export default function ChatPage({ isGuest, isLoggedIn: propsIsLoggedIn, userDat
                 Mode Fokus: Menanyai isi <strong>{activeIsolatedTitle}</strong>
               </span>
             </div>
-            <button
-              type="button"
-              onClick={() => setContextIsolation(null, null)}
-              style={{ background: 'transparent', border: 'none', color: darkMode ? '#9ca3af' : '#4b5563', cursor: 'pointer', fontWeight: 'bold' }}
-            >
+            <button type="button" onClick={() => setContextIsolation(null, null)}
+              style={{ background: 'transparent', border: 'none', color: darkMode ? '#9ca3af' : '#4b5563', cursor: 'pointer', fontWeight: 'bold' }}>
               ✕
             </button>
           </div>
         )}
 
-        {/* 🔥 FIX RENDER PREVIEW DI ATAS FORM: Diubah menjadi thumbnail rounded ala Gemini sejati */}
+        {/* File preview */}
         {selectedFiles.length > 0 && (
-          <div style={{
-            display: 'flex',
-            flexWrap: 'wrap',
-            gap: '10px',
-            marginBottom: '12px',
-            padding: '4px 6px',
-            width: '100%'
-          }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', marginBottom: '12px', padding: '4px 6px', width: '100%' }}>
             {selectedFiles.map((file, idx) => {
               const isPDF = file.name.endsWith('.pdf');
               return (
                 <div key={idx} style={{
-                  position: 'relative',
-                  width: '64px',
-                  height: '64px',
-                  borderRadius: '12px',
-                  overflow: 'hidden',
-                  background: darkMode ? '#2d2d30' : '#f3f4f6',
+                  position: 'relative', width: '64px', height: '64px', borderRadius: '12px',
+                  overflow: 'hidden', background: darkMode ? '#2d2d30' : '#f3f4f6',
                   border: `1px solid ${darkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)'}`,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center'
+                  display: 'flex', alignItems: 'center', justifyContent: 'center'
                 }}>
                   {isPDF ? (
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1px' }}>
                       <span style={{ fontSize: '24px' }}>📄</span>
-                      <span style={{
-                        fontSize: '9px',
-                        fontWeight: 700,
-                        color: '#ef4444',
-                        maxWidth: '52px',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        whiteSpace: 'nowrap'
-                      }}>PDF</span>
+                      <span style={{ fontSize: '9px', fontWeight: 700, color: '#ef4444', maxWidth: '52px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>PDF</span>
                     </div>
                   ) : (
-                    <img
-                      src={URL.createObjectURL(file)}
-                      alt="preview"
-                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                    />
+                    <img src={URL.createObjectURL(file)} alt="preview" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                   )}
-                  <button
-                    type="button"
-                    onClick={() => removeFilePreview(idx)}
+                  <button type="button" onClick={() => removeFilePreview(idx)}
                     style={{
-                      position: 'absolute',
-                      top: '2px',
-                      right: '2px',
-                      background: 'rgba(0,0,0,0.6)',
-                      border: 'none',
-                      borderRadius: '50%',
-                      width: '16px',
-                      height: '16px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      color: '#ffffff',
-                      fontSize: '9px',
-                      cursor: 'pointer',
-                      fontWeight: 'bold',
-                      zIndex: 2
-                    }}
-                  >
-                    ✕
-                  </button>
+                      position: 'absolute', top: '2px', right: '2px', background: 'rgba(0,0,0,0.6)',
+                      border: 'none', borderRadius: '50%', width: '16px', height: '16px',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      color: '#ffffff', fontSize: '9px', cursor: 'pointer', fontWeight: 'bold', zIndex: 2
+                    }}>✕</button>
                 </div>
               );
             })}
           </div>
         )}
 
-        {/* 🔥 SASIS UTAMA FORM TUNGGAL: Menggunakan textarea mutlak di luar conditional re-mount React */}
         <form
           onSubmit={handleSubmit}
           onPaste={handlePaste}
@@ -655,144 +612,130 @@ export default function ChatPage({ isGuest, isLoggedIn: propsIsLoggedIn, userDat
             borderStyle: isDragOver ? 'dashed' : 'solid',
             boxShadow: theme.inputShadow,
             display: 'flex',
-            flexDirection: isMultiLine ? 'column' : 'row',
-            alignItems: isMultiLine ? 'stretch' : 'center',
-            justifyContent: 'space-between',
-            paddingBottom: '8px',
+            flexDirection: 'column',      // selalu column — baris textarea + baris toolbar
             paddingTop: '8px',
+            paddingBottom: '8px',
             paddingLeft: '8px',
             paddingRight: '12px',
             minHeight: '56px',
             height: 'auto',
-            transition: 'all 0.15s ease',
+            transition: 'border-color 0.15s ease',
             position: 'relative',
-            gap: '8px'
+            gap: '4px'
           }}
         >
-          <input
-            type="file"
-            ref={fileInputRef}
-            onChange={handleFileChange}
-            multiple={!(isGuest || !currentIsLoggedIn)}
-            accept=".pdf,image/*"
-            style={{ display: 'none' }}
-          />
+          <input type="file" ref={fileInputRef} onChange={handleFileChange}
+            multiple={!(isGuest || !currentIsLoggedIn)} accept=".pdf,image/*"
+            style={{ display: 'none' }} />
 
-          {/* Sasis Textarea Tunggal Abadi: Mampu meninggi dinamis penuh dari minHeight ke maxHeight tanpa terpotong */}
-          <textarea
-            ref={textareaRef}
-            value={input}
-            disabled={isStreaming}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder={isStreaming ? "CAKRA sedang berpikir..." : (activeIsolatedTitle ? "Tanyakan perihal isi dokumen ini..." : "Tanyakan apa saja...")}
-            rows={1}
-            style={{
-              flex: isMultiLine ? 'none' : 1,
-              width: isMultiLine ? '100%' : 'auto',
-              color: theme.textColor,
-              background: 'transparent',
-              border: 'none',
-              outline: 'none',
-              resize: 'none',
-              paddingLeft: '8px',
-              paddingRight: '8px',
-              paddingTop: '8px',
-              paddingBottom: '8px',
-              fontSize: '15px',
-              lineHeight: '1.5',
-              fontFamily: 'inherit',
-              minHeight: '36px',
-              height: 'auto',
-              maxHeight: '450px', // 🔥 Kunci Max Height Tinggi Sesuai Keinginan Lo Di Sini Bolo!
-              overflowY: 'auto',
-              wordWrap: 'break-word',
-              overflowWrap: 'break-word',
-              whiteSpace: 'pre-wrap',
-              order: 0
-            }}
-          />
-
-          {/* 🔥 FIX: Semua tombol di-render flat (tidak conditional) agar CustomModeSelector tidak unmount/remount saat isMultiLine berubah */}
-          
-          {/* Plus Button untuk Single-line (kiri) */}
-          <div style={{ 
-            order: -1, 
-            flexShrink: 0,
-            display: isMultiLine ? 'none' : 'flex',
-            alignItems: 'center'
+          {/* ── BARIS 1: wrapper textarea + plus (single) ── */}
+          <div style={{
+            display: 'flex',
+            flexDirection: 'row',
+            alignItems: 'flex-end',   // semua nempel di bawah saat textarea tinggi
+            gap: '8px',
+            width: '100%'
           }}>
-            <PlusButton />
+            {/* Plus button — kiri, selalu align bottom */}
+            {!isMultiLine && (
+              <div style={{ flexShrink: 0, paddingBottom: '0px' }}>
+                <PlusButton />
+              </div>
+            )}
+
+            {/* [FIX UTAMA] Satu textarea — ref tidak pernah pindah */}
+            <textarea
+              ref={textareaRef}
+              value={input}
+              disabled={isStreaming}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder={
+                isStreaming ? "CAKRA sedang berpikir..."
+                  : activeIsolatedTitle ? "Tanyakan perihal isi dokumen ini..."
+                    : "Tanyakan apa saja..."
+              }
+              rows={1}
+              style={{
+                flex: 1,
+                color: theme.textColor,
+                background: 'transparent',
+                border: 'none',
+                outline: 'none',
+                resize: 'none',
+                paddingLeft: '8px',
+                paddingRight: '8px',
+                paddingTop: '8px',
+                paddingBottom: '8px',
+                fontSize: '15px',
+                lineHeight: '1.5',
+                fontFamily: 'inherit',
+                minHeight: '36px',
+                height: 'auto',
+                maxHeight: '450px',
+                overflowY: 'auto',
+                wordWrap: 'break-word',
+                overflowWrap: 'break-word',
+                whiteSpace: 'pre-wrap'
+              }}
+            />
+
+            {/* Kanan single line: Auto + Send */}
+            {!isMultiLine && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+                {isUploadingFile && (
+                  <span style={{ fontSize: '11px', color: '#6366f1', fontStyle: 'italic' }}>Mengunggah...</span>
+                )}
+                <CustomModeSelector value={chatMode} onChange={setChatMode} disabled={isStreaming} darkMode={darkMode} />
+                <SendButton />
+              </div>
+            )}
           </div>
 
-          {/* Plus Button untuk Multi-line (baris bawah kiri) */}
+          {/* ── BARIS 2: toolbar multiline — hanya tampil saat isMultiLine ── */}
           {isMultiLine && (
-            <div style={{ 
-              order: 1, 
-              width: '100%',
-              paddingTop: '4px',
+            <div style={{
               display: 'flex',
-              alignItems: 'center'
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              width: '100%',
+              paddingLeft: '4px',
+              paddingRight: '4px',
+              paddingTop: '2px'
             }}>
+              {/* Kiri: Plus */}
               <PlusButton />
+
+              {/* Kanan: Auto + Send */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                {isUploadingFile && (
+                  <span style={{ fontSize: '11px', color: '#6366f1', fontStyle: 'italic' }}>Mengunggah...</span>
+                )}
+                <CustomModeSelector value={chatMode} onChange={setChatMode} disabled={isStreaming} darkMode={darkMode} />
+                <SendButton />
+              </div>
             </div>
           )}
 
-          {/* CustomModeSelector - SELALU di-render (tidak conditional) agar state chatMode tidak reset */}
-          <div style={{ 
-            order: isMultiLine ? 2 : 1,
-            flexShrink: 0,
-            display: 'flex',
-            alignItems: 'center',
-            gap: '12px'
-          }}>
-            <CustomModeSelector
-              value={chatMode}
-              onChange={setChatMode}
-              disabled={isStreaming}
-              darkMode={darkMode}
-            />
-          </div>
-
-          {/* Send Button + Upload Status */}
-          <div style={{ 
-            order: isMultiLine ? 3 : 2,
-            display: 'flex', 
-            alignItems: 'center', 
-            gap: '8px',
-            flexShrink: 0
-          }}>
-            {isUploadingFile && <span style={{ fontSize: '11px', color: '#6366f1', fontStyle: 'italic' }}>Mengunggah...</span>}
-            <SendButton />
-          </div>
-
-          {/* DRAG DROP OVERLAY */}
+          {/* Drag drop overlay */}
           {isDragOver && (
             <div style={{
-              position: 'absolute',
-              inset: 0,
+              position: 'absolute', inset: 0,
               background: darkMode ? 'rgba(99, 102, 241, 0.15)' : 'rgba(37, 99, 235, 0.1)',
               border: `2px dashed ${darkMode ? '#6366f1' : '#2563eb'}`,
-              borderRadius: '16px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              pointerEvents: 'none',
-              zIndex: 10
+              borderRadius: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center',
+              pointerEvents: 'none', zIndex: 10
             }}>
               <span style={{
-                fontSize: '14px',
-                fontWeight: 600,
+                fontSize: '14px', fontWeight: 600,
                 color: darkMode ? '#a5b4fc' : '#1e3a8a',
                 background: darkMode ? 'rgba(99, 102, 241, 0.9)' : 'rgba(37, 99, 235, 0.9)',
-                padding: '8px 16px',
-                borderRadius: '8px'
-              }}>
-                📂 Lepas file di sini
-              </span>
+                padding: '8px 16px', borderRadius: '8px'
+              }}>📂 Lepas file di sini</span>
             </div>
           )}
         </form>
+
         {!isCentered && (
           <div style={{ ...styles.inputFooter, color: theme.secondaryText, marginTop: '8px' }}>
             CAKRA AI dapat membuat kesalahan. Pertimbangkan untuk memeriksa informasi penting.

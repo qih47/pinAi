@@ -147,17 +147,17 @@ function CodeBlockHeader({ lang, code }) {
 
 const getMarkdownComponents = (darkMode) => ({
     p({ children, ...props }) {
-        return <p                 style={{ 
-                    marginTop: 0, 
-                    marginBottom: '16px', 
-                    lineHeight: '1.7', 
-                    padding: 0, 
-                    whiteSpace: 'normal',
-                    // 🌊 Smooth paragraph entrance
-                    opacity: 0,
-                    animation: 'geminiFadeIn 0.4s ease-out forwards',
-                    animationDelay: '0.1s',  // Delay dikit biar staggered
-                }}  {...props}>{children}</p>;
+        return <p style={{
+            marginTop: 0,
+            marginBottom: '16px',
+            lineHeight: '1.7',
+            padding: 0,
+            whiteSpace: 'normal',
+            // 🌊 Smooth paragraph entrance
+            opacity: 0,
+            animation: 'geminiFadeIn 0.4s ease-out forwards',
+            animationDelay: '0.1s',  // Delay dikit biar staggered
+        }}  {...props}>{children}</p>;
     },
     code({ node, inline, className, children, ...props }) {
         const match = /language-(\w+)/.exec(className || '');
@@ -729,7 +729,7 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
                                 />
                             </div>
 
-                            {(msg.citations || msg.sources) && (
+                            {!isStreamingMsg && (msg.citations || msg.sources) && (
                                 <SourceCitation
                                     sources={msg.citations || msg.sources}
                                     darkMode={darkMode}
