@@ -228,17 +228,29 @@ export default function ChatPage({ isGuest, isLoggedIn: propsIsLoggedIn, userDat
 
   // 🔥 3. DINAMIS AUTO HEIGHT FIX: Kalkulasi tinggi DOM asli secara linear tanpa remounting komponen
   useEffect(() => {
-    if (textareaRef.current) {
-      textareaRef.current.style.height = 'auto'; // Reset paksa ke titik nol
-      const currentScrollHeight = textareaRef.current.scrollHeight;
-
-      // Berikan tinggi aktualDOM langsung ke element style textarea
-      textareaRef.current.style.height = `${currentScrollHeight}px`;
-
-      const baseline = baselineHeightRef.current;
-      if (baseline > 0) {
-        setIsMultiLine(currentScrollHeight > baseline + 3);
-      }
+    const el = textareaRef.current;
+    if (!el) return;
+  
+    // Simpan scroll position sebelum resize
+    const scrollTop = el.scrollTop;
+  
+    // Set overflow hidden SEMENTARA agar scrollHeight akurat tanpa scrollbar flicker
+    el.style.overflow = 'hidden';
+    el.style.height = 'auto';
+  
+    // Baca scrollHeight SEKALI, tidak ada reflow kedua
+    const newHeight = Math.min(el.scrollHeight, 450);
+    el.style.height = `${newHeight}px`;
+  
+    // Kembalikan overflow sesuai kondisi
+    el.style.overflow = newHeight >= 450 ? 'auto' : 'hidden';
+  
+    // Restore scroll
+    el.scrollTop = scrollTop;
+  
+    const baseline = baselineHeightRef.current;
+    if (baseline > 0) {
+      setIsMultiLine(el.scrollHeight > baseline + 3);
     }
   }, [input]);
 
@@ -673,7 +685,7 @@ export default function ChatPage({ isGuest, isLoggedIn: propsIsLoggedIn, userDat
                 minHeight: '36px',
                 height: 'auto',
                 maxHeight: '450px',
-                overflowY: 'auto',
+                overflowY: 'hidden',
                 wordWrap: 'break-word',
                 overflowWrap: 'break-word',
                 whiteSpace: 'pre-wrap'
