@@ -151,6 +151,143 @@ const CustomModeSelector = ({ value, onChange, disabled, darkMode }) => {
   );
 };
 
+// ============================================================
+// 🎛️ DROPDOWN MENU POJOK KANAN (Kebab Menu Titik Tiga)
+// ============================================================
+const HeaderDropdownMenu = ({ isGuest, onLogin, darkMode, setDarkMode, theme }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const menuRef = useRef(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (menuRef.current && !menuRef.current.contains(event.target)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  return (
+    <div ref={menuRef} style={{ position: 'relative', display: 'inline-block' }}>
+      {/* Tombol Titik Tiga Vertikal */}
+      <button
+        type="button"
+        onClick={() => setIsOpen(!isOpen)}
+        style={{
+          background: 'transparent',
+          border: 'none',
+          borderRadius: '50%',
+          width: '36px',
+          height: '36px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          color: darkMode ? '#cbd5e1' : '#4b5563',
+          cursor: 'pointer',
+          transition: 'background 0.2s',
+          outline: 'none'
+        }}
+        onMouseEnter={(e) => e.currentTarget.style.background = darkMode ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)'}
+        onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+      >
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="12" cy="12" r="1" />
+          <circle cx="12" cy="5" r="1" />
+          <circle cx="12" cy="19" r="1" />
+        </svg>
+      </button>
+
+      {/* Konten Menu Dropdown */}
+      {isOpen && (
+        <div style={{
+          position: 'absolute',
+          top: '100%',
+          right: 0,
+          marginTop: '6px',
+          background: darkMode ? '#1e1e20' : '#ffffff',
+          border: `1px solid ${darkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'}`,
+          borderRadius: '10px',
+          boxShadow: darkMode ? '0 10px 25px -5px rgba(0,0,0,0.5)' : '0 10px 25px -5px rgba(0,0,0,0.1)',
+          minWidth: '160px',
+          zIndex: 2000,
+          overflow: 'hidden',
+          padding: '4px',
+          animation: 'fadeInUp 0.15s ease-out'
+        }}>
+          {/* OPSI 1: TOMBOL MASUK (Hanya tampil kalau statusnya isGuest) */}
+          {isGuest && (
+            <button
+              type="button"
+              onClick={() => {
+                onLogin();
+                setIsOpen(false);
+              }}
+              style={{
+                width: '100%',
+                padding: '10px 12px',
+                background: 'transparent',
+                border: 'none',
+                borderRadius: '6px',
+                color: darkMode ? '#e2e8f0' : '#1f2937',
+                fontSize: '13px',
+                fontWeight: 600,
+                textAlign: 'left',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                transition: 'background 0.1s'
+              }}
+              onMouseEnter={(e) => e.currentTarget.style.background = darkMode ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)'}
+              onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+            >
+              <span>🔑</span> Masuk
+            </button>
+          )}
+
+          {/* Garis Pembatas kecil kalau ada tombol login */}
+          {isGuest && <div style={{ height: '1px', background: darkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)', margin: '4px 0' }} />}
+
+          {/* OPSI 2: TOGGLE TEMA LIGHT / DARK */}
+          <button
+            type="button"
+            onClick={() => {
+              setDarkMode(!darkMode);
+              setIsOpen(false);
+            }}
+            style={{
+              width: '100%',
+              padding: '10px 12px',
+              background: 'transparent',
+              border: 'none',
+              borderRadius: '6px',
+              color: darkMode ? '#cbd5e1' : '#4b5563',
+              fontSize: '13px',
+              fontWeight: 500,
+              textAlign: 'left',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '8px',
+              transition: 'background 0.1s'
+            }}
+            onMouseEnter={(e) => e.currentTarget.style.background = darkMode ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)'}
+            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span>{darkMode ? '🌙' : '☀️'}</span>
+              <span>{darkMode ? 'Gelap' : 'Terang'}</span>
+            </div>
+            {/* <span style={{ fontSize: '11px', opacity: 0.6 }}>Ubah</span> */}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+};
+
 const PlusButton = ({ onClick, disabled, selectedFiles, darkMode, isStreaming }) => (
   <button
     type="button"
@@ -921,10 +1058,15 @@ export default function ChatPage({ isGuest, isLoggedIn: propsIsLoggedIn, userDat
               />
             )}
           </div>
-          <div style={styles.headerActions}>
-            {isGuest && (
-              <button onClick={() => navigate('/login')} style={{ ...styles.loginBtn, color: theme.textColor, borderColor: theme.borderColor }}>Masuk</button>
-            )}
+          {/* 🔥 MODIFIKASI HEADER ACTIONS: Bungkus tombol login & tema ke dalam Kebab Dropdown */}
+          <div style={{ ...styles.headerActions, display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <HeaderDropdownMenu 
+              isGuest={isGuest} 
+              onLogin={() => navigate('/login')} 
+              darkMode={darkMode} 
+              setDarkMode={setDarkMode} 
+              theme={theme}
+            />
           </div>
         </header>
 
