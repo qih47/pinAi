@@ -394,12 +394,12 @@ export default function ChatPage({ isGuest, isLoggedIn: propsIsLoggedIn, userDat
     navigate('/chat/new');
   };
 
-// ⚡ SYNC FIX: Paksa state lokal chatPage buat nyontek isi store pas rute URL kelar berubah
-useEffect(() => {
-  const currentGlobalMode = useChatStore.getState().chatMode || 'auto';
-  setChatMode(currentGlobalMode);
-  chatModeRef.current = currentGlobalMode;
-}, [sessionId]);
+  // ⚡ SYNC FIX: Paksa state lokal chatPage buat nyontek isi store pas rute URL kelar berubah
+  useEffect(() => {
+    const currentGlobalMode = useChatStore.getState().chatMode || 'auto';
+    setChatMode(currentGlobalMode);
+    chatModeRef.current = currentGlobalMode;
+  }, [sessionId]);
 
   const triggerLogout = () => {
     logout();
@@ -448,32 +448,42 @@ useEffect(() => {
   }, []);
 
   // 🔥 3. DINAMIS AUTO HEIGHT FIX: Kalkulasi tinggi DOM asli secara linear tanpa remounting komponen
+  // 🔥 3. DINAMIS AUTO HEIGHT FIX (ANTI NAIK-TURUN & ANTI INFINITE LOOP 🔒)
   useEffect(() => {
     const el = textareaRef.current;
     if (!el) return;
 
-    // Simpan scroll position sebelum resize
     const scrollTop = el.scrollTop;
-
-    // Set overflow hidden SEMENTARA agar scrollHeight akurat tanpa scrollbar flicker
     el.style.overflow = 'hidden';
     el.style.height = 'auto';
 
-    // Baca scrollHeight SEKALI, tidak ada reflow kedua
     const newHeight = Math.min(el.scrollHeight, 450);
     el.style.height = `${newHeight}px`;
 
-    // Kembalikan overflow sesuai kondisi
     el.style.overflow = newHeight >= 450 ? 'auto' : 'hidden';
-
-    // Restore scroll
     el.scrollTop = scrollTop;
 
     const baseline = baselineHeightRef.current;
     if (baseline > 0) {
-      setIsMultiLine(el.scrollHeight > baseline + 3);
+      const hasNewlines = input.includes('\n');
+      const isCurrentlyThick = el.scrollHeight > baseline + 3 || hasNewlines;
+
+      // Kita gunakan bodi variabel lokal 'isCurrentlyThick' untuk membandingkan 
+      // dengan state lama via functional update, biar gak usah nembak state langsung!
+      setIsMultiLine((prevIsMultiLine) => {
+        if (!prevIsMultiLine) {
+          // LOGIKA NAIK: Jika aslinya single, tapi sekarang mendeteksi tebal
+          return isCurrentlyThick;
+        } else {
+          // LOGIKA TURUN: Jika aslinya multi, hanya boleh balik single kalau beneran pendek < 65
+          if (!isCurrentlyThick && input.length < 65) {
+            return false;
+          }
+          return true; // Tetap mengunci multi-line
+        }
+      });
     }
-  }, [input]);
+  }, [input]); // 👈 LOCK AMAN: Murni dengerin 'input' doang, isMultiLine tendang dari dependency!
 
   // 🔥 2. PROSES UPLOAD DIJALANKAN DI SINI SAAT TOMBOL SEND DI-KLIK
   const handleSubmit = async (e) => {
@@ -741,7 +751,10 @@ useEffect(() => {
                 {isUploadingFile && (
                   <span style={{ fontSize: '11px', color: '#6366f1', fontStyle: 'italic' }}>Mengunggah...</span>
                 )}
-                <CustomModeSelector value={chatMode} onChange={handleChatModeChange} disabled={isStreaming} darkMode={darkMode} />
+                {/* 🛡️ SENSOR OTENTIKASI: Hanya muncul jika user beneran login pegawai */}
+                {currentIsLoggedIn && (
+                  <CustomModeSelector value={chatMode} onChange={handleChatModeChange} disabled={isStreaming} darkMode={darkMode} />
+                )}
                 <SendButton isStreaming={isStreaming} isUploadingFile={isUploadingFile} input={input} selectedFiles={selectedFiles} theme={theme} />
               </div>
             )}
@@ -772,7 +785,10 @@ useEffect(() => {
                 {isUploadingFile && (
                   <span style={{ fontSize: '11px', color: '#6366f1', fontStyle: 'italic' }}>Mengunggah...</span>
                 )}
-                <CustomModeSelector value={chatMode} onChange={handleChatModeChange} disabled={isStreaming} darkMode={darkMode} />
+                {/* 🛡️ SENSOR OTENTIKASI: Hanya muncul jika user beneran login pegawai */}
+                {currentIsLoggedIn && (
+                  <CustomModeSelector value={chatMode} onChange={handleChatModeChange} disabled={isStreaming} darkMode={darkMode} />
+                )}
                 <SendButton isStreaming={isStreaming} isUploadingFile={isUploadingFile} input={input} selectedFiles={selectedFiles} theme={theme} />
               </div>
             </div>
