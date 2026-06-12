@@ -8,6 +8,212 @@ import Sidebar from './components/Sidebar';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useChatAuthStore } from '../../stores/authStore';
 
+// ============================================================
+// ✅ FIX UTAMA: Semua sub-komponen dipindah ke LUAR ChatPage
+// agar React tidak unmount+remount tiap re-render ChatPage,
+// yang menyebabkan state (chatMode, isOpen) ter-reset.
+// ============================================================
+
+const CustomModeSelector = ({ value, onChange, disabled, darkMode }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const dropdownRef = useRef(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const options = [
+    { value: 'auto', label: 'Auto' },
+    { value: 'flash', label: 'Flash' },
+    { value: 'documents', label: 'Documents' }
+  ];
+
+  const selectedOption = options.find(opt => opt.value === value);
+
+  return (
+    <div ref={dropdownRef} style={{ position: 'relative', display: 'inline-block' }}>
+      <button
+        type="button"
+        onClick={() => !disabled && setIsOpen(!isOpen)}
+        disabled={disabled}
+        style={{
+          background: darkMode ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)',
+          border: 'none',
+          borderRadius: '20px',
+          padding: '6px 20px',
+          fontSize: '13px',
+          fontWeight: 500,
+          color: darkMode ? '#e2e8f0' : '#1f2937',
+          cursor: disabled ? 'not-allowed' : 'pointer',
+          outline: 'none',
+          transition: 'all 0.15s',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '4px',
+          opacity: disabled ? 0.5 : 1
+        }}
+        onMouseEnter={(e) => {
+          if (!disabled) {
+            e.currentTarget.style.background = darkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)';
+          }
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.background = darkMode ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)';
+        }}
+      >
+        <span>{selectedOption?.label}</span>
+        <svg
+          width="12"
+          height="12"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          style={{
+            transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)',
+            transition: 'transform 0.2s'
+          }}
+        >
+          <polyline points="6 9 12 15 18 9"></polyline>
+        </svg>
+      </button>
+
+      {isOpen && (
+        <div style={{
+          position: 'absolute',
+          bottom: '100%',
+          left: 0,
+          marginBottom: '4px',
+          background: darkMode ? '#1e1e20' : '#ffffff',
+          border: `1px solid ${darkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'}`,
+          borderRadius: '8px',
+          boxShadow: darkMode
+            ? '0 4px 12px rgba(0,0,0,0.5)'
+            : '0 4px 12px rgba(0,0,0,0.15)',
+          minWidth: '120px',
+          zIndex: 1000,
+          overflow: 'hidden',
+          animation: 'fadeInUp 0.15s ease-out'
+        }}>
+          {options.map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              onClick={() => {
+                onChange(option.value);
+                setIsOpen(false);
+              }}
+              style={{
+                width: '100%',
+                padding: '8px 12px',
+                background: value === option.value
+                  ? (darkMode ? 'rgba(99, 102, 241, 0.15)' : 'rgba(99, 102, 241, 0.1)')
+                  : 'transparent',
+                border: 'none',
+                color: darkMode ? '#e2e8f0' : '#1f2937',
+                fontSize: '13px',
+                fontWeight: value === option.value ? 600 : 400,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: '8px',
+                transition: 'background 0.1s'
+              }}
+              onMouseEnter={(e) => {
+                if (value !== option.value) {
+                  e.currentTarget.style.background = darkMode ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)';
+                }
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = value === option.value
+                  ? (darkMode ? 'rgba(99, 102, 241, 0.15)' : 'rgba(99, 102, 241, 0.1)')
+                  : 'transparent';
+              }}
+            >
+              <span>{option.label}</span>
+              {value === option.value && (
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6366f1" strokeWidth="3">
+                  <polyline points="20 6 9 17 4 12"></polyline>
+                </svg>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
+const PlusButton = ({ onClick, disabled, selectedFiles, darkMode, isStreaming }) => (
+  <button
+    type="button"
+    onClick={onClick}
+    disabled={disabled}
+    style={{
+      background: selectedFiles.length > 0
+        ? (darkMode ? 'rgba(99, 102, 241, 0.2)' : 'rgba(37, 99, 235, 0.1)')
+        : 'transparent',
+      border: 'none',
+      borderRadius: '50%',
+      width: '36px',
+      height: '36px',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      flexShrink: 0,
+      color: selectedFiles.length > 0 ? (darkMode ? '#818cf8' : '#2563eb') : (darkMode ? '#9ca3af' : '#6b7280'),
+      cursor: isStreaming ? 'not-allowed' : 'pointer',
+      transition: 'all 0.2s ease'
+    }}
+    onMouseEnter={(e) => { if (!isStreaming) e.currentTarget.style.background = darkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)'; }}
+    onMouseLeave={(e) => { e.currentTarget.style.background = selectedFiles.length > 0 ? (darkMode ? 'rgba(99, 102, 241, 0.2)' : 'rgba(37, 99, 235, 0.1)') : 'transparent'; }}
+    title="Lampirkan Berkas (PDF / Gambar) atau Paste (Ctrl+V) atau Drag-Drop"
+  >
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="12" y1="5" x2="12" y2="19" />
+      <line x1="5" y1="12" x2="19" y2="12" />
+    </svg>
+  </button>
+);
+
+const SendButton = ({ isStreaming, isUploadingFile, input, selectedFiles, theme }) => (
+  <button
+    type="submit"
+    disabled={isStreaming || isUploadingFile || (!input.trim() && selectedFiles.length === 0)}
+    style={{
+      ...styles.sendBtn,
+      background: theme.sendBtnBg,
+      color: theme.sendBtnText,
+      opacity: isStreaming || isUploadingFile || (!input.trim() && selectedFiles.length === 0) ? 0.35 : 1,
+      cursor: (isStreaming || isUploadingFile) ? 'not-allowed' : 'pointer',
+      border: 'none',
+      borderRadius: '50%',
+      width: '36px',
+      height: '36px',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      flexShrink: 0
+    }}
+  >
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="12" y1="19" x2="12" y2="5" />
+      <polyline points="5 12 12 5 19 12" />
+    </svg>
+  </button>
+);
+
+// ============================================================
+// MAIN COMPONENT
+// ============================================================
+
 export default function ChatPage({ isGuest, isLoggedIn: propsIsLoggedIn, userData: propsUserData, getGreeting }) {
   const [input, setInput] = useState('');
   const { sessionId } = useParams();
@@ -27,7 +233,21 @@ export default function ChatPage({ isGuest, isLoggedIn: propsIsLoggedIn, userDat
 
   // STATE: Deteksi apakah textarea sudah multi-line untuk urusan layout form
   const [isMultiLine, setIsMultiLine] = useState(false);
-  const [chatMode, setChatMode] = useState('auto');
+  // Tambah ref di bawah useState chatMode:
+  // 🔒 Ambil state chatMode global dari Zustand store
+  const storeChatMode = useChatStore((state) => state.chatMode || 'auto');
+
+  // Gunakan storeChatMode sebagai jaminan nilai inisialisasi saat komponen di-remount!
+  const [chatMode, setChatMode] = useState(storeChatMode);
+  const chatModeRef = useRef(storeChatMode);
+
+  // Buat wrapper setter taktis:
+  const handleChatModeChange = (val) => {
+    chatModeRef.current = val;
+    setChatMode(val);
+    // Ikut kunci langsung ke Zustand store lokal seketika user ngeklik dropdown selector
+    useChatStore.setState({ chatMode: val });
+  };
   // REF: Capture tinggi baseline 1 baris saat mount pertama
   const baselineHeightRef = useRef(0);
 
@@ -174,11 +394,12 @@ export default function ChatPage({ isGuest, isLoggedIn: propsIsLoggedIn, userDat
     navigate('/chat/new');
   };
 
-  useEffect(() => {
-    if (!isGuest && currentIsLoggedIn && sessionId && sessionId !== 'new') {
-      localStorage.setItem('cakra_last_session', sessionId);
-    }
-  }, [sessionId, isGuest, currentIsLoggedIn]);
+// ⚡ SYNC FIX: Paksa state lokal chatPage buat nyontek isi store pas rute URL kelar berubah
+useEffect(() => {
+  const currentGlobalMode = useChatStore.getState().chatMode || 'auto';
+  setChatMode(currentGlobalMode);
+  chatModeRef.current = currentGlobalMode;
+}, [sessionId]);
 
   const triggerLogout = () => {
     logout();
@@ -230,24 +451,24 @@ export default function ChatPage({ isGuest, isLoggedIn: propsIsLoggedIn, userDat
   useEffect(() => {
     const el = textareaRef.current;
     if (!el) return;
-  
+
     // Simpan scroll position sebelum resize
     const scrollTop = el.scrollTop;
-  
+
     // Set overflow hidden SEMENTARA agar scrollHeight akurat tanpa scrollbar flicker
     el.style.overflow = 'hidden';
     el.style.height = 'auto';
-  
+
     // Baca scrollHeight SEKALI, tidak ada reflow kedua
     const newHeight = Math.min(el.scrollHeight, 450);
     el.style.height = `${newHeight}px`;
-  
+
     // Kembalikan overflow sesuai kondisi
     el.style.overflow = newHeight >= 450 ? 'auto' : 'hidden';
-  
+
     // Restore scroll
     el.scrollTop = scrollTop;
-  
+
     const baseline = baselineHeightRef.current;
     if (baseline > 0) {
       setIsMultiLine(el.scrollHeight > baseline + 3);
@@ -314,7 +535,7 @@ export default function ChatPage({ isGuest, isLoggedIn: propsIsLoggedIn, userDat
         navigate(`/chat/${newSessionObj.session_uuid}`, { replace: true });
       },
       finalStagedData, // Injeksi langsung datanya kesini, bolo!
-      chatMode // 🔥 PARAMETER MODE: 'auto' | 'documents' (siap dikirim ke backend)
+      chatModeRef.current // 🔥 PARAMETER MODE: 'auto' | 'documents' (siap dikirim ke backend)
     );
 
     setInput('');
@@ -341,216 +562,32 @@ export default function ChatPage({ isGuest, isLoggedIn: propsIsLoggedIn, userDat
     return 'SELAMAT MALAM';
   };
 
-  const CustomModeSelector = ({ value, onChange, disabled, darkMode }) => {
-    const [isOpen, setIsOpen] = useState(false);
-    const dropdownRef = useRef(null);
-
-    useEffect(() => {
-      const handleClickOutside = (event) => {
-        if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
-          setIsOpen(false);
-        }
-      };
-      document.addEventListener('mousedown', handleClickOutside);
-      return () => document.removeEventListener('mousedown', handleClickOutside);
-    }, []);
-
-    const options = [
-      { value: 'auto', label: 'Auto' },
-      { value: 'documents', label: 'Documents' }
-    ];
-
-    const selectedOption = options.find(opt => opt.value === value);
-
-    return (
-      <div ref={dropdownRef} style={{ position: 'relative', display: 'inline-block' }}>
-        <button
-          type="button"
-          onClick={() => !disabled && setIsOpen(!isOpen)}
-          disabled={disabled}
-          style={{
-            background: darkMode ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)',
-            border: 'none',
-            borderRadius: '20px',
-            padding: '6px 20px',
-            fontSize: '13px',
-            fontWeight: 500,
-            color: darkMode ? '#e2e8f0' : '#1f2937',
-            cursor: disabled ? 'not-allowed' : 'pointer',
-            outline: 'none',
-            transition: 'all 0.15s',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '4px',
-            opacity: disabled ? 0.5 : 1
-          }}
-          onMouseEnter={(e) => {
-            if (!disabled) {
-              e.currentTarget.style.background = darkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)';
-            }
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.background = darkMode ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)';
-          }}
-        >
-          <span>{selectedOption?.label}</span>
-          <svg
-            width="12"
-            height="12"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            style={{
-              transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)',
-              transition: 'transform 0.2s'
-            }}
-          >
-            <polyline points="6 9 12 15 18 9"></polyline>
-          </svg>
-        </button>
-
-        {isOpen && (
-          <div style={{
-            position: 'absolute',
-            bottom: '100%',
-            left: 0,
-            marginBottom: '4px',
-            background: darkMode ? '#1e1e20' : '#ffffff',
-            border: `1px solid ${darkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'}`,
-            borderRadius: '8px',
-            boxShadow: darkMode
-              ? '0 4px 12px rgba(0,0,0,0.5)'
-              : '0 4px 12px rgba(0,0,0,0.15)',
-            minWidth: '120px',
-            zIndex: 1000,
-            overflow: 'hidden',
-            animation: 'fadeInUp 0.15s ease-out'
-          }}>
-            {options.map((option) => (
-              <button
-                key={option.value}
-                type="button"
-                onClick={() => {
-                  onChange(option.value);
-                  setIsOpen(false);
-                }}
-                style={{
-                  width: '100%',
-                  padding: '8px 12px',
-                  background: value === option.value
-                    ? (darkMode ? 'rgba(99, 102, 241, 0.15)' : 'rgba(99, 102, 241, 0.1)')
-                    : 'transparent',
-                  border: 'none',
-                  color: darkMode ? '#e2e8f0' : '#1f2937',
-                  fontSize: '13px',
-                  fontWeight: value === option.value ? 600 : 400,
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  gap: '8px',
-                  transition: 'background 0.1s'
-                }}
-                onMouseEnter={(e) => {
-                  if (value !== option.value) {
-                    e.currentTarget.style.background = darkMode ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)';
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = value === option.value
-                    ? (darkMode ? 'rgba(99, 102, 241, 0.15)' : 'rgba(99, 102, 241, 0.1)')
-                    : 'transparent';
-                }}
-              >
-                <span>{option.label}</span>
-                {value === option.value && (
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6366f1" strokeWidth="3">
-                    <polyline points="20 6 9 17 4 12"></polyline>
-                  </svg>
-                )}
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-    );
-  };
-
-  const PlusButton = () => (
-    <button
-      type="button"
-      onClick={() => fileInputRef.current?.click()}
-      disabled={isStreaming || isUploadingFile}
-      style={{
-        background: selectedFiles.length > 0
-          ? (darkMode ? 'rgba(99, 102, 241, 0.2)' : 'rgba(37, 99, 235, 0.1)')
-          : 'transparent',
-        border: 'none',
-        borderRadius: '50%',
-        width: '36px',
-        height: '36px',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        flexShrink: 0,
-        color: selectedFiles.length > 0 ? (darkMode ? '#818cf8' : '#2563eb') : (darkMode ? '#9ca3af' : '#6b7280'),
-        cursor: isStreaming ? 'not-allowed' : 'pointer',
-        transition: 'all 0.2s ease'
-      }}
-      onMouseEnter={(e) => { if (!isStreaming) e.currentTarget.style.background = darkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)'; }}
-      onMouseLeave={(e) => { e.currentTarget.style.background = selectedFiles.length > 0 ? (darkMode ? 'rgba(99, 102, 241, 0.2)' : 'rgba(37, 99, 235, 0.1)') : 'transparent'; }}
-      title="Lampirkan Berkas (PDF / Gambar) atau Paste (Ctrl+V) atau Drag-Drop"
-    >
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-        <line x1="12" y1="5" x2="12" y2="19" />
-        <line x1="5" y1="12" x2="19" y2="12" />
-      </svg>
-    </button>
-  );
-
-  const SendButton = () => (
-    <button
-      type="submit"
-      disabled={isStreaming || isUploadingFile || (!input.trim() && selectedFiles.length === 0)}
-      style={{
-        ...styles.sendBtn,
-        background: theme.sendBtnBg,
-        color: theme.sendBtnText,
-        opacity: isStreaming || isUploadingFile || (!input.trim() && selectedFiles.length === 0) ? 0.35 : 1,
-        cursor: (isStreaming || isUploadingFile) ? 'not-allowed' : 'pointer',
-        border: 'none',
-        borderRadius: '50%',
-        width: '36px',
-        height: '36px',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        flexShrink: 0
-      }}
-    >
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-        <line x1="12" y1="19" x2="12" y2="5" />
-        <polyline points="5 12 12 5 19 12" />
-      </svg>
-    </button>
-  );
-
   // ============================================================
   // PATCH: renderInputForm — satu textarea, layout via wrapper
   // Single line: [+][textarea][Auto ▾][↑] dalam satu row
   // Multi line:  textarea full width di atas, toolbar bawah
   // ============================================================
 
-  const renderInputForm = (isCentered = false) => (
+  const renderInputForm = (isBottom = false) => (
     <div style={{
       ...styles.inputArea,
-      background: isCentered ? 'transparent' : `linear-gradient(to bottom, transparent 0%, ${theme.inputAreaBg} 30%)`,
-      padding: isCentered ? '0' : undefined,
-      flexShrink: 0,
+      background: isBottom
+        ? `linear-gradient(to bottom, transparent 0%, ${theme.inputAreaBg} 30%)`
+        : 'transparent',
+      // ✅ Satu instance, posisi dinamis
+      position: isBottom ? 'relative' : 'absolute',
+      bottom: isBottom ? undefined : '10%',
+      left: isBottom ? undefined : '0',
+      right: isBottom ? undefined : '0',
+      marginLeft: isBottom ? undefined : 'auto',
+      marginRight: isBottom ? undefined : 'auto',
       width: '100%',
-      maxWidth: isCentered ? '700px' : undefined,
-      marginTop: isCentered ? '24px' : undefined
+      maxWidth: isBottom ? undefined : '700px',
+      padding: isBottom ? undefined : '0 20px',
+      marginTop: isBottom ? undefined : undefined,
+      flexShrink: 0,
+      zIndex: isBottom ? undefined : 11,
+      pointerEvents: 'auto'
     }}>
       <div style={styles.inputContainer}>
 
@@ -651,7 +688,13 @@ export default function ChatPage({ isGuest, isLoggedIn: propsIsLoggedIn, userDat
             {/* Plus button — kiri, selalu align bottom */}
             {!isMultiLine && (
               <div style={{ flexShrink: 0, paddingBottom: '0px' }}>
-                <PlusButton />
+                <PlusButton
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={isStreaming || isUploadingFile}
+                  selectedFiles={selectedFiles}
+                  darkMode={darkMode}
+                  isStreaming={isStreaming}
+                />
               </div>
             )}
 
@@ -698,8 +741,8 @@ export default function ChatPage({ isGuest, isLoggedIn: propsIsLoggedIn, userDat
                 {isUploadingFile && (
                   <span style={{ fontSize: '11px', color: '#6366f1', fontStyle: 'italic' }}>Mengunggah...</span>
                 )}
-                <CustomModeSelector value={chatMode} onChange={setChatMode} disabled={isStreaming} darkMode={darkMode} />
-                <SendButton />
+                <CustomModeSelector value={chatMode} onChange={handleChatModeChange} disabled={isStreaming} darkMode={darkMode} />
+                <SendButton isStreaming={isStreaming} isUploadingFile={isUploadingFile} input={input} selectedFiles={selectedFiles} theme={theme} />
               </div>
             )}
           </div>
@@ -716,15 +759,21 @@ export default function ChatPage({ isGuest, isLoggedIn: propsIsLoggedIn, userDat
               paddingTop: '2px'
             }}>
               {/* Kiri: Plus */}
-              <PlusButton />
+              <PlusButton
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isStreaming || isUploadingFile}
+                selectedFiles={selectedFiles}
+                darkMode={darkMode}
+                isStreaming={isStreaming}
+              />
 
               {/* Kanan: Auto + Send */}
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 {isUploadingFile && (
                   <span style={{ fontSize: '11px', color: '#6366f1', fontStyle: 'italic' }}>Mengunggah...</span>
                 )}
-                <CustomModeSelector value={chatMode} onChange={setChatMode} disabled={isStreaming} darkMode={darkMode} />
-                <SendButton />
+                <CustomModeSelector value={chatMode} onChange={handleChatModeChange} disabled={isStreaming} darkMode={darkMode} />
+                <SendButton isStreaming={isStreaming} isUploadingFile={isUploadingFile} input={input} selectedFiles={selectedFiles} theme={theme} />
               </div>
             </div>
           )}
@@ -748,7 +797,7 @@ export default function ChatPage({ isGuest, isLoggedIn: propsIsLoggedIn, userDat
           )}
         </form>
 
-        {!isCentered && (
+        {isBottom && (
           <div style={{ ...styles.inputFooter, color: theme.secondaryText, marginTop: '8px' }}>
             CAKRA AI dapat membuat kesalahan. Pertimbangkan untuk memeriksa informasi penting.
           </div>
@@ -926,13 +975,14 @@ export default function ChatPage({ isGuest, isLoggedIn: propsIsLoggedIn, userDat
                 marginTop: '24px',
                 pointerEvents: 'auto'
               }}>
-                {renderInputForm(true)}
+                {/* {renderInputForm(true)} */}
               </div>
             </div>
           )}
         </div>
 
-        {!showWelcome && renderInputForm(false)}
+        {/* {!showWelcome && renderInputForm(false)} */}
+        {renderInputForm(!showWelcome)}
       </main>
     </div>
   );

@@ -134,43 +134,45 @@ const Sidebar = ({
   // =========================================================================
   // SEKTOR AMAN SIDEBAR: Fetch murni sekali pakai, anti-infinite loop!
   // =========================================================================
+  const hasFetchedRef = useRef(false); // ← tambah di atas
+
   useEffect(() => {
     const initHistory = async () => {
-      if (userData?.npp && userData.npp !== 'NPP ------') {
+      if (userData?.npp && userData.npp !== 'NPP ------' && !hasFetchedRef.current) {
+        hasFetchedRef.current = true; // ← set flag sebelum fetch
         try {
-          console.log("🔍 [SIDEBAR] Initializing history data untuk NPP:", userData.npp);
           const result = await chatStore.fetchChatHistory(userData.npp);
           if (result.status === "success") {
             setChatHistory(result.data);
           }
         } catch (err) {
+          hasFetchedRef.current = false; // ← reset kalau gagal biar bisa retry
           console.error("Gagal memuat riwayat awal:", err);
         }
       }
     };
     initHistory();
-    // PENTING: Kosongkan dependency array tambahan agar murni jalan SEKALI SAJA pas component mounted!
   }, [userData?.npp]);
 
   // Fetch history chat pake NPP, panggil langsung dari actions store lo bolo
-  useEffect(() => {
-    const fetchHistory = async () => {
-      // Cek dulu apakah history sudah ada untuk mencegah fetch berulang
-      if (userData?.npp && chatHistory.length === 0) {
-        try {
-          const result = await chatStore.fetchChatHistory(userData.npp);
-          if (result.status === "success") {
-            setChatHistory(result.data);
-          }
-        } catch (err) {
-          console.error("Gagal ambil history chat:", err);
-        }
-      }
-    };
+  // useEffect(() => {
+  //   const fetchHistory = async () => {
+  //     // Cek dulu apakah history sudah ada untuk mencegah fetch berulang
+  //     if (userData?.npp && chatHistory.length === 0) {
+  //       try {
+  //         const result = await chatStore.fetchChatHistory(userData.npp);
+  //         if (result.status === "success") {
+  //           setChatHistory(result.data);
+  //         }
+  //       } catch (err) {
+  //         console.error("Gagal ambil history chat:", err);
+  //       }
+  //     }
+  //   };
 
-    fetchHistory();
-    // Gunakan userData?.npp agar cuma jalan pas NPP berubah saja
-  }, [userData?.npp]);
+  //   fetchHistory();
+  //   // Gunakan userData?.npp agar cuma jalan pas NPP berubah saja
+  // }, [userData?.npp]);
 
   const [isHovered, setIsHovered] = useState(false);
   const [showLogoutPopup, setShowLogoutPopup] = useState(false);

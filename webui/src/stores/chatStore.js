@@ -42,12 +42,12 @@ async function _performStream(set, get, messagesToSend, assistantMessage, forced
             method: 'POST',
             headers: _buildAuthHeaders(npp),
             body: JSON.stringify({
-                session_uuid: activeSessionUuid, 
+                session_uuid: activeSessionUuid,
                 messages: messagesToSend,
-                mode: chatMode,
+                ode: get().chatMode || chatMode,
                 temperature: 0.7,
-                isolated_doc_id: isolatedDocId,      
-                attachment_paths: attachmentPaths      
+                isolated_doc_id: isolatedDocId,
+                attachment_paths: attachmentPaths
             })
         });
 
@@ -58,7 +58,7 @@ async function _performStream(set, get, messagesToSend, assistantMessage, forced
         let accumulatedReply = '';
         let streamBuffer = '';
         let renderTimeout = null;
-        let accumulatedThinking = ''; 
+        let accumulatedThinking = '';
 
         while (true) {
             const { value, done } = await reader.read();
@@ -93,8 +93,8 @@ async function _performStream(set, get, messagesToSend, assistantMessage, forced
                     // 🔥 NEW: HANDLE SOURCES FROM RAG
                     if (parsedData.sources && Array.isArray(parsedData.sources)) {
                         console.log('📚 [SSE] Received sources:', parsedData.sources);
-                        const updatedAssistantMsg = { 
-                            ...assistantMessage, 
+                        const updatedAssistantMsg = {
+                            ...assistantMessage,
                             sources: parsedData.sources,
                             citations: parsedData.sources  // 🔥 Dual assignment untuk kompatibilitas
                         };
@@ -114,7 +114,7 @@ async function _performStream(set, get, messagesToSend, assistantMessage, forced
                             renderTimeout = requestAnimationFrame(() => {
                                 set({
                                     messages: [...get().messages],
-                                    isThinking: false 
+                                    isThinking: false
                                 });
                                 renderTimeout = null;
                             });
@@ -150,29 +150,29 @@ export const useChatStore = create((set, get) => ({
     isThinking: false,
     currentThinking: '',  // New: current thinking signal from pipeline
     sessionUuid: null,
-    stagedAttachments: [],     
-    activeIsolatedDocId: null, 
-    activeIsolatedTitle: null, 
+    stagedAttachments: [],
+    activeIsolatedDocId: null,
+    activeIsolatedTitle: null,
 
     sendMessage: async (content, npp, onSessionCreatedCallback, directUploadedFiles = null, chatMode = 'auto') => {
         const hasAttachments = (directUploadedFiles?.length > 0) || (get().stagedAttachments?.length > 0);
         if ((!content.trim() && !hasAttachments) || get().isStreaming) return;
-    
+
         let currentSessionUuid = get().sessionUuid;
-    
+
         if (!currentSessionUuid || currentSessionUuid === "new") {
             try {
                 const generatedTitle = content.split(" ").slice(0, 4).join(" ") + "...";
-    
+
                 const response = await fetch(`${API_BASE}/api/chat/sessions/create?judul=${encodeURIComponent(generatedTitle)}`, {
                     method: 'POST',
                     headers: _buildAuthHeaders(npp),
                 });
                 const result = await response.json();
-                
+
                 if (result.status === "success") {
                     currentSessionUuid = result.data.session_uuid;
-                    
+
                     if (onSessionCreatedCallback) {
                         onSessionCreatedCallback({
                             session_uuid: currentSessionUuid,
@@ -181,7 +181,7 @@ export const useChatStore = create((set, get) => ({
                             started_at: new Date().toISOString()
                         });
                     }
-    
+
                     set({ sessionUuid: currentSessionUuid });
                 } else {
                     throw new Error("Gagal booking session id dari backend.");
@@ -191,10 +191,10 @@ export const useChatStore = create((set, get) => ({
                 return;
             }
         }
-    
+
         const targetFiles = directUploadedFiles !== null ? directUploadedFiles : get().stagedAttachments;
         const attachmentMeta = _normalizeAttachments(targetFiles);
-    
+
         const userMessage = {
             role: 'user',
             content: content.trim(),
@@ -202,22 +202,24 @@ export const useChatStore = create((set, get) => ({
         };
         const updatedMessages = [...get().messages, userMessage];
         const assistantMessage = { role: 'assistant', content: '' };
-    
+
         const currentAttachmentPaths = attachmentMeta
             .map((file) => file.file_path)
             .filter(Boolean);
-    
+
         const currentIsolatedDocId = get().activeIsolatedDocId;
-    
+
+        // 🔒 KUNCI STATE CHATMODE DI SINI SEBELUM URL ROUTE BERUBAH!
         set({
+            chatMode: chatMode, // 👈 Tambahkan baris sakti ini bolo!
             messages: [...updatedMessages, assistantMessage],
             isStreaming: true,
             isLoading: true,
             isThinking: true
         });
-    
+
         await new Promise(resolve => setTimeout(resolve, 100));
-        
+
         await _performStream(
             set,
             get,
@@ -229,10 +231,10 @@ export const useChatStore = create((set, get) => ({
             currentAttachmentPaths,
             chatMode // 🔥 Oper chatMode ke _performStream
         );
-    
+
         set({ stagedAttachments: [] });
     },
-    
+
     editAndRegenerate: async (index, newContent) => {
         if (!newContent.trim() || get().isStreaming) return;
 
@@ -258,18 +260,18 @@ export const useChatStore = create((set, get) => ({
 
         const messagesToSend = currentMessages.slice(0, index + 1);
         const npp = JSON.parse(localStorage.getItem('cakra_user') || '{}')?.npp || null;
-        
+
         await _performStream(set, get, messagesToSend, assistantMessage, null, npp, get().activeIsolatedDocId, []);
     },
 
     clearChat: () => {
-        set({ 
-            messages: [], 
-            sessionUuid: null, 
-            isThinking: false, 
-            stagedAttachments: [], 
-            activeIsolatedDocId: null, 
-            activeIsolatedTitle: null 
+        set({
+            messages: [],
+            sessionUuid: null,
+            isThinking: false,
+            stagedAttachments: [],
+            activeIsolatedDocId: null,
+            activeIsolatedTitle: null
         });
     },
 
@@ -316,8 +318,8 @@ export const useChatStore = create((set, get) => ({
                             ...msg,
                             attachments: msg.attachments.map(file => ({
                                 ...file,
-                                file_path: file.file_path && file.file_path.includes('/') 
-                                    ? file.file_path.split('/').pop() 
+                                file_path: file.file_path && file.file_path.includes('/')
+                                    ? file.file_path.split('/').pop()
                                     : file.file_path
                             }))
                         };
@@ -401,7 +403,7 @@ export const useChatStore = create((set, get) => ({
             return { status: "error" };
         }
     },
-    
+
     setStagedAttachments: (attachments) => {
         set({ stagedAttachments: attachments });
     },
