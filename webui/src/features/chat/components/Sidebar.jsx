@@ -27,10 +27,10 @@ const Sidebar = ({
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [sessionToDelete, setSessionToDelete] = useState(null);
 
-  // Ambil actions fetch native langsung dari store murni lo, bolo
+  // Ambil method fetch secara langsung dari Zustand store
   const chatStore = useChatStore();
 
-  // Ambil variabel nama & divisi cadangan dari operan props atau samakan dengan struktur store lo
+  // Ambil variabel nama dan divisi cadangan dari props atau sesuaikan dengan struktur store
   const profileName = userData?.fullname || userData?.name || "Pegawai Pindad";
   const profileDivisi = userData?.divisi || "Pegawai Resmi";
 
@@ -52,7 +52,7 @@ const Sidebar = ({
       const currentChat = chatHistory.find(c => c.session_uuid === sessionUuid);
       const isPinnedCurrentValue = currentChat ? currentChat.is_pinned : false;
 
-      // SUNTIK KEDUA PARAMETER-NYA KE ACTIONS STORE LU BOLO
+      // Meneruskan kedua parameter tersebut ke method store
       const result = await chatStore.pinChat(sessionUuid, isPinnedCurrentValue);
 
       if (result.status === "success") {
@@ -74,7 +74,7 @@ const Sidebar = ({
   const handleRename = async (sessionUuid) => {
     if (!tempTitle.trim()) return;
     try {
-      // SINKRON: Panggil action dari chatStore bawaan lo
+      // SINKRONISASI: Memanggil method dari chatStore
       const result = await chatStore.renameChat(sessionUuid, tempTitle);
       if (result.status === "success") {
         setChatHistory((prev) =>
@@ -109,7 +109,7 @@ const Sidebar = ({
 
       await new Promise((resolve) => setTimeout(resolve, 400));
 
-      // SINKRON PERBAIKAN: Oper session_uuid beserta NPP user aktif lo ke store global
+      // SINKRONISASI PERBAIKAN: Meneruskan session_uuid dan NPP pengguna aktif ke store global
       const result = await chatStore.deleteChat(sessionToDelete, userData?.npp);
 
       if (result.status === "success") {
@@ -117,10 +117,10 @@ const Sidebar = ({
           prev.filter((c) => c.session_uuid !== sessionToDelete)
         );
 
-        // INDRA PENGINGAT RUTE: Jika chat yang dihapus adalah chat yang lagi dibuka
+        // INDRA PENGINGAT RUTE: Jika chat yang dihapus adalah chat yang sedang dibuka
         if (currentSessionId === sessionToDelete) {
-          clearChat();             // Bersihkan state messages & sessionUuid di store jadi null instant
-          navigate('/chat/new');   // Tendang rute URL browser langsung ke halaman baru, bolo!
+          clearChat();             // Bersihkan state messages dan sessionUuid di store secara instan
+          navigate('/chat/new');   // Mengarahkan rute URL browser langsung ke halaman obrolan baru
         }
       }
     } catch (err) {
@@ -154,7 +154,7 @@ const Sidebar = ({
     initHistory();
   }, [userData?.npp]);
 
-  // Fetch history chat pake NPP, panggil langsung dari actions store lo bolo
+  // Mengambil riwayat obrolan menggunakan NPP, memanggil langsung dari method store
   // useEffect(() => {
   //   const fetchHistory = async () => {
   //     // Cek dulu apakah history sudah ada untuk mencegah fetch berulang
@@ -190,11 +190,11 @@ const Sidebar = ({
 
   return (
     <div
-      // 🔥 Hapus class border statis bawaan Tailwind yang kaku bolo
+      // Menghapus kelas border statis bawaan Tailwind
       className={`fixed left-0 top-0 h-screen flex flex-col transition-all duration-300 z-40 ${isOpen ? "w-72" : "w-16"
         }`}
       style={{
-        // 🔥 MODE DARK: Gak hitam pekat bray, tapi abu silver arang (#1E1E22) biar beda dari ChatPage lo!
+        // MODE GELAP: Menggunakan warna arang (#1E1E22) agar kontras dengan ChatPage
         background: darkMode ? '#1E1E22' : (theme?.sidebarBg || '#F7F8FC'),
         color: theme?.textColor || (darkMode ? '#e2e8f0' : '#1f2937'),
 
@@ -207,7 +207,7 @@ const Sidebar = ({
         onMouseLeave={() => setIsHovered(false)}
         className="p-3 p-4 relative flex flex-col justify-center"
         style={{
-          // 🔥 Pas mode dark tanpa border bawah, pas light mode dapet silver tipis kalem
+          // Pada mode gelap tidak menggunakan border bawah, sedangkan pada mode terang menggunakan warna abu-abu tipis
           borderBottom: darkMode ? 'none' : '1px solid #E5E7EB'
         }}
       >
@@ -344,7 +344,7 @@ const Sidebar = ({
                   loadChatSession(chat.session_uuid);
                   setActiveMenuId(null);
                 }}
-                // 🔥 FIX TEXT BIRU ACTIVE: Perbaikan total warna text & background active yang kebalik bawaan orok lo!
+                // PERBAIKAN WARNA TEKS AKTIF: Penyesuaian warna teks dan latar belakang untuk chat yang sedang aktif
                 className={`group relative flex items-center px-3 py-2 text-sm rounded-full cursor-pointer transition-all ${currentSessionId === chat.session_uuid
                     ? "bg-blue-100 text-blue-600 font-bold dark:bg-blue-500/50 dark:text-blue-600"
                     : "hover:bg-gray-200 dark:hover:bg-gray-800 font-medium"
@@ -352,7 +352,7 @@ const Sidebar = ({
                   }`}
                 style={{
                   color: currentSessionId === chat.session_uuid
-                    ? (darkMode ? '#60a5fa' : '#2563eb') // 🔥 Biru menyala terang benderang menyesuaikan mode!
+                    ? (darkMode ? '#60a5fa' : '#2563eb') // Menggunakan warna biru menyala menyesuaikan mode
                     : theme?.textColor
                 }}
                 title={chat.judul}
@@ -569,7 +569,7 @@ const Sidebar = ({
 
         {isOpen && (
           <button
-            // 🔥 FIX WARNA GERIGI: Ganti text-gray-400 statis bawaan ke theme.iconColor murni biar sinkron saat dark/light!
+            // PENYESUAIAN WARNA PENGATURAN: Mengubah warna abu-abu statis menjadi theme.iconColor agar sinkron saat pergantian tema
             className="hover:text-blue-500 ml-auto absolute right-3 top-0 bottom-0 my-auto h-fit p-1 transition-colors"
             style={{ color: theme?.iconColor || '#9ca3af' }}
             onClick={() => setShowLogoutPopup(!showLogoutPopup)}

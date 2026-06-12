@@ -172,10 +172,10 @@ Router mendeteksi `FRUSTRATED` → system prompt Slot 3 menambahkan instruksi em
 | Sidebar history | ✅ | `Sidebar.jsx` |
 | New chat / pin / rename / delete | ✅ | Sidebar + store |
 | Guest welcome screen | ✅ | `GuestWelcome.jsx` |
-| Dark/light theme | ✅ | `ChatPage.jsx` |
-| Edit & regenerate pesan | ✅ | `ChatBubble` + `chatStore` |
+| Dark/light theme | ✅ | `ChatPage.jsx` (HeaderDropdownMenu.jsx) |
+| Edit & regenerate pesan | ✅ | `ChatBubble` (UserBubble.jsx) + `chatStore` |
 | Login page | ✅ | `LoginPage.jsx` |
-| File attachment | ❌ | Tombol ada, non-fungsional |
+| File attachment | ✅ | `ChatPage.jsx` (PlusButton.jsx, SendButton.jsx) |
 | Learning dashboard | ⚠️ File ada, belum di-route | `LearningPage.jsx` |
 | Documents sidebar menu | ⚠️ UI ada, belum terhubung | `Sidebar.jsx` |
 
@@ -254,14 +254,20 @@ pinAi/
 │       └── features/
 │           ├── auth/LoginPage.jsx
 │           ├── chat/
-│           │   ├── ChatPage.jsx
-│           │   ├── chatPage.styles.js
+│           │   ├── ChatPage.jsx  # Halaman obrolan utama (modular)
+│           │   ├── chatPage.styles.js # Sentralisasi gaya & helper styles
 │           │   └── components/
-│           │       ├── Sidebar.jsx
-│           │       ├── ChatArea.jsx
-│           │       ├── ChatBubble.jsx
-│           │       ├── ThoughtAccordion.jsx
-│           │       └── SourceCitation.jsx
+│           │       ├── Sidebar.jsx # Navigasi riwayat obrolan & setelan
+│           │       ├── ChatArea.jsx # Container pesan berbasis Virtuoso
+│           │       ├── ChatBubble.jsx # Gelembung asisten & parser pemikiran
+│           │       ├── ThoughtAccordion.jsx # Accordion penalaran internal AI
+│           │       ├── SourceCitation.jsx # Tampilan referensi kutipan dokumen
+│           │       ├── CodeBlockHeader.jsx # [NEW] Salin & unduh kode program
+│           │       ├── CustomModeSelector.jsx # [NEW] Dropdown pemilih mode chat
+│           │       ├── HeaderDropdownMenu.jsx # [NEW] Kebab menu setelan tema & login
+│           │       ├── PlusButton.jsx # [NEW] Tombol lampiran berkas
+│           │       ├── SendButton.jsx # [NEW] Tombol submit formulir
+│           │       └── UserBubble.jsx # [NEW] Gelembung pesan pengguna & inline editor
 │           └── learning/         # Belum di-route di App.jsx
 │               ├── LearningPage.jsx
 │               └── components/
@@ -436,5 +442,26 @@ npm run dev
 ## Lisensi & Konteks
 
 Proyek internal **PT Pindad** — CAKRA AI RAG System v2.0.0
+
+---
+
+## Rekomendasi Fitur & Optimasi WebUI
+
+Berdasarkan analisis arsitektur WebUI saat ini, berikut adalah rekomendasi teknis untuk pengembangan dan peningkatan performa sistem:
+
+### 1. Optimasi Performa & Rendering
+- **Zustand Selector Optimization**: Pemanggilan store pada komponen-komponen anak (seperti `UserBubble` atau `CustomModeSelector`) sebaiknya menggunakan selector yang spesifik (contoh: `useChatStore(state => state.isStreaming)`) daripada mengambil seluruh state store untuk mencegah *re-render* yang tidak perlu pada seluruh komponen pohon.
+- **Virtuoso React.memo**: Tingkatkan efisiensi render baris list virtuoso di `ChatArea.jsx` dengan memecah property secara ketat dan menggunakan `React.memo` pada seluruh item untuk memastikan baris chat yang tidak aktif tidak ikut dirender ulang ketika teks obrolan baru masuk.
+
+### 2. Peningkatan Fitur Obrolan
+- **Client-Side File Validation**: Tambahkan validasi tipe file (misalnya membatasi hanya `.pdf` dan `image/*`) dan ukuran file (maksimal 10 MB) secara lokal di sisi klien sebelum memicu panggilan API upload. Hal ini berguna untuk meningkatkan *user experience* dan menghemat *bandwidth* server.
+- **Local Input Draft Persistence**: Terapkan penyimpanan draf input chat sementara di `sessionStorage` menggunakan kunci `sessionId`. Jika pengguna tidak sengaja berpindah chat melalui sidebar, teks yang sedang diketik tidak akan hilang saat mereka kembali.
+- **Proactive Toast Notification**: Integrasikan sistem notifikasi toast global di WebUI (menggantikan penggunaan `alert` standar) untuk menampilkan status unggahan, kesalahan koneksi backend, atau keberhasilan penyalinan teks secara lebih estetik dan tidak memblokir interaksi pengguna.
+
+### 3. Pemeliharaan & Standardisasi Kode
+- **Standardisasi API Service Layer**: Isi berkas `src/services/endpoints.js` dengan fungsi pemanggilan terstruktur menggunakan Axios. Gantikan pemanggilan `fetch` mentah yang saat ini tersebar di `ChatPage.jsx` dan `chatStore.js` agar konfigurasi endpoint dan interceptor (seperti *handling authorization headers*) dikelola secara terpusat.
+- **Penyelarasan Tailwind & CSS Murni**: Lakukan migrasi bertahap pada kelas Tailwind statis di `Sidebar.jsx` ke dalam sistem desain di `chatPage.styles.js` atau berkas CSS global untuk memastikan konsistensi desain sistem UI.
+
+---
 
 *README diperbarui berdasarkan analisis kode aktual `pinAi/backend` & `pinAi/webui` — Juni 2026.*

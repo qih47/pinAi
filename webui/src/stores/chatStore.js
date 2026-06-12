@@ -51,7 +51,7 @@ async function _performStream(set, get, messagesToSend, assistantMessage, forced
             })
         });
 
-        if (!response.ok) throw new Error('Gagal konek ke backend, bolo!');
+        if (!response.ok) throw new Error('Gagal terhubung dengan server backend.');
 
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
@@ -209,9 +209,9 @@ export const useChatStore = create((set, get) => ({
 
         const currentIsolatedDocId = get().activeIsolatedDocId;
 
-        // 🔒 KUNCI STATE CHATMODE DI SINI SEBELUM URL ROUTE BERUBAH!
+        // Sinkronisasi state chatMode sebelum perubahan rute URL
         set({
-            chatMode: chatMode, // 👈 Tambahkan baris sakti ini bolo!
+            chatMode: chatMode, // Menyinkronkan chatMode ke store
             messages: [...updatedMessages, assistantMessage],
             isStreaming: true,
             isLoading: true,
@@ -311,7 +311,7 @@ export const useChatStore = create((set, get) => ({
             if (seq !== _sessionLoadSeq) return;
 
             if (result.status === "success" && result.data) {
-                // 🔥 TAMBAHAN SAKTI 2: Saring total data riwayat lama di level Store agar nama filenya murni keping ujungnya doang!
+                // SINKRONISASI RIWAYAT: Mengambil nama berkas saja dari riwayat lampiran lama
                 const sanitizedMessages = result.data.map(msg => {
                     if (msg.attachments && msg.attachments.length > 0) {
                         return {

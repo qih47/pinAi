@@ -7,345 +7,10 @@ import GuestWelcome from '../../components/ui/GuestWelcome';
 import Sidebar from './components/Sidebar';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useChatAuthStore } from '../../stores/authStore';
-
-// ============================================================
-// ✅ FIX UTAMA: Semua sub-komponen dipindah ke LUAR ChatPage
-// agar React tidak unmount+remount tiap re-render ChatPage,
-// yang menyebabkan state (chatMode, isOpen) ter-reset.
-// ============================================================
-
-const CustomModeSelector = ({ value, onChange, disabled, darkMode }) => {
-  const [isOpen, setIsOpen] = useState(false);
-  const dropdownRef = useRef(null);
-
-  useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
-        setIsOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
-  const options = [
-    { value: 'auto', label: 'Auto' },
-    { value: 'flash', label: 'Flash' },
-    { value: 'documents', label: 'Documents' }
-  ];
-
-  const selectedOption = options.find(opt => opt.value === value);
-
-  return (
-    <div ref={dropdownRef} style={{ position: 'relative', display: 'inline-block' }}>
-      <button
-        type="button"
-        onClick={() => !disabled && setIsOpen(!isOpen)}
-        disabled={disabled}
-        style={{
-          background: darkMode ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)',
-          border: 'none',
-          borderRadius: '20px',
-          padding: '6px 20px',
-          fontSize: '13px',
-          fontWeight: 500,
-          color: darkMode ? '#e2e8f0' : '#1f2937',
-          cursor: disabled ? 'not-allowed' : 'pointer',
-          outline: 'none',
-          transition: 'all 0.15s',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '4px',
-          opacity: disabled ? 0.5 : 1
-        }}
-        onMouseEnter={(e) => {
-          if (!disabled) {
-            e.currentTarget.style.background = darkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)';
-          }
-        }}
-        onMouseLeave={(e) => {
-          e.currentTarget.style.background = darkMode ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)';
-        }}
-      >
-        <span>{selectedOption?.label}</span>
-        <svg
-          width="12"
-          height="12"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          style={{
-            transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)',
-            transition: 'transform 0.2s'
-          }}
-        >
-          <polyline points="6 9 12 15 18 9"></polyline>
-        </svg>
-      </button>
-
-      {isOpen && (
-        <div style={{
-          position: 'absolute',
-          bottom: '100%',
-          left: 0,
-          marginBottom: '4px',
-          background: darkMode ? '#1e1e20' : '#ffffff',
-          border: `1px solid ${darkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'}`,
-          borderRadius: '8px',
-          boxShadow: darkMode
-            ? '0 4px 12px rgba(0,0,0,0.5)'
-            : '0 4px 12px rgba(0,0,0,0.15)',
-          minWidth: '120px',
-          zIndex: 1000,
-          overflow: 'hidden',
-          animation: 'fadeInUp 0.15s ease-out'
-        }}>
-          {options.map((option) => (
-            <button
-              key={option.value}
-              type="button"
-              onClick={() => {
-                onChange(option.value);
-                setIsOpen(false);
-              }}
-              style={{
-                width: '100%',
-                padding: '8px 12px',
-                background: value === option.value
-                  ? (darkMode ? 'rgba(99, 102, 241, 0.15)' : 'rgba(99, 102, 241, 0.1)')
-                  : 'transparent',
-                border: 'none',
-                color: darkMode ? '#e2e8f0' : '#1f2937',
-                fontSize: '13px',
-                fontWeight: value === option.value ? 600 : 400,
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                gap: '8px',
-                transition: 'background 0.1s'
-              }}
-              onMouseEnter={(e) => {
-                if (value !== option.value) {
-                  e.currentTarget.style.background = darkMode ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)';
-                }
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = value === option.value
-                  ? (darkMode ? 'rgba(99, 102, 241, 0.15)' : 'rgba(99, 102, 241, 0.1)')
-                  : 'transparent';
-              }}
-            >
-              <span>{option.label}</span>
-              {value === option.value && (
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6366f1" strokeWidth="3">
-                  <polyline points="20 6 9 17 4 12"></polyline>
-                </svg>
-              )}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-};
-
-// ============================================================
-// 🎛️ DROPDOWN MENU POJOK KANAN (Kebab Menu Titik Tiga)
-// ============================================================
-const HeaderDropdownMenu = ({ isGuest, onLogin, darkMode, setDarkMode, theme }) => {
-  const [isOpen, setIsOpen] = useState(false);
-  const menuRef = useRef(null);
-
-  useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (menuRef.current && !menuRef.current.contains(event.target)) {
-        setIsOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
-  return (
-    <div ref={menuRef} style={{ position: 'relative', display: 'inline-block' }}>
-      {/* Tombol Titik Tiga Vertikal */}
-      <button
-        type="button"
-        onClick={() => setIsOpen(!isOpen)}
-        style={{
-          background: 'transparent',
-          border: 'none',
-          borderRadius: '50%',
-          width: '36px',
-          height: '36px',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          color: darkMode ? '#cbd5e1' : '#4b5563',
-          cursor: 'pointer',
-          transition: 'background 0.2s',
-          outline: 'none'
-        }}
-        onMouseEnter={(e) => e.currentTarget.style.background = darkMode ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)'}
-        onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-      >
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-          <circle cx="12" cy="12" r="1" />
-          <circle cx="12" cy="5" r="1" />
-          <circle cx="12" cy="19" r="1" />
-        </svg>
-      </button>
-
-      {/* Konten Menu Dropdown */}
-      {isOpen && (
-        <div style={{
-          position: 'absolute',
-          top: '100%',
-          right: 0,
-          marginTop: '6px',
-          background: darkMode ? '#1e1e20' : '#ffffff',
-          border: `1px solid ${darkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'}`,
-          borderRadius: '10px',
-          boxShadow: darkMode ? '0 10px 25px -5px rgba(0,0,0,0.5)' : '0 10px 25px -5px rgba(0,0,0,0.1)',
-          minWidth: '160px',
-          zIndex: 2000,
-          overflow: 'hidden',
-          padding: '4px',
-          animation: 'fadeInUp 0.15s ease-out'
-        }}>
-          {/* OPSI 1: TOMBOL MASUK (Hanya tampil kalau statusnya isGuest) */}
-          {isGuest && (
-            <button
-              type="button"
-              onClick={() => {
-                onLogin();
-                setIsOpen(false);
-              }}
-              style={{
-                width: '100%',
-                padding: '10px 12px',
-                background: 'transparent',
-                border: 'none',
-                borderRadius: '6px',
-                color: darkMode ? '#e2e8f0' : '#1f2937',
-                fontSize: '13px',
-                fontWeight: 600,
-                textAlign: 'left',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                transition: 'background 0.1s'
-              }}
-              onMouseEnter={(e) => e.currentTarget.style.background = darkMode ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)'}
-              onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-            >
-              <span>🔑</span> Masuk
-            </button>
-          )}
-
-          {/* Garis Pembatas kecil kalau ada tombol login */}
-          {isGuest && <div style={{ height: '1px', background: darkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)', margin: '4px 0' }} />}
-
-          {/* OPSI 2: TOGGLE TEMA LIGHT / DARK */}
-          <button
-            type="button"
-            onClick={() => {
-              setDarkMode(!darkMode);
-              setIsOpen(false);
-            }}
-            style={{
-              width: '100%',
-              padding: '10px 12px',
-              background: 'transparent',
-              border: 'none',
-              borderRadius: '6px',
-              color: darkMode ? '#cbd5e1' : '#4b5563',
-              fontSize: '13px',
-              fontWeight: 500,
-              textAlign: 'left',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              gap: '8px',
-              transition: 'background 0.1s'
-            }}
-            onMouseEnter={(e) => e.currentTarget.style.background = darkMode ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)'}
-            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span>{darkMode ? '🌙' : '☀️'}</span>
-              <span>{darkMode ? 'Gelap' : 'Terang'}</span>
-            </div>
-            {/* <span style={{ fontSize: '11px', opacity: 0.6 }}>Ubah</span> */}
-          </button>
-        </div>
-      )}
-    </div>
-  );
-};
-
-const PlusButton = ({ onClick, disabled, selectedFiles, darkMode, isStreaming }) => (
-  <button
-    type="button"
-    onClick={onClick}
-    disabled={disabled}
-    style={{
-      background: selectedFiles.length > 0
-        ? (darkMode ? 'rgba(99, 102, 241, 0.2)' : 'rgba(37, 99, 235, 0.1)')
-        : 'transparent',
-      border: 'none',
-      borderRadius: '50%',
-      width: '36px',
-      height: '36px',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      flexShrink: 0,
-      color: selectedFiles.length > 0 ? (darkMode ? '#818cf8' : '#2563eb') : (darkMode ? '#9ca3af' : '#6b7280'),
-      cursor: isStreaming ? 'not-allowed' : 'pointer',
-      transition: 'all 0.2s ease'
-    }}
-    onMouseEnter={(e) => { if (!isStreaming) e.currentTarget.style.background = darkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)'; }}
-    onMouseLeave={(e) => { e.currentTarget.style.background = selectedFiles.length > 0 ? (darkMode ? 'rgba(99, 102, 241, 0.2)' : 'rgba(37, 99, 235, 0.1)') : 'transparent'; }}
-    title="Lampirkan Berkas (PDF / Gambar) atau Paste (Ctrl+V) atau Drag-Drop"
-  >
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-      <line x1="12" y1="5" x2="12" y2="19" />
-      <line x1="5" y1="12" x2="19" y2="12" />
-    </svg>
-  </button>
-);
-
-const SendButton = ({ isStreaming, isUploadingFile, input, selectedFiles, theme }) => (
-  <button
-    type="submit"
-    disabled={isStreaming || isUploadingFile || (!input.trim() && selectedFiles.length === 0)}
-    style={{
-      ...styles.sendBtn,
-      background: theme.sendBtnBg,
-      color: theme.sendBtnText,
-      opacity: isStreaming || isUploadingFile || (!input.trim() && selectedFiles.length === 0) ? 0.35 : 1,
-      cursor: (isStreaming || isUploadingFile) ? 'not-allowed' : 'pointer',
-      border: 'none',
-      borderRadius: '50%',
-      width: '36px',
-      height: '36px',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      flexShrink: 0
-    }}
-  >
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-      <line x1="12" y1="19" x2="12" y2="5" />
-      <polyline points="5 12 12 5 19 12" />
-    </svg>
-  </button>
-);
+import CustomModeSelector from './components/CustomModeSelector';
+import HeaderDropdownMenu from './components/HeaderDropdownMenu';
+import PlusButton from './components/PlusButton';
+import SendButton from './components/SendButton';
 
 // ============================================================
 // MAIN COMPONENT
@@ -376,13 +41,11 @@ export default function ChatPage({ isGuest, isLoggedIn: propsIsLoggedIn, userDat
 
   // Gunakan storeChatMode sebagai jaminan nilai inisialisasi saat komponen di-remount!
   const [chatMode, setChatMode] = useState(storeChatMode);
-  const chatModeRef = useRef(storeChatMode);
-
-  // Buat wrapper setter taktis:
+  const chatModeRef = useRef(storeChatMode);  // Buat fungsi wrapper untuk memantau perubahan chatMode:
   const handleChatModeChange = (val) => {
     chatModeRef.current = val;
     setChatMode(val);
-    // Ikut kunci langsung ke Zustand store lokal seketika user ngeklik dropdown selector
+    // Menyimpan pilihan mode langsung ke Zustand store setelah dipilih oleh pengguna
     useChatStore.setState({ chatMode: val });
   };
   // REF: Capture tinggi baseline 1 baris saat mount pertama
@@ -405,7 +68,7 @@ export default function ChatPage({ isGuest, isLoggedIn: propsIsLoggedIn, userDat
     setSelectedFiles(prev => prev.filter((_, idx) => idx !== indexToRemove));
   };
 
-  // 🔥 2. RENDER LOCAL SAJA (TIDAK LANGSUNG UPLOAD KE SERVER)
+  // 2. TAMPILKAN PRATINJAU LOKAL (TIDAK LANGSUNG DIUNGGAH KE SERVER)
   const handleFileChange = (e) => {
     const files = Array.from(e.target.files);
     if (files.length === 0) return;
@@ -422,7 +85,7 @@ export default function ChatPage({ isGuest, isLoggedIn: propsIsLoggedIn, userDat
     setSelectedFiles(prev => [...prev, ...targets]);
   };
 
-  // 🔥 2. PASTE IMAGE: Masuk state local untuk preview, bukan ke API port 5000
+  // 2. TEMPEL GAMBAR (PASTE): Masuk ke state lokal untuk pratinjau, bukan ke port API langsung
   const handlePaste = (e) => {
     const items = e.clipboardData?.items;
     if (!items) return;
@@ -461,7 +124,7 @@ export default function ChatPage({ isGuest, isLoggedIn: propsIsLoggedIn, userDat
     setIsDragOver(false);
   };
 
-  // 🔥 2. DRAG DROP: Simpan file fisik di web dulu, upload pas klik kirim
+  // 2. SERET DAN LEPAS (DRAG & DROP): Simpan berkas secara lokal, unggah saat mengirim pesan
   const handleDrop = (e) => {
     e.preventDefault();
     e.stopPropagation();
@@ -531,7 +194,7 @@ export default function ChatPage({ isGuest, isLoggedIn: propsIsLoggedIn, userDat
     navigate('/chat/new');
   };
 
-  // ⚡ SYNC FIX: Paksa state lokal chatPage buat nyontek isi store pas rute URL kelar berubah
+  // SINKRONISASI: Menyelaraskan state lokal ChatPage dengan isi store setelah perubahan rute URL selesai
   useEffect(() => {
     const currentGlobalMode = useChatStore.getState().chatMode || 'auto';
     setChatMode(currentGlobalMode);
@@ -584,8 +247,7 @@ export default function ChatPage({ isGuest, isLoggedIn: propsIsLoggedIn, userDat
     }
   }, []);
 
-  // 🔥 3. DINAMIS AUTO HEIGHT FIX: Kalkulasi tinggi DOM asli secara linear tanpa remounting komponen
-  // 🔥 3. DINAMIS AUTO HEIGHT FIX (ANTI NAIK-TURUN & ANTI INFINITE LOOP 🔒)
+  // 3. PENYESUAIAN TINGGI OTOMATIS DINAMIS: Menghitung tinggi DOM asli secara linier tanpa merender ulang komponen (MENCEGAH LOOP DAN FLUKTUASI TINGGI)
   useEffect(() => {
     const el = textareaRef.current;
     if (!el) return;
@@ -605,8 +267,7 @@ export default function ChatPage({ isGuest, isLoggedIn: propsIsLoggedIn, userDat
       const hasNewlines = input.includes('\n');
       const isCurrentlyThick = el.scrollHeight > baseline + 3 || hasNewlines;
 
-      // Kita gunakan bodi variabel lokal 'isCurrentlyThick' untuk membandingkan 
-      // dengan state lama via functional update, biar gak usah nembak state langsung!
+      // Gunakan variabel lokal 'isCurrentlyThick' untuk membandingkan dengan state sebelumnya melalui pembaruan fungsional untuk menghindari pembaruan langsung
       setIsMultiLine((prevIsMultiLine) => {
         if (!prevIsMultiLine) {
           // LOGIKA NAIK: Jika aslinya single, tapi sekarang mendeteksi tebal
@@ -620,9 +281,9 @@ export default function ChatPage({ isGuest, isLoggedIn: propsIsLoggedIn, userDat
         }
       });
     }
-  }, [input]); // 👈 LOCK AMAN: Murni dengerin 'input' doang, isMultiLine tendang dari dependency!
+  }, [input]); // SINKRONISASI AMAN: Hanya memantau perubahan 'input', mengeluarkan 'isMultiLine' dari dependensi
 
-  // 🔥 2. PROSES UPLOAD DIJALANKAN DI SINI SAAT TOMBOL SEND DI-KLIK
+  // 2. PROSES PENGUNGGAHAN BERKAS DIJALANKAN DI SINI SAAT TOMBOL KIRIM DIKLIK
   const handleSubmit = async (e) => {
     if (e) e.preventDefault();
     if ((!input.trim() && selectedFiles.length === 0) || isStreaming || isUploadingFile) return;
@@ -664,7 +325,7 @@ export default function ChatPage({ isGuest, isLoggedIn: propsIsLoggedIn, userDat
         }
       } catch (err) {
         console.error(err);
-        alert("Gagal memproses pengiriman karena upload file error, bolo!");
+        alert("Gagal memproses pengiriman karena terjadi kesalahan saat mengunggah berkas.");
         setIsUploadingFile(false);
         return; // Hentikan pipeline agar chat tidak terkirim pincang tanpa file
       } finally {
@@ -672,7 +333,7 @@ export default function ChatPage({ isGuest, isLoggedIn: propsIsLoggedIn, userDat
       }
     }
 
-    // 🔥 PERBAIKAN ESENSIAL: Oper parameter data file terupload langsung ke fungsi sendMessage
+    // PERBAIKAN UTAMA: Meneruskan data berkas yang berhasil diunggah langsung ke fungsi sendMessage
     sendMessage(
       input,
       isGuest ? null : currentUserData?.npp,
@@ -681,8 +342,8 @@ export default function ChatPage({ isGuest, isLoggedIn: propsIsLoggedIn, userDat
         lastLoadedSessionRef.current = newSessionObj.session_uuid;
         navigate(`/chat/${newSessionObj.session_uuid}`, { replace: true });
       },
-      finalStagedData, // Injeksi langsung datanya kesini, bolo!
-      chatModeRef.current // 🔥 PARAMETER MODE: 'auto' | 'documents' (siap dikirim ke backend)
+      finalStagedData, // Meneruskan data lampiran berkas secara langsung
+      chatModeRef.current // PARAMETER MODE: 'auto' | 'documents' (untuk dikirim ke backend)
     );
 
     setInput('');
