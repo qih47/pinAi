@@ -64,9 +64,10 @@ async def lifespan(app: FastAPI):
         # - Layer 2 (DeepSeek-R1): ON-DEMAND lazy load only when need_rag=true
         # This reduces VRAM footprint and allows more concurrent requests
         
-        asyncio.create_task(warm_up_model(settings.MODEL_PERSONA, "Warmup Layer 3 [Social Executor]."))
-        logger.info("🔥 [WARMUP] Layer 3 (Gemma4) warming up - will be locked permanently in VRAM")
-        logger.info("⏳ [WARMUP] Layer 1 (Qwen2.5) and Layer 2 (DeepSeek) will load on-demand")
+        # Ganti bagian warmup di lifespan:
+        asyncio.create_task(warm_up_model(settings.MODEL_PERSONA, "Warmup Gemma4 [Layer 2 Executor]"))
+        asyncio.create_task(warm_up_model(settings.MODEL_ROUTER, "Warmup Qwen3B [Layer 1 Analyzer]"))
+        asyncio.create_task(warm_up_model(settings.MODEL_GATEWAY, "Warmup Qwen Gateway [Layer 0]"))
     except Exception as e:
         logger.error(f"❌ [CRITICAL] Gagal booting database pool: {e}")
         raise e
@@ -131,10 +132,11 @@ async def root_endpoint():
         "app_name": settings.APP_NAME,
         "version": "2.0.0",
         "status": "Online, Bolo!",
+        # Ganti root endpoint roster:
         "roster": {
-            "slot_1": settings.MODEL_ROUTER,
-            "slot_2": settings.MODEL_REASONING,
-            "slot_3": settings.MODEL_PERSONA,
+            "layer_0_gateway": settings.MODEL_GATEWAY,
+            "layer_1_analyzer": settings.MODEL_ROUTER,
+            "layer_2_executor": settings.MODEL_PERSONA,
             "embedding": settings.MODEL_EMBEDDING
         }
     }

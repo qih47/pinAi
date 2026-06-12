@@ -1,3 +1,8 @@
+"""
+Ollama Core LLM Client Integration Module
+Optimized v3: Raw Passthrough Stream with Centralized Layer 2 Handling.
+"""
+
 import httpx
 import json
 import logging
@@ -37,19 +42,12 @@ async def stream_ollama_chat(
     session_uuid: Optional[str] = None,
     keep_alive: int = -1,
     num_ctx: int = 4096,
+    **kwargs,  # 🦾 INJECT KWARGS: Kirim opsi stop tokens, num_predict dll ke Ollama
 ) -> AsyncGenerator[str, None]:
     """
-    Generator asinkronus untuk melakukan streaming response dari Ollama secara real-time.
-    Mengamankan antrean VRAM menggunakan global GPU Semaphore (limit maks: 2).
-    
-    Args:
-        model_name: Model Ollama yang digunakan
-        messages: List pesan format chat
-        request: FastAPI request object (untuk akces gpu_semaphore)
-        temperature: Kreativitas model (0.0-1.0)
-        session_uuid: Session ID untuk logging
-        keep_alive: Durasi model tetap di VRAM (-1=permanent, 0=instant unload)
-        num_ctx: Context window size
+    Generator asinkronus murni (Passthrough).
+    Mengalirkan string chunk mentah langsung dari Ollama menuju Layer 2 Executor
+    agar tidak terjadi tabrakan state machine penahan token kognitif.
     """
     gpu_semaphore = request.app.state.gpu_limit
     url = f"{settings.OLLAMA_BASE_URL}/api/chat"
@@ -62,12 +60,19 @@ async def stream_ollama_chat(
         )
         inference_start_time = datetime.now()
 
+        # Gabungkan parameter default dengan parameter dinamis hulu pipa
+        ollama_options = {
+            "temperature": temperature,
+            "num_ctx": num_ctx,
+            **kwargs
+        }
+
         payload = {
             "model": model_name,
             "messages": messages,
             "stream": True,
-            "options": {"temperature": temperature, "num_ctx": num_ctx},
-            "keep_alive": keep_alive,  # Tiered: 0 (instant unload) atau -1 (lock permanent)
+            "options": ollama_options,
+            "keep_alive": keep_alive, 
         }
 
         limits = httpx.Limits(max_keepalive_connections=5, max_connections=10)
@@ -88,8 +93,8 @@ async def stream_ollama_chat(
                         ) + "\n"
                         return
 
-                    # Tampungan untuk mencetak jawaban utuh ke log journalctl
                     full_response = ""
+                    accumulated_thinking = ""
 
                     async for line in response.aiter_lines():
                         if not line:
@@ -97,60 +102,64 @@ async def stream_ollama_chat(
 
                         chunk = json.loads(line)
                         message_chunk = chunk.get("message", {})
+                        
                         content = message_chunk.get("content", "")
+                        thought = message_chunk.get("thought", "")
                         done = chunk.get("done", False)
 
-                        full_response += content
-                        yield json.dumps({"chunk": content, "done": done}) + "\n"
+                        # ── PASSTHROUGH LOGIC MURNI ─────────────────────────────────
+                        # Jika ada data content atau thought, kembalikan dalam struktur JSON string minimal
+                        # agar bisa dikonsumsi secara seragam oleh fungsi Layer 2 Executor.
+                        if content or thought:
+                            if content: full_response += content
+                            if thought: accumulated_thinking += thought
+                            
+                            yield json.dumps({
+                                "chunk": content,
+                                "thought": thought,
+                                "done": done
+                            }, ensure_ascii=False) + "\n"
 
-                        # ==============================================================================
-                        # 🦾 SINKRONISASI COGNITIVE SAKTI MULTI-TABEL AMAN KENDALI (SLOT 3)
-                        # ==============================================================================
                         if done:
                             inference_end_time = datetime.now()
                             elapsed_time = (inference_end_time - inference_start_time).total_seconds()
-                            print("\n" + "═" * 50)
-                            print(f"🤖 [AI RESPONSE] \n{full_response.strip()}")
-                            print("═" * 50)
-                            print(f"✨ [LLM CLIENT] Inferensi model '{model_name}' selesai dalam {elapsed_time:.2f} detik.")
+                            
+                            print("\n" + "═" * 60)
+                            if accumulated_thinking:
+                                print(f"🧠 [LLM CLIENT TERMINAL LOG - MODEL NATIVE THOUGHTS]\n{accumulated_thinking.strip()}\n" + "─" * 60)
+                            print(f"🤖 [LLM CLIENT TERMINAL LOG - CORE RESPONSE]\n{full_response.strip()}")
+                            print("═" * 60)
+                            print(f"✨ [LLM CLIENT] Inferensi model '{model_name}' sukses diselesaikan dalam {elapsed_time:.2f} detik.")
 
-                            # Proteksi: Jalankan simpan database hanya jika session_uuid valid dan bukan guest/kosong
+                            # Otomatisasi sinkronisasi data histori percakapan ke database
                             if session_uuid and session_uuid != "GLOBAL_SESSION":
                                 try:
                                     from backend.app.services.chat_history_service import chat_history_service
 
                                     user_query = next((m["content"] for m in reversed(messages) if m["role"] == "user"), "Kueri tidak terdeteksi")
 
-                                    # 1. Simpan history chat harian untuk dipasang di komponen UI
                                     await chat_history_service.save_chat_message(
                                         session_id=session_uuid,
                                         role="assistant",
                                         text=full_response,
-                                        thought="Processed via Slot 3 [Gemma Core Persona Engine]"
+                                        thought=accumulated_thinking if accumulated_thinking else "Processed via Layer 2 [Gemma Core Engine]"
                                     )
 
-                                    # 2. Simpan korpus dialog (session_id = integer FK)
                                     await chat_history_service.save_dialogue_corpus(
                                         session_uuid=session_uuid,
                                         user_text=user_query,
                                         assistant_text=full_response,
                                     )
-                                    print(f"📝 [PERSONA SAVE SUCCESS] Multi-tabel untuk sesi {session_uuid[:8]} sukses dikunci!")
+                                    print(f"📝 [DATABASE PERSISTENCE] Sinkronisasi rekam dialog sesi {session_uuid[:8]} berhasil diamankan.")
                                 except Exception as save_err:
-                                    print(f"⚠️ [MULTI-TABEL WARNING] Gagal auto-save Slot 3: {str(save_err)}")
+                                    print(f"⚠️ [DATABASE WARNING] Gagal mengunci penyimpanan riwayat otomatis: {str(save_err)}")
 
             except httpx.TimeoutException:
-                print(
-                    "🚨 [LLM CLIENT] Timeout! Model terlalu lama merespons (di atas 120 detik)."
-                )
-                yield json.dumps(
-                    {"error": "Inference timeout, server LLM sibuk."}
-                ) + "\n"
+                print("🚨 [LLM CLIENT] Timeout! Cluster engine hardware terlalu lama merespons.")
+                yield json.dumps({"error": "Inference timeout, cluster GPU penuh."}) + "\n"
             except Exception as e:
-                print(f"💥 [LLM CLIENT] Critical error saat streaming LLM: {str(e)}")
-                yield json.dumps(
-                    {"error": f"Internal LLM Client Error: {str(e)}"}
-                ) + "\n"
+                print(f"💥 [LLM CLIENT] Critical failure pada sirkuit internal client: {str(e)}")
+                yield json.dumps({"error": f"Internal LLM Client Error: {str(e)}"}) + "\n"
 
 
 async def generate_json_response(
@@ -160,36 +169,30 @@ async def generate_json_response(
     temperature: float = 0.3,
     keep_alive: int = 0,
     timeout: float = 60.0,
+    **kwargs,
 ) -> Optional[Dict[str, Any]]:
-    """
-    Generate JSON response (non-streaming) untuk Layer 1 (Cognitive Analyzer) dan Layer 2 (Strategic Planner)
-    
-    Args:
-        model_name: Model Ollama
-        messages: Pesan format chat
-        request: FastAPI request
-        temperature: Kreativitas (lebih rendah untuk JSON consistency)
-        keep_alive: Durasi di VRAM (0=instant unload)
-        timeout: Timeout dalam detik
-        
-    Returns:
-        Parsed JSON dict atau None jika error
-    """
+    """Generate JSON response (non-streaming) for Router/Orchestrator pipeline layers."""
     gpu_semaphore = request.app.state.gpu_limit
     url = f"{settings.OLLAMA_BASE_URL}/api/chat"
     
-    print(f"\n⏳ [JSON GEN] Menunggu GPU semaphore untuk {model_name}...")
+    print(f"\n⏳ [JSON GEN] Menunggu antrean GPU semaphore untuk model {model_name}...")
     
     async with gpu_semaphore:
-        print(f"🔓 [JSON GEN] GPU slot acquired. Generating JSON from {model_name}...")
+        print(f"🔓 [JSON GEN] GPU slot acquired. Generating data structure from {model_name}...")
         start_time = datetime.now()
         
+        ollama_options = {
+            "temperature": temperature, 
+            "num_ctx": 2048,
+            **kwargs 
+        }
+
         payload = {
             "model": model_name,
             "messages": messages,
             "stream": False,
             "format": "json",
-            "options": {"temperature": temperature, "num_ctx": 2048},
+            "options": ollama_options,
             "keep_alive": keep_alive,
         }
         
@@ -205,21 +208,19 @@ async def generate_json_response(
                 result = response.json()
                 message_content = result.get("message", {}).get("content", "{}")
                 
-                # Parse JSON murni
                 try:
                     parsed_json = json.loads(message_content)
                     end_time = datetime.now()
                     elapsed = (end_time - start_time).total_seconds()
-                    print(f"✅ [JSON GEN] JSON generated in {elapsed:.2f}s | Model: {model_name}")
+                    print(f"✅ [JSON GEN] JSON generated successfully in {elapsed:.2f}s | Model: {model_name}")
                     return parsed_json
                 except json.JSONDecodeError as je:
-                    print(f"⚠️ [JSON GEN] JSON parse error: {str(je)}")
-                    print(f"Raw content: {message_content[:200]}...")
+                    print(f"⚠️ [JSON GEN] Structure broken / parse error: {str(je)}")
                     return None
                     
         except httpx.TimeoutException:
-            print(f"🚨 [JSON GEN] Timeout saat menghasilkan JSON dari {model_name}")
+            print(f"🚨 [JSON GEN] Timeout limit exceeded on model {model_name}")
             return None
         except Exception as e:
-            print(f"💥 [JSON GEN] Error: {str(e)}")
+            print(f"💥 [JSON GEN] Error critical: {str(e)}")
             return None

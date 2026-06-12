@@ -27,11 +27,12 @@ class Settings(BaseSettings):
     OLLAMA_BASE_URL: str = "http://localhost:11434"
     
     # Roster Tiga Engine Sesuai Tagging Spek Lo, Bolo!
-    MODEL_ROUTER: str = "qwen2.5:7b-instruct"
-    MODEL_REASONING: str = "deepseek-r1:8b"
-    MODEL_PERSONA: str = "gemma4:e4b"
-    MODEL_VISION: str = "minicpm-v:latest"  # Langsung dikunci enteng di level core config
-    MODEL_EMBEDDING: str = "nomic-embed-text"
+# Ganti bagian roster model di config.py:
+    MODEL_ROUTER: str = "qwen2.5:3b-instruct"      # Layer 1 Cognitive Analyzer
+    MODEL_GATEWAY: str = "qwen2.5:0.5b"            # Layer 0 Gateway (ringan)
+    MODEL_PERSONA: str = "gemma4:12b"              # Layer 2 Executor
+    MODEL_VISION: str = "minicpm-v:latest"
+    MODEL_EMBEDDING: str = "mxbai-embed-large:latest"
     
     SIMILARITY_THRESHOLD: float = 0.75
     SEARCH_LIMIT: int = 5

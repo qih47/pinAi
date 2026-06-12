@@ -1,8 +1,14 @@
+"""
+CAKRA AI — Chat Router
+Pipeline: Layer 0 Gateway → Layer 1 Cognitive → Layer 2 Gemma Agentic
+"""
+
 import os
 import time
 import json
 import shutil
 import logging
+import asyncio
 from typing import List, Optional, AsyncGenerator
 from datetime import datetime
 
@@ -17,23 +23,24 @@ from fastapi import (
     Query,
 )
 from fastapi.responses import StreamingResponse
+
 from backend.app.api.dependencies.auth import get_current_user_npp
-from backend.app.core.llm_client import stream_ollama_chat
 from backend.app.core.config import settings
 from backend.app.core.paths import UPLOAD_DIR
 from backend.app.services.chat_history_service import chat_history_service
-from backend.app.services.memory_service import memory_service
 from backend.app.services.rag_service import rag_service
+from backend.app.core.database import get_db
 from backend.app.services.pipeline_layer_executor import (
-    execute_layer_0_vision,
+    extract_pdf_text,
+    execute_layer_0_gateway,
     execute_layer_1_analyzer,
-    execute_layer_2_planner,
-    execute_layer_3_executor,
+    execute_layer_2_gemma_agentic,
+    _get_fallback_cognitive_params_rule_based,
+    _format_sse,
 )
 from backend.app.api.schemas.chat import (
     ChatStreamRequest,
     TitleUpdateSchema,
-    TestRouterRequestSchema,
 )
 
 router = APIRouter()
@@ -41,29 +48,27 @@ logger = logging.getLogger("CAKRA_CHAT_API")
 
 
 # ==============================================================================
-# 📂 SECTION 1: ENDPOINTS MANAJEMEN SESI (SIDEBAR FRONTEND)
+# 📂 SECTION 1: MANAJEMEN SESI
 # ==============================================================================
 
 
-@router.get("/sessions", summary="Ambil Daftar Sesi Aktif Pegawai untuk Sidebar")
+@router.get("/sessions")
 async def get_history_sessions(
     current_user_npp: Optional[str] = Depends(get_current_user_npp),
 ):
     if not current_user_npp:
         return {"status": "success", "data": []}
-
     sessions = await chat_history_service.get_user_sessions(current_user_npp)
     return {"status": "success", "data": sessions}
 
 
-@router.post("/sessions/create", summary="Membuat Sesi Obrolan Baru (New Chat)")
+@router.post("/sessions/create")
 async def create_new_chat_session(
     current_user_npp: Optional[str] = Depends(get_current_user_npp),
     judul: Optional[str] = Query("Obrolan Baru"),
 ):
     npp_target = current_user_npp if current_user_npp else "GUEST"
     name_target = "Pegawai Pindad" if current_user_npp else "Guest User"
-
     new_session = await chat_history_service.create_new_session(
         npp=npp_target,
         username=name_target,
@@ -73,56 +78,86 @@ async def create_new_chat_session(
     return {"status": "success", "data": new_session}
 
 
-@router.put("/sessions/{session_uuid}/title", summary="Rename Judul Sesi Chat")
+@router.put("/sessions/{session_uuid}/title")
 async def rename_chat_title(session_uuid: str, payload: TitleUpdateSchema):
     success = await chat_history_service.update_session_title(
         session_uuid, payload.judul
     )
     if not success:
-        raise HTTPException(
-            status_code=500, detail="Gagal memperbarui judul sesi di RAGDB."
-        )
-    return {"status": "success", "message": "Judul sesi berhasil diperbarui, bolo!"}
+        raise HTTPException(status_code=500, detail="Gagal memperbarui judul sesi.")
+    return {"status": "success", "message": "Judul sesi berhasil diperbarui!"}
 
 
-@router.put("/sessions/{session_uuid}/pin", summary="Pin atau Unpin Sesi Obrolan")
+@router.put("/sessions/{session_uuid}/pin")
 async def pin_chat_session(session_uuid: str, is_pinned: bool = Query(...)):
     success = await chat_history_service.toggle_pin_session(session_uuid, is_pinned)
     if not success:
-        raise HTTPException(
-            status_code=500, detail="Gagal merubah status sematan sesi."
-        )
-    return {"status": "success", "message": "Status sematan sesi berhasil diperbarui!"}
+        raise HTTPException(status_code=500, detail="Gagal merubah status sematan.")
+    return {"status": "success", "message": "Status sematan berhasil diperbarui!"}
 
 
-@router.delete("/sessions/{session_uuid}", summary="Soft Delete Sesi Chat")
+@router.delete("/sessions/{session_uuid}")
 async def delete_chat_session(session_uuid: str):
     success = await chat_history_service.soft_delete_session(session_uuid)
     if not success:
-        raise HTTPException(status_code=500, detail="Gagal menghapus sesi obrolan.")
-    return {"status": "success", "message": "Sesi obrolan berhasil dihapus, bolo!"}
+        raise HTTPException(status_code=500, detail="Gagal menghapus sesi.")
+    return {"status": "success", "message": "Sesi berhasil dihapus!"}
 
 
-@router.get(
-    "/sessions/{session_uuid}/messages",
-    summary="Ambil Pesan dalam Sesi Chat beserta Attachment",
-)
+@router.get("/sessions/{session_uuid}/messages")
 async def get_session_messages_endpoint(session_uuid: str):
     messages = await chat_history_service.get_session_messages(session_uuid)
     return {"status": "success", "data": messages}
 
 
 # ==============================================================================
-# 🚀 SECTION 2: ENDPOINT UTAMA SEQUENTIAL PIPELINE (LAYER 0→1→2→3)
+# 🚀 SECTION 2: PIPELINE UTAMA
 # ==============================================================================
 
 
-def _format_sse(chunk: str, thinking: str = "", done: bool = False, sources: list = None) -> str:
-    """Format SSE response dengan thinking signal, done flag, dan sources"""
-    payload = {"chunk": chunk, "thinking": thinking, "done": done}
-    if sources is not None:
-        payload["sources"] = sources
-    return json.dumps(payload, ensure_ascii=False) + "\n"
+async def _run_parallel_rag(
+    rewritten_queries: List[str],
+    limit_per_query: int = 3,
+) -> tuple[str, List[dict]]:
+    """
+    Jalankan RAG paralel untuk semua rewritten_queries sekaligus.
+    Gabungkan hasilnya, deduplicate by source id, ambil top N.
+    """
+    if not rewritten_queries:
+        return "", []
+
+    async def _fetch(query: str):
+        try:
+            ctx, sources = await rag_service.assemble_powerful_context(
+                query=query, limit=limit_per_query
+            )
+            return ctx, sources
+        except Exception as e:
+            logger.warning(f"⚠️ [PARALLEL RAG] Query '{query[:50]}' error: {e}")
+            return "", []
+
+    results = await asyncio.gather(*[_fetch(q) for q in rewritten_queries])
+
+    # Gabungkan konteks, deduplicate sources by id
+    combined_context_parts = []
+    seen_ids = set()
+    combined_sources = []
+
+    for ctx, sources in results:
+        if ctx:
+            combined_context_parts.append(ctx)
+        for src in sources:
+            src_id = src.get("id") or src.get("chunk_id") or str(src)
+            if src_id not in seen_ids:
+                seen_ids.add(src_id)
+                combined_sources.append(src)
+
+    combined_context = "\n\n---\n\n".join(combined_context_parts)
+    logger.info(
+        f"✅ [PARALLEL RAG] {len(rewritten_queries)} queries | "
+        f"{len(combined_context)} chars | {len(combined_sources)} unique sources"
+    )
+    return combined_context, combined_sources
 
 
 async def _sequential_pipeline_generator(
@@ -130,47 +165,31 @@ async def _sequential_pipeline_generator(
     payload: ChatStreamRequest,
     current_user_npp: Optional[str],
 ) -> AsyncGenerator[str, None]:
-    """
-    Sequential Cognitive Pipeline Generator Berbasis Inteligensia Tingkat Tinggi CAKRA AI
-    Mengorkestrasikan 35 Parameter Kognitif Lintas Layer Sesuai Tipe Lampiran (Image/PDF).
-    """
-    user_label = (
-        f"Pegawai (NPP: {current_user_npp})"
-        if current_user_npp
-        else "GUEST (Mode Tamu)"
-    )
-    print(f"\n💬 [PIPELINE] Sequential pipeline starting dari {user_label}")
+
+    user_label = f"NPP: {current_user_npp}" if current_user_npp else "GUEST"
+    logger.info(f"💬 [PIPELINE] Starting dari {user_label}")
 
     if not payload.messages:
-        raise HTTPException(
-            status_code=400, detail="Daftar urutan pesan tidak boleh kosong!"
-        )
+        raise HTTPException(status_code=400, detail="Pesan tidak boleh kosong!")
 
     user_message = payload.messages[-1].content
-    print("\n" + "═" * 50)
-    print(f'👤 [USER MSG] "{user_message}"')
-
-    # AMBIL PARAMETER CHAT MODE DARI FRONTEND (auto | documents)
     chat_mode = getattr(payload, "mode", "auto")
-    print(f"⚙️  [CHAT MODE] Mode Aktif FE: {chat_mode}")
-    print("═" * 50)
 
-    # Convert messages to dict format
+    logger.info(f'👤 [USER] "{user_message[:100]}" | mode={chat_mode}')
+
     messages_for_pipeline = [
         {"role": msg.role, "content": msg.content} for msg in payload.messages
     ]
 
-    # Klasifikasi Tipe Attachment Secara Taktis
+    # ── Klasifikasi attachment ──────────────────────────────────────────────
     ocr_text = None
     has_images = False
-    has_pdf = False
     pdf_paths = []
 
-    if payload.attachment_paths and len(payload.attachment_paths) > 0:
+    if payload.attachment_paths:
         for path in payload.attachment_paths:
             path_lower = path.lower()
             if path_lower.endswith(".pdf"):
-                has_pdf = True
                 pdf_paths.append(path)
             if any(
                 path_lower.endswith(ext)
@@ -178,41 +197,27 @@ async def _sequential_pipeline_generator(
             ):
                 has_images = True
 
-    # ==========================================================================
-    # 🔥 STRATEGI PRE-PROCESSING LAYER 0 BERDASARKAN KONSEP BERKAS
-    # ==========================================================================
-    if has_pdf:
-        # Jika ada PDF: Konversi ke image internal, jalankan OCR MiniCPM-V, suapkan teksnya ke Qwen
-        logger.info(
-            f"[LAYER 0] PDF detected. Triggering MiniCPM OCR conversion for {len(pdf_paths)} file(s)..."
-        )
-        yield _format_sse("", "📄 Membaca lampiran berkas PDF...", False)
-
+    # ── PDF Extraction (pymupdf primary) ───────────────────────────────────
+    if pdf_paths:
+        logger.info(f"[PDF] Ekstraksi {len(pdf_paths)} file...")
+        yield _format_sse("", "📄 Membaca lampiran PDF...", False)
         try:
-            # Menggunakan array pdf_paths saja agar MiniCPM fokus meng-OCR PDF
-            vision_result = await execute_layer_0_vision(request, pdf_paths)
-            ocr_text = vision_result.get("extracted_text", "")
-
+            pdf_result = await extract_pdf_text(pdf_paths)
+            ocr_text = pdf_result.get("extracted_text", "")
             if payload.session_uuid:
                 await chat_history_service.save_dialogue_corpus(
                     session_uuid=payload.session_uuid,
-                    user_text=f"{user_message} [PDF OCR Berhasil Dibuat]",
+                    user_text=f"{user_message} [PDF Berhasil Dibaca]",
                 )
-            logger.info(
-                f"[LAYER 0] PDF OCR Complete | Pages: {vision_result.get('page_count', 0)}"
-            )
         except Exception as e:
-            logger.error(f"[LAYER 0] PDF OCR Failed: {str(e)}")
-            ocr_text = "[File processing failed]"
+            logger.error(f"[PDF] Gagal: {e}")
+            ocr_text = "[Gagal membaca PDF]"
 
     elif has_images:
-        # Jika murni GAMBAR (tanpa PDF): Jangan panggil MiniCPM, biarkan gambar murni diantre untuk Gemma 4 Vision
-        logger.info(
-            "📸 [IMAGE QUEUED] Lampiran berupa gambar murni. Menahan file untuk native Gemma 4 Vision."
-        )
-        yield _format_sse("", "🖼️ Mengantre analisis visual gambar...", False)
+        logger.info("📸 [IMAGE] Gambar murni → akan diteruskan ke Gemma Vision")
+        yield _format_sse("", "🖼️ Mengantre analisis visual...", False)
 
-    # Save user message ke chat_messages history database
+    # ── Simpan pesan user ──────────────────────────────────────────────────
     if payload.session_uuid:
         attachment_info = (
             f" [Lampiran: {len(payload.attachment_paths)} file(s)]"
@@ -223,200 +228,254 @@ async def _sequential_pipeline_generator(
             session_id=payload.session_uuid,
             role="user",
             text=f"{user_message}{attachment_info}",
-            thought=f"Submitted to advanced socio-cognitive pipeline [Mode: {chat_mode}]",
+            thought=f"Pipeline [Mode: {chat_mode}]",
         )
 
     # ==========================================================================
-    # 🧠 LAYER 1: COGNITIVE ANALYZER (MANDATORY - ORKESTRATOR PARAMETER)
+    # 🚦 LAYER 0: GATEWAY (routing + rewritten_queries)
     # ==========================================================================
-    logger.info("[LAYER 1] Cognitive analysis starting...")
-    yield _format_sse("", "🧠 Menganalisis konteks kueri...", False)
+    logger.info("[LAYER 0] Gateway starting...")
+    yield _format_sse("", "🚦 Menentukan jalur pipeline...", False)
 
     try:
-        # Pipa mengalirkan ocr_text (hanya terisi jika berkasnya PDF) demi keakuratan kognitif Qwen
-        cognitive_params = await execute_layer_1_analyzer(
+        gateway_result = await execute_layer_0_gateway(
             request=request,
-            messages=messages_for_pipeline,
-            chat_history=[],
-            employee_npp=current_user_npp,
-            ocr_text=ocr_text,
-        )
-        logger.info(
-            f"[LAYER 1] Complete | Intent: {cognitive_params.get('detected_intent')}"
+            user_message=user_message,
+            chat_mode=chat_mode,
         )
     except Exception as e:
-        logger.error(f"[LAYER 1] Error: {str(e)}")
-        from backend.app.services.pipeline_layer_executor import (
-            _get_fallback_cognitive_params,
-        )
+        logger.error(f"[LAYER 0] Error: {e} → fallback flash")
+        from backend.app.services.pipeline_layer_executor import _gateway_flash_result
 
-        cognitive_params = _get_fallback_cognitive_params(user_message)
+        gateway_result = _gateway_flash_result()
 
-    # HARD HARDENING VALIDATION JIKA MODE BUKAN DOCUMENTS ATAU BUKAN RAG
-    coding_tokens = [
-        "import ",
-        "export ",
-        "const ",
-        "async ",
-        "await ",
-        "function",
-        "def ",
-        "return ",
-        "create(",
-    ]
-    user_msg_lower = user_message.lower()
+    target_pipeline = gateway_result.get("target_pipeline", "flash")
+    rewritten_queries = gateway_result.get("rewritten_queries", [])
 
-    if any(token in user_msg_lower or token in user_message for token in coding_tokens):
-        cognitive_params["is_coding"] = True
-        logger.info("⚡ [HARDENING DETECTION] Token kodingan terdeteksi secara fisik.")
-
-    # KUNCI UTAMA CHAT MODE BE: Jika dari FE mengirimkan 'documents', paksa need_rag bernilai True!
-    if chat_mode == "documents":
-        cognitive_params["need_rag"] = True
-        logger.info(
-            "🔒 [MODE ENFORCEMENT] ChatMode dikunci ke 'documents'. Memaksa status need_rag = True!"
-        )
-
-    # 🔥 REGULASI ANTI-BENTROK: Jika mode document atau need_rag True, paksa is_coding MENJADI False (Mentalin!)
-    if chat_mode == "documents" or cognitive_params.get("need_rag") is True:
-        cognitive_params["is_coding"] = False
-        logger.info(
-            "🛡️  [ANTI-BENTROK LOCK] Zona RAG Aktif. Memaksa status is_coding = False secara mutlak!"
-        )
-
-    # 📑 LOG DUMP TERMINAL
-    print("\n" + "🧠 " * 20)
-    print(
-        "[LAYER 1 LOG DUMP] Runtunan 35 Parameter Kognitif yang Dihasilkan Gerbang Utama (CAKRA AI):"
+    logger.info(
+        f"[LAYER 0] target={target_pipeline} | "
+        f"queries={len(rewritten_queries)} | "
+        f"confidence={gateway_result.get('confidence', 0):.2f}"
     )
+
+    print("\n" + "🚦 " * 20)
+    print("[LAYER 0 OUTPUT] Gateway Result:")
+    print(json.dumps(gateway_result, indent=2, ensure_ascii=False, default=str))
+    print("🚦 " * 20 + "\n")
+
+    # ==========================================================================
+    # 📚 ROUTING FINAL
+    # - documents: Layer 1 (Qwen 3B) + RAG paralel
+    # - flash    : BYPASS Layer 1 total — params rule-based instan, no LLM
+    # ==========================================================================
+    preloaded_rag_context = None
+    preloaded_rag_sources = None
+
+    # context_history_str dibutuhkan rule-based params di jalur flash
+    context_history_str = ""
+    if len(messages_for_pipeline) > 1:
+        # Ambil 5 turn terakhir (bukan 4)
+        context_history_str = "\n".join(
+            [
+                f"{m['role'].upper()}: {m['content']}"
+                for m in messages_for_pipeline[-5:-1]
+            ]
+        )
+        logger.info(
+            f"📜 [CONTEXT] {len(messages_for_pipeline[-5:-1])} turn history loaded"
+        )
+
+    if target_pipeline == "documents" and rewritten_queries:
+        logger.info(
+            f"[RAG PARALLEL] Menjalankan {len(rewritten_queries)} queries paralel..."
+        )
+        yield _format_sse("", "📚 Mencari dokumen regulasi relevan...", False)
+
+        # Layer 1 HANYA dipanggil di jalur documents
+        layer1_task = asyncio.create_task(
+            execute_layer_1_analyzer(
+                request=request,
+                messages=messages_for_pipeline,
+                gateway_result=gateway_result,
+                employee_npp=current_user_npp,
+                ocr_text=ocr_text,
+                rag_metadata=None,
+            )
+        )
+
+        try:
+            rag_task = asyncio.create_task(
+                _run_parallel_rag(rewritten_queries, limit_per_query=3)
+            )
+
+            (preloaded_rag_context, preloaded_rag_sources), cognitive_params = (
+                await asyncio.gather(rag_task, layer1_task)
+            )
+
+            logger.info(
+                f"[RAG + LAYER 1] Selesai paralel | "
+                f"RAG: {len(preloaded_rag_context)} chars | "
+                f"Intent: {cognitive_params.get('detected_intent')}"
+            )
+
+            if preloaded_rag_sources:
+                yield _format_sse("", "", False, sources=preloaded_rag_sources)
+
+        except Exception as e:
+            logger.error(f"[RAG PARALLEL] Error: {e}")
+            try:
+                cognitive_params = await layer1_task
+            except Exception as e2:
+                logger.error(f"[LAYER 1] Error: {e2}")
+                from backend.app.services.pipeline_layer_executor import (
+                    _get_fallback_cognitive_params,
+                )
+
+                cognitive_params = _get_fallback_cognitive_params(user_message)
+            preloaded_rag_context = None
+            preloaded_rag_sources = None
+
+        # ── Dump output Layer 1 ──────────────────────────────────────────
+        print("\n" + "🧠 " * 20)
+        print("[LAYER 1 OUTPUT] 35 Parameter Kognitif + Blueprint:")
+        print(json.dumps(cognitive_params, indent=2, ensure_ascii=False, default=str))
+        print("🧠 " * 20 + "\n")
+
+    else:
+        # FLASH: bypass Layer 1 sepenuhnya — no LLM call, instan
+        logger.info(
+            f"⚡ [BYPASS LAYER 1] target={target_pipeline} — generate params rule-based (instant, no LLM)"
+        )
+        yield _format_sse("", "⚡ Menyiapkan respons cepat...", False)
+
+        cognitive_params = _get_fallback_cognitive_params_rule_based(
+            user_message=user_message,
+            previous_context=context_history_str,
+            ocr_text=ocr_text,
+            target_pipeline=target_pipeline,
+            is_coding_from_gateway=gateway_result.get("is_coding", False),
+        )
+
+    # ── Inject metadata ke cognitive_params ───────────────────────────────
+    cognitive_params["chat_mode"] = chat_mode
+    cognitive_params["ocr_text"] = ocr_text
+    cognitive_params["_gateway"] = gateway_result
+
+    # Inject nama pegawai jika tersedia
+    # ── Inject nama pegawai (multiple field fallback) ─────────────────────
+    # Inject chat_mode dan ocr_text ke cognitive_params agar tersedia di Layer 2
+    cognitive_params["chat_mode"] = chat_mode
+    cognitive_params["ocr_text"] = ocr_text
+
+    # ═══════════════════════════════════════════════════════════════════════════
+    # 👤 INJECT NAMA EMPLOYEE (FIRST NAME ONLY FOR CASUAL SAPAAN)
+    # ═══════════════════════════════════════════════════════════════════════════
+    employee_name = "Guest"
+    if current_user_npp and current_user_npp != "GUEST":
+        try:
+            from backend.app.core.database import get_db
+
+            async with get_db() as conn:
+                row = await conn.fetchrow(
+                    "SELECT fullname FROM users WHERE npp = $1 LIMIT 1",
+                    current_user_npp,
+                )
+
+                if row and row.get("fullname"):
+                    full_name = row["fullname"]
+
+                    # 🔥 Ambil first name aja untuk sapaan casual
+                    name_parts = full_name.strip().split()
+                    if name_parts:
+                        # Ambil kata pertama, title case biar rapi
+                        employee_name = name_parts[0].title()
+                        logger.info(
+                            f"✅ [EMPLOYEE] First name extracted: {employee_name} (from: {full_name})"
+                        )
+                    else:
+                        employee_name = "Pegawai"
+                else:
+                    logger.warning(
+                        f"⚠️ [EMPLOYEE] NPP {current_user_npp} tidak ditemukan di tabel users"
+                    )
+                    employee_name = "Pegawai"
+
+        except Exception as e:
+            logger.warning(f"⚠️ [EMPLOYEE] Gagal ambil nama dari DB: {e}")
+            employee_name = "Pegawai"
+
+    cognitive_params["employee_name"] = employee_name
+    logger.info(f"👤 [EMPLOYEE FINAL] Sapaan untuk Gemma: '{employee_name}'")
+    # ═══════════════════════════════════════════════════════════════════════════
+
+    # ── Log dump Layer 1 ────────────────────────────────────────────────────────
+    print("\n" + "🧠 " * 20)
+    print("[LAYER 1 LOG DUMP] 35 Parameter Kognitif:")
     print(json.dumps(cognitive_params, indent=2, ensure_ascii=False))
     print("🧠 " * 20 + "\n")
 
-    # READ FINAL PARAMETERS DETERMINATION
-    # [FIX #1] Hapus duplikasi deklarasi is_coding_task — cukup satu kali setelah semua override selesai
-    need_rag_final = bool(cognitive_params.get("need_rag", False))
-    detected_intent_flag = str(cognitive_params.get("detected_intent", "NORMAL")).upper()
-    vram_urgency = str(cognitive_params.get("estimated_vram_urgency", "low_bypass_safe")).lower()
-    is_coding_task = bool(cognitive_params.get("is_coding", False))
-
-    # ========== INTERSEPTOR BYPASS & KENDALI ALIRAN PIPA ==========
-
-    # 🔥 FIX MUTLAK: Jika terdeteksi CHITCHAT, langsung bypass ke Gemma4, tidak peduli mode documents atau auto!
-    is_chitchat = "CHITCHAT" in detected_intent_flag or "CHIT_CHAT" in detected_intent_flag
-
-    if is_chitchat or (not is_coding_task and chat_mode != "documents" and vram_urgency == "low_bypass_safe"):
-        print("⚡ [PIPELINE BYPASS] Aliran dialihkan langsung ke Gemma4 (Bypass Layer 2 DeepSeek-R1)!")
-        yield _format_sse("", "⚡ Menyelaraskan respon...", False)
-
-        strategy_params = {
-            "action_plan": [
-                "Tanggapi sapaan atau obrolan ringan user dengan ramah dan penuh kehangatan sosial",
-                "Pastikan mendeklarasikan diri murni sebagai CAKRA AI, bukan sub-model bahasa dasar mana pun",
-            ],
-            "response_structure": {
-                "open_with": "greeting",
-                "middle": "narrative",
-                "close_with": "offer_help",
-            },
-            "key_points_to_cover": [
-                "Sapaan ramah",
-                "Tanggapan kasual",
-                "Identitas Cakra AI",
-            ],
-            "tone": "suportif",
-            "estimated_response_length": "brief",
-            "should_ask_followup": True,
-            "rag_context": None,
-            "rag_utilized": False,
-        }
-    else:
-        # KONDISI 2 & 3: Mode AUTO need_rag TRUE atau Mode DOCUMENTS -> Wajib Olah via DeepSeek-R1
-        logger.info("[LAYER 2] Strategic planning starting (KONDISI 2/3 Active)...")
-
-        if need_rag_final:
-            yield _format_sse("", "📚 Menyelami basis data RAG Pindad...", False)
-        else:
-            yield _format_sse("", "📋 Menyusun rencana tindakan...", False)
-
-        try:
-            strategy_params = await execute_layer_2_planner(
-                request=request,
-                messages=messages_for_pipeline,
-                cognitive_params=cognitive_params,
-                employee_npp=current_user_npp,
-            )
-            logger.info(f"[LAYER 2] Complete | Tone: {strategy_params.get('tone')}")
-        except Exception as e:
-            logger.error(f"[LAYER 2] Error: {str(e)}")
-            from backend.app.services.pipeline_layer_executor import (
-                _get_fallback_strategy_params,
-            )
-
-            strategy_params = _get_fallback_strategy_params()
-
-        print("\n" + "📋 " * 20)
-        print("[LAYER 2 LOG DUMP] Cetak Biru Taktis Tindakan Hasil Perumusan Logika:")
-        print(json.dumps(strategy_params, indent=2, ensure_ascii=False))
-        print("📋 " * 20 + "\n")
-
-    if strategy_params.get("rag_sources"):
-        sources_data = strategy_params["rag_sources"]
-        print(f"📤 [SSE] Sending {len(sources_data)} sources to frontend")
-        yield _format_sse("", "", False, sources=sources_data)
+    # ── Log dump FINAL: blueprint utuh yang diterima Gemma (Layer 2) ────────
+    logger.info(
+        f"[FINAL BLUEPRINT] target={target_pipeline} | "
+        f"Intent: {cognitive_params.get('detected_intent')} | "
+        f"RAG: {cognitive_params.get('need_rag')} | "
+        f"Coding: {cognitive_params.get('is_coding')}"
+    )
+    print("\n" + "✍️ " * 20)
+    print(f"[LAYER 2 INPUT] Blueprint Final untuk Gemma (pipeline: {target_pipeline}):")
+    print(json.dumps(cognitive_params, indent=2, ensure_ascii=False, default=str))
+    print("✍️ " * 20 + "\n")
 
     # ==========================================================================
-    # ✍️ LAYER 3: SOCIAL EXECUTOR (MANDATORY - GEMMA 4 FUSION ENGINE)
+    # ✍️ LAYER 2: GEMMA AGENTIC
     # ==========================================================================
-    logger.info("[LAYER 3] Response generation starting...")
-    yield _format_sse("", "✍️ Sedang menggenerate narasi...", False)
+    logger.info("[LAYER 2] Gemma Agentic starting...")
 
     full_response_text = ""
     start_time = datetime.now()
 
     try:
-        # Jika murni lampiran gambar, execute_layer_3_executor akan otomatis menyuplai path fisik ke Gemma Vision secara native
-        async for layer3_chunk in execute_layer_3_executor(
+        async for sse_event in execute_layer_2_gemma_agentic(
             request=request,
             messages=messages_for_pipeline,
             cognitive_params=cognitive_params,
-            strategy_params=strategy_params,
+            preloaded_rag_context=preloaded_rag_context,
+            preloaded_rag_sources=preloaded_rag_sources,
         ):
             try:
-                chunk_data = json.loads(layer3_chunk.strip())
-                chunk_text = chunk_data.get("chunk", "")
-
+                event_data = json.loads(sse_event.strip())
+                chunk_text = event_data.get("chunk", "")
                 if chunk_text:
                     full_response_text += chunk_text
-                yield _format_sse(chunk_text, "", False)
-            except json.JSONDecodeError:
-                if layer3_chunk:
-                    full_response_text += layer3_chunk
-                yield _format_sse(layer3_chunk, "", False)
+            except (json.JSONDecodeError, AttributeError):
+                if sse_event and isinstance(sse_event, str):
+                    full_response_text += sse_event
+
+            yield sse_event
 
         elapsed = (datetime.now() - start_time).total_seconds()
         logger.info(
-            f"[LAYER 3] Complete | Generated {len(full_response_text)} chars in {elapsed:.2f}s"
+            f"[LAYER 2] Selesai | {len(full_response_text)} chars | {elapsed:.2f}s"
         )
 
     except Exception as e:
-        logger.error(f"[LAYER 3] Error: {str(e)}")
-        error_msg = f"Gagal mengeksekusi tanggapan sosial: {str(e)}"
+        logger.error(f"[LAYER 2] Error: {e}")
+        error_msg = f"Gagal mengeksekusi pipeline: {str(e)}"
         yield _format_sse(error_msg, "", False)
         full_response_text = error_msg
 
-    # ========== DATABASE PERSISTENCE & ANALYTICS DATA BINDING ==========
+    # ==========================================================================
+    # 💾 DATABASE PERSISTENCE
+    # ==========================================================================
     if payload.session_uuid:
-        logger.info("[DATABASE] Saving chat messages & auto-titling...")
-
         await chat_history_service.auto_update_session_title(
             payload.session_uuid, user_message
         )
-
         await chat_history_service.save_chat_message(
             session_id=payload.session_uuid,
             role="assistant",
             text=full_response_text,
-            thought="Processed via Layer 3 [Social Executor with Mirroring Strategy]",
+            thought=f"Pipeline: {target_pipeline} | Mode: {chat_mode}",
         )
 
         if not (payload.attachment_paths and len(payload.attachment_paths) > 0):
@@ -425,27 +484,21 @@ async def _sequential_pipeline_generator(
                     session_uuid=payload.session_uuid,
                     user_text=user_message,
                     assistant_text=full_response_text,
-                    context_document=strategy_params.get("rag_context")
-                    or "No RAG context utilized",
+                    context_document=f"Pipeline: {target_pipeline}",
                 )
             except Exception as e:
-                logger.warning(
-                    f"[DATABASE] Failed to save dialogue analytic corpus: {str(e)}"
-                )
+                logger.warning(f"[DB] Gagal save dialogue corpus: {e}")
 
-    logger.info("[PIPELINE] Sequential pipeline complete ✅")
+    logger.info("[PIPELINE] Complete ✅")
     yield _format_sse("", "", True)
 
 
-@router.post("/stream", summary="Streaming Engine Sequential Pipeline CAKRA AI")
+@router.post("/stream")
 async def chat_stream_endpoint(
     request: Request,
     payload: ChatStreamRequest,
     current_user_npp: Optional[str] = Depends(get_current_user_npp),
 ):
-    """
-    Endpoint Utama Penghubung UI Frontend dengan Sasis Aliran Kognitif CAKRA AI.
-    """
     return StreamingResponse(
         _sequential_pipeline_generator(request, payload, current_user_npp),
         media_type="text/event-stream",
@@ -453,20 +506,15 @@ async def chat_stream_endpoint(
 
 
 # ==============================================================================
-# 📎 SECTION 3: UPLOAD ATTACHMENT (SEMUA QUERY DI SERVICE)
+# 📎 SECTION 3: UPLOAD ATTACHMENT
 # ==============================================================================
 
 
-@router.post(
-    "/documents/upload", summary="Mengunggah Lampiran Chat (Gambar/PDF) ke RAGDB"
-)
+@router.post("/documents/upload")
 async def upload_chat_attachments(
     files: List[UploadFile] = File(...),
     session_uuid: Optional[str] = Form(None),
 ):
-    """
-    Endpoint upload lampiran. Semua operasi database didelegasikan ke chat_history_service.
-    """
     uploaded_meta_list = []
 
     for file in files:
@@ -476,7 +524,7 @@ async def upload_chat_attachments(
         ):
             raise HTTPException(
                 status_code=400,
-                detail=f"Format berkas '{file.filename}' salah! Cakra hanya menerima Gambar atau PDF, bolo!",
+                detail=f"Format '{file.filename}' tidak didukung! Hanya Gambar atau PDF.",
             )
 
         unique_filename = f"{int(time.time())}_{file.filename}"
@@ -487,9 +535,6 @@ async def upload_chat_attachments(
                 shutil.copyfileobj(file.file, buffer)
 
             file_size = os.path.getsize(absolute_write_path)
-            extracted_text_placeholder = (
-                f"[OCR Korpus Berkas {file.filename}]: Ekstraksi taktis siap."
-            )
 
             inserted_meta = await chat_history_service.save_chat_attachment(
                 session_uuid=session_uuid,
@@ -497,7 +542,7 @@ async def upload_chat_attachments(
                 unique_filename=unique_filename,
                 file_size=file_size,
                 mime_type=file.content_type,
-                extracted_text=extracted_text_placeholder,
+                extracted_text=f"[Pending OCR: {file.filename}]",
             )
 
             if inserted_meta:
@@ -505,23 +550,18 @@ async def upload_chat_attachments(
             else:
                 raise HTTPException(
                     status_code=500,
-                    detail=f"Gagal menyimpan metadata lampiran {file.filename} ke database.",
+                    detail=f"Gagal menyimpan metadata {file.filename}.",
                 )
 
         except HTTPException:
             raise
         except Exception as err:
-            logger.error(
-                f"❌ [UPLOAD ERROR] Gagal memproses berkas {file.filename}: {str(err)}"
-            )
+            logger.error(f"[UPLOAD] Gagal proses {file.filename}: {err}")
             if os.path.exists(absolute_write_path):
                 os.remove(absolute_write_path)
             raise HTTPException(
-                status_code=500,
-                detail=f"Gagal memproses lampiran berkas {file.filename}.",
+                status_code=500, detail=f"Gagal memproses {file.filename}."
             )
 
-    print(
-        f"📦 [UPLOAD SUCCESS] {len(uploaded_meta_list)} Berkas sukses mengunci record 'chat_attachments'!"
-    )
+    logger.info(f"[UPLOAD] {len(uploaded_meta_list)} file sukses diupload")
     return {"status": "success", "data": uploaded_meta_list}

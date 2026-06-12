@@ -1,52 +1,41 @@
+"""
+Orkestrator Advanced RAG — Hybrid Search PostgreSQL (pgvector + Full-Text Search)
+Optimized: Hierarchical Parent-Child Assembly aligned with DB Schema and Cross-Encoder Filtering.
+"""
+
+import re
+import json
 import logging
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 from backend.app.core.database import get_db
 
 logger = logging.getLogger("CAKRA_RAG_SERVICE")
 
 # Stopwords Indonesia yang sering merusak tsquery jika ikut di-AND-kan
 _STOPWORDS_ID = {
-    "yang",
-    "di",
-    "ke",
-    "dari",
-    "dan",
-    "atau",
-    "untuk",
-    "dengan",
-    "pada",
-    "adalah",
-    "ini",
-    "itu",
-    "dalam",
-    "oleh",
-    "juga",
-    "sudah",
-    "akan",
-    "tidak",
-    "ada",
-    "saya",
-    "anda",
-    "bisa",
-    "lebih",
-    "seperti",
-    "sebagai",
-    "saat",
-    "jika",
-    "maka",
-    "telah",
-    "harus",
-    "dapat",
-    "agar",
-    "bahwa",
-    "karena",
-    "namun",
-    "namanya",
-    "setiap",
-    "serta",
-    "tentang",
-    "antara",
+    "yang", "di", "ke", "dari", "dan", "atau", "untuk", "with", "dengan", "pada",
+    "adalah", "ini", "itu", "dalam", "oleh", "juga", "sudah", "akan", "tidak",
+    "ada", "saya", "anda", "bisa", "lebih", "seperti", "sebagai", "saat", "jika",
+    "maka", "telas", "telah", "harus", "dapat", "agar", "bahwa", "karena", "namun",
+    "namanya", "setiap", "serta", "tentang", "antara",
 }
+
+# ── THRESHOLD KONFIGURASI RE-RANKER ──────────────────────────────────────────
+# BGE cross-encoder menghasilkan score 0.0 - 1.0 (setelah sigmoid)
+# score > 1.0 TIDAK PERNAH TERJADI → kondisi lama selalu fallback ke 0.0001
+#
+# Strategi threshold dinamis:
+#   dynamic_threshold = max(best_score * _RERANK_RATIO, _RERANK_FLOOR)
+#
+# _RERANK_RATIO = 0.15 → dokumen harus minimal 15% se-relevan dokumen terbaik
+#   Contoh: best=0.9964 → threshold=0.1495
+#   → KETENTUAN REKRUTMEN (0.082) dipotong ✅
+#   → PAKAIAN SERAGAM (0.9964) lolos ✅
+#
+# _RERANK_FLOOR = 0.05 → batas bawah absolut
+#   Mencegah dokumen dengan confidence sangat rendah masuk walau best score juga rendah
+_RERANK_RATIO = 0.15
+_RERANK_FLOOR = 0.05
 
 
 class RagService:
@@ -69,12 +58,6 @@ class RagService:
     def _prepare_tsquery(self, query: str) -> str:
         """
         Bersihkan query → format kompatibel to_tsquery Postgres.
-
-        Perubahan dari versi lama:
-        - Operator OR (|) bukan AND (&) → recall lebih tinggi, tidak zero-result
-        - Stopwords Indonesia difilter → tidak merusak tsquery
-        - Prefix matching (:*) tetap dipertahankan
-        - Maksimal 6 token untuk efisiensi
         """
         cleaned = "".join(c if c.isalnum() or c.isspace() else " " for c in query)
         tokens = [
@@ -90,14 +73,14 @@ class RagService:
         tokens = tokens[:6]
 
         # OR operator: dokumen yang punya SALAH SATU kata sudah masuk kandidat
-        # Lebih baik re-ranker yang menyaring, bukan tsquery yang membunuh recall
         return " | ".join(f"{t}:*" for t in tokens)
 
     async def assemble_powerful_context(
         self, query: str, limit: int = 5, min_score: float = 0.005
-    ) -> tuple[str, list[dict]]:
+    ) -> Tuple[str, List[Dict[str, Any]]]:
         """
-        Pipeline RAG 3 fase - sekarang return tuple (context_string, sources_metadata)
+        Pipeline RAG 3 fase terpadu - Mengembalikan tuple (context_string, sources_metadata)
+        Memperbaiki kebocoran data dengan structural grouping per dokumen.
         """
         print(f'🔍 [RAG HYBRID] Memulai ekstraksi RRF untuk kueri: "{query}"')
 
@@ -109,44 +92,35 @@ class RagService:
         except ImportError:
             try:
                 from backend.app.services.vector_service import VectorService
-
                 vector_service = VectorService()
             except ImportError as e:
-                logger.error(
-                    f"💥 [RAG CRITICAL] vector_service tidak bisa di-import: {str(e)}"
-                )
+                logger.error(f"💥 [RAG CRITICAL] vector_service tidak bisa di-import: {str(e)}")
                 return (
                     "[PERINGATAN SISTEM]: Terjadi kerusakan internal pada modul vector_service. "
-                    "Katakan kepada user bahwa sistem sedang mengalami kendala teknis pada komponen pencarian."
+                    "Katakan kepada user bahwa sistem sedang mengalami kendala teknis pada komponen pencarian.",
+                    []
                 )
 
-        # Generate embedding — mxbai pakai prefixed query untuk retrieval
         try:
             query_embedding = await vector_service.get_query_embedding(query)
         except AttributeError as ae:
-            logger.error(
-                f"💥 [RAG CRITICAL] Method get_query_embedding tidak ditemukan: {str(ae)}"
-            )
-            return "[PERINGATAN SISTEM]: Method pencarian embedding absen di backend."
+            logger.error(f"💥 [RAG CRITICAL] Method get_query_embedding tidak ditemukan: {str(ae)}")
+            return "[PERINGATAN SISTEM]: Method pencarian embedding absen di backend.", []
 
         if not query_embedding:
             logger.error("💥 [RAG CRITICAL] Gagal generate embedding dari kueri user!")
-            return ""
+            return "", []
 
-        # Validasi fallback: jika query terlalu pendek, perkaya sebelum tsquery
         if len(query.split()) < 3:
-            logger.warning(
-                f"⚠️  [RAG] Query pendek: '{query}'. Tsquery mungkin kurang efektif."
-            )
+            logger.warning(f"⚠️  [RAG] Query pendek: '{query}'. Tsquery mungkin kurang efektif.")
 
         formatted_tsquery = self._prepare_tsquery(query)
         query_vector_str = str(query_embedding)
 
-        candidate_chunks = []  # List of (chunk_id, doc_id, page, rrf_score)
-        chunk_score_map = {}  # doc_id → best chunk info
+        document_candidates: Dict[int, Dict[str, Any]] = {}
 
         # ======================================================================
-        # FASE 1: HYBRID SEARCH + RRF di PostgreSQL
+        # FASE 1: HYBRID SEARCH + RRF di PostgreSQL (Menggabungkan pgvector + FTS)
         # ======================================================================
         async with get_db() as conn:
             try:
@@ -196,18 +170,13 @@ class RagService:
                     FROM ranked_candidates rc
                     INNER JOIN dokumen_chunk dc ON rc.chunk_id = dc.id
                     ORDER BY rc.rrf_score DESC
-                    LIMIT $3;
+                    LIMIT $3 * 4;
                 """
 
-                raw_chunks = await conn.fetch(
-                    hybrid_sql, query_vector_str, formatted_tsquery, limit
-                )
+                raw_chunks = await conn.fetch(hybrid_sql, query_vector_str, formatted_tsquery, limit)
 
                 if not raw_chunks:
-                    # Fallback: jika text search zero result, coba pure vector only
-                    logger.warning(
-                        "⚠️  [RAG] Zero match hybrid. Fallback ke pure vector search..."
-                    )
+                    logger.warning("⚠️  [RAG] Zero match hybrid. Fallback ke pure vector search...")
                     vector_only_sql = """
                         SELECT
                             dc.id AS chunk_id,
@@ -218,72 +187,53 @@ class RagService:
                             COALESCE(NULLIF(dc.page_number, ''), '1') AS page_str
                         FROM dokumen_chunk dc
                         ORDER BY dc.embedding <=> $1::vector
-                        LIMIT $2;
+                        LIMIT $2 * 4;
                     """
-                    raw_chunks = await conn.fetch(
-                        vector_only_sql, query_vector_str, limit
-                    )
+                    raw_chunks = await conn.fetch(vector_only_sql, query_vector_str, limit)
 
                 if not raw_chunks:
                     print("⚠️  [RAG CORE] Zero match bahkan di pure vector search!")
-                    return ""
+                    return "", []
 
                 for row in raw_chunks:
                     if row["dokumen_id"] is None:
                         continue
 
                     doc_id = int(row["dokumen_id"])
+                    rrf_score = float(row["rrf_score"])
                     chunk_seq = row["chunk_seq"] or 0
-                    clean_page = row["page_str"] or "1"
+                    page_str = row["page_str"] or "1"
 
-                    candidate_chunks.append(
-                        {
-                            "chunk_id": row["chunk_id"],
-                            "doc_id": doc_id,
-                            "chunk_seq": chunk_seq,
-                            "page": clean_page,
-                            "rrf_score": float(row["rrf_score"]),
-                            "chunk_content": row["chunk_content"] or "",
-                        }
-                    )
-
-                    # Simpan best chunk per dokumen untuk sibling expansion
-                    if (
-                        doc_id not in chunk_score_map
-                        or row["rrf_score"] > chunk_score_map[doc_id]["rrf_score"]
-                    ):
-                        chunk_score_map[doc_id] = {
-                            "page": clean_page,
-                            "rrf_score": float(row["rrf_score"]),
+                    if doc_id not in document_candidates:
+                        document_candidates[doc_id] = {
                             "best_chunk_seq": chunk_seq,
+                            "rrf_score": rrf_score,
+                            "pages": {page_str},
+                            "target_seqs": {chunk_seq}
                         }
+                    else:
+                        document_candidates[doc_id]["pages"].add(page_str)
+                        document_candidates[doc_id]["target_seqs"].add(chunk_seq)
+                        if rrf_score > document_candidates[doc_id]["rrf_score"]:
+                            document_candidates[doc_id]["rrf_score"] = rrf_score
 
             except Exception as sql_err:
-                logger.error(
-                    f"💥 [RAG SQL ERROR] Gagal eksekusi Hybrid Search RRF: {str(sql_err)}"
-                )
-                return ""
+                logger.error(f"💥 [RAG SQL ERROR] Gagal eksekusi Hybrid Search RRF: {str(sql_err)}")
+                return "", []
 
-        candidate_doc_ids = list(chunk_score_map.keys())
+        candidate_doc_ids = list(document_candidates.keys())
         if not candidate_doc_ids:
-            return ""
+            return "", []
 
         # ======================================================================
-        # FASE 2: PARENT EXPANSION + SIBLING CHUNKS
-        # Ambil chunk relevan ± 1 sibling untuk konteks lebih kaya
-        # Jauh lebih presisi dari ambil clean_text seluruh dokumen
+        # FASE 2: PARENT-CHILD HIERARCHICAL STRUCTURE ASSEMBLY (Sesuai ERD)
         # ======================================================================
         expanded_blocks = []
 
         async with get_db() as conn:
             try:
-                # Ambil metadata dokumen parent
                 parent_sql = """
-                    SELECT
-                        d.id,
-                        d.judul,
-                        d.nomor,
-                        j.nama AS nama_jenis
+                    SELECT d.id, d.judul, d.nomor, j.nama AS nama_jenis
                     FROM dokumen d
                     LEFT JOIN jenis_dokumen j ON d.id_jenis = j.id
                     WHERE d.id = ANY($1);
@@ -291,72 +241,66 @@ class RagService:
                 parent_rows = await conn.fetch(parent_sql, candidate_doc_ids)
                 parent_map = {r["id"]: r for r in parent_rows}
 
-                # Ambil sibling chunks (chunk best ± 1) per dokumen
-                for cand in candidate_chunks:
-                    doc_id = cand["doc_id"]
-                    best_seq = cand["chunk_seq"]
+                for doc_id, doc_info in document_candidates.items():
                     parent = parent_map.get(doc_id)
                     if not parent:
                         continue
 
-                    # Ambil chunk target + 1 sebelum + 1 sesudah untuk konteks sekitar
-                    sibling_sql = """
-                        SELECT content, chunk_id
-                        FROM dokumen_chunk
-                        WHERE dokumen_id = $1
-                          AND chunk_id BETWEEN $2 AND $3
-                        ORDER BY chunk_id ASC;
+                    seq_to_fetch = set()
+                    for seq in doc_info["target_seqs"]:
+                        seq_to_fetch.add(max(0, seq - 1))
+                        seq_to_fetch.add(seq)
+                        seq_to_fetch.add(seq + 1)
+
+                    chunk_fetch_sql = """
+                        SELECT dc.content, dc.chunk_id, ds.section_title, ds.section_type
+                        FROM dokumen_chunk dc
+                        LEFT JOIN dokumen_section ds ON dc.dokumen_id = ds.dokumen_id 
+                            AND (dc.content LIKE '%' || ds.section_title || '%' OR ds.id::text = dc.parent_id)
+                        WHERE dc.dokumen_id = $1 AND dc.chunk_id = ANY($2)
+                        ORDER BY dc.chunk_id ASC;
                     """
-                    sibling_rows = await conn.fetch(
-                        sibling_sql, doc_id, max(0, best_seq - 1), best_seq + 1
-                    )
+                    chunk_rows = await conn.fetch(chunk_fetch_sql, doc_id, list(seq_to_fetch))
 
-                    # Gabungkan sibling content
-                    combined_text = "\n\n".join(
-                        r["content"] for r in sibling_rows if r["content"]
-                    )
+                    seen_seqs = set()
+                    text_segments = []
 
-                    # Fallback ke chunk tunggal jika sibling kosong
-                    if not combined_text:
-                        combined_text = cand["chunk_content"]
+                    for crow in chunk_rows:
+                        c_seq = crow["chunk_id"]
+                        if c_seq in seen_seqs:
+                            continue
+                        seen_seqs.add(c_seq)
 
-                    meta = chunk_score_map.get(doc_id, {})
+                        segment_text = ""
+                        if crow["section_title"]:
+                            segment_text += f"\n[Bagian: {crow['section_title']} ({crow['section_type'] or 'Regulasi'})]\n"
+                        segment_text += crow["content"]
+                        text_segments.append(segment_text)
 
-                    expanded_blocks.append(
-                        {
-                            "id": doc_id,
-                            "jenis": parent["nama_jenis"] or "N/A",
-                            "judul": parent["judul"] or "Dokumen Resmi Pindad",
-                            "nomor": parent["nomor"] or "N/A",
-                            "halaman": cand["page"],
-                            "rrf_score": cand["rrf_score"],
-                            "text": combined_text,
-                        }
-                    )
+                    combined_text = "\n\n".join(text_segments).strip()
+                    sorted_pages = sorted(list(doc_info["pages"]))
+
+                    expanded_blocks.append({
+                        "id": doc_id,
+                        "jenis": parent["nama_jenis"] or "Regulasi Resmi",
+                        "judul": parent["judul"] or "Dokumen Internal Pindad",
+                        "nomor": parent["nomor"] or "N/A",
+                        "halaman": ", ".join(sorted_pages),
+                        "rrf_score": doc_info["rrf_score"],
+                        "text": combined_text,
+                    })
 
             except Exception as e:
-                logger.error(
-                    f"💥 [RAG DB ERROR] Gagal ekspansi parent+sibling: {str(e)}"
-                )
-                return ""
+                logger.error(f"💥 [RAG DB ERROR] Gagal ekspansi parent-child struktural: {str(e)}")
+                return "", []
 
         if not expanded_blocks:
-            return ""
-
-        # Deduplikasi: jika satu dokumen muncul lebih dari sekali, ambil yang rrf_score tertinggi
-        seen_doc_ids = {}
-        deduped_blocks = []
-        for b in expanded_blocks:
-            doc_id = b["id"]
-            if doc_id not in seen_doc_ids or b["rrf_score"] > seen_doc_ids[doc_id]:
-                seen_doc_ids[doc_id] = b["rrf_score"]
-                deduped_blocks.append(b)
-        expanded_blocks = deduped_blocks
+            return "", []
 
         # ======================================================================
-        # FASE 3: CROSS-ENCODER RE-RANKER
+        # FASE 3: CROSS-ENCODER RE-RANKER FILTRATION
         # ======================================================================
-        print(f"🔮 [RAG RE-RANKER] Memproses {len(expanded_blocks)} blok kandidat...")
+        print(f"🔮 [RAG RE-RANKER] Memproses {len(expanded_blocks)} blok dokumen terstruktur...")
 
         try:
             from backend.app.services.reranker_service import reranker_service
@@ -371,19 +315,49 @@ class RagService:
 
         except Exception as ren_err:
             logger.warning(
-                f"⚠️  [RAG RERANK] Re-ranker absen atau error: {str(ren_err)}. "
-                f"Fallback ke skor RRF."
+                f"⚠️  [RAG RERANK] Re-ranker absen atau error: {str(ren_err)}. Fallback ke skor RRF."
             )
             for b in expanded_blocks:
                 b["final_score"] = b["rrf_score"]
 
+        # Urutkan berdasarkan skor tertinggi
         expanded_blocks.sort(key=lambda x: x["final_score"], reverse=True)
 
-        # ========================================================================
-        # ASSEMBLY KONTEKS FINAL + METADATA SUMBER
-        # ========================================================================
+        # ======================================================================
+        # FASE 4: DYNAMIC THRESHOLD FILTERING
+        #
+        # BUG LAMA:
+        #   effective_min_score = min_score if score > 1.0 else 0.0001
+        #   BGE sigmoid score MAX = 1.0 → kondisi score > 1.0 TIDAK PERNAH TRUE
+        #   → effective_min_score = 0.0001 SELALU → semua dokumen lolos tanpa filter
+        #   → FE menampilkan dokumen tidak relevan seperti KETENTUAN PEMASARAN
+        #     saat query adalah PAKAIAN SERAGAM
+        #
+        # FIX:
+        #   Threshold dinamis berdasarkan skor tertinggi (best_score):
+        #   effective_min_score = max(best_score * _RERANK_RATIO, _RERANK_FLOOR)
+        #
+        #   Contoh query "pakaian seragam":
+        #   best_score = 0.9964
+        #   effective_min_score = max(0.9964 * 0.15, 0.05) = max(0.1495, 0.05) = 0.1495
+        #   → PAKAIAN SERAGAM (0.9964) ✅ lolos
+        #   → KETENTUAN REKRUTMEN (0.082) ❌ dipotong
+        #   → KETENTUAN PEMASARAN (0.031) ❌ dipotong
+        # ======================================================================
+        best_score = expanded_blocks[0].get("final_score", 0.0) if expanded_blocks else 0.0
+        effective_min_score = max(best_score * _RERANK_RATIO, _RERANK_FLOOR)
+
+        logger.info(
+            f"🎯 [RAG THRESHOLD] best_score={best_score:.4f} | "
+            f"effective_min_score={effective_min_score:.4f} "
+            f"(ratio={_RERANK_RATIO}, floor={_RERANK_FLOOR})"
+        )
+
+        # ======================================================================
+        # ASSEMBLY KONTEKS FINAL + METADATA SUMBER UNTUK GEMMA & FE
+        # ======================================================================
         final_contexts = []
-        sources_metadata = []  # 🔥 NEW: Kumpulkan metadata untuk frontend
+        sources_metadata = []
         inserted_count = 0
 
         for b in expanded_blocks:
@@ -392,10 +366,10 @@ class RagService:
 
             f_score = b.get("final_score", 0.0)
 
-            if f_score < min_score:
+            if f_score < effective_min_score:
                 print(
                     f"🗑️  [RAG DROPPED] '{b['judul']}' dibuang "
-                    f"(skor {f_score:.6f} < threshold {min_score})"
+                    f"(skor {f_score:.4f} < threshold {effective_min_score:.4f})"
                 )
                 continue
 
@@ -405,44 +379,39 @@ class RagService:
                 f"• Judul           : {b['judul']}\n"
                 f"• No. Regulasi    : {b['nomor']}\n"
                 f"• Estimasi Halaman: {b['halaman']}\n"
-                f"• Skor Akurasi    : {f_score:.6f}\n"
-                f"• Isi Dokumen:\n{b['text']}\n"
+                f"• Skor Relevansi  : {f_score:.4f}\n"
+                f"• Isi Kandungan Dokumen:\n{b['text']}\n"
             )
             final_contexts.append(block_str)
 
-            # 🔥 NEW: Simpan metadata sumber untuk frontend
             sources_metadata.append({
-            "id": b["id"],
-            "dokumen_id": b["id"],
-            "title": b["judul"],
-            "filename": b["judul"],
-            "nomor": b["nomor"],
-            "page": b["halaman"],
-            "page_number": b["halaman"],
-            "jenis": b["jenis"],
-            "score": f_score,
-            # 🔥 Tambahkan file_path jika ada di database
-            # "file_path": b.get("file_path", ""),
-            # "url": f"/uploads/{b.get('file_path', '')}"
-        })
-        
-        inserted_count += 1
+                "id": b["id"],
+                "dokumen_id": b["id"],
+                "title": b["judul"],
+                "filename": b["judul"],
+                "nomor": b["nomor"],
+                "page": b["halaman"],
+                "page_number": b["halaman"],
+                "jenis": b["jenis"],
+                "score": f_score,
+            })
+
+            inserted_count += 1
 
         if not final_contexts:
             print("⚠️  [RAG EMPTY] Tidak ada dokumen yang lolos threshold.")
             return (
-                "[PERINGATAN SISTEM]: Dokumen regulasi mengenai kueri ini TIDAK DITEMUKAN "
-                "di basis data internal Pindad. "
-                "Asisten WAJIB menyampaikan bahwa data tidak tersedia di RAGDB. "
-                "DILARANG mengarang atau berasumsi dari pengetahuan umum!",
-                []  # 🔥 Return empty sources
+                "[PERINGATAN SISTEM]: Dokumen regulasi mengenai kueri ini TIDAK DITEMUKAN di basis data internal Pindad. "
+                "Asisten WAJIB menyampaikan secara langsung bahwa data regulasi resmi tidak tersedia di RAGDB. "
+                "DILARANG keras mengarang bebas atau berasumsi dari pengetahuan umum!",
+                []
             )
 
         print(
-            f"✅ [RAG COMPLETE] {len(final_contexts)} dokumen rujukan berhasil dirakit "
-            f"untuk DeepSeek R1."
+            f"✅ [RAG COMPLETE] {len(final_contexts)} dokumen lolos threshold "
+            f"(dari {len(expanded_blocks)} kandidat) sukses dikunci untuk Gemma!"
         )
-        return "\n".join(final_contexts), sources_metadata  # 🔥 Return tuple
+        return "\n".join(final_contexts), sources_metadata
 
 
 rag_service = RagService()

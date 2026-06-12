@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, memo, useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import ThoughtAccordion from './ThoughtAccordion';
+import CakraResponseRenderer from './CakraResponseRenderer';
 import SourceCitation from './SourceCitation';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
@@ -710,22 +710,19 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
 
                 <div style={styles.assistantContent} className="assistant-content-container">
 
-                    {/* 🔥 ACCORDION FIX: Selalu tampilkan Accordion baik saat berpikir (live stream) maupun saat riwayat lama dimuat */}
-                    {(msg.thought || msg.reasoning) && (
-                        <ThoughtAccordion
-                            thought={msg.thought || msg.reasoning}
-                            darkMode={darkMode}
-                            theme={theme}
-                        />
-                    )}
-
+                    {/* 🔥 CAKRA PIPELINE INTEGRATION: Amankan bodi stream menggunakan Custom Index Parser */}
                     {!isThinkingMsg && (
                         <>
-                            <div style={{ ...styles.assistantText, color: theme.textColor }}>
-                                <DebouncedMarkdown
-                                    content={msg.content || ''}
+                            <div style={{ ...styles.assistantText, color: theme.textColor, width: '100%' }}>
+                                {/* Ganti DebouncedMarkdown lama lu dengan Renderer baru ini.
+               Fungsinya otomatis menyedot tag <think> internal dan mengalokasikannya 
+               ke ThoughtAccordion secara otomatis tanpa merusak spasi Markdown!
+            */}
+                                <CakraResponseRenderer
+                                    rawContent={msg.content || ''}
                                     isStreaming={isStreamingMsg}
                                     darkMode={darkMode}
+                                    theme={theme}
                                 />
                             </div>
 
