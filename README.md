@@ -1,6 +1,6 @@
 # CAKRA AI — Sistem Asisten Inteligensia Terpadu PT Pindad
 
-**CAKRA AI** (*Cerdas, Adaptif, Konstruktif, Responsif, Analitik*) adalah platform kognitif enterprise untuk **PT Pindad (Persero)** — bukan chatbot generik, melainkan sistem RAG agentic multi-layer dengan memori jangka panjang, empati sentimen, dan routing intent otomatis.
+**CAKRA AI** (_Cerdas, Adaptif, Konstruktif, Responsif, Analitik_) adalah platform kognitif enterprise untuk **PT Pindad (Persero)** — bukan chatbot generik, melainkan sistem RAG agentic multi-layer dengan memori jangka panjang, empati sentimen, dan routing intent otomatis.
 
 ---
 
@@ -141,13 +141,13 @@ Seluruh komunikasi streaming menggunakan format JSON per line:
 
 ## Model AI — Three-Engine Stack
 
-| Layer | Model | Ukuran | Fungsi | keep_alive |
-|-------|-------|--------|--------|-----------|
-| Layer 0 | `qwen2.5:0.5b` | ~500MB | Gateway: routing + intent | 300s |
-| Layer 1 | `qwen2.5:3b-instruct` | ~2GB | Cognitive: 35 params + blueprint | 300s |
-| Layer 2 | `gemma4:12b` | ~8GB | Executor: response streaming | -1 (always) |
-| Vision | `minicpm-v:latest` | ~5GB | OCR fallback untuk PDF gambar | on-demand |
-| Embedding | `mxbai-embed-large` | ~670MB | RAG: 1024-dim vector | on-demand |
+| Layer     | Model                 | Ukuran | Fungsi                           | keep_alive  |
+| --------- | --------------------- | ------ | -------------------------------- | ----------- |
+| Layer 0   | `qwen2.5:0.5b`        | ~500MB | Gateway: routing + intent        | 300s        |
+| Layer 1   | `qwen2.5:3b-instruct` | ~2GB   | Cognitive: 35 params + blueprint | 300s        |
+| Layer 2   | `gemma4:12b`          | ~8GB   | Executor: response streaming     | -1 (always) |
+| Vision    | `minicpm-v:latest`    | ~5GB   | OCR fallback untuk PDF gambar    | on-demand   |
+| Embedding | `mxbai-embed-large`   | ~670MB | RAG: 1024-dim vector             | on-demand   |
 
 **GPU Concurrency:** Diatur via `asyncio.Semaphore` (1 slot GPU) pada `request.app.state.gpu_limit`. Semua LLM call antre sebelum eksekusi.
 
@@ -158,30 +158,36 @@ Seluruh komunikasi streaming menggunakan format JSON per line:
 Pipeline RAG berjalan dalam **4 fase berurutan**:
 
 ### Fase 1 — Hybrid Search (PostgreSQL)
+
 - **pgvector**: Cosine similarity dengan embedding `mxbai-embed-large` (1024-dim)
 - **Full-Text Search**: `to_tsquery('indonesian', ...)` dengan stopword removal
 - **RRF Scoring**: `1/(60 + rank_vector) + 1/(60 + rank_fts)` untuk menggabungkan dua score
 - **Fallback**: Pure vector search jika FTS hybrid zero match
 
 ### Fase 2 — Parent-Child Hierarchical Assembly
+
 - Ambil **N±1 chunk** (chunk sebelum + target + sesudah) per dokumen kandidat
 - JOIN dengan `dokumen_section` untuk injeksi `section_title` dan `section_type`
 - Grouping per `dokumen_id` untuk konteks yang koheren
 
 ### Fase 3 — BGE Cross-Encoder Re-ranker
+
 - Model: `BAAI/bge-reranker-v2-m3` (~570MB GPU)
 - Inference via `run_in_executor` agar tidak blokir event loop FastAPI
 - Output: relevance score [0.0, 1.0] per dokumen kandidat
 - Lazy-load dengan `@lru_cache(maxsize=1)` — hanya dimuat sekali
 
 ### Fase 4 — Dynamic Threshold Filtering
+
 ```python
 best_score = max(scores)
 effective_min_score = max(best_score * 0.15, 0.05)  # ratio=0.15, floor=0.05
 ```
+
 Dokumen di bawah threshold dibuang. Mencegah dokumen tidak relevan masuk konteks Gemma.
 
 ### Parallel RAG (Mode Documents)
+
 Jika `target_pipeline == "documents"`, semua `rewritten_queries` (3 variasi) dijalankan **paralel** via `asyncio.gather`, hasil digabung dengan deduplication by `source_id`.
 
 ---
@@ -267,32 +273,33 @@ cakra/
 
 ### Auth — `/api/auth`
 
-| Method | Endpoint | Deskripsi |
-|--------|----------|-----------|
-| `POST` | `/api/auth/login` | Login dengan NPP + password (MD5), validasi ke HRIS remote |
-| `GET` | `/api/auth/verify-session?token=` | Verifikasi token session aktif |
-| `POST` | `/api/auth/logout` | Invalidasi token + audit trail |
+| Method | Endpoint                          | Deskripsi                                                  |
+| ------ | --------------------------------- | ---------------------------------------------------------- |
+| `POST` | `/api/auth/login`                 | Login dengan NPP + password (MD5), validasi ke HRIS remote |
+| `GET`  | `/api/auth/verify-session?token=` | Verifikasi token session aktif                             |
+| `POST` | `/api/auth/logout`                | Invalidasi token + audit trail                             |
 
 ### Chat — `/api/chat`
 
-| Method | Endpoint | Deskripsi |
-|--------|----------|-----------|
-| `GET` | `/api/chat/sessions` | Ambil semua sesi aktif milik user |
-| `POST` | `/api/chat/sessions/create` | Buat sesi baru |
-| `PUT` | `/api/chat/sessions/{uuid}/title` | Rename judul sesi |
-| `PUT` | `/api/chat/sessions/{uuid}/pin` | Pin/unpin sesi |
-| `DELETE` | `/api/chat/sessions/{uuid}` | Soft delete sesi |
-| `GET` | `/api/chat/sessions/{uuid}/messages` | Ambil semua pesan dalam sesi |
-| `POST` | `/api/chat/stream` | **Main endpoint SSE streaming** (pipeline 4-layer) |
-| `POST` | `/api/chat/documents/upload` | Upload file attachment (image/PDF) |
+| Method   | Endpoint                             | Deskripsi                                          |
+| -------- | ------------------------------------ | -------------------------------------------------- |
+| `GET`    | `/api/chat/sessions`                 | Ambil semua sesi aktif milik user                  |
+| `POST`   | `/api/chat/sessions/create`          | Buat sesi baru                                     |
+| `PUT`    | `/api/chat/sessions/{uuid}/title`    | Rename judul sesi                                  |
+| `PUT`    | `/api/chat/sessions/{uuid}/pin`      | Pin/unpin sesi                                     |
+| `DELETE` | `/api/chat/sessions/{uuid}`          | Soft delete sesi                                   |
+| `GET`    | `/api/chat/sessions/{uuid}/messages` | Ambil semua pesan dalam sesi                       |
+| `POST`   | `/api/chat/stream`                   | **Main endpoint SSE streaming** (pipeline 4-layer) |
+| `POST`   | `/api/chat/documents/upload`         | Upload file attachment (image/PDF)                 |
 
 ### Health — `/api`
 
-| Method | Endpoint | Deskripsi |
-|--------|----------|-----------|
-| `GET` | `/api/health` | Status server + model |
+| Method | Endpoint      | Deskripsi             |
+| ------ | ------------- | --------------------- |
+| `GET`  | `/api/health` | Status server + model |
 
 ### ChatStreamRequest Schema
+
 ```json
 {
   "messages": [{ "role": "user", "content": "pertanyaan..." }],
@@ -355,14 +362,17 @@ authStore.js
 ```
 
 ### Toast Notification System
+
 ```text
 ToastProvider.jsx (global wrapper di App.jsx)
   ↕
 useToast.js hook → { toast.success, toast.error, toast.warning, toast.info }
 ```
+
 Digunakan di: validasi file, upload feedback, error pipeline, koneksi error.
 
 ### Draft Persistence
+
 Input textarea disimpan ke `sessionStorage` dengan key `cakra_draft_${sessionId}` setiap keystroke. Dipulihkan otomatis saat pindah sesi.
 
 ---
@@ -371,22 +381,23 @@ Input textarea disimpan ke `sessionStorage` dengan key `cakra_draft_${sessionId}
 
 ### Tabel Utama
 
-| Tabel | Fungsi |
-|-------|--------|
-| `users` | Data pegawai (npp, fullname, divisi, role) — sync dari HRIS saat login |
-| `session_login` | Token sesi aktif + IP + last_activity |
-| `history_login` | Audit trail LOGIN/LOGOUT per NPP |
-| `chat_sessions` | Sesi obrolan (session_uuid, judul, is_pinned, is_deleted, npp) |
-| `chat_messages` | Pesan per sesi (role, message_text, thought, timestamp) |
-| `chat_attachments` | Metadata file upload (file_name, file_path, mime_type, extracted_text) |
-| `ai_dialogue_corpus` | Pasangan user-assistant untuk fine-tuning/retrieval masa depan |
-| `ai_memory` | Memori jangka panjang per NPP (mem_key, mem_value) — diisi nightly job |
-| `dokumen` | Dokumen regulasi Pindad (judul, nomor, id_jenis) |
-| `dokumen_chunk` | Chunk teks + embedding 1024-dim (pgvector) |
-| `dokumen_section` | Hierarki section dokumen |
-| `jenis_dokumen` | Kategori dokumen (SKEP, SK Direksi, SOP, dll) |
+| Tabel                | Fungsi                                                                 |
+| -------------------- | ---------------------------------------------------------------------- |
+| `users`              | Data pegawai (npp, fullname, divisi, role) — sync dari HRIS saat login |
+| `session_login`      | Token sesi aktif + IP + last_activity                                  |
+| `history_login`      | Audit trail LOGIN/LOGOUT per NPP                                       |
+| `chat_sessions`      | Sesi obrolan (session_uuid, judul, is_pinned, is_deleted, npp)         |
+| `chat_messages`      | Pesan per sesi (role, message_text, thought, timestamp)                |
+| `chat_attachments`   | Metadata file upload (file_name, file_path, mime_type, extracted_text) |
+| `ai_dialogue_corpus` | Pasangan user-assistant untuk fine-tuning/retrieval masa depan         |
+| `ai_memory`          | Memori jangka panjang per NPP (mem_key, mem_value) — diisi nightly job |
+| `dokumen`            | Dokumen regulasi Pindad (judul, nomor, id_jenis)                       |
+| `dokumen_chunk`      | Chunk teks + embedding 1024-dim (pgvector)                             |
+| `dokumen_section`    | Hierarki section dokumen                                               |
+| `jenis_dokumen`      | Kategori dokumen (SKEP, SK Direksi, SOP, dll)                          |
 
 ### Dual-Database Connection Pool
+
 - **ragdb** (asyncpg pool: min=5, max=20) — semua data operasional CAKRA
 - **hris_db** (asyncpg pool: min=3, max=10) — validasi login kredensial remote
 
@@ -395,6 +406,7 @@ Input textarea disimpan ke `sessionStorage` dengan key `cakra_draft_${sessionId}
 ## Cara Menjalankan
 
 ### Prasyarat
+
 - Python 3.11+ dengan virtual environment
 - Node.js 18+ + npm/yarn
 - PostgreSQL 15+ dengan ekstensi `pgvector`
@@ -402,6 +414,7 @@ Input textarea disimpan ke `sessionStorage` dengan key `cakra_draft_${sessionId}
 - GPU NVIDIA (CUDA) untuk reranker BGE
 
 ### Backend
+
 ```bash
 # 1. Install dependencies
 cd cakra
@@ -416,6 +429,7 @@ uvicorn backend.main:app --host 0.0.0.0 --port 5000 --reload
 ```
 
 ### Frontend (WebUI)
+
 ```bash
 cd webui
 npm install
@@ -434,6 +448,7 @@ npm run build    # Production build ke /dist
 ### 🔴 BACKEND — Prioritas Tinggi (Critical)
 
 #### B1 — Hapus `print()` dari Kode Produksi, Gunakan Logger Terstruktur
+
 **Status**: ✅ COMPLETED
 
 **Masalah**: Seluruh backend (chat.py, pipeline_layer_executor.py, rag_service.py, memory_service.py, database.py, dll.) menggunakan `print()` langsung untuk debugging. Di produksi, ini memperlambat performa, tidak bisa dikontrol level-nya (DEBUG/INFO/WARNING), dan mencemari stdout.
@@ -445,11 +460,13 @@ npm run build    # Production build ke /dist
 ---
 
 #### B2 — Background Task: Implementasi `background_tasks.py` (File Kosong)
+
 **Status**: ✅ COMPLETED
 
 **Masalah**: File `background_tasks.py` saat ini **kosong**. Fungsi `consolidate_nightly_memory()` di `memory_service.py` tidak pernah dipanggil secara otomatis. Memori jangka panjang pegawai tidak pernah diperbarui.
 
 **Solusi**:
+
 - Implementasikan APScheduler atau FastAPI `BackgroundTasks` / `asyncio` scheduled task
 - Jalankan `memory_service.consolidate_nightly_memory()` setiap pukul 02:00 WIB
 - Tambahkan endpoint admin `POST /api/admin/run-memory-consolidation` untuk trigger manual
@@ -457,11 +474,13 @@ npm run build    # Production build ke /dist
 ---
 
 #### B3 — Validasi File Upload di Server (Duplikasi Validasi)
+
 **Status**: ✅ COMPLETED
 
 **Masalah**: Saat ini validasi tipe file di `chat.py` hanya mengecek `content_type`. MIME type bisa dipalsukan. Tidak ada validasi ukuran file di sisi server.
 
 **Solusi**:
+
 - Tambahkan validasi ukuran: `file.size > 10 * 1024 * 1024` → reject 400
 - Tambahkan validasi magic bytes untuk PDF (`%PDF`) dan gambar
 - Rate limiting per user/IP untuk endpoint upload
@@ -469,11 +488,13 @@ npm run build    # Production build ke /dist
 ---
 
 #### B4 — Timeout & Retry Layer 0/1 Tidak Konsisten
+
 **Status**: ⏳ NOT STARTED
 
 **Masalah**: `generate_json_response` di Layer 0 menggunakan timeout 25s (routing) dan 15s (query rewriter), namun Layer 1 hanya 15s. Jika Qwen 3B lambat, Layer 1 timeout dan fallback ke rule-based — tanpa retry.
 
 **Solusi**:
+
 - Tambahkan exponential backoff retry (maks 2x) untuk Layer 0/1
 - Timeout Layer 1 dinaikkan ke 30s (Qwen 3B lebih berat dari 0.5B)
 - Circuit breaker: jika Layer 0/1 gagal >3x dalam 60s, langsung flash mode
@@ -481,11 +502,13 @@ npm run build    # Production build ke /dist
 ---
 
 #### B5 — Employee Name Query per Request (N+1 Problem)
+
 **Status**: ⏳ NOT STARTED
 
 **Masalah**: Di `chat.py` baris 378-405, setiap request pipeline membuka koneksi DB baru hanya untuk mengambil `fullname` user. Ini N+1 query yang tidak perlu karena data ini statis per sesi.
 
 **Solusi**:
+
 - Cache nama pegawai dalam sesi per `session_uuid` atau per `npp`
 - Gunakan `functools.lru_cache` atau in-memory dict dengan TTL
 - Atau kirim `employee_name` dari frontend saat POST `/stream` (sudah ada di authStore)
@@ -493,11 +516,13 @@ npm run build    # Production build ke /dist
 ---
 
 #### B6 — Implementasi `documents.py` Endpoint (File Kosong)
+
 **Status**: ⏳ NOT STARTED
 
 **Masalah**: `backend/app/api/endpoints/documents.py` kosong. Tidak ada endpoint untuk manajemen dokumen regulasi (list, upload, delete, reindex).
 
 **Solusi**: Buat endpoint CRUD dokumen:
+
 - `GET /api/documents` — list semua dokumen dengan paginasi
 - `POST /api/documents/ingest` — upload + chunk + embed dokumen baru
 - `DELETE /api/documents/{id}` — hapus dokumen + chunk + embedding
@@ -506,13 +531,16 @@ npm run build    # Production build ke /dist
 ---
 
 #### B7 — Auth: Hardcoded Bypass Account & MD5 Password (Security)
+
 **Status**: ✅ COMPLETED
 
-**Masalah**: 
+**Masalah**:
+
 1. `auth.py` line 104: akun bypass `npp=99999, password=123456` hardcoded di kode
 2. Password divalidasi menggunakan MD5 (sudah deprecated, mudah di-crack)
 
 **Solusi**:
+
 - Pindahkan bypass account ke environment variable: `BYPASS_NPP`, `BYPASS_PASSWORD_HASH`
 - Pertimbangkan migrasi ke bcrypt/Argon2 untuk password baru (koordinasi dengan HRIS team)
 - Tambahkan rate limiting login: max 5 attempt per IP per menit
@@ -520,11 +548,13 @@ npm run build    # Production build ke /dist
 ---
 
 #### B8 — Koneksi DB per-request di Pipeline (Resource Leak Risk)
+
 **Status**: ⏳ NOT STARTED
 
 **Masalah**: Di `chat.py` baris 378, ada pola `async with get_db() as conn:` di dalam generator pipeline SSE. Jika streaming terhenti di tengah jalan (client disconnect), koneksi DB mungkin tidak langsung dikembalikan ke pool.
 
-**Solusi**: 
+**Solusi**:
+
 - Tangkap `asyncio.CancelledError` di `_sequential_pipeline_generator`
 - Ensure DB connections selalu dikembalikan ke pool via proper `finally` block
 - Pisahkan employee name fetch ke fungsi tersendiri sebelum streaming dimulai
@@ -534,9 +564,11 @@ npm run build    # Production build ke /dist
 ### 🟡 BACKEND — Prioritas Sedang (Enhancement)
 
 #### B9 — Caching Embedding Query (Vector Service)
+
 **Masalah**: Setiap RAG query selalu memanggil Ollama untuk generate embedding, meskipun query yang sama sudah pernah ditanyakan sebelumnya.
 
-**Solusi**: 
+**Solusi**:
+
 - Implementasikan in-memory LRU cache untuk query embedding (maks 500 entry)
 - Key: `hash(query_string)`, Value: `List[float]` embedding
 - TTL 1 jam untuk mencegah stale data
@@ -544,9 +576,11 @@ npm run build    # Production build ke /dist
 ---
 
 #### B10 — Session Token Expiry (Auth)
+
 **Masalah**: Token session tidak memiliki expiry time. Jika user tidak logout, token valid selamanya.
 
 **Solusi**:
+
 - Tambahkan kolom `expires_at TIMESTAMP` di tabel `session_login`
 - Auto-expire token setelah 8 jam (satu shift kerja)
 - `verify-session` endpoint harus cek `expires_at > NOW()`
@@ -554,9 +588,11 @@ npm run build    # Production build ke /dist
 ---
 
 #### B11 — Structured Logging dengan Request ID Tracing
+
 **Masalah**: Log saat ini tidak bisa di-trace per request. Sulit debugging ketika ada request bersamaan.
 
 **Solusi**:
+
 - Tambahkan middleware FastAPI yang inject `X-Request-ID` header
 - Semua log dalam satu pipeline menggunakan `request_id` yang sama
 - Format log: `[2026-06-13 14:00:00] [req-abc123] [LAYER 0] Gateway completed in 1.2s`
@@ -564,9 +600,11 @@ npm run build    # Production build ke /dist
 ---
 
 #### B12 — Auto-Title menggunakan LLM (bukan slice 4 kata)
+
 **Masalah**: `auto_update_session_title` saat ini menggunakan `" ".join(trigger_text.split()[:4]) + "..."` — tidak informatif dan sering menghasilkan judul yang janggal.
 
 **Solusi**: Tambahkan opsi generate title via LLM (Qwen 0.5B) secara async background task setelah streaming selesai:
+
 ```python
 title = await generate_session_title(user_message, first_response[:200])
 ```
@@ -574,14 +612,17 @@ title = await generate_session_title(user_message, first_response[:200])
 ---
 
 #### B13 — RAG: Index HNSW untuk pgvector (Performance)
+
 **Masalah**: Comment di `rag_service.py` menyebutkan "seq scan, HNSW aktif otomatis saat data bertambah" — ini tidak akurat. HNSW harus dibuat manual.
 
 **Solusi**: Buat HNSW index jika belum ada:
+
 ```sql
 CREATE INDEX IF NOT EXISTS idx_dokumen_chunk_embedding_hnsw
 ON dokumen_chunk USING hnsw (embedding vector_cosine_ops)
 WITH (m = 16, ef_construction = 64);
 ```
+
 Signifikan mempercepat vector search saat `dokumen_chunk` > 10.000 baris.
 
 ---
@@ -589,16 +630,19 @@ Signifikan mempercepat vector search saat `dokumen_chunk` > 10.000 baris.
 ### 🟢 FITUR BARU — Backend
 
 #### B14 — Feedback & Rating Respons AI
+
 **Status**: ✅ COMPLETED
 
 Tambahkan endpoint `POST /api/chat/messages/{id}/feedback` dengan payload `{ rating: 1-5, comment: string }`. Data disimpan ke tabel baru `ai_feedback` untuk evaluasi kualitas model.
 
 #### B15 — WebSocket untuk Real-time Notification
+
 **Status**: ⏳ NOT STARTED
 
 Ganti polling sidebar dengan WebSocket atau Server-Sent Events untuk notifikasi: sesi baru dari device lain, memory consolidation selesai, dll.
 
 #### B16 — Audit Log Admin Dashboard
+
 **Status**: ⏳ NOT STARTED
 
 Buat endpoint `GET /api/admin/audit-logs` yang menampilkan history_login + query log per pegawai untuk keperluan compliance.
@@ -608,24 +652,31 @@ Buat endpoint `GET /api/admin/audit-logs` yang menampilkan history_login + query
 ### 🟡 WEBUI — Prioritas Sedang
 
 #### ✅ W1 — Scroll-to-Bottom Button pada ChatArea (SELESAI)
+
 Saat user scroll ke atas untuk membaca riwayat, tombol "↓ Kembali ke Bawah" muncul otomatis (terintegrasi dengan callback `atBottomStateChange` React Virtuoso).
 
 #### ✅ W2 — Skeleton Loading untuk Riwayat Chat (SELESAI)
+
 Saat `loadChatSession` dipanggil, riwayat memuat shimmer effect skeleton bubble (`SkeletonChat`) untuk meningkatkan perceived performance.
 
 #### ✅ W3 — Retry Mekanisme untuk SSE Stream Terputus (SELESAI)
+
 Jika koneksi SSE putus di tengah streaming, frontend otomatis melakukan retry (maks 3x) dengan exponential backoff dan toast info "Menghubungkan kembali...".
 
 #### ✅ W4 — Message Search / Filter dalam Sesi (SELESAI)
+
 Dilengkapi dengan fitur pencarian kata kunci (`Ctrl+F`) yang menandai kemunculan teks secara rekursif menggunakan tag `<mark>` kustom di dalam bubble percakapan.
 
 #### ✅ W5 — Export Chat History (SELESAI)
+
 Menambahkan tombol ekspor di header dropdown untuk format Markdown (.md) dan PDF (.pdf via native print window).
 
 #### ✅ W6 — Indikator "Sedang Mengetik" yang Akurat (SELESAI)
+
 Status indicator menyajikan tahapan pipeline yang sedang berlangsung secara real-time (Layer 0, RAG, dan Layer 2).
 
 #### ✅ W7 — Mode Isolated Document Context (UI) (SELESAI)
+
 Menyediakan Modal "Daftar Dokumen" di sidebar yang terhubung dengan `/api/documents` di backend. Memilih dokumen akan menyalakan mode isolasi context.
 
 ---
@@ -633,16 +684,19 @@ Menyediakan Modal "Daftar Dokumen" di sidebar yang terhubung dengan `/api/docume
 ### 🟢 FITUR BARU — WebUI
 
 #### ✅ W8 — Dark/Light Mode Persistence yang Tepat (SELESAI)
+
 Mode tema yang diubah pada satu tab browser disinkronkan ke seluruh tab lainnya secara instan via `storage` event listener.
 
 #### ✅ W9 — Keyboard Shortcuts (SELESAI)
+
 - `Ctrl+/` → New Chat
 - `Ctrl+K` → Fokus ke pencarian riwayat obrolan sesi di sidebar
 - `Esc` → Menutup dialog / modal aktif
 
 #### ✅ W10 — Markdown Export dengan Syntax Highlight (SELESAI)
+
 Tombol "Salin Markdown" di setiap bubble percakapan asisten menyalin raw text markdown lengkap.
 
 ---
 
-*README ini di-generate dan diperbarui pada: 2026-06-13 berdasarkan analisa lengkap seluruh kode backend dan frontend.*
+_README ini di-generate dan diperbarui pada: 2026-06-13 berdasarkan analisa lengkap seluruh kode backend dan frontend._
