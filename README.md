@@ -1,467 +1,629 @@
-# CAKRA AI RAG System
+# CAKRA AI — Sistem Asisten Inteligensia Terpadu PT Pindad
 
-**CAKRA AI** (*Cerdas, Adaptif, Konstruktif, Responsif, Analitik*) adalah sistem asisten inteligen enterprise untuk **PT Pindad** yang dirancang **bukan sebagai chatbot generik**, melainkan platform kognitif dengan:
-
-- **Three-Engine Architecture** — routing intent otomatis ke model yang tepat
-- **RAG dokumen internal** — SOP, IK, SKEP, regulasi pabrik
-- **Memori jangka panjang** — AI mengingat konteks pegawai lintas sesi
-- **Empati & sentimen** — respons menyesuaikan emosi user
-- **Reasoning mendalam** — DeepSeek-R1 untuk analitik & dokumen
-- **Self-learning foundation** — korpus dialog & tabel learning siap dikembangkan
+**CAKRA AI** (*Cerdas, Adaptif, Konstruktif, Responsif, Analitik*) adalah platform kognitif enterprise untuk **PT Pindad (Persero)** — bukan chatbot generik, melainkan sistem RAG agentic multi-layer dengan memori jangka panjang, empati sentimen, dan routing intent otomatis.
 
 ---
 
 ## Daftar Isi
 
 1. [Arsitektur Sistem](#arsitektur-sistem)
-2. [Flow Diagram](#flow-diagram)
-3. [Model AI (Three-Engine)](#model-ai-three-engine)
-4. [Fitur yang Sudah Ada](#fitur-yang-sudah-ada)
-5. [Struktur Folder](#struktur-folder)
+2. [Agentic Pipeline (4 Layer)](#agentic-pipeline-4-layer)
+3. [Model AI — Three-Engine Stack](#model-ai--three-engine-stack)
+4. [RAG Engine — Hybrid Search](#rag-engine--hybrid-search)
+5. [Struktur Folder Lengkap](#struktur-folder-lengkap)
 6. [API Endpoints](#api-endpoints)
-7. [Frontend Routes](#frontend-routes)
-8. [Database](#database)
+7. [WebUI — Arsitektur Frontend](#webui--arsitektur-frontend)
+8. [Database Schema](#database-schema)
 9. [Cara Menjalankan](#cara-menjalankan)
-10. [Dokumentasi Lanjutan](#dokumentasi-lanjutan)
+10. [Rekomendasi Optimasi & Fitur Baru](#rekomendasi-optimasi--fitur-baru)
 
 ---
 
 ## Arsitektur Sistem
 
 ```text
-┌─────────────────────────────────────────────────────────────────────────┐
-│                         pinAi/ (Monorepo)                               │
-├──────────────────────────────┬──────────────────────────────────────────┤
-│   webui/ (React + Vite)      │   backend/ (FastAPI + asyncpg)           │
-│   Port: 5173                 │   Port: 5000                             │
-│   Zustand state              │   Ollama LLM (localhost:11434)           │
-└──────────────────────────────┴──────────────────────────────────────────┘
-                                        │
-                    ┌───────────────────┴───────────────────┐
-                    ▼                                       ▼
-            ┌──────────────┐                        ┌──────────────┐
-            │   ragdb      │                        │   hris_db    │
-            │ (PostgreSQL  │                        │ (PostgreSQL  │
-            │  + pgvector) │                        │  remote HRIS)│
-            └──────────────┘                        └──────────────┘
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                         cakra/ (Monorepo)                                    │
+├────────────────────────────────┬─────────────────────────────────────────────┤
+│   webui/ (React + Vite)        │   backend/ (FastAPI + asyncpg)              │
+│   Port: 5173 (dev)             │   Port: 5000                                │
+│   State: Zustand               │   LLM: Ollama (localhost:11434)             │
+│   HTTP Client: Axios (REST)    │   Embedding: mxbai-embed-large (1024-dim)   │
+│   Stream: native fetch/SSE     │   Reranker: BAAI/bge-reranker-v2-m3 (GPU)  │
+└────────────────────────────────┴─────────────────────────────────────────────┘
+                                          │
+              ┌───────────────────────────┴────────────────────────┐
+              ▼                                                     ▼
+      ┌──────────────────┐                               ┌──────────────────┐
+      │  ragdb           │                               │  hris_db         │
+      │  (PostgreSQL +   │                               │  (PostgreSQL     │
+      │   pgvector)      │                               │   remote HRIS    │
+      │                  │                               │   192.168.11.55) │
+      │  • chat_sessions │                               │  • master_unit   │
+      │  • chat_messages │                               │  • master_person │
+      │  • dokumen       │                               │  • tabel_user    │
+      │  • dokumen_chunk │                               └──────────────────┘
+      │  • ai_memory     │
+      │  • session_login │
+      └──────────────────┘
 ```
 
-### Komponen Utama
-
-| Layer | Teknologi | Peran |
-|-------|-----------|-------|
-| Frontend | React 18, Vite, Zustand, Tailwind | Chat UI, sidebar history, login |
-| API | FastAPI, Pydantic V2, SSE streaming | Routing, auth, orchestration |
-| LLM | Ollama (lokal GPU) | Inference 3 model + embedding |
-| Database | asyncpg dual-pool | ragdb + hris |
-| Vector | pgvector (1024 dim) | Semantic search dokumen |
-
 ---
 
-## Flow Diagram
+## Agentic Pipeline (4 Layer)
 
-### Alur Chat Utama (Three-Engine)
-
-```mermaid
-flowchart TD
-    A[User kirim pesan] --> B{Auth}
-    B -->|Guest| C[npp = GUEST]
-    B -->|Pegawai| D[NPP validasi HRIS]
-    C --> E[POST /api/chat/stream]
-    D --> E
-
-    E --> F[Slot 1: Router Engine<br/>Qwen2.5 JSON classify]
-    F --> G{Intent?}
-
-    G -->|RAG / ANALYTICS| H[rag_service.assemble_context]
-    H --> I[Slot 2: DeepSeek-R1<br/>cognitive_loop]
-    G -->|NORMAL / lainnya| J[memory_service retrieval]
-    J --> K[Slot 3: Gemma Persona<br/>llm_client stream]
-
-    I --> L[Save chat_messages + ai_dialogue_corpus]
-    K --> L
-    L --> M[SSE stream ke frontend]
-```
-
-### Alur Session & Sidebar (User Login)
-
-```mermaid
-sequenceDiagram
-    participant U as User
-    participant SB as Sidebar
-    participant CP as ChatPage
-    participant API as Backend
-    participant DB as ragdb
-
-    U->>SB: Klik history item
-    SB->>CP: navigate /chat/{uuid}
-    CP->>API: GET /sessions/{uuid}/messages
-    API->>DB: JOIN chat_messages + chat_sessions
-    DB-->>API: messages[]
-    API-->>CP: JSON
-    CP-->>U: Render ChatArea
-```
-
-### Alur Guest vs Pegawai
-
-| Aspek | Guest (`/chat/guest`) | Pegawai (login) |
-|-------|----------------------|-----------------|
-| Auth | Tanpa header NPP | `X-NPP-Header` + token |
-| Sidebar | Tidak tampil | History chat per NPP |
-| Session DB | `npp = GUEST` | `npp = pegawai` |
-| Reload | State hilang (fresh) | Restore dari URL + `cakra_last_session` |
-| Memory | Tidak diinject | `ai_memory` retrieval |
-
----
-
-## Model AI (Three-Engine)
-
-| Slot | Model (default) | Peran |
-|------|-----------------|-------|
-| **Slot 1 — Router** | `qwen2.5:7b-instruct` | Klasifikasi intent, sentimen, entitas (JSON) |
-| **Slot 2 — Reasoning** | `deepseek-r1:8b` | RAG berat, analitik, `<thought>` reasoning |
-| **Slot 3 — Persona** | `gemma4:e4b` | Chit-chat, operasional ringan, persona PT Pindad |
-| **Embedding** | `nomic-embed-text` | Vektor 1024 dim untuk pgvector |
-| **Vision** | `minicpm-v:latest` | OCR/VLM dokumen (pipeline vision/) |
-
-### Intent Routing
-
-| Intent | Jalur | Engine |
-|--------|-------|--------|
-| `RAG` | Dokumen SOP/IK/SKEP | Slot 2 + RAG context |
-| `ANALYTICS` | SQL, kode, kalkulasi | Slot 2 |
-| `TOOL_CALLING` | Aksi sistem | *Planned* |
-| `NORMAL` | Percakapan umum | Slot 3 + memory |
-
-### Sentiment Adaptation
-
-Router mendeteksi `FRUSTRATED` → system prompt Slot 3 menambahkan instruksi empati taktis sebelum solusi teknis.
-
----
-
-## Fitur yang Sudah Ada
-
-### Backend
-
-| Fitur | Status | Lokasi |
-|-------|--------|--------|
-| Login/logout pegawai (NPP) | ✅ | `api/endpoints/auth.py` |
-| Verifikasi session token | ✅ | `GET /auth/verify-session` |
-| Guest mode (tanpa login) | ✅ | `dependencies/auth.py` |
-| Streaming chat SSE | ✅ | `POST /api/chat/stream` |
-| Three-engine routing | ✅ | `chat.py` + `router_engine.py` |
-| RAG context assembly | ⚠️ Parsial | `rag_service.py` (butuh `hybrid_search`) |
-| Chat session CRUD | ✅ | `chat_history_service.py` |
-| Pin / rename / soft delete session | ✅ | Sidebar API |
-| Auto-save pesan & korpus | ✅ | `chat_history_service`, `llm_client` |
-| Long-term memory retrieval | ✅ | `memory_service.py` |
-| Nightly memory consolidation | ⚠️ Fungsi ada, belum dijadwalkan | `memory_service.py` |
-| GPU concurrency limit (2) | ✅ | `main.py` semaphore |
-| Health check dual DB | ✅ | `GET /api/health` |
-| Document upload API | ❌ | `documents.py` kosong |
-| Tool calling execution | ❌ | Intent ada, executor belum |
-
-### Frontend
-
-| Fitur | Status | Lokasi |
-|-------|--------|--------|
-| Chat streaming real-time | ✅ | `chatStore.js` |
-| Markdown + syntax highlight | ✅ | `ChatBubble.jsx` |
-| Thought accordion UI | ✅ | `ThoughtAccordion.jsx` |
-| Source citation UI | ⚠️ Komponen ada, data belum | `SourceCitation.jsx` |
-| Sidebar history | ✅ | `Sidebar.jsx` |
-| New chat / pin / rename / delete | ✅ | Sidebar + store |
-| Guest welcome screen | ✅ | `GuestWelcome.jsx` |
-| Dark/light theme | ✅ | `ChatPage.jsx` (HeaderDropdownMenu.jsx) |
-| Edit & regenerate pesan | ✅ | `ChatBubble` (UserBubble.jsx) + `chatStore` |
-| Login page | ✅ | `LoginPage.jsx` |
-| File attachment | ✅ | `ChatPage.jsx` (PlusButton.jsx, SendButton.jsx) |
-| Learning dashboard | ⚠️ File ada, belum di-route | `LearningPage.jsx` |
-| Documents sidebar menu | ⚠️ UI ada, belum terhubung | `Sidebar.jsx` |
-
----
-
-## Struktur Folder
-
-### Struktur Aktual (yang ada di repo)
+Setiap pesan chat melewati pipeline sequential yang terdiri dari 4 layer berurutan. Diagram alur lengkap:
 
 ```text
-pinAi/
-├── .env                          # Kredensial DB, Ollama, model names
-├── README.md                     # Dokumen ini
-├── docs/
-│   ├── DATABASE_SCHEMA.md        # Skema DB lengkap + rekomendasi
-│   └── ROADMAP.md                # Rencana pengembangan ke depan
-│
+User Kirim Pesan
+       │
+       ▼
+┌──────────────────────────────────────────────────────────────┐
+│ LAYER 0 — Gateway (Qwen 0.5B)                                │
+│                                                              │
+│  MODE auto  → Klasifikasi: documents | flash                 │
+│  MODE docs  → Langsung generate 3 rewritten_queries          │
+│  MODE flash → Langsung Flash analysis (intent, is_coding…)  │
+│                                                              │
+│  Output: { target_pipeline, rewritten_queries, is_greeting,  │
+│            is_coding, confidence, detected_language }        │
+└──────────────────────┬──────────────────────────────────────-┘
+                       │
+         ┌─────────────┴──────────────┐
+         ▼                            ▼
+  target="documents"           target="flash"
+         │                            │
+         ▼                            ▼
+┌──────────────────┐    ┌──────────────────────────────────────┐
+│ RAG Paralel      │    │ BYPASS Layer 1 — Rule-Based Params   │
+│ (asyncio.gather) │    │ (Instan, tanpa LLM call)             │
+│                  │    │                                      │
+│ 3 queries        │    │ Output: 35 cognitive params          │
+│ → pgvector + FTS │    │ (rule-based dari kata kunci)         │
+│ → RRF scoring    │    └──────────────────────────────────────┘
+│ → BGE Reranker   │
+│ → Dynamic thresh │
+└────────┬─────────┘
+         │ (Paralel dengan Layer 1)
+         ▼
+┌──────────────────────────────────────────────────────────────┐
+│ LAYER 1 — Cognitive Analyzer (Qwen 3B)                       │
+│                                                              │
+│  Input: pesan user + gateway_result + history 5 turn         │
+│         + memory pegawai + OCR text (jika ada)              │
+│                                                              │
+│  Output: 35 parameter kognitif                               │
+│   • emotion, urgency_level, empathy_phrase                   │
+│   • detected_intent, action_plan, response_structure         │
+│   • tone, estimated_response_length, key_points              │
+│   • linguistic_mirroring_strategy, user_pronoun_preference   │
+│   • ... (+ 25 parameter lainnya)                            │
+└──────────────────────────────────────────────────────────────┘
+                       │
+                       ▼
+┌──────────────────────────────────────────────────────────────┐
+│ LAYER 2 — Gemma4 12B Agentic Executor                        │
+│                                                              │
+│  Input: system_prompt (dari 35 params) + RAG context         │
+│         + history 5 turn + OCR text                         │
+│                                                              │
+│  Features:                                                   │
+│  • Adaptive num_ctx: 2048 (chitchat) → 32768 (RAG)          │
+│  • Adaptive temperature: 0.3 (code) → 0.75 (greeting)       │
+│  • <think> tag parsing → log terminal saja, tidak ke FE     │
+│  • Leak filter: [PANGGIL_RAG:] disaring di level chunk       │
+│  • SSE streaming langsung ke browser                         │
+│                                                              │
+│  Output: SSE chunks { chunk, thinking, done, sources }       │
+└──────────────────────────────────────────────────────────────┘
+                       │
+                       ▼
+┌──────────────────────────────────────────────────────────────┐
+│ DATABASE PERSISTENCE (Post-stream)                           │
+│  • auto_update_session_title (jika masih "Obrolan Baru")     │
+│  • save_chat_message (role=assistant)                        │
+│  • save_dialogue_corpus (ai_dialogue_corpus)                 │
+└──────────────────────────────────────────────────────────────┘
+```
+
+### SSE Event Format
+
+Seluruh komunikasi streaming menggunakan format JSON per line:
+
+```json
+{ "chunk": "teks jawaban...", "thinking": "", "done": false }
+{ "chunk": "", "thinking": "Layer sedang berpikir...", "done": false }
+{ "sources": [{ "id": 1, "title": "SK Direksi...", "score": 0.94 }], "chunk": "", "done": false }
+{ "chunk": "", "thinking": "", "done": true }
+```
+
+---
+
+## Model AI — Three-Engine Stack
+
+| Layer | Model | Ukuran | Fungsi | keep_alive |
+|-------|-------|--------|--------|-----------|
+| Layer 0 | `qwen2.5:0.5b` | ~500MB | Gateway: routing + intent | 300s |
+| Layer 1 | `qwen2.5:3b-instruct` | ~2GB | Cognitive: 35 params + blueprint | 300s |
+| Layer 2 | `gemma4:12b` | ~8GB | Executor: response streaming | -1 (always) |
+| Vision | `minicpm-v:latest` | ~5GB | OCR fallback untuk PDF gambar | on-demand |
+| Embedding | `mxbai-embed-large` | ~670MB | RAG: 1024-dim vector | on-demand |
+
+**GPU Concurrency:** Diatur via `asyncio.Semaphore` (1 slot GPU) pada `request.app.state.gpu_limit`. Semua LLM call antre sebelum eksekusi.
+
+---
+
+## RAG Engine — Hybrid Search
+
+Pipeline RAG berjalan dalam **4 fase berurutan**:
+
+### Fase 1 — Hybrid Search (PostgreSQL)
+- **pgvector**: Cosine similarity dengan embedding `mxbai-embed-large` (1024-dim)
+- **Full-Text Search**: `to_tsquery('indonesian', ...)` dengan stopword removal
+- **RRF Scoring**: `1/(60 + rank_vector) + 1/(60 + rank_fts)` untuk menggabungkan dua score
+- **Fallback**: Pure vector search jika FTS hybrid zero match
+
+### Fase 2 — Parent-Child Hierarchical Assembly
+- Ambil **N±1 chunk** (chunk sebelum + target + sesudah) per dokumen kandidat
+- JOIN dengan `dokumen_section` untuk injeksi `section_title` dan `section_type`
+- Grouping per `dokumen_id` untuk konteks yang koheren
+
+### Fase 3 — BGE Cross-Encoder Re-ranker
+- Model: `BAAI/bge-reranker-v2-m3` (~570MB GPU)
+- Inference via `run_in_executor` agar tidak blokir event loop FastAPI
+- Output: relevance score [0.0, 1.0] per dokumen kandidat
+- Lazy-load dengan `@lru_cache(maxsize=1)` — hanya dimuat sekali
+
+### Fase 4 — Dynamic Threshold Filtering
+```python
+best_score = max(scores)
+effective_min_score = max(best_score * 0.15, 0.05)  # ratio=0.15, floor=0.05
+```
+Dokumen di bawah threshold dibuang. Mencegah dokumen tidak relevan masuk konteks Gemma.
+
+### Parallel RAG (Mode Documents)
+Jika `target_pipeline == "documents"`, semua `rewritten_queries` (3 variasi) dijalankan **paralel** via `asyncio.gather`, hasil digabung dengan deduplication by `source_id`.
+
+---
+
+## Struktur Folder Lengkap
+
+```text
+cakra/
 ├── backend/
-│   └── app/
-│       ├── main.py               # FastAPI bootstrap, CORS, GPU semaphore, lifespan
-│       ├── core/
-│       │   ├── config.py         # Settings dari .env (Pydantic)
-│       │   ├── database.py       # Dual pool asyncpg (ragdb + hris)
-│       │   ├── llm_client.py     # Slot 3 streaming Ollama + auto-save
-│       │   ├── hardware.py       # GPU status check
-│       │   ├── paths.py          # Path dokumen absolut
-│       │   └── logging_setup.py
-│       ├── api/
-│       │   ├── router.py         # Hub: /auth, /chat, /health
-│       │   ├── dependencies/
-│       │   │   └── auth.py       # get_current_user_npp (pegawai vs guest)
-│       │   ├── schemas/
-│       │   │   ├── auth.py
-│       │   │   ├── chat.py       # ChatStreamRequest, TitleUpdateSchema
-│       │   │   └── document.py
-│       │   └── endpoints/
-│       │       ├── auth.py       # login, logout, verify-session
-│       │       ├── chat.py       # sessions, stream (core)
-│       │       ├── documents.py  # (kosong — belum aktif)
-│       │       └── health.py
-│       ├── services/
-│       │   ├── agent/
-│       │   │   ├── router_engine.py    # Slot 1: intent + sentiment
-│       │   │   └── cognitive_loop.py   # Slot 2: DeepSeek streaming
-│       │   ├── chat_history_service.py # Session & message CRUD
-│       │   ├── memory_service.py       # ai_memory get + consolidate
-│       │   ├── rag_service.py          # RAG orchestrator
-│       │   ├── vector_service.py       # Embedding (hybrid_search TBD)
-│       │   ├── background_tasks.py
-│       │   ├── document_chunking/
-│       │   │   ├── manager.py
-│       │   │   └── strategies/
-│       │   │       ├── parent_child.py
-│       │   │       └── text_standard.py
-│       │   └── vision/
-│       │       ├── vlm_ocr_service.py
-│       │       └── diagram_parser.py
-│       └── utils/
+│   ├── app/
+│   │   ├── api/
+│   │   │   ├── dependencies/
+│   │   │   │   └── auth.py              # get_current_user_npp (token validator)
+│   │   │   ├── endpoints/
+│   │   │   │   ├── auth.py              # POST /login, GET /verify-session, POST /logout
+│   │   │   │   ├── chat.py              # GET|POST /sessions, POST /stream, POST /documents/upload
+│   │   │   │   ├── documents.py         # [KOSONG — belum diimplementasikan]
+│   │   │   │   └── health.py            # GET /health
+│   │   │   └── schemas/
+│   │   │       └── chat.py              # ChatStreamRequest, TitleUpdateSchema
+│   │   ├── core/
+│   │   │   ├── config.py                # Settings (pydantic_settings, .env loader)
+│   │   │   ├── database.py              # asyncpg dual-pool (ragdb + hris_db)
+│   │   │   ├── hardware.py              # GPU/RAM info
+│   │   │   ├── llm_client.py            # stream_ollama_chat, generate_json_response
+│   │   │   ├── logging_setup.py         # Logging configuration
+│   │   │   └── paths.py                 # UPLOAD_DIR path resolver
+│   │   └── services/
+│   │       ├── agent/
+│   │       │   ├── cognitive_loop.py    # [Agent loop — status unknown]
+│   │       │   └── router_engine.py     # [Router engine — status unknown]
+│   │       ├── document_chunking/
+│   │       │   ├── manager.py           # Chunking orchestrator
+│   │       │   └── strategies/
+│   │       │       ├── parent_child.py  # Hierarchical chunking strategy
+│   │       │       └── text_standard.py # Standard text chunking
+│   │       ├── vision/
+│   │       │   └── ...                  # Vision processing modules
+│   │       ├── background_tasks.py      # [KOSONG — belum diimplementasikan]
+│   │       ├── chat_history_service.py  # CRUD sesi, pesan, attachment, corpus
+│   │       ├── memory_service.py        # Long-term memory (ai_memory table)
+│   │       ├── pipeline_layer_executor.py # Orchestrator 4-layer pipeline
+│   │       ├── rag_service.py           # Hybrid RAG: RRF + reranker
+│   │       ├── reranker_service.py      # BGE cross-encoder (CUDA)
+│   │       ├── vector_service.py        # mxbai-embed-large via Ollama API
+│   │       └── vision_service.py        # MiniCPM-V OCR service
+│   └── main.py                          # FastAPI app, lifespan, CORS, routers
 │
-├── webui/
-│   ├── package.json
-│   ├── vite.config.js
-│   └── src/
-│       ├── main.jsx
-│       ├── App.jsx               # Router: guest, login, chat sessions
-│       ├── components/
-│       │   ├── Layout.jsx
-│       │   ├── Loading.jsx
-│       │   └── ui/GuestWelcome.jsx
-│       ├── stores/
-│       │   ├── authStore.js      # Login, verify, logout
-│       │   └── chatStore.js      # Messages, stream, session, sidebar API
-│       ├── services/
-│       │   ├── apiClient.js      # Axios + interceptors
-│       │   └── endpoints.js      # (kosong)
-│       └── features/
-│           ├── auth/LoginPage.jsx
-│           ├── chat/
-│           │   ├── ChatPage.jsx  # Halaman obrolan utama (modular)
-│           │   ├── chatPage.styles.js # Sentralisasi gaya & helper styles
-│           │   └── components/
-│           │       ├── Sidebar.jsx # Navigasi riwayat obrolan & setelan
-│           │       ├── ChatArea.jsx # Container pesan berbasis Virtuoso
-│           │       ├── ChatBubble.jsx # Gelembung asisten & parser pemikiran
-│           │       ├── ThoughtAccordion.jsx # Accordion penalaran internal AI
-│           │       ├── SourceCitation.jsx # Tampilan referensi kutipan dokumen
-│           │       ├── CodeBlockHeader.jsx # [NEW] Salin & unduh kode program
-│           │       ├── CustomModeSelector.jsx # [NEW] Dropdown pemilih mode chat
-│           │       ├── HeaderDropdownMenu.jsx # [NEW] Kebab menu setelan tema & login
-│           │       ├── PlusButton.jsx # [NEW] Tombol lampiran berkas
-│           │       ├── SendButton.jsx # [NEW] Tombol submit formulir
-│           │       └── UserBubble.jsx # [NEW] Gelembung pesan pengguna & inline editor
-│           └── learning/         # Belum di-route di App.jsx
-│               ├── LearningPage.jsx
-│               └── components/
-│
-├── db_doc/                       # Static file serving (/db_doc)
-└── aibackup/                     # Legacy scripts (OCR, chunking, scraping)
+└── webui/
+    ├── src/
+    │   ├── components/ui/
+    │   │   ├── GuestWelcome.jsx          # Halaman selamat datang tamu
+    │   │   └── ToastProvider.jsx         # ★ Global toast notification system
+    │   ├── features/chat/
+    │   │   ├── ChatPage.jsx              # Main orchestrator chat page
+    │   │   ├── chatPage.styles.js        # Centralized style objects + helpers
+    │   │   └── components/
+    │   │       ├── ChatArea.jsx          # Virtuoso virtual list renderer
+    │   │       ├── ChatBubble.jsx        # Message bubble (user + assistant router)
+    │   │       ├── CakraResponseRenderer.jsx # Markdown/code renderer
+    │   │       ├── CodeBlockHeader.jsx   # Copy/download code block header
+    │   │       ├── CustomModeSelector.jsx # Mode: auto|flash|documents
+    │   │       ├── HeaderDropdownMenu.jsx # Kebab menu header (theme, login)
+    │   │       ├── PlusButton.jsx        # File attachment button
+    │   │       ├── SendButton.jsx        # Submit button dengan loading state
+    │   │       ├── Sidebar.jsx           # Chat history sidebar
+    │   │       ├── SourceCitation.jsx    # RAG source card
+    │   │       └── UserBubble.jsx        # User message + attachment viewer
+    │   ├── hooks/
+    │   │   └── useToast.js               # ★ Toast notification hook
+    │   ├── services/
+    │   │   ├── apiClient.js              # Axios instance + base config
+    │   │   └── endpoints.js              # ★ Centralized API + SSE functions
+    │   └── stores/
+    │       ├── authStore.js              # Zustand: auth state (user, token)
+    │       └── chatStore.js              # Zustand: sessions, messages, streaming
+    └── index.html
 ```
 
 ---
 
 ## API Endpoints
 
-Base URL: `http://<host>:5000/api`
+### Auth — `/api/auth`
 
-### Authentication (`/auth`)
+| Method | Endpoint | Deskripsi |
+|--------|----------|-----------|
+| `POST` | `/api/auth/login` | Login dengan NPP + password (MD5), validasi ke HRIS remote |
+| `GET` | `/api/auth/verify-session?token=` | Verifikasi token session aktif |
+| `POST` | `/api/auth/logout` | Invalidasi token + audit trail |
 
-| Method | Path | Deskripsi |
-|--------|------|-----------|
-| `POST` | `/auth/login` | Login NPP + password |
-| `GET` | `/auth/verify-session?token=` | Validasi token session |
-| `POST` | `/auth/logout` | Logout + audit trail |
+### Chat — `/api/chat`
 
-### Chat (`/chat`)
+| Method | Endpoint | Deskripsi |
+|--------|----------|-----------|
+| `GET` | `/api/chat/sessions` | Ambil semua sesi aktif milik user |
+| `POST` | `/api/chat/sessions/create` | Buat sesi baru |
+| `PUT` | `/api/chat/sessions/{uuid}/title` | Rename judul sesi |
+| `PUT` | `/api/chat/sessions/{uuid}/pin` | Pin/unpin sesi |
+| `DELETE` | `/api/chat/sessions/{uuid}` | Soft delete sesi |
+| `GET` | `/api/chat/sessions/{uuid}/messages` | Ambil semua pesan dalam sesi |
+| `POST` | `/api/chat/stream` | **Main endpoint SSE streaming** (pipeline 4-layer) |
+| `POST` | `/api/chat/documents/upload` | Upload file attachment (image/PDF) |
 
-| Method | Path | Deskripsi |
-|--------|------|-----------|
-| `GET` | `/chat/sessions` | Daftar sesi sidebar (per NPP) |
-| `POST` | `/chat/sessions/create` | Buat sesi baru |
-| `GET` | `/chat/sessions/{uuid}/messages` | Muat pesan sesi |
-| `PUT` | `/chat/sessions/{uuid}/title` | Rename judul |
-| `PUT` | `/chat/sessions/{uuid}/pin` | Pin/unpin |
-| `DELETE` | `/chat/sessions/{uuid}` | Soft delete |
-| `POST` | `/chat/stream` | **Core** — streaming chat + auto-save |
+### Health — `/api`
 
-**Header opsional:** `X-NPP-Header: <npp>` — kosong = guest mode
+| Method | Endpoint | Deskripsi |
+|--------|----------|-----------|
+| `GET` | `/api/health` | Status server + model |
 
-### Health (`/health`)
-
-| Method | Path | Deskripsi |
-|--------|------|-----------|
-| `GET` | `/health` | Status ragdb + hris pool |
-
-### Root
-
-| Method | Path | Deskripsi |
-|--------|------|-----------|
-| `GET` | `/` | Info app + model roster |
-| `GET` | `/docs` | Swagger UI |
-
----
-
-## Frontend Routes
-
-| Path | Akses | Deskripsi |
-|------|-------|-----------|
-| `/` | Public | Redirect → `/chat/guest` |
-| `/login` | Public | Halaman login pegawai |
-| `/chat/guest` | Public | Mode tamu (tanpa sidebar) |
-| `/chat/new` | Auth required | Obrolan baru (pegawai) |
-| `/chat/:sessionId` | Auth required | Sesi existing (UUID) |
-
-**State management:**
-- `authStore` — token, user, `checkSession()`
-- `chatStore` — messages, streaming, `loadChatSession()`, `sendMessage()`
-
-**URL = single source of truth** untuk sesi aktif pegawai (`sessionId` di route).
-
----
-
-## Database
-
-Database utama: **PostgreSQL `ragdb`** dengan ekstensi **pgvector**.
-
-### Tabel Inti
-
-| Grup | Tabel |
-|------|-------|
-| Chat | `chat_sessions`, `chat_messages`, `ai_agent_steps` |
-| AI | `ai_dialogue_corpus`, `ai_memory`, `ai_learning`, `ai_system_rules`, `ai_user_profile` |
-| Dokumen | `dokumen`, `dokumen_chunk`, `dokumen_section`, `jenis_dokumen`, `ai_document_chunks` |
-| User | `users`, `session_login`, `history_login` |
-| Sistem | `history_file`, `user_proactive_tasks` |
-
-### Relasi Kritis
-
-```text
-chat_sessions.id  ←──  chat_messages.session_id        (INTEGER FK)
-chat_sessions.id  ←──  ai_dialogue_corpus.session_id   (INTEGER FK)
-chat_sessions.session_uuid  ←──  Frontend URL & API param (UUID string)
+### ChatStreamRequest Schema
+```json
+{
+  "messages": [{ "role": "user", "content": "pertanyaan..." }],
+  "session_uuid": "uuid-sesi-aktif",
+  "attachment_paths": ["path/file1.pdf"],
+  "mode": "auto | flash | documents"
+}
 ```
 
-> Dokumentasi lengkap + rekomendasi penambahan tabel/kolom: **[docs/DATABASE_SCHEMA.md](docs/DATABASE_SCHEMA.md)**
+---
+
+## WebUI — Arsitektur Frontend
+
+### State Management (Zustand)
+
+```text
+chatStore.js
+├── messages[]             ← Daftar pesan aktif
+├── sessionUuid            ← UUID sesi aktif
+├── isStreaming / isThinking
+├── stagedAttachments[]    ← File yang sudah diupload, menunggu dikirim
+├── chatMode               ← auto | flash | documents
+├── activeIsolatedDocId    ← Untuk mode isolated document context
+└── Methods:
+    ├── sendMessage()      → POST /api/chat/stream (SSE via fetch ReadableStream)
+    ├── createNewSession() → POST /api/chat/sessions/create
+    ├── loadSession()      → GET /api/chat/sessions/{uuid}/messages
+    ├── fetchChatHistory() → GET /api/chat/sessions
+    ├── renameChat()       → PUT /api/chat/sessions/{uuid}/title
+    ├── pinChat()          → PUT /api/chat/sessions/{uuid}/pin
+    └── deleteChat()       → DELETE /api/chat/sessions/{uuid}
+
+authStore.js
+├── user { npp, fullname, divisi, role }
+├── token (session token)
+├── isAuthenticated
+└── Methods: login(), logout(), verifySession()
+```
+
+### Data Flow Frontend
+
+```text
+[ChatPage]
+    ↓ user ketik + attach file
+[handleFileChange/handlePaste/handleDrop]
+    → validateFile() → max 10MB, image/* | application/pdf
+    → setSelectedFiles()  (local state preview)
+    ↓ tombol Send
+[handleSubmit]
+    → jika ada files → POST /api/chat/documents/upload
+                     → toast.info + toast.success
+    → chatStore.sendMessage()
+        → fetch() + ReadableStream reader
+        → parse SSE line-by-line:
+            chunk    → append ke messages (streaming)
+            sources  → setStagedSources
+            done=true → setIsStreaming(false)
+    → sessionStorage.removeItem(draft_key)  ← hapus draft
+    → selectedFiles = []
+```
+
+### Toast Notification System
+```text
+ToastProvider.jsx (global wrapper di App.jsx)
+  ↕
+useToast.js hook → { toast.success, toast.error, toast.warning, toast.info }
+```
+Digunakan di: validasi file, upload feedback, error pipeline, koneksi error.
+
+### Draft Persistence
+Input textarea disimpan ke `sessionStorage` dengan key `cakra_draft_${sessionId}` setiap keystroke. Dipulihkan otomatis saat pindah sesi.
+
+---
+
+## Database Schema (ragdb)
+
+### Tabel Utama
+
+| Tabel | Fungsi |
+|-------|--------|
+| `users` | Data pegawai (npp, fullname, divisi, role) — sync dari HRIS saat login |
+| `session_login` | Token sesi aktif + IP + last_activity |
+| `history_login` | Audit trail LOGIN/LOGOUT per NPP |
+| `chat_sessions` | Sesi obrolan (session_uuid, judul, is_pinned, is_deleted, npp) |
+| `chat_messages` | Pesan per sesi (role, message_text, thought, timestamp) |
+| `chat_attachments` | Metadata file upload (file_name, file_path, mime_type, extracted_text) |
+| `ai_dialogue_corpus` | Pasangan user-assistant untuk fine-tuning/retrieval masa depan |
+| `ai_memory` | Memori jangka panjang per NPP (mem_key, mem_value) — diisi nightly job |
+| `dokumen` | Dokumen regulasi Pindad (judul, nomor, id_jenis) |
+| `dokumen_chunk` | Chunk teks + embedding 1024-dim (pgvector) |
+| `dokumen_section` | Hierarki section dokumen |
+| `jenis_dokumen` | Kategori dokumen (SKEP, SK Direksi, SOP, dll) |
+
+### Dual-Database Connection Pool
+- **ragdb** (asyncpg pool: min=5, max=20) — semua data operasional CAKRA
+- **hris_db** (asyncpg pool: min=3, max=10) — validasi login kredensial remote
 
 ---
 
 ## Cara Menjalankan
 
 ### Prasyarat
-
-- Python 3.10+
-- Node.js 18+
-- PostgreSQL + pgvector (`ragdb`)
-- Ollama dengan model: `qwen2.5:7b-instruct`, `deepseek-r1:8b`, `gemma4:e4b`, `nomic-embed-text`
-- GPU NVIDIA (disarankan, semaphore max 2 concurrent)
-
-### Environment (`.env` di root `pinAi/`)
-
-```env
-DB_HOST=localhost
-DB_DATABASE=ragdb
-DB_USER=postgres
-DB_PASSWORD=***
-
-DB_LOGIN_HOST=<hris_host>
-DB_LOGIN_DATABASE=hris_db
-DB_LOGIN_USER=***
-DB_LOGIN_PASSWORD=***
-
-OLLAMA_BASE_URL=http://localhost:11434
-MODEL_ROUTER=qwen2.5:7b-instruct
-MODEL_REASONING=deepseek-r1:8b
-MODEL_PERSONA=gemma4:e4b
-MODEL_EMBEDDING=nomic-embed-text
-```
+- Python 3.11+ dengan virtual environment
+- Node.js 18+ + npm/yarn
+- PostgreSQL 15+ dengan ekstensi `pgvector`
+- Ollama dengan model: `qwen2.5:0.5b`, `qwen2.5:3b-instruct`, `gemma4:12b`, `mxbai-embed-large`
+- GPU NVIDIA (CUDA) untuk reranker BGE
 
 ### Backend
-
 ```bash
-cd /home/qisthi/pinAi
-# Install dependencies Python (sesuaikan dengan environment Anda)
-uvicorn backend.app.main:app --host 0.0.0.0 --port 5000 --reload
+# 1. Install dependencies
+cd cakra
+pip install -r requirements.txt
+
+# 2. Buat file .env (salin dari .env.example)
+cp .env.example .env
+# Edit .env: DB_HOST, DB_USER, DB_PASSWORD, DB_LOGIN_HOST, OLLAMA_BASE_URL, dll
+
+# 3. Jalankan FastAPI
+uvicorn backend.main:app --host 0.0.0.0 --port 5000 --reload
 ```
 
-### Frontend
-
+### Frontend (WebUI)
 ```bash
-cd /home/qisthi/pinAi/webui
+cd webui
 npm install
-npm run dev
-# Buka http://localhost:5173
+npm run dev      # Development (port 5173)
+npm run build    # Production build ke /dist
 ```
 
-> **Catatan:** `chatStore.js` saat ini hardcode `API_BASE = http://192.168.11.80:5000` — disarankan pindah ke `VITE_API_BASE` (lihat [ROADMAP](docs/ROADMAP.md)).
+---
+
+## Rekomendasi Optimasi & Fitur Baru
+
+> **Catatan**: Seluruh item di bawah ini adalah roadmap pengembangan. Setiap item sudah dianalisa dan siap untuk dieksekusi secara independen.
 
 ---
 
-## Dokumentasi Lanjutan
+### 🔴 BACKEND — Prioritas Tinggi (Critical)
 
-| Dokumen | Isi |
-|---------|-----|
-| [docs/DATABASE_SCHEMA.md](docs/DATABASE_SCHEMA.md) | Skema DB lengkap, relasi, rekomendasi tabel/kolom baru |
-| [docs/ROADMAP.md](docs/ROADMAP.md) | Rencana pengembangan 8 fase menuju sistem optimal |
-| [docs/AGENT_PLAYBOOK.md](docs/AGENT_PLAYBOOK.md) | **Panduan agent:** aturan emas, LLM/tools, optimisasi sistem, template eksekusi |
-| [aibackup/](aibackup/) | Script legacy: OCR, chunking, embedding pipeline |
+#### B1 — Hapus `print()` dari Kode Produksi, Gunakan Logger Terstruktur
+**Masalah**: Seluruh backend (chat.py, pipeline_layer_executor.py, rag_service.py, memory_service.py, database.py, dll.) menggunakan `print()` langsung untuk debugging. Di produksi, ini memperlambat performa, tidak bisa dikontrol level-nya (DEBUG/INFO/WARNING), dan mencemari stdout.
 
----
+**Solusi**: Ganti semua `print()` dengan `logger.info()` / `logger.debug()` / `logger.warning()`. File `logging_setup.py` sudah ada namun belum dipakai optimal.
 
-## Perbedaan CAKRA vs AI Standar
-
-| Aspek | Chatbot Standar | CAKRA AI (target) |
-|-------|-----------------|-------------------|
-| Routing | Satu model semua | 3 engine spesialis |
-| Memori | Hanya context window | `ai_memory` jangka panjang per NPP |
-| Dokumen | General knowledge | RAG dokumen PT Pindad + citation |
-| Emosi | Netral | Sentiment-aware empathy |
-| Reasoning | Direct answer | DeepSeek trace + agent steps |
-| Belajar | Tidak ada | `ai_learning` + korpus dialog |
-| Identitas | Generic | Persona pertahanan PT Pindad |
+**File terdampak**: `chat.py`, `pipeline_layer_executor.py`, `rag_service.py`, `memory_service.py`, `auth.py`, `llm_client.py`, `database.py`, `vector_service.py`, `chat_history_service.py`
 
 ---
 
-## Lisensi & Konteks
+#### B2 — Background Task: Implementasi `background_tasks.py` (File Kosong)
+**Masalah**: File `background_tasks.py` saat ini **kosong**. Fungsi `consolidate_nightly_memory()` di `memory_service.py` tidak pernah dipanggil secara otomatis. Memori jangka panjang pegawai tidak pernah diperbarui.
 
-Proyek internal **PT Pindad** — CAKRA AI RAG System v2.0.0
-
----
-
-## Rekomendasi Fitur & Optimasi WebUI
-
-Berdasarkan analisis arsitektur WebUI saat ini, berikut adalah rekomendasi teknis untuk pengembangan dan peningkatan performa sistem:
-
-### 1. Optimasi Performa & Rendering
-- **Zustand Selector Optimization**: Pemanggilan store pada komponen-komponen anak (seperti `UserBubble` atau `CustomModeSelector`) sebaiknya menggunakan selector yang spesifik (contoh: `useChatStore(state => state.isStreaming)`) daripada mengambil seluruh state store untuk mencegah *re-render* yang tidak perlu pada seluruh komponen pohon.
-- **Virtuoso React.memo**: Tingkatkan efisiensi render baris list virtuoso di `ChatArea.jsx` dengan memecah property secara ketat dan menggunakan `React.memo` pada seluruh item untuk memastikan baris chat yang tidak aktif tidak ikut dirender ulang ketika teks obrolan baru masuk.
-
-### 2. Peningkatan Fitur Obrolan
-- **Client-Side File Validation**: Tambahkan validasi tipe file (misalnya membatasi hanya `.pdf` dan `image/*`) dan ukuran file (maksimal 10 MB) secara lokal di sisi klien sebelum memicu panggilan API upload. Hal ini berguna untuk meningkatkan *user experience* dan menghemat *bandwidth* server.
-- **Local Input Draft Persistence**: Terapkan penyimpanan draf input chat sementara di `sessionStorage` menggunakan kunci `sessionId`. Jika pengguna tidak sengaja berpindah chat melalui sidebar, teks yang sedang diketik tidak akan hilang saat mereka kembali.
-- **Proactive Toast Notification**: Integrasikan sistem notifikasi toast global di WebUI (menggantikan penggunaan `alert` standar) untuk menampilkan status unggahan, kesalahan koneksi backend, atau keberhasilan penyalinan teks secara lebih estetik dan tidak memblokir interaksi pengguna.
-
-### 3. Pemeliharaan & Standardisasi Kode
-- **Standardisasi API Service Layer**: Isi berkas `src/services/endpoints.js` dengan fungsi pemanggilan terstruktur menggunakan Axios. Gantikan pemanggilan `fetch` mentah yang saat ini tersebar di `ChatPage.jsx` dan `chatStore.js` agar konfigurasi endpoint dan interceptor (seperti *handling authorization headers*) dikelola secara terpusat.
-- **Penyelarasan Tailwind & CSS Murni**: Lakukan migrasi bertahap pada kelas Tailwind statis di `Sidebar.jsx` ke dalam sistem desain di `chatPage.styles.js` atau berkas CSS global untuk memastikan konsistensi desain sistem UI.
+**Solusi**:
+- Implementasikan APScheduler atau FastAPI `BackgroundTasks` / `asyncio` scheduled task
+- Jalankan `memory_service.consolidate_nightly_memory()` setiap pukul 02:00 WIB
+- Tambahkan endpoint admin `POST /api/admin/run-memory-consolidation` untuk trigger manual
 
 ---
 
-*README diperbarui berdasarkan analisis kode aktual `pinAi/backend` & `pinAi/webui` — Juni 2026.*
+#### B3 — Validasi File Upload di Server (Duplikasi Validasi)
+**Masalah**: Saat ini validasi tipe file di `chat.py` hanya mengecek `content_type`. MIME type bisa dipalsukan. Tidak ada validasi ukuran file di sisi server.
+
+**Solusi**:
+- Tambahkan validasi ukuran: `file.size > 10 * 1024 * 1024` → reject 400
+- Tambahkan validasi magic bytes untuk PDF (`%PDF`) dan gambar
+- Rate limiting per user/IP untuk endpoint upload
+
+---
+
+#### B4 — Timeout & Retry Layer 0/1 Tidak Konsisten
+**Masalah**: `generate_json_response` di Layer 0 menggunakan timeout 25s (routing) dan 15s (query rewriter), namun Layer 1 hanya 15s. Jika Qwen 3B lambat, Layer 1 timeout dan fallback ke rule-based — tanpa retry.
+
+**Solusi**:
+- Tambahkan exponential backoff retry (maks 2x) untuk Layer 0/1
+- Timeout Layer 1 dinaikkan ke 30s (Qwen 3B lebih berat dari 0.5B)
+- Circuit breaker: jika Layer 0/1 gagal >3x dalam 60s, langsung flash mode
+
+---
+
+#### B5 — Employee Name Query per Request (N+1 Problem)
+**Masalah**: Di `chat.py` baris 378-405, setiap request pipeline membuka koneksi DB baru hanya untuk mengambil `fullname` user. Ini N+1 query yang tidak perlu karena data ini statis per sesi.
+
+**Solusi**:
+- Cache nama pegawai dalam sesi per `session_uuid` atau per `npp`
+- Gunakan `functools.lru_cache` atau in-memory dict dengan TTL
+- Atau kirim `employee_name` dari frontend saat POST `/stream` (sudah ada di authStore)
+
+---
+
+#### B6 — Implementasi `documents.py` Endpoint (File Kosong)
+**Masalah**: `backend/app/api/endpoints/documents.py` kosong. Tidak ada endpoint untuk manajemen dokumen regulasi (list, upload, delete, reindex).
+
+**Solusi**: Buat endpoint CRUD dokumen:
+- `GET /api/documents` — list semua dokumen dengan paginasi
+- `POST /api/documents/ingest` — upload + chunk + embed dokumen baru
+- `DELETE /api/documents/{id}` — hapus dokumen + chunk + embedding
+- `POST /api/documents/{id}/reindex` — re-embed dokumen yang sudah ada
+
+---
+
+#### B7 — Auth: Hardcoded Bypass Account & MD5 Password (Security)
+**Masalah**: 
+1. `auth.py` line 104: akun bypass `npp=99999, password=123456` hardcoded di kode
+2. Password divalidasi menggunakan MD5 (sudah deprecated, mudah di-crack)
+
+**Solusi**:
+- Pindahkan bypass account ke environment variable: `BYPASS_NPP`, `BYPASS_PASSWORD_HASH`
+- Pertimbangkan migrasi ke bcrypt/Argon2 untuk password baru (koordinasi dengan HRIS team)
+- Tambahkan rate limiting login: max 5 attempt per IP per menit
+
+---
+
+#### B8 — Koneksi DB per-request di Pipeline (Resource Leak Risk)
+**Masalah**: Di `chat.py` baris 378, ada pola `async with get_db() as conn:` di dalam generator pipeline SSE. Jika streaming terhenti di tengah jalan (client disconnect), koneksi DB mungkin tidak langsung dikembalikan ke pool.
+
+**Solusi**: 
+- Tangkap `asyncio.CancelledError` di `_sequential_pipeline_generator`
+- Ensure DB connections selalu dikembalikan ke pool via proper `finally` block
+- Pisahkan employee name fetch ke fungsi tersendiri sebelum streaming dimulai
+
+---
+
+### 🟡 BACKEND — Prioritas Sedang (Enhancement)
+
+#### B9 — Caching Embedding Query (Vector Service)
+**Masalah**: Setiap RAG query selalu memanggil Ollama untuk generate embedding, meskipun query yang sama sudah pernah ditanyakan sebelumnya.
+
+**Solusi**: 
+- Implementasikan in-memory LRU cache untuk query embedding (maks 500 entry)
+- Key: `hash(query_string)`, Value: `List[float]` embedding
+- TTL 1 jam untuk mencegah stale data
+
+---
+
+#### B10 — Session Token Expiry (Auth)
+**Masalah**: Token session tidak memiliki expiry time. Jika user tidak logout, token valid selamanya.
+
+**Solusi**:
+- Tambahkan kolom `expires_at TIMESTAMP` di tabel `session_login`
+- Auto-expire token setelah 8 jam (satu shift kerja)
+- `verify-session` endpoint harus cek `expires_at > NOW()`
+
+---
+
+#### B11 — Structured Logging dengan Request ID Tracing
+**Masalah**: Log saat ini tidak bisa di-trace per request. Sulit debugging ketika ada request bersamaan.
+
+**Solusi**:
+- Tambahkan middleware FastAPI yang inject `X-Request-ID` header
+- Semua log dalam satu pipeline menggunakan `request_id` yang sama
+- Format log: `[2026-06-13 14:00:00] [req-abc123] [LAYER 0] Gateway completed in 1.2s`
+
+---
+
+#### B12 — Auto-Title menggunakan LLM (bukan slice 4 kata)
+**Masalah**: `auto_update_session_title` saat ini menggunakan `" ".join(trigger_text.split()[:4]) + "..."` — tidak informatif dan sering menghasilkan judul yang janggal.
+
+**Solusi**: Tambahkan opsi generate title via LLM (Qwen 0.5B) secara async background task setelah streaming selesai:
+```python
+title = await generate_session_title(user_message, first_response[:200])
+```
+
+---
+
+#### B13 — RAG: Index HNSW untuk pgvector (Performance)
+**Masalah**: Comment di `rag_service.py` menyebutkan "seq scan, HNSW aktif otomatis saat data bertambah" — ini tidak akurat. HNSW harus dibuat manual.
+
+**Solusi**: Buat HNSW index jika belum ada:
+```sql
+CREATE INDEX IF NOT EXISTS idx_dokumen_chunk_embedding_hnsw
+ON dokumen_chunk USING hnsw (embedding vector_cosine_ops)
+WITH (m = 16, ef_construction = 64);
+```
+Signifikan mempercepat vector search saat `dokumen_chunk` > 10.000 baris.
+
+---
+
+### 🟢 FITUR BARU — Backend
+
+#### B14 — Feedback & Rating Respons AI
+Tambahkan endpoint `POST /api/chat/messages/{id}/feedback` dengan payload `{ rating: 1-5, comment: string }`. Data disimpan ke tabel baru `ai_feedback` untuk evaluasi kualitas model.
+
+#### B15 — WebSocket untuk Real-time Notification
+Ganti polling sidebar dengan WebSocket atau Server-Sent Events untuk notifikasi: sesi baru dari device lain, memory consolidation selesai, dll.
+
+#### B16 — Audit Log Admin Dashboard
+Buat endpoint `GET /api/admin/audit-logs` yang menampilkan history_login + query log per pegawai untuk keperluan compliance.
+
+---
+
+### 🟡 WEBUI — Prioritas Sedang
+
+#### W1 — Scroll-to-Bottom Button pada ChatArea
+Saat user scroll ke atas untuk membaca riwayat, tombol "↓ Kembali ke Bawah" harus muncul. Virtuoso sudah support `followOutput` tapi belum ada UI indicator.
+
+#### W2 — Skeleton Loading untuk Riwayat Chat
+Saat `loadChatSession` dipanggil, tampilkan skeleton placeholder (shimmer effect) alih-alih layar kosong. Meningkatkan perceived performance.
+
+#### W3 — Retry Mekanisme untuk SSE Stream Terputus
+Jika koneksi SSE putus di tengah streaming (`fetch` error / network drop), frontend harus auto-retry dengan exponential backoff (maks 3x) dan toast info "Menghubungkan kembali...".
+
+#### W4 — Message Search / Filter dalam Sesi
+Tambahkan search bar di dalam sesi aktif untuk mencari teks di dalam riwayat percakapan. Filter highlight kata kunci yang cocok.
+
+#### W5 — Export Chat History
+Tombol ekspor riwayat obrolan ke format PDF atau Markdown di header. Berguna untuk dokumentasi meeting atau referensi laporan.
+
+#### W6 — Indikator "Sedang Mengetik" yang Akurat
+Saat ini indikator berputar selama seluruh proses pipeline. Tampilkan fase yang berbeda:
+- Layer 0: "Menganalisis pertanyaan..."
+- RAG: "Mencari dokumen regulasi..."
+- Layer 2: "Menyusun respons..."
+
+#### W7 — Mode Isolated Document Context (UI)
+Sidebar sudah menyiapkan `activeIsolatedDocId` di chatStore, namun belum ada UI untuk memilih dokumen spesifik sebagai konteks terisolasi (tanpa RAG umum).
+
+---
+
+### 🟢 FITUR BARU — WebUI
+
+#### W8 — Dark/Light Mode Persistence yang Tepat
+Mode tema saat ini disimpan di `localStorage` tapi tidak disinkronkan antar tab browser. Gunakan `BroadcastChannel` API atau `storage` event listener.
+
+#### W9 — Keyboard Shortcuts
+- `Ctrl+/` → New Chat
+- `Ctrl+K` → Search riwayat sesi
+- `Esc` → Tutup modal/dropdown aktif
+
+#### W10 — Markdown Export dengan Syntax Highlight
+Tambahkan tombol "Copy as Markdown" di setiap response bubble asisten, bukan hanya di code block.
+
+---
+
+*README ini di-generate dan diperbarui pada: 2026-06-13 berdasarkan analisa lengkap seluruh kode backend dan frontend.*
