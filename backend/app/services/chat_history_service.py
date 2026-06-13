@@ -22,8 +22,8 @@ class ChatHistoryService:
     ) -> Dict[str, Any]:
         """Membuat sesi chat baru di tabel chat_sessions saat user klik 'New Chat'"""
         session_uuid = str(uuid.uuid4())
-        print(
-            f"➕ [CHAT HISTORY] Membuat sesi baru untuk NPP: {npp} | UUID: {session_uuid[:8]}..."
+        logger.info(
+            f"[CHAT_HISTORY] Creating new session for NPP: {npp} | UUID: {session_uuid[:8]}"
         )
 
         async with get_db() as conn:
@@ -39,7 +39,7 @@ class ChatHistoryService:
 
     async def get_user_sessions(self, npp: str) -> List[Dict[str, Any]]:
         """Mengambil semua sesi chat aktif milik pegawai tertentu untuk dipasang di Sidebar Frontend"""
-        print(f"🔍 [CHAT HISTORY] Menarik daftar sesi aktif milik NPP: {npp}")
+        logger.debug(f"[CHAT_HISTORY] Fetching active sessions for NPP: {npp}")
         async with get_db() as conn:
             query = """
                 SELECT session_uuid, judul, is_pinned, started_at 
@@ -60,8 +60,8 @@ class ChatHistoryService:
 
     async def toggle_pin_session(self, session_uuid: str, pin_status: bool) -> bool:
         """Fitur Sidebar: Menyematkan (Pin/Unpin) sesi obrolan penting"""
-        print(
-            f"📌 [CHAT HISTORY] Mengubah status PIN sesi {session_uuid[:8]} menjadi: {pin_status}"
+        logger.debug(
+            f"[CHAT_HISTORY] Toggling PIN for session {session_uuid[:8]}: {pin_status}"
         )
         async with get_db() as conn:
             await conn.execute(
@@ -73,8 +73,8 @@ class ChatHistoryService:
 
     async def update_session_title(self, session_uuid: str, new_title: str) -> bool:
         """Fitur Sidebar: Mengedit judul sesi obrolan (Rename)"""
-        print(
-            f'📝 [CHAT HISTORY] Mengubah judul sesi {session_uuid[:8]} -> "{new_title}"'
+        logger.info(
+            f'[CHAT_HISTORY] Updated session title for {session_uuid[:8]}: "{new_title}"'
         )
         async with get_db() as conn:
             await conn.execute(
@@ -86,7 +86,7 @@ class ChatHistoryService:
 
     async def soft_delete_session(self, session_uuid: str) -> bool:
         """Fitur Sidebar: Menghapus sesi (Soft delete dengan mengubah flag is_deleted)"""
-        print(f"🗑️  [CHAT HISTORY] Soft delete sesi obrolan: {session_uuid[:8]}")
+        logger.info(f"[CHAT_HISTORY] Soft deleting session: {session_uuid[:8]}")
         async with get_db() as conn:
             await conn.execute(
                 "UPDATE chat_sessions SET is_deleted = TRUE, is_active = FALSE WHERE session_uuid = $1",
@@ -288,7 +288,7 @@ class ChatHistoryService:
                         auto_title,
                         session_uuid,
                     )
-                    print(f"📝 [AUTO TITLE] Berhasil merubah judul sesi: {auto_title}")
+                    logger.info(f"[AUTO_TITLE] Session title updated: {auto_title}")
                     return auto_title
                 return None
             except Exception as e:

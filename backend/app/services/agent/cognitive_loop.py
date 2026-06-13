@@ -15,7 +15,7 @@ class CognitiveLoop:
     akan menghasilkan tag <think>...</think> sebelum memberikan jawaban final.
     """
     def __init__(self):
-        print("⚙️  [COGNITIVE LOOP] Orkestrator DeepSeek-R1 (Slot 2) siap merajut pemikiran, bolo!")
+        logger.info("[COGNITIVE_LOOP] Orchestrator ready for deep thinking")
 
     async def stream_reasoning_engine(
         self,
@@ -29,11 +29,11 @@ class CognitiveLoop:
         url = f"{settings.OLLAMA_BASE_URL}/api/chat"
         model_name = settings.MODEL_REASONING  # deepseek-r1:8b
 
-        print(f"\n🧠 [COGNITIVE LOOP] Memasuki mode berpikir mendalam. Menunggu antrean GPU...")
+        logger.debug(f"[COGNITIVE_LOOP] Entering deep thinking mode, waiting for GPU queue...")
         reasoning_start_time = datetime.now()
         
         async with gpu_semaphore:
-            print(f"🔓 [HARDWARE GPU] Slot didapatkan! {model_name} mulai menganalisis masalah...")
+            logger.debug(f"[COGNITIVE_LOOP] GPU slot acquired, {model_name} starting analysis...")
             
             payload = {
                 "model": model_name,
@@ -54,7 +54,7 @@ class CognitiveLoop:
                     async with client.stream("POST", url, json=payload) as response:
                         if response.status_code != 200:
                             error_text = await response.aread()
-                            print(f"💥 [COGNITIVE] Ollama Error {response.status_code}: {error_text}")
+                            logger.error(f"[COGNITIVE_LOOP] Ollama error {response.status_code}: {error_text}")
                             yield json.dumps({"error": f"Ollama Error: {response.status_code}"}) + "\n"
                             return
 
@@ -76,9 +76,7 @@ class CognitiveLoop:
                             if done:
                                 reasoning_end_time = datetime.now()
                                 elapsed_time = (reasoning_end_time - reasoning_start_time).total_seconds()
-                                print("\n" + "═"*50)
-                                print(f"🧠 [DEEPSEEK REASONING COMPLETE] dalam {elapsed_time:.2f} detik")
-                                print("═"*50)
+                                logger.debug(f"[COGNITIVE_LOOP] Deep reasoning completed in {elapsed_time:.2f}s")
                                 
                                 if session_uuid and session_uuid != "GLOBAL_SESSION":
                                     try:
@@ -98,15 +96,15 @@ class CognitiveLoop:
                                             user_text=user_query,
                                             assistant_text=full_response,
                                         )
-                                        print(f"📝 [COGNITIVE SAVE SUCCESS] Data analitik sesi {session_uuid[:8]} aman di database!")
+                                        logger.info(f"[COGNITIVE_LOOP] Analytics saved for session {session_uuid[:8]}")
                                     except Exception as save_err:
-                                        print(f"⚠️ [MULTI-TABEL WARNING] Gagal auto-save Slot 2: {str(save_err)}")
+                                        logger.warning(f"[COGNITIVE_LOOP] Failed to auto-save: {str(save_err)}")
                                 
                 except httpx.TimeoutException:
-                    print("🚨 [COGNITIVE LOOP] Timeout! DeepSeek mikirnya kelamaan.")
+                    logger.warning("[COGNITIVE_LOOP] Timeout - deep thinking took too long")
                     yield json.dumps({"error": "Reasoning timeout."}) + "\n"
                 except Exception as e:
-                    print(f"💥 [COGNITIVE CRITICAL] Error saat reasoning: {str(e)}")
+                    logger.error(f"[COGNITIVE_LOOP] Error during reasoning: {str(e)}")
                     yield json.dumps({"error": f"Reasoning Error: {str(e)}"}) + "\n"
 
 cognitive_orchestrator = CognitiveLoop()

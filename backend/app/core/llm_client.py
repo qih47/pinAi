@@ -78,15 +78,15 @@ async def stream_ollama_chat(
         limits = httpx.Limits(max_keepalive_connections=5, max_connections=10)
         async with httpx.AsyncClient(limits=limits, timeout=httpx.Timeout(180.0, connect=10.0)) as client:
             try:
-                print(
-                    f"📡 [LLM CLIENT] Menembak API Ollama (Background Lock Active): {url}"
+                logger.debug(
+                    f"[LLM_CLIENT] Calling Ollama API: {url}"
                 )
                 async with client.stream("POST", url, json=payload) as response:
 
                     if response.status_code != 200:
                         error_text = await response.aread()
-                        print(
-                            f"💥 [LLM CLIENT] Ollama mengembalikan error HTTP {response.status_code}: {error_text}"
+                        logger.error(
+                            f"[LLM_CLIENT] Ollama error {response.status_code}: {error_text}"
                         )
                         yield json.dumps(
                             {"error": f"Ollama Error: {response.status_code}"}
@@ -124,12 +124,9 @@ async def stream_ollama_chat(
                             inference_end_time = datetime.now()
                             elapsed_time = (inference_end_time - inference_start_time).total_seconds()
                             
-                            print("\n" + "═" * 60)
-                            if accumulated_thinking:
-                                print(f"🧠 [LLM CLIENT TERMINAL LOG - MODEL NATIVE THOUGHTS]\n{accumulated_thinking.strip()}\n" + "─" * 60)
-                            print(f"🤖 [LLM CLIENT TERMINAL LOG - CORE RESPONSE]\n{full_response.strip()}")
-                            print("═" * 60)
-                            print(f"✨ [LLM CLIENT] Inferensi model '{model_name}' sukses diselesaikan dalam {elapsed_time:.2f} detik.")
+                            logger.debug(f"[LLM_CLIENT] Model thoughts: {accumulated_thinking.strip() if accumulated_thinking else 'None'}")
+                            logger.debug(f"[LLM_CLIENT] Response: {full_response.strip()}")
+                            logger.info(f"[LLM_CLIENT] Inference completed in {elapsed_time:.2f}s")
 
                             # Otomatisasi sinkronisasi data histori percakapan ke database
                             if session_uuid and session_uuid != "GLOBAL_SESSION":
@@ -150,15 +147,15 @@ async def stream_ollama_chat(
                                         user_text=user_query,
                                         assistant_text=full_response,
                                     )
-                                    print(f"📝 [DATABASE PERSISTENCE] Sinkronisasi rekam dialog sesi {session_uuid[:8]} berhasil diamankan.")
+                                    logger.info(f"[LLM_CLIENT] Dialog history saved for session {session_uuid[:8]}")
                                 except Exception as save_err:
-                                    print(f"⚠️ [DATABASE WARNING] Gagal mengunci penyimpanan riwayat otomatis: {str(save_err)}")
+                                    logger.warning(f"[LLM_CLIENT] Failed to save dialog history: {str(save_err)}")
 
             except httpx.TimeoutException:
-                print("🚨 [LLM CLIENT] Timeout! Cluster engine hardware terlalu lama merespons.")
+                logger.error("[LLM_CLIENT] Timeout - cluster engine took too long")
                 yield json.dumps({"error": "Inference timeout, cluster GPU penuh."}) + "\n"
             except Exception as e:
-                print(f"💥 [LLM CLIENT] Critical failure pada sirkuit internal client: {str(e)}")
+                logger.error(f"[LLM_CLIENT] Critical error: {str(e)}")
                 yield json.dumps({"error": f"Internal LLM Client Error: {str(e)}"}) + "\n"
 
 
@@ -172,13 +169,14 @@ async def generate_json_response(
     **kwargs,
 ) -> Optional[Dict[str, Any]]:
     """Generate JSON response (non-streaming) for Router/Orchestrator pipeline layers."""
+    logger = logging.getLogger("CAKRA_LLM_CLIENT")
     gpu_semaphore = request.app.state.gpu_limit
     url = f"{settings.OLLAMA_BASE_URL}/api/chat"
     
-    print(f"\n⏳ [JSON GEN] Menunggu antrean GPU semaphore untuk model {model_name}...")
+    logger.debug(f"[JSON_GEN] Waiting for GPU semaphore for model {model_name}...")
     
     async with gpu_semaphore:
-        print(f"🔓 [JSON GEN] GPU slot acquired. Generating data structure from {model_name}...")
+        logger.debug(f"[JSON_GEN] GPU slot acquired for {model_name}")
         start_time = datetime.now()
         
         ollama_options = {
@@ -202,7 +200,7 @@ async def generate_json_response(
                 
                 if response.status_code != 200:
                     error_text = await response.aread()
-                    print(f"💥 [JSON GEN] Ollama error {response.status_code}: {error_text}")
+                    logger.error(f"[JSON_GEN] Ollama error {response.status_code}: {error_text}")
                     return None
                 
                 result = response.json()
@@ -212,15 +210,15 @@ async def generate_json_response(
                     parsed_json = json.loads(message_content)
                     end_time = datetime.now()
                     elapsed = (end_time - start_time).total_seconds()
-                    print(f"✅ [JSON GEN] JSON generated successfully in {elapsed:.2f}s | Model: {model_name}")
+                    logger.info(f"[JSON_GEN] Generated in {elapsed:.2f}s | Model: {model_name}")
                     return parsed_json
                 except json.JSONDecodeError as je:
-                    print(f"⚠️ [JSON GEN] Structure broken / parse error: {str(je)}")
+                    logger.warning(f"[JSON_GEN] Parse error: {str(je)}")
                     return None
                     
         except httpx.TimeoutException:
-            print(f"🚨 [JSON GEN] Timeout limit exceeded on model {model_name}")
+            logger.error(f"[JSON_GEN] Timeout on model {model_name}")
             return None
         except Exception as e:
-            print(f"💥 [JSON GEN] Error critical: {str(e)}")
+            logger.error(f"[JSON_GEN] Error: {str(e)}")
             return None

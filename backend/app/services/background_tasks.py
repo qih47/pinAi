@@ -37,10 +37,21 @@ async def start_background_scheduler(app):
             coalesce=True,
         )
         
+        # Job 2: Pembersihan Token Sesi Expired (Setiap 30 menit)
+        from backend.app.utils.token_expiry import cleanup_expired_sessions
+        scheduler.add_job(
+            cleanup_expired_sessions,
+            CronTrigger(minute="*/30"),
+            id="session_cleanup",
+            name="Session Token Expiry Cleanup (30m)",
+            replace_existing=True,
+            coalesce=True,
+        )
+        
         # Mulai scheduler
         scheduler.start()
         logger.info("✅ [SCHEDULER] Background task scheduler berhasil dimulai.")
-        logger.info("📅 [SCHEDULER] Job terjadwal: Memory Consolidation daily @ 02:00 WIB")
+        logger.info("📅 [SCHEDULER] Job terjadwal: Memory Consolidation daily @ 02:00 WIB, Session Cleanup every 30m")
         
     except Exception as e:
         logger.error(f"❌ [SCHEDULER] Gagal memulai background scheduler: {e}")

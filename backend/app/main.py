@@ -31,9 +31,13 @@ from backend.app.core.llm_client import warm_up_model
 from backend.app.core.hardware import check_gpu_status
 from backend.app.core.paths import DOCUMENTS_DIR, UPLOAD_DIR
 from backend.app.services.background_tasks import start_background_scheduler, stop_background_scheduler
+from backend.app.utils.request_logging import RequestIDLoggingMiddleware, setup_request_id_logging
+from backend.app.utils.token_expiry import setup_token_expiry_migration
+from backend.app.utils.vector_index import setup_hnsw_index, optimize_vector_search
 
 # 1. Mengaktifkan konfigurasi log seragam kita
 setup_root_logger()
+setup_request_id_logging()
 logger = logging.getLogger("CAKRA_MAIN")
 
 DB_DOC_DIR = os.path.join(ROOT_DIR, "db_doc")
@@ -58,6 +62,11 @@ async def lifespan(app: FastAPI):
     try:
         await init_db_pool()
         logger.info("⚡ [BOOTSTRAP] Koneksi dual-pool database aman terkendali, bolo!")
+        
+        # Setup Token Expiry Migration & HNSW Index setup
+        await setup_token_expiry_migration()
+        await setup_hnsw_index()
+        await optimize_vector_search()
         
         # 🔥 New Sequential Pipeline Warmup Strategy:
         # - Layer 3 (Gemma4 Persona) ALWAYS LOADED: Must be ready for instant response
@@ -96,6 +105,9 @@ app = FastAPI(
     docs_url="/docs",
     redoc_url="/redoc"
 )
+
+# Register Request ID Tracing Middleware (B11)
+app.add_middleware(RequestIDLoggingMiddleware)
 
 # 3. GLOBAL CONCURRENCY SEMAPHORE (Mengamankan VRAM GPU dari limitasi hardware)
 app.state.gpu_limit = asyncio.Semaphore(2)

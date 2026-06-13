@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, memo } from 'react';
 import CakraResponseRenderer from './CakraResponseRenderer';
 import SourceCitation from './SourceCitation';
+import RAGMetrics from './RAGMetrics';
 import cakraLogo from '../../../assets/cakra.png';
 import { styles } from '../chatPage.styles';
 import { useChatStore } from '../../../stores/chatStore';
@@ -232,21 +233,28 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
                             </div>
 
                             {!isStreamingMsg && (msg.citations || msg.sources) && (
-                                <SourceCitation
-                                    sources={msg.citations || msg.sources}
-                                    darkMode={darkMode}
-                                    theme={theme}
-                                    activeIsolatedDocId={activeIsolatedDocId}
-                                    onActivateIsolation={(source) => {
-                                        const docId = source.id || source.dokumen_id;
-                                        const docTitle = source.title || source.filename || source.name;
-                                        setContextIsolation(docId, docTitle);
-                                    }}
-                                    onPreview={(source) => {
-                                        const fileUrl = source.url || source.file_path;
-                                        if (fileUrl) window.open(fileUrl, '_blank');
-                                    }}
-                                />
+                                <>
+                                    <RAGMetrics
+                                        sources={msg.citations || msg.sources}
+                                        darkMode={darkMode}
+                                        theme={theme}
+                                    />
+                                    <SourceCitation
+                                        sources={msg.citations || msg.sources}
+                                        darkMode={darkMode}
+                                        theme={theme}
+                                        activeIsolatedDocId={activeIsolatedDocId}
+                                        onActivateIsolation={(source) => {
+                                            const docId = source.id || source.dokumen_id;
+                                            const docTitle = source.title || source.filename || source.name;
+                                            setContextIsolation(docId, docTitle);
+                                        }}
+                                        onPreview={(source) => {
+                                            const fileUrl = source.url || source.file_path;
+                                            if (fileUrl) window.open(fileUrl, '_blank');
+                                        }}
+                                    />
+                                </>
                             )}
 
                             {!isStreamingMsg && (

@@ -21,6 +21,8 @@ class EmbeddingCache:
         self.max_size = max_size
         self.ttl_seconds = ttl_seconds
         self.cache: Dict[str, tuple] = {}  # {hash: (embedding, timestamp)}
+        self.hits = 0
+        self.misses = 0
     
     @staticmethod
     def _hash_query(query: str) -> str:
@@ -40,6 +42,7 @@ class EmbeddingCache:
         query_hash = self._hash_query(query)
         
         if query_hash not in self.cache:
+            self.misses += 1
             return None
         
         embedding, timestamp = self.cache[query_hash]
@@ -47,8 +50,10 @@ class EmbeddingCache:
         # Cek TTL
         if time.time() - timestamp > self.ttl_seconds:
             del self.cache[query_hash]
+            self.misses += 1
             return None
         
+        self.hits += 1
         return embedding
     
     def put(self, query: str, embedding: List[float]) -> None:
@@ -72,6 +77,8 @@ class EmbeddingCache:
     def clear(self) -> None:
         """Clear seluruh cache."""
         self.cache.clear()
+        self.hits = 0
+        self.misses = 0
     
     def cleanup_expired(self) -> int:
         """
@@ -91,11 +98,16 @@ class EmbeddingCache:
     
     def stats(self) -> dict:
         """Return cache statistics."""
+        total_requests = self.hits + self.misses
+        hit_rate = (self.hits / total_requests * 100) if total_requests > 0 else 0.0
         return {
             "total_entries": len(self.cache),
             "max_size": self.max_size,
             "ttl_seconds": self.ttl_seconds,
-            "utilization_percent": (len(self.cache) / self.max_size) * 100
+            "utilization_percent": (len(self.cache) / self.max_size) * 100,
+            "hits": self.hits,
+            "misses": self.misses,
+            "hit_rate_percent": round(hit_rate, 2)
         }
 
 

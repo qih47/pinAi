@@ -81,12 +81,25 @@ class VectorService:
         mxbai-embed-large direkomendasikan menggunakan prefix 'Represent this sentence for searching relevant passages:'
         untuk query (bukan untuk dokumen saat ingestion).
         """
+        # B9: Check LRU cache first
+        from backend.app.utils.embedding_cache import get_embedding_cache
+        cache = get_embedding_cache()
+        cached_embedding = cache.get(query)
+        if cached_embedding:
+            logger.info(f"⚡ [CACHE HIT] Embedding hit from cache for query: {query[:50]}")
+            return cached_embedding
+
         prefixed_query = (
             f"Represent this sentence for searching relevant passages: {query}"
         )
         if len(prefixed_query) > 800:
             prefixed_query = prefixed_query[:800]
-        return await self._call_ollama_embedding(prefixed_query)
+        
+        embedding = await self._call_ollama_embedding(prefixed_query)
+        if embedding:
+            cache.put(query, embedding)
+            logger.info(f"💾 [CACHE MISS] Embedding generated and cached for query: {query[:50]}")
+        return embedding
 
 
 vector_service = VectorService()

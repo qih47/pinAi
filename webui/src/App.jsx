@@ -8,6 +8,8 @@ import {
 } from "react-router-dom";
 import ChatPage from "@/features/chat/ChatPage";
 import LoginPage from "@/features/auth/LoginPage"; // 👈 IMPORT LOGIN ENGINE
+import AuditLogsPage from "@/features/admin/AuditLogsPage"; // 👈 W17: Admin Audit Log Viewer
+import CacheStatsPage from "@/features/admin/CacheStatsPage"; // 👈 W13 & W15: Cache & Search Stats Dashboard
 import { useChatAuthStore } from "@/stores/authStore"; // 👈 IMPORT AUTH STORE
 import { useChatStore } from "@/stores/chatStore";
 import Loading from "./components/Loading";
@@ -93,6 +95,12 @@ function AppContent() {
     <Routes>
       {/* 🔐 DAFTARKAN RUTE LOGIN CYBERPUNK DI LUAR BUNGKUSAN LAYOUT */}
       <Route path="/login" element={<LoginPage />} />
+
+      {/* 🛡️ W17: Admin Audit Log Viewer */}
+      <Route path="/admin/audit-logs" element={<AuditLogsPage />} />
+
+      {/* ⚡ W13 & W15: Admin Cache & Performance Dashboard */}
+      <Route path="/admin/cache-stats" element={<CacheStatsPage />} />
 
       <Route path="/" element={<Navigate to="/chat/guest" replace />} />
 

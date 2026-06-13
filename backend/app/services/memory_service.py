@@ -15,7 +15,7 @@ class MemoryService:
     """
     
     def __init__(self):
-        print("🧠 [MEMORY SERVICE] Sektor pengelola ingatan taktis aktif, bolo!")
+        logger.info("[MEMORY_SERVICE] Memory management service initialized")
 
     async def get_employee_long_term_memory(self, npp: str) -> str:
         """
@@ -40,7 +40,7 @@ class MemoryService:
                 # Gabungkan key dan value menjadi satu string narasi ringkas
                 summaries = [f"{row['mem_key']}: {row['mem_value']}" for row in rows]
                 memory_context = "\n- ".join(summaries)
-                print(f"🧠 [MEMORY RETRIEVAL] Sukses memuat {len(rows)} ingatan masa lalu untuk NPP: {npp}")
+                logger.debug(f"[MEMORY_SERVICE] Loaded {len(rows)} memories for NPP: {npp}")
                 return f"\n[INGATAN MASA LALU PEGAWAI]:\n- {memory_context}"
             except Exception as e:
                 logger.error(f"💥 [MEMORY] Gagal menarik memori pegawai: {str(e)}")
@@ -51,7 +51,7 @@ class MemoryService:
         Job Konsolidasi Malam: Merangkum chat 24 jam terakhir dari setiap pegawai
         menjadi entitas memori padat via Qwen 2.5, lalu disimpan ke tabel ai_memory.
         """
-        print("🕒 [MEMORY WORKER] Memulai siklus konsolidasi memori malam hari...")
+        logger.info("[MEMORY_SERVICE] Starting nightly memory consolidation cycle...")
         
         # Cari batas waktu chat 24 jam ke belakang
         one_day_ago = datetime.utcnow() - timedelta(days=1)
@@ -69,7 +69,7 @@ class MemoryService:
                 """
                 rows = await conn.fetch(query_get_chats, one_day_ago)
                 if not rows:
-                    print("💤 [MEMORY WORKER] Tidak ada obrolan baru dalam 24 jam terakhir. Siklus dilewati.")
+                    logger.debug("[MEMORY_SERVICE] No new chats in 24h - cycle skipped")
                     return {"status": "skipped", "message": "No new chats to consolidate."}
 
                 # Grouping teks obrolan per NPP (Bypass Guest)
@@ -151,7 +151,7 @@ class MemoryService:
                         """
                         for mem in memories_to_save:
                             await conn.execute(query_insert_memory, mem["npp"], mem["mem_key"], mem["mem_value"])
-                            print(f"💾 [MEMORY CONSOLIDATED] Berhasil mengunci ingatan baru untuk NPP {mem['npp']} -> [{mem['mem_key']}]")
+                            logger.info(f"[MEMORY_SERVICE] Consolidated memory for NPP {mem['npp']}: {mem['mem_key']}")
                             processed_count += 1
                 except Exception as write_err:
                     logger.error(f"💥 [MEMORY WORKER] Gagal dumping data memori ke database: {str(write_err)}")

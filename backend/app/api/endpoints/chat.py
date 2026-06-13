@@ -133,6 +133,11 @@ async def _run_parallel_rag(
     if not rewritten_queries:
         return "", []
 
+    start_time = time.time()
+    from backend.app.utils.embedding_cache import get_embedding_cache
+    cache = get_embedding_cache()
+    hits_before = cache.hits
+
     async def _fetch(query: str):
         try:
             ctx, sources = await rag_service.assemble_powerful_context(
@@ -144,6 +149,10 @@ async def _run_parallel_rag(
             return "", []
 
     results = await asyncio.gather(*[_fetch(q) for q in rewritten_queries])
+    
+    duration_ms = int((time.time() - start_time) * 1000)
+    hits_after = cache.hits
+    is_cache_hit = hits_after > hits_before
 
     # Gabungkan konteks, deduplicate sources by id
     combined_context_parts = []
@@ -157,12 +166,16 @@ async def _run_parallel_rag(
             src_id = src.get("id") or src.get("chunk_id") or str(src)
             if src_id not in seen_ids:
                 seen_ids.add(src_id)
+                # Inject timing and cache metadata into source
+                src["search_time_ms"] = duration_ms
+                src["cache_hit"] = is_cache_hit
                 combined_sources.append(src)
 
     combined_context = "\n\n---\n\n".join(combined_context_parts)
     logger.info(
         f"✅ [PARALLEL RAG] {len(rewritten_queries)} queries | "
-        f"{len(combined_context)} chars | {len(combined_sources)} unique sources"
+        f"{len(combined_context)} chars | {len(combined_sources)} unique sources | "
+        f"time={duration_ms}ms | cache_hit={is_cache_hit}"
     )
     return combined_context, combined_sources
 
@@ -265,10 +278,7 @@ async def _sequential_pipeline_generator(
         f"confidence={gateway_result.get('confidence', 0):.2f}"
     )
 
-    print("\n" + "🚦 " * 20)
-    print("[LAYER 0 OUTPUT] Gateway Result:")
-    print(json.dumps(gateway_result, indent=2, ensure_ascii=False, default=str))
-    print("🚦 " * 20 + "\n")
+    logger.debug(f"[LAYER 0 OUTPUT] Gateway Result: {json.dumps(gateway_result, indent=2, ensure_ascii=False, default=str)}")
 
     # ==========================================================================
     # 📚 ROUTING FINAL
@@ -343,10 +353,7 @@ async def _sequential_pipeline_generator(
             preloaded_rag_sources = None
 
         # ── Dump output Layer 1 ──────────────────────────────────────────
-        print("\n" + "🧠 " * 20)
-        print("[LAYER 1 OUTPUT] 35 Parameter Kognitif + Blueprint:")
-        print(json.dumps(cognitive_params, indent=2, ensure_ascii=False, default=str))
-        print("🧠 " * 20 + "\n")
+logger.debug(f"[LAYER 1 OUTPUT] Cognitive params: {json.dumps(cognitive_params, indent=2, ensure_ascii=False, default=str)}")
 
     else:
         # FLASH: bypass Layer 1 sepenuhnya — no LLM call, instan
@@ -421,10 +428,7 @@ async def _sequential_pipeline_generator(
     # ═════════════════════════════════════════════════════════════════════════════
 
     # ── Log dump Layer 1 ────────────────────────────────────────────────────────
-    print("\n" + "🧠 " * 20)
-    print("[LAYER 1 LOG DUMP] 35 Parameter Kognitif:")
-    print(json.dumps(cognitive_params, indent=2, ensure_ascii=False))
-    print("🧠 " * 20 + "\n")
+    logger.debug(f"[LAYER 1 LOG DUMP] Cognitive params: {json.dumps(cognitive_params, indent=2, ensure_ascii=False)}")
 
     # ── Log dump FINAL: blueprint utuh yang diterima Gemma (Layer 2) ────────
     logger.info(
@@ -433,10 +437,7 @@ async def _sequential_pipeline_generator(
         f"RAG: {cognitive_params.get('need_rag')} | "
         f"Coding: {cognitive_params.get('is_coding')}"
     )
-    print("\n" + "✍️ " * 20)
-    print(f"[LAYER 2 INPUT] Blueprint Final untuk Gemma (pipeline: {target_pipeline}):")
-    print(json.dumps(cognitive_params, indent=2, ensure_ascii=False, default=str))
-    print("✍️ " * 20 + "\n")
+    logger.debug(f"[LAYER 2 INPUT] Blueprint for Gemma (pipeline: {target_pipeline}): {json.dumps(cognitive_params, indent=2, ensure_ascii=False, default=str)}")
 
     # ==========================================================================
     # ✍️ LAYER 2: GEMMA AGENTIC

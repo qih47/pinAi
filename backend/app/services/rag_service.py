@@ -51,8 +51,8 @@ class RagService:
     """
 
     def __init__(self):
-        print(
-            "🛡️  [RAG SERVICE] Orkestrator Hybrid RRF + Re-ranker Engine siap tempur, bolo!"
+        logger.info(
+            "[RAG_SERVICE] Hybrid RRF + Re-ranker Engine initialized"
         )
 
     def _prepare_tsquery(self, query: str) -> str:
@@ -82,7 +82,7 @@ class RagService:
         Pipeline RAG 3 fase terpadu - Mengembalikan tuple (context_string, sources_metadata)
         Memperbaiki kebocoran data dengan structural grouping per dokumen.
         """
-        print(f'🔍 [RAG HYBRID] Memulai ekstraksi RRF untuk kueri: "{query}"')
+        logger.debug(f'[RAG_SERVICE] Extracting RRF for query: "{query}"')
 
         # ======================================================================
         # FASE 0: LAZY IMPORT — anti-mismatch
@@ -192,7 +192,7 @@ class RagService:
                     raw_chunks = await conn.fetch(vector_only_sql, query_vector_str, limit)
 
                 if not raw_chunks:
-                    print("⚠️  [RAG CORE] Zero match bahkan di pure vector search!")
+                    logger.warning("[RAG_SERVICE] Zero matches in hybrid search")
                     return "", []
 
                 for row in raw_chunks:
@@ -300,7 +300,7 @@ class RagService:
         # ======================================================================
         # FASE 3: CROSS-ENCODER RE-RANKER FILTRATION
         # ======================================================================
-        print(f"🔮 [RAG RE-RANKER] Memproses {len(expanded_blocks)} blok dokumen terstruktur...")
+        logger.debug(f"[RAG_SERVICE] Processing {len(expanded_blocks)} document blocks...")
 
         try:
             from backend.app.services.reranker_service import reranker_service
@@ -311,7 +311,7 @@ class RagService:
             for idx, score in enumerate(rerank_scores):
                 expanded_blocks[idx]["final_score"] = float(score)
 
-            print("📈 [RAG RE-RANKER] Selesai. Menyaring passing grade...")
+            logger.debug("[RAG_SERVICE] Re-ranking complete, filtering results...")
 
         except Exception as ren_err:
             logger.warning(
@@ -367,9 +367,8 @@ class RagService:
             f_score = b.get("final_score", 0.0)
 
             if f_score < effective_min_score:
-                print(
-                    f"🗑️  [RAG DROPPED] '{b['judul']}' dibuang "
-                    f"(skor {f_score:.4f} < threshold {effective_min_score:.4f})"
+                logger.debug(
+                    f"[RAG_SERVICE] Dropped '{b['judul']}' (score {f_score:.4f} < {effective_min_score:.4f})"
                 )
                 continue
 
@@ -399,7 +398,7 @@ class RagService:
             inserted_count += 1
 
         if not final_contexts:
-            print("⚠️  [RAG EMPTY] Tidak ada dokumen yang lolos threshold.")
+            logger.warning("[RAG_SERVICE] No documents passed threshold")
             return (
                 "[PERINGATAN SISTEM]: Dokumen regulasi mengenai kueri ini TIDAK DITEMUKAN di basis data internal Pindad. "
                 "Asisten WAJIB menyampaikan secara langsung bahwa data regulasi resmi tidak tersedia di RAGDB. "
@@ -407,9 +406,8 @@ class RagService:
                 []
             )
 
-        print(
-            f"✅ [RAG COMPLETE] {len(final_contexts)} dokumen lolos threshold "
-            f"(dari {len(expanded_blocks)} kandidat) sukses dikunci untuk Gemma!"
+        logger.info(
+            f"[RAG_SERVICE] {len(final_contexts)} documents passed threshold (from {len(expanded_blocks)} candidates)"
         )
         return "\n".join(final_contexts), sources_metadata
 

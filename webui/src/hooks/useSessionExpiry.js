@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useChatAuthStore } from '../stores/authStore';
 import * as endpoints from '../services/endpoints';
-import { useToast } from './useToast';
+import useToast from './useToast';
 
 /**
  * Hook: Session Expiry Countdown Manager (W11)

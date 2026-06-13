@@ -94,3 +94,152 @@ async def get_system_status(
     except Exception as e:
         logger.error(f"❌ [ADMIN] System status error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to get system status: {str(e)}")
+
+
+@router.get("/cache-stats")
+async def get_embedding_cache_stats(
+    current_user_npp: Optional[str] = Depends(get_current_user_npp),
+):
+    """
+    Get embedding cache statistics (W13).
+    Only accessible for logged-in admin.
+    """
+    if not current_user_npp:
+        raise HTTPException(status_code=401, detail="Login required for admin functions")
+    
+    try:
+        from backend.app.utils.embedding_cache import get_embedding_cache
+        cache = get_embedding_cache()
+        return {
+            "status": "success",
+            "stats": cache.stats()
+        }
+    except Exception as e:
+        logger.error(f"❌ [ADMIN] Cache stats error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to get cache stats: {str(e)}")
+
+
+@router.post("/clear-embedding-cache")
+async def clear_embedding_cache_endpoint(
+    current_user_npp: Optional[str] = Depends(get_current_user_npp),
+):
+    """
+    Clear all embedding cache entries (W13).
+    Only accessible for logged-in admin.
+    """
+    if not current_user_npp:
+        raise HTTPException(status_code=401, detail="Login required for admin functions")
+    
+    try:
+        from backend.app.utils.embedding_cache import get_embedding_cache
+        cache = get_embedding_cache()
+        cache.clear()
+        logger.info(f"🧹 [ADMIN] Embedding cache cleared by user {current_user_npp}")
+        return {
+            "status": "success",
+            "message": "Embedding cache cleared successfully"
+        }
+    except Exception as e:
+        logger.error(f"❌ [ADMIN] Clear cache error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to clear cache: {str(e)}")
+
+
+@router.get("/vector-index-status")
+async def get_vector_index_status_endpoint(
+    current_user_npp: Optional[str] = Depends(get_current_user_npp),
+):
+    """
+    Get HNSW index status and DB size information (W15).
+    Only accessible for logged-in admin.
+    """
+    if not current_user_npp:
+        raise HTTPException(status_code=401, detail="Login required for admin functions")
+    
+    try:
+        from backend.app.utils.vector_index import get_index_info
+        from backend.app.core.database import get_db_pool
+        
+        indexes = await get_index_info()
+        
+        # Check if HNSW index is active
+        hnsw_active = False
+        parsed_indexes = []
+        for idx in indexes:
+            is_hnsw = "hnsw" in idx["indexdef"].lower()
+            if is_hnsw:
+                hnsw_active = True
+            parsed_indexes.append({
+                "name": idx["indexname"],
+                "definition": idx["indexdef"],
+                "scans": idx["scans"] or 0,
+                "tuples_read": idx["tuples_read"] or 0,
+                "tuples_fetched": idx["tuples_fetched"] or 0,
+                "size": idx["size"] or "N/A"
+            })
+            
+        # Get chunk stats
+        pool = get_db_pool()
+        total_chunks = 0
+        table_size = "N/A"
+        total_with_indexes = "N/A"
+        
+        try:
+            async with pool.acquire() as conn:
+                stats = await conn.fetchrow("""
+                    SELECT 
+                        count(*) as total_chunks,
+                        pg_size_pretty(pg_relation_size('dokumen_chunk'::regclass)) as table_size,
+                        pg_size_pretty(pg_total_relation_size('dokumen_chunk'::regclass)) as total_with_indexes
+                    FROM dokumen_chunk
+                """)
+                if stats:
+                    total_chunks = stats["total_chunks"]
+                    table_size = stats["table_size"]
+                    total_with_indexes = stats["total_with_indexes"]
+        except Exception as db_err:
+            logger.warning(f"⚠️ Failed to query DB stats: {db_err}")
+            
+        return {
+            "status": "success",
+            "hnsw_active": hnsw_active,
+            "indexes": parsed_indexes,
+            "stats": {
+                "total_chunks": total_chunks,
+                "table_size": table_size,
+                "total_with_indexes": total_with_indexes
+            }
+        }
+    except Exception as e:
+        logger.error(f"❌ [ADMIN] Vector index status error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to get vector index status: {str(e)}")
+
+
+@router.post("/optimize-vector-index")
+async def optimize_vector_index_endpoint(
+    current_user_npp: Optional[str] = Depends(get_current_user_npp),
+):
+    """
+    Run VACUUM ANALYZE to optimize vector search performance (W15).
+    Only accessible for logged-in admin.
+    """
+    if not current_user_npp:
+        raise HTTPException(status_code=401, detail="Login required for admin functions")
+    
+    try:
+        from backend.app.utils.vector_index import optimize_vector_search
+        
+        logger.info(f"🔧 [ADMIN] User {current_user_npp} triggering vector index optimization...")
+        stats = await optimize_vector_search()
+        
+        return {
+            "status": "success",
+            "message": "Vector index optimized and VACUUM ANALYZE completed successfully",
+            "stats": {
+                "total_chunks": stats["total_chunks"] if stats else 0,
+                "table_size": stats["table_size"] if stats else "N/A",
+                "total_with_indexes": stats["total_with_indexes"] if stats else "N/A"
+            }
+        }
+    except Exception as e:
+        logger.error(f"❌ [ADMIN] Optimize index error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to optimize vector index: {str(e)}")

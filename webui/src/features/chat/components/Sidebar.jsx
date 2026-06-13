@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import { useChatStore } from "@/stores/chatStore";
 import SessionExpiryStatus from "../../../components/SessionExpiryStatus"; // 👈 W11: Session expiry display
+import { useSessionTitle } from "../../../hooks/useSessionTitle"; // 👈 W14: LLM Title Indicator
 
 const Sidebar = ({
   clearChat,
@@ -49,6 +50,14 @@ const Sidebar = ({
   const renameChat = useChatStore((state) => state.renameChat);
   const deleteChat = useChatStore((state) => state.deleteChat);
   const fetchChatHistory = useChatStore((state) => state.fetchChatHistory);
+
+  // W14: LLM Title Generation Indicator
+  const { isTitleGenerating } = useSessionTitle(
+    chatHistory,
+    setChatHistory,
+    currentSessionId,
+    true // Always enabled
+  );
 
   // Ambil variabel nama dan divisi cadangan dari props atau sesuaikan dengan struktur store
   const profileName = userData?.fullname || userData?.name || "Pegawai Pindad";
@@ -350,6 +359,58 @@ const Sidebar = ({
             Documents
           </span>
         </button>
+
+        {/* W17: Admin Audit Log link — visible only to admin users */}
+        {userData?.role === 'admin' && (
+          <button
+            onClick={() => navigate('/admin/audit-logs')}
+            className="flex items-center rounded-full hover:bg-red-100/10 transition-colors group overflow-hidden text-[14px]"
+            style={{
+              padding: isOpen ? "8px 12px" : "8px",
+              width: isOpen ? "100%" : "auto",
+              gap: isOpen ? "12px" : "0",
+            }}
+            title="Audit Logs (Admin)"
+          >
+            <span className="h-5 w-5 flex items-center justify-center flex-shrink-0">
+              🛡️
+            </span>
+            <span
+              className={`font-medium whitespace-nowrap transition-opacity duration-300 ${
+                !isOpen ? "hidden" : "opacity-100"
+              }`}
+              style={{ color: '#ef4444', fontSize: '13px' }}
+            >
+              Audit Logs
+            </span>
+          </button>
+        )}
+
+        {/* W13 & W15: Cache & Performance Dashboard — visible only to admin users */}
+        {userData?.role === 'admin' && (
+          <button
+            onClick={() => navigate('/admin/cache-stats')}
+            className="flex items-center rounded-full hover:bg-indigo-100/10 transition-colors group overflow-hidden text-[14px]"
+            style={{
+              padding: isOpen ? "8px 12px" : "8px",
+              width: isOpen ? "100%" : "auto",
+              gap: isOpen ? "12px" : "0",
+            }}
+            title="Cache & Performance (Admin)"
+          >
+            <span className="h-5 w-5 flex items-center justify-center flex-shrink-0">
+              ⚡
+            </span>
+            <span
+              className={`font-medium whitespace-nowrap transition-opacity duration-300 ${
+                !isOpen ? "hidden" : "opacity-100"
+              }`}
+              style={{ color: '#818cf8', fontSize: '13px' }}
+            >
+              Cache & Index
+            </span>
+          </button>
+        )}
       </div>
 
       <div
@@ -455,7 +516,33 @@ const Sidebar = ({
                       onClick={(e) => e.stopPropagation()}
                     />
                   ) : (
-                    chat.judul || "Chat Baru"
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      <span className="truncate">
+                        {chat.judul || "Chat Baru"}
+                      </span>
+                      {/* W14: LLM Title Generation shimmer indicator */}
+                      {isTitleGenerating(chat.session_uuid) && (
+                        <span
+                          title="Generating better title..."
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '2px',
+                            fontSize: '9px',
+                            color: '#a78bfa',
+                            background: 'rgba(139,92,246,0.12)',
+                            border: '1px solid rgba(139,92,246,0.25)',
+                            borderRadius: '8px',
+                            padding: '1px 5px',
+                            flexShrink: 0,
+                            animation: 'pulse 1.5s ease-in-out infinite',
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
+                          ✨
+                        </span>
+                      )}
+                    </span>
                   )}
                 </span>
 

@@ -53,5 +53,5 @@ def setup_root_logger():
     logging.getLogger("httpx").setLevel(logging.WARNING)
     logging.getLogger("httpcore").setLevel(logging.WARNING)
 
-    print(f"📝 [LOGGING] Sistem logging terpusat aktif! File fisik: {log_file_path}")
+    root_logger.info(f"[LOGGING] Logging system initialized. Log file: {log_file_path}")
     return root_logger

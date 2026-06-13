@@ -15,7 +15,7 @@ class RouterEngine:
     """
     
     def __init__(self):
-        print("🧠 [ROUTER ENGINE] Slot 1 Cognitive Router siap bertempur, bolo!")
+        logger.info("[ROUTER_ENGINE] Router engine initialized")
 
     async def analyze_user_query(self, query: str) -> Dict[str, Any]:
         """
@@ -64,7 +64,7 @@ class RouterEngine:
             try:
                 response = await client.post(url, json=payload)
                 if response.status_code != 200:
-                    print(f"💥 [ROUTER ENGINE] Ollama return error status: {response.status_code}")
+                    logger.error(f"[ROUTER_ENGINE] Ollama error {response.status_code}")
                     return self._get_fallback_analysis()
 
                 result_json = response.json()
@@ -75,15 +75,15 @@ class RouterEngine:
                 
                 router_end_time = datetime.now()
                 elapsed_time = (router_end_time - router_start_time).total_seconds()
-                print(f"\n⚡ [ROUTER ANALYSIS] Intent: {analysis_data.get('intent')} | Sentimen: {analysis_data.get('sentiment')} (waktu: {elapsed_time:.2f}s)")
-                print(f"🪵  [ROUTER REASON] {analysis_data.get('reason')}")
+                logger.info(f"[ROUTER_ENGINE] Analysis: {analysis_data.get('intent')} | Sentiment: {analysis_data.get('sentiment')} | Time: {elapsed_time:.2f}s")
+                logger.debug(f"[ROUTER_ENGINE] Reason: {analysis_data.get('reason')}")
                 return analysis_data
 
             except json.JSONDecodeError:
-                print("🚨 [ROUTER ENGINE] Gagal parsing JSON mentah dari Ollama. Mengaktifkan mode fallback.")
+                logger.warning("[ROUTER_ENGINE] JSON parse error - using fallback")
                 return self._get_fallback_analysis()
             except Exception as e:
-                print(f"💥 [ROUTER CRITICAL] Sektor Router Error: {str(e)}")
+                logger.error(f"[ROUTER_ENGINE] Critical error: {str(e)}")
                 import traceback
                 traceback.print_exc()  # Tampilkan jejak mleduknya kalau masih bandel
                 return self._get_fallback_analysis()
@@ -105,16 +105,16 @@ class RouterEngine:
             "stream": False,
             "keep_alive": -1 # Kunci di background GPU selamanya bolo!
         }
-        print(f"💤 [ROUTER] Membangunkan model {settings.MODEL_ROUTER} dari tidur panjang (NVMe -> VRAM)...")
+        logger.info(f"[ROUTER_ENGINE] Warming up model {settings.MODEL_ROUTER}...")
         async with httpx.AsyncClient(timeout=httpx.Timeout(120.0, connect=10.0)) as client: # Kasih nafas 2 menit khusus warm-up
             try:
                 response = await client.post(url, json=payload)
                 if response.status_code == 200:
-                    print(f"🔥 [ROUTER] Model {settings.MODEL_ROUTER} BERHASIL SIAGA DI BACKGROUND GPU!")
+                    logger.info(f"[ROUTER_ENGINE] Model {settings.MODEL_ROUTER} ready on background GPU")
                     return True
                 return False
             except Exception as e:
-                print(f"⚠️  [ROUTER WARMUP FAILED] Gagal warm-up awal: {str(e)}")
+                logger.warning(f"[ROUTER_ENGINE] Warmup failed: {str(e)}")
                 return False
 
 router_engine = RouterEngine()

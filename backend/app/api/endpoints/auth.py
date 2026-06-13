@@ -23,6 +23,9 @@ class LoginResponse(BaseModel):
     message: Optional[str] = None
     data: Optional[dict] = None
 
+class ExtendSessionRequest(BaseModel):
+    hours_to_add: int = 8
+
 
 # --- ENDPOINTS ---
 
@@ -39,10 +42,10 @@ async def verify_session(token: str = Query(None)):
     try:
         async with get_db() as conn:
             query = """
-                SELECT u.npp, u.fullname, u.divisi, u.role
+                SELECT u.npp, u.fullname, u.divisi, u.role, s.expires_at
                 FROM session_login s
                 JOIN users u ON s.npp = u.npp
-                WHERE s.session_token = $1 AND s.is_login = TRUE
+                WHERE s.session_token = $1 AND s.is_login = TRUE AND s.expires_at > NOW()
             """
             user = await conn.fetchrow(query, token)
 
@@ -64,6 +67,7 @@ async def verify_session(token: str = Query(None)):
                         "fullname": user["fullname"],
                         "divisi": user["divisi"],
                         "role": user["role"],
+                        "expires_at": user["expires_at"].isoformat() if user["expires_at"] else None
                     }
                 )
             else:
@@ -194,14 +198,16 @@ async def login(request_body: LoginRequest, request: Request):
                 logger.info("📝 [LOGIN] Sinkronisasi tabel 'users' lokal dikunci aman.")
 
                 # Insert atau refresh token session aktif di tabel session_login sesuai ERD lo bolo
-                await conn.execute(
+                expires_at = await conn.fetchval(
                     """
-                    INSERT INTO session_login (npp, session_token, ip_address, is_login, last_activity)
-                    VALUES ($1, $2, $3, TRUE, CURRENT_TIMESTAMP)
+                    INSERT INTO session_login (npp, session_token, ip_address, is_login, last_activity, expires_at)
+                    VALUES ($1, $2, $3, TRUE, CURRENT_TIMESTAMP, NOW() + INTERVAL '8 hours')
                     ON CONFLICT (npp) DO UPDATE SET 
                         session_token = EXCLUDED.session_token, 
                         is_login = TRUE, 
-                        last_activity = CURRENT_TIMESTAMP;
+                        last_activity = CURRENT_TIMESTAMP,
+                        expires_at = NOW() + INTERVAL '8 hours'
+                    RETURNING expires_at;
                     """,
                     npp,
                     session_token,
@@ -226,7 +232,8 @@ async def login(request_body: LoginRequest, request: Request):
                 "npp": npp,
                 "fullname": user_fullname,
                 "divisi": user_divisi,
-                "role": current_role,  # 🔥 Role lokal lo aman dikirim ke Frontend!
+                "role": current_role,
+                "expires_at": expires_at.isoformat() if expires_at else None,
             },
         )
 
@@ -277,3 +284,29 @@ async def logout(request: Request, payload: dict = Body(...)):
     except Exception as e:
         logger.error(f"❌ Logout Error: {str(e)}")
         raise HTTPException(status_code=500, detail="Internal Server Error during logout")
+
+@router.post("/extend-session")
+async def extend_session(request: Request, body: ExtendSessionRequest = Body(...)):
+    """
+    Memperpanjang masa aktif session token user yang sedang login.
+    """
+    auth_header = request.headers.get("Authorization")
+    if not auth_header or not auth_header.startswith("Bearer "):
+        logger.warning("👤 [GUARD] Perpanjangan sesi gagal: Token tidak disertakan atau format salah.")
+        raise HTTPException(status_code=401, detail="Token missing or invalid")
+    
+    token = auth_header.split(" ")[1]
+    
+    from backend.app.utils.token_expiry import extend_session_expiry_by_token
+    new_expiry = await extend_session_expiry_by_token(token, body.hours_to_add)
+    
+    if not new_expiry:
+        logger.warning("⚠️ [AUTH] Gagal memperpanjang sesi. Token tidak valid atau tidak aktif.")
+        raise HTTPException(status_code=401, detail="Session invalid or expired")
+        
+    logger.info(f"🕒 [AUTH] Sesi diperpanjang. Expiry baru: {new_expiry.isoformat()}")
+    return {
+        "status": "success",
+        "expires_at": new_expiry.isoformat(),
+        "message": "Session extended successfully"
+    }

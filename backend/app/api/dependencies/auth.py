@@ -33,18 +33,18 @@ async def get_current_user_npp(
             row = await conn.fetchrow(query, npp_clean)
             
             if not row:
-                print(f"🚨 [AUTH REJECTED] NPP '{npp_clean}' mencoba masuk tapi tidak terdaftar/tidak aktif di DB HRIS!")
+                logger.warning(f"[AUTH] NPP '{npp_clean}' rejected - not registered/inactive in HRIS DB")
                 raise HTTPException(
                     status_code=status.HTTP_401_UNAUTHORIZED,
                     detail=f"NPP Pegawai {npp_clean} tidak terdaftar atau sudah tidak aktif di PT Pindad, bolo!"
                 )
                 
-            print(f"👤 [AUTH SUCCESS] Akses tervalidasi: {row['nama_lengkap']} (NPP: {row['npp']})")
+            logger.info(f"[AUTH] Access validated: {row['nama_lengkap']} (NPP: {row['npp']})")
             return row['npp']
 
         except HTTPException as he:
             raise he
         except Exception as e:
-            logger.error(f"💥 [AUTH CRITICAL] Gagal query ke DB HRIS remote: {str(e)}")
-            print(f"⚠️  [AUTH FALLBACK] DB HRIS remote bermasalah. Mengizinkan bypass darurat untuk NPP: {npp_clean}")
+            logger.error(f"[AUTH] Failed to query HRIS DB: {str(e)}")
+            logger.warning(f"[AUTH] HRIS DB issue - allowing emergency bypass for NPP: {npp_clean}")
             return npp_clean

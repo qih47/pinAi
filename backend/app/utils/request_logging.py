@@ -127,6 +127,7 @@ def setup_request_id_logging():
             return super().format(record)
     
     # Apply formatter ke semua handlers
+    logger = logging.getLogger("CAKRA_REQUEST_LOGGING")
     for handler in logging.root.handlers:
         formatter = RequestIDFormatter(
             fmt='%(asctime)s | %(name)s | %(levelname)s | %(message)s',
@@ -134,4 +135,4 @@ def setup_request_id_logging():
         )
         handler.setFormatter(formatter)
     
-    print("✅ [LOGGING] Request ID tracing setup completed")
+    logger.info("[REQUEST_LOGGING] Request ID tracing setup completed")
