@@ -1,7 +1,7 @@
 import time
 import logging
 from fastapi import APIRouter, status
-# 🔥 Tarik kedua fungsi decorator asli dari database.py lo, bolo!
+# Import database context managers
 from backend.app.core.database import get_db, get_hris_db
 
 router = APIRouter()
@@ -25,7 +25,7 @@ async def health_check():
             await conn.execute("SELECT 1;")
             status_db_rag = "UP"
     except Exception as e:
-        logger.error(f"❌ [HEALTH CHECK] Pool 'ragdb' lokal mleduk: {str(e)}")
+        logger.error(f"[HEALTH_CHECK_RAGDB_ERROR] Pool 'ragdb' error: {str(e)}")
         system_healthy = False
 
     # 2. Tes Vitalitas HRIS DB (Remote DB Pegawai via get_hris_db)
@@ -34,17 +34,17 @@ async def health_check():
             await conn.execute("SELECT 1;")
             status_db_hris = "UP"
     except Exception as e:
-        logger.error(f"❌ [HEALTH CHECK] Pool 'hris' remote down/RTO: {str(e)}")
+        logger.error(f"[HEALTH_CHECK_HRISDB_ERROR] Pool 'hris' remote unreachable: {str(e)}")
         # HRIS down tidak bikin system_healthy = False total agar Chat Sektor & Guest Mode tetap hidup
         status_db_hris = "DEGRADED (Remote DB Unreachable)"
 
     # Hitung Latensi Komputasi Total
     latency_ms = (time.time() - start_time) * 1000
 
-    logger.info(f"🩺 [HEALTH] Check tuntas dalam {latency_ms:.2f}ms | RAGDB: {status_db_rag} | HRIS: {status_db_hris}")
+    logger.info(f"[HEALTH_CHECK_COMPLETE] Completed in {latency_ms:.2f}ms | RAGDB: {status_db_rag} | HRIS: {status_db_hris}")
 
     return {
-        "status": "Healthy, Bolo!" if system_healthy else "Unhealthy / Degraded",
+        "status": "Healthy" if system_healthy else "Unhealthy / Degraded",
         "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
         "latency_ms": f"{latency_ms:.2f}ms",
         "dependencies": {

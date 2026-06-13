@@ -15,7 +15,8 @@
 7. [WebUI — Arsitektur Frontend](#webui--arsitektur-frontend)
 8. [Database Schema](#database-schema)
 9. [Cara Menjalankan](#cara-menjalankan)
-10. [Rekomendasi Optimasi & Fitur Baru](#rekomendasi-optimasi--fitur-baru)
+10. [Fitur yang Telah Diimplementasikan](#fitur-yang-telah-diimplementasikan)
+11. [Architecture Reference](#architecture-reference)
 
 ---
 
@@ -200,70 +201,123 @@ cakra/
 │   ├── app/
 │   │   ├── api/
 │   │   │   ├── dependencies/
-│   │   │   │   └── auth.py              # get_current_user_npp (token validator)
+│   │   │   │   └── auth.py                  # get_current_user_npp (token validator)
 │   │   │   ├── endpoints/
-│   │   │   │   ├── auth.py              # POST /login, GET /verify-session, POST /logout
-│   │   │   │   ├── chat.py              # GET|POST /sessions, POST /stream, POST /documents/upload
-│   │   │   │   ├── documents.py         # [KOSONG — belum diimplementasikan]
-│   │   │   │   └── health.py            # GET /health
-│   │   │   └── schemas/
-│   │   │       └── chat.py              # ChatStreamRequest, TitleUpdateSchema
+│   │   │   │   ├── chat/                    # Chat endpoint package
+│   │   │   │   │   ├── __init__.py          # Aggregates all sub-routers
+│   │   │   │   │   ├── sessions.py          # Session CRUD (list, create, rename, pin, delete)
+│   │   │   │   │   ├── stream.py            # POST /chat/stream — SSE pipeline orchestration
+│   │   │   │   │   ├── attachments.py       # POST /chat/documents/upload
+│   │   │   │   │   └── feedback.py          # POST /chat/messages/{id}/feedback
+│   │   │   │   ├── auth.py                  # POST /login, GET /verify-session, POST /logout
+│   │   │   │   ├── documents.py             # CRUD for RAG regulatory documents
+│   │   │   │   ├── health.py                # GET /health — server + model status
+│   │   │   │   ├── admin.py                 # Admin endpoints (audit logs, cache management)
+│   │   │   │   ├── notifications.py         # SSE notifications + audit_router
+│   │   │   │   └── chat.py                  # [DEPRECATED] backward-compat shim → chat/
+│   │   │   ├── schemas/                     # Centralized Pydantic schemas
+│   │   │   │   ├── __init__.py
+│   │   │   │   ├── common_schemas.py        # Pagination, error responses
+│   │   │   │   ├── auth_schemas.py          # LoginRequest, SessionResponse
+│   │   │   │   ├── chat_schemas.py          # ChatStreamRequest, FeedbackRequest
+│   │   │   │   ├── document_schemas.py      # DocumentCreate, DocumentResponse
+│   │   │   │   ├── admin_schemas.py         # Admin panel schemas
+│   │   │   │   └── notification_schemas.py  # Notification event schemas
+│   │   │   └── router.py                    # Main APIRouter — mounts all sub-routers
 │   │   ├── core/
-│   │   │   ├── config.py                # Settings (pydantic_settings, .env loader)
-│   │   │   ├── database.py              # asyncpg dual-pool (ragdb + hris_db)
-│   │   │   ├── hardware.py              # GPU/RAM info
-│   │   │   ├── llm_client.py            # stream_ollama_chat, generate_json_response
-│   │   │   ├── logging_setup.py         # Logging configuration
-│   │   │   └── paths.py                 # UPLOAD_DIR path resolver
-│   │   └── services/
-│   │       ├── agent/
-│   │       │   ├── cognitive_loop.py    # [Agent loop — status unknown]
-│   │       │   └── router_engine.py     # [Router engine — status unknown]
-│   │       ├── document_chunking/
-│   │       │   ├── manager.py           # Chunking orchestrator
-│   │       │   └── strategies/
-│   │       │       ├── parent_child.py  # Hierarchical chunking strategy
-│   │       │       └── text_standard.py # Standard text chunking
-│   │       ├── vision/
-│   │       │   └── ...                  # Vision processing modules
-│   │       ├── background_tasks.py      # [KOSONG — belum diimplementasikan]
-│   │       ├── chat_history_service.py  # CRUD sesi, pesan, attachment, corpus
-│   │       ├── memory_service.py        # Long-term memory (ai_memory table)
-│   │       ├── pipeline_layer_executor.py # Orchestrator 4-layer pipeline
-│   │       ├── rag_service.py           # Hybrid RAG: RRF + reranker
-│   │       ├── reranker_service.py      # BGE cross-encoder (CUDA)
-│   │       ├── vector_service.py        # mxbai-embed-large via Ollama API
-│   │       └── vision_service.py        # MiniCPM-V OCR service
-│   └── main.py                          # FastAPI app, lifespan, CORS, routers
+│   │   │   ├── config.py                    # Settings (pydantic_settings, .env loader)
+│   │   │   ├── database.py                  # asyncpg dual-pool (ragdb + hris_db)
+│   │   │   ├── hardware.py                  # GPU/RAM info
+│   │   │   ├── llm_client.py                # stream_ollama_chat, generate_json_response
+│   │   │   ├── logging_setup.py             # Logging configuration
+│   │   │   └── paths.py                     # UPLOAD_DIR path resolver
+│   │   ├── services/
+│   │   │   ├── agent/
+│   │   │   │   ├── cognitive_loop.py        # Agent cognitive loop
+│   │   │   │   └── router_engine.py         # Qwen Model Slot 1 router
+│   │   │   ├── chat/
+│   │   │   │   ├── __init__.py
+│   │   │   │   └── chat_history_service.py  # CRUD: sessions, messages, attachments, corpus
+│   │   │   ├── document_chunking/
+│   │   │   │   ├── manager.py               # Chunking orchestrator
+│   │   │   │   └── strategies/
+│   │   │   │       ├── parent_child.py      # Hierarchical chunking strategy
+│   │   │   │       └── text_standard.py     # Standard text chunking
+│   │   │   ├── memory/
+│   │   │   │   ├── __init__.py
+│   │   │   │   └── memory_service.py        # Long-term memory (ai_memory table)
+│   │   │   ├── notifications/
+│   │   │   │   ├── __init__.py
+│   │   │   │   └── notification_service.py  # SSE real-time notification broker
+│   │   │   ├── pipeline/                    # Agentic pipeline package
+│   │   │   │   ├── __init__.py              # Re-exports all public API functions
+│   │   │   │   ├── layer0_gateway.py        # Layer 0: intent + query rewrite
+│   │   │   │   ├── layer1_analyzer.py       # Layer 1: 35 cognitive params + fallback
+│   │   │   │   ├── layer2_executor.py       # Layer 2: Gemma stream executor
+│   │   │   │   ├── pdf_extraction.py        # PDF text extraction + vision fallback
+│   │   │   │   └── system_prompts.py        # Gemma system prompt builder
+│   │   │   ├── rag/
+│   │   │   │   ├── __init__.py
+│   │   │   │   ├── rag_service.py           # Hybrid RAG: RRF + reranker
+│   │   │   │   ├── vector_service.py        # mxbai-embed-large via Ollama API
+│   │   │   │   └── reranker_service.py      # BGE cross-encoder (CUDA)
+│   │   │   ├── system/
+│   │   │   │   ├── __init__.py
+│   │   │   │   └── background_tasks.py      # APScheduler: memory consolidation, cleanup
+│   │   │   └── vision/
+│   │   │       └── vision_service.py        # MiniCPM-V OCR service
+│   │   └── utils/
+│   │       ├── connection_manager.py        # StreamConnectionManager (SSE cleanup)
+│   │       ├── embedding_cache.py           # LRU embedding cache (SHA256, 1h TTL)
+│   │       ├── employee_cache.py            # Employee name cache (1h TTL)
+│   │       ├── request_logging.py           # X-Request-ID middleware
+│   │       ├── retry_handler.py             # retry_with_backoff + CircuitBreaker
+│   │       ├── title_generator.py           # LLM-based session title (async)
+│   │       ├── token_expiry.py              # Token expiry management (8h TTL)
+│   │       └── vector_index.py              # HNSW index management (pgvector)
+│   └── main.py                              # FastAPI app, lifespan, CORS, routers
 │
 └── webui/
     ├── src/
     │   ├── components/ui/
-    │   │   ├── GuestWelcome.jsx          # Halaman selamat datang tamu
-    │   │   └── ToastProvider.jsx         # ★ Global toast notification system
-    │   ├── features/chat/
-    │   │   ├── ChatPage.jsx              # Main orchestrator chat page
-    │   │   ├── chatPage.styles.js        # Centralized style objects + helpers
-    │   │   └── components/
-    │   │       ├── ChatArea.jsx          # Virtuoso virtual list renderer
-    │   │       ├── ChatBubble.jsx        # Message bubble (user + assistant router)
-    │   │       ├── CakraResponseRenderer.jsx # Markdown/code renderer
-    │   │       ├── CodeBlockHeader.jsx   # Copy/download code block header
-    │   │       ├── CustomModeSelector.jsx # Mode: auto|flash|documents
-    │   │       ├── HeaderDropdownMenu.jsx # Kebab menu header (theme, login)
-    │   │       ├── PlusButton.jsx        # File attachment button
-    │   │       ├── SendButton.jsx        # Submit button dengan loading state
-    │   │       ├── Sidebar.jsx           # Chat history sidebar
-    │   │       ├── SourceCitation.jsx    # RAG source card
-    │   │       └── UserBubble.jsx        # User message + attachment viewer
+    │   │   ├── GuestWelcome.jsx              # Guest landing page
+    │   │   ├── NotificationBell.jsx          # Real-time notification bell
+    │   │   ├── NotificationPanel.jsx         # Notification history panel
+    │   │   ├── SessionExpiryStatus.jsx       # Session countdown UI
+    │   │   └── ToastProvider.jsx             # Global toast notification system
+    │   ├── features/
+    │   │   ├── admin/
+    │   │   │   ├── AuditLogsPage.jsx         # Admin audit log browser
+    │   │   │   └── CacheStatsPage.jsx        # Embedding cache stats dashboard
+    │   │   └── chat/
+    │   │       ├── ChatPage.jsx              # Main orchestrator chat page
+    │   │       ├── chatPage.styles.js        # Centralized style objects
+    │   │       └── components/
+    │   │           ├── ChatArea.jsx          # Virtuoso virtual list renderer
+    │   │           ├── ChatBubble.jsx        # Message bubble router
+    │   │           ├── CakraResponseRenderer.jsx # Markdown/code renderer
+    │   │           ├── CodeBlockHeader.jsx   # Copy/download code block header
+    │   │           ├── CustomModeSelector.jsx # Mode: auto|flash|documents
+    │   │           ├── HeaderDropdownMenu.jsx # Theme, logout dropdown
+    │   │           ├── PlusButton.jsx        # File attachment trigger
+    │   │           ├── RAGMetrics.jsx        # RAG timing + cache hit display
+    │   │           ├── SendButton.jsx        # Submit + loading state
+    │   │           ├── Sidebar.jsx           # Chat history sidebar
+    │   │           ├── SourceCitation.jsx    # RAG source cards
+    │   │           └── UserBubble.jsx        # User message + attachment viewer
     │   ├── hooks/
-    │   │   └── useToast.js               # ★ Toast notification hook
+    │   │   ├── useNotifications.js           # SSE real-time notifications
+    │   │   ├── useSessionExpiry.js           # Countdown + session extension
+    │   │   ├── useSessionTitle.js            # LLM title polling hook
+    │   │   ├── useToast.js                   # Toast notification hook
+    │   │   └── useTokenRefresh.js            # Background token refresh (3 strategies)
     │   ├── services/
-    │   │   ├── apiClient.js              # Axios instance + base config
-    │   │   └── endpoints.js              # ★ Centralized API + SSE functions
+    │   │   ├── apiClient.js                  # Axios instance + X-Request-ID interceptor
+    │   │   ├── auditService.js               # Audit log API + CSV/JSON export
+    │   │   └── endpoints.js                  # Centralized API + SSE function library
     │   └── stores/
-    │       ├── authStore.js              # Zustand: auth state (user, token)
-    │       └── chatStore.js              # Zustand: sessions, messages, streaming
+    │       ├── authStore.js                  # Zustand: user, token, expiresAt
+    │       └── chatStore.js                  # Zustand: sessions, messages, streaming
     └── index.html
 ```
 
@@ -439,9 +493,9 @@ npm run build    # Production build ke /dist
 
 ---
 
-## Rekomendasi Optimasi & Fitur Baru
+## Fitur yang Telah Diimplementasikan
 
-> **Catatan**: Seluruh item di bawah ini adalah roadmap pengembangan. Setiap item sudah dianalisa dan siap untuk dieksekusi secara independen.
+> Untuk detail teknis lengkap setiap fitur, lihat [ARCHITECTURE.md](./ARCHITECTURE.md)
 
 ---
 
@@ -454,6 +508,7 @@ npm run build    # Production build ke /dist
 **Masalah**: Backend menggunakan `print()` di beberapa file untuk debugging/tracing output.
 
 **Solusi (COMPLETED)**:
+
 - ✅ Replaced ALL `print()` statements with structured `logger.info()` / `logger.debug()` / `logger.warning()` / `logger.error()`
 - ✅ Files fixed:
   - `backend/app/api/endpoints/chat.py` (Layer 0/1/2 debug output)
@@ -1088,51 +1143,52 @@ Tombol "Salin Markdown" di setiap bubble percakapan asisten menyalin raw text ma
 
 ### Backend Optimization Tasks (B1-B16): **16/16 = 100%**
 
-| Task | Feature | Status | Notes |
-|------|---------|--------|-------|
-| **B1** | Logger Terstruktur | ✅ **100%** | All `print()` replaced with logger calls across all backend files |
-| **B2** | Background Tasks | ✅ **100%** | APScheduler untuk memory consolidation & session cleanup |
-| **B3** | File Upload Validation | ✅ **100%** | Magic bytes validation, size limits, rate limiting |
-| **B4** | Retry Handler + Circuit Breaker | ✅ **100%** | Exponential backoff untuk Layer 0/1, fail >3x dalam 60s |
-| **B5** | Employee Name Caching | ✅ **100%** | In-memory LRU cache TTL 1h untuk N+1 query optimization |
-| **B6** | Document Management Endpoints | ✅ **100%** | CRUD + background chunking/embedding untuk RAG pipeline |
-| **B7** | Auth: No MD5 Bypass Account | ✅ **100%** | Environment variable controlled bypass for emergency access |
-| **B8** | Streaming Connection Cleanup | ✅ **100%** | StreamConnectionManager dengan proper AsyncIO CancelledError handling |
-| **B9** | Embedding Query Caching | ✅ **100%** | LRU cache SHA256(query) → embedding, TTL 1h, prevents 100x redundant Ollama calls |
-| **B10** | Token Auto-Expiry (8hr) | ✅ **100%** | /api/auth/extend-session endpoint + cleanup every 30min |
-| **B11** | Request ID Tracing | ✅ **100%** | X-Request-ID middleware + RequestIDFormatter untuk request lifecycle tracing |
-| **B12** | LLM-Based Session Titles | ✅ **100%** | Async fire-and-forget title generation via Ollama Qwen 0.5B (temperature=0.3) |
-| **B13** | HNSW Vector Index | ✅ **100%** | Auto-setup m=16, ef_construction=64 untuk ~100x vector search speedup |
-| **B14** | Message Feedback/Rating | ✅ **100%** | /api/chat/messages/{id}/feedback endpoint untuk 1-5 star ratings |
-| **B15** | SSE Notifications | ✅ **100%** | Real-time system events (SESSION_CREATED, MEMORY_CONSOLIDATED, DOCUMENT_INDEXED, ADMIN_ALERT) |
-| **B16** | Audit Logs Dashboard | ✅ **100%** | /api/admin/audit-logs dengan filtering, pagination, export |
+| Task    | Feature                         | Status      | Notes                                                                                         |
+| ------- | ------------------------------- | ----------- | --------------------------------------------------------------------------------------------- |
+| **B1**  | Logger Terstruktur              | ✅ **100%** | All `print()` replaced with logger calls across all backend files                             |
+| **B2**  | Background Tasks                | ✅ **100%** | APScheduler untuk memory consolidation & session cleanup                                      |
+| **B3**  | File Upload Validation          | ✅ **100%** | Magic bytes validation, size limits, rate limiting                                            |
+| **B4**  | Retry Handler + Circuit Breaker | ✅ **100%** | Exponential backoff untuk Layer 0/1, fail >3x dalam 60s                                       |
+| **B5**  | Employee Name Caching           | ✅ **100%** | In-memory LRU cache TTL 1h untuk N+1 query optimization                                       |
+| **B6**  | Document Management Endpoints   | ✅ **100%** | CRUD + background chunking/embedding untuk RAG pipeline                                       |
+| **B7**  | Auth: No MD5 Bypass Account     | ✅ **100%** | Environment variable controlled bypass for emergency access                                   |
+| **B8**  | Streaming Connection Cleanup    | ✅ **100%** | StreamConnectionManager dengan proper AsyncIO CancelledError handling                         |
+| **B9**  | Embedding Query Caching         | ✅ **100%** | LRU cache SHA256(query) → embedding, TTL 1h, prevents 100x redundant Ollama calls             |
+| **B10** | Token Auto-Expiry (8hr)         | ✅ **100%** | /api/auth/extend-session endpoint + cleanup every 30min                                       |
+| **B11** | Request ID Tracing              | ✅ **100%** | X-Request-ID middleware + RequestIDFormatter untuk request lifecycle tracing                  |
+| **B12** | LLM-Based Session Titles        | ✅ **100%** | Async fire-and-forget title generation via Ollama Qwen 0.5B (temperature=0.3)                 |
+| **B13** | HNSW Vector Index               | ✅ **100%** | Auto-setup m=16, ef_construction=64 untuk ~100x vector search speedup                         |
+| **B14** | Message Feedback/Rating         | ✅ **100%** | /api/chat/messages/{id}/feedback endpoint untuk 1-5 star ratings                              |
+| **B15** | SSE Notifications               | ✅ **100%** | Real-time system events (SESSION_CREATED, MEMORY_CONSOLIDATED, DOCUMENT_INDEXED, ADMIN_ALERT) |
+| **B16** | Audit Logs Dashboard            | ✅ **100%** | /api/admin/audit-logs dengan filtering, pagination, export                                    |
 
 ### Frontend Synchronization Tasks (W1-W18): **18/18 = 100%**
 
-| Task | Feature | Status | Notes |
-|------|---------|--------|-------|
-| **W1** | Auto Scroll to Latest | ✅ **100%** | Pre-existing (scroll button already in ChatArea.jsx) |
-| **W2** | Skeleton Loading | ✅ **100%** | Pre-existing (Loading.jsx component for streaming messages) |
-| **W3** | Retry Failed Messages | ✅ **100%** | Pre-existing (built into ChatBubble.jsx) |
-| **W4** | Full-Text Message Search | ✅ **100%** | Pre-existing (Ctrl+F search in chat bubbles) |
-| **W5** | Export Chat History | ✅ **100%** | Pre-existing (JSON export button in HeaderDropdownMenu.jsx) |
-| **W6** | Typing Indicator | ✅ **100%** | Pre-existing (3-dot animation while LLM response streaming) |
-| **W7** | Isolated Document View | ✅ **100%** | Pre-existing (LearningPage.jsx with DocumentTable) |
-| **W8** | Dark Mode Toggle | ✅ **100%** | Pre-existing (theme toggle in Layout.jsx) |
-| **W9** | Keyboard Shortcuts | ✅ **100%** | Pre-existing (Ctrl+K search, Enter send, Shift+Enter newline) |
-| **W10** | Markdown Export | ✅ **100%** | Pre-existing (copy markdown button in CakraResponseRenderer.jsx) |
-| **W11** | Session Expiry Countdown | ✅ **100%** | useSessionExpiry hook (8hr countdown) + SessionExpiryStatus component |
-| **W12** | Request ID Auto-Injection | ✅ **100%** | apiClient.js interceptor generates unique X-Request-ID per request |
-| **W13** | Cache Stats Dashboard | ✅ **100%** | CacheStatsPage.jsx admin page untuk embedding_cache monitoring |
-| **W14** | LLM Title Indicator | ✅ **100%** | useSessionTitle hook + "Generating title..." state in Sidebar |
-| **W15** | Performance Metrics Display | ✅ **100%** | RAGMetrics.jsx shows search timing + cache hit rate + vector distance |
-| **W16** | Real-time Notification Center | ✅ **100%** | useNotifications hook + NotificationBell + NotificationPanel dengan SSE |
-| **W17** | Audit Log Viewer | ✅ **100%** | AuditLogsPage.jsx admin interface untuk browsing backend audit logs |
-| **W18** | Token Auto-Refresh (3 Mechanisms) | ✅ **100%** | useTokenRefresh (30min bg + activity-based + 5min emergency checks) |
+| Task    | Feature                           | Status      | Notes                                                                   |
+| ------- | --------------------------------- | ----------- | ----------------------------------------------------------------------- |
+| **W1**  | Auto Scroll to Latest             | ✅ **100%** | Pre-existing (scroll button already in ChatArea.jsx)                    |
+| **W2**  | Skeleton Loading                  | ✅ **100%** | Pre-existing (Loading.jsx component for streaming messages)             |
+| **W3**  | Retry Failed Messages             | ✅ **100%** | Pre-existing (built into ChatBubble.jsx)                                |
+| **W4**  | Full-Text Message Search          | ✅ **100%** | Pre-existing (Ctrl+F search in chat bubbles)                            |
+| **W5**  | Export Chat History               | ✅ **100%** | Pre-existing (JSON export button in HeaderDropdownMenu.jsx)             |
+| **W6**  | Typing Indicator                  | ✅ **100%** | Pre-existing (3-dot animation while LLM response streaming)             |
+| **W7**  | Isolated Document View            | ✅ **100%** | Pre-existing (LearningPage.jsx with DocumentTable)                      |
+| **W8**  | Dark Mode Toggle                  | ✅ **100%** | Pre-existing (theme toggle in Layout.jsx)                               |
+| **W9**  | Keyboard Shortcuts                | ✅ **100%** | Pre-existing (Ctrl+K search, Enter send, Shift+Enter newline)           |
+| **W10** | Markdown Export                   | ✅ **100%** | Pre-existing (copy markdown button in CakraResponseRenderer.jsx)        |
+| **W11** | Session Expiry Countdown          | ✅ **100%** | useSessionExpiry hook (8hr countdown) + SessionExpiryStatus component   |
+| **W12** | Request ID Auto-Injection         | ✅ **100%** | apiClient.js interceptor generates unique X-Request-ID per request      |
+| **W13** | Cache Stats Dashboard             | ✅ **100%** | CacheStatsPage.jsx admin page untuk embedding_cache monitoring          |
+| **W14** | LLM Title Indicator               | ✅ **100%** | useSessionTitle hook + "Generating title..." state in Sidebar           |
+| **W15** | Performance Metrics Display       | ✅ **100%** | RAGMetrics.jsx shows search timing + cache hit rate + vector distance   |
+| **W16** | Real-time Notification Center     | ✅ **100%** | useNotifications hook + NotificationBell + NotificationPanel dengan SSE |
+| **W17** | Audit Log Viewer                  | ✅ **100%** | AuditLogsPage.jsx admin interface untuk browsing backend audit logs     |
+| **W18** | Token Auto-Refresh (3 Mechanisms) | ✅ **100%** | useTokenRefresh (30min bg + activity-based + 5min emergency checks)     |
 
 ### Summary
 
 **✅ ALL RECOMMENDATIONS FULLY IMPLEMENTED:**
+
 - **Backend**: 16/16 = **100%** complete (all optimizations done)
 - **Frontend**: 18/18 = **100%** complete (all features working)
 - **Integration**: All endpoints, hooks, components properly integrated
@@ -1144,4 +1200,4 @@ All backend optimization tasks (B1-B16) and frontend synchronization tasks (W1-W
 
 ---
 
-_README ini di-generate dan diperbarui pada: 2026-06-13 berdasarkan analisa lengkap seluruh kode backend dan frontend._
+_README ini di-generate dan diperbarui pada: 2026-06-14 setelah refactoring Phase 1-5. Untuk detail arsitektur backend, lihat [ARCHITECTURE.md](./ARCHITECTURE.md)._

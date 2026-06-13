@@ -14,17 +14,7 @@ router = APIRouter()
 logger = logging.getLogger("CAKRA_AUTH")
 
 # --- PYDANTIC SCHEMAS ---
-class LoginRequest(BaseModel):
-    username: str  # Berisi NPP Pegawai
-    password: str  # Plain password dari Frontend
-
-class LoginResponse(BaseModel):
-    status: str
-    message: Optional[str] = None
-    data: Optional[dict] = None
-
-class ExtendSessionRequest(BaseModel):
-    hours_to_add: int = 8
+from backend.app.api.schemas import LoginRequest, LoginResponse, ExtendSessionRequest
 
 
 # --- ENDPOINTS ---
@@ -197,7 +187,7 @@ async def login(request_body: LoginRequest, request: Request):
                 )
                 logger.info("📝 [LOGIN] Sinkronisasi tabel 'users' lokal dikunci aman.")
 
-                # Insert atau refresh token session aktif di tabel session_login sesuai ERD lo bolo
+                # Insert or refresh active session token in session_login table
                 expires_at = await conn.fetchval(
                     """
                     INSERT INTO session_login (npp, session_token, ip_address, is_login, last_activity, expires_at)
@@ -275,14 +265,14 @@ async def logout(request: Request, payload: dict = Body(...)):
                         npp,
                         user_ip,
                     )
-                logger.info(f"✨ [LOGOUT] Clean shutdown session untuk NPP: {npp}. Jejak audit aman, bolo!")
+                logger.info(f"[AUTH_LOGOUT_SUCCESS] Clean shutdown session for NPP: {npp}. Audit trail secured.")
                 return {"status": "success", "message": "Logged out successfully"}
 
             logger.warning("⚠️  [LOGOUT] Sesi token sudah tidak aktif sebelumnya.")
             return {"status": "success", "message": "Session already inactive"}
 
     except Exception as e:
-        logger.error(f"❌ Logout Error: {str(e)}")
+        logger.error(f"[AUTH_LOGOUT_ERROR] Logout error: {str(e)}")
         raise HTTPException(status_code=500, detail="Internal Server Error during logout")
 
 @router.post("/extend-session")

@@ -26,7 +26,7 @@ async def get_current_user_npp(
         return None
 
     # 2. VALIDASI KE DATABASE HRIS REMOTE
-    # 🔥 FIX SAKTI: Ganti get_db(pool_name="hris") dengan get_hris_db() bawaan asli lu bolo!
+    # Query master_personil table to check active status
     async with get_hris_db() as conn:  
         try:
             query = "SELECT npp, nama_lengkap FROM master_personil WHERE npp = $1 AND kode_status_aktif = 1 LIMIT 1;"
@@ -36,7 +36,7 @@ async def get_current_user_npp(
                 logger.warning(f"[AUTH] NPP '{npp_clean}' rejected - not registered/inactive in HRIS DB")
                 raise HTTPException(
                     status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail=f"NPP Pegawai {npp_clean} tidak terdaftar atau sudah tidak aktif di PT Pindad, bolo!"
+                    detail=f"NPP Pegawai {npp_clean} tidak terdaftar atau sudah tidak aktif di PT Pindad."
                 )
                 
             logger.info(f"[AUTH] Access validated: {row['nama_lengkap']} (NPP: {row['npp']})")

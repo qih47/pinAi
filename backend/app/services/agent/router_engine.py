@@ -103,7 +103,7 @@ class RouterEngine:
             "model": settings.MODEL_ROUTER,
             "messages": [{"role": "user", "content": "warm up"}],
             "stream": False,
-            "keep_alive": -1 # Kunci di background GPU selamanya bolo!
+            "keep_alive": -1 # Keep loaded in background GPU memory permanently
         }
         logger.info(f"[ROUTER_ENGINE] Warming up model {settings.MODEL_ROUTER}...")
         async with httpx.AsyncClient(timeout=httpx.Timeout(120.0, connect=10.0)) as client: # Kasih nafas 2 menit khusus warm-up

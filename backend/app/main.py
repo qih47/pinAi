@@ -45,7 +45,7 @@ DB_DOC_DIR = os.path.join(ROOT_DIR, "db_doc")
 # Pembuatan folder dilakukan langsung di level compile/load time sebelum dimount
 if not os.path.exists(DB_DOC_DIR):
     os.makedirs(DB_DOC_DIR)
-    logger.info(f"📁 [STORAGE] Folder statis absolut '{DB_DOC_DIR}' berhasil dibuat otomatis, bolo!")
+    logger.info(f"[STORAGE_DIR_CREATED] Static absolute folder '{DB_DOC_DIR}' created successfully.")
 
 
 @asynccontextmanager
@@ -61,7 +61,7 @@ async def lifespan(app: FastAPI):
     # Kunci 1: Inisialisasi pool database ganda (ragdb & hris)
     try:
         await init_db_pool()
-        logger.info("⚡ [BOOTSTRAP] Koneksi dual-pool database aman terkendali, bolo!")
+        logger.info("[DB_CONNECTION_POOL_INIT] Dual-pool database connection initialized successfully.")
         
         # Setup Token Expiry Migration & HNSW Index setup
         await setup_token_expiry_migration()
@@ -93,7 +93,7 @@ async def lifespan(app: FastAPI):
     logger.info("═"*60)
     await stop_background_scheduler()  # Hentikan scheduler sebelum close DB
     await close_db_pool()
-    logger.info("✨ [SHUTDOWN] Semua resource pool dibersihkan dengan aman, bolo!")
+    logger.info("[DB_CONNECTION_POOL_SHUTDOWN] All database connection pools closed successfully.")
 
 
 # 2. Inisialisasi FastAPI Instance

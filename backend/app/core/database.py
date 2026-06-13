@@ -36,9 +36,9 @@ async def init_db_pool():
             command_timeout=60.0,
         )
 
-        logger.info("🚀 [DATABASE] Dual-database pools (ragdb & hris) initialized successfully, bolo!")
+        logger.info("[DB_CONNECTION_POOL_INIT] Dual-database pools (ragdb & hris) initialized successfully.")
     except Exception as e:
-        logger.error(f"❌ [DATABASE] Failed to initialize database pools: {e}")
+        logger.error(f"[DB_CONNECTION_POOL_ERROR] Failed to initialize database pools: {e}")
         raise e
 
 async def close_db_pool():

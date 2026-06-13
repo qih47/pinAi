@@ -6,7 +6,8 @@
 
 **Status**: 80% Complete — Logging infrastructure is setup, but `print()` statements remain in several critical files.
 
-**Impact**: 
+**Impact**:
+
 - ✅ Performance: No performance impact (print vs logger is negligible)
 - ✅ Functionality: No functional impact (system works fine)
 - ⏳ Maintainability: Structured logging enables proper log levels, monitoring, and debugging
@@ -20,6 +21,7 @@
 **Lines with print()**: ~20 lines (Layer 0, 1, 2 debug output)
 
 **Example**:
+
 ```python
 # BEFORE
 print("\n" + "🚦 " * 20)
@@ -31,6 +33,7 @@ logger.debug("[LAYER 0] Gateway Result: %s", json.dumps(gateway_result, indent=2
 ```
 
 **Command to find**:
+
 ```bash
 grep -n "print(" backend/app/api/endpoints/chat.py | wc -l
 ```
@@ -42,6 +45,7 @@ grep -n "print(" backend/app/api/endpoints/chat.py | wc -l
 **Lines with print()**: ~5 lines (AUTH SUCCESS/REJECTED messages)
 
 **Example**:
+
 ```python
 # BEFORE
 print(f"🚨 [AUTH REJECTED] NPP '{npp_clean}' mencoba masuk tapi tidak terdaftar/tidak aktif di DB HRIS!")
@@ -57,6 +61,7 @@ logger.warning("[AUTH] NPP '%s' rejected - not registered/inactive in HRIS DB", 
 **Lines with print()**: ~5 lines (Token migration & cleanup logs)
 
 **Example**:
+
 ```python
 # BEFORE
 print("✅ [MIGRATION] Token expiry schema setup completed")
@@ -72,6 +77,7 @@ logger.info("[TOKEN_EXPIRY] Schema setup completed")
 **Lines with print()**: ~1 line (Setup confirmation)
 
 **Example**:
+
 ```python
 # BEFORE
 print("✅ [LOGGING] Request ID tracing setup completed")
@@ -87,6 +93,7 @@ logger.info("[REQUEST_LOGGING] Request ID tracing setup completed")
 **Lines with print()**: ~5 lines (Title generation, feedback logs)
 
 **Example**:
+
 ```python
 # BEFORE
 print(f"📝 [AUTO TITLE] Berhasil merubah judul sesi: {auto_title}")
@@ -102,6 +109,7 @@ logger.info("[AUTO_TITLE] Session title updated: %s", auto_title)
 **Lines with print()**: ~10 lines (Cognitive processing logs)
 
 **Example**:
+
 ```python
 # BEFORE
 print("⚙️  [COGNITIVE LOOP] Orkestrator DeepSeek-R1 (Slot 2) siap merajut pemikiran, bolo!")
@@ -115,7 +123,9 @@ logger.debug("[COGNITIVE_LOOP] Orchestrator ready for deep thinking")
 ## Implementation Steps
 
 ### Step 1: Import Logger
+
 Ensure each file has:
+
 ```python
 import logging
 logger = logging.getLogger(__name__)  # or specific name
@@ -126,12 +136,14 @@ logger = logging.getLogger(__name__)  # or specific name
 Use this regex pattern for sed/find-replace:
 
 **Pattern 1** (Simple messages):
+
 ```regex
 print("(.*?)")
 → logger.info("$1")
 ```
 
 **Pattern 2** (F-strings):
+
 ```regex
 print(f"(.*?)")
 → logger.info("...", ...)  # Manually convert to format args
@@ -163,15 +175,15 @@ for file in \
   "backend/app/utils/request_logging.py" \
   "backend/app/services/chat_history_service.py" \
   "backend/app/services/agent/cognitive_loop.py"; do
-  
+
   echo "Processing: $file"
-  
+
   # Backup
   cp "$file" "${file}.bak"
-  
+
   # Replace print( with logger call
   sed -i 's/print(f"/{comment_placeholder}/g' "$file"
-  
+
 done
 
 echo "✅ Done! Review each file and fix format arguments manually."
@@ -205,6 +217,7 @@ pytest backend/tests/
 ## Production Readiness
 
 Once B1 is 100% complete:
+
 1. ✅ All `print()` removed
 2. ✅ All files use `logger`
 3. ✅ Log levels properly configured in `logging_setup.py`

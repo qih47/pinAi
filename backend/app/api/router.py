@@ -1,19 +1,19 @@
 from fastapi import APIRouter
 import logging
-from backend.app.api.endpoints import auth, chat, health, documents, admin, notifications  # 🔥 Added notifications
+from backend.app.api.endpoints import auth, chat, health, documents, admin, notifications
 
 logger = logging.getLogger("CAKRA_ROUTER")
 
-# Inisialisasi APIRouter utama
+# Main API router
 api_router = APIRouter()
 
-# Tancapkan semua sub-router ke hub utama /api
-api_router.include_router(auth.router, prefix="/auth", tags=["Authentication Sektor"])
-api_router.include_router(chat.router, prefix="/chat", tags=["Engine Obrolan Sektor"])
-api_router.include_router(health.router, prefix="/health", tags=["System Health Sektor"]) # 🔥 RAPI DI SINI!
-api_router.include_router(documents.router, prefix="/documents", tags=["Manajemen Dokumen Sektor"])
-api_router.include_router(admin.router, prefix="/admin", tags=["Admin Dashboard"])  # 🔥 Admin endpoints
-api_router.include_router(notifications.router, prefix="/notifications", tags=["Real-time Notifications"])  # 🔥 B15
-api_router.include_router(notifications.audit_router, tags=["Audit Logs"])  # 🔥 B16
+# Register all sub-routers under /api prefix
+api_router.include_router(auth.router, prefix="/auth", tags=["Authentication"])
+api_router.include_router(chat.router, prefix="/chat", tags=["Chat"])
+api_router.include_router(health.router, prefix="/health", tags=["Health"])
+api_router.include_router(documents.router, prefix="/documents", tags=["Documents"])
+api_router.include_router(admin.router, prefix="/admin", tags=["Admin"])
+api_router.include_router(notifications.router, prefix="/notifications", tags=["Notifications"])
+api_router.include_router(notifications.audit_router, tags=["Audit Logs"])
 
-logger.info("🔀 [ROUTER] Hub utama api_router sukses memuat sub-router /auth, /chat, /health, /documents, /admin, /notifications, dan /audit-logs, bolo!")
+logger.info("[ROUTER_INIT] Main api_router loaded: /auth, /chat, /health, /documents, /admin, /notifications, /audit-logs")

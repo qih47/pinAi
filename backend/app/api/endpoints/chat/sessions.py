@@ -1,0 +1,68 @@
+import logging
+from typing import Optional
+from fastapi import APIRouter, Depends, HTTPException, Query
+
+from backend.app.api.dependencies.auth import get_current_user_npp
+from backend.app.core.config import settings
+from backend.app.services.chat_history_service import chat_history_service
+from backend.app.api.schemas.chat import TitleUpdateSchema
+
+router = APIRouter()
+logger = logging.getLogger("CAKRA_CHAT_API")
+
+@router.get("/sessions")
+async def get_history_sessions(
+    current_user_npp: Optional[str] = Depends(get_current_user_npp),
+):
+    if not current_user_npp:
+        return {"status": "success", "data": []}
+    sessions = await chat_history_service.get_user_sessions(current_user_npp)
+    return {"status": "success", "data": sessions}
+
+
+@router.post("/sessions/create")
+async def create_new_chat_session(
+    current_user_npp: Optional[str] = Depends(get_current_user_npp),
+    judul: Optional[str] = Query("Obrolan Baru"),
+):
+    npp_target = current_user_npp if current_user_npp else "GUEST"
+    name_target = "Pegawai Pindad" if current_user_npp else "Guest User"
+    new_session = await chat_history_service.create_new_session(
+        npp=npp_target,
+        username=name_target,
+        model_name=settings.MODEL_PERSONA,
+        judul=judul,
+    )
+    return {"status": "success", "data": new_session}
+
+
+@router.put("/sessions/{session_uuid}/title")
+async def rename_chat_title(session_uuid: str, payload: TitleUpdateSchema):
+    success = await chat_history_service.update_session_title(
+        session_uuid, payload.judul
+    )
+    if not success:
+        raise HTTPException(status_code=500, detail="Gagal memperbarui judul sesi.")
+    return {"status": "success", "message": "Judul sesi berhasil diperbarui!"}
+
+
+@router.put("/sessions/{session_uuid}/pin")
+async def pin_chat_session(session_uuid: str, is_pinned: bool = Query(...)):
+    success = await chat_history_service.toggle_pin_session(session_uuid, is_pinned)
+    if not success:
+        raise HTTPException(status_code=500, detail="Gagal merubah status sematan.")
+    return {"status": "success", "message": "Status sematan berhasil diperbarui!"}
+
+
+@router.delete("/sessions/{session_uuid}")
+async def delete_chat_session(session_uuid: str):
+    success = await chat_history_service.soft_delete_session(session_uuid)
+    if not success:
+        raise HTTPException(status_code=500, detail="Gagal menghapus sesi.")
+    return {"status": "success", "message": "Sesi berhasil dihapus!"}
+
+
+@router.get("/sessions/{session_uuid}/messages")
+async def get_session_messages_endpoint(session_uuid: str):
+    messages = await chat_history_service.get_session_messages(session_uuid)
+    return {"status": "success", "data": messages}
