@@ -1,16 +1,10 @@
 import { create } from "zustand";
+import * as endpoints from "../services/endpoints";
 
-const DEFAULT_API_BASE = import.meta.env.VITE_API_BASE_URL || "";
-export const API_BASE = typeof window !== 'undefined' && !DEFAULT_API_BASE
-    ? `${window.location.protocol}//${window.location.hostname}:5000`
-    : DEFAULT_API_BASE;
+export const API_BASE = endpoints.getApiBase();
+export const getUploadUrl = endpoints.getUploadUrl;
+
 let _sessionLoadSeq = 0;
-
-export function getUploadUrl(filePath) {
-    if (!filePath) return '';
-    const filename = filePath.includes('/') ? filePath.split('/').pop() : filePath;
-    return `${API_BASE}/uploads/${filename}`;
-}
 
 function _normalizeAttachments(files) {
     if (!files || !files.length) return [];
@@ -24,116 +18,69 @@ function _normalizeAttachments(files) {
     }));
 }
 
-function _buildAuthHeaders(npp) {
-    const headers = { 'Content-Type': 'application/json' };
-    const cleanNpp = (npp || '').trim();
-    const isPlaceholder = !cleanNpp || cleanNpp.startsWith('NPP');
-    if (!isPlaceholder) {
-        headers['X-NPP-Header'] = cleanNpp;
-    }
-    return headers;
-}
-
 async function _performStream(set, get, messagesToSend, assistantMessage, forcedSessionUuid = null, npp = null, isolatedDocId = null, attachmentPaths = [], chatMode = 'auto') {
     try {
         const activeSessionUuid = forcedSessionUuid || get().sessionUuid;
-
-        const response = await fetch(`${API_BASE}/api/chat/stream`, {
-            method: 'POST',
-            headers: _buildAuthHeaders(npp),
-            body: JSON.stringify({
-                session_uuid: activeSessionUuid,
-                messages: messagesToSend,
-                ode: get().chatMode || chatMode,
-                temperature: 0.7,
-                isolated_doc_id: isolatedDocId,
-                attachment_paths: attachmentPaths
-            })
-        });
-
-        if (!response.ok) throw new Error('Gagal terhubung dengan server backend.');
-
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
         let accumulatedReply = '';
-        let streamBuffer = '';
         let renderTimeout = null;
-        let accumulatedThinking = '';
 
-        while (true) {
-            const { value, done } = await reader.read();
-            if (done) break;
+        await endpoints.streamChat(
+            {
+                sessionUuid: activeSessionUuid,
+                messages: messagesToSend,
+                chatMode: get().chatMode || chatMode,
+                isolatedDocId,
+                attachmentPaths,
+                npp
+            },
+            {
+                onThinking: (thinking) => {
+                    const updatedAssistantMsg = { ...assistantMessage, thought: thinking };
+                    const updatedMessages = get().messages.map(msg =>
+                        msg === assistantMessage ? updatedAssistantMsg : msg
+                    );
+                    assistantMessage = updatedAssistantMsg;
+                    set({
+                        currentThinking: thinking,
+                        isThinking: true,
+                        messages: updatedMessages
+                    });
+                },
+                onSources: (sources) => {
+                    console.log('📚 [SSE] Received sources:', sources);
+                    const updatedAssistantMsg = {
+                        ...assistantMessage,
+                        sources: sources,
+                        citations: sources  // Dual assignment untuk kompatibilitas
+                    };
+                    const updatedMessages = get().messages.map(msg =>
+                        msg === assistantMessage ? updatedAssistantMsg : msg
+                    );
+                    assistantMessage = updatedAssistantMsg;
+                    set({ messages: updatedMessages });
+                },
+                onChunk: (chunk) => {
+                    accumulatedReply += chunk;
+                    assistantMessage.content = accumulatedReply;
 
-            streamBuffer += decoder.decode(value, { stream: true });
-            const lines = streamBuffer.split('\n');
-            streamBuffer = lines.pop();
-
-            for (const line of lines) {
-                const cleanedLine = line.trim();
-                if (!cleanedLine) continue;
-
-                try {
-                    const parsedData = JSON.parse(cleanedLine);
-
-                    // 🧠 HANDLE STATUS DINAMIS
-                    if (parsedData.thinking) {
-                        accumulatedThinking = parsedData.thinking;
-                        const updatedAssistantMsg = { ...assistantMessage, thought: accumulatedThinking };
-                        const updatedMessages = get().messages.map(msg =>
-                            msg === assistantMessage ? updatedAssistantMsg : msg
-                        );
-                        assistantMessage = updatedAssistantMsg;
-                        set({
-                            currentThinking: accumulatedThinking,
-                            isThinking: true,
-                            messages: updatedMessages
-                        });
-                    }
-
-                    // 🔥 NEW: HANDLE SOURCES FROM RAG
-                    if (parsedData.sources && Array.isArray(parsedData.sources)) {
-                        console.log('📚 [SSE] Received sources:', parsedData.sources);
-                        const updatedAssistantMsg = {
-                            ...assistantMessage,
-                            sources: parsedData.sources,
-                            citations: parsedData.sources  // 🔥 Dual assignment untuk kompatibilitas
-                        };
-                        const updatedMessages = get().messages.map(msg =>
-                            msg === assistantMessage ? updatedAssistantMsg : msg
-                        );
-                        assistantMessage = updatedAssistantMsg;
-                        set({ messages: updatedMessages });
-                    }
-
-                    // 📝 HANDLE RESPONSE CHUNK
-                    if (parsedData.chunk) {
-                        accumulatedReply += parsedData.chunk;
-                        assistantMessage.content = accumulatedReply;
-
-                        if (!renderTimeout) {
-                            renderTimeout = requestAnimationFrame(() => {
-                                set({
-                                    messages: [...get().messages],
-                                    isThinking: false
-                                });
-                                renderTimeout = null;
+                    if (!renderTimeout) {
+                        renderTimeout = requestAnimationFrame(() => {
+                            set({
+                                messages: [...get().messages],
+                                isThinking: false
                             });
-                        }
-                    }
-
-                    // 🏁 HANDLE COMPLETION
-                    if (parsedData.done === true) {
-                        set({
-                            isThinking: false,
-                            currentThinking: ''
+                            renderTimeout = null;
                         });
                     }
-                } catch (jsonErr) {
-                    // Buffering
+                },
+                onDone: () => {
+                    set({
+                        isThinking: false,
+                        currentThinking: ''
+                    });
                 }
             }
-        }
-
+        );
     } catch (error) {
         console.error('💥 [FE STREAM ERROR]:', error);
         assistantMessage.content = '⚠️ Gagal memuat balasan.';
@@ -163,12 +110,7 @@ export const useChatStore = create((set, get) => ({
         if (!currentSessionUuid || currentSessionUuid === "new") {
             try {
                 const generatedTitle = content.split(" ").slice(0, 4).join(" ") + "...";
-
-                const response = await fetch(`${API_BASE}/api/chat/sessions/create?judul=${encodeURIComponent(generatedTitle)}`, {
-                    method: 'POST',
-                    headers: _buildAuthHeaders(npp),
-                });
-                const result = await response.json();
+                const result = await endpoints.createChatSession(generatedTitle, npp);
 
                 if (result.status === "success") {
                     currentSessionUuid = result.data.session_uuid;
@@ -278,15 +220,7 @@ export const useChatStore = create((set, get) => ({
     fetchChatHistory: async (npp) => {
         if (!npp) return { status: "error", data: [] };
         try {
-            const response = await fetch(`${API_BASE}/api/chat/sessions`, {
-                method: 'GET',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-NPP-Header': npp
-                }
-            });
-            if (!response.ok) throw new Error("Gagal mengambil data");
-            const result = await response.json();
+            const result = await endpoints.fetchChatSessions(npp);
             return result;
         } catch (err) {
             console.error("❌ [FETCH ERROR]:", err);
@@ -303,10 +237,7 @@ export const useChatStore = create((set, get) => ({
 
         try {
             const npp = JSON.parse(localStorage.getItem('cakra_user'))?.npp || '';
-            const response = await fetch(`${API_BASE}/api/chat/sessions/${sessionUuid}/messages`, {
-                headers: { 'X-NPP-Header': npp }
-            });
-            const result = await response.json();
+            const result = await endpoints.fetchSessionMessages(sessionUuid, npp);
 
             if (seq !== _sessionLoadSeq) return;
 
@@ -344,10 +275,8 @@ export const useChatStore = create((set, get) => ({
     pinChat: async (sessionUuid, isPinnedCurrentValue) => {
         try {
             const nextPinState = !isPinnedCurrentValue;
-            const response = await fetch(`${API_BASE}/api/chat/sessions/${sessionUuid}/pin?is_pinned=${nextPinState}`, {
-                method: 'PUT'
-            });
-            return await response.json();
+            const result = await endpoints.pinSession(sessionUuid, nextPinState);
+            return result;
         } catch (err) {
             console.error("❌ [STORE PIN ERROR]:", err);
             return { status: "error" };
@@ -356,12 +285,8 @@ export const useChatStore = create((set, get) => ({
 
     renameChat: async (sessionUuid, tempTitle) => {
         try {
-            const response = await fetch(`${API_BASE}/api/chat/sessions/${sessionUuid}/title`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ judul: tempTitle })
-            });
-            return await response.json();
+            const result = await endpoints.renameSession(sessionUuid, tempTitle);
+            return result;
         } catch (err) {
             console.error("❌ [STORE RENAME ERROR]:", err);
             return { status: "error" };
@@ -370,14 +295,7 @@ export const useChatStore = create((set, get) => ({
 
     createNewSession: async (npp) => {
         try {
-            const response = await fetch(`${API_BASE}/api/chat/sessions/create`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-NPP-Header': npp || ''
-                }
-            });
-            const result = await response.json();
+            const result = await endpoints.createChatSession(null, npp);
             if (result.status === 'success') {
                 set({ sessionUuid: result.data.session_uuid, messages: [], stagedAttachments: [], activeIsolatedDocId: null, activeIsolatedTitle: null });
                 return result.data.session_uuid;
@@ -391,13 +309,8 @@ export const useChatStore = create((set, get) => ({
 
     deleteChat: async (sessionUuid, npp) => {
         try {
-            const response = await fetch(`${API_BASE}/api/chat/sessions/${sessionUuid}`, {
-                method: 'DELETE',
-                headers: {
-                    'X-NPP-Header': npp || ''
-                }
-            });
-            return await response.json();
+            const result = await endpoints.deleteSession(sessionUuid, npp);
+            return result;
         } catch (err) {
             console.error("❌ [STORE DELETE ERROR]:", err);
             return { status: "error" };

@@ -25,7 +25,7 @@ export default function GuestWelcome({
           src={cakraLogo}
           alt="CAKRA"
           style={{
-            width: '80px',
+            width: '90px',
             height: '80px',
             borderRadius: '20px',
             filter: 'drop-shadow(0 8px 24px rgba(99, 102, 241, 0.25))'

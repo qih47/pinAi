@@ -28,7 +28,10 @@ const Sidebar = ({
   const [sessionToDelete, setSessionToDelete] = useState(null);
 
   // Ambil method fetch secara langsung dari Zustand store
-  const chatStore = useChatStore();
+  const pinChat = useChatStore((state) => state.pinChat);
+  const renameChat = useChatStore((state) => state.renameChat);
+  const deleteChat = useChatStore((state) => state.deleteChat);
+  const fetchChatHistory = useChatStore((state) => state.fetchChatHistory);
 
   // Ambil variabel nama dan divisi cadangan dari props atau sesuaikan dengan struktur store
   const profileName = userData?.fullname || userData?.name || "Pegawai Pindad";
@@ -53,7 +56,7 @@ const Sidebar = ({
       const isPinnedCurrentValue = currentChat ? currentChat.is_pinned : false;
 
       // Meneruskan kedua parameter tersebut ke method store
-      const result = await chatStore.pinChat(sessionUuid, isPinnedCurrentValue);
+      const result = await pinChat(sessionUuid, isPinnedCurrentValue);
 
       if (result.status === "success") {
         setChatHistory((prev) => {
@@ -75,7 +78,7 @@ const Sidebar = ({
     if (!tempTitle.trim()) return;
     try {
       // SINKRONISASI: Memanggil method dari chatStore
-      const result = await chatStore.renameChat(sessionUuid, tempTitle);
+      const result = await renameChat(sessionUuid, tempTitle);
       if (result.status === "success") {
         setChatHistory((prev) =>
           prev.map((chat) =>
@@ -110,7 +113,7 @@ const Sidebar = ({
       await new Promise((resolve) => setTimeout(resolve, 400));
 
       // SINKRONISASI PERBAIKAN: Meneruskan session_uuid dan NPP pengguna aktif ke store global
-      const result = await chatStore.deleteChat(sessionToDelete, userData?.npp);
+      const result = await deleteChat(sessionToDelete, userData?.npp);
 
       if (result.status === "success") {
         setChatHistory((prev) =>
@@ -141,7 +144,7 @@ const Sidebar = ({
       if (userData?.npp && userData.npp !== 'NPP ------' && !hasFetchedRef.current) {
         hasFetchedRef.current = true; // ← set flag sebelum fetch
         try {
-          const result = await chatStore.fetchChatHistory(userData.npp);
+          const result = await fetchChatHistory(userData.npp);
           if (result.status === "success") {
             setChatHistory(result.data);
           }

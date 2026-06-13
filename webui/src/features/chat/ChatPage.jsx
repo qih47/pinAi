@@ -1,5 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useChatStore, API_BASE } from '../../stores/chatStore';
+import { uploadDocuments } from '../../services/endpoints';
+import useToast from '../../hooks/useToast';
 import cakraLogo from '../../assets/cakra.png';
 import { styles, lightColors, darkColors } from './chatPage.styles';
 import ChatArea from './components/ChatArea';
@@ -17,9 +19,28 @@ import SendButton from './components/SendButton';
 // ============================================================
 
 export default function ChatPage({ isGuest, isLoggedIn: propsIsLoggedIn, userData: propsUserData, getGreeting }) {
+  const toast = useToast();
   const [input, setInput] = useState('');
   const { sessionId } = useParams();
   const navigate = useNavigate();
+
+  // 📝 R4: Local Input Draft Persistence
+  // Load draft on sessionId change
+  useEffect(() => {
+    const key = `cakra_draft_${sessionId || 'new'}`;
+    const savedDraft = sessionStorage.getItem(key);
+    setInput(savedDraft || '');
+  }, [sessionId]);
+
+  // Save/Remove draft on input change
+  useEffect(() => {
+    const key = `cakra_draft_${sessionId || 'new'}`;
+    if (input) {
+      sessionStorage.setItem(key, input);
+    } else {
+      sessionStorage.removeItem(key);
+    }
+  }, [input, sessionId]);
 
   const authUser = useChatAuthStore((state) => state.user);
   const isAuthenticated = useChatAuthStore((state) => state.isAuthenticated);
@@ -68,6 +89,22 @@ export default function ChatPage({ isGuest, isLoggedIn: propsIsLoggedIn, userDat
     setSelectedFiles(prev => prev.filter((_, idx) => idx !== indexToRemove));
   };
 
+  const validateFile = (file) => {
+    const allowedTypes = ['application/pdf'];
+    const isImage = file.type.startsWith('image/');
+    const isValidType = isImage || allowedTypes.includes(file.type);
+    if (!isValidType) {
+      toast.error(`Format file "${file.name}" tidak didukung. Hanya gambar atau PDF.`);
+      return false;
+    }
+    const maxSize = 10 * 1024 * 1024; // 10MB
+    if (file.size > maxSize) {
+      toast.error(`Ukuran file "${file.name}" melebihi batas 10 MB.`);
+      return false;
+    }
+    return true;
+  };
+
   // 2. TAMPILKAN PRATINJAU LOKAL (TIDAK LANGSUNG DIUNGGAH KE SERVER)
   const handleFileChange = (e) => {
     const files = Array.from(e.target.files);
@@ -75,10 +112,14 @@ export default function ChatPage({ isGuest, isLoggedIn: propsIsLoggedIn, userDat
 
     const limit = isGuest || !currentIsLoggedIn ? 1 : 5;
     const availableSlots = limit - selectedFiles.length;
-    const targets = files.slice(0, availableSlots);
+    
+    const validFiles = files.filter(validateFile);
+    if (validFiles.length === 0) return;
 
-    if (targets.length === 0) {
-      alert(`Slot penuh! Maksimal ${limit} file.`);
+    const targets = validFiles.slice(0, availableSlots);
+
+    if (targets.length === 0 && files.length > 0) {
+      toast.warning(`Slot penuh! Maksimal ${limit} file.`);
       return;
     }
 
@@ -104,7 +145,9 @@ export default function ChatPage({ isGuest, isLoggedIn: propsIsLoggedIn, userDat
         const uniqueFile = new File([file], `pasted-image-${Date.now()}-${Math.random().toString(36).substr(2, 9)}.png`, {
           type: file.type
         });
-        newFiles.push(uniqueFile);
+        if (validateFile(uniqueFile)) {
+          newFiles.push(uniqueFile);
+        }
       }
     }
     if (newFiles.length === 0) return;
@@ -130,19 +173,15 @@ export default function ChatPage({ isGuest, isLoggedIn: propsIsLoggedIn, userDat
     e.stopPropagation();
     setIsDragOver(false);
 
-    const files = Array.from(e.dataTransfer.files).filter(file =>
-      file.type.startsWith('image/') || file.type === 'application/pdf'
-    );
-    if (files.length === 0) {
-      alert("Hanya bisa upload gambar atau PDF");
-      return;
-    }
+    const files = Array.from(e.dataTransfer.files);
+    const validFiles = files.filter(validateFile);
+    if (validFiles.length === 0) return;
 
     const limit = isGuest || !currentIsLoggedIn ? 1 : 5;
     const availableSlots = limit - selectedFiles.length;
-    const targets = files.slice(0, availableSlots);
-    if (targets.length === 0) {
-      alert(`Slot penuh! Maksimal ${limit} file.`);
+    const targets = validFiles.slice(0, availableSlots);
+    if (targets.length === 0 && files.length > 0) {
+      toast.warning(`Slot penuh! Maksimal ${limit} file.`);
       return;
     }
 
@@ -312,20 +351,19 @@ export default function ChatPage({ isGuest, isLoggedIn: propsIsLoggedIn, userDat
       if (uploadSessionUuid) formData.append("session_uuid", uploadSessionUuid);
 
       try {
-        const response = await fetch(`${API_BASE}/api/chat/documents/upload`, {
-          method: "POST",
-          body: formData,
-        });
-        if (!response.ok) throw new Error("Gagal mengunggah berkas");
-        const result = await response.json();
+        toast.info("Mengunggah berkas...");
+        const result = await uploadDocuments(formData);
 
         if (result.status === "success") {
           finalStagedData = result.data;
           setStagedAttachments(result.data); // Tetap simpan ke store untuk backup state
+          toast.success("Berkas berhasil diunggah!");
+        } else {
+          throw new Error("Gagal mengunggah berkas");
         }
       } catch (err) {
         console.error(err);
-        alert("Gagal memproses pengiriman karena terjadi kesalahan saat mengunggah berkas.");
+        toast.error("Gagal memproses pengiriman karena terjadi kesalahan saat mengunggah berkas.");
         setIsUploadingFile(false);
         return; // Hentikan pipeline agar chat tidak terkirim pincang tanpa file
       } finally {

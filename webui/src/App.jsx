@@ -6,6 +6,7 @@ import { useChatAuthStore } from "@/stores/authStore"; // 👈 IMPORT AUTH STORE
 import { useChatStore } from "@/stores/chatStore";
 import Loading from "./components/Loading";
 import Layout from "./components/Layout";
+import ToastProvider from "./components/ui/ToastProvider";
 
 function SessionRouteWrapper({ isGuest }) {
   const { sessionId } = useParams();
@@ -60,19 +61,21 @@ export default function App() {
   }
 
   return (
-    <BrowserRouter>
-      <Routes>
-        {/* 🔐 DAFTARKAN RUTE LOGIN CYBERPUNK DI LUAR BUNGKUSAN LAYOUT */}
-        <Route path="/login" element={<LoginPage />} />
+    <ToastProvider>
+      <BrowserRouter>
+        <Routes>
+          {/* 🔐 DAFTARKAN RUTE LOGIN CYBERPUNK DI LUAR BUNGKUSAN LAYOUT */}
+          <Route path="/login" element={<LoginPage />} />
 
-        <Route path="/" element={<Navigate to="/chat/guest" replace />} />
-        
-        <Route element={<Layout />}>
-          <Route path="/chat/guest" element={<SessionRouteWrapper key="guest" isGuest={true} />} />
-          <Route path="/chat/new" element={<SessionRouteWrapper key="new" isGuest={false} />} />
-          <Route path="/chat/:sessionId" element={<SessionRouteWrapper key="session" isGuest={false} />} />
-        </Route>
-      </Routes>
-    </BrowserRouter>
+          <Route path="/" element={<Navigate to="/chat/guest" replace />} />
+          
+          <Route element={<Layout />}>
+            <Route path="/chat/guest" element={<SessionRouteWrapper key="guest" isGuest={true} />} />
+            <Route path="/chat/new" element={<SessionRouteWrapper key="new" isGuest={false} />} />
+            <Route path="/chat/:sessionId" element={<SessionRouteWrapper key="session" isGuest={false} />} />
+          </Route>
+        </Routes>
+      </BrowserRouter>
+    </ToastProvider>
   );
 }

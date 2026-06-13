@@ -37,14 +37,36 @@ export default function ChatArea({
   const itemContent = useCallback((idx, msg) => (
     <ChatBubble
       idx={idx}
-      msg={{ ...msg, totalMessages: messages.length }}
+      msg={msg}
       darkMode={darkMode}
       theme={theme}
       isThinking={isThinking}
       isStreamingText={isStreamingText}
       sendMessage={sendMessage}
     />
-  ), [darkMode, theme, isThinking, isStreamingText, messages.length, sendMessage]);
+  ), [darkMode, theme, isThinking, isStreamingText, sendMessage]);
+
+  const FooterComponent = useCallback(() => (
+    <>
+      {isStreaming && lastAssistantIndex === -1 && (
+        <div style={{ ...styles.assistantRow, padding: '12px 0' }}>
+          <div style={styles.assistantMessageWrapper}>
+            <div style={styles.assistantHeader}>
+              <div style={styles.avatarWrap}>
+                <img src={cakraLogo} alt="CAKRA" style={{ width: 25, height: 25, borderRadius: 8, objectFit: 'cover', background: 'transparent', animation: 'cakraSpin 1.2s linear infinite' }} />
+                <span style={{ ...styles.statusDot, background: '#ef4444', borderColor: theme.mainBg }} />
+              </div>
+              <span style={{ ...styles.thinkingInline, color: theme.secondaryText, marginLeft: 10 }}>
+                {currentThinking || 'CAKRA sedang berpikir...'}
+              </span>
+            </div>
+            <div style={styles.assistantContent}></div>
+          </div>
+        </div>
+      )}
+      <div style={{ height: '60px', width: '100%', flexShrink: 0 }} />
+    </>
+  ), [isStreaming, lastAssistantIndex, currentThinking, theme.mainBg, theme.secondaryText]);
 
   return (
     <div
@@ -79,27 +101,7 @@ export default function ChatArea({
               increaseViewportBy={{ top: 800, bottom: 800 }}
               initialTopMostItemIndex={Math.max(0, messages.length - 1)}
               components={{
-                Footer: () => (
-                  <>
-                    {isStreaming && lastAssistantIndex === -1 && (
-                      <div style={{ ...styles.assistantRow, padding: '12px 0' }}>
-                        <div style={styles.assistantMessageWrapper}>
-                          <div style={styles.assistantHeader}>
-                            <div style={styles.avatarWrap}>
-                              <img src={cakraLogo} alt="CAKRA" style={{ width: 25, height: 25, borderRadius: 8, objectFit: 'cover', background: 'transparent', animation: 'cakraSpin 1.2s linear infinite' }} />
-                              <span style={{ ...styles.statusDot, background: '#ef4444', borderColor: theme.mainBg }} />
-                            </div>
-                            <span style={{ ...styles.thinkingInline, color: theme.secondaryText, marginLeft: 10 }}>
-                              {currentThinking || 'CAKRA sedang berpikir...'}
-                            </span>
-                          </div>
-                          <div style={styles.assistantContent}></div>
-                        </div>
-                      </div>
-                    )}
-                    <div style={{ height: '60px', width: '100%', flexShrink: 0 }} />
-                  </>
-                )
+                Footer: FooterComponent
               }}
             />
           </div>
