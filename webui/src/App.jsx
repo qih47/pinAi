@@ -1,5 +1,11 @@
 import React, { useState, useEffect } from "react";
-import { BrowserRouter, Routes, Route, Navigate, useParams } from "react-router-dom";
+import {
+  BrowserRouter,
+  Routes,
+  Route,
+  Navigate,
+  useParams,
+} from "react-router-dom";
 import ChatPage from "@/features/chat/ChatPage";
 import LoginPage from "@/features/auth/LoginPage"; // 👈 IMPORT LOGIN ENGINE
 import { useChatAuthStore } from "@/stores/authStore"; // 👈 IMPORT AUTH STORE
@@ -7,6 +13,7 @@ import { useChatStore } from "@/stores/chatStore";
 import Loading from "./components/Loading";
 import Layout from "./components/Layout";
 import ToastProvider from "./components/ui/ToastProvider";
+import { useTokenRefresh } from "./hooks/useTokenRefresh"; // 👈 W18: Token auto-refresh
 
 function SessionRouteWrapper({ isGuest }) {
   const { sessionId } = useParams();
@@ -20,7 +27,12 @@ function SessionRouteWrapper({ isGuest }) {
 
   if (isGuest && isAuthenticated) {
     const lastSession = localStorage.getItem("cakra_last_session");
-    return <Navigate to={lastSession ? `/chat/${lastSession}` : "/chat/new"} replace />;
+    return (
+      <Navigate
+        to={lastSession ? `/chat/${lastSession}` : "/chat/new"}
+        replace
+      />
+    );
   }
 
   useEffect(() => {
@@ -63,19 +75,41 @@ export default function App() {
   return (
     <ToastProvider>
       <BrowserRouter>
-        <Routes>
-          {/* 🔐 DAFTARKAN RUTE LOGIN CYBERPUNK DI LUAR BUNGKUSAN LAYOUT */}
-          <Route path="/login" element={<LoginPage />} />
-
-          <Route path="/" element={<Navigate to="/chat/guest" replace />} />
-          
-          <Route element={<Layout />}>
-            <Route path="/chat/guest" element={<SessionRouteWrapper key="guest" isGuest={true} />} />
-            <Route path="/chat/new" element={<SessionRouteWrapper key="new" isGuest={false} />} />
-            <Route path="/chat/:sessionId" element={<SessionRouteWrapper key="session" isGuest={false} />} />
-          </Route>
-        </Routes>
+        <AppContent />
       </BrowserRouter>
     </ToastProvider>
+  );
+}
+
+/**
+ * AppContent: Wrapper to use hooks inside BrowserRouter
+ * Enables useTokenRefresh hook which runs globally for authenticated users
+ */
+function AppContent() {
+  // 👇 W18: Token auto-refresh every 30min + on user activity + emergency refresh
+  useTokenRefresh();
+
+  return (
+    <Routes>
+      {/* 🔐 DAFTARKAN RUTE LOGIN CYBERPUNK DI LUAR BUNGKUSAN LAYOUT */}
+      <Route path="/login" element={<LoginPage />} />
+
+      <Route path="/" element={<Navigate to="/chat/guest" replace />} />
+
+      <Route element={<Layout />}>
+        <Route
+          path="/chat/guest"
+          element={<SessionRouteWrapper key="guest" isGuest={true} />}
+        />
+        <Route
+          path="/chat/new"
+          element={<SessionRouteWrapper key="new" isGuest={false} />}
+        />
+        <Route
+          path="/chat/:sessionId"
+          element={<SessionRouteWrapper key="session" isGuest={false} />}
+        />
+      </Route>
+    </Routes>
   );
 }

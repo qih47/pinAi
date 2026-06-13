@@ -1,0 +1,180 @@
+/* Notification Bell Styles (W16) */
+
+.container {
+  position: relative;
+  display: inline-block;
+}
+
+.bellButton {
+  position: relative;
+  width: 40px;
+  height: 40px;
+  padding: 8px;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #6b7280;
+  transition: all 0.2s ease;
+}
+
+.bellButton:hover {
+  background-color: #f3f4f6;
+  color: #374151;
+}
+
+.bellButton.hasNotifications {
+  color: #3b82f6;
+  animation: bellShake 0.6s ease-in-out;
+}
+
+.bellIcon {
+  width: 24px;
+  height: 24px;
+}
+
+/* Badge Counter */
+.badge {
+  position: absolute;
+  top: 0;
+  right: 0;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 4px;
+  background-color: #ef4444;
+  color: white;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid white;
+  animation: badgeScale 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+}
+
+/* Connection Status Dot */
+.connectionDot {
+  position: absolute;
+  bottom: 4px;
+  right: 4px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: 2px solid white;
+}
+
+.connectionDot.connected {
+  background-color: #22c55e;
+}
+
+.connectionDot.disconnected {
+  background-color: #ef4444;
+  animation: pulse 2s infinite;
+}
+
+/* Error Toast */
+.errorToast {
+  position: absolute;
+  top: 50px;
+  right: 0;
+  background-color: #fee2e2;
+  color: #991b1b;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  border: 1px solid #fecaca;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  z-index: 40;
+  animation: slideDown 0.3s ease;
+}
+
+.errorIcon {
+  flex-shrink: 0;
+}
+
+.errorText {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Backdrop for closing panel */
+.backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 30;
+}
+
+/* Panel Container */
+.panelContainer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  z-index: 50;
+  animation: slideInRight 0.3s ease-out;
+}
+
+/* Animations */
+@keyframes bellShake {
+  0%, 100% { transform: rotate(0deg); }
+  10%, 30% { transform: rotate(-10deg); }
+  20%, 40%, 60%, 80% { transform: rotate(10deg); }
+  50%, 70% { transform: rotate(-10deg); }
+  90% { transform: rotate(10deg); }
+}
+
+@keyframes badgeScale {
+  0% {
+    transform: scale(0);
+    opacity: 0;
+  }
+  50% {
+    transform: scale(1.2);
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slideInRight {
+  from {
+    opacity: 0;
+    transform: translateX(100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}

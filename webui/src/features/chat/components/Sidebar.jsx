@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
 import { useChatStore } from "@/stores/chatStore";
+import SessionExpiryStatus from "../../../components/SessionExpiryStatus"; // 👈 W11: Session expiry display
 
 const Sidebar = ({
   clearChat,
@@ -15,9 +16,9 @@ const Sidebar = ({
   triggerLogout,
   cakraLogo,
   navigate,
-  darkMode,       // Props tema murni dari ChatPage
-  setDarkMode,     // Setter tema murni dari ChatPage
-  theme
+  darkMode, // Props tema murni dari ChatPage
+  setDarkMode, // Setter tema murni dari ChatPage
+  theme,
 }) => {
   const [hoveredChatId, setHoveredChatId] = useState(null);
   const [activeMenuId, setActiveMenuId] = useState(null);
@@ -31,7 +32,7 @@ const Sidebar = ({
 
   useEffect(() => {
     const handleKeyDown = (e) => {
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
         setIsOpen(true);
         setTimeout(() => {
@@ -39,8 +40,8 @@ const Sidebar = ({
         }, 100);
       }
     };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
   }, [setIsOpen]);
 
   // Ambil method fetch secara langsung dari Zustand store
@@ -68,7 +69,9 @@ const Sidebar = ({
     e.stopPropagation();
     try {
       // Cari data chat saat ini untuk tahu dia lagi di-pin atau kagak
-      const currentChat = chatHistory.find(c => c.session_uuid === sessionUuid);
+      const currentChat = chatHistory.find(
+        (c) => c.session_uuid === sessionUuid,
+      );
       const isPinnedCurrentValue = currentChat ? currentChat.is_pinned : false;
 
       // Meneruskan kedua parameter tersebut ke method store
@@ -79,9 +82,11 @@ const Sidebar = ({
           const newHistory = prev.map((chat) =>
             chat.session_uuid === sessionUuid
               ? { ...chat, is_pinned: !chat.is_pinned }
-              : chat
+              : chat,
           );
-          return [...newHistory].sort((a, b) => (b.is_pinned ? 1 : 0) - (a.is_pinned ? 1 : 0));
+          return [...newHistory].sort(
+            (a, b) => (b.is_pinned ? 1 : 0) - (a.is_pinned ? 1 : 0),
+          );
         });
         setActiveMenuId(null);
       }
@@ -100,8 +105,8 @@ const Sidebar = ({
           prev.map((chat) =>
             chat.session_uuid === sessionUuid
               ? { ...chat, judul: tempTitle }
-              : chat
-          )
+              : chat,
+          ),
         );
         setEditingSessionId(null);
       }
@@ -133,13 +138,13 @@ const Sidebar = ({
 
       if (result.status === "success") {
         setChatHistory((prev) =>
-          prev.filter((c) => c.session_uuid !== sessionToDelete)
+          prev.filter((c) => c.session_uuid !== sessionToDelete),
         );
 
         // INDRA PENGINGAT RUTE: Jika chat yang dihapus adalah chat yang sedang dibuka
         if (currentSessionId === sessionToDelete) {
-          clearChat();             // Bersihkan state messages dan sessionUuid di store secara instan
-          navigate('/chat/new');   // Mengarahkan rute URL browser langsung ke halaman obrolan baru
+          clearChat(); // Bersihkan state messages dan sessionUuid di store secara instan
+          navigate("/chat/new"); // Mengarahkan rute URL browser langsung ke halaman obrolan baru
         }
       }
     } catch (err) {
@@ -157,7 +162,11 @@ const Sidebar = ({
 
   useEffect(() => {
     const initHistory = async () => {
-      if (userData?.npp && userData.npp !== 'NPP ------' && !hasFetchedRef.current) {
+      if (
+        userData?.npp &&
+        userData.npp !== "NPP ------" &&
+        !hasFetchedRef.current
+      ) {
         hasFetchedRef.current = true; // ← set flag sebelum fetch
         try {
           const result = await fetchChatHistory(userData.npp);
@@ -210,15 +219,16 @@ const Sidebar = ({
   return (
     <div
       // Menghapus kelas border statis bawaan Tailwind
-      className={`fixed left-0 top-0 h-screen flex flex-col transition-all duration-300 z-40 ${isOpen ? "w-72" : "w-16"
-        }`}
+      className={`fixed left-0 top-0 h-screen flex flex-col transition-all duration-300 z-40 ${
+        isOpen ? "w-72" : "w-16"
+      }`}
       style={{
         // MODE GELAP: Menggunakan warna arang (#1E1E22) agar kontras dengan ChatPage
-        background: darkMode ? '#1E1E22' : (theme?.sidebarBg || '#F7F8FC'),
-        color: theme?.textColor || (darkMode ? '#e2e8f0' : '#1f2937'),
+        background: darkMode ? "#1E1E22" : theme?.sidebarBg || "#F7F8FC",
+        color: theme?.textColor || (darkMode ? "#e2e8f0" : "#1f2937"),
 
         // 🔥 DYNAMIC BORDER: Diperbaiki agar di mode dark pun ada batas pemisah tipis yang rapi!
-        borderRight: darkMode ? '1px solid #2a2a2d' : '1px solid #E5E7EB'
+        borderRight: darkMode ? "1px solid #2a2a2d" : "1px solid #E5E7EB",
       }}
     >
       <div
@@ -226,19 +236,21 @@ const Sidebar = ({
         onMouseLeave={() => setIsHovered(false)}
         className="p-3 p-4 relative flex flex-col justify-center"
         style={{
-          borderBottom: darkMode ? '1px solid #2a2a2d' : '1px solid #E5E7EB'
+          borderBottom: darkMode ? "1px solid #2a2a2d" : "1px solid #E5E7EB",
         }}
       >
         <div className="flex items-center">
           <img
             src={cakraLogo}
             alt="CAKRA AI Logo"
-            className={`rounded-full object-cover transition-all duration-300 ${isOpen ? "w-10 h-10" : "w-7 h-7"
-              } ${!isOpen && isHovered ? "opacity-0" : "opacity-100"}`}
+            className={`rounded-full object-cover transition-all duration-300 ${
+              isOpen ? "w-10 h-10" : "w-7 h-7"
+            } ${!isOpen && isHovered ? "opacity-0" : "opacity-100"}`}
           />
           <h1
-            className={`font-bold text-lg whitespace-nowrap transition-all duration-300 ml-2 ${!isOpen ? "opacity-0 pointer-events-none w-0" : "opacity-100"
-              }`}
+            className={`font-bold text-lg whitespace-nowrap transition-all duration-300 ml-2 ${
+              !isOpen ? "opacity-0 pointer-events-none w-0" : "opacity-100"
+            }`}
             style={{ color: theme?.textColor }}
           >
             CAKRA AI
@@ -254,8 +266,8 @@ const Sidebar = ({
             right: isOpen ? "12px" : "auto",
             left: isOpen ? "auto" : "50%",
             transform: isOpen ? "none" : "translateX(-50%)",
-            opacity: isOpen ? 1 : (isHovered ? 1 : 0),
-            pointerEvents: isOpen ? "auto" : (isHovered ? "auto" : "none")
+            opacity: isOpen ? 1 : isHovered ? 1 : 0,
+            pointerEvents: isOpen ? "auto" : isHovered ? "auto" : "none",
           }}
           title={isOpen ? "Ciutkan" : "Lebarkan"}
         >
@@ -278,13 +290,16 @@ const Sidebar = ({
       <div
         className={`p-3 space-y-3 ${!isOpen && "flex flex-col items-center"}`}
       >
+        {/* 👇 W11: Session Expiry Status Display */}
+        <SessionExpiryStatus />
+
         <button
           onClick={clearChat}
           className="flex items-center rounded-full hover:bg-gray-200 dark:hover:bg-gray-800 transition-colors group overflow-hidden text-[14px]"
           style={{
             padding: isOpen ? "8px 12px" : "8px",
             width: isOpen ? "100%" : "auto",
-            gap: isOpen ? "12px" : "0"
+            gap: isOpen ? "12px" : "0",
           }}
           title="New Chat"
         >
@@ -304,8 +319,9 @@ const Sidebar = ({
             />
           </svg>
           <span
-            className={`font-medium whitespace-nowrap transition-opacity duration-300 ${!isOpen ? "hidden" : "opacity-100"
-              }`}
+            className={`font-medium whitespace-nowrap transition-opacity duration-300 ${
+              !isOpen ? "hidden" : "opacity-100"
+            }`}
             style={{ color: theme?.textColor }}
           >
             New Chat
@@ -318,7 +334,7 @@ const Sidebar = ({
           style={{
             padding: isOpen ? "8px 12px" : "8px",
             width: isOpen ? "100%" : "auto",
-            gap: isOpen ? "12px" : "0"
+            gap: isOpen ? "12px" : "0",
           }}
           title="Documents"
         >
@@ -326,8 +342,9 @@ const Sidebar = ({
             📄
           </span>
           <span
-            className={`font-medium whitespace-nowrap transition-opacity duration-300 ${!isOpen ? "hidden" : "opacity-100"
-              }`}
+            className={`font-medium whitespace-nowrap transition-opacity duration-300 ${
+              !isOpen ? "hidden" : "opacity-100"
+            }`}
             style={{ color: theme?.textColor }}
           >
             Documents
@@ -336,8 +353,9 @@ const Sidebar = ({
       </div>
 
       <div
-        className={`flex-1 overflow-y-auto px-2 py-2 space-y-0.5 transition-opacity duration-300 no-scrollbar ${!isOpen ? "opacity-0 pointer-events-none hidden" : "opacity-100"
-          }`}
+        className={`flex-1 overflow-y-auto px-2 py-2 space-y-0.5 transition-opacity duration-300 no-scrollbar ${
+          !isOpen ? "opacity-0 pointer-events-none hidden" : "opacity-100"
+        }`}
         style={{
           msOverflowStyle: "none",
           scrollbarWidth: "none",
@@ -345,7 +363,7 @@ const Sidebar = ({
       >
         <div
           className="px-3 py-1 text-[11px] font-bold uppercase tracking-widest mb-1"
-          style={{ color: theme?.secondaryText || '#6b7280' }}
+          style={{ color: theme?.secondaryText || "#6b7280" }}
         >
           Semua Chat
         </div>
@@ -360,16 +378,20 @@ const Sidebar = ({
               onChange={(e) => setSessionSearchQuery(e.target.value)}
               className="w-full text-xs rounded-lg px-2.5 py-1.5 outline-none border transition-colors"
               style={{
-                background: darkMode ? '#252528' : '#F3F4F6',
-                borderColor: darkMode ? '#2A2A2D' : '#E5E7EB',
-                color: theme?.textColor || (darkMode ? '#e2e8f0' : '#1f2937')
+                background: darkMode ? "#252528" : "#F3F4F6",
+                borderColor: darkMode ? "#2A2A2D" : "#E5E7EB",
+                color: theme?.textColor || (darkMode ? "#e2e8f0" : "#1f2937"),
               }}
             />
             {sessionSearchQuery && (
               <button
                 onClick={() => setSessionSearchQuery("")}
                 className="absolute right-5 top-1/2 -translate-y-1/2 text-[10px] text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
-                style={{ background: 'transparent', border: 'none', cursor: 'pointer' }}
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  cursor: "pointer",
+                }}
               >
                 ✕
               </button>
@@ -379,7 +401,11 @@ const Sidebar = ({
 
         {chatHistory.length > 0 ? (
           [...chatHistory]
-            .filter((c) => (c.judul || "Chat Baru").toLowerCase().includes(sessionSearchQuery.toLowerCase()))
+            .filter((c) =>
+              (c.judul || "Chat Baru")
+                .toLowerCase()
+                .includes(sessionSearchQuery.toLowerCase()),
+            )
             .sort((a, b) => (b.is_pinned ? 1 : 0) - (a.is_pinned ? 1 : 0))
             .map((chat) => (
               <div
@@ -391,15 +417,22 @@ const Sidebar = ({
                   setActiveMenuId(null);
                 }}
                 // PERBAIKAN WARNA TEKS AKTIF: Penyesuaian warna teks dan latar belakang untuk chat yang sedang aktif agar lebih terbaca
-                className={`group relative flex items-center px-3 py-2 text-sm rounded-xl cursor-pointer transition-all ${currentSessionId === chat.session_uuid
+                className={`group relative flex items-center px-3 py-2 text-sm rounded-xl cursor-pointer transition-all ${
+                  currentSessionId === chat.session_uuid
                     ? "bg-blue-500/10 text-blue-400 font-semibold border-l-2 border-blue-500"
                     : "hover:bg-gray-200/50 dark:hover:bg-white/5 font-medium"
-                  } ${isDeletingId === chat.session_uuid ? "animate-delete" : ""
-                  }`}
+                } ${
+                  isDeletingId === chat.session_uuid ? "animate-delete" : ""
+                }`}
                 style={{
-                  color: currentSessionId === chat.session_uuid
-                    ? (darkMode ? '#60a5fa' : '#2563eb') // Menggunakan warna biru menyala menyesuaikan mode
-                    : (darkMode ? '#94a3b8' : '#4b5563')
+                  color:
+                    currentSessionId === chat.session_uuid
+                      ? darkMode
+                        ? "#60a5fa"
+                        : "#2563eb" // Menggunakan warna biru menyala menyesuaikan mode
+                      : darkMode
+                        ? "#94a3b8"
+                        : "#4b5563",
                 }}
                 title={chat.judul}
               >
@@ -428,27 +461,27 @@ const Sidebar = ({
 
                 {(hoveredChatId === chat.session_uuid ||
                   activeMenuId === chat.session_uuid) && (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setActiveMenuId(
-                          activeMenuId === chat.session_uuid
-                            ? null
-                            : chat.session_uuid
-                        );
-                      }}
-                      className="absolute right-1 p-1 hover:bg-gray-300 rounded transition-colors dark:hover:bg-gray-700"
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setActiveMenuId(
+                        activeMenuId === chat.session_uuid
+                          ? null
+                          : chat.session_uuid,
+                      );
+                    }}
+                    className="absolute right-1 p-1 hover:bg-gray-300 rounded transition-colors dark:hover:bg-gray-700"
+                  >
+                    <svg
+                      className="h-3 w-3"
+                      style={{ color: theme?.secondaryText }}
+                      fill="currentColor"
+                      viewBox="0 0 20 20"
                     >
-                      <svg
-                        className="h-3 w-3"
-                        style={{ color: theme?.secondaryText }}
-                        fill="currentColor"
-                        viewBox="0 0 20 20"
-                      >
-                        <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
-                      </svg>
-                    </button>
-                  )}
+                      <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
+                    </svg>
+                  </button>
+                )}
 
                 {activeMenuId === chat.session_uuid && (
                   <div
@@ -505,8 +538,8 @@ const Sidebar = ({
           right: 0,
           height: "60px",
           // 🔥 Pas dark mode background-nya menyatu sempurna tanpa sekat border hitam!
-          background: darkMode ? '#1E1E22' : (theme?.sidebarBg || '#F7F8FC'),
-          borderTop: darkMode ? '1px solid #2a2a2d' : '1px solid #E5E7EB'
+          background: darkMode ? "#1E1E22" : theme?.sidebarBg || "#F7F8FC",
+          borderTop: darkMode ? "1px solid #2a2a2d" : "1px solid #E5E7EB",
         }}
       >
         {showLogoutPopup && (
@@ -516,7 +549,7 @@ const Sidebar = ({
             style={{
               left: !isOpen ? "100%" : "8px",
               marginLeft: !isOpen ? "8px" : "0px",
-              bottom: !isOpen ? "8px" : "100%"
+              bottom: !isOpen ? "8px" : "100%",
             }}
           >
             <div className="px-4 py-2">
@@ -529,17 +562,19 @@ const Sidebar = ({
             </div>
 
             <div className="px-4 py-2 border-t border-gray-100 dark:border-gray-800 space-y-1">
-              <p className="text-[10px] uppercase font-bold tracking-wider text-gray-400 mb-1">Pilihan Tema</p>
+              <p className="text-[10px] uppercase font-bold tracking-wider text-gray-400 mb-1">
+                Pilihan Tema
+              </p>
               <div className="flex bg-gray-100 dark:bg-gray-800 p-0.5 rounded-lg text-[11px]">
                 <button
                   onClick={() => setDarkMode(false)}
-                  className={`flex-1 py-1 text-center rounded-md font-medium transition-all ${!darkMode ? 'bg-white text-black shadow-sm' : 'text-gray-500 hover:text-black dark:text-gray-400'}`}
+                  className={`flex-1 py-1 text-center rounded-md font-medium transition-all ${!darkMode ? "bg-white text-black shadow-sm" : "text-gray-500 hover:text-black dark:text-gray-400"}`}
                 >
                   ☀️ Light
                 </button>
                 <button
                   onClick={() => setDarkMode(true)}
-                  className={`flex-1 py-1 text-center rounded-md font-medium transition-all ${darkMode ? 'bg-white dark:bg-gray-700 text-black dark:text-white shadow-sm' : 'text-gray-500 hover:text-black dark:text-gray-400'}`}
+                  className={`flex-1 py-1 text-center rounded-md font-medium transition-all ${darkMode ? "bg-white dark:bg-gray-700 text-black dark:text-white shadow-sm" : "text-gray-500 hover:text-black dark:text-gray-400"}`}
                 >
                   🌙 Dark
                 </button>
@@ -601,13 +636,20 @@ const Sidebar = ({
             )}
           </div>
           <div
-            className={`flex flex-col min-w-0 transition-all duration-300 ${!isOpen ? "opacity-0 w-0 overflow-hidden" : "opacity-100"
-              }`}
+            className={`flex flex-col min-w-0 transition-all duration-300 ${
+              !isOpen ? "opacity-0 w-0 overflow-hidden" : "opacity-100"
+            }`}
           >
-            <span className="text-xs font-medium truncate w-32 ml-3" style={{ color: theme?.textColor }}>
+            <span
+              className="text-xs font-medium truncate w-32 ml-3"
+              style={{ color: theme?.textColor }}
+            >
               {profileName}
             </span>
-            <span className="text-[9px] text-left ml-3" style={{ color: theme?.secondaryText || '#6b7280' }}>
+            <span
+              className="text-[9px] text-left ml-3"
+              style={{ color: theme?.secondaryText || "#6b7280" }}
+            >
               {profileDivisi}
             </span>
           </div>
@@ -617,7 +659,7 @@ const Sidebar = ({
           <button
             // PENYESUAIAN WARNA PENGATURAN: Mengubah warna abu-abu statis menjadi theme.iconColor agar sinkron saat pergantian tema
             className="hover:text-blue-500 ml-auto absolute right-3 top-0 bottom-0 my-auto h-fit p-1 transition-colors"
-            style={{ color: theme?.iconColor || '#9ca3af' }}
+            style={{ color: theme?.iconColor || "#9ca3af" }}
             onClick={() => setShowLogoutPopup(!showLogoutPopup)}
             title="Pengaturan & Akun"
           >
@@ -629,8 +671,16 @@ const Sidebar = ({
               stroke="currentColor"
               strokeWidth="2"
             >
-              <path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-              <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
+              />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+              />
             </svg>
           </button>
         )}

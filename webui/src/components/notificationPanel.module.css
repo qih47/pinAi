@@ -1,0 +1,392 @@
+/* Notification Panel Styles (W16) */
+
+.panel {
+  width: 360px;
+  height: 100vh;
+  background-color: white;
+  box-shadow: -2px 0 8px rgba(0, 0, 0, 0.1);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Header */
+.header {
+  padding: 16px;
+  border-bottom: 1px solid #e5e7eb;
+  background: linear-gradient(135deg, #f9fafb 0%, #f3f4f6 100%);
+  flex-shrink: 0;
+}
+
+.headerTitle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.headerTitle h2 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  color: #1f2937;
+}
+
+.unreadBadge {
+  display: inline-block;
+  padding: 4px 8px;
+  background-color: #dbeafe;
+  color: #1e40af;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.headerActions {
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+}
+
+.markAllButton,
+.clearButton,
+.closeButton {
+  padding: 6px 10px;
+  background: transparent;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  color: #4b5563;
+  transition: all 0.2s ease;
+}
+
+.markAllButton:hover,
+.clearButton:hover {
+  background-color: #f0f4f8;
+  border-color: #9ca3af;
+  color: #111827;
+}
+
+.closeButton {
+  padding: 4px 8px;
+  font-size: 16px;
+  border: none;
+  color: #6b7280;
+}
+
+.closeButton:hover {
+  background-color: #f3f4f6;
+  color: #1f2937;
+}
+
+/* Notifications List */
+.list {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 8px;
+}
+
+.list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.list::-webkit-scrollbar-track {
+  background: #f3f4f6;
+}
+
+.list::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 3px;
+}
+
+.list::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af;
+}
+
+/* Empty State */
+.emptyState {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: 40px 20px;
+  text-align: center;
+}
+
+.emptyIcon {
+  font-size: 48px;
+  margin-bottom: 12px;
+  opacity: 0.5;
+}
+
+.emptyText {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #374151;
+  margin-bottom: 4px;
+}
+
+.emptySubtext {
+  margin: 0;
+  font-size: 13px;
+  color: #9ca3af;
+}
+
+/* Notification Item */
+.notificationItem {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px;
+  margin-bottom: 6px;
+  border-radius: 8px;
+  border-left: 3px solid;
+  background-color: #f9fafb;
+  transition: all 0.2s ease;
+  cursor: pointer;
+  position: relative;
+}
+
+.notificationItem.unread {
+  background-color: #f0f9ff;
+  border-left-width: 4px;
+}
+
+.notificationItem:hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  transform: translateX(-2px);
+}
+
+.icon {
+  font-size: 20px;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.content {
+  flex: 1;
+  min-width: 0;
+}
+
+.title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #111827;
+  margin: 0 0 4px 0;
+  word-break: break-word;
+}
+
+.message {
+  font-size: 12px;
+  color: #4b5563;
+  margin: 4px 0;
+  line-height: 1.4;
+  word-break: break-word;
+}
+
+.meta {
+  display: flex;
+  gap: 8px;
+  margin-top: 6px;
+  font-size: 11px;
+}
+
+.time {
+  color: #9ca3af;
+}
+
+.details {
+  color: #6366f1;
+  font-weight: 500;
+}
+
+/* Unread Dot */
+.unreadDot {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: #3b82f6;
+}
+
+/* Actions */
+.actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  margin-left: 8px;
+}
+
+.notificationItem:hover .actions {
+  opacity: 1;
+}
+
+.actionButton {
+  padding: 4px 6px;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  color: #9ca3af;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.actionButton:hover {
+  background-color: #e5e7eb;
+  color: #4b5563;
+}
+
+.iconSmall {
+  width: 14px;
+  height: 14px;
+}
+
+/* Footer */
+.footer {
+  padding: 12px 16px;
+  border-top: 1px solid #e5e7eb;
+  background-color: #f9fafb;
+  flex-shrink: 0;
+}
+
+.footerText {
+  margin: 0;
+  font-size: 12px;
+  color: #9ca3af;
+}
+
+/* Responsive */
+@media (max-width: 640px) {
+  .panel {
+    width: 100vw;
+    max-width: 320px;
+  }
+
+  .headerActions {
+    flex-direction: column;
+  }
+
+  .markAllButton,
+  .clearButton,
+  .closeButton {
+    width: 100%;
+  }
+
+  .actions {
+    display: flex;
+    opacity: 1;
+  }
+
+  .notificationItem:hover {
+    transform: none;
+  }
+}
+
+/* Dark Mode Support */
+@media (prefers-color-scheme: dark) {
+  .panel {
+    background-color: #1f2937;
+    box-shadow: -2px 0 8px rgba(0, 0, 0, 0.3);
+  }
+
+  .header {
+    background: linear-gradient(135deg, #111827 0%, #1f2937 100%);
+    border-bottom-color: #374151;
+  }
+
+  .headerTitle h2 {
+    color: #f3f4f6;
+  }
+
+  .unreadBadge {
+    background-color: #1e3a8a;
+    color: #93c5fd;
+  }
+
+  .markAllButton,
+  .clearButton,
+  .closeButton {
+    background: transparent;
+    border-color: #4b5563;
+    color: #d1d5db;
+  }
+
+  .markAllButton:hover,
+  .clearButton:hover {
+    background-color: #374151;
+    border-color: #6b7280;
+    color: #f3f4f6;
+  }
+
+  .closeButton:hover {
+    background-color: #374151;
+    color: #f3f4f6;
+  }
+
+  .list {
+    background-color: #111827;
+  }
+
+  .list::-webkit-scrollbar-track {
+    background: #1f2937;
+  }
+
+  .list::-webkit-scrollbar-thumb {
+    background: #4b5563;
+  }
+
+  .notificationItem {
+    background-color: #1f2937;
+    border-left-color: #4b5563;
+  }
+
+  .notificationItem.unread {
+    background-color: #0f172a;
+  }
+
+  .notificationItem:hover {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  }
+
+  .title {
+    color: #f3f4f6;
+  }
+
+  .message {
+    color: #d1d5db;
+  }
+
+  .time {
+    color: #6b7280;
+  }
+
+  .footer {
+    background-color: #111827;
+    border-top-color: #374151;
+  }
+
+  .footerText {
+    color: #6b7280;
+  }
+
+  .emptyText {
+    color: #d1d5db;
+  }
+
+  .emptySubtext {
+    color: #6b7280;
+  }
+}

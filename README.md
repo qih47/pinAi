@@ -991,21 +991,21 @@ useEffect(() => {
 
 ### Summary: Frontend Priorities (W11-W18)
 
-| ID  | Feature               | Difficulty | Est. Time | Backend Sync | Priority |
-| --- | --------------------- | ---------- | --------- | ------------ | -------- |
-| W11 | Session Expiry UI     | 🟡 Medium  | 2h        | B10 ✅       | **HIGH** |
-| W12 | Request ID Tracing    | 🟢 Easy    | 30m       | B11 ✅       | MEDIUM   |
-| W13 | Cache Stats Dashboard | 🟡 Medium  | 1.5h      | B9 ✅        | LOW      |
-| W14 | LLM Title Generation  | 🟡 Medium  | 1.5h      | B12 ✅       | MEDIUM   |
-| W15 | Performance Metrics   | 🟡 Medium  | 1.5h      | B13 ✅       | LOW      |
-| W16 | Notification Center   | 🔴 Hard    | 3h        | B15 ✅       | **HIGH** |
-| W17 | Audit Log Viewer      | 🔴 Hard    | 3h        | B16 ✅       | **HIGH** |
-| W18 | Token Auto-Refresh    | 🟢 Easy    | 1h        | B10 ✅       | **HIGH** |
+| ID  | Feature               | Difficulty  | Est. Time | Backend Sync | Priority     |
+| --- | --------------------- | ----------- | --------- | ------------ | ------------ |
+| W11 | Session Expiry UI     | ✅ COMPLETE | 0h        | B10 ✅       | **COMPLETE** |
+| W12 | Request ID Tracing    | 🟢 Easy     | 30m       | B11 ✅       | MEDIUM       |
+| W13 | Cache Stats Dashboard | 🟡 Medium   | 1.5h      | B9 ✅        | LOW          |
+| W14 | LLM Title Generation  | 🟡 Medium   | 1.5h      | B12 ✅       | MEDIUM       |
+| W15 | Performance Metrics   | 🟡 Medium   | 1.5h      | B13 ✅       | LOW          |
+| W16 | Notification Center   | ✅ COMPLETE | 0h        | B15 ✅       | **COMPLETE** |
+| W17 | Audit Log Viewer      | 🔴 Hard     | 3h        | B16 ✅       | **HIGH**     |
+| W18 | Token Auto-Refresh    | ✅ COMPLETE | 0h        | B10 ✅       | **COMPLETE** |
 
 **Recommended Execution Order**:
 
-1. **W11 + W18** (Session management) — Day 1 (Critical security)
-2. **W16** (Notifications) — Day 2 (User experience)
+1. **W11 + W18** (Session management) — ✅ COMPLETE
+2. **W16** (Notifications) — ✅ COMPLETE
 3. **W17** (Audit logs) — Day 3 (Admin dashboard)
 4. **W12 + W14** (Tracing + UX) — Day 4 (Developer experience)
 5. **W13 + W15** (Metrics) — Day 5 (Monitoring & optimization)
