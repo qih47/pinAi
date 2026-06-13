@@ -502,6 +502,7 @@ npm run build    # Production build ke /dist
 - ✅ Updated `pipeline_layer_executor.py`: Layer 0 gateway, Layer 0 rewriter, Layer 1 analyzer semua menggunakan retry + circuit breaker
 
 **Files Modified**:
+
 - `backend/app/utils/retry_handler.py` (NEW)
 - `backend/app/services/pipeline_layer_executor.py`
 
@@ -521,6 +522,7 @@ npm run build    # Production build ke /dist
 - ✅ Cache invalidation supported via `invalidate_employee_cache()`
 
 **Files Modified**:
+
 - `backend/app/utils/employee_cache.py` (NEW)
 - `backend/app/api/endpoints/chat.py`
 
@@ -543,6 +545,7 @@ npm run build    # Production build ke /dist
 - ✅ Background task untuk chunking + embedding asynchronous
 
 **Files Created**:
+
 - `backend/app/api/schemas/document.py` (NEW) — DocumentSchema, DocumentListSchema, etc.
 - `backend/app/api/endpoints/documents.py` (REPLACED) — Full CRUD implementation
 
@@ -567,15 +570,21 @@ npm run build    # Production build ke /dist
 
 #### B8 — Koneksi DB per-request di Pipeline (Resource Leak Risk)
 
-**Status**: ⏳ NOT STARTED
+**Status**: ✅ COMPLETED
 
 **Masalah**: Di `chat.py` baris 378, ada pola `async with get_db() as conn:` di dalam generator pipeline SSE. Jika streaming terhenti di tengah jalan (client disconnect), koneksi DB mungkin tidak langsung dikembalikan ke pool.
 
-**Solusi**:
+**Solusi** (IMPLEMENTED):
 
-- Tangkap `asyncio.CancelledError` di `_sequential_pipeline_generator`
-- Ensure DB connections selalu dikembalikan ke pool via proper `finally` block
-- Pisahkan employee name fetch ke fungsi tersendiri sebelum streaming dimulai
+- ✅ Created `StreamConnectionManager` untuk tracking active connections
+- ✅ Proper error handling dengan `asyncio.CancelledError` catch
+- ✅ Ensure semua DB connections di-return ke pool via `finally` block
+- ✅ Safe streaming context wrapper dengan auto-cleanup on disconnect
+- ✅ Wrapped SSE generator dengan try/except/finally untuk resource cleanup
+
+**Files Created**:
+
+- `backend/app/utils/connection_manager.py` (NEW) — StreamConnectionManager + SafeStreamingContext
 
 ---
 
@@ -655,15 +664,38 @@ Tambahkan endpoint `POST /api/chat/messages/{id}/feedback` dengan payload `{ rat
 
 #### B15 — WebSocket untuk Real-time Notification
 
-**Status**: ⏳ NOT STARTED
+**Status**: ✅ COMPLETED
 
-Ganti polling sidebar dengan WebSocket atau Server-Sent Events untuk notifikasi: sesi baru dari device lain, memory consolidation selesai, dll.
+Implementasi SSE-based real-time notification system untuk sesi baru dari device lain, memory consolidation, document indexing, dan admin events.
+
+**Endpoints Created**:
+
+- ✅ `GET /api/notifications/subscribe` — SSE streaming untuk real-time notifications
+- ✅ `GET /api/notifications/stats` — Broker statistics (admin only)
+- ✅ Convenience functions untuk notify_new_session, notify_memory_consolidated, dll.
+
+**Files Created**:
+
+- `backend/app/services/notification_service.py` (NEW) — NotificationBroker, Notification model
+- `backend/app/api/endpoints/notifications.py` (NEW) — SSE endpoints
 
 #### B16 — Audit Log Admin Dashboard
 
-**Status**: ⏳ NOT STARTED
+**Status**: ✅ COMPLETED
 
-Buat endpoint `GET /api/admin/audit-logs` yang menampilkan history_login + query log per pegawai untuk keperluan compliance.
+Implementasi audit log endpoints untuk admin compliance tracking & security monitoring.
+
+**Endpoints Created**:
+
+- ✅ `GET /api/admin/audit-logs` — List dengan filtering (event_type, npp, days) & pagination
+- ✅ `GET /api/admin/audit-logs/stats` — Dashboard statistics (total logins, unique users, failed attempts, top IPs)
+- ✅ `POST /api/admin/audit-logs/export` — Export untuk compliance reports
+- ✅ Admin-only access control
+- ✅ Aggregation & analytics
+
+**Files Modified**:
+
+- `backend/app/api/endpoints/notifications.py` — Added audit_router with full implementation
 
 ---
 

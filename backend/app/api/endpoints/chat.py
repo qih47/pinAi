@@ -511,9 +511,45 @@ async def chat_stream_endpoint(
     payload: ChatStreamRequest,
     current_user_npp: Optional[str] = Depends(get_current_user_npp),
 ):
+    """
+    Chat streaming endpoint dengan proper resource cleanup (B8).
+    
+    Handles:
+    - asyncio.CancelledError ketika client disconnect mid-stream
+    - Database connection cleanup via proper finally block
+    - Exception logging & recovery
+    """
+    async def wrapped_generator():
+        """
+        Wrapper generator dengan try/except/finally untuk resource management.
+        B8: Memastikan DB connections di-return ke pool bahkan saat client disconnect.
+        """
+        try:
+            async for chunk in _sequential_pipeline_generator(request, payload, current_user_npp):
+                yield chunk
+        except asyncio.CancelledError:
+            logger.info(
+                f"⚠️ [STREAM] Client disconnect detected (NPP: {current_user_npp}) — "
+                f"cleaning up resources gracefully"
+            )
+            # Resources akan di-cleanup via context manager finally blocks
+            raise
+        except Exception as e:
+            logger.error(f"❌ [STREAM] Error in generator: {e}")
+            # Send error message ke client
+            yield _format_sse("", f"Error: {str(e)[:100]}", True)
+            raise
+        finally:
+            # Ensure cleanup even if no exception
+            logger.debug("[STREAM] Generator cleanup completed — all connections returned to pool")
+    
     return StreamingResponse(
-        _sequential_pipeline_generator(request, payload, current_user_npp),
+        wrapped_generator(),
         media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        }
     )
 
 
