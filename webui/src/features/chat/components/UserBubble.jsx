@@ -2,6 +2,16 @@ import React, { useState, memo } from 'react';
 import { useChatStore, getUploadUrl } from '../../../stores/chatStore';
 import { getUserBubbleStyles } from '../chatPage.styles';
 
+const highlightText = (text, query) => {
+  if (!query || typeof text !== 'string') return text;
+  const parts = text.split(new RegExp(`(${query.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&')})`, 'gi'));
+  return parts.map((part, index) => 
+    part.toLowerCase() === query.toLowerCase() 
+      ? <mark key={index} style={{ background: '#fef08a', color: '#854d0e', borderRadius: '2px', padding: '0 2px' }}>{part}</mark>
+      : part
+  );
+};
+
 const UserBubble = memo(function UserBubble({
   msg,
   idx,
@@ -9,7 +19,8 @@ const UserBubble = memo(function UserBubble({
   theme,
   executeTextCopy,
   showToast,
-  toastMsg
+  toastMsg,
+  searchQuery = ''
 }) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
@@ -146,7 +157,7 @@ const UserBubble = memo(function UserBubble({
           ) : (
             /* 💬 MODE: TAMPILAN TEXT CHAT NORMAL */
             <>
-              {displayContent ? <div>{displayContent}</div> : null}
+              {displayContent ? <div>{highlightText(displayContent, searchQuery)}</div> : null}
 
               {shouldTruncate && !isExpanded && (
                 <div style={bubbleStyles.truncationOverlay} />

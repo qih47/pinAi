@@ -6,10 +6,35 @@ import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import CodeBlockHeader from './CodeBlockHeader';
 
+const highlightText = (text, query) => {
+    if (!query || typeof text !== 'string') return text;
+    const parts = text.split(new RegExp(`(${query.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&')})`, 'gi'));
+    return parts.map((part, index) => 
+        part.toLowerCase() === query.toLowerCase() 
+            ? <mark key={index} style={{ background: '#fef08a', color: '#854d0e', borderRadius: '2px', padding: '0 2px' }}>{part}</mark>
+            : part
+    );
+};
+
+const recursiveHighlight = (children, query) => {
+    if (!query) return children;
+    return React.Children.map(children, child => {
+        if (typeof child === 'string') {
+            return highlightText(child, query);
+        }
+        if (React.isValidElement(child) && child.props.children) {
+            return React.cloneElement(child, {
+                children: recursiveHighlight(child.props.children, query)
+            });
+        }
+        return child;
+    });
+};
+
 // =========================================================================
 // 🔮 MAIN COMPONENT: CAKRA RESPONSE RENDERER
 // =========================================================================
-const CakraResponseRenderer = ({ rawContent, isStreaming, darkMode, theme }) => {
+const CakraResponseRenderer = ({ rawContent, isStreaming, darkMode, theme, searchQuery = '' }) => {
     if (!rawContent) return null;
 
     const thinkStartTag = "<think>";
@@ -36,7 +61,13 @@ const CakraResponseRenderer = ({ rawContent, isStreaming, darkMode, theme }) => 
 
     const markdownComponents = useMemo(() => ({
         p({ children, ...props }) {
-            return <p style={{ marginTop: 0, marginBottom: '16px', lineHeight: '1.7', whiteSpace: 'normal' }} {...props}>{children}</p>;
+            return <p style={{ marginTop: 0, marginBottom: '16px', lineHeight: '1.7', whiteSpace: 'normal' }} {...props}>{recursiveHighlight(children, searchQuery)}</p>;
+        },
+        li({ children, ...props }) {
+            return <li style={{ marginBottom: '4px' }} {...props}>{recursiveHighlight(children, searchQuery)}</li>;
+        },
+        span({ children, ...props }) {
+            return <span {...props}>{recursiveHighlight(children, searchQuery)}</span>;
         },
         code({ node, inline, className, children, ...props }) {
             const match = /language-(\w+)/.exec(className || '');
@@ -67,7 +98,7 @@ const CakraResponseRenderer = ({ rawContent, isStreaming, darkMode, theme }) => 
                 </code>
             );
         }
-    }), [darkMode]);
+    }), [darkMode, searchQuery]);
 
     return (
         <div className="cakra-response-wrapper" style={{ width: '100%', display: 'flex', flexDirection: 'column' }}>

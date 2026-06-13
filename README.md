@@ -585,44 +585,41 @@ Buat endpoint `GET /api/admin/audit-logs` yang menampilkan history_login + query
 
 ### 🟡 WEBUI — Prioritas Sedang
 
-#### W1 — Scroll-to-Bottom Button pada ChatArea
-Saat user scroll ke atas untuk membaca riwayat, tombol "↓ Kembali ke Bawah" harus muncul. Virtuoso sudah support `followOutput` tapi belum ada UI indicator.
+#### ✅ W1 — Scroll-to-Bottom Button pada ChatArea (SELESAI)
+Saat user scroll ke atas untuk membaca riwayat, tombol "↓ Kembali ke Bawah" muncul otomatis (terintegrasi dengan callback `atBottomStateChange` React Virtuoso).
 
-#### W2 — Skeleton Loading untuk Riwayat Chat
-Saat `loadChatSession` dipanggil, tampilkan skeleton placeholder (shimmer effect) alih-alih layar kosong. Meningkatkan perceived performance.
+#### ✅ W2 — Skeleton Loading untuk Riwayat Chat (SELESAI)
+Saat `loadChatSession` dipanggil, riwayat memuat shimmer effect skeleton bubble (`SkeletonChat`) untuk meningkatkan perceived performance.
 
-#### W3 — Retry Mekanisme untuk SSE Stream Terputus
-Jika koneksi SSE putus di tengah streaming (`fetch` error / network drop), frontend harus auto-retry dengan exponential backoff (maks 3x) dan toast info "Menghubungkan kembali...".
+#### ✅ W3 — Retry Mekanisme untuk SSE Stream Terputus (SELESAI)
+Jika koneksi SSE putus di tengah streaming, frontend otomatis melakukan retry (maks 3x) dengan exponential backoff dan toast info "Menghubungkan kembali...".
 
-#### W4 — Message Search / Filter dalam Sesi
-Tambahkan search bar di dalam sesi aktif untuk mencari teks di dalam riwayat percakapan. Filter highlight kata kunci yang cocok.
+#### ✅ W4 — Message Search / Filter dalam Sesi (SELESAI)
+Dilengkapi dengan fitur pencarian kata kunci (`Ctrl+F`) yang menandai kemunculan teks secara rekursif menggunakan tag `<mark>` kustom di dalam bubble percakapan.
 
-#### W5 — Export Chat History
-Tombol ekspor riwayat obrolan ke format PDF atau Markdown di header. Berguna untuk dokumentasi meeting atau referensi laporan.
+#### ✅ W5 — Export Chat History (SELESAI)
+Menambahkan tombol ekspor di header dropdown untuk format Markdown (.md) dan PDF (.pdf via native print window).
 
-#### W6 — Indikator "Sedang Mengetik" yang Akurat
-Saat ini indikator berputar selama seluruh proses pipeline. Tampilkan fase yang berbeda:
-- Layer 0: "Menganalisis pertanyaan..."
-- RAG: "Mencari dokumen regulasi..."
-- Layer 2: "Menyusun respons..."
+#### ✅ W6 — Indikator "Sedang Mengetik" yang Akurat (SELESAI)
+Status indicator menyajikan tahapan pipeline yang sedang berlangsung secara real-time (Layer 0, RAG, dan Layer 2).
 
-#### W7 — Mode Isolated Document Context (UI)
-Sidebar sudah menyiapkan `activeIsolatedDocId` di chatStore, namun belum ada UI untuk memilih dokumen spesifik sebagai konteks terisolasi (tanpa RAG umum).
+#### ✅ W7 — Mode Isolated Document Context (UI) (SELESAI)
+Menyediakan Modal "Daftar Dokumen" di sidebar yang terhubung dengan `/api/documents` di backend. Memilih dokumen akan menyalakan mode isolasi context.
 
 ---
 
 ### 🟢 FITUR BARU — WebUI
 
-#### W8 — Dark/Light Mode Persistence yang Tepat
-Mode tema saat ini disimpan di `localStorage` tapi tidak disinkronkan antar tab browser. Gunakan `BroadcastChannel` API atau `storage` event listener.
+#### ✅ W8 — Dark/Light Mode Persistence yang Tepat (SELESAI)
+Mode tema yang diubah pada satu tab browser disinkronkan ke seluruh tab lainnya secara instan via `storage` event listener.
 
-#### W9 — Keyboard Shortcuts
+#### ✅ W9 — Keyboard Shortcuts (SELESAI)
 - `Ctrl+/` → New Chat
-- `Ctrl+K` → Search riwayat sesi
-- `Esc` → Tutup modal/dropdown aktif
+- `Ctrl+K` → Fokus ke pencarian riwayat obrolan sesi di sidebar
+- `Esc` → Menutup dialog / modal aktif
 
-#### W10 — Markdown Export dengan Syntax Highlight
-Tambahkan tombol "Copy as Markdown" di setiap response bubble asisten, bukan hanya di code block.
+#### ✅ W10 — Markdown Export dengan Syntax Highlight (SELESAI)
+Tombol "Salin Markdown" di setiap bubble percakapan asisten menyalin raw text markdown lengkap.
 
 ---
 

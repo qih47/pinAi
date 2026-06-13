@@ -26,6 +26,22 @@ const Sidebar = ({
   const menuRef = useRef(null);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [sessionToDelete, setSessionToDelete] = useState(null);
+  const [sessionSearchQuery, setSessionSearchQuery] = useState("");
+  const sidebarSearchInputRef = useRef(null);
+
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setIsOpen(true);
+        setTimeout(() => {
+          sidebarSearchInputRef.current?.focus();
+        }, 100);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [setIsOpen]);
 
   // Ambil method fetch secara langsung dari Zustand store
   const pinChat = useChatStore((state) => state.pinChat);
@@ -201,8 +217,8 @@ const Sidebar = ({
         background: darkMode ? '#1E1E22' : (theme?.sidebarBg || '#F7F8FC'),
         color: theme?.textColor || (darkMode ? '#e2e8f0' : '#1f2937'),
 
-        // 🔥 DYNAMIC BORDER: Pas mode dark TANPA BORDER, pas mode light SILVER INDAH!
-        borderRight: darkMode ? 'none' : '1px solid #E5E7EB'
+        // 🔥 DYNAMIC BORDER: Diperbaiki agar di mode dark pun ada batas pemisah tipis yang rapi!
+        borderRight: darkMode ? '1px solid #2a2a2d' : '1px solid #E5E7EB'
       }}
     >
       <div
@@ -210,8 +226,7 @@ const Sidebar = ({
         onMouseLeave={() => setIsHovered(false)}
         className="p-3 p-4 relative flex flex-col justify-center"
         style={{
-          // Pada mode gelap tidak menggunakan border bawah, sedangkan pada mode terang menggunakan warna abu-abu tipis
-          borderBottom: darkMode ? 'none' : '1px solid #E5E7EB'
+          borderBottom: darkMode ? '1px solid #2a2a2d' : '1px solid #E5E7EB'
         }}
       >
         <div className="flex items-center">
@@ -335,8 +350,36 @@ const Sidebar = ({
           Semua Chat
         </div>
 
+        {isOpen && (
+          <div className="px-3 mb-2 relative">
+            <input
+              ref={sidebarSearchInputRef}
+              type="text"
+              placeholder="Cari riwayat chat... (Ctrl+K)"
+              value={sessionSearchQuery}
+              onChange={(e) => setSessionSearchQuery(e.target.value)}
+              className="w-full text-xs rounded-lg px-2.5 py-1.5 outline-none border transition-colors"
+              style={{
+                background: darkMode ? '#252528' : '#F3F4F6',
+                borderColor: darkMode ? '#2A2A2D' : '#E5E7EB',
+                color: theme?.textColor || (darkMode ? '#e2e8f0' : '#1f2937')
+              }}
+            />
+            {sessionSearchQuery && (
+              <button
+                onClick={() => setSessionSearchQuery("")}
+                className="absolute right-5 top-1/2 -translate-y-1/2 text-[10px] text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                style={{ background: 'transparent', border: 'none', cursor: 'pointer' }}
+              >
+                ✕
+              </button>
+            )}
+          </div>
+        )}
+
         {chatHistory.length > 0 ? (
           [...chatHistory]
+            .filter((c) => (c.judul || "Chat Baru").toLowerCase().includes(sessionSearchQuery.toLowerCase()))
             .sort((a, b) => (b.is_pinned ? 1 : 0) - (a.is_pinned ? 1 : 0))
             .map((chat) => (
               <div
@@ -347,16 +390,16 @@ const Sidebar = ({
                   loadChatSession(chat.session_uuid);
                   setActiveMenuId(null);
                 }}
-                // PERBAIKAN WARNA TEKS AKTIF: Penyesuaian warna teks dan latar belakang untuk chat yang sedang aktif
-                className={`group relative flex items-center px-3 py-2 text-sm rounded-full cursor-pointer transition-all ${currentSessionId === chat.session_uuid
-                    ? "bg-blue-100 text-blue-600 font-bold dark:bg-blue-500/50 dark:text-blue-600"
-                    : "hover:bg-gray-200 dark:hover:bg-gray-800 font-medium"
+                // PERBAIKAN WARNA TEKS AKTIF: Penyesuaian warna teks dan latar belakang untuk chat yang sedang aktif agar lebih terbaca
+                className={`group relative flex items-center px-3 py-2 text-sm rounded-xl cursor-pointer transition-all ${currentSessionId === chat.session_uuid
+                    ? "bg-blue-500/10 text-blue-400 font-semibold border-l-2 border-blue-500"
+                    : "hover:bg-gray-200/50 dark:hover:bg-white/5 font-medium"
                   } ${isDeletingId === chat.session_uuid ? "animate-delete" : ""
                   }`}
                 style={{
                   color: currentSessionId === chat.session_uuid
                     ? (darkMode ? '#60a5fa' : '#2563eb') // Menggunakan warna biru menyala menyesuaikan mode
-                    : theme?.textColor
+                    : (darkMode ? '#94a3b8' : '#4b5563')
                 }}
                 title={chat.judul}
               >
@@ -463,7 +506,7 @@ const Sidebar = ({
           height: "60px",
           // 🔥 Pas dark mode background-nya menyatu sempurna tanpa sekat border hitam!
           background: darkMode ? '#1E1E22' : (theme?.sidebarBg || '#F7F8FC'),
-          borderTop: darkMode ? 'none' : '1px solid #E5E7EB'
+          borderTop: darkMode ? '1px solid #2a2a2d' : '1px solid #E5E7EB'
         }}
       >
         {showLogoutPopup && (

@@ -6,10 +6,50 @@ import { styles } from '../chatPage.styles';
 import { useChatStore } from '../../../stores/chatStore';
 import UserBubble from './UserBubble';
 
+const toastFloatingStyle = {
+    position: 'fixed',
+    top: '24px',
+    left: '50%',
+    transform: 'translateX(-50%)',
+    background: '#1e293b',
+    color: '#e2e8f0',
+    padding: '10px 20px',
+    borderRadius: '8px',
+    fontSize: '13px',
+    fontWeight: 500,
+    boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.4), 0 0 1px 1px rgba(99, 102, 241, 0.3)',
+    border: '1px solid rgba(99, 102, 241, 0.2)',
+    zIndex: 99999,
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    animation: 'fadeInUp 0.2s ease-out'
+};
+
+function formatThinkingPhase(thought) {
+  if (!thought) return "CAKRA sedang berpikir...";
+  if (thought.includes("jalur") || thought.includes("Gateway")) {
+    return "🚦 Layer 0: Menganalisis intent & jalur...";
+  }
+  if (thought.includes("dokumen") || thought.includes("RAG")) {
+    return "📚 RAG: Mencari regulasi internal Pindad...";
+  }
+  if (thought.includes("cepat") || thought.includes("respons") || thought.includes("Gemma")) {
+    return "✍️ Layer 2: Menyusun formulasi respons...";
+  }
+  if (thought.includes("PDF")) {
+    return "📄 Membaca lampiran PDF...";
+  }
+  if (thought.includes("visual")) {
+    return "🖼️ Menganalisis visual...";
+  }
+  return thought;
+}
+
 // =========================================================================
 // 🔥 MAIN COMPONENT
 // =========================================================================
-const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThinking, isStreamingText }) {
+const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThinking, isStreamingText, searchQuery = '' }) {
     const [showToast, setShowToast] = useState(false);
     const [toastMsg, setToastMsg] = useState('');
 
@@ -43,6 +83,7 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
                 executeTextCopy={executeTextCopy}
                 showToast={showToast}
                 toastMsg={toastMsg}
+                searchQuery={searchQuery}
             />
         );
     }
@@ -142,7 +183,7 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
                                     whiteSpace: 'nowrap'
                                 }}
                             >
-                                {msg.thought || "CAKRA sedang berpikir"}
+                                {formatThinkingPhase(msg.thought)}
                             </span>
                             <span style={{ display: 'inline-flex', marginLeft: 4, alignItems: 'baseline' }}>
                                 <span style={{
@@ -186,6 +227,7 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
                                     isStreaming={isStreamingMsg}
                                     darkMode={darkMode}
                                     theme={theme}
+                                    searchQuery={searchQuery}
                                 />
                             </div>
 
@@ -212,7 +254,7 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
                                     <button
                                         type="button"
                                         onClick={() => executeTextCopy(msg.content)}
-                                        title="Salin Seluruh Jawaban AI"
+                                        title="Salin Seluruh Jawaban AI (Format Markdown)"
                                         style={{
                                             background: 'transparent',
                                             border: 'none',
@@ -232,7 +274,7 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
                                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                                             <rect x="9" y="9" width="13" height="13" rx="2" ry="2" /><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" />
                                         </svg>
-                                        <span>Salin Jawaban</span>
+                                        <span>Salin Markdown</span>
                                     </button>
                                 </div>
                             )}
@@ -254,6 +296,7 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
         prevProps.isStreamingText === nextProps.isStreamingText &&
         prevProps.darkMode === nextProps.darkMode &&
         prevProps.idx === nextProps.idx &&
+        prevProps.searchQuery === nextProps.searchQuery &&
         prevProps.msg.totalMessages === nextProps.msg.totalMessages &&
         JSON.stringify(prevProps.msg.attachments) === JSON.stringify(nextProps.msg.attachments)
     );

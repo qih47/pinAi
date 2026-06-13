@@ -18,76 +18,92 @@ function _normalizeAttachments(files) {
     }));
 }
 
-async function _performStream(set, get, messagesToSend, assistantMessage, forcedSessionUuid = null, npp = null, isolatedDocId = null, attachmentPaths = [], chatMode = 'auto') {
-    try {
-        const activeSessionUuid = forcedSessionUuid || get().sessionUuid;
-        let accumulatedReply = '';
-        let renderTimeout = null;
+async function _performStream(set, get, messagesToSend, assistantMessage, forcedSessionUuid = null, npp = null, isolatedDocId = null, attachmentPaths = [], chatMode = 'auto', toast = null) {
+    let attempts = 0;
+    const maxAttempts = 4; // 1 initial attempt + 3 retries
+    let success = false;
+    const activeSessionUuid = forcedSessionUuid || get().sessionUuid;
 
-        await endpoints.streamChat(
-            {
-                sessionUuid: activeSessionUuid,
-                messages: messagesToSend,
-                chatMode: get().chatMode || chatMode,
-                isolatedDocId,
-                attachmentPaths,
-                npp
-            },
-            {
-                onThinking: (thinking) => {
-                    const updatedAssistantMsg = { ...assistantMessage, thought: thinking };
-                    const updatedMessages = get().messages.map(msg =>
-                        msg === assistantMessage ? updatedAssistantMsg : msg
-                    );
-                    assistantMessage = updatedAssistantMsg;
-                    set({
-                        currentThinking: thinking,
-                        isThinking: true,
-                        messages: updatedMessages
-                    });
-                },
-                onSources: (sources) => {
-                    console.log('📚 [SSE] Received sources:', sources);
-                    const updatedAssistantMsg = {
-                        ...assistantMessage,
-                        sources: sources,
-                        citations: sources  // Dual assignment untuk kompatibilitas
-                    };
-                    const updatedMessages = get().messages.map(msg =>
-                        msg === assistantMessage ? updatedAssistantMsg : msg
-                    );
-                    assistantMessage = updatedAssistantMsg;
-                    set({ messages: updatedMessages });
-                },
-                onChunk: (chunk) => {
-                    accumulatedReply += chunk;
-                    assistantMessage.content = accumulatedReply;
+    while (attempts < maxAttempts && !success) {
+        try {
+            if (attempts > 0) {
+                if (toast) toast.info(`Koneksi terputus. Menghubungkan kembali... (${attempts}/3)`);
+                const delay = Math.pow(2, attempts - 1) * 1000;
+                await new Promise(resolve => setTimeout(resolve, delay));
+            }
 
-                    if (!renderTimeout) {
-                        renderTimeout = requestAnimationFrame(() => {
-                            set({
-                                messages: [...get().messages],
-                                isThinking: false
+            let accumulatedReply = '';
+            let renderTimeout = null;
+
+            await endpoints.streamChat(
+                {
+                    sessionUuid: activeSessionUuid,
+                    messages: messagesToSend,
+                    chatMode: get().chatMode || chatMode,
+                    isolatedDocId,
+                    attachmentPaths,
+                    npp
+                },
+                {
+                    onThinking: (thinking) => {
+                        const updatedAssistantMsg = { ...assistantMessage, thought: thinking };
+                        const updatedMessages = get().messages.map(msg =>
+                            msg === assistantMessage ? updatedAssistantMsg : msg
+                        );
+                        assistantMessage = updatedAssistantMsg;
+                        set({
+                            currentThinking: thinking,
+                            isThinking: true,
+                            messages: updatedMessages
+                        });
+                    },
+                    onSources: (sources) => {
+                        console.log('📚 [SSE] Received sources:', sources);
+                        const updatedAssistantMsg = {
+                            ...assistantMessage,
+                            sources: sources,
+                            citations: sources  // Dual assignment untuk kompatibilitas
+                        };
+                        const updatedMessages = get().messages.map(msg =>
+                            msg === assistantMessage ? updatedAssistantMsg : msg
+                        );
+                        assistantMessage = updatedAssistantMsg;
+                        set({ messages: updatedMessages });
+                    },
+                    onChunk: (chunk) => {
+                        accumulatedReply += chunk;
+                        assistantMessage.content = accumulatedReply;
+
+                        if (!renderTimeout) {
+                            renderTimeout = requestAnimationFrame(() => {
+                                set({
+                                    messages: [...get().messages],
+                                    isThinking: false
+                                });
+                                renderTimeout = null;
                             });
-                            renderTimeout = null;
+                        }
+                    },
+                    onDone: () => {
+                        set({
+                            isThinking: false,
+                            currentThinking: ''
                         });
                     }
-                },
-                onDone: () => {
-                    set({
-                        isThinking: false,
-                        currentThinking: ''
-                    });
                 }
+            );
+            success = true;
+        } catch (error) {
+            console.warn(`💥 [FE STREAM ERROR - Attempt ${attempts + 1}]:`, error);
+            attempts++;
+            if (attempts >= maxAttempts) {
+                assistantMessage.content = '⚠️ Gagal memuat balasan. Koneksi terputus sepenuhnya.';
+                set({ messages: [...get().messages], isThinking: false, currentThinking: '' });
+                if (toast) toast.error('Koneksi terputus. Gagal memuat balasan.');
             }
-        );
-    } catch (error) {
-        console.error('💥 [FE STREAM ERROR]:', error);
-        assistantMessage.content = '⚠️ Gagal memuat balasan.';
-        set({ messages: [...get().messages], isThinking: false, currentThinking: '' });
-    } finally {
-        set({ isStreaming: false, isLoading: false, isThinking: false });
+        }
     }
+    set({ isStreaming: false, isLoading: false, isThinking: false });
 }
 
 export const useChatStore = create((set, get) => ({
@@ -100,8 +116,10 @@ export const useChatStore = create((set, get) => ({
     stagedAttachments: [],
     activeIsolatedDocId: null,
     activeIsolatedTitle: null,
+    documents: [],
+    isLoadingDocuments: false,
 
-    sendMessage: async (content, npp, onSessionCreatedCallback, directUploadedFiles = null, chatMode = 'auto') => {
+    sendMessage: async (content, npp, onSessionCreatedCallback, directUploadedFiles = null, chatMode = 'auto', toast = null) => {
         const hasAttachments = (directUploadedFiles?.length > 0) || (get().stagedAttachments?.length > 0);
         if ((!content.trim() && !hasAttachments) || get().isStreaming) return;
 
@@ -171,13 +189,14 @@ export const useChatStore = create((set, get) => ({
             npp,
             currentIsolatedDocId,
             currentAttachmentPaths,
-            chatMode // 🔥 Oper chatMode ke _performStream
+            chatMode,
+            toast
         );
 
         set({ stagedAttachments: [] });
     },
 
-    editAndRegenerate: async (index, newContent) => {
+    editAndRegenerate: async (index, newContent, toast = null) => {
         if (!newContent.trim() || get().isStreaming) return;
 
         const currentMessages = [...get().messages];
@@ -203,7 +222,7 @@ export const useChatStore = create((set, get) => ({
         const messagesToSend = currentMessages.slice(0, index + 1);
         const npp = JSON.parse(localStorage.getItem('cakra_user') || '{}')?.npp || null;
 
-        await _performStream(set, get, messagesToSend, assistantMessage, null, npp, get().activeIsolatedDocId, []);
+        await _performStream(set, get, messagesToSend, assistantMessage, null, npp, get().activeIsolatedDocId, [], 'auto', toast);
     },
 
     clearChat: () => {
@@ -319,6 +338,23 @@ export const useChatStore = create((set, get) => ({
 
     setStagedAttachments: (attachments) => {
         set({ stagedAttachments: attachments });
+    },
+
+    fetchDocumentsList: async () => {
+        set({ isLoadingDocuments: true });
+        try {
+            const result = await endpoints.fetchAllDocuments();
+            if (result.status === "success" && result.data) {
+                set({ documents: result.data });
+            } else {
+                set({ documents: [] });
+            }
+        } catch (err) {
+            console.error("Gagal mengambil daftar dokumen:", err);
+            set({ documents: [] });
+        } finally {
+            set({ isLoadingDocuments: false });
+        }
     },
 
     setContextIsolation: (docId, docTitle) => {

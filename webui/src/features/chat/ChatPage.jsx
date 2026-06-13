@@ -48,6 +48,10 @@ export default function ChatPage({ isGuest, isLoggedIn: propsIsLoggedIn, userDat
 
   const activeIsolatedTitle = useChatStore((state) => state.activeIsolatedTitle);
   const setContextIsolation = useChatStore((state) => state.setContextIsolation);
+  const activeIsolatedDocId = useChatStore((state) => state.activeIsolatedDocId);
+  const documents = useChatStore((state) => state.documents || []);
+  const isLoadingDocuments = useChatStore((state) => state.isLoadingDocuments || false);
+  const fetchDocumentsList = useChatStore((state) => state.fetchDocumentsList);
 
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [isUploadingFile, setIsUploadingFile] = useState(false);
@@ -199,6 +203,55 @@ export default function ChatPage({ isGuest, isLoggedIn: propsIsLoggedIn, userDat
   const [showDocumentList, setShowDocumentList] = useState(false);
   const [chatHistory, setChatHistory] = useState([]);
   const lastLoadedSessionRef = useRef(null);
+  
+  const [docSearchQuery, setDocSearchQuery] = useState('');
+  const messageSearchInputRef = useRef(null);
+  const [showMsgSearch, setShowMsgSearch] = useState(false);
+  const [msgSearchQuery, setMsgSearchQuery] = useState('');
+
+  // 🔄 W8: Sinkronisasi mode tema antar tab browser
+  useEffect(() => {
+    const handleStorageChange = (e) => {
+      if (e.key === 'cakra-theme') {
+        setDarkMode(e.newValue === 'dark');
+      }
+    };
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
+  }, []);
+
+  // ⌨️ W9: Keyboard Shortcuts Handler
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f') {
+        e.preventDefault();
+        setShowMsgSearch(prev => !prev);
+        setTimeout(() => {
+          if (!showMsgSearch) {
+            messageSearchInputRef.current?.focus();
+          }
+        }, 100);
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key === '/') {
+        e.preventDefault();
+        handleClearChat();
+      }
+      if (e.key === 'Escape') {
+        setShowMsgSearch(false);
+        setMsgSearchQuery('');
+        setShowDocumentList(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [showMsgSearch, chatHistory]);
+
+  // Load documents when document list is opened
+  useEffect(() => {
+    if (showDocumentList) {
+      fetchDocumentsList();
+    }
+  }, [showDocumentList, fetchDocumentsList]);
 
   const {
     messages,
@@ -381,7 +434,8 @@ export default function ChatPage({ isGuest, isLoggedIn: propsIsLoggedIn, userDat
         navigate(`/chat/${newSessionObj.session_uuid}`, { replace: true });
       },
       finalStagedData, // Meneruskan data lampiran berkas secara langsung
-      chatModeRef.current // PARAMETER MODE: 'auto' | 'documents' (untuk dikirim ke backend)
+      chatModeRef.current, // PARAMETER MODE: 'auto' | 'documents' (untuk dikirim ke backend)
+      toast
     );
 
     setInput('');
@@ -718,6 +772,30 @@ export default function ChatPage({ isGuest, isLoggedIn: propsIsLoggedIn, userDat
           background-color: ${darkMode ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.15)'};
           border-radius: 20px;
         }
+
+        /* ── ANIMASI SHIMMER & BOUNCE ── */
+        @keyframes skeletonShimmer {
+          0% { background-position: -200% 0; }
+          100% { background-position: 200% 0; }
+        }
+        .skeleton-shimmer {
+          background: ${darkMode ? 'linear-gradient(90deg, #1e1e20 25%, #2a2a2d 50%, #1e1e20 75%)' : 'linear-gradient(90deg, #f3f4f6 25%, #e5e7eb 50%, #f3f4f6 75%)'};
+          background-size: 200% 100%;
+          animation: skeletonShimmer 1.5s infinite linear;
+        }
+        @keyframes dotBounce {
+          0%, 80%, 100% { transform: scale(0); }
+          40% { transform: scale(1.0); }
+        }
+        @keyframes shimmerFlow {
+          0% { background-position: 0% 50%; }
+          50% { background-position: 100% 50%; }
+          100% { background-position: 0% 50%; }
+        }
+        @keyframes fadeSlideIn {
+          from { opacity: 0; transform: translateY(4px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
       `}</style>
 
       {!isGuest && currentIsLoggedIn && (
@@ -759,6 +837,35 @@ export default function ChatPage({ isGuest, isLoggedIn: propsIsLoggedIn, userDat
           </div>
           {/* 🔥 MODIFIKASI HEADER ACTIONS: Bungkus tombol login & tema ke dalam Kebab Dropdown */}
           <div style={{ ...styles.headerActions, display: 'flex', alignItems: 'center', gap: '8px' }}>
+            {messages.length > 0 && (
+              <button
+                onClick={() => {
+                  setShowMsgSearch(prev => !prev);
+                  setTimeout(() => {
+                    if (!showMsgSearch) messageSearchInputRef.current?.focus();
+                  }, 100);
+                }}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  cursor: 'pointer',
+                  width: '36px',
+                  height: '36px',
+                  borderRadius: '50%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: theme.iconColor,
+                  transition: 'background 0.2s',
+                  outline: 'none'
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.background = darkMode ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)'}
+                onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                title="Cari kata kunci dalam percakapan ini (Ctrl+F)"
+              >
+                🔍
+              </button>
+            )}
             <HeaderDropdownMenu 
               isGuest={isGuest} 
               onLogin={() => navigate('/login')} 
@@ -786,6 +893,46 @@ export default function ChatPage({ isGuest, isLoggedIn: propsIsLoggedIn, userDat
             display: 'flex',
             flexDirection: 'column'
           }}>
+            {/* 🔍 Message Search Bar */}
+            {showMsgSearch && (
+              <div style={{
+                ...styles.msgSearchContainer,
+                background: theme.inputBg,
+                borderBottomColor: theme.borderColor
+              }}>
+                <span style={{ fontSize: '14px', color: theme.secondaryText }}>🔍</span>
+                <input
+                  ref={messageSearchInputRef}
+                  type="text"
+                  placeholder="Cari kata kunci dalam percakapan ini..."
+                  value={msgSearchQuery}
+                  onChange={(e) => setMsgSearchQuery(e.target.value)}
+                  style={{
+                    flex: 1,
+                    border: 'none',
+                    background: 'transparent',
+                    outline: 'none',
+                    color: theme.textColor,
+                    fontSize: '14px'
+                  }}
+                />
+                <button
+                  onClick={() => { setShowMsgSearch(false); setMsgSearchQuery(''); }}
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    color: theme.secondaryText,
+                    cursor: 'pointer',
+                    fontSize: '14px',
+                    fontWeight: 'bold',
+                    padding: '4px 8px'
+                  }}
+                >
+                  ✕
+                </button>
+              </div>
+            )}
+
             <ChatArea
               messages={messages}
               isStreaming={isStreaming}
@@ -798,6 +945,8 @@ export default function ChatPage({ isGuest, isLoggedIn: propsIsLoggedIn, userDat
               currentThinking={currentThinking}
               isStreamingText={isStreamingText}
               lastAssistantIndex={lastAssistantIndex}
+              searchQuery={msgSearchQuery}
+              isLoading={isLoading}
             />
           </div>
 
@@ -841,6 +990,99 @@ export default function ChatPage({ isGuest, isLoggedIn: propsIsLoggedIn, userDat
         {/* {!showWelcome && renderInputForm(false)} */}
         {renderInputForm(!showWelcome)}
       </main>
+
+      {/* 🔒 W7: Modal Pilihan Dokumen Regulasi (Context Isolation) */}
+      {showDocumentList && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 100,
+          background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          animation: 'fadeInUp 0.2s ease-out',
+          padding: '20px'
+        }}>
+          <div style={{
+            background: darkMode ? '#1e1e20' : '#ffffff',
+            color: theme.textColor,
+            width: '100%', maxWidth: '550px', borderRadius: '16px',
+            border: `1px solid ${theme.borderColor}`,
+            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.3)',
+            display: 'flex', flexDirection: 'column', maxHeight: '80vh',
+            overflow: 'hidden'
+          }}>
+            <div style={{
+              padding: '16px 20px', borderBottom: `1px solid ${theme.borderColor}`,
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between'
+            }}>
+              <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 600 }}>Daftar Dokumen Regulasi</h3>
+              <button onClick={() => setShowDocumentList(false)} style={{ background: 'transparent', border: 'none', color: theme.secondaryText, cursor: 'pointer', fontSize: '18px', fontWeight: 'bold' }}>✕</button>
+            </div>
+
+            <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: '12px', flex: 1, overflowY: 'auto' }}>
+              <input
+                type="text"
+                placeholder="Cari nama dokumen atau nomor..."
+                value={docSearchQuery}
+                onChange={(e) => setDocSearchQuery(e.target.value)}
+                style={{
+                  padding: '10px 14px', borderRadius: '8px',
+                  border: `1px solid ${theme.inputBorder}`,
+                  background: theme.inputBg, color: theme.textColor,
+                  outline: 'none', fontSize: '14px', width: '100%'
+                }}
+              />
+              
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '4px' }} className="custom-scroll-gemini">
+                {isLoadingDocuments ? (
+                  <div style={{ textAlign: 'center', padding: '20px', color: theme.secondaryText }}>Memuat dokumen...</div>
+                ) : documents.filter(doc => 
+                  (doc.judul || '').toLowerCase().includes(docSearchQuery.toLowerCase()) || 
+                  (doc.nomor || '').toLowerCase().includes(docSearchQuery.toLowerCase())
+                ).length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: '20px', color: theme.secondaryText }}>Tidak ada dokumen ditemukan.</div>
+                ) : (
+                  documents.filter(doc => 
+                    (doc.judul || '').toLowerCase().includes(docSearchQuery.toLowerCase()) || 
+                    (doc.nomor || '').toLowerCase().includes(docSearchQuery.toLowerCase())
+                  ).map(doc => {
+                    const isIsolated = activeIsolatedDocId === doc.id;
+                    return (
+                      <div key={doc.id} style={{
+                        padding: '12px 16px', borderRadius: '10px',
+                        background: isIsolated
+                          ? (darkMode ? 'rgba(99, 102, 241, 0.15)' : 'rgba(37, 99, 235, 0.08)')
+                          : (darkMode ? '#2a2a2d' : '#f9fafb'),
+                        border: `1px solid ${isIsolated ? (darkMode ? '#6366f1' : '#2563eb') : theme.borderColor}`,
+                        display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px',
+                        transition: 'all 0.15s ease'
+                      }}>
+                        <div style={{ minWidth: 0, flex: 1, textAlign: 'left' }}>
+                          <div style={{ fontWeight: 600, fontSize: '13.5px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{doc.judul}</div>
+                          <div style={{ fontSize: '11px', color: theme.secondaryText, marginTop: '2px' }}>No: {doc.nomor || '-'} | Tipe: {doc.tipe}</div>
+                        </div>
+                        <button
+                          onClick={() => {
+                            setContextIsolation(doc.id, doc.judul);
+                            setShowDocumentList(false);
+                          }}
+                          style={{
+                            padding: '6px 12px', borderRadius: '20px', border: 'none',
+                            background: isIsolated ? '#ef4444' : '#6366f1',
+                            color: '#ffffff', fontSize: '12px', fontWeight: 600,
+                            cursor: 'pointer', transition: 'all 0.15s ease',
+                            flexShrink: 0
+                          }}
+                        >
+                          {isIsolated ? 'Batal Fokus' : 'Fokus'}
+                        </button>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

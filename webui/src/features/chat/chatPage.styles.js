@@ -311,6 +311,38 @@ export const styles = {
         alignItems: 'center',
         gap: '8px',
         animation: 'fadeInUp 0.2s ease-out'
+    },
+    scrollBottomBtn: {
+        position: 'absolute',
+        bottom: '24px',
+        right: '24px',
+        width: '40px',
+        height: '40px',
+        borderRadius: '50%',
+        border: 'none',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        cursor: 'pointer',
+        fontSize: '18px',
+        boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+        zIndex: 99,
+        transition: 'all 0.2s ease-in-out',
+        animation: 'fadeInUp 0.2s ease-out'
+    },
+    msgSearchContainer: {
+        display: 'flex',
+        alignItems: 'center',
+        gap: '8px',
+        padding: '8px 16px',
+        position: 'absolute',
+        top: '64px',
+        left: 0,
+        right: 0,
+        zIndex: 30,
+        borderBottom: '1px solid',
+        animation: 'fadeInUp 0.15s ease-out',
+        transition: 'all 0.2s ease'
     }
 };
 

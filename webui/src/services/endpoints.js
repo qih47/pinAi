@@ -214,3 +214,11 @@ export async function streamChat(
     }
   }
 }
+
+/**
+ * Fetch list of all regulatory documents from backend for Context Isolation (W7)
+ */
+export async function fetchAllDocuments() {
+  const response = await apiClient.get('/documents');
+  return response.data;
+}
