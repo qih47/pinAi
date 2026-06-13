@@ -18,6 +18,11 @@ from backend.app.core.config import settings
 from backend.app.core.llm_client import generate_json_response, stream_ollama_chat
 from backend.app.services.rag_service import rag_service
 from backend.app.services.memory_service import memory_service
+from backend.app.utils.retry_handler import (
+    retry_with_backoff,
+    layer0_circuit_breaker,
+    layer1_circuit_breaker,
+)
 
 logger = logging.getLogger("CAKRA_PIPELINE")
 
@@ -105,16 +110,28 @@ async def execute_layer_0_gateway(
     )
 
     try:
-        result = await generate_json_response(
-            model_name=settings.MODEL_GATEWAY,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_message},
-            ],
-            request=request,
-            temperature=0.05,
-            keep_alive=300,
+        # Layer 0 with retry + circuit breaker (25s timeout)
+        async def layer0_call():
+            return await generate_json_response(
+                model_name=settings.MODEL_GATEWAY,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_message},
+                ],
+                request=request,
+                temperature=0.05,
+                keep_alive=300,
+                timeout=25.0,
+            )
+
+        result = await retry_with_backoff(
+            coro_func=layer0_call,
+            max_retries=2,
+            initial_delay=0.5,
+            max_delay=5.0,
             timeout=25.0,
+            operation_name="Layer 0 Gateway",
+            circuit_breaker=layer0_circuit_breaker,
         )
 
         if not result or "target_pipeline" not in result:
@@ -209,16 +226,28 @@ async def _gateway_generate_queries(
     )
 
     try:
-        result = await generate_json_response(
-            model_name=settings.MODEL_GATEWAY,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_message},
-            ],
-            request=request,
-            temperature=0.1,
-            keep_alive=300,
+        # Layer 0 rewriter with retry (15s timeout)
+        async def layer0_rewriter_call():
+            return await generate_json_response(
+                model_name=settings.MODEL_GATEWAY,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_message},
+                ],
+                request=request,
+                temperature=0.1,
+                keep_alive=300,
+                timeout=15.0,
+            )
+
+        result = await retry_with_backoff(
+            coro_func=layer0_rewriter_call,
+            max_retries=2,
+            initial_delay=0.5,
+            max_delay=3.0,
             timeout=15.0,
+            operation_name="Layer 0 Query Rewriter",
+            circuit_breaker=layer0_circuit_breaker,
         )
 
         if result and "rewritten_queries" in result:
@@ -410,13 +439,25 @@ async def execute_layer_1_analyzer(
             },
         ]
 
-        qwen_result = await generate_json_response(
-            model_name=settings.MODEL_ROUTER,
-            messages=analyze_messages,
-            request=request,
-            temperature=0.1,
-            keep_alive=300,
-            timeout=15.0,
+        # Layer 1 Cognitive Analyzer with retry (30s timeout — increased for Qwen 3B)
+        async def layer1_analyzer_call():
+            return await generate_json_response(
+                model_name=settings.MODEL_ROUTER,
+                messages=analyze_messages,
+                request=request,
+                temperature=0.1,
+                keep_alive=300,
+                timeout=30.0,
+            )
+
+        qwen_result = await retry_with_backoff(
+            coro_func=layer1_analyzer_call,
+            max_retries=2,
+            initial_delay=0.5,
+            max_delay=5.0,
+            timeout=30.0,
+            operation_name="Layer 1 Cognitive Analyzer",
+            circuit_breaker=layer1_circuit_breaker,
         )
 
         if qwen_result and isinstance(qwen_result, dict) and "detected_intent" in qwen_result:

@@ -489,44 +489,62 @@ npm run build    # Production build ke /dist
 
 #### B4 — Timeout & Retry Layer 0/1 Tidak Konsisten
 
-**Status**: ⏳ NOT STARTED
+**Status**: ✅ COMPLETED
 
 **Masalah**: `generate_json_response` di Layer 0 menggunakan timeout 25s (routing) dan 15s (query rewriter), namun Layer 1 hanya 15s. Jika Qwen 3B lambat, Layer 1 timeout dan fallback ke rule-based — tanpa retry.
 
-**Solusi**:
+**Solusi** (IMPLEMENTED):
 
-- Tambahkan exponential backoff retry (maks 2x) untuk Layer 0/1
-- Timeout Layer 1 dinaikkan ke 30s (Qwen 3B lebih berat dari 0.5B)
-- Circuit breaker: jika Layer 0/1 gagal >3x dalam 60s, langsung flash mode
+- ✅ Tambahkan exponential backoff retry (maks 2x) untuk Layer 0/1
+- ✅ Timeout Layer 1 dinaikkan ke 30s (Qwen 3B lebih berat dari 0.5B)
+- ✅ Circuit breaker: jika Layer 0/1 gagal >3x dalam 60s, langsung flash mode
+- ✅ File baru: `backend/app/utils/retry_handler.py` dengan `RetryWithBackoff` + `CircuitBreaker`
+- ✅ Updated `pipeline_layer_executor.py`: Layer 0 gateway, Layer 0 rewriter, Layer 1 analyzer semua menggunakan retry + circuit breaker
+
+**Files Modified**:
+- `backend/app/utils/retry_handler.py` (NEW)
+- `backend/app/services/pipeline_layer_executor.py`
 
 ---
 
 #### B5 — Employee Name Query per Request (N+1 Problem)
 
-**Status**: ⏳ NOT STARTED
+**Status**: ✅ COMPLETED
 
 **Masalah**: Di `chat.py` baris 378-405, setiap request pipeline membuka koneksi DB baru hanya untuk mengambil `fullname` user. Ini N+1 query yang tidak perlu karena data ini statis per sesi.
 
-**Solusi**:
+**Solusi** (IMPLEMENTED):
 
-- Cache nama pegawai dalam sesi per `session_uuid` atau per `npp`
-- Gunakan `functools.lru_cache` atau in-memory dict dengan TTL
-- Atau kirim `employee_name` dari frontend saat POST `/stream` (sudah ada di authStore)
+- ✅ Cache nama pegawai menggunakan in-memory cache dengan TTL 1 jam
+- ✅ File baru: `backend/app/utils/employee_cache.py` dengan `get_cached_employee_fullname()`
+- ✅ Updated `chat.py`: menggunakan cached lookup instead of direct DB call
+- ✅ Cache invalidation supported via `invalidate_employee_cache()`
+
+**Files Modified**:
+- `backend/app/utils/employee_cache.py` (NEW)
+- `backend/app/api/endpoints/chat.py`
 
 ---
 
 #### B6 — Implementasi `documents.py` Endpoint (File Kosong)
 
-**Status**: ⏳ NOT STARTED
+**Status**: ✅ COMPLETED
 
 **Masalah**: `backend/app/api/endpoints/documents.py` kosong. Tidak ada endpoint untuk manajemen dokumen regulasi (list, upload, delete, reindex).
 
-**Solusi**: Buat endpoint CRUD dokumen:
+**Solusi** (IMPLEMENTED):
 
-- `GET /api/documents` — list semua dokumen dengan paginasi
-- `POST /api/documents/ingest` — upload + chunk + embed dokumen baru
-- `DELETE /api/documents/{id}` — hapus dokumen + chunk + embedding
-- `POST /api/documents/{id}/reindex` — re-embed dokumen yang sudah ada
+- ✅ `GET /api/documents` — list semua dokumen dengan paginasi (offset, limit)
+- ✅ `POST /api/documents/ingest` — upload + chunk + embed dokumen baru (background task)
+- ✅ `DELETE /api/documents/{id}` — hapus dokumen + chunk + embedding cascade
+- ✅ `POST /api/documents/{id}/reindex` — re-embed dokumen yang sudah ada
+- ✅ `GET /api/documents/stats` — statistik dokumen (total, chunks, file size, status)
+- ✅ Document schemas dengan pydantic validation
+- ✅ Background task untuk chunking + embedding asynchronous
+
+**Files Created**:
+- `backend/app/api/schemas/document.py` (NEW) — DocumentSchema, DocumentListSchema, etc.
+- `backend/app/api/endpoints/documents.py` (REPLACED) — Full CRUD implementation
 
 ---
 

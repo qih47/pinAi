@@ -48,6 +48,7 @@ from backend.app.utils.upload_validator import (
     check_rate_limit,
     UploadValidationError,
 )
+from backend.app.utils.employee_cache import get_cached_employee_fullname, invalidate_employee_cache
 
 router = APIRouter()
 logger = logging.getLogger("CAKRA_CHAT_API")
@@ -374,45 +375,50 @@ async def _sequential_pipeline_generator(
     cognitive_params["ocr_text"] = ocr_text
 
     # ═══════════════════════════════════════════════════════════════════════════
-    # 👤 INJECT NAMA EMPLOYEE (FIRST NAME ONLY FOR CASUAL SAPAAN)
+    # 👤 INJECT NAMA EMPLOYEE (FIRST NAME ONLY FOR CASUAL SAPAAN) — CACHED
     # ═══════════════════════════════════════════════════════════════════════════
     employee_name = "Guest"
     if current_user_npp and current_user_npp != "GUEST":
         try:
-            from backend.app.core.database import get_db
-
-            async with get_db() as conn:
-                row = await conn.fetchrow(
-                    "SELECT fullname FROM users WHERE npp = $1 LIMIT 1",
-                    current_user_npp,
-                )
-
-                if row and row.get("fullname"):
-                    full_name = row["fullname"]
-
-                    # 🔥 Ambil first name aja untuk sapaan casual
-                    name_parts = full_name.strip().split()
-                    if name_parts:
-                        # Ambil kata pertama, title case biar rapi
-                        employee_name = name_parts[0].title()
-                        logger.info(
-                            f"✅ [EMPLOYEE] First name extracted: {employee_name} (from: {full_name})"
-                        )
-                    else:
-                        employee_name = "Pegawai"
-                else:
-                    logger.warning(
-                        f"⚠️ [EMPLOYEE] NPP {current_user_npp} tidak ditemukan di tabel users"
+            # Use cached employee lookup to avoid N+1 query
+            async def fetch_employee_from_db(npp: str) -> Optional[str]:
+                from backend.app.core.database import get_db
+                async with get_db() as conn:
+                    row = await conn.fetchrow(
+                        "SELECT fullname FROM users WHERE npp = $1 LIMIT 1",
+                        npp,
                     )
+                    return row.get("fullname") if row else None
+
+            full_name = await get_cached_employee_fullname(
+                current_user_npp,
+                db_fetch_func=fetch_employee_from_db,
+            )
+
+            if full_name:
+                # 🔥 Ambil first name aja untuk sapaan casual
+                name_parts = full_name.strip().split()
+                if name_parts:
+                    # Ambil kata pertama, title case biar rapi
+                    employee_name = name_parts[0].title()
+                    logger.info(
+                        f"✅ [EMPLOYEE] First name extracted: {employee_name} (from: {full_name})"
+                    )
+                else:
                     employee_name = "Pegawai"
+            else:
+                logger.warning(
+                    f"⚠️ [EMPLOYEE] NPP {current_user_npp} tidak ditemukan di tabel users"
+                )
+                employee_name = "Pegawai"
 
         except Exception as e:
-            logger.warning(f"⚠️ [EMPLOYEE] Gagal ambil nama dari DB: {e}")
+            logger.warning(f"⚠️ [EMPLOYEE] Gagal ambil nama dari cache/DB: {e}")
             employee_name = "Pegawai"
 
     cognitive_params["employee_name"] = employee_name
     logger.info(f"👤 [EMPLOYEE FINAL] Sapaan untuk Gemma: '{employee_name}'")
-    # ═══════════════════════════════════════════════════════════════════════════
+    # ═════════════════════════════════════════════════════════════════════════════
 
     # ── Log dump Layer 1 ────────────────────────────────────────────────────────
     print("\n" + "🧠 " * 20)
