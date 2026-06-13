@@ -41,7 +41,7 @@ async def health_check():
     # Hitung Latensi Komputasi Total
     latency_ms = (time.time() - start_time) * 1000
 
-    print(f"🩺 [HEALTH] Check tuntas dalam {latency_ms:.2f}ms | RAGDB: {status_db_rag} | HRIS: {status_db_hris}")
+    logger.info(f"🩺 [HEALTH] Check tuntas dalam {latency_ms:.2f}ms | RAGDB: {status_db_rag} | HRIS: {status_db_hris}")
 
     return {
         "status": "Healthy, Bolo!" if system_healthy else "Unhealthy / Degraded",

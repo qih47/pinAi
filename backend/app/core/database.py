@@ -4,6 +4,8 @@ from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 from backend.app.core.config import settings
 
+logger = logging.getLogger("CAKRA_DATABASE")
+
 # Global connection pools
 db_pool = None
 hris_pool = None
@@ -34,9 +36,9 @@ async def init_db_pool():
             command_timeout=60.0,
         )
 
-        print("🚀 [DATABASE] Dual-database pools (ragdb & hris) initialized successfully, bolo!")
+        logger.info("🚀 [DATABASE] Dual-database pools (ragdb & hris) initialized successfully, bolo!")
     except Exception as e:
-        print(f"❌ [DATABASE] Failed to initialize database pools: {e}")
+        logger.error(f"❌ [DATABASE] Failed to initialize database pools: {e}")
         raise e
 
 async def close_db_pool():
@@ -46,7 +48,7 @@ async def close_db_pool():
         await db_pool.close()
     if hris_pool:
         await hris_pool.close()
-    print("🛑 [DATABASE] All database connection pools closed clean.")
+    logger.info("🛑 [DATABASE] All database connection pools closed clean.")
 
 @asynccontextmanager
 async def get_db():

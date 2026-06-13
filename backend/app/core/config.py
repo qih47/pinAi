@@ -38,6 +38,11 @@ class Settings(BaseSettings):
     SEARCH_LIMIT: int = 5
     MAX_CONTENT_LENGTH: int = 16 * 1024 * 1024
     
+    # 🔐 Security: Bypass Account (untuk testing/admin — gunakan env variables!)
+    BYPASS_ACCOUNT_ENABLED: bool = False
+    BYPASS_ACCOUNT_NPP: str = "99999"
+    BYPASS_ACCOUNT_PASSWORD_HASH: str = ""  # Harus di-set via .env (bcrypt hash)
+    
     class Config:
         # Kunci file .env lo sebagai satu-satunya sumber kebenaran data
         env_file = ENV_PATH
@@ -46,6 +51,9 @@ class Settings(BaseSettings):
 
 settings = Settings()
 
-print(f"⚙️  [CONFIG] Memuat file environment dari: {ENV_PATH}")
-print(f"🔌 [CONFIG] User Terbaca: {settings.DB_USER} | Target DB: {settings.DB_DATABASE}")
-print(f"👁️  [CONFIG] Engine Vision Terkunci: {settings.MODEL_VISION}")
+# Log config loads via structured logger (imported after Settings instantiation)
+import logging
+logger = logging.getLogger("CAKRA_CONFIG")
+logger.info(f"⚙️  [CONFIG] Memuat file environment dari: {ENV_PATH}")
+logger.info(f"🔌 [CONFIG] User Terbaca: {settings.DB_USER} | Target DB: {settings.DB_DATABASE}")
+logger.info(f"👁️  [CONFIG] Engine Vision Terkunci: {settings.MODEL_VISION}")

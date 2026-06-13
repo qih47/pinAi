@@ -28,6 +28,17 @@ class TitleUpdateSchema(BaseModel):
     judul: str = Field(..., min_length=1, max_length=255, description="Judul baru untuk sesi obrolan")
 
 
+class FeedbackSchema(BaseModel):
+    """Skema untuk validasi feedback/rating terhadap respon AI"""
+    message_id: int = Field(..., description="ID pesan yang di-feedback")
+    rating: int = Field(..., ge=1, le=5, description="Rating kualitas respons (1-5 bintang)")
+    comment: Optional[str] = Field(None, max_length=500, description="Komentar opsional untuk feedback")
+
+    class Config:
+        from_attributes = True
+
+
+
 class TestRouterRequestSchema(BaseModel):
     """Skema validasi untuk hit testing kilat Slot 1 Router Engine"""
     text: str = Field(..., description="Kueri teks mentah yang akan diuji klasifikasi JSON-nya")

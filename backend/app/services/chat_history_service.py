@@ -296,4 +296,52 @@ class ChatHistoryService:
                 return None
 
 
+
+
+    # =========================================================================
+    # ⭐ FEEDBACK & RATING MANAGEMENT
+    # =========================================================================
+
+    async def save_message_feedback(
+        self,
+        message_id: int,
+        rating: int,
+        comment: Optional[str],
+        rated_by_npp: str,
+    ) -> bool:
+        """
+        Simpan rating/feedback dari user untuk pesan tertentu.
+        Gunakan untuk quality monitoring dan improvement AI responses.
+        """
+        logger.info(
+            f"⭐ [FEEDBACK SAVE] Message ID: {message_id} | "
+            f"Rating: {rating}/5 | User: {rated_by_npp}"
+        )
+
+        async with get_db() as conn:
+            try:
+                query = """
+                    UPDATE chat_messages 
+                    SET rating = $1, feedback_comment = $2, rated_by_npp = $3, rated_at = CURRENT_TIMESTAMP
+                    WHERE id = $4
+                    RETURNING id;
+                """
+                result = await conn.fetchrow(
+                    query, rating, comment, rated_by_npp, message_id
+                )
+
+                if result:
+                    logger.info(f"✅ [FEEDBACK] Tersimpan untuk message ID: {message_id}")
+                    return True
+                else:
+                    logger.warning(
+                        f"⚠️ [FEEDBACK] Message ID {message_id} tidak ditemukan"
+                    )
+                    return False
+
+            except Exception as e:
+                logger.error(f"❌ [FEEDBACK] Error menyimpan feedback: {e}")
+                return False
+
+
 chat_history_service = ChatHistoryService()

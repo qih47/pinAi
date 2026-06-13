@@ -4,9 +4,11 @@ import hashlib
 import uuid
 import logging
 from typing import Optional
+import bcrypt
 
 # Hubungkan ke pool database baru kita secara aman
 from backend.app.core.database import get_db, get_hris_db
+from backend.app.core.config import settings
 
 router = APIRouter()
 logger = logging.getLogger("CAKRA_AUTH")
@@ -30,10 +32,10 @@ async def verify_session(token: str = Query(None)):
     Mengecek status validasi token di localStorage secara asinkronus.
     """
     if not token:
-        print("👤 [GUARD] Verifikasi gagal: Request datang tanpa token.")
+        logger.warning("👤 [GUARD] Verifikasi gagal: Request datang tanpa token.")
         raise HTTPException(status_code=401, detail="Token missing")
 
-    print(f"🔍 [AUTH] Memverifikasi session token: {token[:8]}...")
+    logger.info(f"🔍 [AUTH] Memverifikasi session token: {token[:8]}...")
     try:
         async with get_db() as conn:
             query = """
@@ -45,14 +47,14 @@ async def verify_session(token: str = Query(None)):
             user = await conn.fetchrow(query, token)
 
             if user:
-                print(f"🟩 [AUTH] Session VALID untuk User: {user['fullname']} [{user['role']}]")
+                logger.info(f"🟩 [AUTH] Session VALID untuk User: {user['fullname']} [{user['role']}]")
                 
                 # Update aktivitas terakhir pegawai
                 await conn.execute(
                     "UPDATE session_login SET last_activity = CURRENT_TIMESTAMP WHERE session_token = $1",
                     token,
                 )
-                print(f"🕒 [AUTH] last_activity updated untuk NPP: {user['npp']}")
+                logger.info(f"🕒 [AUTH] last_activity updated untuk NPP: {user['npp']}")
 
                 return LoginResponse(
                     status="success",
@@ -65,7 +67,7 @@ async def verify_session(token: str = Query(None)):
                     }
                 )
             else:
-                print(f"⚠️ [AUTH] Session INVALID atau sudah kedaluwarsa untuk token: {token[:8]}...")
+                logger.warning(f"⚠️ [AUTH] Session INVALID atau sudah kedaluwarsa untuk token: {token[:8]}...")
                 raise HTTPException(status_code=401, detail="Session expired or invalid")
 
     except HTTPException as he:
@@ -84,10 +86,10 @@ async def login(request_body: LoginRequest, request: Request):
     npp = request_body.username.strip()
     password_input = request_body.password
 
-    print(f"\n🔐 [LOGIN] Menerima request login untuk NPP: {npp}")
+    logger.info(f"\n🔐 [LOGIN] Menerima request login untuk NPP: {npp}")
 
     if not npp or not password_input:
-        print("❌ [LOGIN] Gagal: Input NPP atau password kosong.")
+        logger.warning("❌ [LOGIN] Gagal: Input NPP atau password kosong.")
         return LoginResponse(status="error", message="NPP dan Password wajib diisi")
 
     # Hitung MD5 hash untuk dicocokkan ke database HRIS remote lo
@@ -99,19 +101,27 @@ async def login(request_body: LoginRequest, request: Request):
 
     try:
         # =========================================================================
-        # SKEPTIS 1: LOGIC BYPASS AKUN SPESIAL (TRAINER / ADMIN)
+        # SKEPTIS 1: LOGIC BYPASS AKUN SPESIAL (TRAINER / ADMIN) — FROM ENV VARS
         # =========================================================================
-        if str(npp) == "99999" and str(password_input) == "123456":
-            print("👑 [LOGIN] Bypass Akun Spesial Terdeteksi. Mengalokasikan kasta TRAINER (Admin).")
-            user_fullname = "Learn Data AI"
-            user_divisi = "PINDAD"
-            current_role = "TRAINER"
-
+        bypass_enabled = settings.BYPASS_ACCOUNT_ENABLED
+        bypass_npp = settings.BYPASS_ACCOUNT_NPP or "99999"
+        bypass_password_hash = settings.BYPASS_ACCOUNT_PASSWORD_HASH or ""
+        
+        if bypass_enabled and str(npp) == bypass_npp:
+            # Validasi password menggunakan bcrypt (lebih aman dari MD5)
+            if bypass_password_hash and bcrypt.checkpw(password_input.encode(), bypass_password_hash.encode()):
+                logger.warning(f"👑 [LOGIN] Bypass Account Spesial (NPP: {bypass_npp}) berhasil login. Mengalokasikan kasta TRAINER.")
+                user_fullname = "Admin CAKRA"
+                user_divisi = "System Admin"
+                current_role = "TRAINER"
+            else:
+                logger.warning(f"⚠️ [LOGIN] Bypass account attempt dengan password salah untuk NPP: {npp}")
+                raise HTTPException(status_code=401, detail="Password salah")
         else:
             # =========================================================================
             # SKEPTIS 2: CEK STATUS USER & ROLE DI RAGDB LOKAL DULU
             # =========================================================================
-            print(f"💾 [LOGIN] Mengecek kasta role NPP {npp} di RAGDB Lokal...")
+            logger.info(f"💾 [LOGIN] Mengecek kasta role NPP {npp} di RAGDB Lokal...")
             async with get_db() as conn:
                 local_user = await conn.fetchrow(
                     "SELECT fullname, divisi, role FROM users WHERE npp = $1", npp
@@ -119,14 +129,14 @@ async def login(request_body: LoginRequest, request: Request):
                 
                 if local_user:
                     current_role = local_user["role"]
-                    print(f"🎖️  [LOGIN] User terdaftar di RAGDB Lokal. Role dikunci: {current_role}")
+                    logger.info(f"🎖️  [LOGIN] User terdaftar di RAGDB Lokal. Role dikunci: {current_role}")
                 else:
-                    print(f"✨ [LOGIN] User baru (NPP: {npp}) belum terdaftar di RAGDB Lokal.")
+                    logger.info(f"✨ [LOGIN] User baru (NPP: {npp}) belum terdaftar di RAGDB Lokal.")
 
             # =========================================================================
             # SKEPTIS 3: VALIDASI PASSWORD & KREDENSIAL KE DB HRIS REMOTE
             # =========================================================================
-            print(f"🌐 [LOGIN] Menghubungi database HRIS Remote di 192.168.11.55 untuk verifikasi...")
+            logger.info(f"🌐 [LOGIN] Menghubungi database HRIS Remote di 192.168.11.55 untuk verifikasi...")
             async with get_hris_db() as conn:
                 user_hris = await conn.fetchrow(
                     """
@@ -143,12 +153,12 @@ async def login(request_body: LoginRequest, request: Request):
                 )
 
             if not user_hris:
-                print(f"❌ [LOGIN] Otentikasi Gagal: NPP {npp} tidak ditemukan di DB HRIS remote.")
+                logger.error(f"❌ [LOGIN] Otentikasi Gagal: NPP {npp} tidak ditemukan di DB HRIS remote.")
                 raise HTTPException(status_code=404, detail="NPP tidak terdaftar di HRIS")
 
-            print(f"🔑 [LOGIN] Memverifikasi enkripsi MD5 password untuk NPP: {npp}...")
+            logger.info(f"🔑 [LOGIN] Memverifikasi enkripsi MD5 password untuk NPP: {npp}...")
             if user_hris["password"] != password_md5:
-                print(f"❌ [LOGIN] Otentikasi Gagal: Password salah untuk NPP {npp}.")
+                logger.error(f"❌ [LOGIN] Otentikasi Gagal: Password salah untuk NPP {npp}.")
                 raise HTTPException(status_code=401, detail="Password salah")
 
             # Ambil data nama & divisi hasil balikan dari HRIS resmi
@@ -162,7 +172,7 @@ async def login(request_body: LoginRequest, request: Request):
         user_ip = request.client.host if request.client else "127.0.0.1"
         u_agent = request.headers.get("user-agent", "FastAPI Client")
 
-        print("📦 [LOGIN] Membuka transaksi aman untuk sinkronisasi data session lokal...")
+        logger.info("📦 [LOGIN] Membuka transaksi aman untuk sinkronisasi data session lokal...")
         async with get_db() as conn:
             async with conn.transaction():
                 # 🚀 JALUR AMAN SINKRONISASI USER:
@@ -181,7 +191,7 @@ async def login(request_body: LoginRequest, request: Request):
                     user_divisi,
                     current_role,
                 )
-                print("📝 [LOGIN] Sinkronisasi tabel 'users' lokal dikunci aman.")
+                logger.info("📝 [LOGIN] Sinkronisasi tabel 'users' lokal dikunci aman.")
 
                 # Insert atau refresh token session aktif di tabel session_login sesuai ERD lo bolo
                 await conn.execute(
@@ -197,7 +207,7 @@ async def login(request_body: LoginRequest, request: Request):
                     session_token,
                     user_ip,
                 )
-                print("🔑 [LOGIN] State tabel 'session_login' berhasil direfresh.")
+                logger.info("🔑 [LOGIN] State tabel 'session_login' berhasil direfresh.")
 
                 # Tulis rekam audit ke history_login
                 await conn.execute(
@@ -206,9 +216,9 @@ async def login(request_body: LoginRequest, request: Request):
                     user_ip,
                     u_agent,
                 )
-                print(f"🪵  [AUDIT] Log 'LOGIN' sukses ditulis untuk NPP: {npp}")
+                logger.info(f"🪵  [AUDIT] Log 'LOGIN' sukses ditulis untuk NPP: {npp}")
 
-        print(f"🟩 [SUCCESS] Login tuntas! {user_fullname} [{current_role}] masuk ke sistem CAKRA AI.")
+        logger.info(f"🟩 [SUCCESS] Login tuntas! {user_fullname} [{current_role}] masuk ke sistem CAKRA AI.")
         return LoginResponse(
             status="success",
             data={
@@ -236,7 +246,7 @@ async def logout(request: Request, payload: dict = Body(...)):
         return {"status": "success", "message": "No token provided"}
 
     user_ip = request.client.host if request.client else "127.0.0.1"
-    print(f"\n🛑 [LOGOUT] Memproses request keluar untuk token: {token[:8]}...")
+    logger.info(f"\n🛑 [LOGOUT] Memproses request keluar untuk token: {token[:8]}...")
 
     try:
         async with get_db() as conn:
@@ -258,10 +268,10 @@ async def logout(request: Request, payload: dict = Body(...)):
                         npp,
                         user_ip,
                     )
-                print(f"✨ [LOGOUT] Clean shutdown session untuk NPP: {npp}. Jejak audit aman, bolo!")
+                logger.info(f"✨ [LOGOUT] Clean shutdown session untuk NPP: {npp}. Jejak audit aman, bolo!")
                 return {"status": "success", "message": "Logged out successfully"}
 
-            print("⚠️  [LOGOUT] Sesi token sudah tidak aktif sebelumnya.")
+            logger.warning("⚠️  [LOGOUT] Sesi token sudah tidak aktif sebelumnya.")
             return {"status": "success", "message": "Session already inactive"}
 
     except Exception as e:

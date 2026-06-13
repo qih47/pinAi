@@ -434,6 +434,8 @@ npm run build    # Production build ke /dist
 ### 🔴 BACKEND — Prioritas Tinggi (Critical)
 
 #### B1 — Hapus `print()` dari Kode Produksi, Gunakan Logger Terstruktur
+**Status**: ✅ COMPLETED
+
 **Masalah**: Seluruh backend (chat.py, pipeline_layer_executor.py, rag_service.py, memory_service.py, database.py, dll.) menggunakan `print()` langsung untuk debugging. Di produksi, ini memperlambat performa, tidak bisa dikontrol level-nya (DEBUG/INFO/WARNING), dan mencemari stdout.
 
 **Solusi**: Ganti semua `print()` dengan `logger.info()` / `logger.debug()` / `logger.warning()`. File `logging_setup.py` sudah ada namun belum dipakai optimal.
@@ -443,6 +445,8 @@ npm run build    # Production build ke /dist
 ---
 
 #### B2 — Background Task: Implementasi `background_tasks.py` (File Kosong)
+**Status**: ✅ COMPLETED
+
 **Masalah**: File `background_tasks.py` saat ini **kosong**. Fungsi `consolidate_nightly_memory()` di `memory_service.py` tidak pernah dipanggil secara otomatis. Memori jangka panjang pegawai tidak pernah diperbarui.
 
 **Solusi**:
@@ -453,6 +457,8 @@ npm run build    # Production build ke /dist
 ---
 
 #### B3 — Validasi File Upload di Server (Duplikasi Validasi)
+**Status**: ✅ COMPLETED
+
 **Masalah**: Saat ini validasi tipe file di `chat.py` hanya mengecek `content_type`. MIME type bisa dipalsukan. Tidak ada validasi ukuran file di sisi server.
 
 **Solusi**:
@@ -463,6 +469,8 @@ npm run build    # Production build ke /dist
 ---
 
 #### B4 — Timeout & Retry Layer 0/1 Tidak Konsisten
+**Status**: ⏳ NOT STARTED
+
 **Masalah**: `generate_json_response` di Layer 0 menggunakan timeout 25s (routing) dan 15s (query rewriter), namun Layer 1 hanya 15s. Jika Qwen 3B lambat, Layer 1 timeout dan fallback ke rule-based — tanpa retry.
 
 **Solusi**:
@@ -473,6 +481,8 @@ npm run build    # Production build ke /dist
 ---
 
 #### B5 — Employee Name Query per Request (N+1 Problem)
+**Status**: ⏳ NOT STARTED
+
 **Masalah**: Di `chat.py` baris 378-405, setiap request pipeline membuka koneksi DB baru hanya untuk mengambil `fullname` user. Ini N+1 query yang tidak perlu karena data ini statis per sesi.
 
 **Solusi**:
@@ -483,6 +493,8 @@ npm run build    # Production build ke /dist
 ---
 
 #### B6 — Implementasi `documents.py` Endpoint (File Kosong)
+**Status**: ⏳ NOT STARTED
+
 **Masalah**: `backend/app/api/endpoints/documents.py` kosong. Tidak ada endpoint untuk manajemen dokumen regulasi (list, upload, delete, reindex).
 
 **Solusi**: Buat endpoint CRUD dokumen:
@@ -494,6 +506,8 @@ npm run build    # Production build ke /dist
 ---
 
 #### B7 — Auth: Hardcoded Bypass Account & MD5 Password (Security)
+**Status**: ✅ COMPLETED
+
 **Masalah**: 
 1. `auth.py` line 104: akun bypass `npp=99999, password=123456` hardcoded di kode
 2. Password divalidasi menggunakan MD5 (sudah deprecated, mudah di-crack)
@@ -506,6 +520,8 @@ npm run build    # Production build ke /dist
 ---
 
 #### B8 — Koneksi DB per-request di Pipeline (Resource Leak Risk)
+**Status**: ⏳ NOT STARTED
+
 **Masalah**: Di `chat.py` baris 378, ada pola `async with get_db() as conn:` di dalam generator pipeline SSE. Jika streaming terhenti di tengah jalan (client disconnect), koneksi DB mungkin tidak langsung dikembalikan ke pool.
 
 **Solusi**: 
@@ -573,12 +589,18 @@ Signifikan mempercepat vector search saat `dokumen_chunk` > 10.000 baris.
 ### 🟢 FITUR BARU — Backend
 
 #### B14 — Feedback & Rating Respons AI
+**Status**: ✅ COMPLETED
+
 Tambahkan endpoint `POST /api/chat/messages/{id}/feedback` dengan payload `{ rating: 1-5, comment: string }`. Data disimpan ke tabel baru `ai_feedback` untuk evaluasi kualitas model.
 
 #### B15 — WebSocket untuk Real-time Notification
+**Status**: ⏳ NOT STARTED
+
 Ganti polling sidebar dengan WebSocket atau Server-Sent Events untuk notifikasi: sesi baru dari device lain, memory consolidation selesai, dll.
 
 #### B16 — Audit Log Admin Dashboard
+**Status**: ⏳ NOT STARTED
+
 Buat endpoint `GET /api/admin/audit-logs` yang menampilkan history_login + query log per pegawai untuk keperluan compliance.
 
 ---

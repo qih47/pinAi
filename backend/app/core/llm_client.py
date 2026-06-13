@@ -52,10 +52,10 @@ async def stream_ollama_chat(
     gpu_semaphore = request.app.state.gpu_limit
     url = f"{settings.OLLAMA_BASE_URL}/api/chat"
 
-    print(f"\n⏳ [LLM CLIENT] Request masuk antrean GPU. Menunggu Slot Semaphore...")
+    logger.info(f"\n⏳ [LLM CLIENT] Request masuk antrean GPU. Menunggu Slot Semaphore...\")
 
     async with gpu_semaphore:
-        print(
+        logger.info(
             f"🔓 [HARDWARE GPU] Slot didapatkan! Mulai inferensi model '{model_name}'..."
         )
         inference_start_time = datetime.now()
