@@ -1056,8 +1056,8 @@ export default function ChatPage({
           <div style={styles.modelSelector}>
             {!hasSidebar && (
               <img
-                src={cakraLogo}
-                alt="CAKRA AI"
+                // src={cakraLogo}
+                // alt="CAKRA AI"
                 style={{ height: "40px", width: "auto", objectFit: "contain" }}
               />
             )}
