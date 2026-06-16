@@ -474,10 +474,10 @@ export default function ChatPage({
       isGuest
         ? null
         : (newSessionObj) => {
-            setChatHistory((prev) => [newSessionObj, ...prev]);
-            lastLoadedSessionRef.current = newSessionObj.session_uuid;
-            navigate(`/chat/${newSessionObj.session_uuid}`, { replace: true });
-          },
+          setChatHistory((prev) => [newSessionObj, ...prev]);
+          lastLoadedSessionRef.current = newSessionObj.session_uuid;
+          navigate(`/chat/${newSessionObj.session_uuid}`, { replace: true });
+        },
       finalStagedData, // Meneruskan data lampiran berkas secara langsung
       chatModeRef.current, // PARAMETER MODE: 'auto' | 'documents' (untuk dikirim ke backend)
       toast,
@@ -1094,9 +1094,9 @@ export default function ChatPage({
                   outline: "none",
                 }}
                 onMouseEnter={(e) =>
-                  (e.currentTarget.style.background = darkMode
-                    ? "rgba(255,255,255,0.05)"
-                    : "rgba(0,0,0,0.05)")
+                (e.currentTarget.style.background = darkMode
+                  ? "rgba(255,255,255,0.05)"
+                  : "rgba(0,0,0,0.05)")
                 }
                 onMouseLeave={(e) =>
                   (e.currentTarget.style.background = "transparent")
@@ -1230,6 +1230,7 @@ export default function ChatPage({
                   }}
                   getGreeting={getGreeting || defaultGetGreeting}
                   theme={theme}
+                  darkMode={darkMode}
                 />
               </div>
               <div
@@ -1237,18 +1238,18 @@ export default function ChatPage({
                   width: "100%",
                   maxWidth: "700px",
                   padding: "0 20px",
-                  marginTop: "24px",
+                  marginTop: "0px",
                   pointerEvents: "auto",
                 }}
               >
-                {/* {renderInputForm(true)} */}
+                {renderInputForm(true)}
               </div>
             </div>
           )}
         </div>
 
-        {/* {!showWelcome && renderInputForm(false)} */}
-        {renderInputForm(!showWelcome)}
+        {/* Hanya render input di bawah jika chat sudah ada */}
+        {!showWelcome && renderInputForm(true)}
       </main>
 
       {/* 🔒 W7: Modal Pilihan Dokumen Regulasi (Context Isolation) */}
@@ -1356,14 +1357,14 @@ export default function ChatPage({
                     Memuat dokumen...
                   </div>
                 ) : documents.filter(
-                    (doc) =>
-                      (doc.judul || "")
-                        .toLowerCase()
-                        .includes(docSearchQuery.toLowerCase()) ||
-                      (doc.nomor || "")
-                        .toLowerCase()
-                        .includes(docSearchQuery.toLowerCase()),
-                  ).length === 0 ? (
+                  (doc) =>
+                    (doc.judul || "")
+                      .toLowerCase()
+                      .includes(docSearchQuery.toLowerCase()) ||
+                    (doc.nomor || "")
+                      .toLowerCase()
+                      .includes(docSearchQuery.toLowerCase()),
+                ).length === 0 ? (
                   <div
                     style={{
                       textAlign: "center",

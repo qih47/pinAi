@@ -123,10 +123,14 @@ export default function ChatArea({
           <SkeletonChat />
         ) : messages.length === 0 ? (
           <div style={styles.emptyState}>
-            <div style={styles.emptyLogoWrap}>
-              <img src={cakraLogo} alt="CAKRA" style={styles.emptyLogo} />
+            {/* 🔥 SUSUNAN BARU: Logo di kiri, teks di kanan dalam satu row kontainer */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '16px' }}>
+              <div style={styles.emptyLogoWrap}>
+                <img src={cakraLogo} alt="CAKRA" style={styles.emptyLogo} />
+              </div>
+              <h1 style={{ ...styles.emptyTitle, color: theme.textColor }}>Halo, saya CAKRA</h1>
             </div>
-            <h1 style={{ ...styles.emptyTitle, color: theme.textColor }}>Halo, saya CAKRA</h1>
+            
             <p style={{ ...styles.emptySubtitle, color: theme.secondaryText }}>Ada yang bisa saya bantu hari ini?</p>
           </div>
         ) : (

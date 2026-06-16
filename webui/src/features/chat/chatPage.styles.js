@@ -138,19 +138,22 @@ export const styles = {
 
     emptyState: {
         flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center',
-        justifyContent: 'center', textAlign: 'center', padding: '40px 20px', minHeight: '60vh'
+        justifyContent: 'center', textAlign: 'center', padding: '4px 20px', minHeight: '60vh'
     },
-    emptyLogoWrap: { marginBottom: 24, animation: 'logoFloat 4s ease-in-out infinite' },
+
+    emptyLogoWrap: { animation: 'logoFloat 4s ease-in-out infinite', display: 'flex', alignItems: 'center' },
+
     emptyLogo: {
-        width: 72, height: 72, borderRadius: 20,
-        filter: 'drop-shadow(0 8px 24px rgba(99, 102, 241, 0.25))'
+        width: 42, height: 42, borderRadius: 10,
+        filter: 'drop-shadow(0 4px 12px rgba(99, 102, 241, 0.3))'
     },
+
     emptyTitle: {
-        margin: '0 0 8px 0', fontSize: 36, fontWeight: 600, letterSpacing: '-0.8px',
-        background: 'linear-gradient(135deg, #111827 0%, #6366f1 100%)',
+        margin: 0, fontSize: 32, fontWeight: 600, letterSpacing: '-0.6px',
+        background: 'linear-gradient(135deg, #ffffff 30%, #818cf8 100%)',
         WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text'
     },
-    emptySubtitle: { margin: '0 0 40px 0', fontSize: 16, fontWeight: 400 },
+    emptySubtitle: { margin: '12px 0 0 0', fontSize: 15, fontWeight: 400 },
     suggestionGrid: {
         display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12, maxWidth: 640, width: '100%'
     },
@@ -171,7 +174,7 @@ export const styles = {
         display: 'flex', alignItems: 'flex-start', animation: 'fadeInUp 0.3s ease-out'
     },
     assistantMessageWrapper: {
-        flex: 1, 
+        flex: 1,
         minWidth: 0,
         // Smooth entrance untuk seluruh bubble
         animation: 'geminiFadeIn 0.4s ease-out',
