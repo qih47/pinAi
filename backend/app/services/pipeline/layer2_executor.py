@@ -11,6 +11,7 @@ from backend.app.services.pipeline.system_prompts import (
     _build_gemma_system_prompt,
     _build_gemma_context_prompt,
 )
+from backend.app.services.pipeline.sse_validation import format_sse, SSEEventType
 
 logger = logging.getLogger("CAKRA_PIPELINE")
 
@@ -49,22 +50,22 @@ async def execute_layer_2_gemma_agentic(
     # ── Kirim sources ke FE jika ada (dari RAG paralel) ─────────────────────
     if preloaded_rag_sources:
         logger.info(f"[LAYER_2_EXECUTOR] Forwarding {len(preloaded_rag_sources)} RAG sources to frontend")
-        yield _format_sse("", "", False, sources=preloaded_rag_sources)
+        yield format_sse("", "", False, sources=preloaded_rag_sources, event_type=SSEEventType.SOURCES)
 
     # ── Status update ke FE — GRANULAR & INFORMATIF ──────────────────────────
     if target_pipeline == "flash":
         if is_greeting:
-            yield _format_sse("", "💬 Menyapa dengan hangat...", False)
+            yield format_sse("", "💬 Menyapa dengan hangat...", False, event_type=SSEEventType.THINKING)
         elif is_coding:
-            yield _format_sse("", "💻 Menganalisis kode dan logika...", False)
+            yield format_sse("", "💻 Menganalisis kode dan logika...", False, event_type=SSEEventType.THINKING)
         else:
-            yield _format_sse("", "💭 Merumuskan jawaban...", False)
+            yield format_sse("", "💭 Merumuskan jawaban...", False, event_type=SSEEventType.THINKING)
     elif preloaded_rag_context:
-        yield _format_sse("", "📖 Menganalisis dokumen regulasi...", False)
+        yield format_sse("", "📖 Menganalisis dokumen regulasi...", False, event_type=SSEEventType.THINKING)
         await asyncio.sleep(0)
-        yield _format_sse("", f"🎯 Menyesuaikan gaya untuk {employee_name}...", False)
+        yield format_sse("", f"🎯 Menyesuaikan gaya untuk {employee_name}...", False, event_type=SSEEventType.THINKING)
     else:
-        yield _format_sse("", "💭 CAKRA sedang berpikir...", False)
+        yield format_sse("", "💭 CAKRA sedang berpikir...", False, event_type=SSEEventType.THINKING)
     
     await asyncio.sleep(0)
 
@@ -112,7 +113,7 @@ async def execute_layer_2_gemma_agentic(
         f"intent={intent_type} | emotion={emotion}"
     )
 
-    yield _format_sse("", "✍️ Menyusun respons final...", False)
+    yield format_sse("", "✍️ Menyusun respons final...", False, event_type=SSEEventType.THINKING)
     await asyncio.sleep(0)
 
     # ── Single Stream: parse <think> untuk log terminal SAJA ─────────────────
@@ -152,7 +153,7 @@ async def execute_layer_2_gemma_agentic(
                 # Kirim teks sebelum <think> sebagai chunk (jika ada)
                 before_think = chunk_text.split("<think>")[0]
                 if before_think.strip():
-                    yield _format_sse(before_think, "", False)
+                    yield format_sse(before_think, "", False, event_type=SSEEventType.CHUNK)
                 chunk_text = chunk_text.split("<think>", 1)[1] if "<think>" in chunk_text else ""
 
             if in_think_tag and "</think>" in chunk_text:
@@ -186,13 +187,13 @@ async def execute_layer_2_gemma_agentic(
                         clean = clean.replace(p, "")
                     clean = re.sub(r'\[PANGG[A-Z]*_RAG:[^\]]*\]', '', clean)
                     if clean.strip():
-                        yield _format_sse(clean, "", False)
+                        yield format_sse(clean, "", False, event_type=SSEEventType.CHUNK)
                 else:
-                    yield _format_sse(chunk_text, "", False)
+                    yield format_sse(chunk_text, "", False, event_type=SSEEventType.CHUNK)
 
     except Exception as e:
         logger.error(f"[LAYER2_STREAM_ERROR] Stream error: {e}")
-        yield _format_sse("Maaf, terjadi kendala teknis. Silakan coba lagi.", "", False)
+        yield format_sse("Maaf, terjadi kendala teknis. Silakan coba lagi.", "", False, event_type=SSEEventType.CHUNK)
 
     # ── Final log jika thinking tidak pernah di-log (edge case) ──────────────
     if think_buffer.strip() and not think_logged:
@@ -201,20 +202,6 @@ async def execute_layer_2_gemma_agentic(
             f"{'─' * 60}\n{think_buffer.strip()}\n{'─' * 60}"
         )
 
-    yield _format_sse("", "", True)
+    yield format_sse("", "", True, event_type=SSEEventType.DONE)
 
 
-def _format_sse(
-    chunk: str, thinking: str = "", done: bool = False, sources: list = None
-) -> str:
-    """
-    Format SSE response.
-    
-    🔥 NOTE: Field 'thinking' sekarang TIDAK digunakan untuk kirim ke FE.
-    Hanya 'chunk', 'done', dan 'sources' yang aktif.
-    Field 'thinking' dipertahankan untuk backward compatibility.
-    """
-    payload = {"chunk": chunk, "thinking": thinking, "done": done}
-    if sources is not None:
-        payload["sources"] = sources
-    return json.dumps(payload, ensure_ascii=False) + "\n"

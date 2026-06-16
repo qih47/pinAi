@@ -9,9 +9,12 @@ from .layer1_analyzer import (
     _get_fallback_cognitive_params_rule_based,
     _get_fallback_cognitive_params,
 )
-from .layer2_executor import (
-    execute_layer_2_gemma_agentic,
-    _format_sse,
+from .layer2_executor import execute_layer_2_gemma_agentic
+from .sse_validation import (
+    format_sse,
+    format_sse_error,
+    SSEEventType,
+    SSEValidator,
 )
 
 __all__ = [
@@ -23,5 +26,8 @@ __all__ = [
     "_get_fallback_cognitive_params_rule_based",
     "_get_fallback_cognitive_params",
     "execute_layer_2_gemma_agentic",
-    "_format_sse",
+    "format_sse",
+    "format_sse_error",
+    "SSEEventType",
+    "SSEValidator",
 ]

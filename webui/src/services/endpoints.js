@@ -125,15 +125,71 @@ export async function uploadDocuments(formData) {
 // =========================================================================
 
 /**
+ * Validate SSE event structure before processing
+ * @param {Object} parsedData - Parsed JSON event
+ * @returns {boolean} True if event is valid
+ */
+function validateSSEEvent(parsedData) {
+  // ✅ Validate event has at least one field
+  const hasValidFields =
+    parsedData.thinking !== undefined ||
+    parsedData.chunk !== undefined ||
+    parsedData.sources !== undefined ||
+    parsedData.done === true;
+
+  if (!hasValidFields) {
+    console.warn('[SSE_VALIDATION] Empty event, all fields undefined', parsedData);
+    return false;
+  }
+
+  // ✅ Validate sources format if present
+  if (parsedData.sources !== null && parsedData.sources !== undefined) {
+    if (!Array.isArray(parsedData.sources)) {
+      console.warn('[SSE_VALIDATION] Sources not array:', parsedData.sources);
+      return false;
+    }
+
+    // Validate each source has required fields
+    for (const source of parsedData.sources) {
+      if (!source.id || !source.content) {
+        console.warn('[SSE_VALIDATION] Source missing id or content:', source);
+        return false;
+      }
+    }
+  }
+
+  return true;
+}
+
+/**
  * Handle SSE streaming chat using native fetch and ReadableStream
+ * 
+ * Features:
+ * - Request timeout support (default 5 minutes)
+ * - SSE event validation
+ * - Rich error responses with error codes
+ * - Proper cleanup on completion/error
+ * 
  * @param {Object} params - Chat parameters
  * @param {Object} callbacks - Handler callbacks for stream events
+ * @param {Object} options - Configuration options (timeoutMs, etc)
  */
 export async function streamChat(
   { sessionUuid, messages, chatMode, isolatedDocId, attachmentPaths, npp },
-  { onThinking, onSources, onChunk, onDone, onError }
+  { onThinking, onSources, onChunk, onDone, onError },
+  options = {}
 ) {
+  const { timeoutMs = 5 * 60 * 1000 } = options;  // 5 minute default timeout
+  let timeoutId = null;
+
   try {
+    // ✅ ADD: Timeout support with AbortController
+    const controller = new AbortController();
+    timeoutId = setTimeout(() => {
+      console.warn(`[SSE_TIMEOUT] Request timeout after ${timeoutMs}ms`);
+      controller.abort();
+    }, timeoutMs);
+
     const token = localStorage.getItem('cakra_token');
     const headers = {
       'Content-Type': 'application/json',
@@ -160,11 +216,32 @@ export async function streamChat(
         temperature: 0.7,
         isolated_doc_id: isolatedDocId,
         attachment_paths: attachmentPaths
-      })
+      }),
+      signal: controller.signal,  // ✅ ADD: Abort signal for timeout
     });
 
+    clearTimeout(timeoutId);  // ✅ ADD: Clear timeout on success
+
     if (!response.ok) {
-      throw new Error('Gagal terhubung dengan server backend.');
+      // ✅ Extract rich error info
+      let errorData = {};
+      try {
+        errorData = await response.json();
+      } catch (e) {
+        errorData = { message: 'Unknown error' };
+      }
+
+      const errorCode = errorData.code || 'UNKNOWN_ERROR';
+      const errorMessage = errorData.message || `HTTP ${response.status}`;
+      const requestId = errorData.request_id;
+
+      console.error(`[SSE_ERROR] ${errorCode}: ${errorMessage}`, { requestId });
+
+      throw new Error(JSON.stringify({
+        code: errorCode,
+        message: errorMessage,
+        requestId,
+      }));
     }
 
     const reader = response.body.getReader();
@@ -186,15 +263,39 @@ export async function streamChat(
         try {
           const parsedData = JSON.parse(cleanedLine);
           
-          if (parsedData.thinking !== undefined && onThinking) {
+          // ✅ ADD: Validate event structure
+          if (!validateSSEEvent(parsedData)) {
+            console.debug('[SSE] Skipping invalid event:', parsedData);
+            continue;
+          }
+
+          // ✅ ADD: Log event for debugging
+          console.debug(
+            `[SSE_EVENT] ${parsedData.event_type || '?'} @ ${parsedData.timestamp}`
+          );
+
+          // ✅ Handle error events
+          if (parsedData.error) {
+            console.error(
+              `[SSE_ERROR_EVENT] ${parsedData.error.code}: ${parsedData.error.message}`,
+              parsedData.error
+            );
+            if (onError) {
+              onError(new Error(JSON.stringify(parsedData.error)));
+            }
+            continue;
+          }
+
+          // Handle regular events
+          if (parsedData.thinking !== undefined && parsedData.thinking && onThinking) {
             onThinking(parsedData.thinking);
           }
           
-          if (parsedData.sources && Array.isArray(parsedData.sources) && onSources) {
+          if (parsedData.sources && Array.isArray(parsedData.sources) && parsedData.sources.length > 0 && onSources) {
             onSources(parsedData.sources);
           }
           
-          if (parsedData.chunk !== undefined && onChunk) {
+          if (parsedData.chunk !== undefined && parsedData.chunk && onChunk) {
             onChunk(parsedData.chunk);
           }
           
@@ -202,11 +303,23 @@ export async function streamChat(
             onDone();
           }
         } catch (jsonErr) {
-          // Buffering incomplete JSON lines
+          console.warn(`[SSE_PARSE_ERROR] ${jsonErr.message}`);
+          // Continue on parse errors (might be incomplete line)
         }
       }
     }
   } catch (error) {
+    clearTimeout(timeoutId);  // ✅ Cleanup
+
+    // ✅ Handle abort error (timeout)
+    if (error.name === 'AbortError') {
+      const timeoutError = new Error(
+        `Request timeout. Backend did not respond within ${timeoutMs}ms`
+      );
+      if (onError) onError(timeoutError);
+      return;
+    }
+
     if (onError) {
       onError(error);
     } else {
