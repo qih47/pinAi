@@ -35,29 +35,34 @@ const recursiveHighlight = (children, query) => {
 // 🔮 MAIN COMPONENT: CAKRA RESPONSE RENDERER
 // =========================================================================
 const CakraResponseRenderer = ({ rawContent, isStreaming, darkMode, theme, searchQuery = '' }) => {
-    if (!rawContent) return null;
-
     const thinkStartTag = "<think>";
     const thinkEndTag = "</think>";
 
-    const startIdx = rawContent.indexOf(thinkStartTag);
-    const endIdx = rawContent.indexOf(thinkEndTag);
+    // 🔧 FIX: bungkus parsing index/substring dengan useMemo agar hanya
+    // dihitung ulang saat rawContent benar-benar berubah, bukan setiap render
+    const { thinkingBlock, finalResponseBlock } = useMemo(() => {
+        if (!rawContent) return { thinkingBlock: '', finalResponseBlock: '' };
 
-    let thinkingBlock = "";
-    let finalResponseBlock = rawContent;
+        const startIdx = rawContent.indexOf(thinkStartTag);
+        const endIdx = rawContent.indexOf(thinkEndTag);
 
-    // ── STRATIFIKASI STATE MACHINE PARSING INDEKS ─────────────────────────────
-    if (startIdx !== -1) {
-        if (endIdx !== -1 && endIdx > startIdx) {
-            thinkingBlock = rawContent.substring(startIdx + thinkStartTag.length, endIdx);
-            const beforeThink = rawContent.substring(0, startIdx);
-            const afterThink = rawContent.substring(endIdx + thinkEndTag.length);
-            finalResponseBlock = `${beforeThink}${afterThink}`;
-        } else {
-            thinkingBlock = rawContent.substring(startIdx + thinkStartTag.length);
-            finalResponseBlock = rawContent.substring(0, startIdx);
+        let thinking = "";
+        let final = rawContent;
+
+        if (startIdx !== -1) {
+            if (endIdx !== -1 && endIdx > startIdx) {
+                thinking = rawContent.substring(startIdx + thinkStartTag.length, endIdx);
+                const beforeThink = rawContent.substring(0, startIdx);
+                const afterThink = rawContent.substring(endIdx + thinkEndTag.length);
+                final = `${beforeThink}${afterThink}`;
+            } else {
+                thinking = rawContent.substring(startIdx + thinkStartTag.length);
+                final = rawContent.substring(0, startIdx);
+            }
         }
-    }
+
+        return { thinkingBlock: thinking, finalResponseBlock: final };
+    }, [rawContent]);
 
     const markdownComponents = useMemo(() => ({
         p({ children, ...props }) {
@@ -100,6 +105,12 @@ const CakraResponseRenderer = ({ rawContent, isStreaming, darkMode, theme, searc
         }
     }), [darkMode, searchQuery]);
 
+    // 🛠️ FIX AMAN: guard render kosong dipindah ke bawah useMemo agar
+    // hooks tidak dipanggil secara kondisional (Rules of Hooks)
+    if (!thinkingBlock.trim() && !finalResponseBlock.trim()) {
+        return <div style={{ minHeight: '20px' }} />;
+    }
+
     return (
         <div className="cakra-response-wrapper" style={{ width: '100%', display: 'flex', flexDirection: 'column' }}>
             {/* 🧠 1. AKORDION PENALARAN INTERNAL: Ditempatkan di bagian paling atas sesuai urutan masuknya token stream */}
@@ -125,4 +136,4 @@ const CakraResponseRenderer = ({ rawContent, isStreaming, darkMode, theme, searc
     );
 };
 
-export default CakraResponseRenderer;
+export default React.memo(CakraResponseRenderer);

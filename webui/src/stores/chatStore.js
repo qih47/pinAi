@@ -72,12 +72,16 @@ async function _performStream(set, get, messagesToSend, assistantMessage, forced
                     },
                     onChunk: (chunk) => {
                         accumulatedReply += chunk;
-                        assistantMessage.content = accumulatedReply;
-
+                        assistantMessage = { ...assistantMessage, content: accumulatedReply };
+                    
                         if (!renderTimeout) {
                             renderTimeout = requestAnimationFrame(() => {
+                                const currentMessages = get().messages;
+                                const lastIdx = currentMessages.length - 1;
+                                const freshMessages = [...currentMessages];
+                                freshMessages[lastIdx] = assistantMessage;
                                 set({
-                                    messages: [...get().messages],
+                                    messages: freshMessages,
                                     isThinking: false
                                 });
                                 renderTimeout = null;
@@ -174,7 +178,7 @@ export const useChatStore = create((set, get) => ({
             chatMode: chatMode, // Menyinkronkan chatMode ke store
             messages: [...updatedMessages, assistantMessage],
             isStreaming: true,
-            isLoading: true,
+            // isLoading: true,
             isThinking: true
         });
 

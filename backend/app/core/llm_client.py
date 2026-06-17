@@ -52,7 +52,7 @@ async def stream_ollama_chat(
     gpu_semaphore = request.app.state.gpu_limit
     url = f"{settings.OLLAMA_BASE_URL}/api/chat"
 
-    logger.info(f"\n⏳ [LLM CLIENT] Request masuk antrean GPU. Menunggu Slot Semaphore...\")
+    logger.info(f"\n⏳ [LLM CLIENT] Request masuk antrean GPU. Menunggu Slot Semaphore...\n")
 
     async with gpu_semaphore:
         logger.info(

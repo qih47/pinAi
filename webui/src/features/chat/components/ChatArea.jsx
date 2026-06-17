@@ -8,13 +8,13 @@ import { styles } from '../chatPage.styles';
 function formatThinkingPhase(thought) {
   if (!thought) return "CAKRA sedang berpikir...";
   if (thought.includes("jalur") || thought.includes("Gateway")) {
-    return "🚦 Layer 0: Menganalisis intent & jalur...";
+    return "🚦 Menganalisis intent & jalur...";
   }
   if (thought.includes("dokumen") || thought.includes("RAG")) {
-    return "📚 RAG: Mencari regulasi internal Pindad...";
+    return "📚 Mencari regulasi internal Pindad...";
   }
   if (thought.includes("cepat") || thought.includes("respons") || thought.includes("Gemma")) {
-    return "✍️ Layer 2: Menyusun formulasi respons...";
+    return "✍️ Menyusun formulasi respons...";
   }
   if (thought.includes("PDF")) {
     return "📄 Membaca lampiran PDF...";

@@ -20,7 +20,7 @@ from backend.app.services.pipeline import (
     execute_layer_2_gemma_agentic,
     _get_fallback_cognitive_params_rule_based,
     _gateway_flash_result,
-    _format_sse,
+    format_sse,
 )
 
 router = APIRouter()
@@ -124,7 +124,7 @@ async def _sequential_pipeline_generator(
     # ── PDF Extraction (pymupdf primary) ───────────────────────────────────
     if pdf_paths:
         logger.info(f"[PDF] Ekstraksi {len(pdf_paths)} file...")
-        yield _format_sse("", "📄 Membaca lampiran PDF...", False)
+        yield format_sse("", "📄 Membaca lampiran PDF...", False)
         try:
             pdf_result = await extract_pdf_text(pdf_paths)
             ocr_text = pdf_result.get("extracted_text", "")
@@ -139,7 +139,7 @@ async def _sequential_pipeline_generator(
 
     if has_images:
         logger.info("[PIPELINE] Image attachment detected → forwarding to Gemma Vision")
-        yield _format_sse("", "🖼️ Mengantre analisis visual...", False)
+        yield format_sse("", "🖼️ Mengantre analisis visual...", False)
 
     # ── Simpan pesan user ──────────────────────────────────────────────────
     if payload.session_uuid:
@@ -159,7 +159,7 @@ async def _sequential_pipeline_generator(
     # 🚦 LAYER 0: GATEWAY (routing + rewritten_queries)
     # ==========================================================================
     logger.info("[LAYER 0] Gateway starting...")
-    yield _format_sse("", "🚦 Menentukan jalur pipeline...", False)
+    yield format_sse("", "🚦 Menentukan jalur pipeline...", False)
 
     try:
         gateway_result = await execute_layer_0_gateway(
@@ -207,7 +207,7 @@ async def _sequential_pipeline_generator(
         logger.info(
             f"[RAG PARALLEL] Menjalankan {len(rewritten_queries)} queries paralel..."
         )
-        yield _format_sse("", "📚 Mencari dokumen regulasi relevan...", False)
+        yield format_sse("", "📚 Mencari dokumen regulasi relevan...", False)
 
         layer1_task = asyncio.create_task(
             execute_layer_1_analyzer(
@@ -236,7 +236,7 @@ async def _sequential_pipeline_generator(
             )
 
             if preloaded_rag_sources:
-                yield _format_sse("", "", False, sources=preloaded_rag_sources)
+                yield format_sse("", "", False, sources=preloaded_rag_sources)
 
         except Exception as e:
             logger.error(f"[RAG PARALLEL] Error: {e}")
@@ -259,7 +259,7 @@ async def _sequential_pipeline_generator(
         logger.info(
             f"[PIPELINE] Bypassing Layer 1 | target={target_pipeline} — generating params via rule-based logic (instant, no LLM)"
         )
-        yield _format_sse("", "⚡ Menyiapkan respons cepat...", False)
+        yield format_sse("", "⚡ Menyiapkan respons cepat...", False)
 
         cognitive_params = _get_fallback_cognitive_params_rule_based(
             user_message=user_message,
@@ -362,7 +362,7 @@ async def _sequential_pipeline_generator(
     except Exception as e:
         logger.error(f"[LAYER 2] Error: {e}")
         error_msg = f"Gagal mengeksekusi pipeline: {str(e)}"
-        yield _format_sse(error_msg, "", False)
+        yield format_sse(error_msg, "", False)
         full_response_text = error_msg
 
     # ==========================================================================
@@ -391,7 +391,7 @@ async def _sequential_pipeline_generator(
                 logger.warning(f"[DB] Gagal save dialogue corpus: {e}")
 
     logger.info("[PIPELINE] Complete ✅")
-    yield _format_sse("", "", True)
+    yield format_sse("", "", True)
 
 
 @router.post("/stream")
@@ -415,7 +415,7 @@ async def chat_stream_endpoint(
             raise
         except Exception as e:
             logger.error(f"❌ [STREAM] Error in generator: {e}")
-            yield _format_sse("", f"Error: {str(e)[:100]}", True)
+            yield format_sse("", f"Error: {str(e)[:100]}", True)
             raise
         finally:
             logger.debug("[STREAM] Generator cleanup completed — all connections returned to pool")

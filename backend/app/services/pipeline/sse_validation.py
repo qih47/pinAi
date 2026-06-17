@@ -146,7 +146,7 @@ def format_sse(
     # Serialize to JSON
     try:
         json_str = json.dumps(event, ensure_ascii=False)
-        return json_str
+        return json_str + "\n"
     except (TypeError, ValueError) as e:
         logger.error(f"[SSE_VALIDATION] JSON serialization error: {e}")
         return ""
@@ -189,4 +189,4 @@ def format_sse_error(
         "timestamp": datetime.utcnow().isoformat() + "Z",
     }
     
-    return json.dumps(event, ensure_ascii=False)
+    return json.dumps(event, ensure_ascii=False) + "\n"

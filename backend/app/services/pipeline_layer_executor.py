@@ -12,7 +12,7 @@ from backend.app.services.pipeline import (
     _get_fallback_cognitive_params_rule_based,
     _get_fallback_cognitive_params,
     execute_layer_2_gemma_agentic,
-    _format_sse,
+    format_sse,
 )
 
 __all__ = [
@@ -24,5 +24,5 @@ __all__ = [
     "_get_fallback_cognitive_params_rule_based",
     "_get_fallback_cognitive_params",
     "execute_layer_2_gemma_agentic",
-    "_format_sse",
+    "format_sse",
 ]

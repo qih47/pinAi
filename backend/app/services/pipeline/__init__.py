@@ -27,7 +27,10 @@ __all__ = [
     "_get_fallback_cognitive_params",
     "execute_layer_2_gemma_agentic",
     "format_sse",
+    # "_format_sse",
     "format_sse_error",
     "SSEEventType",
     "SSEValidator",
 ]
+
+
