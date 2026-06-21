@@ -34,35 +34,39 @@ const recursiveHighlight = (children, query) => {
 // =========================================================================
 // 🔮 MAIN COMPONENT: CAKRA RESPONSE RENDERER
 // =========================================================================
-const CakraResponseRenderer = ({ rawContent, isStreaming, darkMode, theme, searchQuery = '' }) => {
+const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkMode, theme, searchQuery = '' }) => {
     const thinkStartTag = "<think>";
     const thinkEndTag = "</think>";
 
     // 🔧 FIX: bungkus parsing index/substring dengan useMemo agar hanya
     // dihitung ulang saat rawContent benar-benar berubah, bukan setiap render
     const { thinkingBlock, finalResponseBlock } = useMemo(() => {
-        if (!rawContent) return { thinkingBlock: '', finalResponseBlock: '' };
+        let thinking = thinkingContent || "";
+        let final = rawContent || "";
 
-        const startIdx = rawContent.indexOf(thinkStartTag);
-        const endIdx = rawContent.indexOf(thinkEndTag);
+        // Selalu bersihkan tag <think> dari final response agar tidak double render
+        if (final.includes(thinkStartTag)) {
+            const startIdx = final.indexOf(thinkStartTag);
+            const endIdx = final.indexOf(thinkEndTag);
 
-        let thinking = "";
-        let final = rawContent;
-
-        if (startIdx !== -1) {
             if (endIdx !== -1 && endIdx > startIdx) {
-                thinking = rawContent.substring(startIdx + thinkStartTag.length, endIdx);
-                const beforeThink = rawContent.substring(0, startIdx);
-                const afterThink = rawContent.substring(endIdx + thinkEndTag.length);
+                // Ekstrak thought ke variabel thinking JIKA thinking belum ada (fallback histori lama)
+                if (!thinking) {
+                    thinking = final.substring(startIdx + thinkStartTag.length, endIdx);
+                }
+                const beforeThink = final.substring(0, startIdx);
+                const afterThink = final.substring(endIdx + thinkEndTag.length);
                 final = `${beforeThink}${afterThink}`;
             } else {
-                thinking = rawContent.substring(startIdx + thinkStartTag.length);
-                final = rawContent.substring(0, startIdx);
+                if (!thinking) {
+                    thinking = final.substring(startIdx + thinkStartTag.length);
+                }
+                final = final.substring(0, startIdx);
             }
         }
 
         return { thinkingBlock: thinking, finalResponseBlock: final };
-    }, [rawContent]);
+    }, [rawContent, thinkingContent]);
 
     const markdownComponents = useMemo(() => ({
         p({ children, ...props }) {

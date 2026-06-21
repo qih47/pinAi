@@ -30,29 +30,31 @@ async def generate_session_title(
     
     try:
         # Prepare prompt untuk Qwen 0.5B (ringan, cepat)
-        title_prompt = f"""Buat judul ringkas 3-7 kata untuk topik percakapan ini:
+        title_prompt = f"""Buat judul ringkas 3-7 kata untuk topik percakapan ini.
+Format output harus berupa JSON valid dengan key "title".
 
+Percakapan:
 User: {user_message[:100]}
 Assistant: {first_response[:100]}
 
-Judul harus:
-1. Mewakili topik utama SAJA
-2. Tidak ada penjelasan atau kalimat lengkap
-3. Singkat dan padat (3-7 kata)
-4. Natural dalam Bahasa Indonesia
-
-Balas HANYA dengan judulnya (tanpa quotes, tanpa penjelasan)."""
+Format output wajib:
+{{"title": "Judul Singkat"}}"""
 
         # Call Qwen 0.5B dengan timeout 5s
-        title = await asyncio.wait_for(
+        messages = [
+            {"role": "user", "content": title_prompt}
+        ]
+        result = await asyncio.wait_for(
             generate_json_response(
-                prompt=title_prompt,
-                model="qwen2.5:0.5b",
+                model_name="qwen2.5:0.5b",
+                messages=messages,
+                request=None,
                 timeout=5.0,
                 temperature=0.3  # Deterministic output
             ),
             timeout=6.0
         )
+        title = result.get("title", "")
         
         # Sanitize title
         title = title.strip().strip('"').strip("'").strip()

@@ -11,6 +11,11 @@ venv/
 .env.local
 .env.*
 
+# 1. Ignore semua file .md yang berada TEPAT di root folder
+/*.md
+
+# 2. Berikan pengecualian khusus untuk README.md agar TIDAK di-ignore
+!/README.md
 
 # Ignore isi rag_env tapi tetap push foldernya
 rag_env/*

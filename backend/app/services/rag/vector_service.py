@@ -27,7 +27,7 @@ class VectorService:
             "prompt": prompt,
         }
 
-        async with httpx.AsyncClient(timeout=60.0) as client:
+        async with httpx.AsyncClient(timeout=90.0) as client:
             try:
                 response = await client.post(url, json=payload)
 

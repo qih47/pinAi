@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useChatAuthStore } from '../stores/authStore';
+import { getApiBase } from '../services/endpoints';
 
 /**
  * Hook: Real-time Notification Manager (W16)
@@ -81,11 +82,9 @@ export const useNotifications = () => {
 
     const connectToNotifications = () => {
       try {
-        const apiBase = new URL(window.location.origin).pathname === '/' 
-          ? '/api' 
-          : '/api';
-        
-        const url = `${apiBase}/notifications/subscribe?npp=${encodeURIComponent(user.npp)}`;
+        // ── 🛠️ FIX MUTLAK: Ambil URL absolut dari core service agar menembak port IP backend asli ──
+        const apiBaseUrl = getApiBase(); 
+        const url = `${apiBaseUrl}/api/notifications/subscribe?npp=${encodeURIComponent(user.npp)}`;
         
         eventSource = new EventSource(url);
         

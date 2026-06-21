@@ -151,9 +151,53 @@ const SourceCitation = ({ sources, darkMode, theme, onPreview, onActivateIsolati
                 <span style={titleStyle} title={title}>
                   {title}
                 </span>
-                <span style={metaStyle}>
-                  {regNomor} {page ? `• Hal. ${page}` : ''}
+                <span style={{
+                  ...metaStyle,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  flexWrap: 'wrap'
+                }}>
+                  <span style={{
+                    background: darkMode ? 'rgba(99, 102, 241, 0.2)' : 'rgba(37, 99, 235, 0.1)',
+                    color: darkMode ? '#a5b4fc' : '#1e40af',
+                    padding: '2px 6px',
+                    borderRadius: '4px',
+                    fontSize: '9px',
+                    fontWeight: 700,
+                    textTransform: 'uppercase'
+                  }}>
+                    {src.jenis || 'Regulasi'}
+                  </span>
+                  <span>{regNomor} {page ? `• Hal. ${page}` : ''}</span>
                 </span>
+
+                {/* Tampilkan Daftar BAB/Pasal jika ada */}
+                {src.sections && src.sections.length > 0 && (
+                  <div style={{
+                    display: 'flex',
+                    flexWrap: 'wrap',
+                    gap: '4px',
+                    marginTop: '6px'
+                  }}>
+                    {src.sections.slice(0, 3).map((sec, sIdx) => (
+                      <span key={sIdx} style={{
+                        background: darkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)',
+                        padding: '2px 6px',
+                        borderRadius: '4px',
+                        fontSize: '9px',
+                        color: theme?.textColor || (darkMode ? '#e2e8f0' : '#1f2937')
+                      }}>
+                        {sec}
+                      </span>
+                    ))}
+                    {src.sections.length > 3 && (
+                      <span style={{ fontSize: '9px', color: metaStyle.color, alignSelf: 'center' }}>
+                        +{src.sections.length - 3} lagi
+                      </span>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
 

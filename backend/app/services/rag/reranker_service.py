@@ -90,11 +90,17 @@ class RerankerService:
         # CrossEncoder.predict() mengembalikan numpy array of float
         raw_scores = model.predict(pairs, show_progress_bar=False)
 
-        # Konversi numpy float → Python float
-        scores = [float(s) for s in raw_scores]
+        # Konversi numpy float → Python float + Sigmoid (mengubah raw logit menjadi 0.0 - 1.0 probabilitas)
+        import math
+        scores = []
+        for s in raw_scores:
+            val = float(s)
+            # Sigmoid function: 1 / (1 + exp(-val))
+            prob = 1.0 / (1.0 + math.exp(-val))
+            scores.append(prob)
 
-        for idx, s in enumerate(scores):
-            logger.debug(f"   [RERANKER] Kandidat #{idx} → BGE score: {s:.4f}")
+        for idx, p in enumerate(scores):
+            logger.debug(f"   [RERANKER] Kandidat #{idx} → BGE score (prob): {p:.4f}")
 
         return scores
 

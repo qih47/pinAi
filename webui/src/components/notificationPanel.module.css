@@ -1,20 +1,19 @@
-/* Notification Panel Styles (W16) */
-
 .panel {
-  width: 360px;
+  width: 380px;
   height: 100vh;
-  background-color: white;
-  box-shadow: -2px 0 8px rgba(0, 0, 0, 0.1);
+  background-color: #111622; /* Obsidian Dark Theme sesuai image_fe0661.png */
+  box-shadow: -4px 0 24px rgba(0, 0, 0, 0.4);
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  font-family: system-ui, -apple-system, sans-serif;
 }
 
 /* Header */
 .header {
-  padding: 16px;
-  border-bottom: 1px solid #e5e7eb;
-  background: linear-gradient(135deg, #f9fafb 0%, #f3f4f6 100%);
+  padding: 20px 16px;
+  border-bottom: 1px solid #1f293d;
+  background-color: #111622;
   flex-shrink: 0;
 }
 
@@ -22,63 +21,67 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 12px;
+  margin-bottom: 16px;
 }
 
 .headerTitle h2 {
   margin: 0;
-  font-size: 18px;
+  font-size: 20px;
   font-weight: 700;
-  color: #1f2937;
+  color: #ffffff; /* Kontras Tinggi Mutlak */
+  letter-spacing: -0.02em;
 }
 
 .unreadBadge {
   display: inline-block;
-  padding: 4px 8px;
-  background-color: #dbeafe;
-  color: #1e40af;
-  border-radius: 12px;
-  font-size: 12px;
+  padding: 4px 10px;
+  background-color: #2563eb;
+  color: #ffffff;
+  border-radius: 20px;
+  font-size: 11px;
   font-weight: 600;
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.3);
 }
 
 .headerActions {
   display: flex;
   gap: 8px;
-  justify-content: space-between;
+  align-items: center;
 }
 
 .markAllButton,
-.clearButton,
-.closeButton {
-  padding: 6px 10px;
-  background: transparent;
-  border: 1px solid #d1d5db;
-  border-radius: 6px;
+.clearButton {
+  padding: 8px 14px;
+  background-color: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 8px;
   font-size: 12px;
-  font-weight: 500;
+  font-weight: 600;
   cursor: pointer;
-  color: #4b5563;
-  transition: all 0.2s ease;
+  color: #e2e8f0;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .markAllButton:hover,
 .clearButton:hover {
-  background-color: #f0f4f8;
-  border-color: #9ca3af;
-  color: #111827;
+  background-color: #334155;
+  border-color: #475569;
+  color: #ffffff;
 }
 
 .closeButton {
-  padding: 4px 8px;
-  font-size: 16px;
+  margin-left: auto;
+  padding: 6px;
+  font-size: 18px;
+  background: transparent;
   border: none;
-  color: #6b7280;
+  color: #64748b;
+  cursor: pointer;
+  transition: color 0.2s ease;
 }
 
 .closeButton:hover {
-  background-color: #f3f4f6;
-  color: #1f2937;
+  color: #ffffff;
 }
 
 /* Notifications List */
@@ -86,86 +89,67 @@
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 8px;
+  padding: 12px;
+  background-color: #0b0f19; /* Area list dibuat sedikit lebih gelap untuk kedalaman dimensi */
 }
 
 .list::-webkit-scrollbar {
-  width: 6px;
+  width: 5px;
 }
 
 .list::-webkit-scrollbar-track {
-  background: #f3f4f6;
+  background: #0b0f19;
 }
 
 .list::-webkit-scrollbar-thumb {
-  background: #d1d5db;
-  border-radius: 3px;
+  background: #1f293d;
+  border-radius: 10px;
 }
 
 .list::-webkit-scrollbar-thumb:hover {
-  background: #9ca3af;
+  background: #334155;
 }
 
-/* Empty State */
-.emptyState {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  height: 100%;
-  padding: 40px 20px;
-  text-align: center;
-}
-
-.emptyIcon {
-  font-size: 48px;
-  margin-bottom: 12px;
-  opacity: 0.5;
-}
-
-.emptyText {
-  margin: 0;
-  font-size: 16px;
-  font-weight: 600;
-  color: #374151;
-  margin-bottom: 4px;
-}
-
-.emptySubtext {
-  margin: 0;
-  font-size: 13px;
-  color: #9ca3af;
-}
-
-/* Notification Item */
+/* Notification Item Card */
 .notificationItem {
   display: flex;
   align-items: flex-start;
   gap: 12px;
-  padding: 12px;
-  margin-bottom: 6px;
-  border-radius: 8px;
-  border-left: 3px solid;
-  background-color: #f9fafb;
-  transition: all 0.2s ease;
-  cursor: pointer;
+  padding: 14px;
+  margin-bottom: 8px;
+  border-radius: 12px;
+  border-left: 4px solid #334155;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   position: relative;
 }
 
+/* Kondisi Unread (Belum Dibaca): High Contrast Pop */
 .notificationItem.unread {
-  background-color: #f0f9ff;
-  border-left-width: 4px;
+  background-color: #1e2538; /* Navy Slate Solid, tidak memakai warna pudar lagi */
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+/* Kondisi Read (Sudah Dibaca): Muted Slate */
+.notificationItem.read {
+  background-color: #131824;
+  opacity: 0.75;
 }
 
 .notificationItem:hover {
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-  transform: translateX(-2px);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.25);
+  opacity: 1;
 }
 
 .icon {
-  font-size: 20px;
+  font-size: 18px;
   flex-shrink: 0;
-  margin-top: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: rgba(255, 255, 255, 0.04);
+  padding: 8px;
+  border-radius: 8px;
 }
 
 .content {
@@ -176,54 +160,56 @@
 .title {
   font-size: 14px;
   font-weight: 600;
-  color: #111827;
+  color: #ffffff; /* Putih Solid Mutlak agar terbaca tajam */
   margin: 0 0 4px 0;
-  word-break: break-word;
+  line-height: 1.3;
 }
 
 .message {
   font-size: 12px;
-  color: #4b5563;
-  margin: 4px 0;
-  line-height: 1.4;
+  color: #94a3b8; /* Abu terang kontras tinggi untuk deskripsi */
+  margin: 0;
+  line-height: 1.5;
   word-break: break-word;
 }
 
 .meta {
   display: flex;
+  align-items: center;
   gap: 8px;
-  margin-top: 6px;
+  margin-top: 8px;
   font-size: 11px;
-}
-
-.time {
-  color: #9ca3af;
-}
-
-.details {
-  color: #6366f1;
   font-weight: 500;
 }
 
-/* Unread Dot */
-.unreadDot {
-  position: absolute;
-  right: 8px;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background-color: #3b82f6;
+.time {
+  color: #64748b;
 }
 
-/* Actions */
+.details {
+  color: #818cf8;
+}
+
+/* Unread Dot Indicator */
+.unreadDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: #3b82f6;
+  box-shadow: 0 0 8px #3b82f6;
+  position: absolute;
+  right: 14px;
+  top: 14px;
+}
+
+/* Actions Menu Group */
 .actions {
   display: flex;
-  gap: 4px;
+  gap: 6px;
   flex-shrink: 0;
-  opacity: 0;
+  opacity: 0; /* Tetap disembunyikan sebelum hover, ubah ke 1 jika ingin selalu muncul */
   transition: opacity 0.2s ease;
+  align-self: center;
   margin-left: 8px;
 }
 
@@ -232,161 +218,77 @@
 }
 
 .actionButton {
-  padding: 4px 6px;
-  background: transparent;
-  border: none;
-  border-radius: 4px;
+  padding: 6px;
+  background-color: #1a2333; /* Latar tombol dibuat kontras dari card */
+  border: 1px solid #2d3d57;
+  border-radius: 6px;
   cursor: pointer;
-  color: #9ca3af;
-  transition: all 0.2s ease;
+  color: #94a3b8; /* Warna default ikon sebelum di-hover */
   display: flex;
   align-items: center;
   justify-content: center;
+  transition: all 0.15s ease;
 }
 
-.actionButton:hover {
-  background-color: #e5e7eb;
-  color: #4b5563;
+.actionButton[title="Delete notification"]:hover {
+  background-color: #ef4444; /* Merah tegas untuk hapus */
+  border-color: #ef4444;
+  color: #ffffff; /* Memaksa ikon SVG di dalamnya jadi Putih Terang */
+}
+
+.actionButton[title="Mark as read"]:hover {
+  background-color: #10b981; /* Hijau sukses untuk mark read */
+  border-color: #10b981;
+  color: #ffffff; /* Memaksa ikon SVG di dalamnya jadi Putih Terang */
 }
 
 .iconSmall {
   width: 14px;
   height: 14px;
+  stroke: currentColor; /* Mengikuti warna teks induk (putih saat hover) */
+  display: block;
 }
 
-/* Footer */
+/* Footer Section */
 .footer {
-  padding: 12px 16px;
-  border-top: 1px solid #e5e7eb;
-  background-color: #f9fafb;
+  padding: 14px 16px;
+  border-top: 1px solid #1f293d;
+  background-color: #111622;
   flex-shrink: 0;
 }
 
 .footerText {
   margin: 0;
   font-size: 12px;
-  color: #9ca3af;
+  color: #64748b;
+  font-weight: 500;
 }
 
-/* Responsive */
-@media (max-width: 640px) {
-  .panel {
-    width: 100vw;
-    max-width: 320px;
-  }
-
-  .headerActions {
-    flex-direction: column;
-  }
-
-  .markAllButton,
-  .clearButton,
-  .closeButton {
-    width: 100%;
-  }
-
-  .actions {
-    display: flex;
-    opacity: 1;
-  }
-
-  .notificationItem:hover {
-    transform: none;
-  }
+/* Empty State Styling */
+.emptyState {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: 40px 20px;
 }
 
-/* Dark Mode Support */
-@media (prefers-color-scheme: dark) {
-  .panel {
-    background-color: #1f2937;
-    box-shadow: -2px 0 8px rgba(0, 0, 0, 0.3);
-  }
+.emptyIcon {
+  font-size: 40px;
+  margin-bottom: 16px;
+  opacity: 0.3;
+}
 
-  .header {
-    background: linear-gradient(135deg, #111827 0%, #1f2937 100%);
-    border-bottom-color: #374151;
-  }
+.emptyText {
+  font-size: 15px;
+  font-weight: 600;
+  color: #ffffff;
+  margin: 0 0 4px 0;
+}
 
-  .headerTitle h2 {
-    color: #f3f4f6;
-  }
-
-  .unreadBadge {
-    background-color: #1e3a8a;
-    color: #93c5fd;
-  }
-
-  .markAllButton,
-  .clearButton,
-  .closeButton {
-    background: transparent;
-    border-color: #4b5563;
-    color: #d1d5db;
-  }
-
-  .markAllButton:hover,
-  .clearButton:hover {
-    background-color: #374151;
-    border-color: #6b7280;
-    color: #f3f4f6;
-  }
-
-  .closeButton:hover {
-    background-color: #374151;
-    color: #f3f4f6;
-  }
-
-  .list {
-    background-color: #111827;
-  }
-
-  .list::-webkit-scrollbar-track {
-    background: #1f2937;
-  }
-
-  .list::-webkit-scrollbar-thumb {
-    background: #4b5563;
-  }
-
-  .notificationItem {
-    background-color: #1f2937;
-    border-left-color: #4b5563;
-  }
-
-  .notificationItem.unread {
-    background-color: #0f172a;
-  }
-
-  .notificationItem:hover {
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
-  }
-
-  .title {
-    color: #f3f4f6;
-  }
-
-  .message {
-    color: #d1d5db;
-  }
-
-  .time {
-    color: #6b7280;
-  }
-
-  .footer {
-    background-color: #111827;
-    border-top-color: #374151;
-  }
-
-  .footerText {
-    color: #6b7280;
-  }
-
-  .emptyText {
-    color: #d1d5db;
-  }
-
-  .emptySubtext {
-    color: #6b7280;
-  }
+.emptySubtext {
+  font-size: 12px;
+  color: #64748b;
+  margin: 0;
 }

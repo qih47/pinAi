@@ -4,28 +4,6 @@ import ChatBubble from './ChatBubble';
 import cakraLogo from '../../../assets/cakra.png';
 import { styles } from '../chatPage.styles';
 
-// 🚦 W6: Helper untuk memetakan pesan pipeline ke nama fase yang lebih rapi
-function formatThinkingPhase(thought) {
-  if (!thought) return "CAKRA sedang berpikir...";
-  if (thought.includes("jalur") || thought.includes("Gateway")) {
-    return "🚦 Menganalisis intent & jalur...";
-  }
-  if (thought.includes("dokumen") || thought.includes("RAG")) {
-    return "📚 Mencari regulasi internal Pindad...";
-  }
-  if (thought.includes("cepat") || thought.includes("respons") || thought.includes("Gemma")) {
-    return "✍️ Menyusun formulasi respons...";
-  }
-  if (thought.includes("PDF")) {
-    return "📄 Membaca lampiran PDF...";
-  }
-  if (thought.includes("visual")) {
-    return "🖼️ Menganalisis visual...";
-  }
-  return thought;
-}
-
-// 🟡 W2: Shimmer Skeleton loading bubble placeholder
 const SkeletonChat = () => (
   <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', width: '100%', padding: '12px 0' }}>
     <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
@@ -101,7 +79,7 @@ export default function ChatArea({
                 <span style={{ ...styles.statusDot, background: '#ef4444', borderColor: theme.mainBg }} />
               </div>
               <span style={{ ...styles.thinkingInline, color: theme.secondaryText, marginLeft: 10 }}>
-                {formatThinkingPhase(currentThinking)}
+                {currentThinking || "CAKRA sedang berpikir..."}
               </span>
             </div>
             <div style={styles.assistantContent}></div>
@@ -123,7 +101,6 @@ export default function ChatArea({
           <SkeletonChat />
         ) : messages.length === 0 ? (
           <div style={styles.emptyState}>
-            {/* 🔥 SUSUNAN BARU: Logo di kiri, teks di kanan dalam satu row kontainer */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '16px' }}>
               <div style={styles.emptyLogoWrap}>
                 <img src={cakraLogo} alt="CAKRA" style={styles.emptyLogo} />
@@ -134,7 +111,6 @@ export default function ChatArea({
             <p style={{ ...styles.emptySubtitle, color: theme.secondaryText }}>Ada yang bisa saya bantu hari ini?</p>
           </div>
         ) : (
-          // 🔥 KUNCI SAKTI: Masukin class container ke pembungkus luar ini biar warning DOM murni hilang, dan Virtuoso ga re-render pas ngetik
           <div className="assistant-content-container" style={{ position: 'relative' }}>
             <Virtuoso
               ref={virtuosoRef}
@@ -161,7 +137,6 @@ export default function ChatArea({
         )}
       </div>
 
-      {/* 🔴 W1: Scroll-to-Bottom Floating Button */}
       {showScrollBottom && messages.length > 0 && (
         <button
           onClick={() => {

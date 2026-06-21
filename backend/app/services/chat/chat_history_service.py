@@ -94,12 +94,33 @@ class ChatHistoryService:
             )
             return True
 
+    async def assign_session_to_user(self, session_uuid: str, npp: str, username: str) -> bool:
+        """Mentransfer sesi GUEST ke user yang baru login."""
+        async with get_db() as conn:
+            try:
+                row = await conn.fetchrow(
+                    "SELECT npp FROM chat_sessions WHERE session_uuid = $1 AND is_deleted = FALSE",
+                    session_uuid
+                )
+                if not row or row["npp"] != "GUEST":
+                    return False
+                
+                await conn.execute(
+                    "UPDATE chat_sessions SET npp = $1, user_name = $2 WHERE session_uuid = $3",
+                    npp, username, session_uuid
+                )
+                logger.info(f"[CHAT_HISTORY] Session {session_uuid[:8]} assigned to NPP: {npp}")
+                return True
+            except Exception as e:
+                logger.error(f"[CHAT_HISTORY_ERROR] Failed to assign session: {str(e)}")
+                return False
+
     # =========================================================================
     # 💬 MESSAGE MANAGEMENT
     # =========================================================================
 
     async def save_chat_message(
-        self, session_id: str, role: str, text: str, thought: Optional[str] = None
+        self, session_id: str, role: str, text: str, thought: Optional[str] = None, sources: Optional[list] = None
     ) -> bool:
         """Menyimpan pesan ke chat_messages. Param session_id menerima session_uuid, di-resolve ke PK integer."""
         async with get_db() as conn:
@@ -112,14 +133,78 @@ class ChatHistoryService:
                     return False
 
                 # Thought process diubah menjadi thought sesuai sasis fisik tabel baru
+                sources_json = json.dumps(sources) if sources is not None else None
                 query = """
-                    INSERT INTO chat_messages (session_id, role, message_text, timestamp, thought)
-                    VALUES ($1, $2, $3, CURRENT_TIMESTAMP, $4);
+                    INSERT INTO chat_messages (session_id, role, message_text, timestamp, thought, sources)
+                    VALUES ($1, $2, $3, CURRENT_TIMESTAMP, $4, $5);
                 """
-                await conn.execute(query, session_pk, role, text, thought)
+                await conn.execute(query, session_pk, role, text, thought, sources_json)
                 return True
             except Exception as e:
                 logger.error(f"[CHAT_HISTORY_ERROR] Failed to save chat message: {str(e)}")
+                return False
+    async def update_chat_message(
+        self, session_id: str, edit_index: int, role: str, text: str, thought: Optional[str] = None, sources: Optional[list] = None
+    ) -> bool:
+        """Melakukan In-Place update pada baris chat yang ada menggunakan offset index."""
+        async with get_db() as conn:
+            try:
+                session_pk = await self._resolve_session_pk(conn, session_id)
+                if session_pk is None:
+                    return False
+                
+                # Cari ID pesan ke-N (berdasarkan urutan waktu)
+                find_query = """
+                    SELECT id FROM chat_messages 
+                    WHERE session_id = $1 
+                    ORDER BY timestamp ASC, id ASC 
+                    OFFSET $2 LIMIT 1
+                """
+                target_id = await conn.fetchval(find_query, session_pk, edit_index)
+                
+                if target_id is None:
+                    logger.warning(f"[CHAT_HISTORY] Target message at index {edit_index} not found for update. Inserting instead.")
+                    # Fallback ke insert jika index tidak valid
+                    return await self.save_chat_message(session_id, role, text, thought, sources)
+                
+                sources_json = json.dumps(sources) if sources is not None else None
+                
+                # Timpa (Update) isi pesannya
+                update_query = """
+                    UPDATE chat_messages 
+                    SET message_text = $1, thought = $2, role = $3, sources = $5
+                    WHERE id = $4
+                """
+                await conn.execute(update_query, text, thought, role, target_id, sources_json)
+                logger.info(f"[CHAT_HISTORY] Updated message at index {edit_index} (id: {target_id})")
+                return True
+            except Exception as e:
+                logger.error(f"[CHAT_HISTORY_ERROR] Failed to update chat message: {str(e)}")
+                return False
+
+    async def trim_session_messages(self, session_uuid: str, keep_count: int) -> bool:
+        """Menghapus pesan-pesan setelah urutan tertentu (keep_count) saat user melakukan Edit/Regenerate."""
+        async with get_db() as conn:
+            try:
+                session_pk = await self._resolve_session_pk(conn, session_uuid)
+                if session_pk is None:
+                    return False
+                
+                # Hapus pesan yang ID-nya tidak termasuk dalam top N pesan pertama (diurutkan by timestamp & id)
+                query = """
+                    DELETE FROM chat_messages 
+                    WHERE session_id = $1 AND id NOT IN (
+                        SELECT id FROM chat_messages 
+                        WHERE session_id = $1 
+                        ORDER BY timestamp ASC, id ASC 
+                        LIMIT $2
+                    )
+                """
+                await conn.execute(query, session_pk, keep_count)
+                logger.info(f"[CHAT_HISTORY] Trimmed session {session_uuid[:8]} to keep first {keep_count} messages")
+                return True
+            except Exception as e:
+                logger.error(f"[CHAT_HISTORY_ERROR] Failed to trim messages: {str(e)}")
                 return False
 
     async def get_session_messages(self, session_uuid: str) -> List[Dict[str, Any]]:
@@ -131,6 +216,8 @@ class ChatHistoryService:
             SELECT 
                 m.role, 
                 m.message_text, 
+                m.thought,
+                m.sources,
                 m.timestamp,
                 COALESCE(
                     JSON_AGG(
@@ -164,6 +251,8 @@ class ChatHistoryService:
                 {
                     "role": row["role"],
                     "content": row["message_text"],
+                    "thought": row["thought"],
+                    "sources": json.loads(row["sources"]) if row["sources"] and isinstance(row["sources"], str) else row.get("sources"),
                     "attachments": json.loads(row["attachments"]) if isinstance(row["attachments"], str) else row["attachments"]
                 } for row in rows
             ]

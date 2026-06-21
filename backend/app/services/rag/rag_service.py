@@ -18,7 +18,7 @@ _STOPWORDS_ID = {
 # ── THRESHOLD KONFIGURASI RE-RANKER ──────────────────────────────────────────
 # BGE cross-encoder menghasilkan score 0.0 - 1.0 (setelah sigmoid)
 _RERANK_RATIO = 0.15
-_RERANK_FLOOR = 0.05
+_RERANK_FLOOR = 0.40
 
 
 class RagService:
@@ -50,8 +50,8 @@ class RagService:
         # Ambil maks 6 token paling bermakna, hindari overfitting query
         tokens = tokens[:6]
 
-        # OR operator: dokumen yang punya SALAH SATU kata sudah masuk kandidat
-        return " | ".join(f"{t}:*" for t in tokens)
+        # AND operator: dokumen WAJIB mengandung semua token agar relevan secara keyword
+        return " & ".join(f"{t}:*" for t in tokens)
 
     async def assemble_powerful_context(
         self, query: str, limit: int = 5, min_score: float = 0.005
@@ -234,7 +234,7 @@ class RagService:
                         SELECT dc.content, dc.chunk_id, ds.section_title, ds.section_type
                         FROM dokumen_chunk dc
                         LEFT JOIN dokumen_section ds ON dc.dokumen_id = ds.dokumen_id 
-                            AND (dc.content LIKE '%' || ds.section_title || '%' OR ds.id::text = dc.parent_id)
+                            AND (dc.section_id = ds.id OR ds.id::text = dc.parent_id)
                         WHERE dc.dokumen_id = $1 AND dc.chunk_id = ANY($2)
                         ORDER BY dc.chunk_id ASC;
                     """
@@ -242,6 +242,7 @@ class RagService:
 
                     seen_seqs = set()
                     text_segments = []
+                    sections_found = set()
 
                     for crow in chunk_rows:
                         c_seq = crow["chunk_id"]
@@ -251,12 +252,15 @@ class RagService:
 
                         segment_text = ""
                         if crow["section_title"]:
+                            sections_found.add(f"{crow['section_type'] or 'Bagian'} {crow['section_title']}")
                             segment_text += f"\n[Bagian: {crow['section_title']} ({crow['section_type'] or 'Regulasi'})]\n"
-                        segment_text += crow["content"]
+                        content_safe = crow["content"][:3000]
+                        segment_text += content_safe
                         text_segments.append(segment_text)
 
                     combined_text = "\n\n".join(text_segments).strip()
                     sorted_pages = sorted(list(doc_info["pages"]))
+                    sorted_sections = sorted(list(sections_found))
 
                     expanded_blocks.append({
                         "id": doc_id,
@@ -264,6 +268,7 @@ class RagService:
                         "judul": parent["judul"] or "Dokumen Internal Pindad",
                         "nomor": parent["nomor"] or "N/A",
                         "halaman": ", ".join(sorted_pages),
+                        "sections": sorted_sections,
                         "rrf_score": doc_info["rrf_score"],
                         "text": combined_text,
                     })
@@ -295,6 +300,7 @@ class RagService:
             logger.warning(
                 f"[RAG_RERANK_WARNING] Re-ranker error: {str(ren_err)}. Fallback to RRF."
             )
+            expanded_blocks = expanded_blocks[:2]
             for b in expanded_blocks:
                 b["final_score"] = b["rrf_score"]
 
@@ -349,6 +355,7 @@ class RagService:
                 "page": b["halaman"],
                 "page_number": b["halaman"],
                 "jenis": b["jenis"],
+                "sections": b.get("sections", []),
                 "score": f_score,
             })
 

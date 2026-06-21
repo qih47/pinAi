@@ -15,6 +15,7 @@ from fastapi import (
     Depends,
     HTTPException,
     Query,
+    Request,
 )
 from fastapi.responses import StreamingResponse
 
@@ -28,7 +29,7 @@ from backend.app.services.notification_service import (
 
 logger = logging.getLogger("CAKRA_NOTIFICATIONS_API")
 
-router = APIRouter(prefix="/api/notifications", tags=["notifications"])
+router = APIRouter(prefix="", tags=["notifications"])
 
 # ══════════════════════════════════════════════════════════════════════════════
 # B15 — GET /api/notifications/subscribe — SSE Real-time Notifications
@@ -37,45 +38,58 @@ router = APIRouter(prefix="/api/notifications", tags=["notifications"])
 
 @router.get("/subscribe")
 async def subscribe_notifications(
-    current_user_npp: str = Depends(get_current_user_npp),
+    request: Request,
+    npp: Optional[str] = Query(None, description="Fallback NPP dari query string URL"),
+    current_user_npp: Optional[str] = Depends(get_current_user_npp),
 ):
     """
-    Subscribe to real-time SSE notifications untuk user.
-    
-    Mengirim notifikasi tentang:
-    - Sesi baru dari device lain (multi-device awareness)
-    - Memory consolidation completed
-    - Document indexing status
-    - Admin alerts
-    
-    Client harus maintain connection untuk menerima events.
+    Subscribe to real-time SSE notifications untuk user (Safe Fallback + Fast Reload Support).
     """
-    
-    if current_user_npp == "GUEST":
-        raise HTTPException(status_code=403, detail="Guest tidak bisa subscribe notifikasi")
-    
+    auth_str = str(current_user_npp).strip() if current_user_npp is not None else ""
+    query_str = str(npp).strip() if npp is not None else ""
+
+    if auth_str and auth_str != "None" and auth_str != "GUEST":
+        resolved_npp = auth_str
+    elif query_str and query_str != "None" and query_str != "GUEST":
+        resolved_npp = query_str
+    else:
+        resolved_npp = "NPP_UNKNOWN"
+
+    if resolved_npp == "NPP_UNKNOWN":
+        raise HTTPException(
+            status_code=403, detail="Akses ditolak: Identitas pegawai tidak terautentikasi"
+        )
+
     async def notification_generator():
         broker = get_notification_broker()
-        queue = await broker.subscribe(current_user_npp)
+        queue = await broker.subscribe(resolved_npp)
         
-        logger.info(f"📡 [SUBSCRIBE] NPP {current_user_npp} connected to notifications")
+        logger.info(f"📡 [SUBSCRIBE] NPP {resolved_npp} connected to notifications")
         
         try:
+            yield 'data: {"id": 0, "event_type": "DEFAULT", "title": "Connected", "message": "Sukses terhubung ke broker"}\n\n'
+            
             while True:
-                # Wait untuk notification dari queue
-                notification_json = await queue.get()
-                
-                # Send sebagai SSE event
-                yield f"data: {notification_json}\n\n"
+                if getattr(request.app.state, "shutdown_requested", False):
+                    logger.info(
+                        f"📡 [LIFESPAN_SHUTDOWN] Memutus antrean SSE NPP {resolved_npp} untuk reload kilat."
+                    )
+                    break
+
+                try:
+                    notification_json = await asyncio.wait_for(queue.get(), timeout=1.0)
+                    yield f"data: {notification_json}\n\n"
+                except asyncio.TimeoutError:
+                    continue
                 
         except asyncio.CancelledError:
-            logger.info(f"📡 [UNSUBSCRIBE] NPP {current_user_npp} disconnected from notifications")
-            await broker.unsubscribe(current_user_npp, queue)
+            logger.info(f"📡 [UNSUBSCRIBE] NPP {resolved_npp} disconnected from notifications (Cancelled)")
             raise
         except Exception as e:
             logger.error(f"❌ [SUBSCRIBE] Error: {e}")
-            await broker.unsubscribe(current_user_npp, queue)
             raise
+        finally:
+            await broker.unsubscribe(resolved_npp, queue)
     
     return StreamingResponse(
         notification_generator(),
@@ -94,8 +108,6 @@ async def get_notification_stats(
     """
     Get notification broker statistics (admin only).
     """
-    
-    # Verify admin access
     async with get_db() as conn:
         user_role = await conn.fetchval(
             "SELECT role FROM users WHERE npp = $1",
@@ -135,22 +147,7 @@ async def get_audit_logs(
 ):
     """
     Get audit logs dengan filtering dan pagination.
-    
-    Event types:
-    - LOGIN / LOGOUT
-    - QUERY_RAG
-    - DOCUMENT_UPLOAD
-    - MEMORY_ACCESS
-    - SETTING_CHANGE
-    - ADMIN_ACTION
-    
-    Returns:
-    - items: Daftar audit log entries
-    - total: Total records matching filter
-    - limit, offset: Pagination info
     """
-    
-    # Verify admin access
     async with get_db() as conn:
         user_role = await conn.fetchval(
             "SELECT role FROM users WHERE npp = $1",
@@ -162,10 +159,7 @@ async def get_audit_logs(
     
     try:
         async with get_db() as conn:
-            # Build WHERE clause dynamically
-            where_parts = [
-                "created_at >= NOW() - INTERVAL '1 day' * $1"  # Last N days
-            ]
+            where_parts = ["login_time >= NOW() - INTERVAL '1 day' * $1"]
             params = [days]
             param_count = 1
             
@@ -181,16 +175,18 @@ async def get_audit_logs(
             
             where_clause = " AND ".join(where_parts)
             
-            # Count total
             total = await conn.fetchval(
                 f"SELECT COUNT(*) FROM history_login WHERE {where_clause}",
                 *params,
             )
             
-            # Fetch with pagination
             param_count += 1
+            limit_idx = param_count
+            params.append(limit)
+            
             param_count += 1
-            params.extend([limit, offset])
+            offset_idx = param_count
+            params.append(offset)
             
             rows = await conn.fetch(
                 f"""
@@ -200,8 +196,8 @@ async def get_audit_logs(
                     description
                 FROM history_login
                 WHERE {where_clause}
-                ORDER BY created_at DESC
-                LIMIT ${param_count - 1} OFFSET ${param_count}
+                ORDER BY login_time DESC
+                LIMIT ${limit_idx} OFFSET ${offset_idx}
                 """,
                 *params,
             )
@@ -220,10 +216,7 @@ async def get_audit_logs(
                 for row in rows
             ]
             
-            logger.info(
-                f"📋 [AUDIT] Retrieved {len(audit_logs)} logs (total: {total}, "
-                f"filter: type={event_type}, npp={npp}, days={days})"
-            )
+            logger.info(f"📋 [AUDIT] Retrieved {len(audit_logs)} logs (total: {total})")
             
             return {
                 "items": audit_logs,
@@ -249,16 +242,7 @@ async def get_audit_stats(
 ):
     """
     Get audit statistics dashboard untuk admin.
-    
-    Shows:
-    - Total logins in period
-    - Unique users
-    - Failed login attempts
-    - Geographic distribution (IP-based)
-    - Peak login times
     """
-    
-    # Verify admin access
     async with get_db() as conn:
         user_role = await conn.fetchval(
             "SELECT role FROM users WHERE npp = $1",
@@ -270,31 +254,27 @@ async def get_audit_stats(
     
     try:
         async with get_db() as conn:
-            # Total logins
             total_logins = await conn.fetchval(
-                "SELECT COUNT(*) FROM history_login WHERE created_at >= NOW() - INTERVAL '1 day' * $1",
+                "SELECT COUNT(*) FROM history_login WHERE login_time >= NOW() - INTERVAL '1 day' * $1",
                 days,
             )
             
-            # Unique users
             unique_users = await conn.fetchval(
-                "SELECT COUNT(DISTINCT npp) FROM history_login WHERE created_at >= NOW() - INTERVAL '1 day' * $1",
+                "SELECT COUNT(DISTINCT npp) FROM history_login WHERE login_time >= NOW() - INTERVAL '1 day' * $1",
                 days,
             )
             
-            # Failed logins
             failed_logins = await conn.fetchval(
-                "SELECT COUNT(*) FROM history_login WHERE status = $1 AND created_at >= NOW() - INTERVAL '1 day' * $2",
+                "SELECT COUNT(*) FROM history_login WHERE status = $1 AND login_time >= NOW() - INTERVAL '1 day' * $2",
                 "FAILED",
                 days,
             )
             
-            # Top 10 users by login count
             top_users = await conn.fetch(
                 """
                 SELECT npp, COUNT(*) as login_count
                 FROM history_login
-                WHERE created_at >= NOW() - INTERVAL '1 day' * $1
+                WHERE login_time >= NOW() - INTERVAL '1 day' * $1
                 GROUP BY npp
                 ORDER BY login_count DESC
                 LIMIT 10
@@ -302,12 +282,11 @@ async def get_audit_stats(
                 days,
             )
             
-            # IP distribution
             top_ips = await conn.fetch(
                 """
                 SELECT ip_address, COUNT(*) as count
                 FROM history_login
-                WHERE created_at >= NOW() - INTERVAL '1 day' * $1
+                WHERE login_time >= NOW() - INTERVAL '1 day' * $1
                 GROUP BY ip_address
                 ORDER BY count DESC
                 LIMIT 5
@@ -346,13 +325,11 @@ async def export_audit_logs(
     event_type: Optional[str] = Query(None),
     npp: Optional[str] = Query(None),
     days: int = Query(7),
-    format: str = Query("json", regex="^(json|csv)$"),
+    format: str = Query("json", pattern="^(json|csv)$"),
 ):
     """
     Export audit logs dalam format JSON atau CSV untuk compliance.
     """
-    
-    # Verify admin access
     async with get_db() as conn:
         user_role = await conn.fetchval(
             "SELECT role FROM users WHERE npp = $1",
@@ -362,7 +339,6 @@ async def export_audit_logs(
     if user_role not in ("ADMIN", "SUPERADMIN"):
         raise HTTPException(status_code=403, detail="Admin access required")
     
-    # TODO: Implement export logic
     logger.info(f"📤 [EXPORT] Exporting audit logs (format: {format}, days: {days})")
     
     return {

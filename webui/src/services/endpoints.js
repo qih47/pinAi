@@ -103,6 +103,15 @@ export async function deleteSession(sessionUuid, npp) {
   return response.data;
 }
 
+/**
+ * Assign an existing session to the currently logged in user
+ * @param {string} sessionUuid - UUID of the session
+ */
+export async function assignSession(sessionUuid) {
+  const response = await apiClient.put(`/chat/sessions/${sessionUuid}/assign`);
+  return response.data;
+}
+
 // =========================================================================
 // ENDPOINT: DOCUMENTS / UPLOAD (REST via Axios)
 // =========================================================================
@@ -149,10 +158,12 @@ function validateSSEEvent(parsedData) {
       return false;
     }
 
-    // Validate each source has required fields
+    // Validate each source has required identification fields
     for (const source of parsedData.sources) {
-      if (!source.id || !source.content) {
-        console.warn('[SSE_VALIDATION] Source missing id or content:', source);
+      // FIX: Cukup validasi keberadaan id atau dokumen_id saja, hapus kewajiban field content
+      const hasValidId = source.id !== undefined || source.dokumen_id !== undefined;
+      if (!hasValidId) {
+        console.warn('[SSE_VALIDATION] Source missing identification (id/dokumen_id):', source);
         return false;
       }
     }
@@ -176,7 +187,7 @@ function validateSSEEvent(parsedData) {
  */
 export async function streamChat(
   { sessionUuid, messages, chatMode, isolatedDocId, attachmentPaths, npp },
-  { onThinking, onSources, onChunk, onDone, onError },
+  { onThinking, onStatus, onSources, onChunk, onDone, onError },
   options = {}
 ) {
   const { timeoutMs = 5 * 60 * 1000 } = options;  // 5 minute default timeout
@@ -289,6 +300,10 @@ export async function streamChat(
           // Handle regular events
           if (parsedData.thinking !== undefined && parsedData.thinking && onThinking) {
             onThinking(parsedData.thinking);
+          }
+          
+          if (parsedData.status !== undefined && parsedData.status && onStatus) {
+            onStatus(parsedData.status);
           }
           
           if (parsedData.sources && Array.isArray(parsedData.sources) && parsedData.sources.length > 0 && onSources) {
@@ -408,5 +423,22 @@ export async function optimizeVectorIndex() {
     return response.data;
   } catch (error) {
     throw new Error(error.response?.data?.detail || 'Failed to optimize vector index');
+  }
+}
+
+/**
+ * Trim session messages history for edit/regenerate
+ * @param {string} sessionUuid - The UUID of the session
+ * @param {number} keepCount - Number of messages to keep from the beginning
+ */
+export async function trimSessionMessages(sessionUuid, keepCount) {
+  try {
+    const response = await apiClient.delete(`/chat/sessions/${sessionUuid}/messages/trim`, {
+      params: { keep_count: keepCount }
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Error trimming session messages:', error);
+    throw new Error(error.response?.data?.detail || 'Failed to trim session messages');
   }
 }

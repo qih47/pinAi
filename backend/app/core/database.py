@@ -36,6 +36,16 @@ async def init_db_pool():
             command_timeout=60.0,
         )
 
+        async with db_pool.acquire() as conn:
+            try:
+                await _create_llm_thinking_audit_table(conn)
+                await _update_chat_sessions_continuation_column(conn)
+                await _update_chat_messages_sources_column(conn)
+            except asyncpg.exceptions.InsufficientPrivilegeError as e:
+                logger.warning(f"⚠️ [DB_MIGRATION] Izin ditolak untuk memodifikasi schema public. Minta admin untuk jalankan DDL secara manual: {e}")
+            except Exception as e:
+                logger.warning(f"⚠️ [DB_MIGRATION] Gagal menjalankan migrasi schema otomatis: {e}")
+
         logger.info("[DB_CONNECTION_POOL_INIT] Dual-database pools (ragdb & hris) initialized successfully.")
     except Exception as e:
         logger.error(f"[DB_CONNECTION_POOL_ERROR] Failed to initialize database pools: {e}")
@@ -78,3 +88,104 @@ def embedding_to_pgvector_str(embedding) -> str:
     if isinstance(embedding, list):
         embedding = np.array(embedding)
     return f"[{','.join(f'{val:.8f}' for val in embedding)}]"
+
+async def _create_llm_thinking_audit_table(conn):
+    """
+    Create audit table for thinking content & RAG decisions (compliance).
+    """
+    await conn.execute("""
+        CREATE TABLE IF NOT EXISTS llm_thinking_audit (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            session_uuid UUID NOT NULL REFERENCES chat_sessions(session_uuid),
+            message_id UUID,
+            timestamp TIMESTAMPTZ NOT NULL DEFAULT now(),
+            
+            -- Raw thinking content
+            thinking_content TEXT,
+            thinking_token_estimate INT,
+            
+            -- Phase 1 routing decision
+            routing_decision JSONB,
+            
+            -- RAG execution
+            rag_queries TEXT[],
+            rag_results_count INT,
+            rag_source_ids TEXT[],
+            rag_fetch_duration_ms INT,
+            
+            -- Final response
+            response_text TEXT,
+            response_token_count INT,
+            
+            -- Continuation metadata
+            continuation_attempts INT,
+            
+            CONSTRAINT session_audit_fk 
+                FOREIGN KEY (session_uuid) REFERENCES chat_sessions(session_uuid)
+        );
+        
+        CREATE INDEX IF NOT EXISTS idx_thinking_audit_session 
+        ON llm_thinking_audit(session_uuid);
+        
+        CREATE INDEX IF NOT EXISTS idx_thinking_audit_timestamp 
+        ON llm_thinking_audit(timestamp DESC);
+    """)
+
+async def _update_chat_sessions_continuation_column(conn):
+    """
+    Memastikan kolom continuation_state (JSONB) tersedia pada chat_sessions
+    untuk arsitektur Token-Level Continuation.
+    """
+    await conn.execute("""
+        ALTER TABLE chat_sessions 
+        ADD COLUMN IF NOT EXISTS continuation_state JSONB DEFAULT NULL;
+        
+        CREATE INDEX IF NOT EXISTS idx_continuation_state 
+        ON chat_sessions USING GIN(continuation_state);
+    """)
+
+async def _update_chat_messages_sources_column(conn):
+    """
+    Memastikan kolom sources (JSONB) tersedia pada chat_messages
+    untuk menampung RAG Metrics / Source Citations yang tahan reload.
+    """
+    await conn.execute("""
+        ALTER TABLE chat_messages 
+        ADD COLUMN IF NOT EXISTS sources JSONB;
+    """)
+
+async def get_continuation_state(session_uuid: str) -> dict:
+    """Retrieve continuation state from chat_sessions."""
+    pool = get_db_pool()
+    if not pool: return None
+    try:
+        async with pool.acquire() as conn:
+            row = await conn.fetchrow("SELECT continuation_state FROM chat_sessions WHERE session_uuid = $1", session_uuid)
+            if row and row['continuation_state']:
+                import json
+                return json.loads(row['continuation_state']) if isinstance(row['continuation_state'], str) else row['continuation_state']
+    except Exception as e:
+        logger.warning(f"[DB] Failed to load continuation state: {e}")
+    return None
+
+async def save_continuation_state(session_uuid: str, state_data: dict) -> None:
+    """Save or clear continuation state in chat_sessions."""
+    pool = get_db_pool()
+    if not pool: return
+    try:
+        import json
+        state_json = json.dumps(state_data) if state_data else None
+        async with pool.acquire() as conn:
+            await conn.execute("UPDATE chat_sessions SET continuation_state = $1 WHERE session_uuid = $2", state_json, session_uuid)
+    except Exception as e:
+        logger.warning(f"[DB] Failed to save continuation state: {e}")
+
+def get_db_pool():
+    """
+    🔥 JEMBATAN BERSAMA: Mengembalikan objek db_pool global 
+    agar kompatibel dengan modul token_continuation_layer dkk.
+    """
+    global db_pool
+    if db_pool is None:
+        logger.warning("⚠️ [DB] db_pool diakses sebelum init_db_pool() selesai dijalankan.")
+    return db_pool

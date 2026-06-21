@@ -66,3 +66,32 @@ async def delete_chat_session(session_uuid: str):
 async def get_session_messages_endpoint(session_uuid: str):
     messages = await chat_history_service.get_session_messages(session_uuid)
     return {"status": "success", "data": messages}
+
+@router.put("/sessions/{session_uuid}/assign")
+async def assign_chat_session(
+    session_uuid: str,
+    current_user_npp: Optional[str] = Depends(get_current_user_npp)
+):
+    if not current_user_npp:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    
+    # Karena API ini dipanggil setelah login, auth_store punya informasi user yang komplit.
+    # Namun demi kepraktisan, "Pegawai Pindad" bisa digunakan sementara, 
+    # karena integrasi NPP ke `npp` sudah cukup untuk menghubungkan riwayat obrolan.
+    success = await chat_history_service.assign_session_to_user(
+        session_uuid, current_user_npp, "Pegawai Pindad"
+    )
+    if not success:
+        raise HTTPException(status_code=400, detail="Gagal mentransfer sesi atau sesi bukan milik GUEST.")
+    return {"status": "success", "message": "Sesi berhasil ditransfer!"}
+
+@router.delete("/{session_uuid}/messages/trim")
+async def trim_session_messages(
+    session_uuid: str, 
+    keep_count: int
+):
+    """Memotong percakapan setelah keep_count pesan (untuk fitur edit/regenerate)."""
+    success = await chat_history_service.trim_session_messages(session_uuid, keep_count)
+    if not success:
+        raise HTTPException(status_code=500, detail="Gagal memangkas histori percakapan.")
+    return {"status": "success", "message": f"Histori dipangkas menjadi {keep_count} pesan terawal."}

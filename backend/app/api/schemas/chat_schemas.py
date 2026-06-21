@@ -18,6 +18,7 @@ class ChatStreamRequest(BaseModel):
     temperature: Optional[float] = Field(0.7, ge=0.0, le=2.0, description="Tingkat kreativitas inferensi model LLM")
     isolated_doc_id: Optional[int] = Field(None, description="ID dokumen RAG terisolasi")
     attachment_paths: Optional[List[str]] = Field(default=[], description="Daftar path file fisik lampiran chat untuk pemrosesan MiniCPM-V")
+    edit_index: Optional[int] = Field(None, description="Indeks array dari chat user yang ingin diedit di DB (In-Place Update)")
 
     class Config:
         from_attributes = True

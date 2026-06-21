@@ -414,7 +414,7 @@ async def _process_document_background(doc_id: int, file_path: str):
         logger.info(f"🔄 [BG] Starting document processing: {doc_id}")
         
         # 1. Extract text dari file
-        from backend.app.services.pipeline_layer_executor import extract_pdf_text
+        from backend.app.services.pipeline import extract_pdf_text
         text_content = await extract_pdf_text(file_path)
         
         if not text_content:

@@ -2,14 +2,12 @@ import sys
 import os
 
 # ==============================================================================
-# 🔥 [SUPER-HOTFIX] DOUBLE-PATH RESOLUTION FOR SYSTEMD DEAMON
+# DOUBLE-PATH RESOLUTION FOR SYSTEMD DAEMON
 # ==============================================================================
-# Menarik path absolut dari direktori proyek utama (/home/qisthi/pinAi)
 CURRENT_FILE_DIR = os.path.dirname(os.path.abspath(__file__))  # backend/app
 BACKEND_DIR = os.path.dirname(CURRENT_FILE_DIR)                # backend
 ROOT_DIR = os.path.dirname(BACKEND_DIR)                        # pinAi
 
-# Daftarin kedua folder ke dalam system path Python agar import tidak bingung
 for path in [ROOT_DIR, BACKEND_DIR]:
     if path not in sys.path:
         sys.path.insert(0, path)
@@ -22,7 +20,6 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-# Import komponen core dengan jalur modul yang sudah tervalidasi aman
 from backend.app.core.config import settings
 from backend.app.core.database import init_db_pool, close_db_pool
 from backend.app.core.logging_setup import setup_root_logger
@@ -35,95 +32,171 @@ from backend.app.utils.request_logging import RequestIDLoggingMiddleware, setup_
 from backend.app.utils.token_expiry import setup_token_expiry_migration
 from backend.app.utils.vector_index import setup_hnsw_index, optimize_vector_search
 
-# 1. Mengaktifkan konfigurasi log seragam kita
 setup_root_logger()
 setup_request_id_logging()
 logger = logging.getLogger("CAKRA_MAIN")
 
 DB_DOC_DIR = os.path.join(ROOT_DIR, "db_doc")
-
-# Pembuatan folder dilakukan langsung di level compile/load time sebelum dimount
 if not os.path.exists(DB_DOC_DIR):
     os.makedirs(DB_DOC_DIR)
-    logger.info(f"[STORAGE_DIR_CREATED] Static absolute folder '{DB_DOC_DIR}' created successfully.")
+    logger.info(f"[STORAGE_DIR_CREATED] '{DB_DOC_DIR}' created.")
+
+
+async def _unload_deprecated_models():
+    """
+    Unload deprecated models (Qwen 0.6B/1.7B) from VRAM to optimize memory.
+    """
+    import httpx
+    deprecated_models = ["qwen3:0.6b", "qwen3:1.7b", "qwen3:latest"]
+    url = f"{settings.OLLAMA_BASE_URL}/api/chat"
+    
+    for model_name in deprecated_models:
+        logger.info(f"🧹 [VRAM] Unloading deprecated model '{model_name}' from VRAM...")
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                # Ollama unloads a model immediately when keep_alive=0
+                await client.post(url, json={
+                    "model": model_name,
+                    "messages": [],
+                    "keep_alive": 0
+                })
+                logger.info(f"✅ [VRAM] '{model_name}' successfully evicted from VRAM.")
+        except Exception as e:
+            logger.debug(f"[VRAM] Eviction skipped for '{model_name}': {e}")
+
+
+async def _warmup_and_pin_models():
+    """
+    Warmup dan pin model ke VRAM saat startup.
+    Dijalankan sekuensial agar tidak berebut slot semaphore.
+
+    Model yang dipin:
+      - Gemma4 (MODEL_PERSONA): satu-satunya LLM — handles semua chat intent
+      - Embedding (MODEL_EMBEDDING): untuk RAG vector search
+
+    Vision (MiniCPM) tidak dipin di startup — di-load on-demand saat ada attachment.
+    """
+    import httpx
+
+    models_to_pin = [
+        (settings.MODEL_PERSONA, "Gemma4 Agentic Engine"),
+        (settings.MODEL_EMBEDDING, "Embedding"),
+    ]
+
+    url = f"{settings.OLLAMA_BASE_URL}/api/chat"
+
+    for model_name, label in models_to_pin:
+        logger.info(f"⏳ [WARMUP] Pinning {label} ({model_name}) ke VRAM...")
+        try:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(120.0, connect=10.0)) as client:
+                payload = {
+                    "model": model_name,
+                    "messages": [{"role": "user", "content": "hi"}],
+                    "stream": False,
+                    "keep_alive": -1,   # permanent — tidak di-evict sampai service restart
+                    "options": {"temperature": 0.1, "num_predict": 1},
+                }
+                resp = await client.post(url, json=payload)
+                if resp.status_code == 200:
+                    logger.info(f"✅ [WARMUP] {label} ({model_name}) pinned successfully.")
+                else:
+                    logger.warning(f"⚠️ [WARMUP] {label} ({model_name}) warmup returned {resp.status_code}")
+        except Exception as e:
+            logger.warning(f"⚠️ [WARMUP] {label} ({model_name}) warmup failed: {e}")
+
+    # Khusus embedding — pakai endpoint /api/embeddings bukan /api/chat
+    try:
+        embed_url = f"{settings.OLLAMA_BASE_URL}/api/embeddings"
+        async with httpx.AsyncClient(timeout=httpx.Timeout(60.0, connect=10.0)) as client:
+            resp = await client.post(embed_url, json={
+                "model": settings.MODEL_EMBEDDING,
+                "prompt": "warmup",
+                "keep_alive": -1,
+            })
+            if resp.status_code == 200:
+                logger.info(f"✅ [WARMUP] Embedding ({settings.MODEL_EMBEDDING}) endpoint pinned.")
+    except Exception as e:
+        logger.warning(f"⚠️ [WARMUP] Embedding endpoint warmup failed: {e}")
+
+    logger.info("🔒 [WARMUP] Semua model aktif sudah dipinned ke VRAM.")
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Manajemen siklus hidup aplikasi (Pengganti on_event modern)"""
+    app.state.shutdown_requested = False
+
     logger.info("\n" + "═"*60)
     logger.info("⏳ [LIFESPAN] Memulai proses bootstrap sistem CAKRA AI...")
     logger.info("═"*60)
-    # Cek Hardware
+
     check_gpu_status()
-    # Pastikan Path Aman
     logger.info(f"📂 [PATHS] Dokumen beroperasi di: {DOCUMENTS_DIR}")
-    # Kunci 1: Inisialisasi pool database ganda (ragdb & hris)
+
     try:
         await init_db_pool()
-        logger.info("[DB_CONNECTION_POOL_INIT] Dual-pool database connection initialized successfully.")
-        
-        # Setup Token Expiry Migration & HNSW Index setup
+        logger.info("[DB_POOL] Dual-pool database connection initialized.")
+
         await setup_token_expiry_migration()
         await setup_hnsw_index()
         await optimize_vector_search()
-        
-        # 🔥 New Sequential Pipeline Warmup Strategy:
-        # - Layer 3 (Gemma4 Persona) ALWAYS LOADED: Must be ready for instant response
-        # - Layer 1 (Qwen2.5 Router): ON-DEMAND lazy load in Layer 1 (saves VRAM)
-        # - Layer 2 (DeepSeek-R1): ON-DEMAND lazy load only when need_rag=true
-        # This reduces VRAM footprint and allows more concurrent requests
-        
-        # Ganti bagian warmup di lifespan:
-        asyncio.create_task(warm_up_model(settings.MODEL_PERSONA, "Warmup Gemma4 [Layer 2 Executor]"))
-        asyncio.create_task(warm_up_model(settings.MODEL_ROUTER, "Warmup Qwen3B [Layer 1 Analyzer]"))
-        asyncio.create_task(warm_up_model(settings.MODEL_GATEWAY, "Warmup Qwen Gateway [Layer 0]"))
-        
-        # 🔥 Kunci 2: Inisialisasi Background Task Scheduler (Memory Consolidation dll)
+
+        # Warmup sekuensial — bukan fire-and-forget
+        # Startup memang sedikit lebih lama, tapi request pertama tidak cold-start
+        await _unload_deprecated_models()
+        await _warmup_and_pin_models()
+
         await start_background_scheduler(app)
-        
+
     except Exception as e:
-        logger.error(f"❌ [CRITICAL] Gagal booting database pool: {e}")
+        logger.error(f"❌ [CRITICAL] Gagal booting: {e}")
         raise e
-        
-    yield  # ──────────────── ATAS: STARTUP | BAWAH: SHUTDOWN ────────────────
-    
+
+    yield  # ──── STARTUP selesai | SHUTDOWN di bawah ────
+
     logger.info("\n" + "═"*60)
     logger.info("🛑 [LIFESPAN] Memulai proses shutdown sistem CAKRA AI...")
     logger.info("═"*60)
-    await stop_background_scheduler()  # Hentikan scheduler sebelum close DB
+
+    app.state.shutdown_requested = True
+    await stop_background_scheduler()
     await close_db_pool()
-    logger.info("[DB_CONNECTION_POOL_SHUTDOWN] All database connection pools closed successfully.")
+    
+    # Close shared LLM client connections
+    try:
+        from backend.app.core.llm_client import _shared_client
+        if _shared_client:
+            await _shared_client.aclose()
+            logger.info("🔌 [LLM CLIENT] Persistent HTTP connection pool closed.")
+    except Exception as e:
+        logger.warning(f"⚠️ Failed to close LLM client: {e}")
+
+    logger.info("[DB_POOL] All database connection pools closed.")
 
 
-# 2. Inisialisasi FastAPI Instance
 app = FastAPI(
     title=settings.APP_NAME,
-    description="Intelligent Agentic RAG System (Three-Engine Architecture) - PT Pindad",
+    description="Intelligent Agentic RAG System - PT Pindad",
     version="2.0.0",
     lifespan=lifespan,
     docs_url="/docs",
-    redoc_url="/redoc"
+    redoc_url="/redoc",
 )
 
-# Register Request ID Tracing Middleware (B11)
 app.add_middleware(RequestIDLoggingMiddleware)
 
-# 3. GLOBAL CONCURRENCY SEMAPHORE (Mengamankan VRAM GPU dari limitasi hardware)
+# GPU semaphore — 2 slot: 1 untuk Gemma, 1 buffer concurrent
 app.state.gpu_limit = asyncio.Semaphore(2)
-logger.info("🔒 [HARDWARE] GPU Concurrency Semaphore dikunci pada limit maks: 2 Antrean.")
+logger.info("🔒 [HARDWARE] GPU Concurrency Semaphore: 2 slot.")
 
-# 🔥 FIX STORAGE 2: Menggunakan path absolut UPLOAD_DIR yang tervalidasi aman dari systemd daemon
 app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
-logger.info(f"🌐 [MOUNT] Direktori absolut '{UPLOAD_DIR}' resmi dibuka untuk serving lampiran user (MiniCPM-V Ready).")
+logger.info(f"🌐 [MOUNT] uploads → {UPLOAD_DIR}")
 
-# 4. Mount Folder Statis Dokumen menggunakan PATH ABSOLUT agar tidak terjebak WorkingDirectory
+# ✅ FIX: bug lama StaticFiles(directory=StaticFiles(...).directory) — nested tidak perlu
 app.mount("/db_doc", StaticFiles(directory=DB_DOC_DIR), name="db_doc")
-logger.info(f"🌐 [MOUNT] Direktori absolut '{DB_DOC_DIR}' resmi dibuka untuk serving dokumen statis.")
+logger.info(f"🌐 [MOUNT] db_doc → {DB_DOC_DIR}")
 
-# 5. Konfigurasi CORS (Menggunakan IP server lokal lo 192.168.11.80)
 origins = [
-    "http://192.168.11.80:5173",  # IP MobaXterm/Server lo
+    "http://192.168.11.80:5173",
     "http://localhost:5173",
     "http://127.0.0.1:5173",
 ]
@@ -135,33 +208,28 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-logger.info(f"🛡️  [SECURITY] CORS dikonfigurasi aman untuk origin Frontend: {origins}")
+logger.info(f"🛡️ [SECURITY] CORS origins: {origins}")
 
-# 6. Menghubungkan Hub Router API Utama kita
 app.include_router(api_router, prefix="/api")
-logger.info("🔌 [ROUTING] Jalur lintas /api berhasil ditancapkan ke hub router.")
+logger.info("🔌 [ROUTING] /api router mounted.")
 
 
 @app.get("/", tags=["Root Route"])
 async def root_endpoint():
-    """Endpoint dasar check status via browser"""
-    logger.info("🎯 [ROOT] Ada yang ngintip root API lewat browser/client!")
     return {
         "app_name": settings.APP_NAME,
-        "version": "2.0.0",
-        "status": "Online, Bolo!",
-        # Ganti root endpoint roster:
-        "roster": {
-            "layer_0_gateway": settings.MODEL_GATEWAY,
-            "layer_1_analyzer": settings.MODEL_ROUTER,
-            "layer_2_executor": settings.MODEL_PERSONA,
-            "embedding": settings.MODEL_EMBEDDING
-        }
+        "version": "3.0.0",
+        "status": "Online",
+        "active_models": {
+            "agentic_engine": settings.MODEL_PERSONA,
+            "vision": settings.MODEL_VISION,
+            "embedding": settings.MODEL_EMBEDDING,
+        },
+        "architecture": "Single-model Gemma4 Agentic — Layer 0/1/2 deprecated",
     }
 
 
-# Perintah buat running via terminal jika file dieksekusi langsung
 if __name__ == "__main__":
     import uvicorn
-    logger.info("🚀 [LAUNCHER] Memulai server Uvicorn di port 5000...")
+    logger.info("🚀 [LAUNCHER] Starting Uvicorn on port 5000...")
     uvicorn.run("app.main:app", host="0.0.0.0", port=5000, reload=True)

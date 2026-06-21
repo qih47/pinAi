@@ -8,11 +8,7 @@ import styles from "./notificationPanel.module.css";
 
 /**
  * Component: Notification Panel (W16)
- *
- * Slide-out panel showing notification history
- * Color-coded by notification type
- * Shows read/unread status
- * Mark all as read, delete individual, or clear all
+ * Modernized with high-contrast slate-dark corporate branding.
  */
 const NotificationPanel = ({ onClose }) => {
   const {
@@ -104,18 +100,15 @@ const NotificationPanel = ({ onClose }) => {
  * Individual Notification Item
  */
 const NotificationItem = ({ notification, onRead, onDelete }) => {
-  const style = getNotificationStyle(notification.event_type);
+  const style = getNotificationStyle(notification.event_type) || { color: "#3b82f6", icon: "🔔" };
   const timeAgo = formatNotificationTime(notification.created_at);
 
   return (
     <div
       className={`${styles.notificationItem} ${!notification.is_read ? styles.unread : styles.read}`}
-      style={{
-        borderLeftColor: style.color,
-        backgroundColor: !notification.is_read ? style.bgColor : "#f9fafb",
-      }}
+      style={{ borderLeftColor: style.color }}
     >
-      {/* Icon */}
+      {/* Indicator Border Left & Status Dot handle inside CSS */}
       <div className={styles.icon} style={{ color: style.color }}>
         {style.icon}
       </div>
@@ -136,7 +129,7 @@ const NotificationItem = ({ notification, onRead, onDelete }) => {
         </div>
       </div>
 
-      {/* Unread Indicator */}
+      {/* Unread Indicator Dot */}
       {!notification.is_read && <div className={styles.unreadDot} />}
 
       {/* Actions */}

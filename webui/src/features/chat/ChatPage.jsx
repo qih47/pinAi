@@ -291,11 +291,11 @@ export default function ChatPage({
   } = useChatStore();
 
   useEffect(() => {
+    if (isStreaming) return; // 🛡️ GUARD TAMBAHAN: Cegah mutasi apa pun jika stream aktif
     if (!sessionId || sessionId === "new") {
       lastLoadedSessionRef.current = null;
       return;
     }
-    if (isStreaming) return;
     if (lastLoadedSessionRef.current === sessionId) return;
     lastLoadedSessionRef.current = sessionId;
     storeLoadChatSession(sessionId);
@@ -319,6 +319,15 @@ export default function ChatPage({
     setChatMode(currentGlobalMode);
     chatModeRef.current = currentGlobalMode;
   }, [sessionId]);
+
+  // MIGRASI SESI GUEST: Jika auth sukses dan ada sesi berjalan, claim!
+  useEffect(() => {
+    if (isAuthenticated && sessionId && sessionId !== "new") {
+      import("../../services/endpoints").then((endpts) => {
+        endpts.assignSession(sessionId).catch(() => {});
+      });
+    }
+  }, [isAuthenticated, sessionId]);
 
   const triggerLogout = () => {
     logout();
