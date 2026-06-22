@@ -79,7 +79,7 @@ export default function ChatArea({
                 <span style={{ ...styles.statusDot, background: '#ef4444', borderColor: theme.mainBg }} />
               </div>
               <span style={{ ...styles.thinkingInline, color: theme.secondaryText, marginLeft: 10 }}>
-                {currentThinking || "CAKRA sedang berpikir..."}
+                {currentThinking || "CAKRA sedang berpikir"}
               </span>
             </div>
             <div style={styles.assistantContent}></div>

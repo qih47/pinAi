@@ -28,7 +28,7 @@ const toastFloatingStyle = {
 };
 
 function formatThinkingPhase(thought) {
-  if (!thought) return "CAKRA sedang berpikir...";
+  if (!thought) return "CAKRA sedang berpikir";
   
   // Gunakan lastIndexOf agar selalu menangkap fase terakhir (paling baru)
   const phases = [
@@ -44,7 +44,7 @@ function formatThinkingPhase(thought) {
   ];
 
   let lastIndex = -1;
-  let activePhase = "CAKRA sedang berpikir...";
+  let activePhase = "CAKRA sedang berpikir";
 
   for (const phase of phases) {
       const idx = thought.lastIndexOf(phase.key);
@@ -113,7 +113,7 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
     const isActive = isThinkingMsg || isStreamingMsg;
 
     // 🔥 Smooth transition & animasi untuk teks berpikir
-    const [displayThought, setDisplayThought] = useState("CAKRA sedang berpikir...");
+    const [displayThought, setDisplayThought] = useState("CAKRA sedang berpikir");
     const [isThoughtVisible, setIsThoughtVisible] = useState(true);
     const thoughtTimerRef = useRef(null);
 

@@ -504,6 +504,7 @@ export default function ChatPage({
   const handleKeyDown = (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
+      if (isStreaming) return;
       handleSubmit();
     }
   };
@@ -761,15 +762,12 @@ export default function ChatPage({
             <textarea
               ref={textareaRef}
               value={input}
-              disabled={isStreaming}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder={
-                isStreaming
-                  ? "CAKRA sedang berpikir..."
-                  : activeIsolatedTitle
-                    ? "Tanyakan perihal isi dokumen ini..."
-                    : "Tanyakan apa saja..."
+                activeIsolatedTitle
+                  ? "Tanyakan perihal isi dokumen ini..."
+                  : "Tanya CAKRA"
               }
               rows={1}
               style={{
