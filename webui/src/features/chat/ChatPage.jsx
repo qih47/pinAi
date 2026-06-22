@@ -1114,7 +1114,7 @@ export default function ChatPage({
               </button>
             )}
             {/* 👇 W16: Notification Bell */}
-            {!isGuest && <NotificationBell />}
+            {!isGuest}
             <HeaderDropdownMenu
               isGuest={isGuest}
               onLogin={() => navigate("/login")}
