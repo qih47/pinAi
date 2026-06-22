@@ -35,11 +35,11 @@ export default function ChatArea({
   lastAssistantIndex,
   sendMessage,
   searchQuery = '',
-  isLoading = false
+  isLoading = false,
+  onAtBottomChange
 }) {
   const virtuosoRef = useRef(null);
   const prevMessagesLengthRef = useRef(messages.length);
-  const [showScrollBottom, setShowScrollBottom] = useState(false);
 
   useEffect(() => {
     if (messages.length > prevMessagesLengthRef.current) {
@@ -119,7 +119,7 @@ export default function ChatArea({
               useWindowScroll={false}
               itemContent={itemContent}
               atBottomStateChange={(atBottom) => {
-                setShowScrollBottom(!atBottom);
+                if (onAtBottomChange) onAtBottomChange(atBottom);
               }}
               followOutput={(isAtBottom) => {
                 if (isAtBottom) {
@@ -136,27 +136,6 @@ export default function ChatArea({
           </div>
         )}
       </div>
-
-      {showScrollBottom && messages.length > 0 && (
-        <button
-          onClick={() => {
-            if (virtuosoRef.current) {
-              virtuosoRef.current.scrollTo({
-                top: 9999999,
-                behavior: 'smooth'
-              });
-            }
-          }}
-          style={{
-            ...styles.scrollBottomBtn,
-            background: darkMode ? '#3b82f6' : '#2563eb',
-            color: '#ffffff'
-          }}
-          title="Kembali ke Bawah"
-        >
-          ↓
-        </button>
-      )}
     </div>
   );
 }
