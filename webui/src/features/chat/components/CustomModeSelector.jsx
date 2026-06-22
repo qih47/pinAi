@@ -1,7 +1,14 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { getCustomModeSelectorStyles } from '../chatPage.styles';
 
-export default function CustomModeSelector({ value, onChange, disabled, darkMode }) {
+export default function CustomModeSelector({ 
+  value, 
+  onChange, 
+  disabled, 
+  darkMode,
+  thinking,           
+  onThinkingChange    
+}) {
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef(null);
 
@@ -64,7 +71,8 @@ export default function CustomModeSelector({ value, onChange, disabled, darkMode
       </button>
 
       {isOpen && (
-        <div style={selectorStyles.dropdown}>
+        <div style={{...selectorStyles.dropdown, minWidth: '220px'}}>
+          {/* List Options */}
           {options.map((option) => {
             const isSelected = value === option.value;
             const itemStyle = selectorStyles.item(isSelected);
@@ -106,6 +114,76 @@ export default function CustomModeSelector({ value, onChange, disabled, darkMode
               </button>
             );
           })}
+
+          {/* Garis Pemisah */}
+          <div style={{ 
+            height: '1px', 
+            backgroundColor: darkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)', 
+            margin: '4px 8px' 
+          }} />
+
+          {/* Thinking Toggle Section */}
+          <div style={{ 
+            display: 'flex', 
+            alignItems: 'center', 
+            justifyContent: 'space-between', 
+            padding: '8px 12px',
+            opacity: disabled ? 0.5 : 1
+          }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+              <span style={{ 
+                fontSize: '13px', 
+                fontWeight: 600, 
+                color: darkMode ? '#e5e7eb' : '#374151' 
+              }}>
+                Thinking
+              </span>
+              <span style={{ 
+                fontSize: '11px', 
+                color: darkMode ? '#9ca3af' : '#6b7280' 
+              }}>
+                {/* Can think for more complex tasks */}
+              </span>
+            </div>
+            
+            <button
+              type="button"
+              disabled={disabled}
+              onClick={(e) => {
+                e.stopPropagation(); 
+                if (!disabled && onThinkingChange) {
+                  onThinkingChange(!thinking);
+                }
+              }}
+              style={{
+                position: 'relative',
+                width: '36px',
+                height: '20px',
+                borderRadius: '9999px',
+                backgroundColor: thinking ? '#6366f1' : (darkMode ? '#4b5563' : '#d1d5db'),
+                border: 'none',
+                cursor: disabled ? 'not-allowed' : 'pointer',
+                transition: 'background-color 0.2s',
+                padding: 0,
+                flexShrink: 0
+              }}
+            >
+              <span
+                style={{
+                  position: 'absolute',
+                  top: '2px',
+                  left: thinking ? '18px' : '2px',
+                  width: '16px',
+                  height: '16px',
+                  backgroundColor: '#ffffff',
+                  borderRadius: '50%',
+                  transition: 'left 0.2s',
+                  boxShadow: '0 1px 2px rgba(0,0,0,0.2)'
+                }}
+              />
+            </button>
+          </div>
+          
         </div>
       )}
     </div>

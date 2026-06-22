@@ -228,9 +228,8 @@ const Sidebar = ({
   return (
     <div
       // Menghapus kelas border statis bawaan Tailwind
-      className={`fixed left-0 top-0 h-screen flex flex-col transition-all duration-300 z-40 ${
-        isOpen ? "w-72" : "w-16"
-      }`}
+      className={`fixed left-0 top-0 h-screen flex flex-col transition-all duration-300 z-40 ${isOpen ? "w-72" : "w-16"
+        }`}
       style={{
         // MODE GELAP: Menggunakan warna arang (#1E1E22) agar kontras dengan ChatPage
         background: darkMode ? "#1E1E22" : theme?.sidebarBg || "#F7F8FC",
@@ -252,14 +251,12 @@ const Sidebar = ({
           <img
             src={cakraLogo}
             alt="CAKRA AI Logo"
-            className={`rounded-full object-cover transition-all duration-300 ${
-              isOpen ? "w-10 h-10" : "w-7 h-7"
-            } ${!isOpen && isHovered ? "opacity-0" : "opacity-100"}`}
+            className={`rounded-full object-cover transition-all duration-300 ${isOpen ? "w-10 h-10" : "w-7 h-7"
+              } ${!isOpen && isHovered ? "opacity-0" : "opacity-100"}`}
           />
           <h1
-            className={`font-bold text-lg whitespace-nowrap transition-all duration-300 ml-2 ${
-              !isOpen ? "opacity-0 pointer-events-none w-0" : "opacity-100"
-            }`}
+            className={`font-bold text-lg whitespace-nowrap transition-all duration-300 ml-2 ${!isOpen ? "opacity-0 pointer-events-none w-0" : "opacity-100"
+              }`}
             style={{ color: theme?.textColor }}
           >
             CAKRA AI
@@ -328,9 +325,8 @@ const Sidebar = ({
             />
           </svg>
           <span
-            className={`font-medium whitespace-nowrap transition-opacity duration-300 ${
-              !isOpen ? "hidden" : "opacity-100"
-            }`}
+            className={`font-medium whitespace-nowrap transition-opacity duration-300 ${!isOpen ? "hidden" : "opacity-100"
+              }`}
             style={{ color: theme?.textColor }}
           >
             New Chat
@@ -351,9 +347,8 @@ const Sidebar = ({
             📄
           </span>
           <span
-            className={`font-medium whitespace-nowrap transition-opacity duration-300 ${
-              !isOpen ? "hidden" : "opacity-100"
-            }`}
+            className={`font-medium whitespace-nowrap transition-opacity duration-300 ${!isOpen ? "hidden" : "opacity-100"
+              }`}
             style={{ color: theme?.textColor }}
           >
             Documents
@@ -376,9 +371,8 @@ const Sidebar = ({
               🛡️
             </span>
             <span
-              className={`font-medium whitespace-nowrap transition-opacity duration-300 ${
-                !isOpen ? "hidden" : "opacity-100"
-              }`}
+              className={`font-medium whitespace-nowrap transition-opacity duration-300 ${!isOpen ? "hidden" : "opacity-100"
+                }`}
               style={{ color: '#ef4444', fontSize: '13px' }}
             >
               Audit Logs
@@ -402,9 +396,8 @@ const Sidebar = ({
               ⚡
             </span>
             <span
-              className={`font-medium whitespace-nowrap transition-opacity duration-300 ${
-                !isOpen ? "hidden" : "opacity-100"
-              }`}
+              className={`font-medium whitespace-nowrap transition-opacity duration-300 ${!isOpen ? "hidden" : "opacity-100"
+                }`}
               style={{ color: '#818cf8', fontSize: '13px' }}
             >
               Cache & Index
@@ -414,9 +407,8 @@ const Sidebar = ({
       </div>
 
       <div
-        className={`flex-1 overflow-y-auto px-2 py-2 space-y-0.5 transition-opacity duration-300 no-scrollbar ${
-          !isOpen ? "opacity-0 pointer-events-none hidden" : "opacity-100"
-        }`}
+        className={`flex-1 overflow-y-auto px-2 py-2 space-y-0.5 transition-opacity duration-300 no-scrollbar ${!isOpen ? "opacity-0 pointer-events-none hidden" : "opacity-100"
+          }`}
         style={{
           msOverflowStyle: "none",
           scrollbarWidth: "none",
@@ -478,13 +470,11 @@ const Sidebar = ({
                   setActiveMenuId(null);
                 }}
                 // PERBAIKAN WARNA TEKS AKTIF: Penyesuaian warna teks dan latar belakang untuk chat yang sedang aktif agar lebih terbaca
-                className={`group relative flex items-center px-3 py-2 text-sm rounded-xl cursor-pointer transition-all ${
-                  currentSessionId === chat.session_uuid
+                className={`group relative flex items-center px-3 py-2 text-sm rounded-xl cursor-pointer transition-all ${currentSessionId === chat.session_uuid
                     ? "bg-blue-500/10 text-blue-400 font-semibold border-l-2 border-blue-500"
                     : "hover:bg-gray-200/50 dark:hover:bg-white/5 font-medium"
-                } ${
-                  isDeletingId === chat.session_uuid ? "animate-delete" : ""
-                }`}
+                  } ${isDeletingId === chat.session_uuid ? "animate-delete" : ""
+                  }`}
                 style={{
                   color:
                     currentSessionId === chat.session_uuid
@@ -548,27 +538,27 @@ const Sidebar = ({
 
                 {(hoveredChatId === chat.session_uuid ||
                   activeMenuId === chat.session_uuid) && (
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setActiveMenuId(
-                        activeMenuId === chat.session_uuid
-                          ? null
-                          : chat.session_uuid,
-                      );
-                    }}
-                    className="absolute right-1 p-1 hover:bg-gray-300 rounded transition-colors dark:hover:bg-gray-700"
-                  >
-                    <svg
-                      className="h-3 w-3"
-                      style={{ color: theme?.secondaryText }}
-                      fill="currentColor"
-                      viewBox="0 0 20 20"
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setActiveMenuId(
+                          activeMenuId === chat.session_uuid
+                            ? null
+                            : chat.session_uuid,
+                        );
+                      }}
+                      className="absolute right-1 p-1 hover:bg-gray-300 rounded transition-colors dark:hover:bg-gray-700"
                     >
-                      <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
-                    </svg>
-                  </button>
-                )}
+                      <svg
+                        className="h-3 w-3"
+                        style={{ color: theme?.secondaryText }}
+                        fill="currentColor"
+                        viewBox="0 0 20 20"
+                      >
+                        <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
+                      </svg>
+                    </button>
+                  )}
 
                 {activeMenuId === chat.session_uuid && (
                   <div
@@ -613,11 +603,10 @@ const Sidebar = ({
       </div>
 
       <div
-        className={`relative flex items-center p-3 ${
-          !isOpen
+        className={`relative flex items-center p-3 ${!isOpen
             ? "p-1 items-center absolute left-0 right-0 justify-center"
             : "justify-center items-center py-3 px-2"
-        }`}
+          }`}
         style={{
           position: "absolute",
           bottom: 0,
@@ -723,12 +712,11 @@ const Sidebar = ({
             )}
           </div>
           <div
-            className={`flex flex-col min-w-0 transition-all duration-300 ${
-              !isOpen ? "opacity-0 w-0 overflow-hidden" : "opacity-100"
-            }`}
+            className={`flex flex-col min-w-0 transition-all duration-300 ${!isOpen ? "opacity-0 w-0 overflow-hidden" : "opacity-100"
+              }`}
           >
             <span
-              className="text-xs font-medium truncate w-32 ml-3"
+              className="text-xs font-medium whitespace-normal break-words ml-3"
               style={{ color: theme?.textColor }}
             >
               {profileName}

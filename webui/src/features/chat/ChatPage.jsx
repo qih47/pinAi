@@ -72,6 +72,9 @@ export default function ChatPage({
   const fileInputRef = useRef(null);
   const [isDragOver, setIsDragOver] = useState(false);
   const [showScrollBottom, setShowScrollBottom] = useState(false);
+
+  const [isThinkingMode, setIsThinkingMode] = useState(false);
+  const [selectedMode, setSelectedMode] = useState('auto');
   // STATE: Deteksi apakah textarea sudah multi-line untuk urusan layout form
   const [isMultiLine, setIsMultiLine] = useState(false);
   // Tambah ref di bawah useState chatMode:
@@ -822,6 +825,8 @@ export default function ChatPage({
                     onChange={handleChatModeChange}
                     disabled={isStreaming}
                     darkMode={darkMode}
+                    thinking={isThinkingMode}
+                    onThinkingChange={setIsThinkingMode}
                   />
                 )}
                 <SendButton
