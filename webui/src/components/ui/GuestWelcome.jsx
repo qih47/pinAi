@@ -17,22 +17,22 @@ export default function GuestWelcome({
       padding: '20px',
       width: '100%'
     }}>
-      
+
       {/* ── KUNCI SAKTI ALIGNMENT: Kontainer Baris Atas Otomatis Center Sejajar dengan Teks Bawah ── */}
-      <div style={{ 
-        display: 'flex', 
-        alignItems: 'center', 
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
         justifyContent: 'center',
-        gap: '14px', 
+        gap: '14px',
         marginBottom: '16px',
         maxWidth: '100%',
         width: 'auto'
       }}>
-        
+
         {/* Logo Cakra */}
-        <div style={{ 
-          animation: 'logoFloat 4s ease-in-out infinite', 
-          display: 'flex', 
+        <div style={{
+          animation: 'logoFloat 4s ease-in-out infinite',
+          display: 'flex',
           alignItems: 'center',
           flexShrink: 0
         }}>
@@ -82,8 +82,8 @@ export default function GuestWelcome({
         lineHeight: '1.5'
       }}>
         {isLoggedIn
-          ? "Ada yang bisa saya bantu hari ini?"
-          : "Asisten AI PT Pindad siap membantu Anda"}
+          ? "Tugas apa yang mau di kerjakan hari ini?"
+          : "Mau cari informasi apa hari ini?"}
       </p>
     </div>
   );

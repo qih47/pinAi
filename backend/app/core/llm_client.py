@@ -1,8 +1,9 @@
 """
 Ollama Core LLM Client Integration Module.
 
-Model-agnostic design: Auto-detect thinking capability via /api/show endpoint.
-Support model thinking (Qwen3, DeepSeek-R1) dan non-thinking (Qwen2.5, Gemma).
+Optimized for Gemma 4 (gemma4:12b).
+Gemma 4 handles thinking natively via the `thought` field in Ollama responses —
+no external thinking API params needed.
 """
 
 import re
@@ -21,30 +22,62 @@ _THINK_PATTERN = re.compile(r"<think>.*?</think>", re.DOTALL | re.IGNORECASE)
 
 def _extract_json_from_response(raw: str, model_name: str) -> Dict[str, Any]:
     """
-    Ekstrak JSON dari response model, support:
-    - Model biasa: langsung output JSON
-    - Model think (Qwen3, DeepSeek-R1): <think>...</think> dulu baru JSON
-    - Model yang wrap JSON dalam markdown ```json ... ```
+    Ekstrak JSON dari response Gemma 4.
+    Support:
+    - Output JSON langsung
+    - JSON yang di-wrap dalam markdown ```json ... ```
+    - JSON terpotong karena num_predict limit (partial recovery)
+    - Sisa teks sebelum/sesudah JSON object
     """
     logger_local = logging.getLogger("CAKRA_LLM_CLIENT")
 
-    # Step 1: Strip semua blok <think>...</think>
+    # Step 1: Strip blok <think>...</think>
     cleaned = _THINK_PATTERN.sub("", raw).strip()
 
     # Step 2: Strip markdown code fence
     cleaned = re.sub(r"```(?:json)?\s*", "", cleaned)
     cleaned = re.sub(r"```", "", cleaned).strip()
 
-    # Step 3: Ekstrak substring { ... } terluar
+    # Step 3: Cari { pertama
     start_idx = cleaned.find("{")
-    end_idx = cleaned.rfind("}")
-
-    if start_idx == -1 or end_idx == -1 or end_idx <= start_idx:
+    if start_idx == -1:
         logger_local.error(
-            f"[JSON_GEN] No JSON object found after cleanup. "
+            f"[JSON_GEN] No opening brace found. "
             f"Model: {model_name} | Raw (150c): {raw[:150]}"
         )
         raise ValueError(f"[JSON_GEN] Model {model_name} output contains no JSON object")
+
+    # Step 4: Cari } terakhir — kalau tidak ada, coba repair JSON terpotong
+    end_idx = cleaned.rfind("}")
+    if end_idx == -1 or end_idx <= start_idx:
+        logger_local.warning(
+            f"[JSON_GEN] JSON terpotong (num_predict limit?). "
+            f"Model: {model_name} | Mencoba repair..."
+        )
+        partial = cleaned[start_idx:]
+        open_braces = partial.count("{") - partial.count("}")
+        open_brackets = partial.count("[") - partial.count("]")
+
+        repaired = partial.rstrip().rstrip(",")
+        if open_brackets > 0:
+            repaired += "]" * open_brackets
+        if open_braces > 0:
+            repaired += "}" * open_braces
+
+        try:
+            result = json.loads(repaired)
+            logger_local.warning(
+                f"[JSON_GEN] Partial JSON berhasil di-repair | Model: {model_name}"
+            )
+            return result
+        except json.JSONDecodeError as je:
+            logger_local.error(
+                f"[JSON_GEN] Repair gagal. Model: {model_name} | "
+                f"Error: {je.msg} | Repaired (200c): {repaired[:200]}"
+            )
+            raise ValueError(
+                f"[JSON_GEN] Model {model_name} output truncated and repair failed: {je.msg}"
+            )
 
     json_str = cleaned[start_idx:end_idx + 1]
 
@@ -58,49 +91,8 @@ def _extract_json_from_response(raw: str, model_name: str) -> Dict[str, Any]:
         raise ValueError(f"[JSON_GEN] Model {model_name} output failed to decode: {je.msg}")
 
 
-async def _check_model_thinking_support(model_name: str) -> bool:
-    """
-    🔥 AUTO-DETECT: Cek apakah model support thinking mode via Ollama API.
-    
-    Query endpoint /api/show untuk lihat model capabilities.
-    Kalau ada field "thinking" atau model name mengandung "think"/"r1", 
-    anggap support thinking.
-    """
-    try:
-        url = f"{settings.OLLAMA_BASE_URL}/api/show"
-        async with httpx.AsyncClient(timeout=httpx.Timeout(10.0, connect=5.0)) as client:
-            response = await client.post(url, json={"name": model_name})
-            if response.status_code == 200:
-                model_info = response.json()
-                
-                # Cek parameter/template yang mengindikasikan thinking support
-                details = model_info.get("details", {})
-                parameters = details.get("parameters", "")
-                
-                # Indikator thinking support:
-                # 1. Ada "thinking" di parameters
-                # 2. Model name mengandung "r1" (DeepSeek-R1) atau "think"
-                # 3. Ada special tokens untuk thinking
-                has_thinking_param = "thinking" in parameters.lower()
-                has_thinking_name = any(x in model_name.lower() for x in ["r1", "think"])
-                
-                if has_thinking_param or has_thinking_name:
-                    logger.debug(f"[MODEL_CHECK] {model_name} supports thinking mode")
-                    return True
-                
-                logger.debug(f"[MODEL_CHECK] {model_name} does NOT support thinking mode")
-                return False
-            else:
-                logger.warning(f"[MODEL_CHECK] Failed to fetch model info: {response.status_code}")
-                return False
-    except Exception as e:
-        logger.warning(f"[MODEL_CHECK] Error checking thinking support for {model_name}: {e}")
-        # Fallback: check model name patterns
-        return any(x in model_name.lower() for x in ["r1", "think"])
-
-
 async def warm_up_model(model_name: str, prompt: str = "keep alive") -> bool:
-    """Warm up a model on Ollama dan keep loaded di VRAM."""
+    """Warm up Gemma 4 on Ollama dan keep loaded di VRAM."""
     url = f"{settings.OLLAMA_BASE_URL}/api/chat"
     payload = {
         "model": model_name,
@@ -123,7 +115,6 @@ _shared_client: Optional[httpx.AsyncClient] = None
 def get_shared_client() -> httpx.AsyncClient:
     global _shared_client
     if _shared_client is None or _shared_client.is_closed:
-        # Connection reuse parameters optimized for low-latency localhost communication
         limits = httpx.Limits(max_keepalive_connections=50, max_connections=100)
         _shared_client = httpx.AsyncClient(
             limits=limits,
@@ -140,11 +131,13 @@ async def stream_ollama_chat(
     session_uuid: Optional[str] = None,
     keep_alive: int = -1,
     num_ctx: int = 4096,
+    is_thinking: bool = False,
     **kwargs,
 ) -> AsyncGenerator[str, None]:
     """
     Generator asinkronus murni (Passthrough).
     Mengalirkan string chunk mentah langsung dari Ollama menuju Layer 2 Executor.
+    Gemma 4 thinking dialirkan via field `thought` per chunk.
     """
     gpu_semaphore = request.app.state.gpu_limit
     url = f"{settings.OLLAMA_BASE_URL}/api/chat"
@@ -172,6 +165,7 @@ async def stream_ollama_chat(
             "model": model_name,
             "messages": messages,
             "stream": True,
+            "think": is_thinking,
             "options": ollama_options,
             "keep_alive": keep_alive,
         }
@@ -188,7 +182,7 @@ async def stream_ollama_chat(
                 full_response = ""
                 accumulated_thinking = ""
                 first_token = True
-                current_mode = None  # Tracks 'thinking' or 'answering' mode for terminal log layout
+                current_mode = None
 
                 async for line in response.aiter_lines():
                     if not line:
@@ -197,13 +191,13 @@ async def stream_ollama_chat(
                     chunk = json.loads(line)
                     message_chunk = chunk.get("message", {})
                     content = message_chunk.get("content", "")
-                    thought = message_chunk.get("thought", "")
+                    thought = message_chunk.get("thinking", "")
                     done = chunk.get("done", False)
 
                     if content or thought:
                         if first_token:
                             ttft = (datetime.now() - inference_start_time).total_seconds()
-                            logger.info(f"⚡ [LLM_CLIENT] First token received! TTFT (Time to First Token): {ttft:.2f}s")
+                            logger.info(f"⚡ [LLM_CLIENT] First token received! TTFT: {ttft:.2f}s")
                             first_token = False
 
                         if thought:
@@ -220,8 +214,16 @@ async def stream_ollama_chat(
                                 print("\n[GEMMA_ANSWER] ", end="", flush=True)
                             print(content, end="", flush=True)
 
+                        yield_data = {"chunk": content, "thinking": thought, "done": done}
+                        if done:
+                            eval_count = chunk.get("eval_count", 0)
+                            eval_duration = chunk.get("eval_duration", 0)
+                            if eval_count and eval_duration:
+                                yield_data["eval_count"] = eval_count
+                                yield_data["eval_duration"] = eval_duration
+                                
                         yield json.dumps(
-                            {"chunk": content, "thought": thought, "done": done},
+                            yield_data,
                             ensure_ascii=False,
                         ) + "\n"
 
@@ -249,6 +251,7 @@ async def stream_ollama_chat(
                                     session_uuid=session_uuid,
                                     user_text=user_query,
                                     assistant_text=full_response,
+                                    metadata={"mode": "global_inference", "thought": accumulated_thinking.strip() if accumulated_thinking else None}
                                 )
                                 logger.info(f"[LLM_CLIENT] Dialog history saved for session {session_uuid[:8]}")
                             except Exception as save_err:
@@ -270,20 +273,24 @@ async def generate_json_response(
     keep_alive: int = -1,
     timeout: float = 60.0,
     num_ctx: int = 2048,
-    thinking_budget: int = 0,
+    num_predict: int = 2048,
+    thinking_budget: int = 0,  # Retained for API compatibility, unused for Gemma 4
     **kwargs,
 ) -> Dict[str, Any]:
     """
     Generate JSON response (non-streaming) untuk pipeline layers.
 
-    Auto-detect thinking capability via /api/show endpoint.
-    Thinking distrip otomatis dari output sebelum JSON diekstrak.
+    Gemma 4 specifics:
+    - Thinking terjadi secara native, tidak perlu API param `thinking`
+    - Response content bisa kosong jika Ollama memisahkan `thought` dan `content`
+      → fallback ke field `thought` untuk recovery
+    - `thinking_budget` diabaikan (Gemma 4 mengontrol thinking budget sendiri)
+    - `num_predict` default 2048 — cukup untuk JSON schema 12 param Call 1
 
-    Args:
-        thinking_budget: Max token untuk thinking. 0 = disable think.
-                         Rekomendasi per layer:
-                         - Layer 0 Gateway/Rewriter: 128 (klasifikasi sederhana)
-                         - Layer 1 Cognitive Analyzer: 512 (analisis intent kompleks)
+    Rekomendasi num_predict per caller:
+    - Call 1 Router (12 param JSON)  : 2048  ← default sudah cukup
+    - Layer 0 Gateway/Rewriter       : 512
+    - Layer 1 Cognitive Analyzer     : 1024
 
     Raises:
         httpx.TimeoutException: Saat Ollama tidak merespons dalam batas timeout
@@ -292,11 +299,6 @@ async def generate_json_response(
     """
     logger_local = logging.getLogger("CAKRA_LLM_CLIENT")
     url = f"{settings.OLLAMA_BASE_URL}/api/chat"
-
-    # 🔥 AUTO-DETECT: Cek apakah model support thinking
-    model_has_thinking = await _check_model_thinking_support(model_name)
-
-    num_predict = (thinking_budget + 1024) if model_has_thinking else 1024
 
     ollama_options = {
         "temperature": temperature,
@@ -309,21 +311,16 @@ async def generate_json_response(
         "model": model_name,
         "messages": messages,
         "stream": False,
+        "think": False,
         "options": ollama_options,
         "keep_alive": keep_alive,
+        "format": "json",
     }
 
-    # 🔥 Hanya tambahkan thinking budget kalau model support DAN budget > 0
-    if model_has_thinking and thinking_budget > 0:
-        payload["thinking"] = {"budget_tokens": thinking_budget}
-        logger_local.debug(
-            f"[JSON_GEN] Thinking enabled | budget: {thinking_budget} tokens | model: {model_name}"
-        )
-    else:
-        logger_local.debug(
-            f"[JSON_GEN] Thinking disabled | model: {model_name} | "
-            f"reason: {'non-think model' if not model_has_thinking else 'zero budget'}"
-        )
+    logger_local.debug(
+        f"[JSON_GEN] Calling Gemma 4 | model: {model_name} | "
+        f"num_ctx: {num_ctx} | num_predict: {num_predict}"
+    )
 
     start_time = datetime.now()
     client = get_shared_client()
@@ -343,27 +340,40 @@ async def generate_json_response(
             )
 
         result = response.json()
-        message_content = result.get("message", {}).get("content", "")
+        message_obj = result.get("message", {})
+        message_content = message_obj.get("content", "")
 
+        # Gemma 4: jika content kosong, coba ambil dari field `thought`
         if not message_content or not message_content.strip():
-            raise ValueError(f"[JSON_GEN] Model {model_name} returned empty content")
+            thought_content = message_obj.get("thought", "")
+            if thought_content and thought_content.strip():
+                logger_local.warning(
+                    f"[JSON_GEN] content kosong, recovery dari field 'thought' | model: {model_name}"
+                )
+                message_content = thought_content
+            else:
+                logger_local.error(
+                    f"[JSON_GEN] content DAN thought kosong. "
+                    f"Full Ollama response: {json.dumps(result)[:500]}"
+                )
+                raise ValueError(f"[JSON_GEN] Model {model_name} returned empty content")
 
         parsed_json = _extract_json_from_response(message_content, model_name)
 
         elapsed = (datetime.now() - start_time).total_seconds()
         logger_local.info(
             f"[JSON_GEN] Generated in {elapsed:.2f}s | Model: {model_name} | "
-            f"thinking_budget: {thinking_budget} tokens | thinking_enabled: {model_has_thinking}"
+            f"num_predict: {num_predict}"
         )
         return parsed_json
 
-    # 🔥 FIX UTAMA: Menutup blok try dengan menangkap exception secara terstruktur
     except httpx.TimeoutException as te:
         logger_local.error(f"[JSON_GEN] Timeout calling Ollama model {model_name}: {str(te)}")
         raise
     except Exception as e:
         logger_local.error(f"[JSON_GEN] Unexpected error during JSON inference: {str(e)}")
         raise
+
 
 async def call_ollama_generate_raw(
     model_name: str,
@@ -383,6 +393,7 @@ async def call_ollama_generate_raw(
         model_name, raw_prompt, temperature, num_predict, num_ctx, stop_sequences, request
     ):
         yield chunk
+
 
 async def stream_ollama_generate_raw(*args, **kwargs):
     """Async streaming generator alias for backward compatibility."""

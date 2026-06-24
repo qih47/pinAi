@@ -16,60 +16,54 @@ async def generate_session_title(
     max_length: int = 50
 ) -> str:
     """
-    Generate informative session title menggunakan LLM.
-    
-    Args:
-        user_message: User's initial message
-        first_response: AI's first response (untuk context)
-        max_length: Maximum title length (default: 50 chars)
-    
-    Returns:
-        str: Generated title (atau fallback ke first 30 chars jika gagal)
+    Generate informative session title menggunakan LLM Qwen secara cerdas.
     """
     from backend.app.core.llm_client import generate_json_response
     
     try:
-        # Prepare prompt untuk Qwen 0.5B (ringan, cepat)
-        title_prompt = f"""Buat judul ringkas 3-7 kata untuk topik percakapan ini.
-Format output harus berupa JSON valid dengan key "title".
+        # 1. Bersihkan input & batasi biar Qwen gak pusing kebanyakan context
+        clean_user = user_message.strip()[:80]
+        
+        # 2. PROMPT HARDENING: Singkat, padat, ke intinya (Sangat ramah buat model kecil)
+        # Buat prompt seminimalis mungkin tanpa menyertakan teks contoh yang bisa dicopas salah oleh Qwen
+        title_prompt = f"""[TASK] Buat 1 judul Topik percakapan yang sesuai dengan pesan user berikut "{clean_user}" (2-4 kata saja) dalam Bahasa Indonesia.
+[RULE] Output HARUS JSON murni dengan format wajib: {{"title": "isi judul disini"}}
 
-Percakapan:
-User: {user_message[:100]}
-Assistant: {first_response[:100]}
+JSON:"""
 
-Format output wajib:
-{{"title": "Judul Singkat"}}"""
-
-        # Call Qwen 0.5B dengan timeout 5s
+        # 3. Call Qwen dengan opsi pengunci stabilitas JSON
         messages = [
             {"role": "user", "content": title_prompt}
         ]
+        
         result = await asyncio.wait_for(
             generate_json_response(
-                model_name="qwen2.5:0.5b",
+                model_name="gemma3:270m",
                 messages=messages,
                 request=None,
-                timeout=5.0,
-                temperature=0.3  # Deterministic output
+                timeout=5.0,  # Judul harusnya instan, 5 detik udah kepanjangan
+                temperature=0.0,  # 🔥 WAJIB 0.0: Biar gak labil dan deterministic!
+                # options={"think": False}  # ← Pasang ini jika fungsi llm_client lo dukung inject options root/sub
             ),
             timeout=6.0
         )
+        
         title = result.get("title", "")
         
-        # Sanitize title
-        title = title.strip().strip('"').strip("'").strip()
+        # 4. Bersihkan karakter sampah & ubah ke format Title Case (Biar rapi di sidebar UI)
+        title = title.strip().strip('"').strip("'").strip(".").title()
         
-        # Validate length
-        if len(title) > max_length:
-            title = title[:max_length].rsplit(' ', 1)[0] + "..."
-        
-        # Fallback jika hasil kosong
-        if not title or len(title) < 3:
+        # Fallback jika model gagal paham
+        if not title or len(title) < 2 or "Title" in title:
             return _fallback_title(user_message)
         
+        # Batasi panjang karakter
+        if len(title) > max_length:
+            title = title[:max_length].strip() + "..."
+            
         logger.info(f"✅ [TITLE] Generated: '{title}'")
         return title
-    
+        
     except asyncio.TimeoutError:
         logger.warning("[TITLE] LLM generation timeout, using fallback")
         return _fallback_title(user_message)
@@ -117,24 +111,24 @@ async def update_session_title_async(
         bool: Success flag
     """
     try:
+        from backend.app.core.database import get_db
         # Generate title
         new_title = await generate_session_title(user_message, first_response)
         
         # Update database
-        if db_pool:
-            async with db_pool.acquire() as conn:
-                await conn.execute(
-                    """
-                    UPDATE chat_sessions
-                    SET judul = $1, updated_at = NOW()
-                    WHERE session_uuid = $2
-                    """,
-                    new_title,
-                    session_uuid
-                )
-            
-            logger.info(f"✅ [SESSION] Title updated for {session_uuid}: '{new_title}'")
-            return True
+        async with get_db() as conn:
+            await conn.execute(
+                """
+                UPDATE chat_sessions
+                SET judul = $1
+                WHERE session_uuid = $2
+                """,
+                new_title,
+                session_uuid
+            )
+        
+        logger.info(f"✅ [SESSION] Title updated for {session_uuid}: '{new_title}'")
+        return True
     
     except Exception as e:
         logger.error(f"❌ [SESSION] Failed to update title for {session_uuid}: {e}")

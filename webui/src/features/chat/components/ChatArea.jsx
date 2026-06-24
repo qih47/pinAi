@@ -65,8 +65,9 @@ export default function ChatArea({
       isStreamingText={isStreamingText}
       sendMessage={sendMessage}
       searchQuery={searchQuery}
+      isLastMessage={idx === messages.length - 1}
     />
-  ), [darkMode, theme, isThinking, isStreamingText, sendMessage, searchQuery]);
+  ), [darkMode, theme, isThinking, isStreamingText, sendMessage, searchQuery, messages.length]);
 
   const FooterComponent = useCallback(() => (
     <>

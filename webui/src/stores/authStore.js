@@ -11,12 +11,13 @@ export const useChatAuthStore = create((set) => ({
   error: null,
 
   // 🔐 FUNGSI 1: LOGIN ENGINE (SINKRON DATA & TOKEN FASTAPI)
-  login: async (identifier, password) => {
+  login: async (identifier, password, guestSessionId = null) => {
     set({ isLoading: true, error: null });
     try {
       const response = await apiClient.post('/auth/login', {
         username: identifier,
-        password: password
+        password: password,
+        guest_session_id: guestSessionId
       });
 
       // Di dalam fungsi login & checkSession pada authStore.js lo, simpan objeknya utuh:

@@ -3,6 +3,25 @@ import { useChatStore } from "@/stores/chatStore";
 import SessionExpiryStatus from "../../../components/SessionExpiryStatus"; // 👈 W11: Session expiry display
 import { useSessionTitle } from "../../../hooks/useSessionTitle"; // 👈 W14: LLM Title Indicator
 
+const TypewriterTitle = ({ text }) => {
+  const [displayedText, setDisplayedText] = useState("");
+
+  useEffect(() => {
+    setDisplayedText("");
+    if (!text) return;
+    
+    let i = 0;
+    const timer = setInterval(() => {
+      setDisplayedText(text.slice(0, i + 1));
+      i++;
+      if (i >= text.length) clearInterval(timer);
+    }, 50);
+    return () => clearInterval(timer);
+  }, [text]);
+
+  return <span>{displayedText}</span>;
+};
+
 const Sidebar = ({
   clearChat,
   showDocumentList,
@@ -508,7 +527,11 @@ const Sidebar = ({
                   ) : (
                     <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                       <span className="truncate">
-                        {chat.judul || "Chat Baru"}
+                        {chat._titleUpdated ? (
+                          <TypewriterTitle text={chat.judul} />
+                        ) : (
+                          chat.judul || "Chat Baru"
+                        )}
                       </span>
                       {/* W14: LLM Title Generation shimmer indicator */}
                       {isTitleGenerating(chat.session_uuid) && (

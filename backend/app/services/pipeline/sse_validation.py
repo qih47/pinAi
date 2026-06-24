@@ -85,6 +85,7 @@ class SSEValidator:
             or data.get("chunk") is not None
             or data.get("sources") is not None
             or data.get("done") is True
+            or data.get("status") is not None
         )
         if not has_content:
             logger.debug("[SSE_VALIDATION] Empty event, all fields null")
@@ -108,6 +109,9 @@ def format_sse(
     done: bool = False,
     sources: Optional[List[Dict]] = None,
     event_type: Optional[str] = None,
+    status: str = "",
+    eval_count: int = 0,
+    eval_duration: int = 0,
 ) -> str:
     """
     Format SSE event conforming to API Contract.
@@ -116,11 +120,16 @@ def format_sse(
     event = {
         "chunk": chunk if chunk else None,
         "thinking": thinking if thinking else None,
+        "status": status if status else None,
         "done": done,
         "sources": sources,
         "event_type": event_type,
         "timestamp": datetime.utcnow().isoformat() + "Z",
     }
+    if eval_count > 0:
+        event["eval_count"] = eval_count
+    if eval_duration > 0:
+        event["eval_duration"] = eval_duration
 
     if not SSEValidator.validate_event(event, event_type):
         logger.debug("[SSE_VALIDATION] Skipping empty event")

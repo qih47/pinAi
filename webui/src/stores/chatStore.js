@@ -19,7 +19,7 @@ function _normalizeAttachments(files) {
 }
 
 // Tambahkan parameter targetAssistantIdx di akhir (default null)
-async function _performStream(set, get, messagesToSend, assistantMessage, forcedSessionUuid = null, npp = null, isolatedDocId = null, attachmentPaths = [], chatMode = 'auto', toast = null, targetAssistantIdx = null, editIndex = null) {
+async function _performStream(set, get, messagesToSend, assistantMessage, forcedSessionUuid = null, npp = null, isolatedDocId = null, attachmentPaths = [], chatMode = 'auto', isThinkingMode = true, toast = null, targetAssistantIdx = null, editIndex = null) {
     let attempts = 0;
     const maxAttempts = 4;
     let success = false;
@@ -37,39 +37,65 @@ async function _performStream(set, get, messagesToSend, assistantMessage, forced
             let renderTimeout = null;
             let accumulatedThinking = '';
 
+            const controller = new AbortController();
+            set({ abortController: controller });
+
             await endpoints.streamChat(
                 {
                     sessionUuid: activeSessionUuid,
                     messages: messagesToSend,
                     chatMode: get().chatMode || chatMode,
+                    thinking: isThinkingMode,
                     isolatedDocId,
                     attachmentPaths,
                     npp,
-                    editIndex
+                    editIndex,
+                    signal: controller.signal
                 },
                 {
                     onThinking: (thinking) => {
-                        // Bersihkan marker <|channel> dari string thinking
-                        let cleanThinking = thinking.replace(/<\|channel>thought/g, '').replace(/<channel\|>/g, '');
+                        // Bersihkan marker <|channel> dan [GEMMA_THINK] dari string thinking
+                        let cleanThinking = thinking
+                            .replace(/<\|channel>thought/g, '')
+                            .replace(/<channel\|>/g, '')
+                            .replace(/\[GEMMA_THINK\]/g, '');
+                            
                         accumulatedThinking += cleanThinking;
+
+                        // 🔥 TRULY DYNAMIC STATUS: Mengekstrak topik yang sedang dipikirkan secara native!
+                        // Tidak lagi kaku 3 langkah, melainkan membaca apapun yang ditulis AI sebelum titik dua (:)
+                        let currentStatus = 'Sedang memproses...';
+                        const lines = accumulatedThinking.split('\n');
+                        
+                        for (const line of lines) {
+                            // Cari pola bullet point dengan header. Contoh: "*   Context:", "*   *Step 1 - Selection:*", "    * Analysis:"
+                            // Regex ini menangkap teks di dalam bullet sebelum tanda titik dua (:), maksimal 35 karakter.
+                            const match = line.match(/^\s*[\*-]\s+(?:\*+)?([^:\n\*]{3,35})(?:\*+)?\s*:/);
+                            if (match && match[1]) {
+                                let topic = match[1].trim();
+                                // Percantik output status
+                                currentStatus = topic + '...';
+                            }
+                        }
+
                         const updatedAssistantMsg = {
                             ...assistantMessage,
                             thinking: accumulatedThinking,
-                            thought: accumulatedThinking,
                             isThinking: true,
-                            content: `<think>\n${accumulatedThinking}\n</think>`
+                            statusMessage: currentStatus,
+                            content: accumulatedReply // Preserve actual content independently
                         };
-                        
+
                         set(state => {
                             const newMessages = [...state.messages];
                             const idx = targetAssistantIdx !== null ? targetAssistantIdx : newMessages.length - 1;
                             if (newMessages[idx]) {
-                                updatedAssistantMsg.statusMessage = newMessages[idx].statusMessage || 'Sedang memproses...';
+                                // Kita paksa update statusMessage di sini
                                 newMessages[idx] = updatedAssistantMsg;
                             }
-                            return { 
+                            return {
                                 messages: newMessages,
-                                currentThinking: cleanThinking 
+                                currentThinking: cleanThinking
                             };
                         });
                         assistantMessage = updatedAssistantMsg;
@@ -85,7 +111,7 @@ async function _performStream(set, get, messagesToSend, assistantMessage, forced
                                     statusMessage: statusStr
                                 };
                             }
-                            return { 
+                            return {
                                 messages: newMessages,
                                 currentThinking: statusStr
                             };
@@ -108,9 +134,7 @@ async function _performStream(set, get, messagesToSend, assistantMessage, forced
                     onChunk: (chunk) => {
                         accumulatedReply += chunk;
                         let cleanReply = accumulatedReply.replace(/<\|channel>thought/g, '').replace(/<channel\|>/g, '');
-                        // Pertahankan the <think> block jika ada
-                        const prefix = accumulatedThinking ? `<think>\n${accumulatedThinking}\n</think>\n` : '';
-                        assistantMessage = { ...assistantMessage, content: prefix + cleanReply };
+                        assistantMessage = { ...assistantMessage, content: cleanReply };
 
                         if (!renderTimeout) {
                             renderTimeout = requestAnimationFrame(() => {
@@ -122,14 +146,25 @@ async function _performStream(set, get, messagesToSend, assistantMessage, forced
 
                                 set({
                                     messages: currentMessages,
-                                    isThinking: false, // ✨ FIX: matikan isThinking saat teks mulai keluar
-                                    isStreaming: true
+                                    isThinking: false // ✨ FIX: matikan isThinking saat teks mulai keluar
                                 });
                                 renderTimeout = null;
                             });
                         }
                     },
-                    onDone: () => {
+                    onDone: (data) => {
+                        assistantMessage = { ...assistantMessage, isStreaming: false, isThinking: false };
+                        
+                        if (data && data.eval_count && data.eval_duration) {
+                            assistantMessage.eval_count = data.eval_count;
+                            assistantMessage.eval_duration = data.eval_duration;
+                        }
+                        
+                        const currentMessages = [...get().messages];
+                        const idxToUpdate = targetAssistantIdx !== null ? targetAssistantIdx : currentMessages.length - 1;
+                        currentMessages[idxToUpdate] = assistantMessage;
+                        set({ messages: currentMessages });
+                        
                         set({
                             isThinking: false,
                             isStreaming: false,
@@ -142,9 +177,22 @@ async function _performStream(set, get, messagesToSend, assistantMessage, forced
             success = true;
         } catch (error) {
             console.warn(`💥 [FE STREAM ERROR]:`, error);
+            if (error.name === 'AbortError') {
+                assistantMessage.content += ' *Respons dihentikan*';
+                assistantMessage.isStreaming = false;
+                assistantMessage.isThinking = false;
+                const currentMessages = [...get().messages];
+                const idxToUpdate = targetAssistantIdx !== null ? targetAssistantIdx : currentMessages.length - 1;
+                currentMessages[idxToUpdate] = assistantMessage;
+                set({ messages: currentMessages, isThinking: false, currentThinking: '', isStreaming: false, isLoading: false });
+                break; // Stop retry loop
+            }
+
             attempts++;
             if (attempts >= maxAttempts) {
                 assistantMessage.content = '⚠️ Gagal memuat balasan. Koneksi terputus sepenuhnya.';
+                assistantMessage.isStreaming = false;
+                assistantMessage.isThinking = false;
                 const currentMessages = [...get().messages];
                 const idxToUpdate = targetAssistantIdx !== null ? targetAssistantIdx : currentMessages.length - 1;
                 currentMessages[idxToUpdate] = assistantMessage;
@@ -168,25 +216,43 @@ export const useChatStore = create((set, get) => ({
     activeIsolatedTitle: null,
     documents: [],
     isLoadingDocuments: false,
+    abortController: null,
 
-    sendMessage: async (content, npp, onSessionCreatedCallback, directUploadedFiles = null, chatMode = 'auto', toast = null) => {
+    stopStream: () => {
+        const controller = get().abortController;
+        if (controller) {
+            controller.abort();
+            set({ isStreaming: false, isThinking: false, abortController: null });
+        }
+    },
+
+    sendMessage: async (content, npp, onSessionCreatedCallback, directUploadedFiles = null, chatMode = 'auto', isThinkingMode = true, toast = null) => {
         const hasAttachments = (directUploadedFiles?.length > 0) || (get().stagedAttachments?.length > 0);
         if ((!content.trim() && !hasAttachments) || get().isStreaming) return;
+
+        // ── GUEST OVERRIDE (FE GUARD) ──
+        if (npp === 'GUEST') {
+            chatMode = 'flash';
+            isThinkingMode = false;
+        }
 
         let currentSessionUuid = get().sessionUuid;
 
         if (!currentSessionUuid || currentSessionUuid === "new") {
             try {
-                const generatedTitle = content.split(" ").slice(0, 4).join(" ") + "...";
+                const generatedTitle = "Obrolan Baru";
                 const result = await endpoints.createChatSession(generatedTitle, npp);
 
                 if (result.status === "success") {
                     currentSessionUuid = result.data.session_uuid;
+                    
+                    // 🔥 FIX: Simpan preferensi pengguna ke DB agar tidak kere-set saat di-fetch ulang oleh ChatPage
+                    await endpoints.updateSessionSettings(currentSessionUuid, { chatMode, isThinkingMode }).catch(() => {});
 
                     if (onSessionCreatedCallback) {
                         onSessionCreatedCallback({
                             session_uuid: currentSessionUuid,
-                            judul: generatedTitle,
+                            judul: result.data.judul || content.split(" ").slice(0, 4).join(" "),
                             is_pinned: false,
                             started_at: new Date().toISOString()
                         });
@@ -211,7 +277,7 @@ export const useChatStore = create((set, get) => ({
             ...(attachmentMeta.length > 0 ? { attachments: attachmentMeta } : {}),
         };
         const updatedMessages = [...get().messages, userMessage];
-        const assistantMessage = { role: 'assistant', content: '' };
+        const assistantMessage = { role: 'assistant', content: '', isStreaming: true };
 
         const currentAttachmentPaths = attachmentMeta
             .map((file) => file.file_path)
@@ -240,6 +306,7 @@ export const useChatStore = create((set, get) => ({
             currentIsolatedDocId,
             currentAttachmentPaths,
             chatMode,
+            isThinkingMode,
             toast
         );
 
@@ -260,6 +327,7 @@ export const useChatStore = create((set, get) => ({
             role: 'assistant',
             content: '',
             isThinking: true,
+            isStreaming: true,
             thinking: '',
             statusMessage: 'Sedang berpikir...' // Gunakan statusMessage alih-alih thinking untuk loading state
         };
@@ -295,6 +363,7 @@ export const useChatStore = create((set, get) => ({
             get().activeIsolatedDocId,
             [],
             'auto',
+            true, // default isThinkingMode for edit/regenerate
             toast,
             index + 1, // targetAssistantIdx
             index      // 🔥 editIndex
@@ -420,8 +489,10 @@ export const useChatStore = create((set, get) => ({
         set({ isLoadingDocuments: true });
         try {
             const result = await endpoints.fetchAllDocuments();
-            if (result.status === "success" && result.data) {
-                set({ documents: result.data });
+            if (result && result.items) {
+                set({ documents: result.items });
+            } else if (Array.isArray(result)) {
+                set({ documents: result });
             } else {
                 set({ documents: [] });
             }

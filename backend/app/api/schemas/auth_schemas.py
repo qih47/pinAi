@@ -5,6 +5,7 @@ class LoginRequest(BaseModel):
     """Schema untuk memvalidasi payload data login dari Frontend"""
     username: str = Field(..., description="Username / Nomor Pokok Pegawai PT Pindad")
     password: str = Field(..., description="Plain password dari Frontend")
+    guest_session_id: Optional[str] = Field(None, description="Session ID saat Guest jika ingin dimigrasikan ke user login")
 
     class Config:
         json_schema_extra = {

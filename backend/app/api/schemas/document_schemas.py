@@ -29,6 +29,10 @@ class DocumentSchema(DocumentBaseSchema):
     updated_at: Optional[datetime] = Field(None, description="Timestamp update terakhir")
     chunk_count: int = Field(0, description="Jumlah chunks dari dokumen ini")
     embedding_status: str = Field("pending", description="Status embedding: pending, processing, completed, failed")
+    nomor: Optional[str] = Field(None, description="Nomor dokumen")
+    tanggal: Optional[datetime] = Field(None, description="Tanggal dokumen")
+    filename: Optional[str] = Field(None, description="Filename asli dokumen")
+    jenis_dokumen: Optional[str] = Field(None, description="Nama jenis dokumen")
     
     class Config:
         from_attributes = True

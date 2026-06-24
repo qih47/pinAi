@@ -102,8 +102,12 @@ class ChatHistoryService:
                     "SELECT npp FROM chat_sessions WHERE session_uuid = $1 AND is_deleted = FALSE",
                     session_uuid
                 )
-                if not row or row["npp"] != "GUEST":
+                if not row:
                     return False
+                if row["npp"] == npp:
+                    return True # Sudah di-assign ke user ini
+                if row["npp"] != "GUEST":
+                    return False # Milik orang lain
                 
                 await conn.execute(
                     "UPDATE chat_sessions SET npp = $1, user_name = $2 WHERE session_uuid = $3",
@@ -114,6 +118,36 @@ class ChatHistoryService:
             except Exception as e:
                 logger.error(f"[CHAT_HISTORY_ERROR] Failed to assign session: {str(e)}")
                 return False
+
+    async def update_session_settings(self, session_uuid: str, settings: Dict[str, Any]) -> bool:
+        """Fitur: Menyimpan state mode (chatMode, isThinkingMode) untuk sesi tertentu."""
+        async with get_db() as conn:
+            try:
+                settings_json = json.dumps(settings)
+                await conn.execute(
+                    "UPDATE chat_sessions SET settings = $1 WHERE session_uuid = $2",
+                    settings_json,
+                    session_uuid,
+                )
+                return True
+            except Exception as e:
+                logger.error(f"[CHAT_HISTORY_ERROR] Failed to update session settings: {str(e)}")
+                return False
+
+    async def get_session_settings(self, session_uuid: str) -> Optional[Dict[str, Any]]:
+        """Fitur: Mengambil state mode (chatMode, isThinkingMode) untuk sesi tertentu."""
+        async with get_db() as conn:
+            try:
+                row = await conn.fetchrow(
+                    "SELECT settings FROM chat_sessions WHERE session_uuid = $1 AND is_deleted = FALSE",
+                    session_uuid,
+                )
+                if row and row["settings"]:
+                    return json.loads(row["settings"]) if isinstance(row["settings"], str) else row["settings"]
+                return {"chatMode": "auto", "isThinkingMode": False}
+            except Exception as e:
+                logger.error(f"[CHAT_HISTORY_ERROR] Failed to get session settings: {str(e)}")
+                return None
 
     # =========================================================================
     # 💬 MESSAGE MANAGEMENT
@@ -317,6 +351,7 @@ class ChatHistoryService:
         user_text: str,
         assistant_text: Optional[str] = None,
         context_document: Optional[str] = None,
+        metadata: Optional[dict] = None,
     ) -> bool:
         """Simpan ke ai_dialogue_corpus dengan session_id integer FK."""
         async with get_db() as conn:
@@ -325,41 +360,25 @@ class ChatHistoryService:
                 if session_pk is None:
                     return False
 
-                if context_document is not None:
-                    await conn.execute(
-                        """
-                        INSERT INTO ai_dialogue_corpus (session_id, user_text, context_document, created_at)
-                        VALUES ($1, $2, $3, CURRENT_TIMESTAMP);
-                        """,
-                        session_pk,
-                        user_text,
-                        context_document,
-                    )
-                elif assistant_text is not None:
-                    await conn.execute(
-                        """
-                        INSERT INTO ai_dialogue_corpus (session_id, user_text, assistant_text, created_at)
-                        VALUES ($1, $2, $3, CURRENT_TIMESTAMP);
-                        """,
-                        session_pk,
-                        user_text,
-                        assistant_text,
-                    )
-                else:
-                    await conn.execute(
-                        """
-                        INSERT INTO ai_dialogue_corpus (session_id, user_text, created_at)
-                        VALUES ($1, $2, CURRENT_TIMESTAMP);
-                        """,
-                        session_pk,
-                        user_text,
-                    )
+                metadata_json = json.dumps(metadata) if metadata else None
+
+                await conn.execute(
+                    """
+                    INSERT INTO ai_dialogue_corpus (session_id, user_text, assistant_text, context_document, metadata, created_at)
+                    VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP);
+                    """,
+                    session_pk,
+                    user_text,
+                    assistant_text,
+                    context_document,
+                    metadata_json
+                )
                 return True
             except Exception as e:
                 logger.error(f"[CHAT_HISTORY_ERROR] Failed to save dialogue corpus: {str(e)}")
                 return False
 
-    async def auto_update_session_title(self, session_uuid: str, trigger_text: str) -> Optional[str]:
+    async def auto_update_session_title(self, session_uuid: str, trigger_text: str, first_response: str = "") -> Optional[str]:
         """
         Auto-generate judul sesi jika masih 'Obrolan Baru'.
         Mengembalikan judul baru jika berhasil di-update, atau None jika tidak perlu di-update.
@@ -371,14 +390,17 @@ class ChatHistoryService:
                     session_uuid,
                 )
                 if check_title and check_title["judul"] == "Obrolan Baru":
-                    auto_title = " ".join(trigger_text.split()[:4]) + "..."
-                    await conn.execute(
-                        "UPDATE chat_sessions SET judul = $1 WHERE session_uuid = $2",
-                        auto_title,
-                        session_uuid,
+                    from backend.app.utils.title_generator import enqueue_title_generation
+                    
+                    # Lempar ke background task LLM title generation
+                    await enqueue_title_generation(
+                        session_uuid=session_uuid,
+                        user_message=trigger_text,
+                        first_response=first_response
                     )
-                    logger.info(f"[AUTO_TITLE] Session title updated: {auto_title}")
-                    return auto_title
+                    
+                    # Return string temporary untuk indikasi background process berjalan
+                    return "Sedang membuat judul..."
                 return None
             except Exception as e:
                 logger.warning(f"[AUTO_TITLE_WARNING] Failed auto title update: {str(e)}")
@@ -428,6 +450,45 @@ class ChatHistoryService:
 
             except Exception as e:
                 logger.error(f"[FEEDBACK_SAVE_ERROR] Error saving feedback: {e}")
+                return False
+
+    async def update_message_feedback(
+        self, session_id: str, edit_index: int, feedback_data: dict
+    ) -> bool:
+        """
+        Menyimpan status feedback (Good/Bad) menggunakan JSONB berdasarkan offset index pesan di frontend.
+        """
+        async with get_db() as conn:
+            try:
+                session_pk = await self._resolve_session_pk(conn, session_id)
+                if session_pk is None:
+                    return False
+                
+                # Cari ID pesan ke-N (berdasarkan urutan waktu)
+                find_query = """
+                    SELECT id FROM chat_messages 
+                    WHERE session_id = $1 
+                    ORDER BY timestamp ASC, id ASC 
+                    OFFSET $2 LIMIT 1
+                """
+                target_id = await conn.fetchval(find_query, session_pk, edit_index)
+                
+                if target_id is None:
+                    logger.warning(f"[CHAT_HISTORY] Target message at index {edit_index} not found for feedback.")
+                    return False
+                
+                feedback_json = json.dumps(feedback_data)
+                
+                update_query = """
+                    UPDATE chat_messages 
+                    SET feedback = $1
+                    WHERE id = $2
+                """
+                await conn.execute(update_query, feedback_json, target_id)
+                logger.info(f"[CHAT_HISTORY] Saved feedback {feedback_json} for message index {edit_index} (id: {target_id})")
+                return True
+            except Exception as e:
+                logger.error(f"[CHAT_HISTORY_ERROR] Failed to update message feedback: {str(e)}")
                 return False
 
 

@@ -74,6 +74,16 @@ export default function ChatPage({
   const [showScrollBottom, setShowScrollBottom] = useState(false);
 
   const [isThinkingMode, setIsThinkingMode] = useState(false);
+  const isThinkingModeRef = useRef(false);
+  const handleThinkingModeChange = (val) => {
+    isThinkingModeRef.current = val;
+    setIsThinkingMode(val);
+    if (sessionId && sessionId !== 'new') {
+        import('../../services/endpoints').then(endpoints => {
+            endpoints.updateSessionSettings(sessionId, { chatMode: chatModeRef.current, isThinkingMode: val }).catch(() => {});
+        });
+    }
+  };
   const [selectedMode, setSelectedMode] = useState('auto');
   // STATE: Deteksi apakah textarea sudah multi-line untuk urusan layout form
   const [isMultiLine, setIsMultiLine] = useState(false);
@@ -90,6 +100,11 @@ export default function ChatPage({
     setChatMode(val);
     // Menyimpan pilihan mode langsung ke Zustand store setelah dipilih oleh pengguna
     useChatStore.setState({ chatMode: val });
+    if (sessionId && sessionId !== 'new') {
+        import('../../services/endpoints').then(endpoints => {
+            endpoints.updateSessionSettings(sessionId, { chatMode: val, isThinkingMode: isThinkingModeRef.current }).catch(() => {});
+        });
+    }
   };
   // REF: Capture tinggi baseline 1 baris saat mount pertama
   const baselineHeightRef = useRef(0);
@@ -312,22 +327,50 @@ export default function ChatPage({
 
   const handleClearChat = () => {
     storeClearChat();
+    setChatMode('auto');
+    chatModeRef.current = 'auto';
+    setIsThinkingMode(false);
+    isThinkingModeRef.current = false;
+    useChatStore.setState({ chatMode: 'auto' });
     lastLoadedSessionRef.current = null;
     navigate("/chat/new");
   };
 
   // SINKRONISASI: Menyelaraskan state lokal ChatPage dengan isi store setelah perubahan rute URL selesai
   useEffect(() => {
-    const currentGlobalMode = useChatStore.getState().chatMode || "auto";
-    setChatMode(currentGlobalMode);
-    chatModeRef.current = currentGlobalMode;
+    if (sessionId && sessionId !== 'new') {
+        import('../../services/endpoints').then(endpoints => {
+            endpoints.fetchSessionSettings(sessionId).then(res => {
+                if (res && res.status === 'success' && res.data) {
+                    const savedChatMode = res.data.chatMode || 'auto';
+                    const savedThinkingMode = res.data.isThinkingMode || false;
+                    
+                    setChatMode(savedChatMode);
+                    chatModeRef.current = savedChatMode;
+                    useChatStore.setState({ chatMode: savedChatMode });
+
+                    setIsThinkingMode(savedThinkingMode);
+                    isThinkingModeRef.current = savedThinkingMode;
+                }
+            }).catch(() => {});
+        });
+    } else {
+        const currentGlobalMode = useChatStore.getState().chatMode || "auto";
+        setChatMode(currentGlobalMode);
+        chatModeRef.current = currentGlobalMode;
+        
+        setIsThinkingMode(false);
+        isThinkingModeRef.current = false;
+    }
   }, [sessionId]);
 
   // MIGRASI SESI GUEST: Jika auth sukses dan ada sesi berjalan, claim!
   useEffect(() => {
     if (isAuthenticated && sessionId && sessionId !== "new") {
       import("../../services/endpoints").then((endpts) => {
-        endpts.assignSession(sessionId).catch(() => { });
+        endpts.assignSession(sessionId)
+          .then(() => localStorage.removeItem("cakra_last_session"))
+          .catch(() => { });
       });
     }
   }, [isAuthenticated, sessionId]);
@@ -492,6 +535,7 @@ export default function ChatPage({
         },
       finalStagedData, // Meneruskan data lampiran berkas secara langsung
       chatModeRef.current, // PARAMETER MODE: 'auto' | 'documents' (untuk dikirim ke backend)
+      isThinkingModeRef.current, // PARAMETER THINKING: true/false
       toast,
     );
 
@@ -826,7 +870,7 @@ export default function ChatPage({
                     disabled={isStreaming}
                     darkMode={darkMode}
                     thinking={isThinkingMode}
-                    onThinkingChange={setIsThinkingMode}
+                    onThinkingChange={handleThinkingModeChange}
                   />
                 )}
                 <SendButton
@@ -835,6 +879,7 @@ export default function ChatPage({
                   input={input}
                   selectedFiles={selectedFiles}
                   theme={theme}
+                  onStop={() => useChatStore.getState().stopStream()}
                 />
               </div>
             )}
@@ -892,6 +937,7 @@ export default function ChatPage({
                   input={input}
                   selectedFiles={selectedFiles}
                   theme={theme}
+                  onStop={() => useChatStore.getState().stopStream()}
                 />
               </div>
             </div>
@@ -1122,7 +1168,13 @@ export default function ChatPage({
             {!isGuest}
             <HeaderDropdownMenu
               isGuest={isGuest}
-              onLogin={() => navigate("/login")}
+              onLogin={() => {
+                const currentSession = useChatStore.getState().sessionUuid;
+                if (currentSession && currentSession !== "new") {
+                  localStorage.setItem("cakra_last_session", currentSession);
+                }
+                navigate("/login");
+              }}
               darkMode={darkMode}
               setDarkMode={setDarkMode}
               theme={theme}
@@ -1425,7 +1477,7 @@ export default function ChatPage({
                   </div>
                 ) : documents.filter(
                   (doc) =>
-                    (doc.judul || "")
+                    (doc.title || "")
                       .toLowerCase()
                       .includes(docSearchQuery.toLowerCase()) ||
                     (doc.nomor || "")
@@ -1445,7 +1497,7 @@ export default function ChatPage({
                   documents
                     .filter(
                       (doc) =>
-                        (doc.judul || "")
+                        (doc.title || "")
                           .toLowerCase()
                           .includes(docSearchQuery.toLowerCase()) ||
                         (doc.nomor || "")
@@ -1487,7 +1539,7 @@ export default function ChatPage({
                                 textOverflow: "ellipsis",
                               }}
                             >
-                              {doc.judul}
+                              {doc.title}
                             </div>
                             <div
                               style={{
@@ -1496,12 +1548,12 @@ export default function ChatPage({
                                 marginTop: "2px",
                               }}
                             >
-                              No: {doc.nomor || "-"} | Tipe: {doc.tipe}
+                              No: {doc.nomor || "-"} | Tipe: {doc.jenis_dokumen || "-"}
                             </div>
                           </div>
                           <button
                             onClick={() => {
-                              setContextIsolation(doc.id, doc.judul);
+                              setContextIsolation(doc.id, doc.title);
                               setShowDocumentList(false);
                             }}
                             style={{

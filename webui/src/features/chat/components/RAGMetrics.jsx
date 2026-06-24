@@ -4,14 +4,17 @@ import React from 'react';
  * W15 — RAG Metrics Component
  * Displays search execution duration, embedding cache status (hit/miss), and citation counts.
  */
-const RAGMetrics = ({ sources, darkMode, theme }) => {
-  if (!sources || sources.length === 0) return null;
+const RAGMetrics = ({ sources, eval_count, eval_duration, darkMode, theme }) => {
+  const hasSources = sources && sources.length > 0;
+  const hasMetrics = eval_count > 0 && eval_duration > 0;
+  
+  if (!hasSources && !hasMetrics) return null;
 
   // Extract metrics from the first source
-  const searchTimeMs = sources[0].search_time_ms;
-  const isCacheHit = sources[0].cache_hit;
-
-  if (searchTimeMs === undefined) return null;
+  const searchTimeMs = hasSources ? sources[0].search_time_ms : undefined;
+  const isCacheHit = hasSources ? sources[0].cache_hit : false;
+  
+  const tps = hasMetrics ? (eval_count / (eval_duration / 1e9)).toFixed(1) : null;
 
   const badgeStyle = {
     display: 'inline-flex',
@@ -28,27 +31,39 @@ const RAGMetrics = ({ sources, darkMode, theme }) => {
     marginBottom: '10px',
   };
 
-  const statusDotStyle = (active) => ({
+  const statusDotStyle = (active, color = null) => ({
     width: '6px',
     height: '6px',
     borderRadius: '50%',
-    background: active ? '#10b981' : '#3b82f6', // Green for cache hit, blue for live Ollama
-    boxShadow: active ? '0 0 8px #10b981' : '0 0 8px #3b82f6',
+    background: color ? color : (active ? '#10b981' : '#3b82f6'),
+    boxShadow: color ? `0 0 8px ${color}` : (active ? '0 0 8px #10b981' : '0 0 8px #3b82f6'),
     display: 'inline-block',
   });
 
   return (
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
-      <div style={badgeStyle} title="Lama waktu pencarian regulasi internal di database">
-        <span>⏱️ Found in {searchTimeMs}ms</span>
-      </div>
-      <div style={badgeStyle} title={isCacheHit ? "Embedding diambil dari LRU Cache (instan)" : "Embedding dihitung via Ollama Model"}>
-        <span style={statusDotStyle(isCacheHit)} />
-        <span>{isCacheHit ? '🧠 Cache Hit' : '🌐 Live Ollama Embed'}</span>
-      </div>
-      <div style={badgeStyle}>
-        <span>📄 {sources.length} Rujukan Terpilih</span>
-      </div>
+      {hasSources && searchTimeMs !== undefined && (
+        <div style={badgeStyle} title="Lama waktu pencarian regulasi internal di database">
+          <span>⏱️ Found in {searchTimeMs}ms</span>
+        </div>
+      )}
+      {hasSources && (
+        <div style={badgeStyle} title={isCacheHit ? "Embedding diambil dari LRU Cache (instan)" : "Embedding dihitung via Ollama Model"}>
+          <span style={statusDotStyle(isCacheHit)} />
+          <span>{isCacheHit ? '🧠 Cache Hit' : '🌐 Live Ollama Embed'}</span>
+        </div>
+      )}
+      {hasSources && (
+        <div style={badgeStyle}>
+          <span>📄 {sources.length} Rujukan Terpilih</span>
+        </div>
+      )}
+      {hasMetrics && (
+        <div style={badgeStyle} title={`Generated ${eval_count} tokens in ${(eval_duration / 1e9).toFixed(2)}s`}>
+          <span style={statusDotStyle(true, '#8b5cf6')} />
+          <span>⚡ {tps} Tokens/sec</span>
+        </div>
+      )}
     </div>
   );
 };

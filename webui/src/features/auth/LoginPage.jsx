@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useChatAuthStore } from '../../stores/authStore';
+import { useChatStore } from '../../stores/chatStore';
 import { useNavigate } from 'react-router-dom';
 
 export default function LoginPage() {
@@ -16,7 +17,12 @@ export default function LoginPage() {
 
   useEffect(() => {
     if (isAuthenticated) {
-      navigate('/chat/new'); 
+      const guestSessionId = useChatStore.getState().sessionUuid;
+      if (guestSessionId) {
+        navigate(`/chat/${guestSessionId}`);
+      } else {
+        navigate('/chat/new'); 
+      }
     }
   }, [isAuthenticated, navigate]);
 
@@ -29,7 +35,8 @@ export default function LoginPage() {
       return;
     }
 
-    await login(identifier, password);
+    const guestSessionId = useChatStore.getState().sessionUuid;
+    await login(identifier, password, guestSessionId);
   };
 
   return (

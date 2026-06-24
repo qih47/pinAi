@@ -191,12 +191,12 @@ async def login(request_body: LoginRequest, request: Request):
                 expires_at = await conn.fetchval(
                     """
                     INSERT INTO session_login (npp, session_token, ip_address, is_login, last_activity, expires_at)
-                    VALUES ($1, $2, $3, TRUE, CURRENT_TIMESTAMP, NOW() + INTERVAL '8 hours')
+                    VALUES ($1, $2, $3, TRUE, CURRENT_TIMESTAMP, NOW() + INTERVAL '1 month')
                     ON CONFLICT (npp) DO UPDATE SET 
                         session_token = EXCLUDED.session_token, 
                         is_login = TRUE, 
                         last_activity = CURRENT_TIMESTAMP,
-                        expires_at = NOW() + INTERVAL '8 hours'
+                        expires_at = NOW() + INTERVAL '1 month'
                     RETURNING expires_at;
                     """,
                     npp,
@@ -213,6 +213,23 @@ async def login(request_body: LoginRequest, request: Request):
                     u_agent,
                 )
                 logger.info(f"🪵  [AUDIT] Log 'LOGIN' sukses ditulis untuk NPP: {npp}")
+
+        guest_session_id = request_body.guest_session_id
+        if guest_session_id:
+            try:
+                async with get_db() as main_conn:
+                    res = await main_conn.execute(
+                        """
+                        UPDATE chat_sessions 
+                        SET npp = $1 
+                        WHERE session_uuid = $2 AND (npp = 'GUEST' OR npp IS NULL)
+                        """,
+                        npp, guest_session_id
+                    )
+                    if res != "UPDATE 0":
+                        logger.info(f"🔄 [MIGRATION] Sesi GUEST {guest_session_id} resmi menjadi milik NPP: {npp}")
+            except Exception as e:
+                logger.error(f"Gagal migrasi sesi GUEST: {e}")
 
         logger.info(f"🟩 [SUCCESS] Login tuntas! {user_fullname} [{current_role}] masuk ke sistem CAKRA AI.")
         return LoginResponse(

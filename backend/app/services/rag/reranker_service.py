@@ -30,7 +30,8 @@ class RerankerService:
     """
 
     def __init__(self):
-        logger.info("[RERANKER_SERVICE_INIT] BGE Cross-Encoder Engine ready (lazy load active).")
+        self._lock = asyncio.Lock()
+        logger.info("[RERANKER_SERVICE_INIT] BGE Cross-Encoder Engine ready.")
 
     # ==========================================================================
     # PUBLIC API
@@ -53,13 +54,15 @@ class RerankerService:
         )
 
         try:
-            # Jalankan inference sinkron di thread pool — tidak blokir event loop
-            scores = await asyncio.get_event_loop().run_in_executor(
-                None,
-                self._run_inference,
-                query,
-                corpus_texts,
-            )
+            # Gunakan lock agar PyTorch model.predict tidak dijalankan concurrent oleh multi-thread
+            async with self._lock:
+                # Jalankan inference sinkron di thread pool — tidak blokir event loop
+                scores = await asyncio.get_event_loop().run_in_executor(
+                    None,
+                    self._run_inference,
+                    query,
+                    corpus_texts,
+                )
 
             logger.info(
                 f"[RERANKER_SCORING_COMPLETE] Completed. Max score: {max(scores):.4f}, Min score: {min(scores):.4f}"

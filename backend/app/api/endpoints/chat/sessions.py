@@ -19,6 +19,21 @@ async def get_history_sessions(
     sessions = await chat_history_service.get_user_sessions(current_user_npp)
     return {"status": "success", "data": sessions}
 
+@router.get("/sessions/{session_uuid}")
+async def get_chat_session(
+    session_uuid: str,
+    current_user_npp: Optional[str] = Depends(get_current_user_npp),
+):
+    from backend.app.core.database import get_db
+    async with get_db() as conn:
+        session = await conn.fetchrow(
+            "SELECT * FROM chat_sessions WHERE session_uuid = $1",
+            session_uuid
+        )
+        if not session:
+            raise HTTPException(status_code=404, detail="Session not found")
+        return {"status": "success", "data": dict(session)}
+
 
 @router.post("/sessions/create")
 async def create_new_chat_session(
@@ -27,12 +42,20 @@ async def create_new_chat_session(
 ):
     npp_target = current_user_npp if current_user_npp else "GUEST"
     name_target = "Pegawai Pindad" if current_user_npp else "Guest User"
+    
+    # Just use 'Obrolan Baru' or the provided string, without blocking for LLM
+    initial_title = "Obrolan Baru"
+
     new_session = await chat_history_service.create_new_session(
         npp=npp_target,
         username=name_target,
         model_name=settings.MODEL_PERSONA,
-        judul=judul,
+        judul=initial_title,
     )
+    # UI uses this to initialize the sidebar
+    if "judul" not in new_session:
+        new_session["judul"] = initial_title
+        
     return {"status": "success", "data": new_session}
 
 
@@ -95,3 +118,47 @@ async def trim_session_messages(
     if not success:
         raise HTTPException(status_code=500, detail="Gagal memangkas histori percakapan.")
     return {"status": "success", "message": f"Histori dipangkas menjadi {keep_count} pesan terawal."}
+
+
+@router.get("/sessions/{session_uuid}/settings")
+async def get_session_settings_endpoint(session_uuid: str):
+    """Mengambil toggle settings (chatMode, isThinkingMode) untuk sesi tertentu."""
+    settings_data = await chat_history_service.get_session_settings(session_uuid)
+    if settings_data is None:
+        raise HTTPException(status_code=404, detail="Sesi tidak ditemukan atau gagal mengambil settings.")
+    return {"status": "success", "data": settings_data}
+
+
+from pydantic import BaseModel
+from typing import Dict, Any
+
+class SessionSettingsSchema(BaseModel):
+    settings: Dict[str, Any]
+
+@router.patch("/sessions/{session_uuid}/settings")
+async def update_session_settings_endpoint(
+    session_uuid: str, 
+    payload: SessionSettingsSchema
+):
+    """Menyimpan perubahan toggle settings (chatMode, isThinkingMode)."""
+    success = await chat_history_service.update_session_settings(session_uuid, payload.settings)
+    if not success:
+        raise HTTPException(status_code=500, detail="Gagal menyimpan setelan sesi.")
+    return {"status": "success", "message": "Setelan sesi berhasil disimpan!"}
+
+class FeedbackSchema(BaseModel):
+    message_index: int
+    feedback: Dict[str, Any]
+
+@router.patch("/sessions/{session_uuid}/messages/feedback")
+async def update_message_feedback_endpoint(
+    session_uuid: str, 
+    payload: FeedbackSchema
+):
+    """Menyimpan status feedback (Good/Bad) untuk pesan tertentu di Frontend."""
+    success = await chat_history_service.update_message_feedback(
+        session_uuid, payload.message_index, payload.feedback
+    )
+    if not success:
+        raise HTTPException(status_code=500, detail="Gagal menyimpan feedback pesan.")
+    return {"status": "success", "message": "Feedback berhasil disimpan!"}

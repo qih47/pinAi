@@ -10,7 +10,7 @@ Layer 1 (cognitive analyzer) sudah deprecated sebelumnya dan tidak dipakai.
 """
 
 from .pdf_extraction import extract_pdf_text
-from .gemma_agentic_engine import execute_gemma_agentic
+from .mode_hub import mode_hub
 from .sse_validation import (
     format_sse,
     format_sse_error,

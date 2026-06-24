@@ -11,13 +11,11 @@ from backend.app.services.chat_history_service import chat_history_service
 from backend.app.api.schemas.chat import ChatStreamRequest
 from backend.app.utils.employee_cache import get_cached_employee_fullname
 from backend.app.services.pipeline import (
-    execute_gemma_agentic,
     format_sse,
     SSEEventType,
 )
 from backend.app.services.pipeline.sse_validation import format_sse_pipeline_data
 from backend.app.core.config import settings
-from backend.app.services.pipeline.continuation_orchestrator import execute_gemma_agentic_v2
 
 router = APIRouter()
 logger = logging.getLogger("CAKRA_CHAT_API")
@@ -55,6 +53,12 @@ async def _sequential_pipeline_generator(
     chat_mode = getattr(payload, "mode", "auto")
 
     logger.info(f'[PIPELINE] User message | "{user_message[:100]}" | mode={chat_mode}')
+    if not current_user_npp or current_user_npp == "GUEST":
+        chat_mode = "guest"
+        is_thinking = False
+    else:
+        is_thinking = payload.thinking if hasattr(payload, 'thinking') else True
+    logger.info(f'[PIPELINE] Thinking status | is_thinking={is_thinking} | requested_by=NPP:{current_user_npp}')
 
     messages_for_pipeline = [
         {"role": msg.role, "content": msg.content} for msg in payload.messages
@@ -124,9 +128,22 @@ async def _sequential_pipeline_generator(
                 thought=f"Gemma Agentic [Mode: {chat_mode}]",
             )
 
-    # ── Resolve employee name ─────────────────────────────────────────────────
+    # ── Content Safety Filter (Pornography, Abuse) ────────────────────────────
+    from backend.app.utils.content_filter import contains_prohibited_content
+    if contains_prohibited_content(user_message):
+        logger.warning(f"[SAFETY_FILTER] Blocked user message from NPP {current_user_npp}")
+        error_msg = "Maaf, permintaan Anda melanggar Kebijakan Penggunaan Cakra AI (Mengandung konten SARA/Pornografi/Kekerasan)."
+        yield format_sse(error_msg, "", False, event_type=SSEEventType.CHUNK)
+        yield format_sse("", "", True, event_type=SSEEventType.DONE)
+        return
+
+    # ── Resolve employee name & Guest Override ────────────────────────────────
     employee_name = "Pegawai"
-    if current_user_npp and current_user_npp != "GUEST":
+    if current_user_npp == "GUEST":
+        # HARD GUARD FOR GUEST
+        chat_mode = "guest"
+        is_thinking = False
+    elif current_user_npp:
         try:
             async def fetch_employee_from_db(npp: str) -> Optional[str]:
                 from backend.app.core.database import get_db
@@ -157,25 +174,18 @@ async def _sequential_pipeline_generator(
     start_time = datetime.now()
 
     try:
-        if getattr(settings, "ENABLE_TOKEN_CONTINUATION", False):
-            agentic_engine = execute_gemma_agentic_v2(
-                request=request,
-                messages=messages_for_pipeline,
-                chat_mode=chat_mode,
-                has_attachment=has_attachment,
-                ocr_text=ocr_text,
-                employee_name=employee_name,
-                session_uuid=payload.session_uuid,
-            )
-        else:
-            agentic_engine = execute_gemma_agentic(
-                request=request,
-                messages=messages_for_pipeline,
-                chat_mode=chat_mode,
-                has_attachment=has_attachment,
-                ocr_text=ocr_text,
-                employee_name=employee_name,
-            )
+        from backend.app.services.pipeline.mode_hub import mode_hub
+        agentic_engine = mode_hub.execute(
+            request=request,
+            user_message=user_message,
+            chat_history=payload.messages,
+            chat_mode=chat_mode,
+            is_thinking=payload.thinking if hasattr(payload, 'thinking') else True,
+            attachments=payload.attachment_paths,
+            context_isolation={"isolated_doc_id": payload.isolated_doc_id} if payload.isolated_doc_id else None,
+            employee_name=employee_name,
+            current_user_npp=current_user_npp
+        )
 
         async for sse in agentic_engine:
             raw = sse.strip()
@@ -208,6 +218,10 @@ async def _sequential_pipeline_generator(
         elapsed = (datetime.now() - start_time).total_seconds()
         logger.info(f"[AGENTIC] Selesai | {len(full_response_text)} chars | {elapsed:.2f}s")
 
+    except asyncio.CancelledError:
+        logger.warning("[AGENTIC] Client disconnected / Stream aborted.")
+        full_response_text += " *Respons dihentikan*"
+        # Biarkan eksekusi berlanjut ke bagian save DB di bawah
     except Exception as e:
         logger.error(f"[AGENTIC] Error: {e}")
         error_msg = f"Gagal mengeksekusi pipeline: {str(e)}"
@@ -215,40 +229,48 @@ async def _sequential_pipeline_generator(
         full_response_text = error_msg
 
     # ── Save assistant response & finalize ────────────────────────────────────
-    if payload.session_uuid:
-        await chat_history_service.auto_update_session_title(
-            payload.session_uuid, user_message
-        )
-        
-        ast_thought = full_thinking_text.strip() if full_thinking_text else f"Gemma Agentic | Mode: {chat_mode}"
-        
-        if payload.edit_index is not None:
-            await chat_history_service.update_chat_message(
-                session_id=payload.session_uuid,
-                edit_index=payload.edit_index + 1,
-                role="assistant",
-                text=full_response_text,
-                thought=ast_thought,
-                sources=preloaded_rag_sources,
-            )
-        else:
-            await chat_history_service.save_chat_message(
-                session_id=payload.session_uuid,
-                role="assistant",
-                text=full_response_text,
-                thought=ast_thought,
-                sources=preloaded_rag_sources,
-            )
-        if not (payload.attachment_paths and len(payload.attachment_paths) > 0):
-            try:
-                await chat_history_service.save_dialogue_corpus(
-                    session_uuid=payload.session_uuid,
-                    user_text=user_message,
-                    assistant_text=full_response_text,
-                    context_document=f"Gemma Agentic | Mode: {chat_mode}",
+    async def _save_to_db():
+        try:
+            if payload.session_uuid:
+                await chat_history_service.auto_update_session_title(
+                    payload.session_uuid, user_message, full_response_text
                 )
-            except Exception as e:
-                logger.warning(f"[DB] Gagal save dialogue corpus: {e}")
+                
+                ast_thought = full_thinking_text.strip() if full_thinking_text else f"Gemma Agentic | Mode: {chat_mode}"
+                
+                if payload.edit_index is not None:
+                    await chat_history_service.update_chat_message(
+                        session_id=payload.session_uuid,
+                        edit_index=payload.edit_index + 1,
+                        role="assistant",
+                        text=full_response_text,
+                        thought=ast_thought,
+                        sources=preloaded_rag_sources,
+                    )
+                else:
+                    await chat_history_service.save_chat_message(
+                        session_id=payload.session_uuid,
+                        role="assistant",
+                        text=full_response_text,
+                        thought=ast_thought,
+                        sources=preloaded_rag_sources,
+                    )
+                if not (payload.attachment_paths and len(payload.attachment_paths) > 0):
+                    try:
+                        await chat_history_service.save_dialogue_corpus(
+                            session_uuid=payload.session_uuid,
+                            user_text=user_message,
+                            assistant_text=full_response_text,
+                            context_document=f"Gemma Agentic | Mode: {chat_mode}",
+                            metadata={"mode": chat_mode, "sources_count": len(preloaded_rag_sources) if preloaded_rag_sources else 0}
+                        )
+                    except Exception as e:
+                        logger.warning(f"[DB] Gagal save dialogue corpus: {e}")
+        except Exception as err:
+            logger.error(f"[DB] Gagal save data setelah stream: {err}")
+
+    # Jalankan save di background agar kebal terhadap CancelledError (Client Disconnect)
+    asyncio.create_task(_save_to_db())
 
     logger.info("[PIPELINE] Complete ✅")
     yield format_sse("", "", True, sources=preloaded_rag_sources, event_type=SSEEventType.DONE)

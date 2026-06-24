@@ -41,6 +41,8 @@ async def init_db_pool():
                 await _create_llm_thinking_audit_table(conn)
                 await _update_chat_sessions_continuation_column(conn)
                 await _update_chat_messages_sources_column(conn)
+                await _update_chat_sessions_settings_column(conn)
+                await _update_chat_messages_feedback_column(conn)
             except asyncpg.exceptions.InsufficientPrivilegeError as e:
                 logger.warning(f"⚠️ [DB_MIGRATION] Izin ditolak untuk memodifikasi schema public. Minta admin untuk jalankan DDL secara manual: {e}")
             except Exception as e:
@@ -143,6 +145,27 @@ async def _update_chat_sessions_continuation_column(conn):
         CREATE INDEX IF NOT EXISTS idx_continuation_state 
         ON chat_sessions USING GIN(continuation_state);
     """)
+
+async def _update_chat_sessions_settings_column(conn):
+    """
+    Memastikan kolom settings (JSONB) tersedia pada chat_sessions
+    untuk arsitektur Token-Level Continuation.
+    """
+    await conn.execute("""
+        ALTER TABLE chat_sessions 
+        ADD COLUMN IF NOT EXISTS settings JSONB DEFAULT NULL;
+    """)
+
+async def _update_chat_messages_feedback_column(conn):
+    """
+    Memastikan kolom feedback (JSONB) tersedia pada chat_messages
+    untuk menampung status good/bad response dan rating tambahan.
+    """
+    await conn.execute("""
+        ALTER TABLE chat_messages 
+        ADD COLUMN IF NOT EXISTS feedback JSONB DEFAULT NULL;
+    """)
+
 
 async def _update_chat_messages_sources_column(conn):
     """

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 
-const ThoughtAccordion = ({ thought, darkMode, theme }) => {
+const ThoughtAccordion = ({ thought, darkMode, theme, statusMessage, isStreaming }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
 
@@ -14,7 +14,7 @@ const ThoughtAccordion = ({ thought, darkMode, theme }) => {
     .replace(/<\/think>/g, '')
     .trim();
 
-  if (!cleanThought) return null;
+  if (!cleanThought || cleanThought.includes("Gemma Agentic")) return null;
 
   const accordionStyle = {
     marginBottom: '14px',
@@ -69,6 +69,8 @@ const ThoughtAccordion = ({ thought, darkMode, theme }) => {
     borderTop: isOpen ? (darkMode ? '1px solid rgba(255, 255, 255, 0.05)' : '1px solid rgba(0, 0, 0, 0.03)') : 'none'
   };
 
+  const titleText = !isStreaming ? 'Thinking Done' : (statusMessage || 'Thinking');
+
   return (
     <div style={accordionStyle}>
       <div
@@ -91,7 +93,7 @@ const ThoughtAccordion = ({ thought, darkMode, theme }) => {
             <polyline points="9 18 15 12 9 6" />
           </svg>
         </span>
-        <span style={titleStyle}>🧠 Thinking </span>
+        <span style={titleStyle}>🧠 {titleText} </span>
       </div>
       <div style={contentStyle}>
         <div style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', letterSpacing: '0.1px', fontStyle: 'italic' }}>

@@ -529,7 +529,8 @@ export const getUserBubbleStyles = (darkMode, isEditing, shouldTruncate, isExpan
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'flex-end',
-        marginBottom: '16px'
+        marginBottom: '16px',
+        marginTop: '50px'
     },
     attachmentWrapper: {
         width: 'auto',

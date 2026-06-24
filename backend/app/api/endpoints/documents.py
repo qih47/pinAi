@@ -45,7 +45,7 @@ from backend.app.utils.upload_validator import (
 
 logger = logging.getLogger("CAKRA_DOCUMENTS")
 
-router = APIRouter(prefix="/api/documents", tags=["documents"])
+router = APIRouter(tags=["documents"])
 
 # ══════════════════════════════════════════════════════════════════════════════
 # GET /api/documents — List dokumen dengan pagination
@@ -85,13 +85,12 @@ async def list_documents(
             rows = await conn.fetch(
                 """
                 SELECT 
-                    id, title, description, source_type, 
-                    file_path, file_size, file_type,
-                    created_at, updated_at,
-                    (SELECT COUNT(*) FROM dokumen_chunk WHERE dokumen_id = dokumen.id) AS chunk_count,
-                    embedding_status
-                FROM dokumen
-                ORDER BY created_at DESC
+                    d.id, d.judul AS title, 
+                    d.nomor, d.tanggal AS created_at, d.filename, j.nama AS jenis_dokumen,
+                    (SELECT COUNT(*) FROM dokumen_chunk WHERE dokumen_id = d.id) AS chunk_count
+                FROM dokumen d
+                LEFT JOIN jenis_dokumen j ON d.id_jenis = j.id
+                ORDER BY d.id DESC
                 LIMIT $1 OFFSET $2
                 """,
                 limit,
@@ -102,16 +101,20 @@ async def list_documents(
             for row in rows:
                 documents.append(DocumentSchema(
                     id=row["id"],
-                    title=row["title"],
-                    description=row["description"],
-                    source_type=row["source_type"],
-                    file_path=row["file_path"],
-                    file_size=row["file_size"],
-                    file_type=row["file_type"],
-                    created_at=row["created_at"],
-                    updated_at=row["updated_at"],
+                    title=row["title"] or "Tanpa Judul",
+                    description=None,
+                    source_type="internal",
+                    file_path=row["filename"],
+                    file_size=0,
+                    file_type="application/pdf",
+                    created_at=row["created_at"] or datetime.utcnow(),
+                    updated_at=None,
                     chunk_count=row["chunk_count"] or 0,
-                    embedding_status=row["embedding_status"] or "pending",
+                    embedding_status="completed",
+                    nomor=row["nomor"],
+                    tanggal=row["created_at"],
+                    filename=row["filename"],
+                    jenis_dokumen=row["jenis_dokumen"]
                 ))
             
             logger.info(f"📋 [DOCUMENTS] Listed {len(documents)}/{total} dokumen (offset={offset}, limit={limit})")

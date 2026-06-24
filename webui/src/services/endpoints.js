@@ -186,7 +186,7 @@ function validateSSEEvent(parsedData) {
  * @param {Object} options - Configuration options (timeoutMs, etc)
  */
 export async function streamChat(
-  { sessionUuid, messages, chatMode, isolatedDocId, attachmentPaths, npp },
+  { sessionUuid, messages, chatMode, thinking, isolatedDocId, attachmentPaths, npp, editIndex, signal },
   { onThinking, onStatus, onSources, onChunk, onDone, onError },
   options = {}
 ) {
@@ -196,6 +196,12 @@ export async function streamChat(
   try {
     // ✅ ADD: Timeout support with AbortController
     const controller = new AbortController();
+    
+    // Bind external abort signal to internal controller
+    if (signal) {
+      signal.addEventListener('abort', () => controller.abort());
+    }
+
     timeoutId = setTimeout(() => {
       console.warn(`[SSE_TIMEOUT] Request timeout after ${timeoutMs}ms`);
       controller.abort();
@@ -224,9 +230,11 @@ export async function streamChat(
         session_uuid: sessionUuid,
         messages: messages,
         mode: chatMode,
+        thinking: thinking,
         temperature: 0.7,
         isolated_doc_id: isolatedDocId,
-        attachment_paths: attachmentPaths
+        attachment_paths: attachmentPaths,
+        edit_index: editIndex
       }),
       signal: controller.signal,  // ✅ ADD: Abort signal for timeout
     });
@@ -315,7 +323,7 @@ export async function streamChat(
           }
           
           if (parsedData.done === true && onDone) {
-            onDone();
+            onDone(parsedData);
           }
         } catch (jsonErr) {
           console.warn(`[SSE_PARSE_ERROR] ${jsonErr.message}`);
@@ -323,16 +331,18 @@ export async function streamChat(
         }
       }
     }
+    
+    // GUARANTEE UI UNLOCK: If the transport stream ends, trigger onDone.
+    if (onDone) {
+      onDone();
+    }
   } catch (error) {
     clearTimeout(timeoutId);  // ✅ Cleanup
 
-    // ✅ Handle abort error (timeout)
+    // ✅ Handle abort error (timeout or manual stop)
     if (error.name === 'AbortError') {
-      const timeoutError = new Error(
-        `Request timeout. Backend did not respond within ${timeoutMs}ms`
-      );
-      if (onError) onError(timeoutError);
-      return;
+      if (onError) onError(error);
+      throw error;
     }
 
     if (onError) {
@@ -440,5 +450,33 @@ export async function trimSessionMessages(sessionUuid, keepCount) {
   } catch (error) {
     console.error('Error trimming session messages:', error);
     throw new Error(error.response?.data?.detail || 'Failed to trim session messages');
+  }
+}
+
+/**
+ * Fetch toggle settings (chatMode, isThinkingMode) for a session
+ */
+export async function fetchSessionSettings(sessionUuid) {
+  try {
+    const response = await apiClient.get(`/chat/sessions/${sessionUuid}/settings`);
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching session settings:', error);
+    return null;
+  }
+}
+
+/**
+ * Update toggle settings (chatMode, isThinkingMode) for a session
+ */
+export async function updateSessionSettings(sessionUuid, settings) {
+  try {
+    const response = await apiClient.patch(`/chat/sessions/${sessionUuid}/settings`, {
+      settings: settings
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Error updating session settings:', error);
+    return null;
   }
 }

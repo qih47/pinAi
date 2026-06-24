@@ -30,7 +30,7 @@ export const useSessionTitle = (chatHistory, setChatHistory, currentSessionId, e
 
       const newTitle = session?.judul || session?.title;
 
-      if (newTitle && newTitle !== 'Chat Baru' && newTitle.trim() !== '') {
+      if (newTitle && newTitle !== 'Chat Baru' && newTitle !== 'Obrolan Baru' && newTitle !== 'Sedang membuat judul...' && newTitle.trim() !== '') {
         // 🎉 LLM generated a real title — update the sidebar!
         setChatHistory((prev) =>
           prev.map((c) =>
@@ -92,7 +92,7 @@ export const useSessionTitle = (chatHistory, setChatHistory, currentSessionId, e
   useEffect(() => {
     if (!enabled || !chatHistory?.length) return;
 
-    const genericTitles = ['Chat Baru', 'New Chat', ''];
+    const genericTitles = ['Chat Baru', 'New Chat', 'Obrolan Baru', 'Sedang membuat judul...', ''];
 
     chatHistory.forEach((chat) => {
       const title = (chat.judul || '').trim();

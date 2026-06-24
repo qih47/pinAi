@@ -41,21 +41,7 @@ class Settings(BaseSettings):
     BYPASS_ACCOUNT_NPP: str = "99999"
     BYPASS_ACCOUNT_PASSWORD_HASH: str = ""
 
-    # ============================================================================
-    # GEMMA4 TOKEN-LEVEL CONTINUATION FEATURE
-    # ============================================================================
-
-    ENABLE_TOKEN_CONTINUATION: bool = True
-    ENABLE_MULTI_HOP_RAG: bool = True
-    ENABLE_CHITCHAT_FAST_PATH: bool = True
-
-    RAW_PROMPT_MAX_TOKENS: int = 32000
-    THINKING_DEPTH_THRESHOLD: int = 500
-    CHANNEL_MARKER_TOKEN: str = "<channel|>"
-    CHANNEL_MARKER_STOP_SEQUENCES: list = ["<channel|>", "\n\n"]
-
     RAG_FETCH_TIMEOUT_MS: int = 15000
-    CONTINUATION_CALL_TIMEOUT_MS: int = 60000
     OLLAMA_GENERATE_TIMEOUT_S: float = 180.0
 
     OLLAMA_GENERATE_POOL_SIZE: int = 10
@@ -74,7 +60,6 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
-ENABLE_TOKEN_CONTINUATION = settings.ENABLE_TOKEN_CONTINUATION
 
 logger = logging.getLogger("CAKRA_CONFIG")
 

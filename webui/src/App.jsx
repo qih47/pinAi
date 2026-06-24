@@ -16,7 +16,7 @@ import Loading from "./components/Loading";
 import Layout from "./components/Layout";
 import ToastProvider from "./components/ui/ToastProvider";
 import { useTokenRefresh } from "./hooks/useTokenRefresh"; // 👈 W18: Token auto-refresh
-
+import OllamaThinkTest from '@/features/chat/components/OllamaThinkTest';
 function SessionRouteWrapper({ isGuest }) {
   const { sessionId } = useParams();
   const isAuthenticated = useChatAuthStore((state) => state.isAuthenticated);
@@ -101,21 +101,21 @@ function AppContent() {
 
       {/* ⚡ W13 & W15: Admin Cache & Performance Dashboard */}
       <Route path="/admin/cache-stats" element={<CacheStatsPage />} />
-
+      <Route path="/test-think" element={<OllamaThinkTest />} />
       <Route path="/" element={<Navigate to="/chat/guest" replace />} />
 
       <Route element={<Layout />}>
         <Route
           path="/chat/guest"
-          element={<SessionRouteWrapper key="guest" isGuest={true} />}
+          element={<SessionRouteWrapper isGuest={true} />}
         />
         <Route
           path="/chat/new"
-          element={<SessionRouteWrapper key="new" isGuest={false} />}
+          element={<SessionRouteWrapper isGuest={false} />}
         />
         <Route
           path="/chat/:sessionId"
-          element={<SessionRouteWrapper key="session" isGuest={false} />}
+          element={<SessionRouteWrapper isGuest={false} />}
         />
       </Route>
     </Routes>

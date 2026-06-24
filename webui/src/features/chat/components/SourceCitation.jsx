@@ -31,7 +31,7 @@ const SourceCitation = ({ sources, darkMode, theme, onPreview, onActivateIsolati
     gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))',
     gap: '12px',
     marginTop: '16px',
-    marginBottom: '8px',
+    marginBottom: '50px',
     width: '100%'
   };
 

@@ -15,6 +15,7 @@ class ChatStreamRequest(BaseModel):
     session_uuid: Optional[str] = Field(None, description="UUID Sesi obrolan aktif dari database RAGDB")
     messages: List[ChatMessageSchema] = Field(..., description="Daftar riwayat percakapan dalam sesi ini")
     mode: Optional[str] = Field("normal", description="Mode operasi: normal, document, atau search")
+    thinking: Optional[bool] = Field(True, description="Enable or disable LLM thinking")
     temperature: Optional[float] = Field(0.7, ge=0.0, le=2.0, description="Tingkat kreativitas inferensi model LLM")
     isolated_doc_id: Optional[int] = Field(None, description="ID dokumen RAG terisolasi")
     attachment_paths: Optional[List[str]] = Field(default=[], description="Daftar path file fisik lampiran chat untuk pemrosesan MiniCPM-V")

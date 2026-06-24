@@ -1,9 +1,24 @@
 import React from 'react';
 import { getSendButtonStyles } from '../chatPage.styles';
 
-export default function SendButton({ isStreaming, isUploadingFile, input, selectedFiles, theme }) {
+export default function SendButton({ isStreaming, isUploadingFile, input, selectedFiles, theme, onStop }) {
   const buttonStyles = getSendButtonStyles(isStreaming, isUploadingFile, input, selectedFiles, theme);
-  const isDisabled = isStreaming || isUploadingFile || (!input.trim() && selectedFiles.length === 0);
+  const isDisabled = isUploadingFile || (!isStreaming && !input.trim() && selectedFiles.length === 0);
+
+  if (isStreaming) {
+    return (
+      <button
+        type="button"
+        onClick={onStop}
+        style={{ ...buttonStyles.button, background: '#ef4444', opacity: 1, cursor: 'pointer' }}
+        title="Stop Response"
+      >
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+          <rect x="6" y="6" width="12" height="12" rx="2" ry="2" />
+        </svg>
+      </button>
+    );
+  }
 
   return (
     <button

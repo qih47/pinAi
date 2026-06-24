@@ -8,8 +8,12 @@ from backend.app.core.paths import UPLOAD_DIR
 from backend.app.services.chat_history_service import chat_history_service
 from backend.app.utils.upload_validator import (
     validate_uploaded_file,
-    check_rate_limit,
     UploadValidationError,
+)
+# check_rate_limit sekarang dari security_firewall (sliding window, lebih akurat)
+from backend.app.utils.security_firewall import (
+    check_rate_limit,
+    validate_attachment_security,
 )
 
 router = APIRouter()
@@ -19,57 +23,51 @@ logger = logging.getLogger("CAKRA_CHAT_API")
 async def upload_chat_attachments(
     files: List[UploadFile] = File(...),
     session_uuid: Optional[str] = Form(None),
-    request: Request = None,  # Inject request untuk mendapat client IP
+    request: Request = None,
 ):
     """
-    Upload file attachment dengan validasi ketat:
-    1. Rate limiting per IP (max 10 uploads per 5 menit)
-    2. Validasi extension file
-    3. Validasi MIME type
-    4. Validasi ukuran file (max 10MB)
-    5. Validasi magic bytes (deteksi tipe sebenarnya)
+    Upload file attachment dengan validasi berlapis:
+    1. Rate limiting per IP (sliding window, 10 uploads/5min)
+    2. Security firewall: path traversal, extension, MIME, magic bytes
+    3. Comprehensive validation: extension, MIME, size, magic bytes
+    4. Write to disk & save metadata
     """
-    
-    # ───────────────────────────────────────────────────────────────────────
-    # 1. RATE LIMITING CHECK
-    # ───────────────────────────────────────────────────────────────────────
+
     client_ip = request.client.host if request and request.client else "unknown"
-    if not check_rate_limit(client_ip):
+
+    # ── 1. Rate Limiting (policy "upload": 10 req / 300s) ────────────────────
+    if not check_rate_limit(client_ip, "upload"):
         logger.warning(f"⚠️ [UPLOAD] Rate limit exceeded for IP: {client_ip}")
         raise HTTPException(
             status_code=429,
             detail="Terlalu banyak upload request. Coba lagi dalam beberapa menit."
         )
-    
+
     uploaded_meta_list = []
 
     for file in files:
         absolute_write_path = ""
         try:
-            # ───────────────────────────────────────────────────────────────
-            # 2. READ FILE BYTES (untuk validasi comprehensive)
-            # ───────────────────────────────────────────────────────────────
+            # ── 2. Security Firewall (Layer 5) ───────────────────────────────
+            await validate_attachment_security(file)
+
+            # ── 3. Read bytes for comprehensive validation ────────────────────
             file_bytes = await file.read()
-            
-            # ───────────────────────────────────────────────────────────────
-            # 3. COMPREHENSIVE VALIDATION
-            # ───────────────────────────────────────────────────────────────
+
             is_valid, validation_msg = validate_uploaded_file(
                 filename=file.filename,
                 content_type=file.content_type or "application/octet-stream",
-                file_bytes=file_bytes
+                file_bytes=file_bytes,
             )
-            
+
             if not is_valid:
                 logger.warning(f"❌ [UPLOAD] Validasi gagal untuk {file.filename}: {validation_msg}")
                 raise HTTPException(
                     status_code=400,
-                    detail=f"Validasi file '{file.filename}' gagal: {validation_msg}"
+                    detail=f"Validasi file '{file.filename}' gagal: {validation_msg}",
                 )
-            
-            # ───────────────────────────────────────────────────────────────
-            # 4. WRITE TO DISK (setelah validasi lulus)
-            # ───────────────────────────────────────────────────────────────
+
+            # ── 4. Write to disk ──────────────────────────────────────────────
             unique_filename = f"{int(time.time())}_{file.filename}"
             absolute_write_path = os.path.join(UPLOAD_DIR, unique_filename)
 
@@ -79,9 +77,7 @@ async def upload_chat_attachments(
             file_size = os.path.getsize(absolute_write_path)
             logger.info(f"✅ [UPLOAD] File '{file.filename}' ({file_size} bytes) tersimpan ke disk")
 
-            # ───────────────────────────────────────────────────────────────
-            # 5. SAVE METADATA TO DATABASE
-            # ───────────────────────────────────────────────────────────────
+            # ── 5. Save metadata to DB ────────────────────────────────────────
             inserted_meta = await chat_history_service.save_chat_attachment(
                 session_uuid=session_uuid,
                 original_filename=file.filename,

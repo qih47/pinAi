@@ -6,6 +6,7 @@ import cakraLogo from '../../../assets/cakra.png';
 import { styles } from '../chatPage.styles';
 import { useChatStore } from '../../../stores/chatStore';
 import UserBubble from './UserBubble';
+import apiClient from '../../../services/apiClient';
 
 const toastFloatingStyle = {
     position: 'fixed',
@@ -28,35 +29,41 @@ const toastFloatingStyle = {
 };
 
 function formatThinkingPhase(thought) {
-  if (!thought) return "CAKRA sedang berpikir";
-  
-  // Gunakan lastIndexOf agar selalu menangkap fase terakhir (paling baru)
-  const phases = [
-    { key: "jalur", label: "🚦 Layer 0: Menganalisis intent & jalur..." },
-    { key: "Gateway", label: "🚦 Layer 0: Menganalisis intent & jalur..." },
-    { key: "dokumen", label: "📚 RAG: Mencari regulasi internal Pindad..." },
-    { key: "RAG", label: "📚 RAG: Mencari regulasi internal Pindad..." },
-    { key: "cepat", label: "✍️ Layer 2: Menyusun formulasi respons..." },
-    { key: "respons", label: "✍️ Layer 2: Menyusun formulasi respons..." },
-    { key: "Gemma", label: "✍️ Layer 2: Menyusun formulasi respons..." },
-    { key: "PDF", label: "📄 Membaca lampiran PDF..." },
-    { key: "visual", label: "🖼️ Menganalisis visual..." }
-  ];
+    if (!thought) return "CAKRA sedang berpikir";
 
-  let lastIndex = -1;
-  let activePhase = "CAKRA sedang berpikir";
+    // Gunakan lastIndexOf agar selalu menangkap fase terakhir (paling baru)
+    const phases = [
+        { key: "jalur", label: "🚦 Layer 0: Menganalisis intent & jalur..." },
+        { key: "Gateway", label: "🚦 Layer 0: Menganalisis intent & jalur..." },
+        { key: "dokumen", label: "📚 RAG: Mencari regulasi internal Pindad..." },
+        { key: "RAG", label: "📚 RAG: Mencari regulasi internal Pindad..." },
+        { key: "cepat", label: "✍️ Layer 2: Menyusun formulasi respons..." },
+        { key: "respons", label: "✍️ Layer 2: Menyusun formulasi respons..." },
+        { key: "Gemma", label: "✍️ Layer 2: Menyusun formulasi respons..." },
+        { key: "LANGKAH 1", label: "🔍 Mencari dokumen relevan..." },
+        { key: "SELEKSI DOKUMEN", label: "🔍 Mencari dokumen relevan..." },
+        { key: "LANGKAH 2", label: "🧠 Analisa isi dokumen..." },
+        { key: "ANALISIS ISI", label: "🧠 Analisa isi dokumen..." },
+        { key: "LANGKAH 3", label: "✍️ Membuat Response..." },
+        { key: "RENCANA JAWABAN", label: "✍️ Membuat Response..." },
+        { key: "PDF", label: "📄 Membaca lampiran PDF..." },
+        { key: "visual", label: "🖼️ Menganalisis visual..." }
+    ];
 
-  for (const phase of phases) {
-      const idx = thought.lastIndexOf(phase.key);
-      if (idx > lastIndex) {
-          lastIndex = idx;
-          activePhase = phase.label;
-      }
-  }
-  return activePhase;
+    let lastIndex = -1;
+    let activePhase = "CAKRA sedang berpikir";
+
+    for (const phase of phases) {
+        const idx = thought.lastIndexOf(phase.key);
+        if (idx > lastIndex) {
+            lastIndex = idx;
+            activePhase = phase.label;
+        }
+    }
+    return activePhase;
 }
 
-const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThinking, isStreamingText, searchQuery = '' }) {
+const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThinking, isStreamingText, searchQuery = '', isLastMessage }) {
     const [showToast, setShowToast] = useState(false);
     const [toastMsg, setToastMsg] = useState('');
 
@@ -80,6 +87,11 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
         }
     };
 
+    const globalIsThinking = useChatStore((state) => state.isThinking);
+    const globalIsStreaming = useChatStore((state) => state.isStreaming);
+    const activeIsolatedDocId = useChatStore((state) => state.activeIsolatedDocId);
+    const setContextIsolation = useChatStore((state) => state.setContextIsolation);
+
     if (msg.role === 'user') {
         return (
             <UserBubble
@@ -95,21 +107,9 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
         );
     }
 
-    const globalIsThinking = useChatStore((state) => state.isThinking);
-    const globalIsStreaming = useChatStore((state) => state.isStreaming);
-    const activeIsolatedDocId = useChatStore((state) => state.activeIsolatedDocId);
-    const setContextIsolation = useChatStore((state) => state.setContextIsolation);
-
-    const isReceivingRef = useRef(false);
-
-    if (globalIsThinking && (!msg.content || msg.content === '')) {
-        isReceivingRef.current = true;
-    } else if (!globalIsStreaming && !globalIsThinking) {
-        isReceivingRef.current = false;
-    }
-
-    const isThinkingMsg = isReceivingRef.current && globalIsThinking && (!msg.content || msg.content === '');
-    const isStreamingMsg = isReceivingRef.current && globalIsStreaming && msg.content !== '';
+    const isThisMessageStreaming = msg.isStreaming === true;
+    const isThinkingMsg = isThisMessageStreaming && globalIsThinking && (!msg.content || msg.content === '');
+    const isStreamingMsg = isThisMessageStreaming && msg.content !== '';
     const isActive = isThinkingMsg || isStreamingMsg;
 
     // 🔥 Smooth transition & animasi untuk teks berpikir
@@ -199,43 +199,191 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
                 </div>
 
                 <div style={styles.assistantContent} className="assistant-content-container">
-                            <div style={{ ...styles.assistantText, color: theme.textColor, width: '100%' }}>
-                                <CakraResponseRenderer
-                                    rawContent={msg.content || ''}
-                                    thinkingContent={msg.thinking || msg.thought || ''}
-                                    isStreaming={isStreamingMsg}
+                    <div style={{ ...styles.assistantText, color: theme.textColor, width: '100%' }}>
+                        <CakraResponseRenderer
+                            rawContent={msg.content || ''}
+                            thinkingContent={msg.thinking || msg.thought || ''}
+                            isStreaming={isThisMessageStreaming}
+                            darkMode={darkMode}
+                            theme={theme}
+                            searchQuery={searchQuery}
+                            statusMessage={msg.statusMessage}
+                        />
+                    </div>
+
+                    {!isThisMessageStreaming && (
+                        <>
+                            {(msg.eval_count || msg.citations || msg.sources) && (
+                                <RAGMetrics
+                                    sources={msg.citations || msg.sources}
+                                    eval_count={msg.eval_count}
+                                    eval_duration={msg.eval_duration}
                                     darkMode={darkMode}
                                     theme={theme}
-                                    searchQuery={searchQuery}
                                 />
-                            </div>
-
-                            {!isStreamingMsg && (msg.citations || msg.sources) && (
-                                <>
-                                    <RAGMetrics
-                                        sources={msg.citations || msg.sources}
-                                        darkMode={darkMode}
-                                        theme={theme}
-                                    />
-                                    <SourceCitation
-                                        sources={msg.citations || msg.sources}
-                                        darkMode={darkMode}
-                                        theme={theme}
-                                        activeIsolatedDocId={activeIsolatedDocId}
-                                        onActivateIsolation={(source) => {
-                                            const docId = source.id || source.dokumen_id;
-                                            const docTitle = source.title || source.filename || source.name;
-                                            setContextIsolation(docId, docTitle);
-                                        }}
-                                        onPreview={(source) => {
-                                            const fileUrl = source.url || source.file_path;
-                                            if (fileUrl) window.open(fileUrl, '_blank');
-                                        }}
-                                    />
-                                </>
                             )}
+                            {(msg.citations || msg.sources) && (
+                                <SourceCitation
+                                    sources={msg.citations || msg.sources}
+                                    darkMode={darkMode}
+                                    theme={theme}
+                                    activeIsolatedDocId={activeIsolatedDocId}
+                                    onActivateIsolation={(source) => {
+                                        const docId = source.id || source.dokumen_id;
+                                        const docTitle = source.title || source.filename || source.name;
+                                        setContextIsolation(docId, docTitle);
+                                    }}
+                                    onPreview={(source) => {
+                                        const fileUrl = source.url || source.file_path;
+                                        if (fileUrl) window.open(fileUrl, '_blank');
+                                    }}
+                                />
+                            )}
+                        </>
+                    )}
 
-                            {/* Tombol Salin Markdown kedua dihapus karena sudah ada di pojok atas */}
+                    {/* ── TOOLBAR AKSI MINIMALIS (HOVER ONLY ICONS) ── */}
+                    {!isThisMessageStreaming && (
+                        <div style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            marginTop: '4px', // Jarak aman mepet di bawah teks respons tanpa garis pembatas
+                            width: '100%',
+                            justifyContent: 'flex-start'
+                        }}>
+                            {/* 👍 TOMBOL GOOD (THUMB UP) */}
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    apiClient.patch(`/chat/sessions/${useChatStore.getState().sessionUuid}/messages/feedback`, {
+                                        message_index: idx,
+                                        feedback: { rating: 'good' }
+                                    }).then(() => {
+                                        setToastMsg('Feedback Good terkirim! 👍');
+                                        setShowToast(true);
+                                        setTimeout(() => setShowToast(false), 2000);
+                                    }).catch(err => {
+                                        console.error("Gagal mengirim feedback:", err);
+                                        setToastMsg('Gagal mengirim feedback ❌');
+                                        setShowToast(true);
+                                        setTimeout(() => setShowToast(false), 2000);
+                                    });
+                                }}
+                                style={{
+                                    background: 'transparent',
+                                    border: 'none',
+                                    cursor: 'pointer',
+                                    padding: '6px',
+                                    borderRadius: '6px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    transition: 'all 0.2s ease',
+                                    opacity: 0.5,
+                                    color: darkMode ? '#94a3b8' : '#64748b' // Warna default abu-abu elegan monokrom
+                                }}
+                                title="Respons Bagus"
+                                onMouseEnter={(e) => {
+                                    e.currentTarget.style.opacity = '1';
+                                    e.currentTarget.style.color = '#10b981'; // Glow Hijau pas di-hover
+                                    e.currentTarget.style.background = darkMode ? 'rgba(16,185,129,0.1)' : 'rgba(16,185,129,0.05)';
+                                }}
+                                onMouseLeave={(e) => {
+                                    e.currentTarget.style.opacity = '0.5';
+                                    e.currentTarget.style.color = darkMode ? '#94a3b8' : '#64748b';
+                                    e.currentTarget.style.background = 'transparent';
+                                }}
+                            >
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"></path>
+                                </svg>
+                            </button>
+
+                            {/* 👎 TOMBOL BAD (THUMB DOWN) */}
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    apiClient.patch(`/chat/sessions/${useChatStore.getState().sessionUuid}/messages/feedback`, {
+                                        message_index: idx,
+                                        feedback: { rating: 'bad' }
+                                    }).then(() => {
+                                        setToastMsg('Feedback Bad terkirim! 👎');
+                                        setShowToast(true);
+                                        setTimeout(() => setShowToast(false), 2000);
+                                    }).catch(err => {
+                                        console.error("Gagal mengirim feedback:", err);
+                                        setToastMsg('Gagal mengirim feedback ❌');
+                                        setShowToast(true);
+                                        setTimeout(() => setShowToast(false), 2000);
+                                    });
+                                }}
+                                style={{
+                                    background: 'transparent',
+                                    border: 'none',
+                                    cursor: 'pointer',
+                                    padding: '6px',
+                                    borderRadius: '6px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    transition: 'all 0.2s ease',
+                                    opacity: 0.5,
+                                    color: darkMode ? '#94a3b8' : '#64748b'
+                                }}
+                                title="Respons Buruk"
+                                onMouseEnter={(e) => {
+                                    e.currentTarget.style.opacity = '1';
+                                    e.currentTarget.style.color = '#ef4444'; // Glow Merah pas di-hover
+                                    e.currentTarget.style.background = darkMode ? 'rgba(239,68,68,0.1)' : 'rgba(239,68,68,0.05)';
+                                }}
+                                onMouseLeave={(e) => {
+                                    e.currentTarget.style.opacity = '0.5';
+                                    e.currentTarget.style.color = darkMode ? '#94a3b8' : '#64748b';
+                                    e.currentTarget.style.background = 'transparent';
+                                }}
+                            >
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3zm7-13h3a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-3"></path>
+                                </svg>
+                            </button>
+
+                            {/* 📋 TOMBOL COPY (DOUBLE DOCUMENT LAYERS) */}
+                            <button
+                                type="button"
+                                onClick={() => executeTextCopy(msg.content)}
+                                style={{
+                                    background: 'transparent',
+                                    border: 'none',
+                                    cursor: 'pointer',
+                                    padding: '6px',
+                                    borderRadius: '6px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    transition: 'all 0.2s ease',
+                                    opacity: 0.5,
+                                    color: darkMode ? '#94a3b8' : '#64748b'
+                                }}
+                                title="Salin Respons"
+                                onMouseEnter={(e) => {
+                                    e.currentTarget.style.opacity = '1';
+                                    e.currentTarget.style.color = darkMode ? '#6366f1' : '#2563eb'; // Glow Tema Utama Indigo/Blue
+                                    e.currentTarget.style.background = darkMode ? 'rgba(99,102,241,0.1)' : 'rgba(37,99,235,0.05)';
+                                }}
+                                onMouseLeave={(e) => {
+                                    e.currentTarget.style.opacity = '0.5';
+                                    e.currentTarget.style.color = darkMode ? '#94a3b8' : '#64748b';
+                                    e.currentTarget.style.background = 'transparent';
+                                }}
+                            >
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                                </svg>
+                            </button>
+                        </div>
+                    )}
 
                 </div>
             </div>
@@ -247,6 +395,7 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
         prevProps.msg.content === nextProps.msg.content &&
         prevProps.msg.thinking === nextProps.msg.thinking &&
         prevProps.msg.thought === nextProps.msg.thought &&
+        prevProps.msg.statusMessage === nextProps.msg.statusMessage &&
         prevProps.msg.reasoning === nextProps.msg.reasoning &&
         prevProps.msg.role === nextProps.msg.role &&
         prevProps.isThinking === nextProps.isThinking &&

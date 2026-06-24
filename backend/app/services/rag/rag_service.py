@@ -1,3 +1,17 @@
+"""
+RAG Service — Sprint 3
+================================
+
+Perubahan dari Sprint 2:
+  1. HARD_FLOOR dinaikkan dari 0.05 → 0.55
+     (BGE sigmoid output: 0.5 = tidak yakin, bukan relevan)
+  2. MAX_DOCS_TO_LLM = 3 — cap maksimum dokumen ke LLM
+  3. Score Exposure tetap ada: TINGGI/SEDANG/RENDAH
+  4. Threshold SEDANG redefined: >= 0.55 (bukan 0.3)
+
+Model: mxbai-embed-large (1024d) + BGE Cross-Encoder Re-ranker
+"""
+
 import re
 import json
 import logging
@@ -6,7 +20,6 @@ from backend.app.core.database import get_db
 
 logger = logging.getLogger("CAKRA_RAG_SERVICE")
 
-# Stopwords Indonesia yang sering merusak tsquery jika ikut di-AND-kan
 _STOPWORDS_ID = {
     "yang", "di", "ke", "dari", "dan", "atau", "untuk", "with", "dengan", "pada",
     "adalah", "ini", "itu", "dalam", "oleh", "juga", "sudah", "akan", "tidak",
@@ -15,28 +28,38 @@ _STOPWORDS_ID = {
     "namanya", "setiap", "serta", "tentang", "antara",
 }
 
-# ── THRESHOLD KONFIGURASI RE-RANKER ──────────────────────────────────────────
-# BGE cross-encoder menghasilkan score 0.0 - 1.0 (setelah sigmoid)
-_RERANK_RATIO = 0.15
-_RERANK_FLOOR = 0.40
+# ── SPRINT 3: THRESHOLD REALISTIS UNTUK BGE SIGMOID OUTPUT ───────────────────
+# BGE CrossEncoder pakai sigmoid → output 0.0-1.0
+# 0.5 = model tidak yakin (netral), BUKAN relevan
+# Dokumen dianggap relevan hanya jika BGE cukup yakin: >= 0.55
+HARD_FLOOR = 0.55
+
+# Cap maksimum dokumen yang dikirim ke LLM — lebih sedikit = lebih fokus
+MAX_DOCS_TO_LLM = 3
+
+
+def _get_score_label(score: float) -> str:
+    """Konversi skor BGE sigmoid ke label human-readable."""
+    if score >= 0.75:
+        return "TINGGI"
+    elif score >= 0.55:
+        return "SEDANG"
+    else:
+        return "RENDAH"
 
 
 class RagService:
     """
-    Orkestrator Advanced RAG — Hybrid Search PostgreSQL (pgvector + Full-Text Search)
-    menggunakan Reciprocal Rank Fusion (RRF), ekspansi Parent-Child sesuai ERD,
-    dan filtrasi via Cross-Encoder Re-ranker.
+    Orkestrator Advanced RAG — Hybrid Search PostgreSQL (pgvector + FTS)
+    menggunakan RRF, Parent-Child expansion, dan Cross-Encoder Re-ranker.
+
+    Sprint 3: Hard Floor 0.55 + MAX_DOCS_TO_LLM cap
     """
 
     def __init__(self):
-        logger.info(
-            "[RAG_SERVICE_INIT] Hybrid RRF + Re-ranker Engine initialized."
-        )
+        logger.info("[RAG_SERVICE_INIT] Hybrid RRF + Re-ranker Engine initialized (Sprint 3).")
 
     def _prepare_tsquery(self, query: str) -> str:
-        """
-        Bersihkan query → format kompatibel to_tsquery Postgres.
-        """
         cleaned = "".join(c if c.isalnum() or c.isspace() else " " for c in query)
         tokens = [
             t.lower()
@@ -47,23 +70,20 @@ class RagService:
         if not tokens:
             return "pindad"
 
-        # Ambil maks 6 token paling bermakna, hindari overfitting query
         tokens = tokens[:6]
-
-        # AND operator: dokumen WAJIB mengandung semua token agar relevan secara keyword
-        return " & ".join(f"{t}:*" for t in tokens)
+        return " | ".join(f"{t}:*" for t in tokens)
 
     async def assemble_powerful_context(
-        self, query: str, limit: int = 5, min_score: float = 0.005
+        self, query: str, limit: int = 5, min_score: float = HARD_FLOOR
     ) -> Tuple[str, List[Dict[str, Any]]]:
         """
-        Pipeline RAG 3 fase terpadu - Mengembalikan tuple (context_string, sources_metadata)
-        Memperbaiki kebocoran data dengan structural grouping per dokumen.
+        Pipeline RAG 3 fase terpadu.
+        Sprint 3: min_score default = HARD_FLOOR (0.55), cap MAX_DOCS_TO_LLM=3.
         """
         logger.debug(f'[RAG_SERVICE] Extracting RRF for query: "{query}"')
 
         # ======================================================================
-        # FASE 0: LAZY IMPORT — anti-mismatch
+        # FASE 0: LAZY IMPORT
         # ======================================================================
         try:
             from backend.app.services.rag.vector_service import vector_service
@@ -98,7 +118,7 @@ class RagService:
         document_candidates: Dict[int, Dict[str, Any]] = {}
 
         # ======================================================================
-        # FASE 1: HYBRID SEARCH + RRF di PostgreSQL (Menggabungkan pgvector + FTS)
+        # FASE 1: HYBRID SEARCH + RRF
         # ======================================================================
         async with get_db() as conn:
             try:
@@ -204,7 +224,7 @@ class RagService:
             return "", []
 
         # ======================================================================
-        # FASE 2: PARENT-CHILD HIERARCHICAL STRUCTURE ASSEMBLY (Sesuai ERD)
+        # FASE 2: PARENT-CHILD HIERARCHICAL STRUCTURE ASSEMBLY
         # ======================================================================
         expanded_blocks = []
 
@@ -233,7 +253,7 @@ class RagService:
                     chunk_fetch_sql = """
                         SELECT dc.content, dc.chunk_id, ds.section_title, ds.section_type
                         FROM dokumen_chunk dc
-                        LEFT JOIN dokumen_section ds ON dc.dokumen_id = ds.dokumen_id 
+                        LEFT JOIN dokumen_section ds ON dc.dokumen_id = ds.dokumen_id
                             AND (dc.section_id = ds.id OR ds.id::text = dc.parent_id)
                         WHERE dc.dokumen_id = $1 AND dc.chunk_id = ANY($2)
                         ORDER BY dc.chunk_id ASC;
@@ -294,7 +314,7 @@ class RagService:
             for idx, score in enumerate(rerank_scores):
                 expanded_blocks[idx]["final_score"] = float(score)
 
-            logger.debug("[RAG_SERVICE] Re-ranking complete, filtering results...")
+            logger.debug("[RAG_SERVICE] Re-ranking complete, applying hard floor filter...")
 
         except Exception as ren_err:
             logger.warning(
@@ -307,41 +327,52 @@ class RagService:
         # Urutkan berdasarkan skor tertinggi
         expanded_blocks.sort(key=lambda x: x["final_score"], reverse=True)
 
-        best_score = expanded_blocks[0].get("final_score", 0.0) if expanded_blocks else 0.0
-        effective_min_score = max(best_score * _RERANK_RATIO, _RERANK_FLOOR)
-
+        # ── SPRINT 3: LOG SEMUA SKOR KANDIDAT (buat tuning) ──────────────────
         logger.info(
-            f"🎯 [RAG THRESHOLD] best_score={best_score:.4f} | "
-            f"effective_min_score={effective_min_score:.4f} "
-            f"(ratio={_RERANK_RATIO}, floor={_RERANK_FLOOR})"
+            f"🎯 [RAG THRESHOLD] hard_floor={HARD_FLOOR} | "
+            f"candidates={len(expanded_blocks)} | "
+            f"best_score={expanded_blocks[0]['final_score']:.4f}"
         )
+        for idx, b in enumerate(expanded_blocks):
+            passed = "✅ PASS" if b["final_score"] >= HARD_FLOOR else "❌ DROP"
+            logger.info(
+                f"   [{passed}] #{idx+1} '{b['nomor']}' | BGE={b['final_score']:.4f}"
+            )
 
         # ======================================================================
-        # ASSEMBLY KONTEKS FINAL + METADATA SUMBER UNTUK GEMMA & FE
+        # ASSEMBLY KONTEKS FINAL + SCORE EXPOSURE
         # ======================================================================
         final_contexts = []
         sources_metadata = []
         inserted_count = 0
 
         for b in expanded_blocks:
-            if inserted_count >= limit:
+            # Cap maksimum dokumen ke LLM
+            if inserted_count >= MAX_DOCS_TO_LLM:
+                logger.debug(
+                    f"[RAG_SERVICE] Cap reached ({MAX_DOCS_TO_LLM}), "
+                    f"dropping '{b['judul']}' (score {b['final_score']:.4f})"
+                )
                 break
 
             f_score = b.get("final_score", 0.0)
 
-            if f_score < effective_min_score:
+            # ── SPRINT 3: Hard Floor 0.55 ─────────────────────────────────────
+            if f_score < HARD_FLOOR:
                 logger.debug(
-                    f"[RAG_SERVICE] Dropped '{b['judul']}' (score {f_score:.4f} < {effective_min_score:.4f})"
+                    f"[RAG_SERVICE] Dropped '{b['judul']}' "
+                    f"(BGE score {f_score:.4f} < floor {HARD_FLOOR})"
                 )
                 continue
 
+            score_label = _get_score_label(f_score)
+
             block_str = (
-                f"--- DOKUMEN RUJUKAN [{inserted_count + 1}] ---\n"
+                f"[DOKUMEN {inserted_count + 1}] Tingkat Relevansi: {score_label} (Skor: {f_score:.2f})\n"
                 f"• Jenis Regulasi  : {b['jenis']}\n"
                 f"• Judul           : {b['judul']}\n"
                 f"• No. Regulasi    : {b['nomor']}\n"
                 f"• Estimasi Halaman: {b['halaman']}\n"
-                f"• Skor Relevansi  : {f_score:.4f}\n"
                 f"• Isi Kandungan Dokumen:\n{b['text']}\n"
             )
             final_contexts.append(block_str)
@@ -357,12 +388,17 @@ class RagService:
                 "jenis": b["jenis"],
                 "sections": b.get("sections", []),
                 "score": f_score,
+                "score_label": score_label,
             })
 
             inserted_count += 1
 
         if not final_contexts:
-            logger.warning("[RAG_SERVICE] No documents passed threshold")
+            logger.warning(
+                f"[RAG_SERVICE] No documents passed hard floor {HARD_FLOOR}. "
+                f"Top score was {expanded_blocks[0]['final_score']:.4f} — "
+                f"consider lowering HARD_FLOOR if this is expected."
+            )
             return (
                 "[PERINGATAN SISTEM]: Dokumen regulasi mengenai kueri ini TIDAK DITEMUKAN di basis data internal Pindad. "
                 "Asisten WAJIB menyampaikan secara langsung bahwa data regulasi resmi tidak tersedia di RAGDB. "
@@ -371,7 +407,9 @@ class RagService:
             )
 
         logger.info(
-            f"[RAG_SERVICE] {len(final_contexts)} documents passed threshold (from {len(expanded_blocks)} candidates)"
+            f"[RAG_SERVICE] {len(final_contexts)} documents passed "
+            f"(hard_floor={HARD_FLOOR}, cap={MAX_DOCS_TO_LLM}, "
+            f"from {len(expanded_blocks)} candidates)"
         )
         return "\n".join(final_contexts), sources_metadata
 

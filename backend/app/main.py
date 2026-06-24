@@ -22,6 +22,7 @@ from fastapi.staticfiles import StaticFiles
 
 from backend.app.core.config import settings
 from backend.app.core.database import init_db_pool, close_db_pool
+from backend.app.services.rag.reranker_service import _load_reranker
 from backend.app.core.logging_setup import setup_root_logger
 from backend.app.api.router import api_router
 from backend.app.core.llm_client import warm_up_model
@@ -46,23 +47,8 @@ async def _unload_deprecated_models():
     """
     Unload deprecated models (Qwen 0.6B/1.7B) from VRAM to optimize memory.
     """
-    import httpx
-    deprecated_models = ["qwen3:0.6b", "qwen3:1.7b", "qwen3:latest"]
-    url = f"{settings.OLLAMA_BASE_URL}/api/chat"
-    
-    for model_name in deprecated_models:
-        logger.info(f"🧹 [VRAM] Unloading deprecated model '{model_name}' from VRAM...")
-        try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                # Ollama unloads a model immediately when keep_alive=0
-                await client.post(url, json={
-                    "model": model_name,
-                    "messages": [],
-                    "keep_alive": 0
-                })
-                logger.info(f"✅ [VRAM] '{model_name}' successfully evicted from VRAM.")
-        except Exception as e:
-            logger.debug(f"[VRAM] Eviction skipped for '{model_name}': {e}")
+    # Deprecated models feature removed, preserving function signature for safe lifespan
+    pass
 
 
 async def _warmup_and_pin_models():
@@ -145,6 +131,10 @@ async def lifespan(app: FastAPI):
         await _unload_deprecated_models()
         await _warmup_and_pin_models()
 
+        # Warmup BGE Reranker Model
+        logger.info("⏳ [WARMUP] Memulai pinning BAAI/bge-reranker-v2-m3 ke memori...")
+        await asyncio.get_event_loop().run_in_executor(None, _load_reranker)
+
         await start_background_scheduler(app)
 
     except Exception as e:
@@ -173,20 +163,25 @@ async def lifespan(app: FastAPI):
     logger.info("[DB_POOL] All database connection pools closed.")
 
 
+from fastapi import FastAPI, Depends
+from backend.app.utils.security_firewall import security_firewall_dependency
+
 app = FastAPI(
-    title=settings.APP_NAME,
+    title=settings.APP_NAME if hasattr(settings, "APP_NAME") else "Intelligent Agentic RAG System",
     description="Intelligent Agentic RAG System - PT Pindad",
     version="2.0.0",
     lifespan=lifespan,
     docs_url="/docs",
     redoc_url="/redoc",
+    dependencies=[Depends(security_firewall_dependency)]
 )
 
+# Request ID logging
 app.add_middleware(RequestIDLoggingMiddleware)
 
-# GPU semaphore — 2 slot: 1 untuk Gemma, 1 buffer concurrent
-app.state.gpu_limit = asyncio.Semaphore(2)
-logger.info("🔒 [HARDWARE] GPU Concurrency Semaphore: 2 slot.")
+# GPU semaphore — 1 slot: Strict Queue untuk antrean GPU
+app.state.gpu_limit = asyncio.Semaphore(1)
+logger.info("🔒 [HARDWARE] GPU Concurrency Semaphore: 1 slot (Strict Queue).")
 
 app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 logger.info(f"🌐 [MOUNT] uploads → {UPLOAD_DIR}")

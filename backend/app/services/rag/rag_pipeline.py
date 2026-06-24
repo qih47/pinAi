@@ -1,7 +1,17 @@
+"""
+RAG Pipeline — Sprint 2 Enhanced
+=================================
+
+Perubahan:
+  1. Semantic Cache Interceptor (cosine similarity > 0.90)
+  2. Auto-save ke cache setelah RAG DB pipeline selesai
+  3. Score Exposure sudah ditangani di rag_service.py
+"""
+
 import asyncio
 import logging
 import time
-from typing import AsyncGenerator, List, Dict, Any, Tuple
+from typing import AsyncGenerator, List, Dict, Any, Tuple, Optional  # ✅ FIXED: Tambah Optional
 
 from backend.app.services.rag_service import rag_service
 from backend.app.services.pipeline.sse_validation import (
@@ -18,17 +28,49 @@ _SLOW_SEARCH_THRESHOLD_S = 3.0
 async def run_rag_pipeline(
     rewritten_queries: List[str],
     limit_per_query: int = 3,
+    npp: Optional[str] = None,  # ✅ FIXED: Gunakan Optional[str]
 ) -> AsyncGenerator[str, None]:
     if not rewritten_queries:
         logger.info("[RAG_PIPELINE] No queries → skip RAG")
         yield format_sse_pipeline_data({"context": "", "sources": []})
         return
 
-    yield format_sse("", "🔎 Mencari dokumen internal...", False, event_type=SSEEventType.STATUS)
+    yield format_sse(status="🔎 Mencari dokumen internal...", event_type=SSEEventType.STATUS)
     await asyncio.sleep(0.01)
 
     start_time = time.time()
 
+    # ── SPRINT 2: SEMANTIC CACHE CHECK ───────────────────────────────────────
+    cache_result = await _check_cache_for_queries(rewritten_queries, npp)
+
+    if cache_result:
+        duration_ms = int((time.time() - start_time) * 1000)
+        logger.info(
+            f"[RAG_PIPELINE] ⚡ Cache HIT | topic={cache_result['topic_key']} | "
+            f"similarity={cache_result['similarity']:.4f} | {duration_ms}ms"
+        )
+
+        combined_sources = cache_result["sources"]
+        for src in combined_sources:
+            src["search_time_ms"] = duration_ms
+            src["cache_hit"] = True
+
+        yield format_sse(status="⚡ Menggunakan cache dokumen terkait", event_type=SSEEventType.STATUS)
+        await asyncio.sleep(0.01)
+
+        yield format_sse(status=f"✨ Menemukan {len(combined_sources)} dokumen relevan!", event_type=SSEEventType.STATUS)
+        await asyncio.sleep(0.01)
+
+        yield format_sse("", "", False, sources=combined_sources, event_type=SSEEventType.SOURCES)
+        await asyncio.sleep(0.01)
+
+        yield format_sse_pipeline_data({
+            "context": cache_result["context"],
+            "sources": combined_sources,
+        })
+        return
+
+    # ── CACHE MISS: Jalankan RAG DB Pipeline Normal ──────────────────────────
     rag_task = asyncio.create_task(
         _run_parallel_rag(rewritten_queries, limit_per_query)
     )
@@ -38,10 +80,7 @@ async def run_rag_pipeline(
         await asyncio.sleep(0.5)
         elapsed = time.time() - start_time
         if elapsed > _SLOW_SEARCH_THRESHOLD_S and not slow_warned:
-            yield format_sse(
-                "", "⏳ Memeriksa arsip rujukan...", False,
-                event_type=SSEEventType.STATUS,
-            )
+            yield format_sse(status="⏳ Memeriksa arsip rujukan...", event_type=SSEEventType.STATUS)
             await asyncio.sleep(0.01)
             slow_warned = True
 
@@ -49,33 +88,27 @@ async def run_rag_pipeline(
         combined_context, combined_sources, total_candidates = await rag_task
     except Exception as e:
         logger.error(f"[RAG_PIPELINE] Parallel RAG error: {e}")
-        yield format_sse("", "⚠️ Gagal mengakses dokumen rujukan", False, event_type=SSEEventType.STATUS)
+        yield format_sse(status="⚠️ Gagal mengakses dokumen rujukan", event_type=SSEEventType.STATUS)
         await asyncio.sleep(0.01)
         yield format_sse_pipeline_data({"context": "", "sources": []})
         return
 
-    # 🔥 HITUNG DURASI TOTAL PENCARIAN
     duration_ms = int((time.time() - start_time) * 1000)
 
-    # 🔥 SUNTIK DURASI KE SETIAP UTAS SUMBER DOKUMEN AGAR RAGMETRICS FE TIDAK UNDEFINED
     for src in combined_sources:
         src["search_time_ms"] = duration_ms
 
-    yield format_sse("", "📊 Memilih rujukan paling sesuai...", False, event_type=SSEEventType.STATUS)
+    yield format_sse(status="📊 Memilih rujukan paling sesuai...", event_type=SSEEventType.STATUS)
     await asyncio.sleep(0.01)
 
     if combined_sources:
         doc_count = len(combined_sources)
         yield format_sse(
-            "",
-            f"✅ Menemukan {doc_count} rujukan dokumen terkait",
-            False,
+            status=f"✅ Menemukan {doc_count} rujukan dokumen terkait",
             event_type=SSEEventType.STATUS,
         )
         await asyncio.sleep(0.01)
-        
-        # 🔥 FIX CRITICAL: Emit event SOURCES secara mandiri dari dalam pipeline RAG 
-        # agar ditangkap oleh generator router utama, jangan cuma dikemas di format_sse_pipeline_data!
+
         yield format_sse(
             "", "", False,
             sources=combined_sources,
@@ -83,10 +116,7 @@ async def run_rag_pipeline(
         )
         await asyncio.sleep(0.01)
     else:
-        yield format_sse(
-            "", "⚠️ Dokumen rujukan tidak ditemukan", False,
-            event_type=SSEEventType.STATUS,
-        )
+        yield format_sse(status="⚠️ Tidak menemukan dokumen terkait yang valid. Akan menggunakan pengetahuan internal.", event_type=SSEEventType.STATUS)
         await asyncio.sleep(0.01)
 
     logger.info(
@@ -95,8 +125,57 @@ async def run_rag_pipeline(
         f"{duration_ms}ms"
     )
 
-    # Tetap kirimkan payload data internal untuk kebutuhan injeksi konteks prompt LLM
+    # ── SPRINT 2: SAVE TO SEMANTIC CACHE ─────────────────────────────────────
+    if combined_context and combined_sources:
+        await _save_cache_for_queries(
+            rewritten_queries, combined_context, combined_sources, npp
+        )
+
     yield format_sse_pipeline_data({"context": combined_context, "sources": combined_sources})
+
+
+async def _check_cache_for_queries(
+    queries: List[str],
+    npp: Optional[str] = None,
+) -> Optional[Dict[str, Any]]:
+    """Cek semantic cache untuk query pertama yang punya embedding."""
+    try:
+        from backend.app.services.rag.rag_cache_service import check_semantic_cache
+        from backend.app.services.rag.vector_service import vector_service
+
+        for query in queries:
+            embedding = await vector_service.get_query_embedding(query)
+            if embedding:
+                result = await check_semantic_cache(embedding, query, npp)
+                if result:
+                    return result
+    except Exception as e:
+        logger.warning(f"[RAG_PIPELINE] Cache check failed (non-fatal): {e}")
+
+    return None
+
+
+async def _save_cache_for_queries(
+    queries: List[str],
+    context: str,
+    sources: List[Dict[str, Any]],
+    npp: Optional[str] = None,
+) -> None:
+    """Simpan hasil RAG ke semantic cache (fire-and-forget)."""
+    try:
+        from backend.app.services.rag.rag_cache_service import save_to_semantic_cache
+        from backend.app.services.rag.vector_service import vector_service
+
+        # Gunakan query pertama sebagai representative
+        query = queries[0] if queries else ""
+        if not query:
+            return
+
+        embedding = await vector_service.get_query_embedding(query)
+        if embedding:
+            await save_to_semantic_cache(query, embedding, context, sources, npp)
+    except Exception as e:
+        logger.warning(f"[RAG_PIPELINE] Cache save failed (non-fatal): {e}")
 
 
 async def _run_parallel_rag(
@@ -117,10 +196,7 @@ async def _run_parallel_rag(
             logger.warning(f"[RAG_PIPELINE] Query '{q[:50]}' error: {e}")
             return "", []
 
-    # Batasi agar total dokumen yang dirender tidak lebih dari ~3-4
-    dynamic_limit = max(1, 4 // len(rewritten_queries)) if rewritten_queries else limit_per_query
-
-    results = await asyncio.gather(*[_fetch(q, dynamic_limit) for q in rewritten_queries])
+    results = await asyncio.gather(*[_fetch(q, limit_per_query) for q in rewritten_queries])
 
     hits_after = cache.hits
     is_cache_hit = hits_after > hits_before

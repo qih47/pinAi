@@ -10,13 +10,13 @@ async def setup_token_expiry_migration():
 
     migration_sql = """
     ALTER TABLE session_login
-    ADD COLUMN IF NOT EXISTS expires_at TIMESTAMP DEFAULT (NOW() + INTERVAL '8 hours');
+    ADD COLUMN IF NOT EXISTS expires_at TIMESTAMP DEFAULT (NOW() + INTERVAL '1 month');
     
     CREATE INDEX IF NOT EXISTS idx_session_login_expires_at 
     ON session_login(expires_at);
     
     UPDATE session_login 
-    SET expires_at = NOW() + INTERVAL '8 hours'
+    SET expires_at = NOW() + INTERVAL '1 month'
     WHERE expires_at IS NULL OR expires_at < NOW();
     """
 
@@ -52,7 +52,7 @@ async def cleanup_expired_sessions():
         logger.error(f"[TOKEN_EXPIRY] Cleanup expired sessions failed: {e}")
 
 
-async def extend_session_expiry(npp: str, extension_hours: int = 8) -> bool:
+async def extend_session_expiry(npp: str, extension_days: int = 30) -> bool:
     from backend.app.core.database import db_pool
 
     if db_pool is None:
@@ -63,12 +63,12 @@ async def extend_session_expiry(npp: str, extension_hours: int = 8) -> bool:
             result = await conn.execute(
                 """
                 UPDATE session_login
-                SET expires_at = NOW() + ($2 || ' hours')::INTERVAL,
+                SET expires_at = NOW() + ($2 || ' days')::INTERVAL,
                     last_activity = CURRENT_TIMESTAMP
                 WHERE npp = $1 AND is_login = TRUE
             """,
                 npp,
-                str(extension_hours),
+                str(extension_days),
             )
             return result == "UPDATE 1"
     except Exception as e:
@@ -77,7 +77,7 @@ async def extend_session_expiry(npp: str, extension_hours: int = 8) -> bool:
 
 
 async def extend_session_expiry_by_token(
-    token: str, extension_hours: int = 8
+    token: str, extension_days: int = 30
 ) -> Optional[datetime]:
     from backend.app.core.database import db_pool
 
@@ -89,13 +89,13 @@ async def extend_session_expiry_by_token(
             row = await conn.fetchrow(
                 """
                 UPDATE session_login
-                SET expires_at = NOW() + ($2 || ' hours')::INTERVAL,
+                SET expires_at = NOW() + ($2 || ' days')::INTERVAL,
                     last_activity = CURRENT_TIMESTAMP
                 WHERE session_token = $1 AND is_login = TRUE
                 RETURNING expires_at
             """,
                 token,
-                str(extension_hours),
+                str(extension_days),
             )
             if row:
                 return row["expires_at"]
@@ -105,8 +105,8 @@ async def extend_session_expiry_by_token(
         return None
 
 
-def get_token_expiry_time(hours: int = 8) -> datetime:
-    return datetime.utcnow() + timedelta(hours=hours)
+def get_token_expiry_time(days: int = 30) -> datetime:
+    return datetime.utcnow() + timedelta(days=days)
 
 
 async def validate_token_expiry(token: str) -> bool:
