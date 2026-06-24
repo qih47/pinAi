@@ -1,1 +1,0 @@
-# DEPRECATED: This file is deprecated and unused. All routing and persona execution is now handled by gemma_agentic_engine.py.
