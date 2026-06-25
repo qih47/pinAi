@@ -4,7 +4,7 @@ import cakraLogo from '../../assets/cakra.png';
 const GREETING_TEMPLATES = [
   "Tugas apa yang mau dikerjakan hari ini",
   "Ada yang bisa saya bantu hari ini",
-  "Mari selesaikan pekerjaan anda hari ini",
+  "Mari selesaikan tugas anda hari ini",
   "Fokus mengerjakan apa hari ini",
   "Siap membantu menyelesaikan target anda",
   "Apa prioritas utama anda saat ini",
