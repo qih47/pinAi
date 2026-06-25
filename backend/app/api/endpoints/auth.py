@@ -187,16 +187,17 @@ async def login(request_body: LoginRequest, request: Request):
                 )
                 logger.info("📝 [LOGIN] Sinkronisasi tabel 'users' lokal dikunci aman.")
 
-                # Insert or refresh active session token in session_login table
+                # Bersihkan sesi lama yang sudah kadaluarsa untuk NPP ini
+                await conn.execute(
+                    "DELETE FROM session_login WHERE npp = $1 AND expires_at < NOW()",
+                    npp
+                )
+
+                # Insert session token baru (Multiple device support)
                 expires_at = await conn.fetchval(
                     """
                     INSERT INTO session_login (npp, session_token, ip_address, is_login, last_activity, expires_at)
                     VALUES ($1, $2, $3, TRUE, CURRENT_TIMESTAMP, NOW() + INTERVAL '1 month')
-                    ON CONFLICT (npp) DO UPDATE SET 
-                        session_token = EXCLUDED.session_token, 
-                        is_login = TRUE, 
-                        last_activity = CURRENT_TIMESTAMP,
-                        expires_at = NOW() + INTERVAL '1 month'
                     RETURNING expires_at;
                     """,
                     npp,
@@ -271,10 +272,10 @@ async def logout(request: Request, payload: dict = Body(...)):
             if row:
                 npp = row["npp"]
                 async with conn.transaction():
-                    # Nonaktifkan token di session
+                    # Nonaktifkan token di session secara spesifik untuk perangkat ini
                     await conn.execute(
-                        "UPDATE session_login SET is_login = FALSE, session_token = '' WHERE npp = $1",
-                        npp,
+                        "UPDATE session_login SET is_login = FALSE WHERE session_token = $1",
+                        token,
                     )
                     # Catat rekam jejak keluar
                     await conn.execute(

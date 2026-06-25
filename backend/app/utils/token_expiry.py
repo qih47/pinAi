@@ -43,7 +43,7 @@ async def cleanup_expired_sessions():
             await conn.execute(
                 """
                 UPDATE session_login
-                SET is_login = FALSE, session_token = ''
+                SET is_login = FALSE
                 WHERE expires_at < NOW() AND is_login = TRUE
             """
             )
