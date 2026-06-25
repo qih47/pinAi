@@ -25,7 +25,7 @@ export default function Layout() {
 const styles = {
   globalContainer: {
     width: '100vw',
-    height: '100vh',
+    height: '100dvh',
     overflow: 'hidden',
     position: 'relative'
   }

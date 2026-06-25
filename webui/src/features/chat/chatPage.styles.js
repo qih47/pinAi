@@ -35,13 +35,10 @@ export const darkColors = {
     suggestionCardBg: '#171717',
 };
 
-// =========================================================================
-// ⚙️ SKEMA GAYA INTERFACE (🎯 RUMAH UTAMA TEMA & STYLING LOGO/AI RESPONSE)
-// =========================================================================
 export const styles = {
     root: {
         display: 'flex',
-        height: '100vh',
+        height: '100dvh',
         width: '100%',
         fontFamily: "'Inter', 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif",
         overflow: 'hidden',
@@ -234,7 +231,7 @@ export const styles = {
     inputArea: {
         flexShrink: 0, padding: '8px 24px 16px', transition: 'background 0.2s'
     },
-    inputContainer: { maxWidth: 768, margin: '0 auto', width: '100%' },
+    inputContainer: { maxWidth: 768, margin: '0 auto', width: '100%', position: 'relative' },
     inputForm: {
         display: 'flex', alignItems: 'flex-end', gap: 8,
         borderRadius: 28, padding: '10px 10px 10px 20px', transition: 'all 0.2s'

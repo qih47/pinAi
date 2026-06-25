@@ -6,6 +6,7 @@ export default function GuestWelcome({
   userData,
   getGreeting,
   theme,
+  isMobile,
 }) {
   return (
     <div style={{
@@ -50,13 +51,13 @@ export default function GuestWelcome({
 
         {/* Teks Judul dengan Gradasi Kuning ke Biru Murni Tanpa Clip (Bebas Bug Balok) */}
         <h2 style={{
-          fontSize: '32px',
+          fontSize: isMobile ? '18px' : '28px',
           fontWeight: '600',
           margin: '0',
           letterSpacing: '-0.8px',
           lineHeight: '1.2',
           display: 'inline-block',
-          whiteSpace: 'nowrap',
+          whiteSpace: isMobile ? 'normal' : 'nowrap',
           // 🔥 GRADASI KUNING KE BIRU: Langsung pakai standard text gradient style
           background: 'linear-gradient(to right, #facc15 0%, #2563eb 100%)',
           WebkitBackgroundClip: 'text',
@@ -72,7 +73,7 @@ export default function GuestWelcome({
 
       {/* Teks Abu-Abu Subtitle di Bawah */}
       <p style={{
-        fontSize: '16px',
+        fontSize: isMobile ? '14px' : '16px',
         margin: '0',
         color: theme.secondaryText,
         fontWeight: '400',

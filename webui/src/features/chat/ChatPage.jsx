@@ -79,9 +79,9 @@ export default function ChatPage({
     isThinkingModeRef.current = val;
     setIsThinkingMode(val);
     if (sessionId && sessionId !== 'new') {
-        import('../../services/endpoints').then(endpoints => {
-            endpoints.updateSessionSettings(sessionId, { chatMode: chatModeRef.current, isThinkingMode: val }).catch(() => {});
-        });
+      import('../../services/endpoints').then(endpoints => {
+        endpoints.updateSessionSettings(sessionId, { chatMode: chatModeRef.current, isThinkingMode: val }).catch(() => { });
+      });
     }
   };
   const [selectedMode, setSelectedMode] = useState('auto');
@@ -101,9 +101,9 @@ export default function ChatPage({
     // Menyimpan pilihan mode langsung ke Zustand store setelah dipilih oleh pengguna
     useChatStore.setState({ chatMode: val });
     if (sessionId && sessionId !== 'new') {
-        import('../../services/endpoints').then(endpoints => {
-            endpoints.updateSessionSettings(sessionId, { chatMode: val, isThinkingMode: isThinkingModeRef.current }).catch(() => {});
-        });
+      import('../../services/endpoints').then(endpoints => {
+        endpoints.updateSessionSettings(sessionId, { chatMode: val, isThinkingMode: isThinkingModeRef.current }).catch(() => { });
+      });
     }
   };
   // REF: Capture tinggi baseline 1 baris saat mount pertama
@@ -244,7 +244,20 @@ export default function ChatPage({
     return false;
   });
 
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth <= 768);
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
+  const [sidebarOpen, setSidebarOpen] = useState(window.innerWidth > 768);
+
+  // Auto-tutup sidebar kalau pindah ke ukuran mobile, auto-buka kalau pindah ke desktop
+  useEffect(() => {
+    setSidebarOpen(!isMobile);
+  }, [isMobile]);
+
   const [showDocumentList, setShowDocumentList] = useState(false);
   const [chatHistory, setChatHistory] = useState([]);
   const lastLoadedSessionRef = useRef(null);
@@ -339,28 +352,28 @@ export default function ChatPage({
   // SINKRONISASI: Menyelaraskan state lokal ChatPage dengan isi store setelah perubahan rute URL selesai
   useEffect(() => {
     if (sessionId && sessionId !== 'new') {
-        import('../../services/endpoints').then(endpoints => {
-            endpoints.fetchSessionSettings(sessionId).then(res => {
-                if (res && res.status === 'success' && res.data) {
-                    const savedChatMode = res.data.chatMode || 'auto';
-                    const savedThinkingMode = res.data.isThinkingMode || false;
-                    
-                    setChatMode(savedChatMode);
-                    chatModeRef.current = savedChatMode;
-                    useChatStore.setState({ chatMode: savedChatMode });
+      import('../../services/endpoints').then(endpoints => {
+        endpoints.fetchSessionSettings(sessionId).then(res => {
+          if (res && res.status === 'success' && res.data) {
+            const savedChatMode = res.data.chatMode || 'auto';
+            const savedThinkingMode = res.data.isThinkingMode || false;
 
-                    setIsThinkingMode(savedThinkingMode);
-                    isThinkingModeRef.current = savedThinkingMode;
-                }
-            }).catch(() => {});
-        });
+            setChatMode(savedChatMode);
+            chatModeRef.current = savedChatMode;
+            useChatStore.setState({ chatMode: savedChatMode });
+
+            setIsThinkingMode(savedThinkingMode);
+            isThinkingModeRef.current = savedThinkingMode;
+          }
+        }).catch(() => { });
+      });
     } else {
-        const currentGlobalMode = useChatStore.getState().chatMode || "auto";
-        setChatMode(currentGlobalMode);
-        chatModeRef.current = currentGlobalMode;
-        
-        setIsThinkingMode(false);
-        isThinkingModeRef.current = false;
+      const currentGlobalMode = useChatStore.getState().chatMode || "auto";
+      setChatMode(currentGlobalMode);
+      chatModeRef.current = currentGlobalMode;
+
+      setIsThinkingMode(false);
+      isThinkingModeRef.current = false;
     }
   }, [sessionId]);
 
@@ -424,8 +437,16 @@ export default function ChatPage({
   // CAPTURE BASELINE HEIGHT SEKALI SAAT MOUNT
   useEffect(() => {
     if (textareaRef.current && baselineHeightRef.current === 0) {
-      textareaRef.current.style.height = "auto";
-      baselineHeightRef.current = textareaRef.current.scrollHeight;
+      const el = textareaRef.current;
+      // FIX MOBILE BUG 1: Placeholder panjang sering wrap di layar sempit dan membuat scrollHeight palsu.
+      // Kita kosongkan sementara untuk mendapatkan ukuran 1 baris murni.
+      const originalPlaceholder = el.placeholder;
+      el.placeholder = "";
+      el.style.height = "auto";
+      baselineHeightRef.current = el.scrollHeight;
+      el.placeholder = originalPlaceholder;
+      // Kembalikan height ke baseline
+      el.style.height = `${baselineHeightRef.current}px`;
     }
   }, []);
 
@@ -433,6 +454,15 @@ export default function ChatPage({
   useEffect(() => {
     const el = textareaRef.current;
     if (!el) return;
+
+    // FIX MOBILE BUG 2: Saat input kosong (awal atau setelah kirim chat), paksa height ke baseline
+    // agar tidak tenggelam karena kalkulasi scrollHeight dari placeholder yang wrap.
+    if (input === "" && baselineHeightRef.current > 0) {
+      el.style.height = `${baselineHeightRef.current}px`;
+      el.style.overflow = "hidden";
+      setIsMultiLine(false);
+      return;
+    }
 
     const scrollTop = el.scrollTop;
     el.style.overflow = "hidden";
@@ -594,6 +624,58 @@ export default function ChatPage({
       }}
     >
       <div style={styles.inputContainer}>
+        {/* ── BUTTON SCROLL TO BOTTOM FLOATING CENTER ── */}
+        {isBottom && showScrollBottom && !showWelcome && messages.length > 0 && (
+          <button
+            onClick={() => {
+              if (messagesContainerRef.current) {
+                messagesContainerRef.current.scrollTo({
+                  top: 9999999,
+                  behavior: "smooth",
+                });
+              }
+            }}
+            style={{
+              position: "absolute",
+              top: "-46px",
+              left: "46%",
+              transform: "translateX(-50%)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: "6px",
+              padding: "8px 14px",
+              borderRadius: "20px",
+              fontSize: "13px",
+              fontWeight: "500",
+              border: `1px solid ${darkMode ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)"}`,
+              background: darkMode ? "#202123" : "#ffffff",
+              color: darkMode ? "#f3f4f6" : '#1f2937',
+              boxShadow: darkMode
+                ? "0 4px 12px rgba(0,0,0,0.5), 0 2px 4px rgba(0,0,0,0.2)"
+                : "0 4px 12px rgba(0,0,0,0.08), 0 2px 4px rgba(0,0,0,0.04)",
+              cursor: "pointer",
+              zIndex: 999,
+              transition: "all 0.2s ease-in-out",
+              animation: "fadeSlideIn 0.25s ease-out forwards",
+              outline: "none",
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = darkMode ? "#2d2d30" : "#f9fafb";
+              e.currentTarget.style.transform = "translateX(-50%) translateY(-2px)";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = darkMode ? "#202123" : "#ffffff";
+              e.currentTarget.style.transform = "translateX(-50%) translateY(0)";
+            }}
+            title="Lihat pesan baru di bawah"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="12" y1="5" x2="12" y2="19"></line>
+              <polyline points="19 12 12 19 5 12"></polyline>
+            </svg>
+          </button>
+        )}
         {/* Isolated doc banner */}
         {activeIsolatedTitle && (
           <div
@@ -996,10 +1078,31 @@ export default function ChatPage({
   );
 
   const hasSidebar = !isGuest && currentIsLoggedIn;
-  const mainMarginLeft = hasSidebar ? (sidebarOpen ? "18rem" : "4rem") : "0";
+
+  // LOGIKA MARGIN UTAMA: 
+  // Jika mobile, sidebar adalah overlay -> margin-left selalu 0
+  // Jika desktop, margin-left menyesuaikan apakah sidebar buka/tutup
+  const mainMarginLeft = isMobile
+    ? "0"
+    : (hasSidebar ? (sidebarOpen ? "18rem" : "4rem") : "0");
 
   return (
     <div style={{ ...styles.root, background: theme.rootBg }}>
+      {/* ── BACKDROP MOBILE ── */}
+      {isMobile && hasSidebar && sidebarOpen && (
+        <div
+          onClick={() => setSidebarOpen(false)}
+          style={{
+            position: "absolute",
+            inset: 0,
+            background: "rgba(0,0,0,0.5)",
+            backdropFilter: "blur(4px)",
+            zIndex: 35, // Sidebar adalah 40
+            animation: "fadeInUp 0.3s ease-out",
+          }}
+        />
+      )}
+
       {/* 1. KEMBALIKAN ANIMASI CAKRA BERPIKIR & STREAMING REVEAL */}
       <style>{`
         @keyframes cakraSpin {
@@ -1085,6 +1188,7 @@ export default function ChatPage({
         <Sidebar
           isOpen={sidebarOpen}
           setIsOpen={setSidebarOpen}
+          isMobile={isMobile}
           darkMode={darkMode}
           setDarkMode={setDarkMode}
           theme={theme}
@@ -1110,8 +1214,65 @@ export default function ChatPage({
           transition: "margin-left 0.3s ease-in-out",
         }}
       >
-        <header style={styles.header}>
-          <div style={styles.modelSelector}>
+        <header style={{
+          ...styles.header,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          width: "100%",
+          paddingLeft: "12px",
+          paddingRight: "12px",
+
+          // 🔥 KUNCI TRANSPARAN: Gak ada background, gak ada border sama sekali!
+          background: "transparent",
+          borderBottom: "none",
+          boxShadow: "none",
+
+          // Posisi tetap di atas melayang
+          position: "absolute",
+          top: 0,
+          left: 0,
+          right: 0,
+          zIndex: 30,
+          height: "56px",
+        }}>
+
+          {/* ── BLOK KIRI: Hamburger Menu ── */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0px' }}>
+            {/* ☰ HAMBURGER MENU MOBILE */}
+            {isMobile && hasSidebar && (
+              <button
+                onClick={() => setSidebarOpen(!sidebarOpen)}
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  cursor: "pointer",
+                  color: theme.iconColor,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  padding: "6px",
+                  borderRadius: "8px",
+                }}
+                title="Buka Menu"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="24"
+                  height="24"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <rect x="3" y="4" width="18" height="16" rx="2.5" />
+                  <rect x="3" y="4" width="6" height="16" rx="2.5" />
+                </svg>
+              </button>
+            )}
+
             {!hasSidebar && (
               <img
                 // src={cakraLogo}
@@ -1129,6 +1290,32 @@ export default function ChatPage({
               gap: "8px",
             }}
           >
+            {/* ✚ TOMBOL NEW CHAT MOBILE */}
+            {isMobile && hasSidebar && (
+              <button
+                onClick={handleClearChat}
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  cursor: "pointer",
+                  width: "36px",
+                  height: "36px",
+                  borderRadius: "50%",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  color: theme.iconColor,
+                  transition: "background 0.2s",
+                  outline: "none",
+                }}
+                title="Chat Baru"
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 5v14M5 12h14" />
+                </svg>
+              </button>
+            )}
+
             {messages.length > 0 && (
               <button
                 onClick={() => {
@@ -1296,6 +1483,7 @@ export default function ChatPage({
                   getGreeting={getGreeting || defaultGetGreeting}
                   theme={theme}
                   darkMode={darkMode}
+                  isMobile={isMobile}
                 />
               </div>
               <div
@@ -1316,59 +1504,6 @@ export default function ChatPage({
         {/* Hanya render input di bawah jika chat sudah ada */}
         {!showWelcome && renderInputForm(true)}
 
-        {/* ── BUTTON SCROLL TO BOTTOM FLOATING CENTER ── */}
-        {showScrollBottom && !showWelcome && messages.length > 0 && (
-          <button
-            onClick={() => {
-              if (messagesContainerRef.current) {
-                messagesContainerRef.current.scrollTo({
-                  top: 9999999,
-                  behavior: "smooth",
-                });
-              }
-            }}
-            style={{
-              position: "absolute",
-              bottom: "90px",
-              left: "47%",
-              transform: "translateX(-50%)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: "6px",
-              padding: "8px 14px",
-              borderRadius: "20px",
-              fontSize: "13px",
-              fontWeight: "500",
-              border: `1px solid ${darkMode ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)"}`,
-              background: darkMode ? "#202123" : "#ffffff",
-              color: darkMode ? "#f3f4f6" : '#1f2937',
-              boxShadow: darkMode
-                ? "0 4px 12px rgba(0,0,0,0.5), 0 2px 4px rgba(0,0,0,0.2)"
-                : "0 4px 12px rgba(0,0,0,0.08), 0 2px 4px rgba(0,0,0,0.04)",
-              cursor: "pointer",
-              zIndex: 999,
-              transition: "all 0.2s ease-in-out",
-              animation: "fadeSlideIn 0.25s ease-out forwards",
-              outline: "none",
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = darkMode ? "#2d2d30" : "#f9fafb";
-              e.currentTarget.style.transform = "translateX(-50%) translateY(-2px)";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = darkMode ? "#202123" : "#ffffff";
-              e.currentTarget.style.transform = "translateX(-50%) translateY(0)";
-            }}
-            title="Lihat pesan baru di bawah"
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="12" y1="5" x2="12" y2="19"></line>
-              <polyline points="19 12 12 19 5 12"></polyline>
-            </svg>
-            {/* <span>Pesan Baru</span> */}
-          </button>
-        )}
       </main>
 
       {/* 🔒 W7: Modal Pilihan Dokumen Regulasi (Context Isolation) */}

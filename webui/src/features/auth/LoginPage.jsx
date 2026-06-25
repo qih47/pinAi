@@ -44,7 +44,7 @@ export default function LoginPage() {
       display: 'flex', 
       alignItems: 'center', 
       justifyContent: 'center', 
-      minHeight: '100vh',
+      minHeight: '100dvh',
       background: '#0c0a09', // Latar belakang gelap slate yang lembut & premium
       fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", // Font profesional
       padding: '24px',

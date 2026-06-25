@@ -28,6 +28,7 @@ const Sidebar = ({
   setShowDocumentList,
   isOpen,
   setIsOpen,
+  isMobile,
   userData,
   loadChatSession,
   currentSessionId,
@@ -247,8 +248,11 @@ const Sidebar = ({
   return (
     <div
       // Menghapus kelas border statis bawaan Tailwind
-      className={`fixed left-0 top-0 h-screen flex flex-col transition-all duration-300 z-40 ${isOpen ? "w-72" : "w-16"
-        }`}
+      className={`fixed left-0 top-0 h-[100dvh] flex flex-col transition-all duration-300 z-40 ${
+        isMobile 
+          ? (isOpen ? "w-72 translate-x-0" : "w-72 -translate-x-full")
+          : (isOpen ? "w-72 translate-x-0" : "w-16 translate-x-0")
+      }`}
       style={{
         // MODE GELAP: Menggunakan warna arang (#1E1E22) agar kontras dengan ChatPage
         background: darkMode ? "#1E1E22" : theme?.sidebarBg || "#F7F8FC",
@@ -261,10 +265,10 @@ const Sidebar = ({
       <div
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
-        className="p-3 p-4 relative flex flex-col justify-center"
-        style={{
-          borderBottom: darkMode ? "1px solid #2a2a2d" : "1px solid #E5E7EB",
-        }}
+        className="p-3 p-5 relative flex flex-col justify-center"
+        // style={{
+        //   borderBottom: darkMode ? "1px solid #2a2a2d" : "1px solid #E5E7EB",
+        // }}
       >
         <div className="flex items-center">
           <img
@@ -282,34 +286,37 @@ const Sidebar = ({
           </h1>
         </div>
 
-        <button
-          onClick={() => setIsOpen(!isOpen)}
-          className="absolute transition-all duration-300 p-1 hover:bg-gray-200 dark:hover:bg-gray-800 rounded"
-          style={{
-            color: theme?.iconColor,
-            top: isOpen ? "20px" : "12px",
-            right: isOpen ? "12px" : "auto",
-            left: isOpen ? "auto" : "50%",
-            transform: isOpen ? "none" : "translateX(-50%)",
-            opacity: isOpen ? 1 : isHovered ? 1 : 0,
-            pointerEvents: isOpen ? "auto" : isHovered ? "auto" : "none",
-          }}
-          title={isOpen ? "Ciutkan" : "Lebarkan"}
-        >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            className="h-5 w-5"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.8"
-            strokeLinecap="round"
-            strokeLinejoin="round"
+        {/* Hide collapse button on mobile, let backdrop and hamburger handle it */}
+        {!isMobile && (
+          <button
+            onClick={() => setIsOpen(!isOpen)}
+            className="absolute transition-all duration-300 p-1 hover:bg-gray-200 dark:hover:bg-gray-800 rounded"
+            style={{
+              color: theme?.iconColor,
+              top: isOpen ? "20px" : "12px",
+              right: isOpen ? "12px" : "auto",
+              left: isOpen ? "auto" : "50%",
+              transform: isOpen ? "none" : "translateX(-50%)",
+              opacity: isOpen ? 1 : isHovered ? 1 : 0,
+              pointerEvents: isOpen ? "auto" : isHovered ? "auto" : "none",
+            }}
+            title={isOpen ? "Ciutkan" : "Lebarkan"}
           >
-            <rect x="3" y="4" width="18" height="16" rx="2.5" />
-            <rect x="3" y="4" width="6" height="16" rx="2.5" />
-          </svg>
-        </button>
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              className="h-5 w-5"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <rect x="3" y="4" width="18" height="16" rx="2.5" />
+              <rect x="3" y="4" width="6" height="16" rx="2.5" />
+            </svg>
+          </button>
+        )}
       </div>
 
       <div
@@ -626,9 +633,9 @@ const Sidebar = ({
       </div>
 
       <div
-        className={`relative flex items-center p-3 ${!isOpen
+        className={`relative flex items-center p-4 ${!isOpen
             ? "p-1 items-center absolute left-0 right-0 justify-center"
-            : "justify-center items-center py-3 px-2"
+            : "justify-center items-center py-3 px-3"
           }`}
         style={{
           position: "absolute",
@@ -638,7 +645,7 @@ const Sidebar = ({
           height: "60px",
           // 🔥 Pas dark mode background-nya menyatu sempurna tanpa sekat border hitam!
           background: darkMode ? "#1E1E22" : theme?.sidebarBg || "#F7F8FC",
-          borderTop: darkMode ? "1px solid #2a2a2d" : "1px solid #E5E7EB",
+          // borderTop: darkMode ? "1px solid #2a2a2d" : "1px solid #E5E7EB",
         }}
       >
         {showLogoutPopup && (
