@@ -253,18 +253,23 @@ def _scan_for_injections(text: str, field_name: str = "input") -> None:
                 raise HTTPException(status_code=403, detail="Permintaan tidak valid.")
 
 
-def _scan_dict_recursive(data: Any, path: str = "root") -> None:
+def _scan_dict_recursive(data: Any, path: str = "root", skip_injection: bool = False) -> None:
     """Recursively scan all string values in nested dicts/lists."""
     if isinstance(data, str):
         _check_string_safety(data, path)
-        _scan_for_injections(data, path)
+        if not skip_injection:
+            _scan_for_injections(data, path)
     elif isinstance(data, dict):
         for k, v in data.items():
-            _scan_for_injections(str(k), f"{path}.key")
-            _scan_dict_recursive(v, f"{path}.{k}")
+            if str(k) == "content":
+                _scan_dict_recursive(v, f"{path}.{k}", skip_injection=True)
+            else:
+                if not skip_injection:
+                    _scan_for_injections(str(k), f"{path}.key")
+                _scan_dict_recursive(v, f"{path}.{k}", skip_injection)
     elif isinstance(data, list):
         for i, item in enumerate(data):
-            _scan_dict_recursive(item, f"{path}[{i}]")
+            _scan_dict_recursive(item, f"{path}[{i}]", skip_injection)
 
 
 # ==============================================================================
@@ -343,13 +348,15 @@ def assert_safe_content(text: str) -> None:
 # ==============================================================================
 
 ALLOWED_MIME_TYPES = {
-    "application/pdf",
-    "text/plain",
-    "text/csv",
-    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     "image/jpeg",
     "image/png",
     "image/webp",
+    "image/bmp",
+    "application/pdf",
+    "text/plain", "text/html", "text/css", "text/javascript", "text/csv",
+    "application/json", "application/javascript", "application/xml",
+    "application/x-httpd-php", "text/x-php", "text/x-python", "text/x-script.python",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
 }
 
 MAX_FILE_SIZE = 20 * 1024 * 1024   # 20 MB
@@ -368,8 +375,8 @@ _MAGIC_BYTES: dict[str, list[bytes]] = {
 _SAFE_FILENAME_PATTERN = re.compile(r"^[a-zA-Z0-9_\-\.]{1,255}$")
 _DANGEROUS_EXTENSIONS = {
     ".exe", ".bat", ".cmd", ".sh", ".ps1", ".msi", ".dll", ".so",
-    ".php", ".py", ".rb", ".js", ".vbs", ".jar", ".class",
     ".scr", ".com", ".pif", ".gadget", ".hta", ".wsf", ".lnk",
+    ".sql", ".sqlite", ".db"
 }
 
 

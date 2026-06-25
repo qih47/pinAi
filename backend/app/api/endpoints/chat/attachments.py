@@ -112,3 +112,56 @@ async def upload_chat_attachments(
 
     logger.info(f"✅ [UPLOAD] {len(uploaded_meta_list)} file sukses diupload dari IP {client_ip}")
     return {"status": "success", "data": uploaded_meta_list}
+
+@router.get("/documents/extract")
+async def extract_file_content(path: str):
+    """
+    Endpoint untuk mengekstrak teks dari file PDF, Word, atau Kode/Text.
+    Digunakan oleh UI untuk Document Preview.
+    """
+    if not path:
+        raise HTTPException(status_code=400, detail="Path tidak boleh kosong.")
+    
+    # Path sanitization
+    if ".." in path or "/" in path or "\\" in path:
+        # Check if it's already an absolute path in UPLOAD_DIR
+        # In UI, fullUrl is passed. Usually path is something like "/api/uploads/filename.ext"
+        # Wait, the UI passes `previewDoc.url` which is the full URL like `http://.../api/uploads/filename.pdf`
+        pass
+    
+    # Actually, it's safer if UI passes the filename or relative path.
+    # The UI gets `att.file_path` which is just the filename.
+    filename = path.split("/")[-1]
+    
+    abs_path = os.path.join(UPLOAD_DIR, filename)
+    if not os.path.exists(abs_path):
+        raise HTTPException(status_code=404, detail="File tidak ditemukan.")
+    
+    ext = os.path.splitext(filename)[1].lower()
+    
+    try:
+        if ext == ".pdf":
+            import PyPDF2
+            text = ""
+            with open(abs_path, "rb") as f:
+                reader = PyPDF2.PdfReader(f)
+                for page in reader.pages:
+                    extracted = page.extract_text()
+                    if extracted:
+                        text += extracted + "\n"
+            if not text.strip():
+                text = "[Teks tidak dapat diekstrak atau PDF berupa gambar scan]"
+            return {"content": text}
+        elif ext == ".docx":
+            import docx
+            doc = docx.Document(abs_path)
+            text = "\n".join([para.text for para in doc.paragraphs])
+            return {"content": text}
+        else:
+            # Assume text/code file
+            with open(abs_path, "r", encoding="utf-8", errors="replace") as f:
+                text = f.read()
+            return {"content": text}
+    except Exception as e:
+        logger.error(f"[EXTRACT] Gagal mengekstrak file {filename}: {e}")
+        raise HTTPException(status_code=500, detail=f"Gagal mengekstrak isi file: {str(e)}")

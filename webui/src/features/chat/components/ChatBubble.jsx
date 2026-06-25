@@ -63,7 +63,7 @@ function formatThinkingPhase(thought) {
     return activePhase;
 }
 
-const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThinking, isStreamingText, searchQuery = '', isLastMessage }) {
+const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThinking, isStreamingText, searchQuery = '', isLastMessage, onFileClick, setPreviewImage }) {
     const [showToast, setShowToast] = useState(false);
     const [toastMsg, setToastMsg] = useState('');
 
@@ -103,6 +103,8 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
                 showToast={showToast}
                 toastMsg={toastMsg}
                 searchQuery={searchQuery}
+                onFileClick={onFileClick}
+                setPreviewImage={setPreviewImage}
             />
         );
     }

@@ -7,6 +7,7 @@ from backend.app.api.schemas.chat_schemas import ChatMessageSchema
 from backend.app.services.pipeline.modes.mode_flash import ModeFlash
 from backend.app.services.pipeline.modes.mode_documents import ModeDocuments
 from backend.app.services.pipeline.modes.mode_guest import ModeGuest
+from backend.app.services.pipeline.modes.mode_attachment import ModeAttachment
 
 from backend.app.services.pipeline.modes.mode_utils import detect_precheck
 from backend.app.services.pipeline.call1_router import execute_call1_routing
@@ -25,6 +26,7 @@ class ModeHub:
             "flash": ModeFlash(),
             "documents": ModeDocuments(),
             "guest": ModeGuest(),
+            "attachment": ModeAttachment(),
         }
 
     async def execute(
@@ -37,7 +39,8 @@ class ModeHub:
         context_isolation: Optional[Dict[str, Any]] = None,
         request: Optional[Request] = None,
         employee_name: str = "Pegawai",
-        current_user_npp: Optional[str] = None
+        current_user_npp: Optional[str] = None,
+        session_uuid: Optional[str] = None
     ) -> AsyncGenerator[str, None]:
         """
         Main entry point for stream.py to route the request to the correct mode handler.
@@ -48,6 +51,33 @@ class ModeHub:
         has_attachment = bool(attachments)
         precheck = detect_precheck(user_message, chat_mode, has_attachment)
         precheck["_user_message"] = user_message
+
+        # ── Fetch Long-Term Memory (ai_document_chunks) ────────────────────────
+        session_chunks_text = ""
+        if session_uuid:
+            from backend.app.services.chat_history_service import chat_history_service
+            chunks = await chat_history_service.get_session_document_chunks(session_uuid)
+            if chunks:
+                session_chunks_text = "\n\n[KNOWLEDGE DARI FILE SEBELUMNYA DI SESI INI]\n" + "\n---\n".join(chunks)
+        precheck["_session_chunks_text"] = session_chunks_text
+
+        # ── Fast-path Bypass untuk Attachment ──────────────────────────────────────
+        if has_attachment:
+            logger.info("[MODE_HUB] Attachment detected! Bypassing Call 1 and routing to Attachment Mode.")
+            handler = self.mode_handlers["attachment"]
+            async for chunk in handler.execute(
+                user_message=user_message,
+                chat_history=chat_history,
+                is_thinking=is_thinking,
+                attachments=attachments,
+                context_isolation=context_isolation,
+                routing_data=precheck,
+                request=request,
+                employee_name=employee_name,
+                current_user_npp=current_user_npp
+            ):
+                yield chunk
+            return
 
         # ── Step 2: Call 1 — Intent Classification & Routing ──────────────────────
         yield format_sse(status="🧠 Menganalisis intent pesan", event_type=SSEEventType.STATUS)

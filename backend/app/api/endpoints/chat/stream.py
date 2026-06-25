@@ -78,39 +78,75 @@ async def _sequential_pipeline_generator(
             elif any(path_lower.endswith(ext) for ext in [".jpg", ".jpeg", ".png", ".webp", ".bmp"]):
                 has_images = True
 
-    # ── PDF → Vision OCR ─────────────────────────────────────────────────────
-    if pdf_paths:
-        logger.info(f"[PDF] Mengirim {len(pdf_paths)} file ke vision pipeline...")
-        async for sse in execute_vision_pipeline(
-            request=request,
-            pdf_paths=pdf_paths,
-            user_message=user_message,
-        ):
-            raw = sse.strip()
-            if not raw:
+    # ── PDF & Document / Code Extraction ─────────────────────────────────────
+    extracted_file_texts = []
+    formatted_attachments = []
+    
+    if payload.attachment_paths:
+        import os
+        from backend.app.core.paths import UPLOAD_DIR
+        import base64
+        
+        for path in payload.attachment_paths:
+            path_lower = path.lower()
+            filename = os.path.basename(path)
+            abs_path = os.path.join(UPLOAD_DIR, filename)
+            
+            if not os.path.exists(abs_path):
                 continue
-            try:
-                data = json.loads(raw)
-                if data.get("event_type") == SSEEventType.PIPELINE_DATA:
-                    ocr_text = data["payload"].get("ocr_text", "")
-                    logger.info(f"[PDF] OCR selesai | {len(ocr_text)} chars")
-                else:
-                    yield sse
-                    await asyncio.sleep(0.01)
-            except (json.JSONDecodeError, AttributeError):
-                yield sse
-                await asyncio.sleep(0.01)
-
-    if has_images:
-        logger.info("[PIPELINE] Image attachment detected → akan diteruskan langsung ke Gemma")
+                
+            if any(path_lower.endswith(ext) for ext in [".jpg", ".jpeg", ".png", ".webp", ".bmp"]):
+                has_images = True
+                try:
+                    with open(abs_path, "rb") as f:
+                        encoded = base64.b64encode(f.read()).decode("utf-8")
+                        formatted_attachments.append({"base64": encoded, "type": "image"})
+                except Exception as e:
+                    logger.error(f"[PIPELINE] Gagal membaca gambar {path}: {e}")
+            else:
+                # Text/PDF/Doc extraction
+                try:
+                    ext = os.path.splitext(filename)[1].lower()
+                    extracted = ""
+                    if ext == ".pdf":
+                        import PyPDF2
+                        with open(abs_path, "rb") as f:
+                            reader = PyPDF2.PdfReader(f)
+                            for page in reader.pages:
+                                page_text = page.extract_text()
+                                if page_text:
+                                    extracted += page_text + "\n"
+                    elif ext == ".docx":
+                        import docx
+                        doc = docx.Document(abs_path)
+                        extracted = "\n".join([para.text for para in doc.paragraphs])
+                    else:
+                        with open(abs_path, "r", encoding="utf-8", errors="replace") as f:
+                            extracted = f.read()
+                            
+                    if extracted.strip():
+                        extracted_file_texts.append(f"--- ISI FILE: {filename} ---\n{extracted.strip()}\n-------------------")
+                        
+                        # Save to memory (ai_document_chunks)
+                        if payload.session_uuid and current_user_npp:
+                            await chat_history_service.save_document_chunk(
+                                session_uuid=payload.session_uuid,
+                                npp=current_user_npp,
+                                content=extracted.strip(),
+                                chunk_metadata={"source": path}
+                            )
+                except Exception as e:
+                    logger.error(f"[PIPELINE] Gagal mengekstrak isi file {path}: {e}")
+                    
+    # Append extracted texts to user message
+    if extracted_file_texts:
+        user_message += "\n\n" + "\n\n".join(extracted_file_texts)
+        if payload.messages:
+            payload.messages[-1].content = user_message
 
     # ── Save user message ─────────────────────────────────────────────────────
     if payload.session_uuid:
-        attachment_info = (
-            f" [Lampiran: {len(payload.attachment_paths)} file(s)]"
-            if payload.attachment_paths else ""
-        )
-        user_text = f"{user_message}{attachment_info}"
+        user_text = f"{user_message}"
         
         if payload.edit_index is not None:
             await chat_history_service.update_chat_message(
@@ -181,10 +217,11 @@ async def _sequential_pipeline_generator(
             chat_history=payload.messages,
             chat_mode=chat_mode,
             is_thinking=payload.thinking if hasattr(payload, 'thinking') else True,
-            attachments=payload.attachment_paths,
+            attachments=formatted_attachments,
             context_isolation={"isolated_doc_id": payload.isolated_doc_id} if payload.isolated_doc_id else None,
             employee_name=employee_name,
-            current_user_npp=current_user_npp
+            current_user_npp=current_user_npp,
+            session_uuid=payload.session_uuid
         )
 
         async for sse in agentic_engine:

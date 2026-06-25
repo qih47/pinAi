@@ -259,6 +259,7 @@ class ChatHistoryService:
                             'id', a.id,
                             'file_name', a.file_name,
                             'mime_type', a.mime_type,
+                            'file_size', a.file_size,
                             'file_path', CASE 
                                 WHEN a.file_path LIKE '%/%' THEN SUBSTRING(a.file_path FROM '[^/]+$')
                                 ELSE a.file_path
@@ -318,7 +319,7 @@ class ChatHistoryService:
                     """
                     INSERT INTO chat_attachments (session_id, file_name, file_path, file_size, mime_type, extracted_text)
                     VALUES ($1, $2, $3, $4, $5, $6)
-                    RETURNING id, file_name, file_path, mime_type;
+                    RETURNING id, file_name, file_path, mime_type, file_size;
                     """,
                     internal_session_pk,
                     original_filename,
@@ -334,6 +335,7 @@ class ChatHistoryService:
                         "original_filename": inserted_row["file_name"],
                         "file_path": inserted_row["file_path"],
                         "mime_type": inserted_row["mime_type"],
+                        "file_size": inserted_row["file_size"],
                         "status": "staged",
                     }
                 return None
@@ -342,8 +344,57 @@ class ChatHistoryService:
                 return None
 
     # =========================================================================
-    # 📝 CORPUS & AUTO-TITLE
+    # 📝 CORPUS, CHUNKS & AUTO-TITLE
     # =========================================================================
+
+    async def save_document_chunk(
+        self,
+        session_uuid: str,
+        npp: str,
+        content: str,
+        file_id: Optional[int] = None,
+        chunk_metadata: Optional[dict] = None
+    ) -> bool:
+        """Menyimpan chunk teks hasil ekstraksi attachment ke ai_document_chunks."""
+        async with get_db() as conn:
+            try:
+                session_pk = await self._resolve_session_pk(conn, session_uuid)
+                if session_pk is None:
+                    return False
+                
+                metadata_json = json.dumps(chunk_metadata) if chunk_metadata else None
+                await conn.execute(
+                    """
+                    INSERT INTO ai_document_chunks (session_id, npp, content, file_id, metadata, created_at)
+                    VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP);
+                    """,
+                    session_pk, npp, content, file_id, metadata_json
+                )
+                return True
+            except Exception as e:
+                logger.error(f"[CHAT_HISTORY_ERROR] Failed to save document chunk: {str(e)}")
+                return False
+
+    async def get_session_document_chunks(self, session_uuid: str) -> List[str]:
+        """Mengambil semua teks hasil ekstraksi untuk sesi tertentu sebagai memori jangka panjang."""
+        async with get_db() as conn:
+            try:
+                session_pk = await self._resolve_session_pk(conn, session_uuid)
+                if session_pk is None:
+                    return []
+                
+                rows = await conn.fetch(
+                    """
+                    SELECT content FROM ai_document_chunks
+                    WHERE session_id = $1
+                    ORDER BY created_at ASC;
+                    """,
+                    session_pk
+                )
+                return [row["content"] for row in rows]
+            except Exception as e:
+                logger.error(f"[CHAT_HISTORY_ERROR] Failed to get session chunks: {str(e)}")
+                return []
 
     async def save_dialogue_corpus(
         self,

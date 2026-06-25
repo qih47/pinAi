@@ -36,7 +36,9 @@ export default function ChatArea({
   sendMessage,
   searchQuery = '',
   isLoading = false,
-  onAtBottomChange
+  onAtBottomChange,
+  onFileClick,
+  setPreviewImage
 }) {
   const virtuosoRef = useRef(null);
   const prevMessagesLengthRef = useRef(messages.length);
@@ -66,8 +68,10 @@ export default function ChatArea({
       sendMessage={sendMessage}
       searchQuery={searchQuery}
       isLastMessage={idx === messages.length - 1}
+      onFileClick={onFileClick}
+      setPreviewImage={setPreviewImage}
     />
-  ), [darkMode, theme, isThinking, isStreamingText, sendMessage, searchQuery, messages.length]);
+  ), [darkMode, theme, isThinking, isStreamingText, sendMessage, searchQuery, messages.length, onFileClick, setPreviewImage]);
 
   const FooterComponent = useCallback(() => (
     <>

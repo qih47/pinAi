@@ -57,6 +57,11 @@ class ModeFlash:
         if community_context:
             system_prompt += community_context
 
+        # Inject Long-Term Memory (ai_document_chunks)
+        session_chunks = routing_data.get("_session_chunks_text", "")
+        if session_chunks:
+            system_prompt += session_chunks
+
         messages_dict = [{"role": m.role, "content": m.content} for m in chat_history]
         # Mengambil 5 history + 1 current message = 6
         trimmed_messages = messages_dict[-6:] if len(messages_dict) > 6 else messages_dict

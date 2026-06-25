@@ -20,23 +20,27 @@ const UserBubble = memo(function UserBubble({
   executeTextCopy,
   showToast,
   toastMsg,
-  searchQuery = ''
+  searchQuery = '',
+  onFileClick,
+  setPreviewImage
 }) {
+  const CHARACTER_LIMIT = 300;
+  const rawContent = msg.content || '';
+  const cleanContent = rawContent.replace(/--- ISI FILE: [\s\S]*?-------------------/g, '').trim();
+  const shouldTruncate = cleanContent.length > CHARACTER_LIMIT;
+
   const [isExpanded, setIsExpanded] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
-  const [editValue, setEditValue] = useState(msg.content || '');
+  const [editValue, setEditValue] = useState(cleanContent);
 
   const editAndRegenerate = useChatStore((state) => state.editAndRegenerate);
   const isStreaming = useChatStore((state) => state.isStreaming);
 
-  const CHARACTER_LIMIT = 300;
-  const shouldTruncate = msg.content && msg.content.length > CHARACTER_LIMIT;
-
   const displayContent =
     shouldTruncate && !isExpanded && !isEditing
-      ? `${msg.content.slice(0, CHARACTER_LIMIT)}...`
-      : msg.content;
+      ? `${cleanContent.slice(0, CHARACTER_LIMIT)}...`
+      : cleanContent;
 
   const handleEditSubmit = async (e) => {
     if (e && e.preventDefault) e.preventDefault();
@@ -50,7 +54,7 @@ const UserBubble = memo(function UserBubble({
 
   const handleCancelEdit = () => {
     setIsEditing(false);
-    setEditValue(msg.content || '');
+    setEditValue(cleanContent);
   };
 
   const bubbleStyles = getUserBubbleStyles(
@@ -71,45 +75,119 @@ const UserBubble = memo(function UserBubble({
     >
       {/* 📎 BUBBLE ATTACHMENT TERPISAH */}
       {!isEditing && msg.attachments && msg.attachments.length > 0 && (
-        <div style={bubbleStyles.attachmentWrapper}>
+        <div style={{
+          display: 'flex',
+          flexWrap: 'wrap',
+          gap: '8px',
+          width: '100%',
+          justifyContent: 'flex-end',
+          marginBottom: cleanContent ? '12px' : '0'
+        }}>
           {msg.attachments.map((file, fIdx) => {
             const fileName = file.file_name || file.original_filename || 'lampiran';
             const assetUrl = getUploadUrl(file.file_path);
             const isPDF =
               file.mime_type === 'application/pdf' ||
               fileName.toLowerCase().endsWith('.pdf');
+            const isImage = file.mime_type?.startsWith('image/') || /\.(jpg|jpeg|png|webp|gif)$/i.test(fileName);
+
             return (
               <div
                 key={`attach-${file.id || fIdx}`}
                 title={fileName}
                 onClick={() => {
-                  if (assetUrl) window.open(assetUrl, '_blank');
+                  if (isImage) {
+                    if (assetUrl && setPreviewImage) {
+                      setPreviewImage(assetUrl);
+                    }
+                  } else {
+                    if (onFileClick) {
+                      onFileClick({ type: 'file', content: file, title: fileName });
+                    } else if (assetUrl) {
+                      window.open(assetUrl, '_blank');
+                    }
+                  }
                 }}
-                style={bubbleStyles.attachmentItem}
+                style={{
+                  ...bubbleStyles.attachmentItem,
+                  width: '140px',
+                  height: '140px',
+                  borderRadius: '12px',
+                  overflow: 'hidden',
+                  cursor: 'pointer',
+                  position: 'relative',
+                  border: isImage ? 'none' : `1px solid ${darkMode ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.1)"}`,
+                  background: isImage ? 'transparent' : (darkMode ? "#2a2b2d" : "#f3f4f6"),
+                  boxShadow: "0 2px 4px rgba(0,0,0,0.1)",
+                  display: 'flex',
+                  flexDirection: 'column'
+                }}
                 onMouseEnter={(e) => {
-                  e.currentTarget.style.transform = 'scale(1.04)';
+                  e.currentTarget.style.transform = 'scale(1.02)';
                 }}
                 onMouseLeave={(e) => {
                   e.currentTarget.style.transform = 'scale(1)';
                 }}
               >
-                {isPDF ? (
-                  <div style={bubbleStyles.pdfIconWrapper}>
-                    <span style={{ fontSize: '20px' }}>📄</span>
-                    <span style={bubbleStyles.pdfIconText}>PDF</span>
-                  </div>
-                ) : assetUrl ? (
+                {isImage && assetUrl ? (
                   <img
                     src={assetUrl}
                     alt={fileName}
                     onError={(e) => {
                       e.target.style.display = 'none';
-                      e.target.parentNode.innerHTML = '<span style="font-size:20px;">🖼️</span>';
+                      e.target.parentNode.innerHTML = '<span style="font-size:32px;">🖼️</span>';
+                      e.target.parentNode.style.background = darkMode ? "#2a2b2d" : "#f3f4f6";
+                      e.target.parentNode.style.display = 'flex';
+                      e.target.parentNode.style.alignItems = 'center';
+                      e.target.parentNode.style.justifyContent = 'center';
                     }}
                     style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                   />
                 ) : (
-                  <span style={{ fontSize: '20px' }}>🖼️</span>
+                  <div style={{
+                    padding: "12px",
+                    display: "flex",
+                    flexDirection: "column",
+                    justifyContent: "space-between",
+                    height: "100%",
+                    width: "100%",
+                    boxSizing: "border-box"
+                  }}>
+                    <div style={{ overflow: "hidden" }}>
+                      <div style={{
+                        color: darkMode ? "#ffffff" : "#111827",
+                        fontSize: "14px",
+                        fontWeight: 600,
+                        whiteSpace: "nowrap",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        marginBottom: "4px",
+                        fontFamily: "'Inter', sans-serif"
+                      }}>
+                        {fileName}
+                      </div>
+                      <div style={{
+                        color: theme.secondaryText,
+                        fontSize: "12px",
+                        fontWeight: 500
+                      }}>
+                        {isPDF ? 'PDF Document' : 'Text/Code File'}
+                      </div>
+                    </div>
+                    
+                    <div style={{
+                      alignSelf: "flex-start",
+                      border: `1px solid ${darkMode ? "rgba(255,255,255,0.15)" : "rgba(0,0,0,0.15)"}`,
+                      padding: "4px 8px",
+                      borderRadius: "6px",
+                      fontSize: "11px",
+                      fontWeight: 600,
+                      color: darkMode ? "#e2e8f0" : "#374151",
+                      background: darkMode ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.02)"
+                    }}>
+                      {isPDF ? 'PDF' : fileName.split(".").pop().toUpperCase()}
+                    </div>
+                  </div>
                 )}
               </div>
             );

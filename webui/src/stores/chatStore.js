@@ -15,6 +15,7 @@ function _normalizeAttachments(files) {
             ? f.file_path.split('/').pop()
             : f.file_path,
         mime_type: f.mime_type,
+        file_size: f.file_size || f.size || 0,
     }));
 }
 
@@ -352,6 +353,10 @@ export const useChatStore = create((set, get) => ({
         const messagesToSend = currentMessages.slice(0, index + 1);
         const npp = JSON.parse(localStorage.getItem('cakra_user') || '{}')?.npp || null;
 
+        const currentAttachmentPaths = (currentMessages[index].attachments || [])
+            .map((file) => file.file_path)
+            .filter(Boolean);
+
         // 4. Panggil stream dengan target parameter (index + 1) dan editIndex = index
         await _performStream(
             set,
@@ -361,7 +366,7 @@ export const useChatStore = create((set, get) => ({
             sessionUuid,
             npp,
             get().activeIsolatedDocId,
-            [],
+            currentAttachmentPaths,
             'auto',
             true, // default isThinkingMode for edit/regenerate
             toast,

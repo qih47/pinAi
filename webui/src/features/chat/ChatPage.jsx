@@ -1,5 +1,5 @@
-import React, { useState, useRef, useEffect } from "react";
-import { useChatStore, API_BASE } from "../../stores/chatStore";
+import React, { useState, useRef, useEffect, useMemo } from "react";
+import { useChatStore, API_BASE, getUploadUrl } from "../../stores/chatStore";
 import { uploadDocuments } from "../../services/endpoints";
 import useToast from "../../hooks/useToast";
 import cakraLogo from "../../assets/cakra.png";
@@ -72,6 +72,77 @@ export default function ChatPage({
   const fileInputRef = useRef(null);
   const [isDragOver, setIsDragOver] = useState(false);
   const [showScrollBottom, setShowScrollBottom] = useState(false);
+  const [showRightSidebar, setShowRightSidebar] = useState(false);
+  const wasLeftSidebarOpenRef = useRef(false);
+
+  // PREVIEW MODALS STATE
+  const [previewImage, setPreviewImage] = useState(null);
+  const [previewDoc, setPreviewDoc] = useState(null); // { url, name, type }
+  const [docContent, setDocContent] = useState("");
+  const [isDocLoading, setIsDocLoading] = useState(false);
+
+  useEffect(() => {
+    if (previewDoc) {
+      setIsDocLoading(true);
+      setDocContent("");
+
+      const endpoint = `${API_BASE}/api/chat/documents/extract?path=${encodeURIComponent(previewDoc.path)}`;
+
+      fetch(endpoint)
+        .then(res => res.json())
+        .then(data => {
+          if (data.content) {
+            setDocContent(data.content);
+          } else {
+            setDocContent("Gagal mengekstrak isi dokumen.");
+          }
+        })
+        .catch(err => setDocContent("Error saat membaca dokumen dari server."))
+        .finally(() => setIsDocLoading(false));
+    }
+  }, [previewDoc]);
+
+  const toggleRightSidebar = () => {
+    if (showRightSidebar) {
+      setShowRightSidebar(false);
+      // Restore left sidebar if it was open before
+      const hasSidebar = !isGuest && currentIsLoggedIn;
+      if (wasLeftSidebarOpenRef.current && hasSidebar && !isMobile) {
+        setSidebarOpen(true);
+      }
+    } else {
+      wasLeftSidebarOpenRef.current = sidebarOpen;
+      const hasSidebar = !isGuest && currentIsLoggedIn;
+      if (sidebarOpen && hasSidebar && !isMobile) {
+        setSidebarOpen(false); // Collapse left sidebar
+      }
+      setShowRightSidebar(true);
+    }
+  };
+
+  const handleFileClick = (fileObj) => {
+    // fileObj format: { type: 'file', content: file_from_attachment, title: fileName }
+    const file = fileObj.content;
+    const fullUrl = getUploadUrl(file.file_path);
+    const isPdf = file.mime_type === 'application/pdf' || fileObj.title.toLowerCase().endsWith('.pdf');
+    setPreviewDoc({
+      url: fullUrl,
+      name: fileObj.title || file.file_name,
+      type: isPdf ? 'pdf' : 'text',
+      path: file.file_path,
+      size: file.file_size || 0
+    });
+
+    // Auto open right sidebar and collapse left sidebar
+    if (!showRightSidebar) {
+      wasLeftSidebarOpenRef.current = sidebarOpen;
+      const hasSidebar = !isGuest && currentIsLoggedIn;
+      if (sidebarOpen && hasSidebar && !isMobile) {
+        setSidebarOpen(false); // Collapse left sidebar
+      }
+      setShowRightSidebar(true);
+    }
+  };
 
   const [isThinkingMode, setIsThinkingMode] = useState(false);
   const isThinkingModeRef = useRef(false);
@@ -130,12 +201,22 @@ export default function ChatPage({
   };
 
   const validateFile = (file) => {
-    const allowedTypes = ["application/pdf"];
+    const fileName = file.name.toLowerCase();
     const isImage = file.type.startsWith("image/");
-    const isValidType = isImage || allowedTypes.includes(file.type);
-    if (!isValidType) {
+
+    // Extracted from backend upload_validator.py
+    const allowedExtensions = [
+      '.pdf', '.doc', '.docx', '.txt', '.csv', '.xlsx', '.xls',
+      '.py', '.js', '.jsx', '.ts', '.tsx', '.html', '.css', '.json', '.yaml',
+      '.yml', '.xml', '.php', '.java', '.cpp', '.c', '.h', '.sh', '.bash',
+      '.md', '.dart', '.swift', '.png', '.jpg', '.jpeg', '.webp', '.gif', '.bmp'
+    ];
+
+    const hasAllowedExtension = allowedExtensions.some(ext => fileName.endsWith(ext));
+
+    if (!isImage && !hasAllowedExtension) {
       toast.error(
-        `Format file "${file.name}" tidak didukung. Hanya gambar atau PDF.`,
+        `Format file "${file.name}" tidak didukung. Format yang diizinkan: Gambar, Dokumen, dan Source Code. File SQL tidak diperbolehkan.`,
       );
       return false;
     }
@@ -147,29 +228,86 @@ export default function ChatPage({
     return true;
   };
 
+  const processFilesForLines = async (filesToProcess) => {
+    const processed = [];
+    for (const file of filesToProcess) {
+      const fileName = file.name.toLowerCase();
+      const isCodeOrText = /\.(js|jsx|ts|tsx|py|php|html|css|json|cpp|c|h|sh|bash|txt|md|csv)$/i.test(fileName);
+      if (isCodeOrText && file.size < 5 * 1024 * 1024) {
+        try {
+          const text = await file.text();
+          file._lines = text.split('\n').length;
+        } catch (e) {
+          console.error("Error reading lines", e);
+        }
+      }
+      processed.push(file);
+    }
+    return processed;
+  };
+
+  const filterFilesBySmartLimits = async (newFiles, currentFiles) => {
+    let heavyCount = currentFiles.filter(f => f.type.startsWith("image/") || f.name.toLowerCase().endsWith(".pdf")).length;
+    let totalLines = currentFiles.reduce((acc, f) => acc + (f._lines || 0), 0);
+
+    const allowed = [];
+    let warningMsg = "";
+
+    const processedNewFiles = await processFilesForLines(newFiles);
+
+    for (const file of processedNewFiles) {
+      const isHeavy = file.type.startsWith("image/") || file.name.toLowerCase().endsWith(".pdf");
+
+      if (isHeavy) {
+        if (heavyCount < 2) {
+          allowed.push(file);
+          heavyCount++;
+        } else {
+          warningMsg = "Maksimal 2 file berat (PDF/Gambar) diperbolehkan.";
+        }
+      } else {
+        const lines = file._lines || 0;
+        if (totalLines + lines <= 2500) {
+          allowed.push(file);
+          totalLines += lines;
+        } else {
+          warningMsg = `Total baris kode melebihi batas (Max 2500 baris). File ${file.name} dilewati.`;
+        }
+      }
+    }
+
+    return { allowed, warningMsg };
+  };
+
   // 2. TAMPILKAN PRATINJAU LOKAL (TIDAK LANGSUNG DIUNGGAH KE SERVER)
-  const handleFileChange = (e) => {
+  const handleFileChange = async (e) => {
     const files = Array.from(e.target.files);
     if (files.length === 0) return;
 
-    const limit = isGuest || !currentIsLoggedIn ? 1 : 5;
-    const availableSlots = limit - selectedFiles.length;
+    if (isGuest || !currentIsLoggedIn) {
+      if (selectedFiles.length >= 1) {
+        toast.warning("Tamu maksimal 1 file.");
+        return;
+      }
+      const validFiles = files.filter(validateFile);
+      if (validFiles.length > 0) {
+        const processed = await processFilesForLines([validFiles[0]]);
+        setSelectedFiles((prev) => [...prev, processed[0]]);
+      }
+      return;
+    }
 
     const validFiles = files.filter(validateFile);
     if (validFiles.length === 0) return;
 
-    const targets = validFiles.slice(0, availableSlots);
+    const { allowed, warningMsg } = await filterFilesBySmartLimits(validFiles, selectedFiles);
 
-    if (targets.length === 0 && files.length > 0) {
-      toast.warning(`Slot penuh! Maksimal ${limit} file.`);
-      return;
-    }
-
-    setSelectedFiles((prev) => [...prev, ...targets]);
+    if (warningMsg) toast.warning(warningMsg);
+    if (allowed.length > 0) setSelectedFiles((prev) => [...prev, ...allowed]);
   };
 
   // 2. TEMPEL GAMBAR (PASTE): Masuk ke state lokal untuk pratinjau, bukan ke port API langsung
-  const handlePaste = (e) => {
+  const handlePaste = async (e) => {
     const items = e.clipboardData?.items;
     if (!items) return;
     const imageItems = Array.from(items).filter((item) =>
@@ -178,12 +316,12 @@ export default function ChatPage({
     if (imageItems.length === 0) return;
     e.preventDefault();
 
-    const limit = isGuest || !currentIsLoggedIn ? 1 : 5;
-    const availableSlots = limit - selectedFiles.length;
-    const targets = imageItems.slice(0, availableSlots);
+    if (isGuest || !currentIsLoggedIn) {
+      if (selectedFiles.length >= 1) return;
+    }
 
     const newFiles = [];
-    for (const item of targets) {
+    for (const item of imageItems) {
       const file = item.getAsFile();
       if (file) {
         const uniqueFile = new File(
@@ -200,7 +338,16 @@ export default function ChatPage({
     }
     if (newFiles.length === 0) return;
 
-    setSelectedFiles((prev) => [...prev, ...newFiles]);
+    if (isGuest || !currentIsLoggedIn) {
+      const processed = await processFilesForLines([newFiles[0]]);
+      setSelectedFiles((prev) => [...prev, processed[0]]);
+      return;
+    }
+
+    const { allowed, warningMsg } = await filterFilesBySmartLimits(newFiles, selectedFiles);
+
+    if (warningMsg) toast.warning(warningMsg);
+    if (allowed.length > 0) setSelectedFiles((prev) => [...prev, ...allowed]);
   };
 
   const handleDragOver = (e) => {
@@ -216,7 +363,7 @@ export default function ChatPage({
   };
 
   // 2. SERET DAN LEPAS (DRAG & DROP): Simpan berkas secara lokal, unggah saat mengirim pesan
-  const handleDrop = (e) => {
+  const handleDrop = async (e) => {
     e.preventDefault();
     e.stopPropagation();
     setIsDragOver(false);
@@ -225,15 +372,20 @@ export default function ChatPage({
     const validFiles = files.filter(validateFile);
     if (validFiles.length === 0) return;
 
-    const limit = isGuest || !currentIsLoggedIn ? 1 : 5;
-    const availableSlots = limit - selectedFiles.length;
-    const targets = validFiles.slice(0, availableSlots);
-    if (targets.length === 0 && files.length > 0) {
-      toast.warning(`Slot penuh! Maksimal ${limit} file.`);
+    if (isGuest || !currentIsLoggedIn) {
+      if (selectedFiles.length >= 1) {
+        toast.warning("Tamu maksimal 1 file.");
+        return;
+      }
+      const processed = await processFilesForLines([validFiles[0]]);
+      setSelectedFiles((prev) => [...prev, processed[0]]);
       return;
     }
 
-    setSelectedFiles((prev) => [...prev, ...targets]);
+    const { allowed, warningMsg } = await filterFilesBySmartLimits(validFiles, selectedFiles);
+
+    if (warningMsg) toast.warning(warningMsg);
+    if (allowed.length > 0) setSelectedFiles((prev) => [...prev, ...allowed]);
   };
 
   const [darkMode, setDarkMode] = useState(() => {
@@ -320,6 +472,10 @@ export default function ChatPage({
     clearChat: storeClearChat,
     loadChatSession: storeLoadChatSession,
   } = useChatStore();
+
+  const sessionAttachments = useMemo(() => {
+    return messages.flatMap((msg) => msg.attachments || []);
+  }, [messages]);
 
   useEffect(() => {
     if (isStreaming) return; // 🛡️ GUARD TAMBAHAN: Cegah mutasi apa pun jika stream aktif
@@ -743,48 +899,29 @@ export default function ChatPage({
             }}
           >
             {selectedFiles.map((file, idx) => {
-              const isPDF = file.name.endsWith(".pdf");
+              const fileName = file.name.toLowerCase();
+              const isImage = file.type.startsWith("image/");
+
+              const extSplit = fileName.split(".");
+              const ext = extSplit.length > 1 ? extSplit.pop().toUpperCase() : "FILE";
+
               return (
                 <div
                   key={idx}
                   style={{
                     position: "relative",
-                    width: "64px",
-                    height: "64px",
+                    width: "120px",
+                    height: "120px",
                     borderRadius: "12px",
                     overflow: "hidden",
-                    background: darkMode ? "#2d2d30" : "#f3f4f6",
+                    background: darkMode ? "#2a2b2d" : "#f3f4f6",
                     border: `1px solid ${darkMode ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.08)"}`,
                     display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
+                    flexDirection: "column",
+                    boxShadow: "0 2px 4px rgba(0,0,0,0.1)",
                   }}
                 >
-                  {isPDF ? (
-                    <div
-                      style={{
-                        display: "flex",
-                        flexDirection: "column",
-                        alignItems: "center",
-                        gap: "1px",
-                      }}
-                    >
-                      <span style={{ fontSize: "24px" }}>📄</span>
-                      <span
-                        style={{
-                          fontSize: "9px",
-                          fontWeight: 700,
-                          color: "#ef4444",
-                          maxWidth: "52px",
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        PDF
-                      </span>
-                    </div>
-                  ) : (
+                  {isImage ? (
                     <img
                       src={URL.createObjectURL(file)}
                       alt="preview"
@@ -794,6 +931,58 @@ export default function ChatPage({
                         objectFit: "cover",
                       }}
                     />
+                  ) : (
+                    <div
+                      style={{
+                        padding: "12px",
+                        display: "flex",
+                        flexDirection: "column",
+                        justifyContent: "space-between",
+                        height: "100%",
+                        width: "100%",
+                        boxSizing: "border-box"
+                      }}
+                    >
+                      <div style={{ overflow: "hidden" }}>
+                        <div style={{
+                          color: darkMode ? "#ffffff" : "#111827",
+                          fontSize: "14px",
+                          fontWeight: 600,
+                          whiteSpace: "nowrap",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          marginBottom: "4px",
+                          fontFamily: "'Inter', sans-serif"
+                        }}>
+                          {file.name}
+                        </div>
+                        <div style={{
+                          color: theme.secondaryText,
+                          fontSize: "12px",
+                          fontWeight: 500
+                        }}>
+                          {file._lines !== undefined
+                            ? `${file._lines} lines`
+                            : (file.size > 1024 * 1024
+                              ? (file.size / (1024 * 1024)).toFixed(1) + " MB"
+                              : (file.size / 1024).toFixed(1) + " KB")}
+                        </div>
+                      </div>
+
+                      <div style={{
+                        alignSelf: "flex-start",
+                        border: `1px solid ${darkMode ? "rgba(255,255,255,0.15)" : "rgba(0,0,0,0.15)"}`,
+                        borderRadius: "6px",
+                        padding: "2px 6px",
+                        fontSize: "11px",
+                        fontWeight: 700,
+                        color: theme.secondaryText,
+                        background: darkMode ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.05)",
+                        letterSpacing: "0.5px"
+                      }}>
+                        {ext}
+                      </div>
+                    </div>
                   )}
                   <button
                     type="button"
@@ -860,7 +1049,7 @@ export default function ChatPage({
             ref={fileInputRef}
             onChange={handleFileChange}
             multiple={!(isGuest || !currentIsLoggedIn)}
-            accept=".pdf,image/*"
+            accept=".pdf,.doc,.docx,.txt,.csv,.xlsx,.xls,.py,.js,.jsx,.ts,.tsx,.html,.css,.json,.yaml,.yml,.xml,.php,.java,.cpp,.c,.h,.sh,.bash,.md,.dart,.swift,image/*"
             style={{ display: "none" }}
           />
 
@@ -1086,6 +1275,10 @@ export default function ChatPage({
     ? "0"
     : (hasSidebar ? (sidebarOpen ? "18rem" : "4rem") : "0");
 
+  const mainMarginRight = isMobile
+    ? "0"
+    : (showRightSidebar ? (previewDoc ? "45vw" : "320px") : "0");
+
   return (
     <div style={{ ...styles.root, background: theme.rootBg }}>
       {/* ── BACKDROP MOBILE ── */}
@@ -1235,6 +1428,7 @@ export default function ChatPage({
           right: 0,
           zIndex: 30,
           height: "56px",
+          transition: "width 0.3s ease-in-out",
         }}>
 
           {/* ── BLOK KIRI: Hamburger Menu ── */}
@@ -1316,6 +1510,7 @@ export default function ChatPage({
               </button>
             )}
 
+            {/* 🔍 TOMBOL CARI (Dipindah ke kiri File) */}
             {messages.length > 0 && (
               <button
                 onClick={() => {
@@ -1348,7 +1543,58 @@ export default function ChatPage({
                 }
                 title="Cari kata kunci dalam percakapan ini (Ctrl+F)"
               >
-                🔍
+                {/* 🔥 ICON SVG MINIMALIS MODERN */}
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="18"
+                  height="18"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor" // ← SAKTI: Otomatis ngikutin warna theme.iconColor dari button parent-nya
+                  strokeWidth="2.3"      // ← Tingkat ketebalan garis biar makin tegas
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  style={{ opacity: 0.85 }} // Biar gak terlalu mencolok benderang
+                >
+                  <circle cx="11" cy="11" r="8" />
+                  <path d="m21 21-4.3-4.3" />
+                </svg>
+              </button>
+            )}
+
+            {/* 📁 TOMBOL SESSION FILES (Dipindah ke kanan Search) */}
+            {messages.length > 0 && (
+              <button
+                onClick={toggleRightSidebar}
+                style={{
+                  background: showRightSidebar ? (darkMode ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.05)") : "transparent",
+                  border: "none",
+                  cursor: "pointer",
+                  width: "36px",
+                  height: "36px",
+                  borderRadius: "50%",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  color: showRightSidebar ? "#6366f1" : theme.iconColor,
+                  transition: "all 0.2s",
+                  outline: "none",
+                }}
+                onMouseEnter={(e) => {
+                  if (!showRightSidebar) e.currentTarget.style.background = darkMode ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.05)";
+                }}
+                onMouseLeave={(e) => {
+                  if (!showRightSidebar) e.currentTarget.style.background = "transparent";
+                }}
+                title="File Sesi Ini"
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                  <polyline points="14 2 14 8 20 8"></polyline>
+                  <line x1="16" y1="13" x2="8" y2="13"></line>
+                  <line x1="16" y1="17" x2="8" y2="17"></line>
+                  <polyline points="10 9 9 9 8 9"></polyline>
+                </svg>
               </button>
             )}
             {/* 👇 W16: Notification Bell */}
@@ -1377,6 +1623,8 @@ export default function ChatPage({
             flexDirection: "column",
             minHeight: 0,
             overflow: "hidden",
+            marginRight: mainMarginRight,
+            transition: "margin-right 0.3s ease-in-out",
           }}
         >
           <div
@@ -1452,6 +1700,8 @@ export default function ChatPage({
               searchQuery={msgSearchQuery}
               isLoading={isLoading}
               onAtBottomChange={(isAtBottom) => setShowScrollBottom(!isAtBottom)}
+              onFileClick={handleFileClick}
+              setPreviewImage={setPreviewImage}
             />
           </div>
 
@@ -1499,10 +1749,10 @@ export default function ChatPage({
               </div>
             </div>
           )}
-        </div>
 
-        {/* Hanya render input di bawah jika chat sudah ada */}
-        {!showWelcome && renderInputForm(true)}
+          {/* Hanya render input di bawah jika chat sudah ada */}
+          {!showWelcome && renderInputForm(true)}
+        </div>
 
       </main>
 
@@ -1713,6 +1963,294 @@ export default function ChatPage({
               </div>
             </div>
           </div>
+        </div>
+      )}
+      {/* 📁 RIGHT SIDEBAR SESSION FILES */}
+      <aside
+        style={{
+          position: "absolute",
+          right: 0,
+          top: previewDoc ? 0 : "56px",
+          bottom: 0,
+          width: previewDoc ? "45vw" : "320px",
+          background: theme.sidebarBg,
+          borderLeft: `1px solid ${theme.borderColor}`,
+          borderTopLeftRadius: previewDoc ? "0" : "16px",
+          transform: showRightSidebar ? "translateX(0)" : "translateX(100%)",
+          transition: "transform 0.3s ease-in-out, width 0.3s ease-in-out",
+          zIndex: previewDoc ? 40 : 35,
+          display: "flex",
+          flexDirection: "column",
+          boxShadow: showRightSidebar ? "-4px 0 15px rgba(0,0,0,0.05)" : "none",
+        }}
+      >
+        {previewDoc ? (
+          // DOCUMENT PREVIEW SIDEBAR MODE
+          <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+            <div style={{ padding: "12px 20px", display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: `1px solid ${theme.borderColor}`, background: theme.sidebarBg }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "12px", overflow: "hidden" }}>
+                <button
+                  onClick={() => setPreviewDoc(null)}
+                  title="Kembali"
+                  style={{
+                    background: "transparent",
+                    border: "none",
+                    outline: "none",
+                    color: theme.iconColor,
+                    padding: "4px",
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center"
+                  }}
+                >
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
+                </button>
+                <div style={{ display: "flex", flexDirection: "column", overflow: "hidden" }}>
+                  <h3 style={{ margin: 0, fontSize: "16px", fontWeight: 600, color: darkMode ? "#fff" : "#000", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                    {previewDoc.name}
+                  </h3>
+                  <div style={{ fontSize: "12px", color: theme.secondaryText, marginTop: "2px" }}>
+                    {previewDoc.size !== undefined && previewDoc.size !== null && previewDoc.size !== 0 ? (
+                      parseFloat((previewDoc.size / 1024).toFixed(2)) + ' KB • '
+                    ) : ''}
+                    {docContent ? `${docContent.split('\n').length} baris` : 'Memuat...'}
+                    {' • Format mungkin berbeda dari sumber asli'}
+                  </div>
+                </div>
+              </div>
+              <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                {docContent && (
+                  <button
+                    onClick={async () => {
+                      try {
+                        if (navigator.clipboard && window.isSecureContext) {
+                          await navigator.clipboard.writeText(docContent);
+                        } else {
+                          const textArea = document.createElement("textarea");
+                          textArea.value = docContent;
+                          document.body.appendChild(textArea);
+                          textArea.focus();
+                          textArea.select();
+                          document.execCommand('copy');
+                          document.body.removeChild(textArea);
+                        }
+                        toast.success("Konten berhasil disalin!");
+                      } catch (err) {
+                        console.error('Copy failed:', err);
+                        toast.error("Gagal menyalin teks");
+                      }
+                    }}
+                    title="Copy Content"
+                    style={{
+                      background: "transparent",
+                      border: "none",
+                      outline: "none",
+                      color: darkMode ? "#fff" : "#000",
+                      padding: "8px",
+                      borderRadius: "6px",
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center"
+                    }}
+                    onMouseEnter={(e) => e.currentTarget.style.background = darkMode ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.05)"}
+                    onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
+                  >
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                  </button>
+                )}
+                <button
+                  onClick={() => {
+                    setShowRightSidebar(false);
+                    setTimeout(() => setPreviewDoc(null), 300);
+                  }}
+                  title="Tutup"
+                  style={{
+                    background: "transparent",
+                    border: "none",
+                    outline: "none",
+                    color: theme.iconColor,
+                    padding: "8px",
+                    borderRadius: "6px",
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center"
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.background = darkMode ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.05)"}
+                  onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                </button>
+              </div>
+            </div>
+
+            <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column", background: theme.sidebarBg, padding: "16px" }}>
+              <div style={{
+                flex: 1,
+                overflow: "hidden",
+                display: "flex",
+                flexDirection: "column",
+                background: darkMode ? "#1e1e1e" : "#f8f9fa",
+                borderRadius: "12px",
+                border: `1px solid ${darkMode ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.1)"}`,
+              }}>
+                <style>{`
+                  .custom-doc-scrollbar::-webkit-scrollbar {
+                    width: 8px;
+                    height: 8px;
+                  }
+                  .custom-doc-scrollbar::-webkit-scrollbar-track {
+                    background: transparent;
+                  }
+                  .custom-doc-scrollbar::-webkit-scrollbar-thumb {
+                    background: ${darkMode ? "#4b5563" : "#d1d5db"};
+                    border-radius: 10px;
+                  }
+                  .custom-doc-scrollbar::-webkit-scrollbar-thumb:hover {
+                    background: ${darkMode ? "#6b7280" : "#9ca3af"};
+                  }
+                `}</style>
+                <div className="custom-doc-scrollbar" style={{ flex: 1, overflow: "auto", padding: "16px" }}>
+                  {isDocLoading ? (
+                    <div style={{ color: theme.secondaryText, display: "flex", alignItems: "center", justifyContent: "center", height: "100%" }}>Memuat konten...</div>
+                  ) : (
+                    <pre style={{ margin: 0, whiteSpace: "pre-wrap", wordBreak: "break-all", color: darkMode ? "#e2e8f0" : "#1f2937", fontFamily: "monospace", fontSize: "13px", lineHeight: "1.5" }}>
+                      {docContent}
+                    </pre>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : (
+          // SESSION FILES LIST MODE
+          <>
+            <div
+              style={{
+                padding: "16px 20px",
+                borderBottom: `1px solid ${theme.borderColor}`,
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+              }}
+            >
+              <h3 style={{ margin: 0, color: darkMode ? "#ffffff" : "#000000", fontSize: "16px", fontWeight: 600 }}>Session Files</h3>
+            </div>
+
+            <div style={{ flex: 1, overflowY: "auto", padding: "20px" }}>
+
+              {/* SECTION 1: ARTIFACTS */}
+              <div style={{ marginBottom: "32px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
+                  <h4 style={{ margin: 0, color: darkMode ? "#ffffff" : "#000000", fontSize: "14px", fontWeight: 600 }}>Artifacts</h4>
+                </div>
+
+                <div style={{ textAlign: "center", padding: "16px 0", color: darkMode ? "#ffffff" : "#000000", fontSize: "13px", background: theme.inputBg, borderRadius: "8px", border: `1px dashed ${theme.borderColor}` }}>
+                  Belum ada artifact.
+                </div>
+              </div>
+
+              {/* SECTION 2: CONTENT (User Uploads) */}
+              <div>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
+                  <h4 style={{ margin: 0, color: darkMode ? "#ffffff" : "#000000", fontSize: "14px", fontWeight: 600 }}>Content</h4>
+                </div>
+
+                {sessionAttachments.length === 0 ? (
+                  <div style={{ textAlign: "center", padding: "16px 0", color: darkMode ? "#ffffff" : "#000000", fontSize: "13px", background: theme.inputBg, borderRadius: "8px", border: `1px dashed ${theme.borderColor}` }}>
+                    Belum ada lampiran.
+                  </div>
+                ) : (
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px" }}>
+                    {sessionAttachments.map((att, idx) => {
+                      const fullUrl = getUploadUrl(att.file_path);
+                      const isImg = /\.(jpg|jpeg|png|webp|gif|bmp)$/i.test(att.file_name);
+                      const isPdf = /\.pdf$/i.test(att.file_name);
+
+                      return (
+                        <div
+                          key={idx}
+                          onClick={() => {
+                            if (isImg) setPreviewImage(fullUrl);
+                            else setPreviewDoc({ url: fullUrl, name: att.file_name, type: isPdf ? 'pdf' : 'text', path: att.file_path, size: att.file_size || att.size || 0 });
+                          }}
+                          style={{
+                            display: "flex",
+                            flexDirection: "column",
+                            background: theme.mainBg,
+                            borderRadius: "10px",
+                            border: `1px solid ${theme.borderColor}`,
+                            overflow: "hidden",
+                            cursor: "pointer",
+                            transition: "all 0.2s",
+                            boxShadow: "0 4px 6px -1px rgba(0,0,0,0.05), 0 2px 4px -1px rgba(0,0,0,0.03)",
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.borderColor = "#6366f1";
+                            e.currentTarget.style.transform = "translateY(-2px)";
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.borderColor = theme.borderColor;
+                            e.currentTarget.style.transform = "none";
+                          }}
+                        >
+                          {/* PREVIEW AREA */}
+                          <div style={{ aspectRatio: "1/1", width: "100%", background: theme.inputBg, display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", borderRadius: "10px" }}>
+                            {isImg ? (
+                              <img src={fullUrl} alt={att.file_name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                            ) : (
+                              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke={theme.secondaryText} strokeWidth="1" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                                <polyline points="14 2 14 8 20 8"></polyline>
+                                <line x1="16" y1="13" x2="8" y2="13"></line>
+                                <line x1="16" y1="17" x2="8" y2="17"></line>
+                                <polyline points="10 9 9 9 8 9"></polyline>
+                              </svg>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+          </>
+        )}
+      </aside>
+
+      {/* 🖼️ IMAGE PREVIEW MODAL */}
+      {previewImage && (
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: "rgba(0,0,0,0.85)",
+            zIndex: 100,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "24px",
+          }}
+          onClick={() => setPreviewImage(null)}
+        >
+          <button
+            style={{ position: "absolute", top: "24px", right: "24px", background: "rgba(255,255,255,0.1)", border: "none", color: "#fff", padding: "8px", borderRadius: "50%", cursor: "pointer", zIndex: 101 }}
+            onClick={(e) => { e.stopPropagation(); setPreviewImage(null); }}
+          >
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+          </button>
+          <img
+            src={previewImage}
+            alt="Preview"
+            style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain", borderRadius: "8px" }}
+            onClick={(e) => e.stopPropagation()}
+          />
         </div>
       )}
     </div>
