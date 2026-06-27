@@ -8,15 +8,22 @@ let _sessionLoadSeq = 0;
 
 function _normalizeAttachments(files) {
     if (!files || !files.length) return [];
-    return files.map((f) => ({
-        id: f.id,
-        file_name: f.original_filename || f.file_name || 'lampiran',
-        file_path: f.file_path && f.file_path.includes('/')
-            ? f.file_path.split('/').pop()
-            : f.file_path,
-        mime_type: f.mime_type,
-        file_size: f.file_size || f.size || 0,
-    }));
+    return files.map((f) => {
+        let newPath = f.file_path || f.unique_filename;
+        if (newPath) {
+            newPath = newPath.startsWith('accounts/') 
+                ? newPath 
+                : (newPath.includes('/') ? newPath.split('/').pop() : newPath);
+        }
+        
+        return {
+            id: f.id,
+            file_name: f.original_filename || f.file_name || 'lampiran',
+            file_path: newPath,
+            mime_type: f.mime_type,
+            file_size: f.file_size || f.size || 0,
+        };
+    });
 }
 
 // Tambahkan parameter targetAssistantIdx di akhir (default null)

@@ -84,15 +84,20 @@ async def _sequential_pipeline_generator(
     
     if payload.attachment_paths:
         import os
-        from backend.app.core.paths import UPLOAD_DIR
+        from backend.app.core.paths import UPLOAD_DIR, get_abs_path
         import base64
         
         for path in payload.attachment_paths:
             path_lower = path.lower()
             filename = os.path.basename(path)
-            abs_path = os.path.join(UPLOAD_DIR, filename)
+            
+            if path.startswith("accounts/"):
+                abs_path = get_abs_path(path)
+            else:
+                abs_path = os.path.join(UPLOAD_DIR, filename)
             
             if not os.path.exists(abs_path):
+                logger.warning(f"[PIPELINE] Attachment not found: {abs_path}")
                 continue
                 
             if any(path_lower.endswith(ext) for ext in [".jpg", ".jpeg", ".png", ".webp", ".bmp"]):

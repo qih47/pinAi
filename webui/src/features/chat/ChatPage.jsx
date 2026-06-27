@@ -2108,40 +2108,35 @@ export default function ChatPage({
           boxShadow: showRightSidebar ? "-4px 0 15px rgba(0,0,0,0.05)" : "none",
         }}
       >
-        {/* Resizer Handle */}
+        {/* Resizer Handle with Toggle Bump */}
         {(previewDoc || previewArtifact) && (
           <div
             onMouseDown={startResizingRightSidebar}
             style={{
               position: 'absolute',
-              left: -6,
-              top: 0,
-              bottom: 0,
+              left: -12, // Geser ke kiri untuk memberi ruang pada benjolan
+              top: '50%',
+              transform: 'translateY(-50%)',
               width: 12,
+              height: 48, // Tinggi benjolan
               cursor: 'col-resize',
               zIndex: 50,
-              background: 'transparent',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center'
-            }}
-          >
-            <div style={{
-              width: 4,
-              height: 32,
-              borderRadius: 4,
-              background: theme.borderColor,
+              background: theme.sidebarBg,
+              border: `1px solid ${theme.borderColor}`,
+              borderRight: 'none',
+              borderTopLeftRadius: 8,
+              borderBottomLeftRadius: 8,
               display: 'flex',
               flexDirection: 'column',
               justifyContent: 'center',
               alignItems: 'center',
-              gap: '3px',
-              opacity: 0.8
-            }}>
-              <div style={{ width: 2, height: 2, background: theme.secondaryText, borderRadius: '50%' }} />
-              <div style={{ width: 2, height: 2, background: theme.secondaryText, borderRadius: '50%' }} />
-              <div style={{ width: 2, height: 2, background: theme.secondaryText, borderRadius: '50%' }} />
-            </div>
+              gap: '4px',
+              boxShadow: '-4px 0 10px rgba(0,0,0,0.05)'
+            }}
+          >
+            <div style={{ width: 2, height: 2, background: theme.secondaryText, borderRadius: '50%', opacity: 0.8 }} />
+            <div style={{ width: 2, height: 2, background: theme.secondaryText, borderRadius: '50%', opacity: 0.8 }} />
+            <div style={{ width: 2, height: 2, background: theme.secondaryText, borderRadius: '50%', opacity: 0.8 }} />
           </div>
         )}
         {previewDoc ? (

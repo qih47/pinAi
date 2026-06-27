@@ -71,7 +71,8 @@ async def upload_chat_attachments(
 
             # ── 4. Write to disk ──────────────────────────────────────────────
             unique_filename = f"{int(time.time())}_{file.filename}"
-            account_images_dir = get_account_dir(current_user_npp, "images")
+            from backend.app.core.paths import get_account_session_dir
+            account_images_dir = get_account_session_dir(current_user_npp, session_uuid, "images")
             absolute_write_path = os.path.join(account_images_dir, unique_filename)
 
             with open(absolute_write_path, "wb") as buffer:
@@ -80,11 +81,15 @@ async def upload_chat_attachments(
             file_size = os.path.getsize(absolute_write_path)
             logger.info(f"✅ [UPLOAD] File '{file.filename}' ({file_size} bytes) tersimpan ke disk")
 
+            # Hitung path relatif dari folder ROOT "accounts/"
+            # Supaya frontend/static files bisa langsung load via: /accounts/{npp}/{session_id}/images/filename
+            relative_account_path = f"accounts/{current_user_npp}/{session_uuid}/images/{unique_filename}"
+
             # ── 5. Save metadata to DB ────────────────────────────────────────
             inserted_meta = await chat_history_service.save_chat_attachment(
                 session_uuid=session_uuid,
                 original_filename=file.filename,
-                unique_filename=unique_filename,
+                unique_filename=relative_account_path,
                 file_size=file_size,
                 mime_type=file.content_type or "application/octet-stream",
                 extracted_text=f"[Pending OCR: {file.filename}]",
@@ -126,17 +131,17 @@ async def extract_file_content(path: str):
         raise HTTPException(status_code=400, detail="Path tidak boleh kosong.")
     
     # Path sanitization
-    if ".." in path or "/" in path or "\\" in path:
-        # Check if it's already an absolute path in UPLOAD_DIR
-        # In UI, fullUrl is passed. Usually path is something like "/api/uploads/filename.ext"
-        # Wait, the UI passes `previewDoc.url` which is the full URL like `http://.../api/uploads/filename.pdf`
-        pass
+    if ".." in path or "\\" in path:
+        raise HTTPException(status_code=400, detail="Path file tidak valid.")
     
-    # Actually, it's safer if UI passes the filename or relative path.
-    # The UI gets `att.file_path` which is just the filename.
     filename = path.split("/")[-1]
     
-    abs_path = os.path.join(UPLOAD_DIR, filename)
+    from backend.app.core.paths import get_abs_path
+    if path.startswith("accounts/"):
+        abs_path = get_abs_path(path)
+    else:
+        abs_path = os.path.join(UPLOAD_DIR, filename)
+
     if not os.path.exists(abs_path):
         raise HTTPException(status_code=404, detail="File tidak ditemukan.")
     
