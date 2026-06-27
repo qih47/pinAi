@@ -135,7 +135,65 @@ async function _performStream(set, get, messagesToSend, assistantMessage, forced
                     onChunk: (chunk) => {
                         accumulatedReply += chunk;
                         let cleanReply = accumulatedReply.replace(/<\|channel>thought/g, '').replace(/<channel\|>/g, '');
-                        assistantMessage = { ...assistantMessage, content: cleanReply };
+
+                        // 🔥 DYNAMIC FRONTEND PARSER 🔥
+                        // Parse <create_file> and <edit_file> tags directly from the text stream
+                        const openTagRegex = /<(create_file|edit_file)\s+filename=["']([^"'>\s]+)["']\s*>/gi;
+                        const closeTagRegex = /<\/(create_file|edit_file)\s*>/gi;
+
+                        let textDisplay = "";
+                        const newFileGens = [];
+                        let lastIdx = 0;
+                        // Robust Parser with Auto-Close
+                        let match;
+                        while ((match = openTagRegex.exec(cleanReply)) !== null) {
+                            textDisplay += cleanReply.substring(lastIdx, match.index);
+                            if (newFileGens.length === 0) {
+                                // Inject placeholder exactly where the first file creation starts
+                                textDisplay += "\n\n[[CAKRA_FILE_PROCESS_LOG]]\n\n";
+                            }
+
+                            const filename = match[2];
+                            const contentStart = openTagRegex.lastIndex;
+
+                            // Look ahead for the next close tag or the next open tag (auto-close)
+                            closeTagRegex.lastIndex = contentStart;
+                            const nextClose = closeTagRegex.exec(cleanReply);
+
+                            const nextOpenRegex = /<(create_file|edit_file)\s+filename=/gi;
+                            nextOpenRegex.lastIndex = contentStart;
+                            const nextOpen = nextOpenRegex.exec(cleanReply);
+
+                            let contentEnd = cleanReply.length;
+
+                            if (nextClose && (!nextOpen || nextClose.index < nextOpen.index)) {
+                                // Normal close
+                                contentEnd = nextClose.index;
+                                lastIdx = closeTagRegex.lastIndex;
+                            } else if (nextOpen && (!nextClose || nextOpen.index < nextClose.index)) {
+                                // Auto close because new tag started (LLM forgot to close)
+                                contentEnd = nextOpen.index;
+                                lastIdx = nextOpen.index; 
+                                openTagRegex.lastIndex = lastIdx; 
+                            } else {
+                                // Still streaming
+                                contentEnd = cleanReply.length;
+                                lastIdx = cleanReply.length;
+                            }
+
+                            const codeContent = cleanReply.substring(contentStart, contentEnd);
+                            // We don't push to newFileGens anymore. We rely entirely on onFileStatus for liveCode updates.
+                        }
+                        textDisplay += cleanReply.substring(lastIdx);
+
+                        // Do NOT overwrite fileGenerations. onFileStatus is the sole source of truth for file generation state.
+                        const existingGens = [...(assistantMessage.fileGenerations || [])];
+
+                        assistantMessage = { 
+                            ...assistantMessage, 
+                            content: textDisplay,
+                            fileGenerations: existingGens 
+                        };
 
                         if (!renderTimeout) {
                             renderTimeout = requestAnimationFrame(() => {
@@ -153,12 +211,101 @@ async function _performStream(set, get, messagesToSend, assistantMessage, forced
                             });
                         }
                     },
+                    onFileStatus: (fileStatus) => {
+                        const { stage, filename } = fileStatus;
+                        
+                        // 🔥 FIX: Directly read from assistantMessage to avoid rAF race conditions 🔥
+                        const fileGens = [...(assistantMessage.fileGenerations || [])];
+                        const existingIdx = fileGens.findIndex(fg => fg.filename === filename);
+                        
+                        if (stage === 'done') {
+                            if (existingIdx !== -1) {
+                                fileGens[existingIdx] = { 
+                                    ...fileGens[existingIdx], 
+                                    stage: 'done',
+                                    file_path: fileStatus.file_path || null,
+                                };
+                            } else {
+                                // Fallback if frontend parser missed it
+                                fileGens.push({ 
+                                    filename, 
+                                    stage: 'done', 
+                                    liveCode: '', 
+                                    file_path: fileStatus.file_path || null 
+                                });
+                            }
+                            
+                            // ── Merekam ke Sidebar (Artifacts) ──
+                            if (fileStatus.file_path) {
+                                set(state => {
+                                    const currentArtifacts = [...state.artifacts];
+                                    const exArtIdx = currentArtifacts.findIndex(a => a.filename === filename);
+                                    const newArt = {
+                                        filename,
+                                        file_path: fileStatus.file_path,
+                                        lines_count: fileStatus.lines_count || 1,
+                                    };
+                                    if (exArtIdx !== -1) {
+                                        currentArtifacts[exArtIdx] = newArt;
+                                    } else {
+                                        currentArtifacts.push(newArt);
+                                    }
+                                    return { artifacts: currentArtifacts };
+                                });
+                            }
+                        } else if (stage === 'creating') {
+                            if (existingIdx === -1) {
+                                fileGens.push({
+                                    filename,
+                                    stage: 'creating',
+                                    liveCode: '',
+                                    file_path: null
+                                });
+                            } else {
+                                fileGens[existingIdx].stage = 'creating';
+                            }
+                        } else if (stage === 'code_chunk') {
+                            if (existingIdx !== -1) {
+                                fileGens[existingIdx].stage = 'streaming';
+                                fileGens[existingIdx].liveCode = (fileGens[existingIdx].liveCode || '') + (fileStatus.code_chunk || '');
+                            } else {
+                                fileGens.push({
+                                    filename,
+                                    stage: 'streaming',
+                                    liveCode: fileStatus.code_chunk || '',
+                                    file_path: null
+                                });
+                            }
+                        } else if (stage === 'error') {
+                            if (existingIdx !== -1) {
+                                fileGens[existingIdx] = { ...fileGens[existingIdx], stage: 'error' };
+                            }
+                        }
+                        
+                        // Mutate local variable to ensure the NEXT onChunk/onFileStatus reads this updated state
+                        assistantMessage = { ...assistantMessage, fileGenerations: fileGens };
+
+                        if (!renderTimeout) {
+                            renderTimeout = requestAnimationFrame(() => {
+                                const currentMessages = [...get().messages];
+                                const idx = targetAssistantIdx !== null ? targetAssistantIdx : currentMessages.length - 1;
+                                currentMessages[idx] = assistantMessage;
+                                set({ messages: currentMessages });
+                                renderTimeout = null;
+                            });
+                        }
+                    },
                     onDone: (data) => {
                         assistantMessage = { ...assistantMessage, isStreaming: false, isThinking: false };
-                        
                         if (data && data.eval_count && data.eval_duration) {
                             assistantMessage.eval_count = data.eval_count;
                             assistantMessage.eval_duration = data.eval_duration;
+                        }
+                        
+                        if (data && data.title) {
+                            window.dispatchEvent(new CustomEvent("cakra_title_update", { 
+                                detail: { sessionUuid: get().sessionUuid, title: data.title } 
+                            }));
                         }
                         
                         const currentMessages = [...get().messages];
@@ -218,6 +365,9 @@ export const useChatStore = create((set, get) => ({
     documents: [],
     isLoadingDocuments: false,
     abortController: null,
+    artifacts: [],  // ← Generated artifacts dari Interceptor-Analyst Pipeline
+
+    clearArtifacts: () => set({ artifacts: [] }),
 
     stopStream: () => {
         const controller = get().abortController;
@@ -382,7 +532,8 @@ export const useChatStore = create((set, get) => ({
             isThinking: false,
             stagedAttachments: [],
             activeIsolatedDocId: null,
-            activeIsolatedTitle: null
+            activeIsolatedTitle: null,
+            artifacts: [],  // ← Reset artifacts saat session baru
         });
     },
 
@@ -402,7 +553,7 @@ export const useChatStore = create((set, get) => ({
 
         const seq = ++_sessionLoadSeq;
         console.log('📥 [STORE] Loading session:', sessionUuid);
-        set({ sessionUuid, messages: [], isLoading: true, activeIsolatedDocId: null, activeIsolatedTitle: null });
+        set({ sessionUuid, messages: [], isLoading: true, activeIsolatedDocId: null, activeIsolatedTitle: null, artifacts: [] });
 
         try {
             const npp = JSON.parse(localStorage.getItem('cakra_user'))?.npp || '';
@@ -411,24 +562,130 @@ export const useChatStore = create((set, get) => ({
             if (seq !== _sessionLoadSeq) return;
 
             if (result.status === "success" && result.data) {
+                let loadedArtifacts = [];
                 // SINKRONISASI RIWAYAT: Mengambil nama berkas saja dari riwayat lampiran lama
                 const sanitizedMessages = result.data.map(msg => {
-                    if (msg.attachments && msg.attachments.length > 0) {
+                    let newMsg = { ...msg };
+                    
+                    // 🔥 PARSE TAGS FROM SAVED CONTENT (FIX RELOAD BUG) 🔥
+                    if (newMsg.role === 'assistant' && newMsg.content) {
+                        const openTagRegex = /<(create_file|edit_file)\s+filename=["']([^"'>\s]+)["']\s*>/gi;
+                        const closeTagRegex = /<\/(create_file|edit_file)\s*>/gi;
+                        
+                        let textDisplay = "";
+                        // Robust Parser with Auto-Close for loadChatSession
+                        const parsedFileGens = [];
+                        let lastIdx = 0;
+                        let match;
+                        openTagRegex.lastIndex = 0;
+                        while ((match = openTagRegex.exec(newMsg.content)) !== null) {
+                            textDisplay += newMsg.content.substring(lastIdx, match.index);
+                            if (parsedFileGens.length === 0) {
+                                // Inject placeholder exactly where the first file creation starts
+                                textDisplay += "\n\n[[CAKRA_FILE_PROCESS_LOG]]\n\n";
+                            }
+
+                            const filename = match[2];
+                            const contentStart = openTagRegex.lastIndex;
+
+                            // Look ahead for the next close tag or the next open tag (auto-close)
+                            closeTagRegex.lastIndex = contentStart;
+                            const nextClose = closeTagRegex.exec(newMsg.content);
+
+                            const nextOpenRegex = /<(create_file|edit_file)\s+filename=/gi;
+                            nextOpenRegex.lastIndex = contentStart;
+                            const nextOpen = nextOpenRegex.exec(newMsg.content);
+
+                            let contentEnd = newMsg.content.length;
+
+                            if (nextClose && (!nextOpen || nextClose.index < nextOpen.index)) {
+                                // Normal close
+                                contentEnd = nextClose.index;
+                                lastIdx = closeTagRegex.lastIndex;
+                            } else if (nextOpen && (!nextClose || nextOpen.index < nextClose.index)) {
+                                // Auto close because new tag started (LLM forgot to close)
+                                contentEnd = nextOpen.index;
+                                lastIdx = nextOpen.index; 
+                                openTagRegex.lastIndex = lastIdx; 
+                            } else {
+                                // Still streaming / EOF
+                                contentEnd = newMsg.content.length;
+                                lastIdx = newMsg.content.length;
+                            }
+
+                            const codeContent = newMsg.content.substring(contentStart, contentEnd);
+                            parsedFileGens.push({ filename, stage: 'done', liveCode: codeContent });
+                        }
+                        textDisplay += newMsg.content.substring(lastIdx);
+                        
+                        newMsg.content = textDisplay;
+                        
+                        // Merge with metadata artifacts for file_path
+                        if (newMsg.metadata && newMsg.metadata.artifacts && Array.isArray(newMsg.metadata.artifacts)) {
+                            loadedArtifacts = [...loadedArtifacts, ...newMsg.metadata.artifacts];
+                            
+                            newMsg.fileGenerations = parsedFileGens.map(pfg => {
+                                const metaArt = newMsg.metadata.artifacts.find(a => a.filename === pfg.filename);
+                                return {
+                                    ...pfg,
+                                    file_path: metaArt ? metaArt.file_path : null,
+                                    lines_count: metaArt ? metaArt.lines_count : 1
+                                };
+                            });
+                            
+                            // Include metadata artifacts that weren't caught by parser (fallback)
+                            newMsg.metadata.artifacts.forEach(art => {
+                                if (!newMsg.fileGenerations.find(fg => fg.filename === art.filename)) {
+                                    newMsg.fileGenerations.push({
+                                        filename: art.filename,
+                                        stage: 'done',
+                                        file_path: art.file_path,
+                                        liveCode: art.code || '',
+                                        lines_count: art.lines_count || 1
+                                    });
+                                }
+                            });
+                        } else if (parsedFileGens.length > 0) {
+                            newMsg.fileGenerations = parsedFileGens;
+                        }
+                    } else if (newMsg.metadata && newMsg.metadata.artifacts && Array.isArray(newMsg.metadata.artifacts)) {
+                        loadedArtifacts = [...loadedArtifacts, ...newMsg.metadata.artifacts];
+                        newMsg.fileGenerations = newMsg.metadata.artifacts.map(art => ({
+                            filename: art.filename,
+                            stage: 'done',
+                            file_path: art.file_path,
+                            liveCode: art.code || '',
+                            lines_count: art.lines_count || 1
+                        }));
+                    }
+                    
+                    if (newMsg.attachments && newMsg.attachments.length > 0) {
                         return {
-                            ...msg,
-                            attachments: msg.attachments.map(file => ({
-                                ...file,
-                                file_path: file.file_path && file.file_path.includes('/')
-                                    ? file.file_path.split('/').pop()
-                                    : file.file_path
-                            }))
+                            ...newMsg,
+                            attachments: newMsg.attachments.map(file => {
+                                const fp = file.file_path || "";
+                                // Keep new path structure intact, otherwise extract filename for legacy
+                                const newPath = fp.startsWith('accounts/') 
+                                    ? fp 
+                                    : (fp.includes('/') ? fp.split('/').pop() : fp);
+                                return {
+                                    ...file,
+                                    file_path: newPath
+                                };
+                            })
                         };
                     }
-                    return msg;
+                    return newMsg;
                 });
+
+                // Deduplicate artifacts by filename just in case
+                const uniqueArtifactsMap = new Map();
+                loadedArtifacts.forEach(a => uniqueArtifactsMap.set(a.filename, a));
+                const finalArtifacts = Array.from(uniqueArtifactsMap.values());
 
                 set({
                     messages: sanitizedMessages,
+                    artifacts: finalArtifacts,
                     isLoading: false
                 });
             } else {
@@ -462,12 +719,14 @@ export const useChatStore = create((set, get) => ({
         }
     },
 
-    createNewSession: async (npp) => {
+    createNewSession: async (npp, chatMode = 'auto', isThinkingMode = false) => {
         try {
             const result = await endpoints.createChatSession(null, npp);
             if (result.status === 'success') {
-                set({ sessionUuid: result.data.session_uuid, messages: [], stagedAttachments: [], activeIsolatedDocId: null, activeIsolatedTitle: null });
-                return result.data.session_uuid;
+                const newUuid = result.data.session_uuid;
+                await endpoints.updateSessionSettings(newUuid, { chatMode, isThinkingMode }).catch(() => {});
+                set({ sessionUuid: newUuid, messages: [], stagedAttachments: [], activeIsolatedDocId: null, activeIsolatedTitle: null });
+                return newUuid;
             }
             throw new Error('Gagal membuat sesi baru');
         } catch (err) {

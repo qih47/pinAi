@@ -2,10 +2,11 @@ import os
 import time
 import logging
 from typing import List, Optional
-from fastapi import APIRouter, HTTPException, UploadFile, File, Form, Request
+from fastapi import APIRouter, HTTPException, UploadFile, File, Form, Request, Depends
 
-from backend.app.core.paths import UPLOAD_DIR
+from backend.app.core.paths import get_account_dir
 from backend.app.services.chat_history_service import chat_history_service
+from backend.app.api.dependencies.auth import get_current_user_npp
 from backend.app.utils.upload_validator import (
     validate_uploaded_file,
     UploadValidationError,
@@ -23,6 +24,7 @@ logger = logging.getLogger("CAKRA_CHAT_API")
 async def upload_chat_attachments(
     files: List[UploadFile] = File(...),
     session_uuid: Optional[str] = Form(None),
+    current_user_npp: str = Depends(get_current_user_npp),
     request: Request = None,
 ):
     """
@@ -69,7 +71,8 @@ async def upload_chat_attachments(
 
             # ── 4. Write to disk ──────────────────────────────────────────────
             unique_filename = f"{int(time.time())}_{file.filename}"
-            absolute_write_path = os.path.join(UPLOAD_DIR, unique_filename)
+            account_images_dir = get_account_dir(current_user_npp, "images")
+            absolute_write_path = os.path.join(account_images_dir, unique_filename)
 
             with open(absolute_write_path, "wb") as buffer:
                 buffer.write(file_bytes)

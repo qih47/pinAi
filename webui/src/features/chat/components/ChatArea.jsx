@@ -38,10 +38,20 @@ export default function ChatArea({
   isLoading = false,
   onAtBottomChange,
   onFileClick,
-  setPreviewImage
+  setPreviewImage,
+  onOpenArtifact,
 }) {
   const virtuosoRef = useRef(null);
   const prevMessagesLengthRef = useRef(messages.length);
+
+  // 🔥 TRICK UNTUK MEMASTIKAN VIRTUOSO RE-BIND PARENT SCROLL SAAT REF TERISI
+  const [scrollParent, setScrollParent] = useState(undefined);
+
+  useEffect(() => {
+    if (messagesContainerRef?.current) {
+      setScrollParent(messagesContainerRef.current);
+    }
+  }, [messagesContainerRef]);
 
   useEffect(() => {
     if (messages.length > prevMessagesLengthRef.current) {
@@ -70,8 +80,9 @@ export default function ChatArea({
       isLastMessage={idx === messages.length - 1}
       onFileClick={onFileClick}
       setPreviewImage={setPreviewImage}
+      onOpenArtifact={onOpenArtifact}
     />
-  ), [darkMode, theme, isThinking, isStreamingText, sendMessage, searchQuery, messages.length, onFileClick, setPreviewImage]);
+  ), [darkMode, theme, isThinking, isStreamingText, sendMessage, searchQuery, messages.length, onFileClick, setPreviewImage, onOpenArtifact]);
 
   const FooterComponent = useCallback(() => (
     <>
@@ -112,7 +123,6 @@ export default function ChatArea({
               </div>
               <h1 style={{ ...styles.emptyTitle, color: theme.textColor }}>Halo, saya CAKRA</h1>
             </div>
-            
             <p style={{ ...styles.emptySubtitle, color: theme.secondaryText }}>Ada yang bisa saya bantu hari ini?</p>
           </div>
         ) : (
@@ -120,7 +130,8 @@ export default function ChatArea({
             <Virtuoso
               ref={virtuosoRef}
               data={messages}
-              customScrollParent={messagesContainerRef?.current || undefined}
+              // 🔥 JALUR AMAN: Gunakan local state scrollParent agar terikat sempurna saat ref siap
+              customScrollParent={scrollParent}
               useWindowScroll={false}
               itemContent={itemContent}
               atBottomStateChange={(atBottom) => {

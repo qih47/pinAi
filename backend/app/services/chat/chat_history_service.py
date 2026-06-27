@@ -154,7 +154,7 @@ class ChatHistoryService:
     # =========================================================================
 
     async def save_chat_message(
-        self, session_id: str, role: str, text: str, thought: Optional[str] = None, sources: Optional[list] = None
+        self, session_id: str, role: str, text: str, thought: Optional[str] = None, sources: Optional[list] = None, metadata: Optional[dict] = None
     ) -> bool:
         """Menyimpan pesan ke chat_messages. Param session_id menerima session_uuid, di-resolve ke PK integer."""
         async with get_db() as conn:
@@ -168,17 +168,18 @@ class ChatHistoryService:
 
                 # Thought process diubah menjadi thought sesuai sasis fisik tabel baru
                 sources_json = json.dumps(sources) if sources is not None else None
+                metadata_json = json.dumps(metadata) if metadata is not None else None
                 query = """
-                    INSERT INTO chat_messages (session_id, role, message_text, timestamp, thought, sources)
-                    VALUES ($1, $2, $3, CURRENT_TIMESTAMP, $4, $5);
+                    INSERT INTO chat_messages (session_id, role, message_text, timestamp, thought, sources, metadata)
+                    VALUES ($1, $2, $3, CURRENT_TIMESTAMP, $4, $5, $6);
                 """
-                await conn.execute(query, session_pk, role, text, thought, sources_json)
+                await conn.execute(query, session_pk, role, text, thought, sources_json, metadata_json)
                 return True
             except Exception as e:
                 logger.error(f"[CHAT_HISTORY_ERROR] Failed to save chat message: {str(e)}")
                 return False
     async def update_chat_message(
-        self, session_id: str, edit_index: int, role: str, text: str, thought: Optional[str] = None, sources: Optional[list] = None
+        self, session_id: str, edit_index: int, role: str, text: str, thought: Optional[str] = None, sources: Optional[list] = None, metadata: Optional[dict] = None
     ) -> bool:
         """Melakukan In-Place update pada baris chat yang ada menggunakan offset index."""
         async with get_db() as conn:
@@ -199,17 +200,18 @@ class ChatHistoryService:
                 if target_id is None:
                     logger.warning(f"[CHAT_HISTORY] Target message at index {edit_index} not found for update. Inserting instead.")
                     # Fallback ke insert jika index tidak valid
-                    return await self.save_chat_message(session_id, role, text, thought, sources)
+                    return await self.save_chat_message(session_id, role, text, thought, sources, metadata)
                 
                 sources_json = json.dumps(sources) if sources is not None else None
+                metadata_json = json.dumps(metadata) if metadata is not None else None
                 
                 # Timpa (Update) isi pesannya
                 update_query = """
                     UPDATE chat_messages 
-                    SET message_text = $1, thought = $2, role = $3, sources = $5
+                    SET message_text = $1, thought = $2, role = $3, sources = $5, metadata = $6
                     WHERE id = $4
                 """
-                await conn.execute(update_query, text, thought, role, target_id, sources_json)
+                await conn.execute(update_query, text, thought, role, target_id, sources_json, metadata_json)
                 logger.info(f"[CHAT_HISTORY] Updated message at index {edit_index} (id: {target_id})")
                 return True
             except Exception as e:
@@ -252,6 +254,7 @@ class ChatHistoryService:
                 m.message_text, 
                 m.thought,
                 m.sources,
+                m.metadata,
                 m.timestamp,
                 COALESCE(
                     JSON_AGG(
@@ -277,7 +280,7 @@ class ChatHistoryService:
                     WHERE session_id = s.id AND timestamp < m.timestamp
                 )
             WHERE s.session_uuid = $1 AND s.is_deleted = FALSE
-            GROUP BY m.id, m.role, m.message_text, m.timestamp
+            GROUP BY m.id, m.role, m.message_text, m.thought, m.sources, m.metadata, m.timestamp
             ORDER BY m.timestamp ASC
         """
         async with get_db() as conn:
@@ -288,6 +291,7 @@ class ChatHistoryService:
                     "content": row["message_text"],
                     "thought": row["thought"],
                     "sources": json.loads(row["sources"]) if row["sources"] and isinstance(row["sources"], str) else row.get("sources"),
+                    "metadata": json.loads(row["metadata"]) if row["metadata"] and isinstance(row["metadata"], str) else row.get("metadata"),
                     "attachments": json.loads(row["attachments"]) if isinstance(row["attachments"], str) else row["attachments"]
                 } for row in rows
             ]

@@ -22,6 +22,9 @@ export const getApiBase = () => {
  */
 export function getUploadUrl(filePath) {
   if (!filePath) return '';
+  if (filePath.startsWith('accounts/')) {
+    return `${getApiBase()}/${filePath}`;
+  }
   const filename = filePath.includes('/') ? filePath.split('/').pop() : filePath;
   return `${getApiBase()}/uploads/${filename}`;
 }
@@ -187,7 +190,7 @@ function validateSSEEvent(parsedData) {
  */
 export async function streamChat(
   { sessionUuid, messages, chatMode, thinking, isolatedDocId, attachmentPaths, npp, editIndex, signal },
-  { onThinking, onStatus, onSources, onChunk, onDone, onError },
+  { onThinking, onStatus, onSources, onChunk, onFileStatus, onDone, onError },
   options = {}
 ) {
   const { timeoutMs = 5 * 60 * 1000 } = options;  // 5 minute default timeout
@@ -321,7 +324,12 @@ export async function streamChat(
           if (parsedData.chunk !== undefined && parsedData.chunk && onChunk) {
             onChunk(parsedData.chunk);
           }
-          
+
+          // Handle file generation lifecycle (Interceptor-Analyst Pipeline)
+          if (parsedData.event_type === 'file_status' && parsedData.file_status && onFileStatus) {
+            onFileStatus(parsedData.file_status);
+          }
+
           if (parsedData.done === true && onDone) {
             onDone(parsedData);
           }

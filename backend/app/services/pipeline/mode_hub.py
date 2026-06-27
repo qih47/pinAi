@@ -8,6 +8,7 @@ from backend.app.services.pipeline.modes.mode_flash import ModeFlash
 from backend.app.services.pipeline.modes.mode_documents import ModeDocuments
 from backend.app.services.pipeline.modes.mode_guest import ModeGuest
 from backend.app.services.pipeline.modes.mode_attachment import ModeAttachment
+from backend.app.services.pipeline.modes.mode_generate_file import ModeGenerateFile
 
 from backend.app.services.pipeline.modes.mode_utils import detect_precheck
 from backend.app.services.pipeline.call1_router import execute_call1_routing
@@ -27,6 +28,7 @@ class ModeHub:
             "documents": ModeDocuments(),
             "guest": ModeGuest(),
             "attachment": ModeAttachment(),
+            "generate_file": ModeGenerateFile(),  # Interceptor-Analyst Pipeline
         }
 
     async def execute(
@@ -133,7 +135,11 @@ class ModeHub:
         # Ensure mode exists, fallback to auto
         mode = chat_mode if chat_mode in self.mode_handlers else "auto"
 
-        if mode == "auto":
+        # ── Priority 1: is_generate_file intent (Interceptor-Analyst Pipeline) ──────
+        if routing_data.get("is_generate_file") and not is_guest:
+            logger.info("[MODE_HUB] is_generate_file=True detected → routing to GENERATE_FILE mode")
+            mode = "generate_file"
+        elif mode == "auto":
             need_rag = routing_data.get("need_rag", False)
             if need_rag:
                 mode = "documents"
@@ -154,7 +160,8 @@ class ModeHub:
             routing_data=precheck,
             request=request,
             employee_name=employee_name,
-            current_user_npp=current_user_npp
+            current_user_npp=current_user_npp,
+            session_uuid=session_uuid
         ):
             yield chunk
 

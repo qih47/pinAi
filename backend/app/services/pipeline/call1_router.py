@@ -144,6 +144,7 @@ def _validate_and_normalize_routing(
         "need_rag": False,
         "queries": [],
         "is_coding": False,
+        "is_generate_file": False,  # MODE GENERATE FILE: True jika user meminta dibuatkan file
         "need_analytic": False,
         "is_self_correction": False,
         "is_ambiguous": False,
@@ -168,6 +169,7 @@ def _validate_and_normalize_routing(
         routing["queries"] = []
 
     routing["is_coding"] = bool(routing_json.get("is_coding", False))
+    routing["is_generate_file"] = bool(routing_json.get("is_generate_file", False))
     routing["needs_code_analysis"] = bool(routing_json.get("needs_code_analysis", False))
     routing["need_analytic"] = bool(routing_json.get("need_analytic", False))
     routing["is_self_correction"] = bool(routing_json.get("is_self_correction", False))
@@ -243,6 +245,7 @@ def _build_fallback_routing(precheck: Dict[str, Any]) -> Dict[str, Any]:
             "need_rag": True,
             "queries": queries,
             "is_coding": False,
+            "is_generate_file": False,
             "needs_code_analysis": False,
             "need_analytic": False,
             "is_self_correction": False,

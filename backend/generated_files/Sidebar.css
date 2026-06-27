@@ -1,0 +1,70 @@
+
+:root {
+  --sidebar-width: 260px;
+  --primary-color: #1a3a5f; /* Warna biru navy profesional */
+  --accent-color: #007bff;
+  --text-light: #ffffff;
+  --bg-dark: #1e293b;
+  --hover-bg: #334158;
+  --transition-speed: 0.3s;
+}
+
+.sidebar {
+  width: var(--sidebar-width);
+  height: 100vh;
+  background-color: var(--bg-dark);
+  padding: 20px 15px;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.sidebar-brand {
+  font-size: 1.5rem;
+  font-weight: bold;
+  color: var(--text-light);
+  margin-bottom: 40px;
+  padding-left: 10px;
+  display: flex;
+  align-items: center;
+}
+
+.sidebar-menu {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sidebar-item {
+  display: flex;
+  align-items: center;
+  padding: 12px 15px;
+  border-radius: 8px;
+  text-decoration: none;
+  color: #cbd5e1;
+  transition: all var(--transition-speed) ease;
+}
+
+.sidebar-item:hover {
+  background-color: var(--hover-bg);
+  color: var(--text-light);
+  transform: translateX(5px);
+}
+
+.sidebar-item.active {
+  background-color: var(--accent-color);
+  color: white;
+}
+
+.sidebar-icon {
+  margin-right: 12px;
+  font-size: 1.2rem;
+}
+
+.sidebar-link-text {
+  font-weight: 500;
+}
+</create_file>

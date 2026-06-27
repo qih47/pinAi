@@ -43,6 +43,7 @@ async def init_db_pool():
                 await _update_chat_messages_sources_column(conn)
                 await _update_chat_sessions_settings_column(conn)
                 await _update_chat_messages_feedback_column(conn)
+                await _update_chat_messages_metadata_column(conn)
             except asyncpg.exceptions.InsufficientPrivilegeError as e:
                 logger.warning(f"⚠️ [DB_MIGRATION] Izin ditolak untuk memodifikasi schema public. Minta admin untuk jalankan DDL secara manual: {e}")
             except Exception as e:
@@ -175,6 +176,16 @@ async def _update_chat_messages_sources_column(conn):
     await conn.execute("""
         ALTER TABLE chat_messages 
         ADD COLUMN IF NOT EXISTS sources JSONB;
+    """)
+
+async def _update_chat_messages_metadata_column(conn):
+    """
+    Memastikan kolom metadata (JSONB) tersedia pada chat_messages
+    untuk menyimpan path dari file-file artifacts yang di-generate.
+    """
+    await conn.execute("""
+        ALTER TABLE chat_messages 
+        ADD COLUMN IF NOT EXISTS metadata JSONB;
     """)
 
 async def get_continuation_state(session_uuid: str) -> dict:

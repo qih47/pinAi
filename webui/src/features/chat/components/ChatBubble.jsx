@@ -2,6 +2,8 @@ import React, { useState, useEffect, useRef, memo } from 'react';
 import CakraResponseRenderer from './CakraResponseRenderer';
 import SourceCitation from './SourceCitation';
 import RAGMetrics from './RAGMetrics';
+import FileGenerationCard from './FileGenerationCard';
+import FileProcessLog from './FileProcessLog';
 import cakraLogo from '../../../assets/cakra.png';
 import { styles } from '../chatPage.styles';
 import { useChatStore } from '../../../stores/chatStore';
@@ -63,7 +65,7 @@ function formatThinkingPhase(thought) {
     return activePhase;
 }
 
-const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThinking, isStreamingText, searchQuery = '', isLastMessage, onFileClick, setPreviewImage }) {
+const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThinking, isStreamingText, searchQuery = '', isLastMessage, onFileClick, setPreviewImage, onOpenArtifact }) {
     const [showToast, setShowToast] = useState(false);
     const [toastMsg, setToastMsg] = useState('');
 
@@ -202,15 +204,111 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
 
                 <div style={styles.assistantContent} className="assistant-content-container">
                     <div style={{ ...styles.assistantText, color: theme.textColor, width: '100%' }}>
-                        <CakraResponseRenderer
-                            rawContent={msg.content || ''}
-                            thinkingContent={msg.thinking || msg.thought || ''}
-                            isStreaming={isThisMessageStreaming}
-                            darkMode={darkMode}
-                            theme={theme}
-                            searchQuery={searchQuery}
-                            statusMessage={msg.statusMessage}
-                        />
+
+                        {/* 🔥 Pisahkan preamble dan explanation menggunakan placeholder CAKRA_FILE_PROCESS_LOG 🔥 */}
+                        {(() => {
+                            const rawContent = msg.content || '';
+                            const parts = rawContent.split('[[CAKRA_FILE_PROCESS_LOG]]');
+
+                            return (
+                                <>
+                                    {parts.length === 1 && (
+                                        <FileProcessLog fileGenerations={msg.fileGenerations} darkMode={darkMode} />
+                                    )}
+
+                                    <CakraResponseRenderer
+                                        rawContent={parts[0]}
+                                        thinkingContent={msg.thinking || msg.thought || ''}
+                                        isStreaming={isThisMessageStreaming}
+                                        darkMode={darkMode}
+                                        theme={theme}
+                                        searchQuery={searchQuery}
+                                        statusMessage={msg.statusMessage}
+                                    />
+
+                                    {parts.length > 1 && (
+                                        <>
+                                            <FileProcessLog fileGenerations={msg.fileGenerations} darkMode={darkMode} />
+                                            <CakraResponseRenderer
+                                                rawContent={parts.slice(1).join('')}
+                                                thinkingContent=""
+                                                isStreaming={isThisMessageStreaming}
+                                                darkMode={darkMode}
+                                                theme={theme}
+                                                searchQuery={searchQuery}
+                                                statusMessage={msg.statusMessage}
+                                            />
+                                        </>
+                                    )}
+                                </>
+                            );
+                        })()}
+
+                        {/* 🔥 POSISI BERHASIL DIPINDAHKAN DI AKHIR STREAM (DI BAWAH RENDERING TEKS JAWABAN) */}
+                        {msg.fileGenerations && msg.fileGenerations.length > 0 && msg.fileGenerations.every(g => g.stage === 'done' || g.stage === 'error') && (
+                            <div style={{ marginTop: '12px', marginBottom: '8px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                {msg.fileGenerations.map((fg, fgIdx) => (
+                                    <FileGenerationCard 
+                                        key={fg.filename + fgIdx}
+                                        filename={fg.filename}
+                                        stage={fg.stage}
+                                        liveCode={fg.liveCode}
+                                        darkMode={darkMode}
+                                        onOpenArtifact={onOpenArtifact}
+                                        file_path={fg.file_path || null}
+                                        theme={theme}
+                                    />
+                                ))}
+                                {msg.fileGenerations.length > 1 && msg.fileGenerations.every(fg => fg.stage === 'done') && (
+                                    <div style={{ display: 'flex', justifyContent: 'flex-start', marginTop: '4px' }}>
+                                        <button
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                msg.fileGenerations.forEach((fg, idx) => {
+                                                    setTimeout(() => {
+                                                        const blob = new Blob([fg.liveCode || ''], { type: 'text/plain;charset=utf-8' });
+                                                        const url = URL.createObjectURL(blob);
+                                                        const a = document.createElement('a');
+                                                        a.href = url;
+                                                        a.download = fg.filename || `file_${idx}.txt`;
+                                                        a.click();
+                                                        URL.revokeObjectURL(url);
+                                                    }, idx * 200); // Stagger downloads slightly
+                                                });
+                                            }}
+                                            style={{
+                                                background: 'transparent',
+                                                border: '1px solid rgba(255, 255, 255, 0.15)',
+                                                borderRadius: '8px',
+                                                padding: '8px 16px',
+                                                color: '#ffffff',
+                                                fontSize: '13px',
+                                                fontWeight: '500',
+                                                cursor: 'pointer',
+                                                transition: 'all 0.2s ease',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '8px'
+                                            }}
+                                            onMouseEnter={(e) => {
+                                                e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)';
+                                            }}
+                                            onMouseLeave={(e) => {
+                                                e.currentTarget.style.background = 'transparent';
+                                            }}
+                                        >
+                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                                                <polyline points="7 10 12 15 17 10"></polyline>
+                                                <line x1="12" y1="15" x2="12" y2="3"></line>
+                                            </svg>
+                                            Download all
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
                     </div>
 
                     {!isThisMessageStreaming && (

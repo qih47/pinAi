@@ -214,7 +214,7 @@ async def stream_ollama_chat(
                                 print("\n[GEMMA_ANSWER] ", end="", flush=True)
                             print(content, end="", flush=True)
 
-                        yield_data = {"chunk": content, "thinking": thought, "done": done}
+                        yield_data = {"chunk": content, "thinking": thought, "done": done, "event_type": "chunk"}
                         if done:
                             eval_count = chunk.get("eval_count", 0)
                             eval_duration = chunk.get("eval_duration", 0)

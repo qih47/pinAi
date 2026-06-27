@@ -66,6 +66,7 @@ export default function ChatPage({
     (state) => state.isLoadingDocuments || false,
   );
   const fetchDocumentsList = useChatStore((state) => state.fetchDocumentsList);
+  const artifacts = useChatStore((state) => state.artifacts || []);
 
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [isUploadingFile, setIsUploadingFile] = useState(false);
@@ -78,8 +79,22 @@ export default function ChatPage({
   // PREVIEW MODALS STATE
   const [previewImage, setPreviewImage] = useState(null);
   const [previewDoc, setPreviewDoc] = useState(null); // { url, name, type }
+  const [previewArtifact, setPreviewArtifact] = useState(null); // { filename, code, file_path, language }
   const [docContent, setDocContent] = useState("");
   const [isDocLoading, setIsDocLoading] = useState(false);
+  const [artifactContent, setArtifactContent] = useState(""); // konten dari server
+  const [isArtifactLoading, setIsArtifactLoading] = useState(false);
+
+  // Deteksi bahasa berdasarkan ekstensi file
+  const detectLang = (filename) => {
+    const ext = filename?.split('.').pop()?.toLowerCase();
+    const langMap = {
+      jsx: 'jsx', tsx: 'tsx', js: 'javascript', ts: 'typescript',
+      py: 'python', css: 'css', html: 'html', json: 'json',
+      md: 'markdown', sh: 'bash', sql: 'sql', yaml: 'yaml', yml: 'yaml',
+    };
+    return langMap[ext] || 'text';
+  };
 
   useEffect(() => {
     if (previewDoc) {
@@ -101,6 +116,35 @@ export default function ChatPage({
         .finally(() => setIsDocLoading(false));
     }
   }, [previewDoc]);
+
+  // Effect: Load artifact content dari server jika file_path tersedia
+  useEffect(() => {
+    if (!previewArtifact) return;
+    if (!previewArtifact.file_path) {
+      setArtifactContent(previewArtifact.code || '');
+      return;
+    }
+    
+    // Gunakan sessionId dari route, fallback ke sessionUuid dari store
+    const activeSessionId = sessionId && sessionId !== "new" ? sessionId : useChatStore.getState().sessionUuid;
+    
+    setIsArtifactLoading(true);
+    setArtifactContent('');
+    
+    // Siapkan header otentikasi agar backend bisa mengekstrak current_user_npp
+    const headers = {};
+    if (authUser?.npp) {
+      headers['X-NPP-Header'] = authUser.npp;
+    }
+    
+    fetch(`${API_BASE}/api/chat/artifacts/read?filename=${encodeURIComponent(previewArtifact.file_path)}&session_id=${encodeURIComponent(activeSessionId)}`, {
+      headers
+    })
+      .then(res => res.text())
+      .then(text => setArtifactContent(text))
+      .catch(() => setArtifactContent(previewArtifact.code || '// Gagal memuat konten'))
+      .finally(() => setIsArtifactLoading(false));
+  }, [previewArtifact, sessionId, authUser]);
 
   const toggleRightSidebar = () => {
     if (showRightSidebar) {
@@ -140,6 +184,18 @@ export default function ChatPage({
       if (sidebarOpen && hasSidebar && !isMobile) {
         setSidebarOpen(false); // Collapse left sidebar
       }
+      setShowRightSidebar(true);
+    }
+  };
+
+  // Handle open artifact in sidebar
+  const handleOpenArtifact = (filename, code, file_path) => {
+    setPreviewArtifact({ filename, code: code || '', file_path: file_path || null, language: detectLang(filename) });
+    setPreviewDoc(null); // Tutup doc preview kalau ada
+    if (!showRightSidebar) {
+      wasLeftSidebarOpenRef.current = sidebarOpen;
+      const hasSidebar = !isGuest && currentIsLoggedIn;
+      if (sidebarOpen && hasSidebar && !isMobile) setSidebarOpen(false);
       setShowRightSidebar(true);
     }
   };
@@ -455,6 +511,30 @@ export default function ChatPage({
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [showMsgSearch, chatHistory]);
+  // Tangkap event update judul sesi (untuk Typing Animation)
+  useEffect(() => {
+    const handleTitleUpdate = (e) => {
+      const { sessionUuid, title } = e.detail;
+      if (!title) return;
+      
+      // Lakukan animasi typing pada sidebar dengan mengupdate chatHistory per karakter
+      let i = 0;
+      const animateTitle = setInterval(() => {
+        setChatHistory(prev => prev.map(session => {
+          if (session.session_uuid === sessionUuid) {
+            return { ...session, judul: title.substring(0, i + 1) };
+          }
+          return session;
+        }));
+        
+        i++;
+        if (i >= title.length) clearInterval(animateTitle);
+      }, 50); // Kecepatan ketik
+    };
+
+    window.addEventListener("cakra_title_update", handleTitleUpdate);
+    return () => window.removeEventListener("cakra_title_update", handleTitleUpdate);
+  }, []);
 
   // Load documents when document list is opened
   useEffect(() => {
@@ -671,9 +751,19 @@ export default function ChatPage({
       if (!uploadSessionUuid || uploadSessionUuid === "new") {
         const created = await useChatStore
           .getState()
-          .createNewSession(isGuest ? null : currentUserData?.npp);
+          .createNewSession(isGuest ? null : currentUserData?.npp, chatModeRef.current, isThinkingModeRef.current);
         if (created) {
           uploadSessionUuid = created;
+
+          // Tambahkan sesi baru ke history agar langsung muncul di sidebar
+          const newSessionObj = {
+              session_uuid: created,
+              judul: "Obrolan Baru",
+              is_pinned: false,
+              started_at: new Date().toISOString()
+          };
+          setChatHistory((prev) => [newSessionObj, ...prev]);
+
           if (!isGuest && currentIsLoggedIn) {
             lastLoadedSessionRef.current = created;
             navigate(`/chat/${created}`, { replace: true });
@@ -725,6 +815,9 @@ export default function ChatPage({
       toast,
     );
 
+    sessionStorage.removeItem("cakra_draft_new");
+    if (sessionId) sessionStorage.removeItem(`cakra_draft_${sessionId}`);
+    
     setInput("");
     setSelectedFiles([]);
     setStagedAttachments([]);
@@ -1702,6 +1795,7 @@ export default function ChatPage({
               onAtBottomChange={(isAtBottom) => setShowScrollBottom(!isAtBottom)}
               onFileClick={handleFileClick}
               setPreviewImage={setPreviewImage}
+              onOpenArtifact={handleOpenArtifact}
             />
           </div>
 
@@ -1970,15 +2064,15 @@ export default function ChatPage({
         style={{
           position: "absolute",
           right: 0,
-          top: previewDoc ? 0 : "56px",
+          top: (previewDoc || previewArtifact) ? 0 : "56px",
           bottom: 0,
-          width: previewDoc ? "45vw" : "320px",
+          width: (previewDoc || previewArtifact) ? "45vw" : "320px",
           background: theme.sidebarBg,
           borderLeft: `1px solid ${theme.borderColor}`,
-          borderTopLeftRadius: previewDoc ? "0" : "16px",
+          borderTopLeftRadius: (previewDoc || previewArtifact) ? "0" : "16px",
           transform: showRightSidebar ? "translateX(0)" : "translateX(100%)",
           transition: "transform 0.3s ease-in-out, width 0.3s ease-in-out",
-          zIndex: previewDoc ? 40 : 35,
+          zIndex: (previewDoc || previewArtifact) ? 40 : 35,
           display: "flex",
           flexDirection: "column",
           boxShadow: showRightSidebar ? "-4px 0 15px rgba(0,0,0,0.05)" : "none",
@@ -2124,8 +2218,97 @@ export default function ChatPage({
               </div>
             </div>
           </div>
+        ) : previewArtifact ? (
+          // ── ARTIFACT CODE VIEWER SIDEBAR MODE ────────────────────────────
+          <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+            {/* Header */}
+            <div style={{ padding: "12px 20px", display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: `1px solid ${theme.borderColor}`, background: theme.sidebarBg, gap: "12px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "12px", overflow: "hidden", flex: 1 }}>
+                <button
+                  onClick={() => setPreviewArtifact(null)}
+                  title="Kembali"
+                  style={{ background: "transparent", border: "none", outline: "none", color: theme.iconColor, padding: "4px", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}
+                >
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
+                </button>
+                <div style={{ display: "flex", flexDirection: "column", overflow: "hidden" }}>
+                  <span style={{ fontSize: "14px", fontWeight: 600, color: theme.textColor, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                    📄 {previewArtifact.filename}
+                  </span>
+                  <span style={{ fontSize: "11px", color: theme.secondaryText, marginTop: "2px" }}>
+                    {previewArtifact.language?.toUpperCase()} · Artifact
+                  </span>
+                </div>
+              </div>
+              {/* Action buttons */}
+              <div style={{ display: "flex", gap: "8px", flexShrink: 0 }}>
+                <button
+                  onClick={() => {
+                    const code = artifactContent || previewArtifact.code || '';
+                    navigator.clipboard.writeText(code).catch(() => {});
+                  }}
+                  title="Salin kode"
+                  style={{ background: darkMode ? '#21262d' : '#f1f5f9', border: `1px solid ${theme.borderColor}`, color: theme.textColor, padding: "5px 12px", borderRadius: "8px", cursor: "pointer", fontSize: "12px", fontWeight: 500 }}
+                >
+                  📋 Copy
+                </button>
+                <button
+                  onClick={() => {
+                    const blob = new Blob([artifactContent || previewArtifact.code || ''], { type: 'text/plain;charset=utf-8' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = previewArtifact.filename;
+                    a.click();
+                    URL.revokeObjectURL(url);
+                  }}
+                  title="Unduh file"
+                  style={{ background: darkMode ? 'rgba(16,185,129,0.1)' : 'rgba(5,150,105,0.08)', border: `1px solid ${darkMode ? '#10b981' : '#059669'}`, color: '#10b981', padding: "5px 12px", borderRadius: "8px", cursor: "pointer", fontSize: "12px", fontWeight: 600 }}
+                >
+                  ⬇️
+                </button>
+              </div>
+            </div>
+
+            {/* Code area */}
+            <div style={{ flex: 1, overflow: "auto", background: '#0d1117' }}>
+              {isArtifactLoading ? (
+                <div style={{ padding: "24px", textAlign: "center", color: "#6b7280" }}>
+                  <div style={{ fontSize: "24px", marginBottom: "8px", animation: "spin 1s linear infinite" }}>⏳</div>
+                  <div style={{ fontSize: "13px" }}>Memuat kode...</div>
+                </div>
+              ) : (
+                <pre style={{
+                  margin: 0,
+                  padding: "20px",
+                  whiteSpace: "pre",
+                  overflowX: "auto",
+                  fontFamily: '"Fira Code", "Cascadia Code", "JetBrains Mono", monospace',
+                  fontSize: "13px",
+                  lineHeight: "1.6",
+                  color: "#e6edf3",
+                  minHeight: "100%",
+                  boxSizing: "border-box",
+                }}>
+                  {/* Mac-style terminal dots */}
+                  <div style={{ display: 'flex', gap: '6px', marginBottom: '16px', opacity: 0.6 }}>
+                    <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#ff5f57', display: 'inline-block' }} />
+                    <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#febc2e', display: 'inline-block' }} />
+                    <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#28c840', display: 'inline-block' }} />
+                    <span style={{ marginLeft: 'auto', fontSize: '10px', color: '#484f58' }}>{previewArtifact.filename}</span>
+                  </div>
+                  {artifactContent || previewArtifact.code || '// Kode kosong'}
+                </pre>
+              )}
+            </div>
+
+            {/* Footer: line/char count */}
+            <div style={{ padding: "6px 16px", borderTop: `1px solid ${darkMode ? '#30363d' : '#e2e8f0'}`, background: darkMode ? '#161b22' : '#f8fafc', fontSize: "11px", color: theme.secondaryText, fontFamily: 'monospace', display: 'flex', gap: '16px' }}>
+              <span>{previewArtifact.lines_count ? previewArtifact.lines_count : (artifactContent || previewArtifact.code || '').split('\n').length} baris</span>
+              <span>{(artifactContent || previewArtifact.code || '').length} karakter</span>
+            </div>
+          </div>
         ) : (
-          // SESSION FILES LIST MODE
           <>
             <div
               style={{
@@ -2144,12 +2327,59 @@ export default function ChatPage({
               {/* SECTION 1: ARTIFACTS */}
               <div style={{ marginBottom: "32px" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
-                  <h4 style={{ margin: 0, color: darkMode ? "#ffffff" : "#000000", fontSize: "14px", fontWeight: 600 }}>Artifacts</h4>
+                  <h4 style={{ margin: 0, color: darkMode ? "#ffffff" : "#000000", fontSize: "14px", fontWeight: 600 }}>
+                    ⚡ Artifacts
+                  </h4>
+                  {artifacts.length > 0 && (
+                    <span style={{ fontSize: "11px", color: theme.secondaryText, background: darkMode ? '#21262d' : '#e2e8f0', borderRadius: "12px", padding: "2px 8px" }}>
+                      {artifacts.length} file
+                    </span>
+                  )}
                 </div>
 
-                <div style={{ textAlign: "center", padding: "16px 0", color: darkMode ? "#ffffff" : "#000000", fontSize: "13px", background: theme.inputBg, borderRadius: "8px", border: `1px dashed ${theme.borderColor}` }}>
-                  Belum ada artifact.
-                </div>
+                {artifacts.length === 0 ? (
+                  <div style={{ textAlign: "center", padding: "16px 0", color: theme.secondaryText, fontSize: "13px", background: theme.inputBg, borderRadius: "8px", border: `1px dashed ${theme.borderColor}` }}>
+                    Belum ada artifact di sesi ini.
+                  </div>
+                ) : (
+                  <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                    {artifacts.map((art, artIdx) => {
+                      const ext = art.filename?.split('.').pop()?.toLowerCase();
+                      const iconMap = { jsx: '⚛️', tsx: '⚛️', js: '📜', ts: '📘', py: '🐍', md: '📝', css: '🎨', html: '🌐', json: '{}', sh: '🖥️', sql: '🗄️' };
+                      const icon = iconMap[ext] || '📄';
+                      return (
+                        <div
+                          key={art.filename + artIdx}
+                          onClick={() => handleOpenArtifact(art.filename, art.code || '', art.file_path || null)}
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "10px",
+                            padding: "10px 12px",
+                            background: previewArtifact?.filename === art.filename ? (darkMode ? 'rgba(99,102,241,0.15)' : 'rgba(79,70,229,0.08)') : theme.mainBg,
+                            borderRadius: "10px",
+                            border: `1px solid ${previewArtifact?.filename === art.filename ? '#6366f1' : theme.borderColor}`,
+                            cursor: "pointer",
+                            transition: "all 0.2s",
+                          }}
+                          onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#6366f1'; e.currentTarget.style.background = darkMode ? 'rgba(99,102,241,0.1)' : 'rgba(79,70,229,0.06)'; }}
+                          onMouseLeave={(e) => { e.currentTarget.style.borderColor = previewArtifact?.filename === art.filename ? '#6366f1' : theme.borderColor; e.currentTarget.style.background = previewArtifact?.filename === art.filename ? (darkMode ? 'rgba(99,102,241,0.15)' : 'rgba(79,70,229,0.08)') : theme.mainBg; }}
+                        >
+                          <span style={{ fontSize: "20px", flexShrink: 0 }}>{icon}</span>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: "13px", fontWeight: 600, color: theme.textColor, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                              {art.filename}
+                            </div>
+                            <div style={{ fontSize: "11px", color: theme.secondaryText, marginTop: "2px" }}>
+                              {art.lines_count ? art.lines_count : (art.code || '').split('\n').length} baris
+                            </div>
+                          </div>
+                          <span style={{ fontSize: "18px", color: '#10b981', flexShrink: 0 }}>✓</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
 
               {/* SECTION 2: CONTENT (User Uploads) */}

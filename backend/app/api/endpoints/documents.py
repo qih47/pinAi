@@ -28,7 +28,7 @@ from fastapi import (
 from fastapi.responses import JSONResponse
 
 from backend.app.api.dependencies.auth import get_current_user_npp
-from backend.app.core.paths import UPLOAD_DIR
+from backend.app.core.paths import get_account_dir
 from backend.app.core.database import get_db
 from backend.app.api.schemas.document import (
     DocumentSchema,
@@ -165,11 +165,11 @@ async def ingest_document(
         file_content = await file.read()
         await validate_uploaded_file(file_content, file.filename or "")
         
-        # 2. Create upload directory if not exists
-        UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+        # 2. Get account directory
+        account_docs_dir = get_account_dir(current_user_npp, "documents")
         
         # 3. Save file
-        file_path = UPLOAD_DIR / file.filename
+        file_path = account_docs_dir / file.filename
         with open(file_path, "wb") as f:
             f.write(file_content)
         

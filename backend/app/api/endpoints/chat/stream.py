@@ -116,6 +116,31 @@ async def _sequential_pipeline_generator(
                                 page_text = page.extract_text()
                                 if page_text:
                                     extracted += page_text + "\n"
+                        
+                        # Fallback untuk PDF Scan (kosong teksnya), jalankan pre-restorasi OCRmyPDF lalu render jadi gambar
+                        if not extracted.strip():
+                            import fitz
+                            import base64
+                            
+                            restored_pdf = abs_path + ".restored.pdf"
+                            try:
+                                import ocrmypdf
+                                ocrmypdf.ocr(abs_path, restored_pdf, deskew=True, force_ocr=True, optimize=1)
+                                target_pdf = restored_pdf
+                            except Exception as e:
+                                logger.warning(f"[OCR] ocrmypdf failed, fallback to original: {e}")
+                                target_pdf = abs_path
+
+                            doc = fitz.open(target_pdf)
+                            # Render semua halaman karena Gemma4 memiliki 256K context
+                            for page_num in range(len(doc)):
+                                page = doc.load_page(page_num)
+                                pix = page.get_pixmap(dpi=150) # Resolusi cukup tinggi untuk OCR mandiri VLM
+                                img_data = pix.tobytes("png")
+                                encoded = base64.b64encode(img_data).decode("utf-8")
+                                formatted_attachments.append({"base64": encoded, "type": "image"})
+                            
+                            has_images = True
                     elif ext == ".docx":
                         import docx
                         doc = docx.Document(abs_path)
@@ -207,6 +232,7 @@ async def _sequential_pipeline_generator(
     full_response_text = ""
     full_thinking_text = ""
     preloaded_rag_sources = None
+    generated_artifacts = []
     start_time = datetime.now()
 
     try:
@@ -237,14 +263,23 @@ async def _sequential_pipeline_generator(
                     continue
                 elif event_type == SSEEventType.SOURCES:
                     preloaded_rag_sources = event_data.get("sources")
-                elif event_type == SSEEventType.CHUNK:
-                    chunk_text = event_data.get("chunk", "")
-                    if chunk_text:
-                        full_response_text += chunk_text
-                elif event_type == SSEEventType.THINKING:
-                    thinking_chunk = event_data.get("thinking", "")
-                    if thinking_chunk:
-                        full_thinking_text += thinking_chunk
+                elif event_type == SSEEventType.FILE_STATUS:
+                    fs = event_data.get("file_status", {})
+                    if fs.get("stage") == "done" and fs.get("file_path"):
+                        generated_artifacts.append({
+                            "filename": fs.get("filename"),
+                            "file_path": fs.get("file_path"),
+                            "lines_count": fs.get("lines_count", 1)
+                        })
+                
+                # Extract chunk and thinking independently of event_type
+                chunk_text = event_data.get("chunk", "")
+                if chunk_text:
+                    full_response_text += chunk_text
+                    
+                thinking_chunk = event_data.get("thinking", "")
+                if thinking_chunk:
+                    full_thinking_text += thinking_chunk
 
             except (json.JSONDecodeError, AttributeError):
                 pass
@@ -266,13 +301,19 @@ async def _sequential_pipeline_generator(
         full_response_text = error_msg
 
     # ── Save assistant response & finalize ────────────────────────────────────
+    new_title = None
+    if payload.session_uuid:
+        try:
+            # Panggil auto_update_session_title secara sinkron agar bisa diumpankan ke DONE event
+            new_title = await chat_history_service.auto_update_session_title(
+                payload.session_uuid, user_message, full_response_text
+            )
+        except Exception as e:
+            logger.error(f"[TITLE] Gagal mengupdate judul sesi secara sinkron: {e}")
+
     async def _save_to_db():
         try:
             if payload.session_uuid:
-                await chat_history_service.auto_update_session_title(
-                    payload.session_uuid, user_message, full_response_text
-                )
-                
                 ast_thought = full_thinking_text.strip() if full_thinking_text else f"Gemma Agentic | Mode: {chat_mode}"
                 
                 if payload.edit_index is not None:
@@ -283,6 +324,7 @@ async def _sequential_pipeline_generator(
                         text=full_response_text,
                         thought=ast_thought,
                         sources=preloaded_rag_sources,
+                        metadata={"artifacts": generated_artifacts} if generated_artifacts else None
                     )
                 else:
                     await chat_history_service.save_chat_message(
@@ -291,6 +333,7 @@ async def _sequential_pipeline_generator(
                         text=full_response_text,
                         thought=ast_thought,
                         sources=preloaded_rag_sources,
+                        metadata={"artifacts": generated_artifacts} if generated_artifacts else None
                     )
                 if not (payload.attachment_paths and len(payload.attachment_paths) > 0):
                     try:
@@ -299,18 +342,22 @@ async def _sequential_pipeline_generator(
                             user_text=user_message,
                             assistant_text=full_response_text,
                             context_document=f"Gemma Agentic | Mode: {chat_mode}",
-                            metadata={"mode": chat_mode, "sources_count": len(preloaded_rag_sources) if preloaded_rag_sources else 0}
+                            metadata={
+                                "mode": chat_mode, 
+                                "sources_count": len(preloaded_rag_sources) if preloaded_rag_sources else 0,
+                                "artifacts": generated_artifacts
+                            }
                         )
                     except Exception as e:
                         logger.warning(f"[DB] Gagal save dialogue corpus: {e}")
         except Exception as err:
             logger.error(f"[DB] Gagal save data setelah stream: {err}")
 
-    # Jalankan save di background agar kebal terhadap CancelledError (Client Disconnect)
+    # Jalankan save (selain title) di background agar kebal terhadap CancelledError
     asyncio.create_task(_save_to_db())
 
-    logger.info("[PIPELINE] Complete ✅")
-    yield format_sse("", "", True, sources=preloaded_rag_sources, event_type=SSEEventType.DONE)
+    logger.info(f"[PIPELINE] Complete ✅ | Title: {new_title}")
+    yield format_sse("", "", True, sources=preloaded_rag_sources, event_type=SSEEventType.DONE, title=new_title)
 
 
 @router.post("/stream")

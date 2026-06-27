@@ -50,6 +50,9 @@ class Settings(BaseSettings):
     AUDIT_THINKING_CONTENT: bool = True
     AUDIT_RAG_DECISIONS: bool = True
 
+    # Mode Generate File: direktori output file yang di-generate AI
+    GENERATED_FILES_DIR: str = os.path.join(BACKEND_DIR, "generated_files")
+
     LOG_RAW_PROMPTS: bool = False
 
     model_config = SettingsConfigDict(

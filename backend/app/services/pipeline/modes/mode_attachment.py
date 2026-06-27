@@ -100,9 +100,12 @@ class ModeAttachment:
 
         yield format_sse(status="👁️ Menganalisis lampiran dokumen/gambar", event_type=SSEEventType.STATUS)
 
+        # Selalu gunakan MODEL_PERSONA (Gemma 4) karena memiliki kapabilitas multimodal native & 256K context
+        target_model = getattr(settings, "MODEL_PERSONA", "gemma4:12b")
+
         try:
             async for chunk_line in stream_ollama_chat(
-                model_name=getattr(settings, "MODEL_PERSONA", "gemma4:12b"),
+                model_name=target_model,
                 messages=stream_messages,
                 request=request,
                 temperature=temperature,

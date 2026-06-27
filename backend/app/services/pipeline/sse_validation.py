@@ -31,6 +31,8 @@ class SSEEventType(str, Enum):
     SOURCES       = "sources"
     DONE          = "done"
     ERROR         = "error"
+    # File generation lifecycle signals (Interceptor-Analyst Pipeline)
+    FILE_STATUS   = "file_status"
     # Internal-only — ditangkap chat.py, tidak diteruskan ke frontend
     PIPELINE_DATA = "pipeline_data"
 
@@ -112,6 +114,7 @@ def format_sse(
     status: str = "",
     eval_count: int = 0,
     eval_duration: int = 0,
+    title: Optional[str] = None,
 ) -> str:
     """
     Format SSE event conforming to API Contract.
@@ -126,6 +129,8 @@ def format_sse(
         "event_type": event_type,
         "timestamp": datetime.utcnow().isoformat() + "Z",
     }
+    if title:
+        event["title"] = title
     if eval_count > 0:
         event["eval_count"] = eval_count
     if eval_duration > 0:
@@ -203,3 +208,53 @@ def format_sse_error(
         "timestamp": datetime.utcnow().isoformat() + "Z",
     }
     return json.dumps(event, ensure_ascii=False) + "\n"
+
+
+def format_sse_file_status(
+    stage: str,
+    filename: str,
+    code_chunk: str = "",
+    file_path: str = "",
+    lines_count: int = 0,
+) -> str:
+    """
+    Format SSE event for file generation lifecycle (Interceptor-Analyst Pipeline).
+
+    Stages:
+      - "creating"   : Tag <create_file> detected. Signals frontend to show accordion.
+      - "code_chunk" : Partial code text for live terminal preview.
+      - "done"       : File fully written to disk. Frontend morphs to File Card.
+      - "error"      : Something went wrong during write.
+
+    Args:
+        stage     : One of "creating" | "code_chunk" | "done" | "error"
+        filename  : Target file name (e.g. "App.jsx")
+        code_chunk: (only for stage="code_chunk") streaming code text
+        file_path : (only for stage="done") relative path to saved file on server
+
+    Returns:
+        JSON SSE string line.
+    """
+    file_status_payload = {
+        "stage": stage,
+        "filename": filename,
+        "code_chunk": code_chunk if stage == "code_chunk" else None,
+    }
+    if stage == "done" and file_path:
+        file_status_payload["file_path"] = file_path
+        file_status_payload["lines_count"] = lines_count
+
+    event = {
+        "chunk": None,
+        "thinking": None,
+        "done": False,
+        "sources": None,
+        "event_type": SSEEventType.FILE_STATUS,
+        "file_status": file_status_payload,
+        "timestamp": datetime.utcnow().isoformat() + "Z",
+    }
+    try:
+        return json.dumps(event, ensure_ascii=False) + "\n"
+    except (TypeError, ValueError) as e:
+        logger.error(f"[SSE_VALIDATION] file_status serialization error: {e}")
+        return ""
