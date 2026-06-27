@@ -264,6 +264,7 @@ class ChatHistoryService:
                             'mime_type', a.mime_type,
                             'file_size', a.file_size,
                             'file_path', CASE 
+                                WHEN a.file_path LIKE 'accounts/%' THEN a.file_path
                                 WHEN a.file_path LIKE '%/%' THEN SUBSTRING(a.file_path FROM '[^/]+$')
                                 ELSE a.file_path
                             END

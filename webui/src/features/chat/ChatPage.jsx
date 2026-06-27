@@ -17,6 +17,10 @@ import HeaderDropdownMenu from "./components/HeaderDropdownMenu";
 import NotificationBell from "../../components/NotificationBell"; // 👈 W16: Notification center
 import PlusButton from "./components/PlusButton";
 import SendButton from "./components/SendButton";
+import PreviewImageModal from "./components/modals/PreviewImageModal";
+import ContextIsolationModal from "./components/modals/ContextIsolationModal";
+import RightSidebar from "./components/RightSidebar";
+import ChatInputArea from "./components/ChatInputArea";
 
 // ============================================================
 // MAIN COMPONENT
@@ -1869,19 +1873,99 @@ export default function ChatPage({
                   pointerEvents: "auto",
                 }}
               >
-                {renderInputForm(true)}
+                <ChatInputArea
+                  theme={theme}
+                  darkMode={darkMode}
+                  isBottom={true}
+                  showScrollBottom={showScrollBottom}
+                  showWelcome={showWelcome}
+                  messages={messages}
+                  messagesContainerRef={messagesContainerRef}
+                  activeIsolatedTitle={activeIsolatedTitle}
+                  setContextIsolation={setContextIsolation}
+                  selectedFiles={selectedFiles}
+                  removeFilePreview={removeFilePreview}
+                  handleSubmit={handleSubmit}
+                  handlePaste={handlePaste}
+                  handleDragOver={handleDragOver}
+                  handleDragLeave={handleDragLeave}
+                  handleDrop={handleDrop}
+                  isDragOver={isDragOver}
+                  fileInputRef={fileInputRef}
+                  handleFileChange={handleFileChange}
+                  isGuest={isGuest}
+                  currentIsLoggedIn={currentIsLoggedIn}
+                  isMultiLine={isMultiLine}
+                  isStreaming={isStreaming}
+                  isUploadingFile={isUploadingFile}
+                  textareaRef={textareaRef}
+                  input={input}
+                  setInput={setInput}
+                  handleKeyDown={handleKeyDown}
+                  chatMode={chatMode}
+                  handleChatModeChange={handleChatModeChange}
+                  isThinkingMode={isThinkingMode}
+                  handleThinkingModeChange={handleThinkingModeChange}
+                  styles={styles}
+                />
               </div>
             </div>
           )}
 
           {/* Hanya render input di bawah jika chat sudah ada */}
-          {!showWelcome && renderInputForm(true)}
+          {!showWelcome && (
+            <ChatInputArea
+              theme={theme}
+              darkMode={darkMode}
+              isBottom={true}
+              showScrollBottom={showScrollBottom}
+              showWelcome={showWelcome}
+              messages={messages}
+              messagesContainerRef={messagesContainerRef}
+              activeIsolatedTitle={activeIsolatedTitle}
+              setContextIsolation={setContextIsolation}
+              selectedFiles={selectedFiles}
+              removeFilePreview={removeFilePreview}
+              handleSubmit={handleSubmit}
+              handlePaste={handlePaste}
+              handleDragOver={handleDragOver}
+              handleDragLeave={handleDragLeave}
+              handleDrop={handleDrop}
+              isDragOver={isDragOver}
+              fileInputRef={fileInputRef}
+              handleFileChange={handleFileChange}
+              isGuest={isGuest}
+              currentIsLoggedIn={currentIsLoggedIn}
+              isMultiLine={isMultiLine}
+              isStreaming={isStreaming}
+              isUploadingFile={isUploadingFile}
+              textareaRef={textareaRef}
+              input={input}
+              setInput={setInput}
+              handleKeyDown={handleKeyDown}
+              chatMode={chatMode}
+              handleChatModeChange={handleChatModeChange}
+              isThinkingMode={isThinkingMode}
+              handleThinkingModeChange={handleThinkingModeChange}
+              styles={styles}
+            />
+          )}
         </div>
 
       </main>
 
       {/* 🔒 W7: Modal Pilihan Dokumen Regulasi (Context Isolation) */}
-      {showDocumentList && (
+      <ContextIsolationModal
+        showModal={showDocumentList}
+        onClose={() => setShowDocumentList(false)}
+        documents={documents}
+        isLoadingDocuments={isLoadingDocuments}
+        activeIsolatedDocId={activeIsolatedDocId}
+        onSelectDocument={setContextIsolation}
+        theme={theme}
+        darkMode={darkMode}
+      />
+      {false && (
         <div
           style={{
             position: "fixed",
@@ -2090,6 +2174,28 @@ export default function ChatPage({
         </div>
       )}
       {/* 📁 RIGHT SIDEBAR SESSION FILES */}
+      <RightSidebar
+        theme={theme}
+        darkMode={darkMode}
+        previewDoc={previewDoc}
+        setPreviewDoc={setPreviewDoc}
+        docContent={docContent}
+        isDocLoading={isDocLoading}
+        previewArtifact={previewArtifact}
+        setPreviewArtifact={setPreviewArtifact}
+        artifactContent={artifactContent}
+        isArtifactLoading={isArtifactLoading}
+        rightSidebarWidth={rightSidebarWidth}
+        showRightSidebar={showRightSidebar}
+        isResizingRightSidebar={isResizingRightSidebar}
+        startResizingRightSidebar={startResizingRightSidebar}
+        artifacts={artifacts}
+        sessionAttachments={sessionAttachments}
+        handleOpenArtifact={handleOpenArtifact}
+        setPreviewImage={setPreviewImage}
+        setShowRightSidebar={setShowRightSidebar}
+      />
+      {false && (
       <aside
         style={{
           position: "absolute",
@@ -2538,39 +2644,13 @@ export default function ChatPage({
           </>
         )}
       </aside>
+      )}
 
       {/* 🖼️ IMAGE PREVIEW MODAL */}
-      {previewImage && (
-        <div
-          style={{
-            position: "fixed",
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            backgroundColor: "rgba(0,0,0,0.85)",
-            zIndex: 100,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            padding: "24px",
-          }}
-          onClick={() => setPreviewImage(null)}
-        >
-          <button
-            style={{ position: "absolute", top: "24px", right: "24px", background: "rgba(255,255,255,0.1)", border: "none", color: "#fff", padding: "8px", borderRadius: "50%", cursor: "pointer", zIndex: 101 }}
-            onClick={(e) => { e.stopPropagation(); setPreviewImage(null); }}
-          >
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-          </button>
-          <img
-            src={previewImage}
-            alt="Preview"
-            style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain", borderRadius: "8px" }}
-            onClick={(e) => e.stopPropagation()}
-          />
-        </div>
-      )}
+      <PreviewImageModal
+        previewImage={previewImage}
+        onClose={() => setPreviewImage(null)}
+      />
     </div>
   );
 }

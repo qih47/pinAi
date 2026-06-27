@@ -134,12 +134,14 @@ const UserBubble = memo(function UserBubble({
                     src={assetUrl}
                     alt={fileName}
                     onError={(e) => {
+                      const parent = e.target.parentNode;
+                      if (!parent) return;
                       e.target.style.display = 'none';
-                      e.target.parentNode.innerHTML = '<span style="font-size:32px;">🖼️</span>';
-                      e.target.parentNode.style.background = darkMode ? "#2a2b2d" : "#f3f4f6";
-                      e.target.parentNode.style.display = 'flex';
-                      e.target.parentNode.style.alignItems = 'center';
-                      e.target.parentNode.style.justifyContent = 'center';
+                      parent.style.background = darkMode ? "#2a2b2d" : "#f3f4f6";
+                      parent.style.display = 'flex';
+                      parent.style.alignItems = 'center';
+                      parent.style.justifyContent = 'center';
+                      parent.innerHTML = '<span style="font-size:32px;">🖼️</span>';
                     }}
                     style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                   />
