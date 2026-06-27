@@ -33,7 +33,8 @@ class ModeAttachment:
         routing_data: Optional[Dict[str, Any]] = None,
         request: Optional[Request] = None,
         employee_name: str = "Pegawai",
-        current_user_npp: Optional[str] = None
+        current_user_npp: Optional[str] = None,
+        session_uuid: Optional[str] = None
     ) -> AsyncGenerator[str, None]:
         logger.info("[MODE_ATTACHMENT] Starting execution")
         

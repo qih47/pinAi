@@ -5,6 +5,9 @@ import useToast from "../../hooks/useToast";
 import cakraLogo from "../../assets/cakra.png";
 import { styles, lightColors, darkColors } from "./chatPage.styles";
 import ChatArea from "./components/ChatArea";
+import CakraResponseRenderer from "./components/CakraResponseRenderer";
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
+import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import GuestWelcome from "../../components/ui/GuestWelcome";
 import Sidebar from "./components/Sidebar";
 import { useNavigate, useParams } from "react-router-dom";
@@ -199,6 +202,33 @@ export default function ChatPage({
       setShowRightSidebar(true);
     }
   };
+
+  const [rightSidebarWidth, setRightSidebarWidth] = useState(600);
+  const isResizingRightSidebar = useRef(false);
+
+  const startResizingRightSidebar = React.useCallback((e) => {
+    isResizingRightSidebar.current = true;
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    document.addEventListener('mousemove', handleMouseMoveRightSidebar);
+    document.addEventListener('mouseup', stopResizingRightSidebar);
+  }, []);
+
+  const handleMouseMoveRightSidebar = React.useCallback((e) => {
+    if (!isResizingRightSidebar.current) return;
+    const newWidth = window.innerWidth - e.clientX;
+    if (newWidth > 300 && newWidth < window.innerWidth - 100) {
+      setRightSidebarWidth(newWidth);
+    }
+  }, []);
+
+  const stopResizingRightSidebar = React.useCallback(() => {
+    isResizingRightSidebar.current = false;
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+    document.removeEventListener('mousemove', handleMouseMoveRightSidebar);
+    document.removeEventListener('mouseup', stopResizingRightSidebar);
+  }, []);
 
   const [isThinkingMode, setIsThinkingMode] = useState(false);
   const isThinkingModeRef = useRef(false);
@@ -2066,18 +2096,54 @@ export default function ChatPage({
           right: 0,
           top: (previewDoc || previewArtifact) ? 0 : "56px",
           bottom: 0,
-          width: (previewDoc || previewArtifact) ? "45vw" : "320px",
+          width: (previewDoc || previewArtifact) ? `${rightSidebarWidth}px` : "320px",
           background: theme.sidebarBg,
           borderLeft: `1px solid ${theme.borderColor}`,
           borderTopLeftRadius: (previewDoc || previewArtifact) ? "0" : "16px",
           transform: showRightSidebar ? "translateX(0)" : "translateX(100%)",
-          transition: "transform 0.3s ease-in-out, width 0.3s ease-in-out",
+          transition: isResizingRightSidebar.current ? "none" : "transform 0.3s ease-in-out, width 0.3s ease-in-out",
           zIndex: (previewDoc || previewArtifact) ? 40 : 35,
           display: "flex",
           flexDirection: "column",
           boxShadow: showRightSidebar ? "-4px 0 15px rgba(0,0,0,0.05)" : "none",
         }}
       >
+        {/* Resizer Handle */}
+        {(previewDoc || previewArtifact) && (
+          <div
+            onMouseDown={startResizingRightSidebar}
+            style={{
+              position: 'absolute',
+              left: -6,
+              top: 0,
+              bottom: 0,
+              width: 12,
+              cursor: 'col-resize',
+              zIndex: 50,
+              background: 'transparent',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}
+          >
+            <div style={{
+              width: 4,
+              height: 32,
+              borderRadius: 4,
+              background: theme.borderColor,
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'center',
+              alignItems: 'center',
+              gap: '3px',
+              opacity: 0.8
+            }}>
+              <div style={{ width: 2, height: 2, background: theme.secondaryText, borderRadius: '50%' }} />
+              <div style={{ width: 2, height: 2, background: theme.secondaryText, borderRadius: '50%' }} />
+              <div style={{ width: 2, height: 2, background: theme.secondaryText, borderRadius: '50%' }} />
+            </div>
+          </div>
+        )}
         {previewDoc ? (
           // DOCUMENT PREVIEW SIDEBAR MODE
           <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
@@ -2270,35 +2336,62 @@ export default function ChatPage({
               </div>
             </div>
 
-            {/* Code area */}
-            <div style={{ flex: 1, overflow: "auto", background: '#0d1117' }}>
+            {/* Code / Markdown area */}
+            <div style={{ flex: 1, overflow: "auto", background: darkMode ? '#0d1117' : '#ffffff' }}>
               {isArtifactLoading ? (
                 <div style={{ padding: "24px", textAlign: "center", color: "#6b7280" }}>
                   <div style={{ fontSize: "24px", marginBottom: "8px", animation: "spin 1s linear infinite" }}>⏳</div>
                   <div style={{ fontSize: "13px" }}>Memuat kode...</div>
                 </div>
               ) : (
-                <pre style={{
-                  margin: 0,
-                  padding: "20px",
-                  whiteSpace: "pre",
-                  overflowX: "auto",
-                  fontFamily: '"Fira Code", "Cascadia Code", "JetBrains Mono", monospace',
-                  fontSize: "13px",
-                  lineHeight: "1.6",
-                  color: "#e6edf3",
-                  minHeight: "100%",
-                  boxSizing: "border-box",
-                }}>
-                  {/* Mac-style terminal dots */}
-                  <div style={{ display: 'flex', gap: '6px', marginBottom: '16px', opacity: 0.6 }}>
-                    <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#ff5f57', display: 'inline-block' }} />
-                    <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#febc2e', display: 'inline-block' }} />
-                    <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#28c840', display: 'inline-block' }} />
-                    <span style={{ marginLeft: 'auto', fontSize: '10px', color: '#484f58' }}>{previewArtifact.filename}</span>
-                  </div>
-                  {artifactContent || previewArtifact.code || '// Kode kosong'}
-                </pre>
+                (() => {
+                  const ext = previewArtifact?.filename?.split('.').pop()?.toLowerCase();
+                  const isMarkdownOrText = ext === 'md' || ext === 'txt';
+                  const content = artifactContent || previewArtifact.code || '// Kode kosong';
+
+                  if (isMarkdownOrText) {
+                    return (
+                      <div className="markdown-body" style={{ padding: "20px", color: theme.textColor }}>
+                        <CakraResponseRenderer
+                          rawContent={content}
+                          thinkingContent=""
+                          isStreaming={false}
+                          darkMode={darkMode}
+                          theme={theme}
+                          searchQuery=""
+                          statusMessage=""
+                        />
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <div style={{ flex: 1, padding: "20px", overflowX: "auto" }}>
+                      {/* Mac-style terminal dots */}
+                      <div style={{ display: 'flex', gap: '6px', marginBottom: '16px', opacity: 0.6 }}>
+                        <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#ff5f57', display: 'inline-block' }} />
+                        <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#febc2e', display: 'inline-block' }} />
+                        <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#28c840', display: 'inline-block' }} />
+                        <span style={{ marginLeft: 'auto', fontSize: '10px', color: '#484f58' }}>{previewArtifact.filename}</span>
+                      </div>
+                      <SyntaxHighlighter
+                        language={ext}
+                        style={vscDarkPlus}
+                        customStyle={{
+                          margin: 0,
+                          padding: 0,
+                          background: 'transparent',
+                          fontSize: '13px',
+                          fontFamily: '"Fira Code", "Cascadia Code", "JetBrains Mono", monospace'
+                        }}
+                        showLineNumbers={true}
+                        wrapLines={false}
+                      >
+                        {content}
+                      </SyntaxHighlighter>
+                    </div>
+                  );
+                })()
               )}
             </div>
 

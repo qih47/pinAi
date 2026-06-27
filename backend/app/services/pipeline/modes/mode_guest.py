@@ -30,7 +30,8 @@ class ModeGuest:
         routing_data: Optional[Dict[str, Any]] = None,
         request: Optional[Request] = None,
         employee_name: str = "Pegawai",  # Akan di-ignore
-        current_user_npp: Optional[str] = None
+        current_user_npp: Optional[str] = None,
+        session_uuid: Optional[str] = None
     ) -> AsyncGenerator[str, None]:
         
         logger.info("[MODE_GUEST] Starting execution for Guest User")
