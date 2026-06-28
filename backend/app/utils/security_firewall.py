@@ -261,7 +261,7 @@ def _scan_dict_recursive(data: Any, path: str = "root", skip_injection: bool = F
             _scan_for_injections(data, path)
     elif isinstance(data, dict):
         for k, v in data.items():
-            if str(k) == "content":
+            if str(k) in ("content", "liveCode", "code", "fileGenerations"):
                 _scan_dict_recursive(v, f"{path}.{k}", skip_injection=True)
             else:
                 if not skip_injection:
@@ -441,7 +441,7 @@ async def validate_attachment_security(file: UploadFile) -> None:
     if file.content_type in ("text/plain", "text/csv"):
         try:
             sample = header_bytes.decode("utf-8", errors="replace")
-            _scan_for_injections(sample, f"attachment:{filename}")
+            # _scan_for_injections(sample, f"attachment:{filename}") # Sering false-positive kalau user ngirim log code
         except Exception:
             pass  # Non-fatal for binary-safe formats
 

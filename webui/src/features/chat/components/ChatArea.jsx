@@ -55,39 +55,6 @@ export default function ChatArea({
     }
   }, [messagesContainerRef]);
 
-  // Handle scroll detection manual (fallback kalau virtuoso telat update state internalnya)
-  const [shouldAutoScroll, setShouldAutoScroll] = useState(true);
-  
-  const handleScroll = useCallback((e) => {
-    // Kita biarin dulu sementara karena atBottomStateChange virtuoso lebih reliable
-  }, []);
-
-  useEffect(() => {
-    if (isStreaming && shouldAutoScroll && virtuosoRef.current) {
-      requestAnimationFrame(() => {
-        if (virtuosoRef.current) {
-          virtuosoRef.current.scrollTo({
-            top: 9999999,
-            behavior: 'auto'
-          });
-        }
-      });
-    }
-  }, [messages, isStreaming, shouldAutoScroll, virtuosoRef]);
-
-  useEffect(() => {
-    if (messages.length > prevMessagesLengthRef.current) {
-      requestAnimationFrame(() => {
-        if (virtuosoRef.current) {
-          virtuosoRef.current.scrollTo({
-            top: 9999999,
-            behavior: 'smooth'
-          });
-        }
-      });
-    }
-    prevMessagesLengthRef.current = messages.length;
-  }, [messages.length]);
 
   const itemContent = useCallback((idx, msg) => (
     <ChatBubble
