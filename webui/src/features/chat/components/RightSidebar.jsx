@@ -205,7 +205,7 @@ export default function RightSidebar({
       ) : previewArtifact ? (
         // ── MODE 2: ARTIFACT CODE VIEW ──
         <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-          <div style={{ padding: "14px 20px", display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: `1px solid ${borderStyleColor}`, background: containerBgColor, gap: "12px" }}>
+          <div style={{ padding: "14px 20px", display: "flex", justifyContent: "space-between", alignItems: "center", background: containerBgColor, gap: "12px" }}>
             <div style={{ display: "flex", alignItems: "center", gap: "12px", overflow: "hidden", flex: 1 }}>
               <button
                 onClick={() => setPreviewArtifact(null)}
@@ -282,7 +282,7 @@ export default function RightSidebar({
             )}
           </div>
 
-          <div style={{ padding: "8px 20px", borderTop: `1px solid ${borderStyleColor}`, background: darkMode ? '#151618' : '#f8fafc', fontSize: "11px", color: "#64748b", fontFamily: 'monospace', display: 'flex', justifyContent: 'space-between' }}>
+          <div style={{ padding: "8px 20px", background: darkMode ? '#151618' : '#f8fafc', fontSize: "11px", color: "#64748b", fontFamily: 'monospace', display: 'flex', justifyContent: 'space-between' }}>
             <span>LINES: {previewArtifact.lines_count ? previewArtifact.lines_count : (artifactContent || previewArtifact.code || '').split('\n').length}</span>
             <span>CHARS: {(artifactContent || previewArtifact.code || '').length}</span>
           </div>
@@ -290,7 +290,7 @@ export default function RightSidebar({
       ) : (
         // ── MODE 3: WORKSPACE FILE HUB (DETEKSI LIST MAP DISINI) ──
         <>
-          <div style={{ padding: "18px 20px", borderBottom: `1px solid ${borderStyleColor}` }}>
+          <div style={{ padding: "18px 20px" }}>
             <h3 style={{ margin: 0, color: theme.textColor, fontSize: "14px", fontWeight: 600, letterSpacing: '0.5px', textTransform: "uppercase", opacity: 0.9 }}>Workspace Explorer</h3>
           </div>
 
