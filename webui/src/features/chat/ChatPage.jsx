@@ -207,6 +207,56 @@ export default function ChatPage({
     }
   };
 
+  const handleDownloadArtifact = async (filename, file_path, code) => {
+    if (code) {
+       const blob = new Blob([code], { type: 'text/plain;charset=utf-8' });
+       const url = URL.createObjectURL(blob);
+       const a = document.createElement('a'); a.href = url; a.download = filename; a.click(); URL.revokeObjectURL(url);
+       return;
+    }
+    try {
+      const activeSessionId = sessionId && sessionId !== "new" ? sessionId : useChatStore.getState().sessionUuid;
+      const headers = {};
+      if (authUser?.npp) headers['X-NPP-Header'] = authUser.npp;
+      const res = await fetch(`${API_BASE}/api/chat/artifacts/read?filename=${encodeURIComponent(file_path || filename)}&session_id=${encodeURIComponent(activeSessionId)}`, { headers });
+      if (!res.ok) throw new Error("Gagal mengambil file");
+      const text = await res.text();
+      const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href = url; a.download = filename; a.click(); URL.revokeObjectURL(url);
+    } catch (err) {
+      toast.error(`Gagal mendownload ${filename}`);
+    }
+  };
+
+  const handleDownloadAllArtifacts = async (artifactsToDownload) => {
+    if (!artifactsToDownload || artifactsToDownload.length === 0) return;
+    if (artifactsToDownload.length <= 3) {
+      artifactsToDownload.forEach((art, idx) => {
+        setTimeout(() => handleDownloadArtifact(art.filename, art.file_path, art.code), idx * 400);
+      });
+      toast.success(`Mendownload ${artifactsToDownload.length} file...`);
+    } else {
+      try {
+        const activeSessionId = sessionId && sessionId !== "new" ? sessionId : useChatStore.getState().sessionUuid;
+        const headers = {};
+        if (authUser?.npp) headers['X-NPP-Header'] = authUser.npp;
+        const res = await fetch(`${API_BASE}/api/chat/artifacts/download_all?session_id=${encodeURIComponent(activeSessionId)}`, { headers });
+        if (!res.ok) throw new Error("Gagal mendownload ZIP");
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `artifacts_${activeSessionId.substring(0, 8)}.zip`;
+        a.click();
+        URL.revokeObjectURL(url);
+        toast.success("Download ZIP berhasil!");
+      } catch (err) {
+        toast.error("Gagal mendownload ZIP");
+      }
+    }
+  };
+
   const [rightSidebarWidth, setRightSidebarWidth] = useState(600);
   const isResizingRightSidebar = useRef(false);
 
@@ -1830,6 +1880,7 @@ export default function ChatPage({
               onFileClick={handleFileClick}
               setPreviewImage={setPreviewImage}
               onOpenArtifact={handleOpenArtifact}
+              handleDownloadAllArtifacts={handleDownloadAllArtifacts}
             />
           </div>
 
@@ -2193,6 +2244,8 @@ export default function ChatPage({
         artifacts={artifacts}
         sessionAttachments={sessionAttachments}
         handleOpenArtifact={handleOpenArtifact}
+        handleDownloadArtifact={handleDownloadArtifact}
+        handleDownloadAllArtifacts={handleDownloadAllArtifacts}
         setPreviewImage={setPreviewImage}
         setShowRightSidebar={setShowRightSidebar}
       />

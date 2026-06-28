@@ -65,7 +65,7 @@ function formatThinkingPhase(thought) {
     return activePhase;
 }
 
-const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThinking, isStreamingText, searchQuery = '', isLastMessage, onFileClick, setPreviewImage, onOpenArtifact }) {
+const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThinking, isStreamingText, searchQuery = '', isLastMessage, onFileClick, setPreviewImage, onOpenArtifact, handleDownloadAllArtifacts, handleDownloadArtifact }) {
     const [showToast, setShowToast] = useState(false);
     const [toastMsg, setToastMsg] = useState('');
 
@@ -297,6 +297,7 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
                                         onOpenArtifact={onOpenArtifact}
                                         file_path={fg.file_path || null}
                                         theme={theme}
+                                        handleDownloadArtifact={handleDownloadArtifact}
                                     />
                                 ))}
                                 {msg.fileGenerations.length > 1 && msg.fileGenerations.every(fg => fg.stage === 'done') && (
@@ -304,17 +305,27 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
                                         <button
                                             onClick={(e) => {
                                                 e.stopPropagation();
-                                                msg.fileGenerations.forEach((fg, idx) => {
-                                                    setTimeout(() => {
-                                                        const blob = new Blob([fg.liveCode || ''], { type: 'text/plain;charset=utf-8' });
-                                                        const url = URL.createObjectURL(blob);
-                                                        const a = document.createElement('a');
-                                                        a.href = url;
-                                                        a.download = fg.filename || `file_${idx}.txt`;
-                                                        a.click();
-                                                        URL.revokeObjectURL(url);
-                                                    }, idx * 200); // Stagger downloads slightly
-                                                });
+                                                if (handleDownloadAllArtifacts) {
+                                                    // Mapping fg (fileGenerations) ke format yang diharapkan: art.filename, art.file_path, art.code
+                                                    const mappedArtifacts = msg.fileGenerations.map(fg => ({
+                                                        filename: fg.filename,
+                                                        file_path: fg.file_path,
+                                                        code: fg.liveCode
+                                                    }));
+                                                    handleDownloadAllArtifacts(mappedArtifacts);
+                                                } else {
+                                                    msg.fileGenerations.forEach((fg, idx) => {
+                                                        setTimeout(() => {
+                                                            const blob = new Blob([fg.liveCode || ''], { type: 'text/plain;charset=utf-8' });
+                                                            const url = URL.createObjectURL(blob);
+                                                            const a = document.createElement('a');
+                                                            a.href = url;
+                                                            a.download = fg.filename || `file_${idx}.txt`;
+                                                            a.click();
+                                                            URL.revokeObjectURL(url);
+                                                        }, idx * 200);
+                                                    });
+                                                }
                                             }}
                                             style={{
                                                 background: 'transparent',

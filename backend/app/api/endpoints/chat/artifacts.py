@@ -8,6 +8,10 @@ from backend.app.core.config import settings
 from backend.app.core.paths import get_account_session_dir
 from backend.app.api.dependencies.auth import get_current_user_npp
 
+import zipfile
+import io
+from fastapi.responses import PlainTextResponse, StreamingResponse
+
 router = APIRouter()
 logger = logging.getLogger("CAKRA_ARTIFACTS")
 
@@ -53,3 +57,36 @@ async def read_artifact_file(
     content = target.read_text(encoding="utf-8", errors="replace")
     logger.info(f"[ARTIFACTS] Read: {safe_name} ({file_size} bytes)")
     return PlainTextResponse(content=content, media_type="text/plain; charset=utf-8")
+
+
+@router.get("/artifacts/download_all")
+async def download_all_artifacts(
+    session_id: str = Query(..., description="ID Sesi (Session UUID)"),
+    current_user_npp: str = Depends(get_current_user_npp),
+):
+    """
+    Mengunduh semua file artifact dalam suatu sesi sebagai file ZIP.
+    """
+    target_dir = get_account_session_dir(current_user_npp, session_id, "artifacts")
+    
+    if not target_dir.exists() or not target_dir.is_dir():
+        raise HTTPException(status_code=404, detail="Tidak ada artifact pada sesi ini.")
+
+    zip_buffer = io.BytesIO()
+    file_count = 0
+    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
+        for f in target_dir.glob("*.*"):
+            if f.is_file():
+                zip_file.write(f, f.name)
+                file_count += 1
+                
+    if file_count == 0:
+        raise HTTPException(status_code=404, detail="Tidak ada file yang bisa didownload.")
+
+    zip_buffer.seek(0)
+    logger.info(f"[ARTIFACTS] Download All: session {session_id[:8]} ({file_count} files)")
+    return StreamingResponse(
+        zip_buffer,
+        media_type="application/zip",
+        headers={"Content-Disposition": f"attachment; filename=artifacts_{session_id[:8]}.zip"}
+    )

@@ -40,6 +40,8 @@ export default function ChatArea({
   onFileClick,
   setPreviewImage,
   onOpenArtifact,
+  handleDownloadAllArtifacts,
+  handleDownloadArtifact,
 }) {
   const virtuosoRef = useRef(null);
   const prevMessagesLengthRef = useRef(messages.length);
@@ -52,6 +54,26 @@ export default function ChatArea({
       setScrollParent(messagesContainerRef.current);
     }
   }, [messagesContainerRef]);
+
+  // Handle scroll detection manual (fallback kalau virtuoso telat update state internalnya)
+  const [shouldAutoScroll, setShouldAutoScroll] = useState(true);
+  
+  const handleScroll = useCallback((e) => {
+    // Kita biarin dulu sementara karena atBottomStateChange virtuoso lebih reliable
+  }, []);
+
+  useEffect(() => {
+    if (isStreaming && shouldAutoScroll && virtuosoRef.current) {
+      requestAnimationFrame(() => {
+        if (virtuosoRef.current) {
+          virtuosoRef.current.scrollTo({
+            top: 9999999,
+            behavior: 'auto'
+          });
+        }
+      });
+    }
+  }, [messages, isStreaming, shouldAutoScroll, virtuosoRef]);
 
   useEffect(() => {
     if (messages.length > prevMessagesLengthRef.current) {
@@ -81,8 +103,10 @@ export default function ChatArea({
       onFileClick={onFileClick}
       setPreviewImage={setPreviewImage}
       onOpenArtifact={onOpenArtifact}
+      handleDownloadAllArtifacts={handleDownloadAllArtifacts}
+      handleDownloadArtifact={handleDownloadArtifact}
     />
-  ), [darkMode, theme, isThinking, isStreamingText, sendMessage, searchQuery, messages.length, onFileClick, setPreviewImage, onOpenArtifact]);
+  ), [darkMode, theme, isThinking, isStreamingText, sendMessage, searchQuery, messages.length, onFileClick, setPreviewImage, onOpenArtifact, handleDownloadAllArtifacts, handleDownloadArtifact]);
 
   const FooterComponent = useCallback(() => (
     <>

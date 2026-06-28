@@ -67,6 +67,8 @@ export default function RightSidebar({
   artifacts,
   sessionAttachments,
   handleOpenArtifact,
+  handleDownloadArtifact,
+  handleDownloadAllArtifacts,
   setPreviewImage,
   setShowRightSidebar,
 }) {
@@ -302,9 +304,29 @@ export default function RightSidebar({
                   <span>GENERATED ARTIFACTS</span>
                 </div>
                 {artifacts.length > 0 && (
-                  <span style={{ fontSize: "10px", fontWeight: 600, color: "#6366f1", background: "rgba(99,102,241,0.1)", borderRadius: "6px", padding: "1px 6px" }}>
-                    {artifacts.length}
-                  </span>
+                  <button
+                    className="download-btn-hover"
+                    onClick={() => {
+                      if (handleDownloadAllArtifacts) {
+                        handleDownloadAllArtifacts(artifacts);
+                      }
+                    }}
+                    style={{
+                      background: "transparent",
+                      border: "none",
+                      color: darkMode ? "#94a3b8" : "#475569",
+                      fontSize: "12px",
+                      fontWeight: 600,
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "6px",
+                      cursor: "pointer",
+                      padding: "4px 8px",
+                      borderRadius: "6px"
+                    }}
+                  >
+                    <IconDownload size={14} /> Download all
+                  </button>
                 )}
               </div>
 
@@ -359,7 +381,11 @@ export default function RightSidebar({
                           className="download-btn-hover"
                           onClick={(e) => {
                             e.stopPropagation(); // Mencegah terbukanya pratinjau file saat mendownload
-                            executeDownload(art.filename, art.code);
+                            if (handleDownloadArtifact) {
+                                handleDownloadArtifact(art.filename, art.file_path, art.code);
+                            } else {
+                                executeDownload(art.filename, art.code);
+                            }
                           }}
                           title={`Unduh ${art.filename}`}
                           style={{

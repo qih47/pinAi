@@ -53,6 +53,7 @@ export default function FileGenerationCard({
   darkMode = true,
   onOpenArtifact,  // callback(filename, code) -> trigger sidebar kanan
   file_path,       // path file di server
+  handleDownloadArtifact, // prop untuk fetch download yang benar
 }) {
   const [copyDone, setCopyDone] = useState(false);
 
@@ -73,13 +74,17 @@ export default function FileGenerationCard({
 
   const handleDownload = (e) => {
     e.stopPropagation();
-    const blob = new Blob([liveCode || ''], { type: 'text/plain;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename || 'file.txt';
-    a.click();
-    URL.revokeObjectURL(url);
+    if (handleDownloadArtifact) {
+      handleDownloadArtifact(filename, file_path, liveCode);
+    } else {
+      const blob = new Blob([liveCode || ''], { type: 'text/plain;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename || 'file.txt';
+      a.click();
+      URL.revokeObjectURL(url);
+    }
   };
 
   const handleOpenClick = (e) => {
