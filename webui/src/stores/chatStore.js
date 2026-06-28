@@ -44,6 +44,7 @@ async function _performStream(set, get, messagesToSend, assistantMessage, forced
             let accumulatedReply = '';
             let renderTimeout = null;
             let accumulatedThinking = '';
+            let backendBatchIndex = 0;
 
             const controller = new AbortController();
             set({ abortController: controller });
@@ -144,26 +145,33 @@ async function _performStream(set, get, messagesToSend, assistantMessage, forced
                         let cleanReply = accumulatedReply.replace(/<\|channel>thought/g, '').replace(/<channel\|>/g, '');
 
                         // 🔥 DYNAMIC FRONTEND PARSER 🔥
-                        // Parse <create_file> and <edit_file> tags directly from the text stream
                         const openTagRegex = /<(create_file|edit_file)\s+filename=["']([^"'>\s]+)["']\s*>/gi;
                         const closeTagRegex = /<\/(create_file|edit_file)\s*>/gi;
 
                         let textDisplay = "";
-                        const newFileGens = [];
                         let lastIdx = 0;
-                        // Robust Parser with Auto-Close
+                        let currentBatchIndex = 0;
+                        let hasInjectedFirst = false;
+                        
                         let match;
                         while ((match = openTagRegex.exec(cleanReply)) !== null) {
-                            textDisplay += cleanReply.substring(lastIdx, match.index);
-                            if (newFileGens.length === 0) {
-                                // Inject placeholder exactly where the first file creation starts
-                                textDisplay += "\n\n[[CAKRA_FILE_PROCESS_LOG]]\n\n";
+                            const precedingText = cleanReply.substring(lastIdx, match.index);
+                            
+                            if (!hasInjectedFirst) {
+                                textDisplay += precedingText;
+                                textDisplay += `\n\n[[CAKRA_FILE_PROCESS_LOG_${currentBatchIndex}]]\n\n`;
+                                hasInjectedFirst = true;
+                            } else if (precedingText.trim().length > 0) {
+                                currentBatchIndex++;
+                                textDisplay += precedingText;
+                                textDisplay += `\n\n[[CAKRA_FILE_PROCESS_LOG_${currentBatchIndex}]]\n\n`;
+                            } else {
+                                textDisplay += precedingText; // Just whitespace
                             }
 
                             const filename = match[2];
                             const contentStart = openTagRegex.lastIndex;
 
-                            // Look ahead for the next close tag or the next open tag (auto-close)
                             closeTagRegex.lastIndex = contentStart;
                             const nextClose = closeTagRegex.exec(cleanReply);
 
@@ -174,26 +182,19 @@ async function _performStream(set, get, messagesToSend, assistantMessage, forced
                             let contentEnd = cleanReply.length;
 
                             if (nextClose && (!nextOpen || nextClose.index < nextOpen.index)) {
-                                // Normal close
                                 contentEnd = nextClose.index;
                                 lastIdx = closeTagRegex.lastIndex;
                             } else if (nextOpen && (!nextClose || nextOpen.index < nextClose.index)) {
-                                // Auto close because new tag started (LLM forgot to close)
                                 contentEnd = nextOpen.index;
                                 lastIdx = nextOpen.index; 
                                 openTagRegex.lastIndex = lastIdx; 
                             } else {
-                                // Still streaming
                                 contentEnd = cleanReply.length;
                                 lastIdx = cleanReply.length;
                             }
-
-                            const codeContent = cleanReply.substring(contentStart, contentEnd);
-                            // We don't push to newFileGens anymore. We rely entirely on onFileStatus for liveCode updates.
                         }
                         textDisplay += cleanReply.substring(lastIdx);
 
-                        // Do NOT overwrite fileGenerations. onFileStatus is the sole source of truth for file generation state.
                         const existingGens = [...(assistantMessage.fileGenerations || [])];
 
                         assistantMessage = { 
@@ -205,23 +206,25 @@ async function _performStream(set, get, messagesToSend, assistantMessage, forced
                         if (!renderTimeout) {
                             renderTimeout = requestAnimationFrame(() => {
                                 const currentMessages = [...get().messages];
-
-                                // 🔥 KUNCI UTAMA: Tembak indeks yang tepat!
                                 const idxToUpdate = targetAssistantIdx !== null ? targetAssistantIdx : currentMessages.length - 1;
                                 currentMessages[idxToUpdate] = assistantMessage;
 
                                 set({
                                     messages: currentMessages,
-                                    isThinking: false // ✨ FIX: matikan isThinking saat teks mulai keluar
+                                    isThinking: false
                                 });
                                 renderTimeout = null;
                             });
                         }
                     },
                     onFileStatus: (fileStatus) => {
-                        const { stage, filename } = fileStatus;
+                        const { stage, filename, tag_type } = fileStatus;
                         
-                        // 🔥 FIX: Directly read from assistantMessage to avoid rAF race conditions 🔥
+                        if (stage === 'batch_break') {
+                            backendBatchIndex++;
+                            return; // No need to update fileGenerations for batch_break
+                        }
+                        
                         const fileGens = [...(assistantMessage.fileGenerations || [])];
                         const existingIdx = fileGens.findIndex(fg => fg.filename === filename);
                         
@@ -233,12 +236,13 @@ async function _performStream(set, get, messagesToSend, assistantMessage, forced
                                     file_path: fileStatus.file_path || null,
                                 };
                             } else {
-                                // Fallback if frontend parser missed it
                                 fileGens.push({ 
                                     filename, 
                                     stage: 'done', 
                                     liveCode: '', 
-                                    file_path: fileStatus.file_path || null 
+                                    file_path: fileStatus.file_path || null,
+                                    tag_type,
+                                    batchIndex: backendBatchIndex
                                 });
                             }
                             
@@ -266,21 +270,28 @@ async function _performStream(set, get, messagesToSend, assistantMessage, forced
                                     filename,
                                     stage: 'creating',
                                     liveCode: '',
-                                    file_path: null
+                                    file_path: null,
+                                    tag_type,
+                                    batchIndex: backendBatchIndex
                                 });
                             } else {
                                 fileGens[existingIdx].stage = 'creating';
+                                if(tag_type) fileGens[existingIdx].tag_type = tag_type;
+                                fileGens[existingIdx].batchIndex = backendBatchIndex;
                             }
                         } else if (stage === 'code_chunk') {
                             if (existingIdx !== -1) {
                                 fileGens[existingIdx].stage = 'streaming';
                                 fileGens[existingIdx].liveCode = (fileGens[existingIdx].liveCode || '') + (fileStatus.code_chunk || '');
+                                if(tag_type) fileGens[existingIdx].tag_type = tag_type;
                             } else {
                                 fileGens.push({
                                     filename,
                                     stage: 'streaming',
                                     liveCode: fileStatus.code_chunk || '',
-                                    file_path: null
+                                    file_path: null,
+                                    tag_type,
+                                    batchIndex: backendBatchIndex
                                 });
                             }
                         } else if (stage === 'error') {
@@ -524,8 +535,8 @@ export const useChatStore = create((set, get) => ({
             npp,
             get().activeIsolatedDocId,
             currentAttachmentPaths,
-            'auto',
-            true, // default isThinkingMode for edit/regenerate
+            get().chatMode,
+            get().isThinkingMode,
             toast,
             index + 1, // targetAssistantIdx
             index      // 🔥 editIndex
@@ -583,13 +594,24 @@ export const useChatStore = create((set, get) => ({
                         // Robust Parser with Auto-Close for loadChatSession
                         const parsedFileGens = [];
                         let lastIdx = 0;
+                        let currentBatchIndex = 0;
+                        let hasInjectedFirst = false;
+                        
                         let match;
                         openTagRegex.lastIndex = 0;
                         while ((match = openTagRegex.exec(newMsg.content)) !== null) {
-                            textDisplay += newMsg.content.substring(lastIdx, match.index);
-                            if (parsedFileGens.length === 0) {
-                                // Inject placeholder exactly where the first file creation starts
-                                textDisplay += "\n\n[[CAKRA_FILE_PROCESS_LOG]]\n\n";
+                            const precedingText = newMsg.content.substring(lastIdx, match.index);
+                            
+                            if (!hasInjectedFirst) {
+                                textDisplay += precedingText;
+                                textDisplay += `\n\n[[CAKRA_FILE_PROCESS_LOG_${currentBatchIndex}]]\n\n`;
+                                hasInjectedFirst = true;
+                            } else if (precedingText.trim().length > 0) {
+                                currentBatchIndex++;
+                                textDisplay += precedingText;
+                                textDisplay += `\n\n[[CAKRA_FILE_PROCESS_LOG_${currentBatchIndex}]]\n\n`;
+                            } else {
+                                textDisplay += precedingText;
                             }
 
                             const filename = match[2];
@@ -621,7 +643,7 @@ export const useChatStore = create((set, get) => ({
                             }
 
                             const codeContent = newMsg.content.substring(contentStart, contentEnd);
-                            parsedFileGens.push({ filename, stage: 'done', liveCode: codeContent });
+                            parsedFileGens.push({ filename, stage: 'done', liveCode: codeContent, batchIndex: currentBatchIndex });
                         }
                         textDisplay += newMsg.content.substring(lastIdx);
                         

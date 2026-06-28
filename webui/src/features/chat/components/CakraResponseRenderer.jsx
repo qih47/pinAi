@@ -34,7 +34,7 @@ const recursiveHighlight = (children, query) => {
 // =========================================================================
 // 🔮 MAIN COMPONENT: CAKRA RESPONSE RENDERER
 // =========================================================================
-const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkMode, theme, searchQuery = '', statusMessage }) => {
+const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkMode, theme, searchQuery = '', statusMessage, middleContent }) => {
     const thinkStartTag = "<think>";
     const thinkEndTag = "</think>";
 
@@ -151,7 +151,7 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
 
     // 🛠️ FIX AMAN: guard render kosong dipindah ke bawah useMemo agar
     // hooks tidak dipanggil secara kondisional (Rules of Hooks)
-    if (!thinkingBlock.trim() && !finalResponseBlock.trim()) {
+    if (!thinkingBlock.trim() && !finalResponseBlock.trim() && !middleContent) {
         return <div style={{ minHeight: '20px' }} />;
     }
 
@@ -167,6 +167,8 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
                     isStreaming={isStreaming}
                 />
             )}
+
+            {middleContent}
 
             {/* 📝 2. RENDER UTAMA JAWABAN: Ditampilkan tepat di bawah proses berpikir */}
             {finalResponseBlock.trim() && (

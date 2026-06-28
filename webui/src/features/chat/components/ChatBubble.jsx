@@ -208,14 +208,14 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
                         {/* 🔥 Pisahkan preamble dan explanation menggunakan placeholder CAKRA_FILE_PROCESS_LOG 🔥 */}
                         {(() => {
                             const rawContent = msg.content || '';
-                            const parts = rawContent.split('[[CAKRA_FILE_PROCESS_LOG]]');
+                            const logRegex = /\[\[CAKRA_FILE_PROCESS_LOG(?:_(\d+))?\]\]/;
+                            const parts = rawContent.split(logRegex);
 
-                            return (
-                                <>
-                                    {parts.length === 1 && (
-                                        <FileProcessLog fileGenerations={msg.fileGenerations} darkMode={darkMode} />
-                                    )}
+                            const fileGens = msg.fileGenerations || [];
+                            const highestBatchIndex = fileGens.reduce((max, fg) => Math.max(max, fg.batchIndex || 0), 0);
 
+                            if (parts.length === 1) {
+                                return (
                                     <CakraResponseRenderer
                                         rawContent={parts[0]}
                                         thinkingContent={msg.thinking || msg.thought || ''}
@@ -224,28 +224,68 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
                                         theme={theme}
                                         searchQuery={searchQuery}
                                         statusMessage={msg.statusMessage}
-                                    />
-
-                                    {parts.length > 1 && (
-                                        <>
-                                            <FileProcessLog fileGenerations={msg.fileGenerations} darkMode={darkMode} />
-                                            <CakraResponseRenderer
-                                                rawContent={parts.slice(1).join('')}
-                                                thinkingContent=""
-                                                isStreaming={isThisMessageStreaming}
-                                                darkMode={darkMode}
-                                                theme={theme}
-                                                searchQuery={searchQuery}
-                                                statusMessage={msg.statusMessage}
+                                        middleContent={fileGens.length > 0 ? (
+                                            <FileProcessLog 
+                                                fileGenerations={fileGens} 
+                                                darkMode={darkMode} 
+                                                batchIndex={0} 
+                                                isFinalBatch={true} 
                                             />
-                                        </>
-                                    )}
-                                </>
+                                        ) : null}
+                                    />
+                                );
+                            }
+
+                            const renderedParts = [];
+                            
+                            renderedParts.push(
+                                <CakraResponseRenderer
+                                    key="renderer-0"
+                                    rawContent={parts[0]}
+                                    thinkingContent={msg.thinking || msg.thought || ''}
+                                    isStreaming={isThisMessageStreaming}
+                                    darkMode={darkMode}
+                                    theme={theme}
+                                    searchQuery={searchQuery}
+                                    statusMessage={msg.statusMessage}
+                                />
                             );
+
+                            for (let i = 1; i < parts.length; i += 2) {
+                                const bIdx = parts[i] ? parseInt(parts[i], 10) : 0;
+                                const nextText = parts[i + 1] || '';
+                                
+                                renderedParts.push(
+                                    <FileProcessLog 
+                                        key={`log-${bIdx}`} 
+                                        fileGenerations={fileGens} 
+                                        darkMode={darkMode} 
+                                        batchIndex={bIdx}
+                                        isFinalBatch={bIdx === highestBatchIndex} 
+                                    />
+                                );
+                                
+                                if (nextText) {
+                                    renderedParts.push(
+                                        <CakraResponseRenderer
+                                            key={`renderer-${i+1}`}
+                                            rawContent={nextText}
+                                            thinkingContent=""
+                                            isStreaming={isThisMessageStreaming}
+                                            darkMode={darkMode}
+                                            theme={theme}
+                                            searchQuery={searchQuery}
+                                            statusMessage={msg.statusMessage}
+                                        />
+                                    );
+                                }
+                            }
+
+                            return <>{renderedParts}</>;
                         })()}
 
                         {/* 🔥 POSISI BERHASIL DIPINDAHKAN DI AKHIR STREAM (DI BAWAH RENDERING TEKS JAWABAN) */}
-                        {msg.fileGenerations && msg.fileGenerations.length > 0 && msg.fileGenerations.every(g => g.stage === 'done' || g.stage === 'error') && (
+                        {msg.fileGenerations && msg.fileGenerations.length > 0 && msg.fileGenerations.every(g => g.stage === 'done' || g.stage === 'error') && !isThisMessageStreaming && (
                             <div style={{ marginTop: '12px', marginBottom: '8px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
                                 {msg.fileGenerations.map((fg, fgIdx) => (
                                     <FileGenerationCard 
@@ -504,7 +544,8 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
         prevProps.idx === nextProps.idx &&
         prevProps.searchQuery === nextProps.searchQuery &&
         prevProps.msg.totalMessages === nextProps.msg.totalMessages &&
-        JSON.stringify(prevProps.msg.attachments) === JSON.stringify(nextProps.msg.attachments)
+        JSON.stringify(prevProps.msg.attachments) === JSON.stringify(nextProps.msg.attachments) &&
+        JSON.stringify(prevProps.msg.fileGenerations) === JSON.stringify(nextProps.msg.fileGenerations)
     );
 });
 

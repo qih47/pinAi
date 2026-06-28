@@ -219,14 +219,49 @@ class ChatHistoryService:
                 return False
 
     async def trim_session_messages(self, session_uuid: str, keep_count: int) -> bool:
-        """Menghapus pesan-pesan setelah urutan tertentu (keep_count) saat user melakukan Edit/Regenerate."""
+        """Menghapus pesan-pesan setelah urutan tertentu (keep_count) saat user melakukan Edit/Regenerate, termasuk file artifact-nya."""
         async with get_db() as conn:
             try:
                 session_pk = await self._resolve_session_pk(conn, session_uuid)
                 if session_pk is None:
                     return False
                 
-                # Hapus pesan yang ID-nya tidak termasuk dalam top N pesan pertama (diurutkan by timestamp & id)
+                # Ambil metadata dari pesan yang akan dihapus
+                select_query = """
+                    SELECT metadata FROM chat_messages 
+                    WHERE session_id = $1 AND id NOT IN (
+                        SELECT id FROM chat_messages 
+                        WHERE session_id = $1 
+                        ORDER BY timestamp ASC, id ASC 
+                        LIMIT $2
+                    )
+                """
+                rows_to_delete = await conn.fetch(select_query, session_pk, keep_count)
+                
+                # Hapus physical artifacts jika ada
+                import os
+                from backend.app.core.paths import ACCOUNTS_DIR
+                from pathlib import Path
+                base_dir = Path(ACCOUNTS_DIR).parent
+                
+                for row in rows_to_delete:
+                    if row["metadata"]:
+                        try:
+                            meta = json.loads(row["metadata"]) if isinstance(row["metadata"], str) else row["metadata"]
+                            artifacts = meta.get("artifacts", [])
+                            for art_path in artifacts:
+                                try:
+                                    # art_path usually looks like accounts/npp/session/artifacts/filename
+                                    full_path = base_dir / art_path
+                                    if full_path.exists() and full_path.is_file():
+                                        os.remove(full_path)
+                                        logger.info(f"[CHAT_HISTORY] Deleted artifact file: {full_path}")
+                                except Exception as e:
+                                    logger.warning(f"[CHAT_HISTORY] Failed to delete artifact file {art_path}: {e}")
+                        except Exception as e:
+                            logger.warning(f"[CHAT_HISTORY] Failed to parse metadata for artifact deletion: {e}")
+
+                # Hapus pesan dari DB
                 query = """
                     DELETE FROM chat_messages 
                     WHERE session_id = $1 AND id NOT IN (

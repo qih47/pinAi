@@ -216,6 +216,7 @@ def format_sse_file_status(
     code_chunk: str = "",
     file_path: str = "",
     lines_count: int = 0,
+    tag_type: str = "create_file",
 ) -> str:
     """
     Format SSE event for file generation lifecycle (Interceptor-Analyst Pipeline).
@@ -225,12 +226,14 @@ def format_sse_file_status(
       - "code_chunk" : Partial code text for live terminal preview.
       - "done"       : File fully written to disk. Frontend morphs to File Card.
       - "error"      : Something went wrong during write.
+      - "batch_break": Used to signal a multi-batch transition.
 
     Args:
-        stage     : One of "creating" | "code_chunk" | "done" | "error"
+        stage     : One of "creating" | "code_chunk" | "done" | "error" | "batch_break"
         filename  : Target file name (e.g. "App.jsx")
         code_chunk: (only for stage="code_chunk") streaming code text
         file_path : (only for stage="done") relative path to saved file on server
+        tag_type  : (optional) type of tag used, "create_file" or "edit_file"
 
     Returns:
         JSON SSE string line.
@@ -239,6 +242,7 @@ def format_sse_file_status(
         "stage": stage,
         "filename": filename,
         "code_chunk": code_chunk if stage == "code_chunk" else None,
+        "tag_type": tag_type,
     }
     if stage == "done" and file_path:
         file_status_payload["file_path"] = file_path

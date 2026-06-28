@@ -186,6 +186,11 @@ async def _sequential_pipeline_generator(
                 text=user_text,
                 thought=f"Gemma Agentic [Mode: {chat_mode} - Edited]",
             )
+            # 🧹 TRIM DB & Delete Artifacts for subsequent messages (so AI won't read them as existing)
+            await chat_history_service.trim_session_messages(
+                session_uuid=payload.session_uuid,
+                keep_count=payload.edit_index + 1
+            )
         else:
             await chat_history_service.save_chat_message(
                 session_id=payload.session_uuid,

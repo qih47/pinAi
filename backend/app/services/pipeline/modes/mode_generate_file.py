@@ -95,11 +95,12 @@ class InterceptorParser:
         if self._state in ("STREAMING_PREAMBLE", "WAITING_FOR_NEXT_FILE"):
             m = _RE_OPEN_TAG.search(self._buffer)
             if m:
-                if self._state == "STREAMING_PREAMBLE":
-                    pre_tag_text = self._buffer[:m.start()]
-                    if pre_tag_text.strip():
-                        results.append(("preamble", pre_tag_text))
-                # Jika WAITING_FOR_NEXT_FILE, kita sengaja buang text di antara file agar tidak bocor ke UI
+                pre_tag_text = self._buffer[:m.start()]
+                if pre_tag_text.strip():
+                    results.append(("preamble", pre_tag_text))
+                    # Jika WAITING_FOR_NEXT_FILE dan ada teks transisi, emit batch_break
+                    if self._state == "WAITING_FOR_NEXT_FILE":
+                        results.append(("batch_break", {}))
                 
                 self._tag_type = m.group(1).lower()      
                 self._filename = _sanitize_filename(m.group(2))
@@ -115,23 +116,23 @@ class InterceptorParser:
                 results.extend(self._capture_code(rest))
             else:
                 last_lt = self._buffer.rfind('<')
-                if self._state == "STREAMING_PREAMBLE":
-                    if last_lt > 0:
-                        safe_to_stream = self._buffer[:last_lt]
-                        self._buffer   = self._buffer[last_lt:]
-                        if safe_to_stream:
-                            results.append(("preamble", safe_to_stream))
-                    elif last_lt == -1 and len(self._buffer) > 80:
-                        safe_to_stream = self._buffer[:-10]
-                        self._buffer   = self._buffer[-10:]
-                        if safe_to_stream:
-                            results.append(("preamble", safe_to_stream))
-                else:
-                    # WAITING_FOR_NEXT_FILE: buang sampah text sebelum tag '<'
-                    if last_lt > 0:
-                        self._buffer = self._buffer[last_lt:]
-                    elif last_lt == -1 and len(self._buffer) > 10:
-                        self._buffer = ""
+                if last_lt > 0:
+                    safe_to_stream = self._buffer[:last_lt]
+                    self._buffer   = self._buffer[last_lt:]
+                    if safe_to_stream:
+                        results.append(("preamble", safe_to_stream))
+                        if self._state == "WAITING_FOR_NEXT_FILE" and safe_to_stream.strip():
+                            # Kita transisi ke state PREAMBLE lagi agar batch_break dipancarkan nanti
+                            results.append(("batch_break", {}))
+                            self._state = "STREAMING_PREAMBLE"
+                elif last_lt == -1 and len(self._buffer) > 80:
+                    safe_to_stream = self._buffer[:-10]
+                    self._buffer   = self._buffer[-10:]
+                    if safe_to_stream:
+                        results.append(("preamble", safe_to_stream))
+                        if self._state == "WAITING_FOR_NEXT_FILE" and safe_to_stream.strip():
+                            results.append(("batch_break", {}))
+                            self._state = "STREAMING_PREAMBLE"
 
         elif self._state == "CAPTURING_CODE":
             rest = self._buffer
@@ -358,24 +359,27 @@ class ModeGenerateFile:
                 for action, payload in parser_results:
                     if action == "preamble":
                         yield format_sse(payload, "", False, event_type=SSEEventType.CHUNK)
+                        
+                    elif action == "batch_break":
+                        yield format_sse_file_status(stage="batch_break", filename="SYSTEM")
 
                     elif action == "tag_open":
                         fn = payload["filename"]
                         tag_type = payload.get("tag_type", "create_file")
                         current_streaming_filename = fn
                         logger.info(f"[MODE_GENERATE_FILE] Detected <{tag_type}> for: {fn}")
-                        yield format_sse_file_status(stage="creating", filename=fn)
+                        yield format_sse_file_status(stage="creating", filename=fn, tag_type=tag_type)
 
                     elif action == "code_chunk":
                         fn = current_streaming_filename or parser.filename or "unknown"
-                        yield format_sse_file_status(stage="code_chunk", filename=fn, code_chunk=payload)
+                        yield format_sse_file_status(stage="code_chunk", filename=fn, code_chunk=payload, tag_type=parser.tag_type)
 
                     elif action == "file_ready":
                         fn = payload["filename"]
                         tag_type = payload.get("tag_type", "create_file")
                         logger.info(f"[MODE_GENERATE_FILE] </{tag_type}> closed for: {fn}")
                         current_streaming_filename = None
-                        yield format_sse_file_status(stage="done", filename=fn)
+                        yield format_sse_file_status(stage="done", filename=fn, tag_type=tag_type)
 
             # ── FLUSH sisa buffer jika ada yang tertahan ────────────────────
             for action, payload in parser.flush():
@@ -383,11 +387,12 @@ class ModeGenerateFile:
                         yield format_sse(payload, "", False, event_type=SSEEventType.CHUNK)
                     elif action == "code_chunk":
                         fn = current_streaming_filename or parser.filename or "unknown"
-                        yield format_sse_file_status(stage="code_chunk", filename=fn, code_chunk=payload)
+                        yield format_sse_file_status(stage="code_chunk", filename=fn, code_chunk=payload, tag_type=parser.tag_type)
                     elif action == "file_ready":
                         fn = payload["filename"]
+                        tag_type = payload.get("tag_type", "create_file")
                         logger.info(f"[MODE_GENERATE_FILE] Flushed file ready target: {fn}")
-                        yield format_sse_file_status(stage="done", filename=fn)
+                        yield format_sse_file_status(stage="done", filename=fn, tag_type=tag_type)
 
             if not parser.completed_files:
                 logger.warning("[MODE_GENERATE_FILE] No <create_file>/<edit_file> tag detected. Falling back to plain response.")

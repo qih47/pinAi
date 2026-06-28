@@ -65,10 +65,10 @@ SCHEMA JSON:
 }
 
 PANDUAN PARAMETER `is_generate_file`:
-- Isi `true` HANYA jika user secara eksplisit meminta DIBUATKAN/GENERATE sebuah file fisik
-  (contoh: "buatkan file jsx", "generate script python", "buat file konfigurasi").
+- Isi `true` HANYA jika user secara eksplisit meminta DIBUATKAN / GENERATE / DIEDIT / DIUBAH / DIPERBAIKI sebuah file fisik
+  (contoh: "buatkan file jsx", "generate script python", "coba edit filenya", "ubah login.jsx").
 - Isi `false` jika user hanya menanyakan cara koding, mendiskusikan kode, atau minta
-  penjelasan kode (tanpa meminta file dihasilkan secara fisik).
+  penjelasan kode (tanpa meminta file dihasilkan atau diubah secara fisik).
 """
     if need_rag_hint is True and not is_guest: prompt += "\nHINT: RAG WAJIB diaktifkan.\n"
     if is_coding_precheck: prompt += "\nHINT: Pertanyaan coding terdeteksi.\n"
@@ -487,19 +487,18 @@ Pegawai yang kamu layani: **{employee_name}**
 
 
 
-LANGKAH 1 — SAPAAN KASUAL (1-2 kalimat, natural, hangat):
+LANGKAH 1 — SAPAAN KASUAL & BLUEPRINT:
+  Sapa user dengan hangat, lalu berikan list singkat (blueprint) tentang apa yang akan kamu buat/edit.
+  PENTING - PERBEDAAN TIPE EDIT FILE:
+  - Jika mengedit file ATTACHMENT (ditandai dengan `<existing_file type="user_attachment">`), tuliskan kalimat transisi seperti: "Oke, aku perbaiki file lampiranmu ya..." atau "Mari kita bahas dan perbaiki file yang kamu kirim..."
+  - Jika mengedit file ARTIFACT (file yang pernah kamu generate sebelumnya, ditandai dengan `<existing_file>` tanpa tipe), tuliskan kalimat transisi seperti: "Mari sesuaikan file yang tadi kita buat..." atau "Oke, aku edit file hasil generate kita sebelumnya..."
+  
+  Contoh Blueprint: 
+  "{contoh_sapaan} Berikut blueprint-nya:
+  1. ⚙️ Create: backend.py
+  2. 🎨 Edit: frontend.jsx"
 
-  Contoh: "{contoh_sapaan}"
-
-
-
-LANGKAH 2 — KONFIRMASI FILE (1 kalimat):
-
-  Contoh: "{contoh_konfirmasi}"
-
-
-
-  LANGKAH 3 — TAG XML KODE (WAJIB persis seperti ini):
+LANGKAH 2 — TAG XML KODE (WAJIB persis seperti ini):
 
   Jika membuat file BARU:
   <create_file filename="NamaFile.jsx">
@@ -513,21 +512,17 @@ LANGKAH 2 — KONFIRMASI FILE (1 kalimat):
 
   (Jangan gunakan markdown ``` untuk membungkus isi di dalam tag xml di atas)
 
-JIKA USER MEMINTA MULTIPLE FILE, ulangi Langkah 3 untuk setiap file:
-
-  <create_file filename="File1.jsx">
-  ...kode file 1...
-  </create_file>
-  <edit_file filename="File2.css">
-  ...seluruh kode file 2 yang diedit...
-  </edit_file>
+JIKA USER MEMINTA MULTIPLE FILE, ulangi Langkah 2 untuk setiap file.
+SANGAT PENTING: Kamu BOLEH dan SANGAT DISARANKAN untuk menulis 1-2 kalimat transisi (normal text) di antara penutup tag file pertama dan pembuka tag file kedua.
+Contoh:
+</create_file>
+Sekarang mari kita sesuaikan UI-nya agar terhubung dengan backend:
+<edit_file filename="frontend.jsx">
 
 LARANGAN KERAS DALAM TAG:
   - JANGAN gunakan ``` atau ```language di dalam tag
   - JANGAN tambahkan komentar meta seperti "// ini adalah file..."
   - JANGAN biarkan file terpotong. Outputkan kode LENGKAP.
-
-  - JANGAN tulis apapun setelah tag </create_file> terakhir
 
 
 
@@ -652,22 +647,19 @@ Konten file:
 {truncated_content}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-🎯 TUGASMU SEBAGAI ANALYST
+🎯 TUGASMU SEBAGAI QA & HANDOFF
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Baca file di atas, kemudian berikan kepada pengguna:
 
-1. **Ringkasan Singkat** — Apa tujuan utama file ini? (2-3 kalimat)
-2. **Cara Menggunakan** — Bagaimana cara mengimpor/menjalankan file ini? (berikan contoh PENDEK max 3 baris jika perlu)
-3. **Fitur & Komponen Kunci** — List poin-poin fitur utama yang ada di file
-4. **Dependensi** — Paket/library apa yang dibutuhkan?
+1. **Header Awal** — Buka respons kamu persis dengan header markdown ini: `### Ringkasan Perubahan`
+2. **Summary Cepat** — Ringkas apa saja yang sudah berhasil dilakukan. (e.g. "Semua file backend dan frontend udah tersinkronisasi.")
+3. **Instruksi Testing** — Berikan perintah/command untuk mengetes (e.g., `npm run dev` atau `uvicorn main:app --reload`) dalam blok kode.
+4. **Tawaran Bantuan** — Tutup dengan tawar bantuan santai jika ada error.
 
 LARANGAN KERAS:
 - DILARANG menulis ulang keseluruhan isi file dalam respons
-- DILARANG copy-paste kode lebih dari 5 baris berturut-turut
-- DILARANG mengatakan "saya/gue sudah menulis file" atau mengungkap mekanisme internal
-
-5. **Sapaan Awal** — Buka dengan ramah sesuai tone.
-Contoh: "{contoh_sapaan}"
+- DILARANG menjelaskan kode secara teknis baris-per-baris
+- JANGAN mengulang sapaan panjang lebar, langsung to-the-point setelah header.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 🎨 GAYA BAHASA
