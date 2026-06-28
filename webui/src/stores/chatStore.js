@@ -495,10 +495,10 @@ export const useChatStore = create((set, get) => ({
         const assistantMessage = {
             role: 'assistant',
             content: '',
-            isThinking: true,
+            isThinking: get().isThinkingMode,
             isStreaming: true,
             thinking: '',
-            statusMessage: 'Sedang berpikir...' // Gunakan statusMessage alih-alih thinking untuk loading state
+            statusMessage: get().isThinkingMode ? 'Sedang berpikir...' : '' // Gunakan statusMessage alih-alih thinking untuk loading state
         };
 
         // Jika kebetulan sebelahnya bukan assistant, kita push/splice (tapi idealnya selalu assistant)
@@ -511,8 +511,8 @@ export const useChatStore = create((set, get) => ({
         set({
             messages: currentMessages,
             isStreaming: true,
-            isThinking: true,
-            currentThinking: 'Sedang berpikir...'
+            isThinking: get().isThinkingMode,
+            currentThinking: get().isThinkingMode ? 'Sedang berpikir...' : ''
         });
 
         await new Promise(resolve => setTimeout(resolve, 100));
