@@ -15,13 +15,16 @@ async def search_community_knowledge(query: str, is_guest: bool, limit: int = 3)
         is_guest: Jika True, cari sesi GUEST. Jika False, cari sesi User Login.
         limit: Batas jumlah diskusi masa lalu.
     """
-    # Preprocessing query agar lebih aman untuk plainto_tsquery
-    # Menghapus karakter khusus yang bisa mengacaukan lexer
+    # Preprocessing query agar lebih aman untuk to_tsquery
     safe_query = "".join([c for c in query[:500] if c.isalnum() or c.isspace()])
     
-    # Jika kueri terlalu pendek (misal cuma "hai" atau "halo"), jangan buang waktu mencari
-    if len(safe_query.strip().split()) < 2:
+    words = [w for w in safe_query.strip().split() if len(w) > 2]
+    # Jika kueri terlalu pendek, jangan buang waktu mencari
+    if len(words) == 0:
         return ""
+        
+    # Ganti AND logic dengan OR logic supaya tidak terlalu strict
+    or_tsquery = " | ".join(words)
         
     try:
         async with get_db() as conn:
@@ -30,21 +33,21 @@ async def search_community_knowledge(query: str, is_guest: bool, limit: int = 3)
             else:
                 npp_condition = "(cs.npp != 'GUEST' AND cs.npp IS NOT NULL)"
                 
-            # Gunakan tsvector/tsquery 'simple' karena kamus bahasa Indonesia mungkin tidak terinstal di setiap server PG
+            # Gunakan tsvector/tsquery 'simple' dengan OR logic
             sql = f"""
                 SELECT 
                     adc.user_text, 
                     adc.assistant_text,
-                    ts_rank(to_tsvector('simple', COALESCE(adc.user_text, '') || ' ' || COALESCE(adc.assistant_text, '')), plainto_tsquery('simple', $1)) as rank
+                    ts_rank(to_tsvector('simple', COALESCE(adc.user_text, '') || ' ' || COALESCE(adc.assistant_text, '')), to_tsquery('simple', $1)) as rank
                 FROM ai_dialogue_corpus adc
                 JOIN chat_sessions cs ON adc.session_id = cs.id
                 WHERE {npp_condition}
-                  AND to_tsvector('simple', COALESCE(adc.user_text, '') || ' ' || COALESCE(adc.assistant_text, '')) @@ plainto_tsquery('simple', $1)
+                  AND to_tsvector('simple', COALESCE(adc.user_text, '') || ' ' || COALESCE(adc.assistant_text, '')) @@ to_tsquery('simple', $1)
                 ORDER BY rank DESC
                 LIMIT $2
             """
             
-            results = await conn.fetch(sql, safe_query, limit)
+            results = await conn.fetch(sql, or_tsquery, limit)
             
             if not results:
                 return ""
