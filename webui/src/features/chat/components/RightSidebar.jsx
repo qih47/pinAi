@@ -49,6 +49,7 @@ const getArtifactFileIcon = (ext, defaultColor) => {
 };
 
 export default function RightSidebar({
+  isMobile,
   theme,
   darkMode,
   previewDoc,
@@ -94,10 +95,11 @@ export default function RightSidebar({
         right: 0,
         top: isPreviewMode ? 0 : "56px",
         bottom: 0,
-        width: isPreviewMode ? `${rightSidebarWidth}px` : "325px",
+        width: isMobile ? "100%" : (isPreviewMode ? `${rightSidebarWidth}px` : "325px"),
+        maxWidth: "100vw",
         background: baseBgColor,
         borderLeft: `1px solid ${borderStyleColor}`,
-        borderTopLeftRadius: isPreviewMode ? "0" : "20px",
+        borderTopLeftRadius: (isPreviewMode || isMobile) ? "0" : "20px",
         transform: showRightSidebar ? "translateX(0)" : "translateX(100%)",
         transition: isResizingRightSidebar.current ? "none" : "transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), width 0.4s cubic-bezier(0.16, 1, 0.3, 1), border-radius 0.2s",
         zIndex: isPreviewMode ? 40 : 35,
@@ -118,7 +120,7 @@ export default function RightSidebar({
         .download-btn-hover:hover { background: ${darkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)'} !important; color: #6366f1 !important; }
       `}</style>
 
-      {isPreviewMode && (
+      {isPreviewMode && !isMobile && (
         <div
           onMouseDown={startResizingRightSidebar}
           style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: '4px', cursor: 'col-resize', zIndex: 50, transition: 'background 0.2s' }}

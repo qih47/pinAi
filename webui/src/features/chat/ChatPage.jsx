@@ -2175,6 +2175,7 @@ export default function ChatPage({
       )}
       {/* 📁 RIGHT SIDEBAR SESSION FILES */}
       <RightSidebar
+        isMobile={isMobile}
         theme={theme}
         darkMode={darkMode}
         previewDoc={previewDoc}
