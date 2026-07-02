@@ -175,9 +175,9 @@ export default function SessionList({
               {/* 🔥 SVG GANTI EMOJI PIN/CHAT UTAMA LIST */}
               <span className="mr-2.5 opacity-60 flex-shrink-0">
                 {chat.is_pinned ? (
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                    <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
-                    <circle cx="12" height="10" r="3"></circle>
+                  /* SVG Pushpin Modern Simetris */
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" strokeWidth="1">
+                    <path d="M21 12c-1.42 0-3.37-1.12-4-2.28V4a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v5.72C6.37 10.88 4.42 12 3 12a1 1 0 0 0-1 1v1a1 1 0 0 0 1 1h8v6l1 2 1-2v-6h8a1 1 0 0 0 1-1v-1a1 1 0 0 0-1-1z"></path>
                   </svg>
                 ) : (
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">

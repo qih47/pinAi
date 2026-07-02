@@ -15,6 +15,7 @@ import asyncio
 from typing import Optional, List
 from datetime import datetime
 from pathlib import Path
+import aiomysql
 
 from fastapi import (
     APIRouter,
@@ -30,7 +31,7 @@ from fastapi.responses import JSONResponse
 
 from backend.app.api.dependencies.auth import get_current_user_npp
 from backend.app.core.paths import get_account_dir
-from backend.app.core.database import get_db
+from backend.app.core.database import get_db, get_peraturan_db
 from backend.app.api.schemas.document import (
     DocumentSchema,
     DocumentListSchema,
@@ -59,6 +60,7 @@ async def list_documents(
     current_user_npp: str = Depends(get_current_user_npp),
     offset: int = Query(0, ge=0, description="Offset untuk pagination"),
     limit: int = Query(20, ge=1, le=100, description="Limit items per halaman"),
+    search: Optional[str] = Query(None, description="Kata kunci pencarian"),
 ):
     """
     List semua dokumen dengan pagination.
@@ -78,26 +80,46 @@ async def list_documents(
         raise HTTPException(status_code=403, detail="Guest tidak bisa akses dokumen")
     
     try:
-        async with get_db() as conn:
-            # Count total
-            total_result = await conn.fetchval("SELECT COUNT(*) FROM dokumen")
-            total = total_result or 0
-            
-            # Fetch dengan pagination
-            rows = await conn.fetch(
-                """
-                SELECT 
-                    d.id, d.judul AS title, 
-                    d.nomor, d.tanggal AS created_at, d.filename, j.nama AS jenis_dokumen,
-                    (SELECT COUNT(*) FROM dokumen_chunk WHERE dokumen_id = d.id) AS chunk_count
-                FROM dokumen d
-                LEFT JOIN jenis_dokumen j ON d.id_jenis = j.id
-                ORDER BY d.id DESC
-                LIMIT $1 OFFSET $2
-                """,
-                limit,
-                offset,
-            )
+        async with get_peraturan_db() as conn:
+            async with conn.cursor(aiomysql.DictCursor) as cursor:
+                # Menentukan klausa WHERE berdasarkan input search
+                where_clause = ""
+                params_count = []
+                params_data = []
+                
+                if search:
+                    search_term = f"%{search}%"
+                    where_clause = "WHERE b.judul LIKE %s OR b.noper LIKE %s"
+                    params_count = [search_term, search_term]
+                    params_data = [search_term, search_term, limit, offset]
+                else:
+                    params_data = [limit, offset]
+                
+                # Count total
+                await cursor.execute(f"SELECT COUNT(*) AS total FROM berita b {where_clause}", params_count)
+                total_result = await cursor.fetchone()
+                total = total_result['total'] if total_result else 0
+                
+                # Fetch dengan pagination
+                await cursor.execute(
+                    f"""
+                    SELECT 
+                        b.id_berita AS id, 
+                        b.judul AS title, 
+                        b.noper AS nomor, 
+                        b.tanggal AS created_at, 
+                        COALESCE(NULLIF(b.gambar, ''), NULLIF(b.gambar2, ''), NULLIF(b.gambar3, '')) AS filename, 
+                        k.nama_kategori AS jenis_dokumen,
+                        0 AS chunk_count
+                    FROM berita b
+                    LEFT JOIN kategori k ON b.id_kategori = k.id_kategori
+                    {where_clause}
+                    ORDER BY b.id_berita DESC
+                    LIMIT %s OFFSET %s
+                    """,
+                    params_data
+                )
+                rows = await cursor.fetchall()
             
             documents = []
             for row in rows:

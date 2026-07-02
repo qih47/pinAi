@@ -51,6 +51,7 @@ export function useChatLogic({ isGuest,
   const isLoadingDocuments = useChatStore(
     (state) => state.isLoadingDocuments || false,
   );
+  const documentsTotal = useChatStore((state) => state.documentsTotal);
   const fetchDocumentsList = useChatStore((state) => state.fetchDocumentsList);
   const artifacts = useChatStore((state) => state.artifacts || []);
 
@@ -602,11 +603,7 @@ export function useChatLogic({ isGuest,
   }, []);
 
   // Load documents when document list is opened
-  useEffect(() => {
-    if (showDocumentList) {
-      fetchDocumentsList();
-    }
-  }, [showDocumentList, fetchDocumentsList]);
+
 
   const {
     messages,
@@ -967,6 +964,7 @@ export function useChatLogic({ isGuest,
     docContent,
     docSearchQuery,
     documents,
+    documentsTotal,
     fetchDocumentsList,
     fileInputRef,
     handleChatModeChange,

@@ -27,6 +27,11 @@ class Settings(BaseSettings):
     DB_LOGIN_USER: str = "postgres"
     DB_LOGIN_PASSWORD: str = "postgres"
 
+    DB_PERATURAN_HOST: str = "localhost"
+    DB_PERATURAN_DATABASE: str = "qa_peraturan_db"
+    DB_PERATURAN_USER: str = "postgres"
+    DB_PERATURAN_PASSWORD: str = "postgres"
+
     OLLAMA_BASE_URL: str = "http://localhost:11434"
 
     MODEL_PERSONA: str = "gemma4:12b"       # Satu-satunya LLM — Gemma4 Agentic Engine

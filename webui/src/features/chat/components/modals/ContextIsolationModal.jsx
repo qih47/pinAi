@@ -1,9 +1,11 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 
 export default function ContextIsolationModal({
   showModal,
   onClose,
   documents,
+  documentsTotal,
+  fetchDocumentsList,
   isLoadingDocuments,
   activeIsolatedDocId,
   onSelectDocument,
@@ -11,8 +13,30 @@ export default function ContextIsolationModal({
   darkMode,
 }) {
   const [docSearchQuery, setDocSearchQuery] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
+  const limit = 15;
+
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      if (debouncedSearch !== docSearchQuery) {
+        setDebouncedSearch(docSearchQuery);
+        setCurrentPage(1); // Reset page on new search
+      }
+    }, 500);
+    return () => clearTimeout(handler);
+  }, [docSearchQuery, debouncedSearch]);
+
+  useEffect(() => {
+    if (showModal && fetchDocumentsList) {
+      const offset = (currentPage - 1) * limit;
+      fetchDocumentsList({ offset, limit, search: debouncedSearch });
+    }
+  }, [showModal, currentPage, debouncedSearch, fetchDocumentsList]);
 
   if (!showModal) return null;
+
+  const totalPages = Math.ceil((documentsTotal || 0) / limit);
 
   return (
     <div
@@ -40,7 +64,7 @@ export default function ContextIsolationModal({
           boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.3)",
           display: "flex",
           flexDirection: "column",
-          maxHeight: "80vh",
+          maxHeight: "85vh",
           overflow: "hidden",
         }}
       >
@@ -117,15 +141,7 @@ export default function ContextIsolationModal({
               >
                 Memuat dokumen...
               </div>
-            ) : documents.filter(
-                (doc) =>
-                  (doc.title || "")
-                    .toLowerCase()
-                    .includes(docSearchQuery.toLowerCase()) ||
-                  (doc.nomor || "")
-                    .toLowerCase()
-                    .includes(docSearchQuery.toLowerCase())
-              ).length === 0 ? (
+            ) : (!documents || documents.length === 0) ? (
               <div
                 style={{
                   textAlign: "center",
@@ -136,90 +152,130 @@ export default function ContextIsolationModal({
                 Tidak ada dokumen ditemukan.
               </div>
             ) : (
-              documents
-                .filter(
-                  (doc) =>
-                    (doc.title || "")
-                      .toLowerCase()
-                      .includes(docSearchQuery.toLowerCase()) ||
-                    (doc.nomor || "")
-                      .toLowerCase()
-                      .includes(docSearchQuery.toLowerCase())
-                )
-                .map((doc) => {
-                  const isIsolated = activeIsolatedDocId === doc.id;
-                  return (
+              documents.map((doc) => {
+                const isIsolated = activeIsolatedDocId === doc.id;
+                return (
+                  <div
+                    key={doc.id}
+                    style={{
+                      padding: "12px 16px",
+                      borderRadius: "10px",
+                      background: isIsolated
+                        ? darkMode
+                          ? "rgba(99, 102, 241, 0.15)"
+                          : "rgba(37, 99, 235, 0.08)"
+                        : darkMode
+                          ? "#2a2a2d"
+                          : "#f9fafb",
+                      border: `1px solid ${
+                        isIsolated ? (darkMode ? "#6366f1" : "#2563eb") : theme.borderColor
+                      }`,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      gap: "12px",
+                      transition: "all 0.15s ease",
+                    }}
+                  >
                     <div
-                      key={doc.id}
-                      style={{
-                        padding: "12px 16px",
-                        borderRadius: "10px",
-                        background: isIsolated
-                          ? darkMode
-                            ? "rgba(99, 102, 241, 0.15)"
-                            : "rgba(37, 99, 235, 0.08)"
-                          : darkMode
-                            ? "#2a2a2d"
-                            : "#f9fafb",
-                        border: `1px solid ${
-                          isIsolated ? (darkMode ? "#6366f1" : "#2563eb") : theme.borderColor
-                        }`,
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                        gap: "12px",
-                        transition: "all 0.15s ease",
-                      }}
+                      style={{ minWidth: 0, flex: 1, textAlign: "left" }}
                     >
                       <div
-                        style={{ minWidth: 0, flex: 1, textAlign: "left" }}
-                      >
-                        <div
-                          style={{
-                            fontWeight: 600,
-                            fontSize: "13.5px",
-                            whiteSpace: "nowrap",
-                            overflow: "hidden",
-                            textOverflow: "ellipsis",
-                          }}
-                        >
-                          {doc.title}
-                        </div>
-                        <div
-                          style={{
-                            fontSize: "11px",
-                            color: theme.secondaryText,
-                            marginTop: "2px",
-                          }}
-                        >
-                          No: {doc.nomor || "-"} | Tipe: {doc.jenis_dokumen || "-"}
-                        </div>
-                      </div>
-                      <button
-                        onClick={() => {
-                          onSelectDocument(doc.id, doc.title);
-                          onClose();
-                        }}
                         style={{
-                          padding: "6px 12px",
-                          borderRadius: "20px",
-                          border: "none",
-                          background: isIsolated ? "#ef4444" : "#6366f1",
-                          color: "#ffffff",
-                          fontSize: "12px",
                           fontWeight: 600,
-                          cursor: "pointer",
-                          transition: "all 0.15s ease",
-                          flexShrink: 0,
+                          fontSize: "13.5px",
+                          whiteSpace: "nowrap",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
                         }}
                       >
-                        {isIsolated ? "Batal Fokus" : "Fokus"}
-                      </button>
+                        {doc.title}
+                      </div>
+                      <div
+                        style={{
+                          fontSize: "11px",
+                          color: theme.secondaryText,
+                          marginTop: "2px",
+                        }}
+                      >
+                        No: {doc.nomor || "-"} | Tipe: {doc.jenis_dokumen || "-"}
+                      </div>
                     </div>
-                  );
-                })
+                    <button
+                      onClick={() => {
+                        onSelectDocument(doc.id, doc.title);
+                        onClose();
+                      }}
+                      style={{
+                        padding: "6px 12px",
+                        borderRadius: "20px",
+                        border: "none",
+                        background: isIsolated ? "#ef4444" : "#6366f1",
+                        color: "#ffffff",
+                        fontSize: "12px",
+                        fontWeight: 600,
+                        cursor: "pointer",
+                        transition: "all 0.15s ease",
+                        flexShrink: 0,
+                      }}
+                    >
+                      {isIsolated ? "Batal Fokus" : "Fokus"}
+                    </button>
+                  </div>
+                );
+              })
             )}
           </div>
+        </div>
+
+        {/* Pagination UI */}
+        <div
+          style={{
+            padding: "12px 20px",
+            borderTop: `1px solid ${theme.borderColor}`,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            background: darkMode ? "#1e1e20" : "#ffffff",
+          }}
+        >
+          <button
+            onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+            disabled={currentPage <= 1 || isLoadingDocuments}
+            style={{
+              padding: "6px 12px",
+              borderRadius: "8px",
+              background: (currentPage <= 1 || isLoadingDocuments) ? (darkMode ? "#3a3a3d" : "#e5e7eb") : (darkMode ? "#3b82f6" : "#2563eb"),
+              color: (currentPage <= 1 || isLoadingDocuments) ? (darkMode ? "#6b7280" : "#9ca3af") : "#ffffff",
+              border: "none",
+              fontSize: "12px",
+              fontWeight: 600,
+              cursor: (currentPage <= 1 || isLoadingDocuments) ? "not-allowed" : "pointer",
+            }}
+          >
+            &laquo; Sebelumnya
+          </button>
+          
+          <div style={{ fontSize: "12px", color: theme.secondaryText }}>
+            Halaman {totalPages > 0 ? currentPage : 0} dari {totalPages}
+          </div>
+
+          <button
+            onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+            disabled={currentPage >= totalPages || isLoadingDocuments}
+            style={{
+              padding: "6px 12px",
+              borderRadius: "8px",
+              background: (currentPage >= totalPages || isLoadingDocuments) ? (darkMode ? "#3a3a3d" : "#e5e7eb") : (darkMode ? "#3b82f6" : "#2563eb"),
+              color: (currentPage >= totalPages || isLoadingDocuments) ? (darkMode ? "#6b7280" : "#9ca3af") : "#ffffff",
+              border: "none",
+              fontSize: "12px",
+              fontWeight: 600,
+              cursor: (currentPage >= totalPages || isLoadingDocuments) ? "not-allowed" : "pointer",
+            }}
+          >
+            Selanjutnya &raquo;
+          </button>
         </div>
       </div>
     </div>

@@ -1,4 +1,5 @@
 import asyncpg
+import aiomysql
 import logging
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
@@ -9,10 +10,11 @@ logger = logging.getLogger("CAKRA_DATABASE")
 # Global connection pools
 db_pool = None
 hris_pool = None
+peraturan_pool = None
 
 async def init_db_pool():
     """Inisialisasi dual-database connection pools saat startup"""
-    global db_pool, hris_pool
+    global db_pool, hris_pool, peraturan_pool
     try:
         # 1. Main Database Pool (ragdb)
         db_pool = await asyncpg.create_pool(
@@ -36,6 +38,21 @@ async def init_db_pool():
             command_timeout=60.0,
         )
 
+        # 3. Peraturan Database Pool (MySQL)
+        try:
+            peraturan_pool = await aiomysql.create_pool(
+                host=settings.DB_PERATURAN_HOST,
+                db=settings.DB_PERATURAN_DATABASE,
+                user=settings.DB_PERATURAN_USER,
+                password=settings.DB_PERATURAN_PASSWORD,
+                minsize=3,
+                maxsize=10,
+                autocommit=True
+            )
+        except Exception as e:
+            logger.error(f"[DB_CONNECTION_POOL_ERROR] Failed to initialize Peraturan DB pool: {e}")
+            peraturan_pool = None
+
         async with db_pool.acquire() as conn:
             try:
                 await _create_llm_thinking_audit_table(conn)
@@ -49,18 +66,20 @@ async def init_db_pool():
             except Exception as e:
                 logger.warning(f"⚠️ [DB_MIGRATION] Gagal menjalankan migrasi schema otomatis: {e}")
 
-        logger.info("[DB_CONNECTION_POOL_INIT] Dual-database pools (ragdb & hris) initialized successfully.")
+        logger.info("[DB_CONNECTION_POOL_INIT] Triple-database pools (ragdb, hris, peraturan) initialized successfully.")
     except Exception as e:
         logger.error(f"[DB_CONNECTION_POOL_ERROR] Failed to initialize database pools: {e}")
         raise e
 
 async def close_db_pool():
     """Menutup pool koneksi saat aplikasi shutdown"""
-    global db_pool, hris_pool
+    global db_pool, hris_pool, peraturan_pool
     if db_pool:
         await db_pool.close()
     if hris_pool:
         await hris_pool.close()
+    if peraturan_pool:
+        await peraturan_pool.close()
     logger.info("🛑 [DATABASE] All database connection pools closed clean.")
 
 @asynccontextmanager
@@ -83,6 +102,17 @@ async def get_hris_db():
         raise RuntimeError("HRIS database pool not initialized")
     
     async with hris_pool.acquire() as connection:
+        yield connection
+
+@asynccontextmanager
+async def get_peraturan_db():
+    """Get Peraturan database connection context manager"""
+    global peraturan_pool
+    if peraturan_pool is None:
+        logging.error("Peraturan pool (peraturan_pool) is None. Pastikan init_db_pool() sudah jalan.")
+        raise RuntimeError("Peraturan database pool not initialized")
+    
+    async with peraturan_pool.acquire() as connection:
         yield connection
 
 def embedding_to_pgvector_str(embedding) -> str:
