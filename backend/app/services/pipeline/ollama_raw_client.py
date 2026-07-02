@@ -21,6 +21,8 @@ def _build_ollama_request_payload(
     """
     options = {
         "temperature": temperature,
+        "top_p": 0.95,
+        "top_k": 64,
         "num_predict": num_predict,
         "num_ctx": num_ctx,
     }
@@ -50,7 +52,7 @@ async def _acquire_gpu_slot(request: Optional[Request]) -> AsyncGenerator:
 async def call_ollama_generate_raw(
     model_name: str,
     raw_prompt: str,
-    temperature: float = 0.7,
+    temperature: float = 1.0,
     num_predict: int = 2048,
     num_ctx: int = 32000,
     stop_sequences: List[str] = None,
@@ -122,7 +124,7 @@ class RawGenerateClient:
         payload = _build_ollama_request_payload(
             model_name=model_name,
             raw_prompt=raw_prompt,
-            temperature=kwargs.get("temperature", 0.7),
+            temperature=kwargs.get("temperature", 1.0),
             num_predict=kwargs.get("num_predict", 2048),
             num_ctx=kwargs.get("num_ctx", 32000),
             stop_sequences=kwargs.get("stop_sequences")

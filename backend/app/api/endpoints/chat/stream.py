@@ -247,10 +247,23 @@ async def _sequential_pipeline_generator(
 
     try:
         from backend.app.services.pipeline.mode_hub import mode_hub
+        import re
+        cleaned_history = []
+        for msg in payload.messages:
+            if hasattr(msg, "role") and msg.role == "assistant" and msg.content:
+                new_content = re.sub(r'<\|channel>thought.*?<channel\|>', '', msg.content, flags=re.DOTALL).strip()
+                try:
+                    cleaned_msg = msg.model_copy(update={'content': new_content})
+                except AttributeError:
+                    cleaned_msg = msg.copy(update={'content': new_content})
+                cleaned_history.append(cleaned_msg)
+            else:
+                cleaned_history.append(msg)
+
         agentic_engine = mode_hub.execute(
             request=request,
             user_message=user_message,
-            chat_history=payload.messages,
+            chat_history=cleaned_history,
             chat_mode=chat_mode,
             is_thinking=payload.thinking if hasattr(payload, 'thinking') else True,
             attachments=formatted_attachments,

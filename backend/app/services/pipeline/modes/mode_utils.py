@@ -127,33 +127,38 @@ def build_call2_system_prompt(
         build_response_prompt_general_expert,
     )
     if module_name == "chitchat":
-        return build_response_prompt_chitchat(employee_name, precheck, is_thinking)
+        prompt = build_response_prompt_chitchat(employee_name, precheck, is_thinking)
     elif module_name == "coding":
-        return build_response_prompt_coding(employee_name, precheck, is_thinking)
+        prompt = build_response_prompt_coding(employee_name, precheck, is_thinking)
     elif module_name == "rag":
-        return build_response_prompt_rag(employee_name, precheck, is_thinking, rag_context, rag_sources)
+        prompt = build_response_prompt_rag(employee_name, precheck, is_thinking, rag_context, rag_sources)
     elif module_name == "multi_document":
-        return build_response_prompt_multi_document(employee_name, precheck, is_thinking, rag_context, rag_sources)
+        prompt = build_response_prompt_multi_document(employee_name, precheck, is_thinking, rag_context, rag_sources)
     elif module_name == "analytic":
-        return build_response_prompt_analytic(employee_name, precheck, is_thinking)
+        prompt = build_response_prompt_analytic(employee_name, precheck, is_thinking)
     elif module_name == "self_correction":
-        return build_response_prompt_self_correction(employee_name, precheck, is_thinking)
+        prompt = build_response_prompt_self_correction(employee_name, precheck, is_thinking)
     elif module_name == "ambiguous":
-        return build_response_prompt_ambiguous(employee_name, precheck, is_thinking)
+        prompt = build_response_prompt_ambiguous(employee_name, precheck, is_thinking)
     elif module_name == "general_expert":
-        return build_response_prompt_general_expert(employee_name, precheck, is_thinking)
+        prompt = build_response_prompt_general_expert(employee_name, precheck, is_thinking)
     else:
-        return build_response_prompt_chitchat(employee_name, precheck, is_thinking)
+        prompt = build_response_prompt_chitchat(employee_name, precheck, is_thinking)
+
+    if is_thinking:
+        prompt = "<|think|>\n" + prompt
+        
+    return prompt
 
 def get_module_config(module_name: str) -> Dict[str, Any]:
     configs = {
-        "chitchat": {"num_ctx": 8192, "temperature": 0.75}, # Naik dari 2048
-        "coding": {"num_ctx": 8192, "temperature": 0.3},
-        "rag": {"num_ctx": 16384, "temperature": 0.4},
-        "multi_document": {"num_ctx": 16384, "temperature": 0.35},
-        "analytic": {"num_ctx": 8192, "temperature": 0.3},
-        "self_correction": {"num_ctx": 8192, "temperature": 0.5}, # Naik dari 4096
-        "ambiguous": {"num_ctx": 4096, "temperature": 0.6}, # Naik dari 2048
-        "general_expert": {"num_ctx": 8192, "temperature": 0.6}, # Naik dari 4096
+        "chitchat": {"num_ctx": 8192, "temperature": 1.0},
+        "coding": {"num_ctx": 8192, "temperature": 1.0},
+        "rag": {"num_ctx": 16384, "temperature": 1.0},
+        "multi_document": {"num_ctx": 16384, "temperature": 1.0},
+        "analytic": {"num_ctx": 8192, "temperature": 1.0},
+        "self_correction": {"num_ctx": 8192, "temperature": 1.0},
+        "ambiguous": {"num_ctx": 4096, "temperature": 1.0},
+        "general_expert": {"num_ctx": 8192, "temperature": 1.0},
     }
     return configs.get(module_name, configs["chitchat"])

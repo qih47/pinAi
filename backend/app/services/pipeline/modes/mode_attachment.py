@@ -48,46 +48,47 @@ class ModeAttachment:
         # For this, we assume that 'attachments' might contain base64 image strings 
         # that should be passed to the Ollama messages API.
         
+        if is_thinking:
+            system_prompt = "<|think|>\n" + system_prompt
+
         stream_messages = [
             {"role": "system", "content": system_prompt},
             *trimmed_messages,
         ]
 
+        is_from_pdf = False
         if attachments:
             images_base64 = []
             for att in attachments:
-                if isinstance(att, dict) and "base64" in att:
-                    images_base64.append(att["base64"])
-                elif isinstance(att, str) and att.startswith("data:image"):
-                    base64_data = att.split("base64,")[-1]
-                    images_base64.append(base64_data)
+                if isinstance(att, dict):
+                    # Deteksi apakah gambar ini berasal dari dump PDF
+                    if att.get("file_type") == "application/pdf" or "pdf" in att.get("file_path", "").lower():
+                        is_from_pdf = True
+                    
+                    if "base64" in att:
+                        images_base64.append(att["base64"])
+                elif isinstance(att, str):
+                    # Backward compatibility if it's already a base64 string
+                    images_base64.append(att)
             
             if images_base64:
-                yield format_sse(status="🖼️ Memproses lampiran gambar...", event_type=SSEEventType.STATUS)
+                import base64
+                from io import BytesIO
                 try:
-                    import base64
-                    from io import BytesIO
                     from PIL import Image
-
                     processed_images = []
                     for b64_str in images_base64:
-                        try:
+                        if len(b64_str) * 0.75 > 2 * 1024 * 1024:
                             image_data = base64.b64decode(b64_str)
-                            img = Image.open(BytesIO(image_data))
-                            
-                            # Jika WEBP atau format lain yang mungkin bermasalah, konversi ke PNG
-                            if img.format not in ["PNG", "JPEG"]:
-                                if img.mode in ("RGBA", "P"):
-                                    img = img.convert("RGB")
-                                buffered = BytesIO()
-                                img.save(buffered, format="PNG")
-                                processed_images.append(base64.b64encode(buffered.getvalue()).decode("utf-8"))
-                            else:
-                                processed_images.append(b64_str)
-                        except Exception as img_err:
-                            logger.error(f"[VISION] Error processing image: {img_err}")
+                            image = Image.open(BytesIO(image_data))
+                            max_size = (1024, 1024)
+                            image.thumbnail(max_size, Image.Resampling.LANCZOS)
+                            buffered = BytesIO()
+                            image.save(buffered, format="JPEG", quality=85)
+                            processed_images.append(base64.b64encode(buffered.getvalue()).decode("utf-8"))
+                        else:
                             processed_images.append(b64_str)
-
+                    
                     # Append images to the last user message
                     for msg in reversed(stream_messages):
                         if msg["role"] == "user":
@@ -96,8 +97,13 @@ class ModeAttachment:
                 except Exception as e:
                     logger.error(f"[VISION] Gagal memproses gambar: {e}")
 
-        num_ctx = ATTACHMENT_MODE_CONFIG["num_ctx"]
-        temperature = ATTACHMENT_MODE_CONFIG["temperature"]
+        # HYBRID TOKEN BUDGET UNTUK VISION GEMMA 4
+        # Jika dari PDF -> Butuh high resolution token budget (misal 1120) & num_ctx besar
+        # Jika gambar biasa -> Budget normal (280) & num_ctx standar
+        num_ctx = 32000 if is_from_pdf else 16384
+        temperature = 1.0 # Standard best practice Gemma 4
+        # Parameter token budget jika didukung oleh Ollama via options
+        token_budget = 1120 if is_from_pdf else 280
 
         yield format_sse(status="👁️ Menganalisis lampiran dokumen/gambar", event_type=SSEEventType.STATUS)
 
@@ -114,6 +120,7 @@ class ModeAttachment:
                 num_ctx=num_ctx,
                 num_predict=8192,
                 is_thinking=is_thinking,
+                token_budget=token_budget,
             ):
                 try:
                     chunk_data = json.loads(chunk_line.strip())

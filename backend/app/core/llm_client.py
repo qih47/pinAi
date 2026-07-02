@@ -127,7 +127,7 @@ async def stream_ollama_chat(
     model_name: str,
     messages: List[Dict[str, str]],
     request: Request,
-    temperature: float = 0.7,
+    temperature: float = 1.0,
     session_uuid: Optional[str] = None,
     keep_alive: int = -1,
     num_ctx: int = 4096,
@@ -156,6 +156,8 @@ async def stream_ollama_chat(
 
         ollama_options = {
             "temperature": temperature,
+            "top_p": 0.95,
+            "top_k": 64,
             "num_ctx": num_ctx,
             "num_predict": kwargs.pop("num_predict", 2048),
             **kwargs,
@@ -302,6 +304,8 @@ async def generate_json_response(
 
     ollama_options = {
         "temperature": temperature,
+        "top_p": 0.95,
+        "top_k": 64,
         "num_ctx": num_ctx,
         "num_predict": num_predict,
         **kwargs,
@@ -378,7 +382,7 @@ async def generate_json_response(
 async def call_ollama_generate_raw(
     model_name: str,
     raw_prompt: str,
-    temperature: float = 0.7,
+    temperature: float = 1.0,
     num_predict: int = 2048,
     num_ctx: int = 32000,
     stop_sequences: List[str] = None,
