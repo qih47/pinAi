@@ -283,6 +283,7 @@ export default function ChatPage({
   const handleThinkingModeChange = (val) => {
     isThinkingModeRef.current = val;
     setIsThinkingMode(val);
+    useChatStore.setState({ isThinkingMode: val });
     if (sessionId && sessionId !== 'new') {
       import('../../services/endpoints').then(endpoints => {
         endpoints.updateSessionSettings(sessionId, { chatMode: chatModeRef.current, isThinkingMode: val }).catch(() => { });
@@ -313,6 +314,7 @@ export default function ChatPage({
   };
   // REF: Capture tinggi baseline 1 baris saat mount pertama
   const baselineHeightRef = useRef(0);
+  const singleLineWidthRef = useRef(0);
 
   const stagedAttachments = useChatStore((state) => state.stagedAttachments);
   const setStagedAttachments = useChatStore(
@@ -678,6 +680,7 @@ export default function ChatPage({
 
             setIsThinkingMode(savedThinkingMode);
             isThinkingModeRef.current = savedThinkingMode;
+            useChatStore.setState({ isThinkingMode: savedThinkingMode });
           }
         }).catch(() => { });
       });
@@ -688,6 +691,7 @@ export default function ChatPage({
 
       setIsThinkingMode(false);
       isThinkingModeRef.current = false;
+      useChatStore.setState({ isThinkingMode: false });
     }
   }, [sessionId]);
 
@@ -778,11 +782,33 @@ export default function ChatPage({
       return;
     }
 
+    // SIMPAN LEBAR ASLI SAAT SINGLE LINE UNTUK REFERENSI (merespons resize/rotasi)
+    if (!isMultiLine) {
+      singleLineWidthRef.current = el.clientWidth;
+    }
+
     const scrollTop = el.scrollTop;
     el.style.overflow = "hidden";
     el.style.height = "auto";
 
+    // SIMULASI LEBAR SINGLE LINE UNTUK MENDETEKSI WRAPPING YANG AKURAT SAAT MODE MULTI-LINE
+    let originalWidth = "";
+    let originalFlex = "";
+    if (isMultiLine && singleLineWidthRef.current > 0) {
+      originalWidth = el.style.width;
+      originalFlex = el.style.flex;
+      el.style.flex = "none";
+      el.style.width = `${singleLineWidthRef.current}px`;
+    }
+
     const newHeight = Math.min(el.scrollHeight, 450);
+    
+    // KEMBALIKAN LEBAR KE SEMULA JIKA DIMODIFIKASI
+    if (isMultiLine && singleLineWidthRef.current > 0) {
+      el.style.width = originalWidth;
+      el.style.flex = originalFlex;
+    }
+
     el.style.height = `${newHeight}px`;
 
     el.style.overflow = newHeight >= 450 ? "auto" : "hidden";
@@ -791,7 +817,7 @@ export default function ChatPage({
     const baseline = baselineHeightRef.current;
     if (baseline > 0) {
       const hasNewlines = input.includes("\n");
-      const isCurrentlyThick = el.scrollHeight > baseline + 3 || hasNewlines;
+      const isCurrentlyThick = newHeight > baseline + 3 || hasNewlines;
 
       // Gunakan variabel lokal 'isCurrentlyThick' untuk membandingkan dengan state sebelumnya melalui pembaruan fungsional untuk menghindari pembaruan langsung
       setIsMultiLine((prevIsMultiLine) => {
@@ -799,15 +825,15 @@ export default function ChatPage({
           // LOGIKA NAIK: Jika aslinya single, tapi sekarang mendeteksi tebal
           return isCurrentlyThick;
         } else {
-          // LOGIKA TURUN: Jika aslinya multi, hanya boleh balik single kalau beneran pendek < 65
-          if (!isCurrentlyThick && input.length < 65) {
+          // LOGIKA TURUN: Jika aslinya multi, hanya boleh balik single kalau tidak tebal di simulasi lebar single
+          if (!isCurrentlyThick) {
             return false;
           }
           return true; // Tetap mengunci multi-line
         }
       });
     }
-  }, [input]); // SINKRONISASI AMAN: Hanya memantau perubahan 'input', mengeluarkan 'isMultiLine' dari dependensi
+  }, [input, isMultiLine]); // PENTING: tambahkan isMultiLine ke dependensi untuk validasi ulang lebar
 
   // 2. PROSES PENGUNGGAHAN BERKAS DIJALANKAN DI SINI SAAT TOMBOL KIRIM DIKLIK
   const handleSubmit = async (e) => {
@@ -978,8 +1004,6 @@ export default function ChatPage({
           animation: geminiReveal 0.35s ease-out forwards;
         }
         textarea {
-          scrollbar-width: thin;
-          scrollbar-color: ${darkMode ? "#4b5563" : "#9ca3af"} transparent;
         }
         textarea::-webkit-scrollbar {
           width: 6px;
@@ -996,9 +1020,10 @@ export default function ChatPage({
           background: ${darkMode ? "#6b7280" : "#94a3b8"};
         }
         textarea::-webkit-scrollbar-button {
-          display: none;
-          width: 0;
-          height: 0;
+          display: none !important;
+          width: 0 !important;
+          height: 0 !important;
+          -webkit-appearance: none !important;
         }
         * { box-sizing: border-box; }
         .custom-scroll-gemini::-webkit-scrollbar { width: 8px; background-color: transparent; }
@@ -1006,6 +1031,8 @@ export default function ChatPage({
           background-color: ${darkMode ? "rgba(255, 255, 255, 0.15)" : "rgba(0, 0, 0, 0.15)"};
           border-radius: 20px;
         }
+        .custom-scroll-gemini::-webkit-scrollbar-button { display: none !important; width: 0 !important; height: 0 !important; -webkit-appearance: none !important; }
+        .custom-scroll-gemini::-webkit-scrollbar-corner { background: transparent; }
 
         /* ── ANIMASI SHIMMER & BOUNCE ── */
         @keyframes skeletonShimmer {

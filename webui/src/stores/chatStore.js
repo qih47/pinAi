@@ -375,6 +375,7 @@ export const useChatStore = create((set, get) => ({
     isLoading: false,
     isStreaming: false,
     isThinking: false,
+    isThinkingMode: false,
     currentThinking: '',  // New: current thinking signal from pipeline
     sessionUuid: null,
     stagedAttachments: [],

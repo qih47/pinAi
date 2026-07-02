@@ -116,8 +116,11 @@ export default function RightSidebar({
         @keyframes rotate-spin { 100% { transform: rotate(360deg); } }
         .premium-scroll::-webkit-scrollbar { width: 5px; height: 5px; }
         .premium-scroll::-webkit-scrollbar-track { background: transparent; }
+        .premium-scroll::-webkit-scrollbar-button { display: none !important; width: 0 !important; height: 0 !important; -webkit-appearance: none !important; }
         .premium-scroll::-webkit-scrollbar-thumb { background: ${darkMode ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.12)"}; border-radius: 10px; }
         .premium-scroll::-webkit-scrollbar-thumb:hover { background: ${darkMode ? "rgba(255,255,255,0.25)" : "rgba(0,0,0,0.25)"}; }
+        .premium-scroll::-webkit-scrollbar-corner { background: transparent; }
+        .premium-scroll::-webkit-scrollbar-corner { background: transparent; }
         .download-btn-hover { transition: all 0.2s ease; }
         .download-btn-hover:hover { background: ${darkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)'} !important; color: #6366f1 !important; }
       `}</style>

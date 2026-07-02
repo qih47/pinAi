@@ -102,3 +102,51 @@
         box-shadow: 0 0 0 rgba(99, 102, 241, 0);
     }
 }
+
+/* ========================================================================== */
+/* ✨ PREMIUM GLOBAL SCROLLBAR                                                */
+/* ========================================================================== */
+
+::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    background-color: rgba(156, 163, 175, 0.3);
+    border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(156, 163, 175, 0.6);
+}
+
+/* Hilangkan panah atas & bawah (Scrollbar Buttons) di seluruh app */
+::-webkit-scrollbar-button {
+    display: none !important;
+    width: 0 !important;
+    height: 0 !important;
+    -webkit-appearance: none !important;
+}
+::-webkit-scrollbar-button:hover {
+    display: none !important;
+    width: 0 !important;
+    height: 0 !important;
+    -webkit-appearance: none !important;
+}
+::-webkit-scrollbar-button:active {
+    display: none !important;
+    width: 0 !important;
+    height: 0 !important;
+    -webkit-appearance: none !important;
+}
+
+/* Firefox compatibility */
+* {
+    scrollbar-width: thin !important;
+    scrollbar-color: rgba(156, 163, 175, 0.4) transparent !important;
+}
