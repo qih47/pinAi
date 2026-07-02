@@ -24,6 +24,7 @@ from fastapi import (
     Query,
     HTTPException,
     Form,
+    BackgroundTasks,
 )
 from fastapi.responses import JSONResponse
 
@@ -37,7 +38,8 @@ from backend.app.api.schemas.document import (
     DocumentReindexSchema,
     DocumentStatsSchema,
 )
-from backend.app.services.rag_service import rag_service
+from backend.app.services.rag.rag_service import rag_service
+from backend.app.services.documents.document_manager import document_manager
 from backend.app.utils.upload_validator import (
     validate_uploaded_file,
     UploadValidationError,
@@ -138,6 +140,7 @@ async def list_documents(
 
 @router.post("/ingest", response_model=DocumentSchema)
 async def ingest_document(
+    background_tasks: BackgroundTasks,
     title: str = Form(..., min_length=1, max_length=255),
     file: UploadFile = File(...),
     description: Optional[str] = Form(None),
@@ -196,8 +199,11 @@ async def ingest_document(
                 logger.info(f"💾 [INGEST] Document record created: ID={doc_id}")
         
         # 5. Queue background task untuk chunk + embed
-        # (Bisa trigger via Celery atau APScheduler, untuk sekarang cukup status=pending)
-        asyncio.create_task(_process_document_background(doc_id, str(file_path)))
+        background_tasks.add_task(
+            document_manager.process_document_background,
+            doc_id=doc_id,
+            file_path=str(file_path),
+        )
         
         # 6. Return dokumen info
         return DocumentSchema(
@@ -304,6 +310,7 @@ async def delete_document(
 @router.post("/{doc_id}/reindex")
 async def reindex_document(
     doc_id: int,
+    background_tasks: BackgroundTasks,
     force_rechunk: bool = Query(False, description="Re-chunk ulang atau gunakan chunks lama"),
     current_user_npp: str = Depends(get_current_user_npp),
 ):
@@ -342,7 +349,11 @@ async def reindex_document(
             logger.info(f"🔄 [REINDEX] Document {doc_id} marked for reindexing")
         
         # Queue background task
-        asyncio.create_task(_reindex_document_background(doc_id, force_rechunk))
+        background_tasks.add_task(
+            document_manager.reindex_document_background,
+            doc_id=doc_id,
+            force_rechunk=force_rechunk
+        )
         
         return {
             "message": "Reindexing started",
@@ -403,129 +414,4 @@ async def get_document_stats(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-# Background Tasks
-# ══════════════════════════════════════════════════════════════════════════════
-
-
-async def _process_document_background(doc_id: int, file_path: str):
-    """
-    Background task: chunk dokumen + embed chunks.
-    Dijalankan async tanpa menunggu response endpoint.
-    """
-    try:
-        logger.info(f"🔄 [BG] Starting document processing: {doc_id}")
-        
-        # 1. Extract text dari file
-        from backend.app.services.pipeline import extract_pdf_text
-        text_content = await extract_pdf_text(file_path)
-        
-        if not text_content:
-            logger.warning(f"⚠️ [BG] No text extracted from {file_path}")
-            async with get_db() as conn:
-                await conn.execute(
-                    "UPDATE dokumen SET embedding_status = $1 WHERE id = $2",
-                    "failed",
-                    doc_id,
-                )
-            return
-        
-        # 2. Chunk dokumen
-        from backend.app.services.document_chunking.manager import chunk_text
-        chunks = await chunk_text(text_content)
-        
-        logger.info(f"✂️ [BG] Created {len(chunks)} chunks for document {doc_id}")
-        
-        # 3. Embed chunks
-        async with get_db() as conn:
-            async with conn.transaction():
-                for idx, chunk_text_content in enumerate(chunks):
-                    # Get embedding dari rag_service
-                    embedding = await rag_service.embed_text(chunk_text_content)
-                    
-                    # Insert chunk
-                    await conn.execute(
-                        """
-                        INSERT INTO dokumen_chunk (dokumen_id, chunk_index, content, embedding)
-                        VALUES ($1, $2, $3, $4)
-                        """,
-                        doc_id,
-                        idx,
-                        chunk_text_content,
-                        embedding,  # pgvector format
-                    )
-                
-                # Update dokumen status to completed
-                await conn.execute(
-                    "UPDATE dokumen SET embedding_status = $1, updated_at = NOW() WHERE id = $2",
-                    "completed",
-                    doc_id,
-                )
-        
-        logger.info(f"✅ [BG] Document {doc_id} processing completed")
-    
-    except Exception as e:
-        logger.error(f"❌ [BG] Document processing failed: {e}")
-        async with get_db() as conn:
-            await conn.execute(
-                "UPDATE dokumen SET embedding_status = $1 WHERE id = $2",
-                "failed",
-                doc_id,
-            )
-
-
-async def _reindex_document_background(doc_id: int, force_rechunk: bool):
-    """
-    Background task: re-embed existing dokumen chunks.
-    """
-    try:
-        logger.info(f"🔄 [BG] Starting reindex: {doc_id} (force_rechunk={force_rechunk})")
-        
-        async with get_db() as conn:
-            if force_rechunk:
-                # Delete old chunks
-                await conn.execute(
-                    "DELETE FROM dokumen_chunk WHERE dokumen_id = $1",
-                    doc_id,
-                )
-                
-                # Get file path dan re-process
-                file_path = await conn.fetchval(
-                    "SELECT file_path FROM dokumen WHERE id = $1",
-                    doc_id,
-                )
-                
-                # Trigger full processing
-                await _process_document_background(doc_id, file_path)
-            else:
-                # Just re-embed existing chunks
-                chunks = await conn.fetch(
-                    "SELECT id, content FROM dokumen_chunk WHERE dokumen_id = $1 ORDER BY chunk_index",
-                    doc_id,
-                )
-                
-                for chunk in chunks:
-                    embedding = await rag_service.embed_text(chunk["content"])
-                    await conn.execute(
-                        "UPDATE dokumen_chunk SET embedding = $1 WHERE id = $2",
-                        embedding,
-                        chunk["id"],
-                    )
-                
-                # Mark as completed
-                await conn.execute(
-                    "UPDATE dokumen SET embedding_status = $1, updated_at = NOW() WHERE id = $2",
-                    "completed",
-                    doc_id,
-                )
-        
-        logger.info(f"✅ [BG] Reindex completed for document {doc_id}")
-    
-    except Exception as e:
-        logger.error(f"❌ [BG] Reindex failed: {e}")
-        async with get_db() as conn:
-            await conn.execute(
-                "UPDATE dokumen SET embedding_status = $1 WHERE id = $2",
-                "failed",
-                doc_id,
-            )
+# Background tasks extracted to document_manager.py

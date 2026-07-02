@@ -3,6 +3,9 @@ import PlusButton from "./PlusButton";
 import CustomModeSelector from "./CustomModeSelector";
 import SendButton from "./SendButton";
 import { useChatStore } from "../../../stores/chatStore";
+import ScrollBottomButton from "./ChatInputArea/ScrollBottomButton";
+import IsolatedDocBanner from "./ChatInputArea/IsolatedDocBanner";
+import AttachmentPreview from "./ChatInputArea/AttachmentPreview";
 
 export default function ChatInputArea({
   theme,
@@ -62,240 +65,28 @@ export default function ChatInputArea({
       }}
     >
       <div style={styles.inputContainer}>
-        {/* ── BUTTON SCROLL TO BOTTOM FLOATING CENTER ── */}
-        {isBottom && showScrollBottom && !showWelcome && messages.length > 0 && (
-          <button
-            onClick={() => {
-              if (messagesContainerRef.current) {
-                messagesContainerRef.current.scrollTo({
-                  top: 9999999,
-                  behavior: "smooth",
-                });
-              }
-            }}
-            style={{
-              position: "absolute",
-              top: "-46px",
-              left: "46%",
-              transform: "translateX(-50%)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: "6px",
-              padding: "8px 14px",
-              borderRadius: "20px",
-              fontSize: "13px",
-              fontWeight: "500",
-              border: `1px solid ${darkMode ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)"}`,
-              background: darkMode ? "#202123" : "#ffffff",
-              color: darkMode ? "#f3f4f6" : '#1f2937',
-              boxShadow: darkMode
-                ? "0 4px 12px rgba(0,0,0,0.5), 0 2px 4px rgba(0,0,0,0.2)"
-                : "0 4px 12px rgba(0,0,0,0.08), 0 2px 4px rgba(0,0,0,0.04)",
-              cursor: "pointer",
-              zIndex: 999,
-              transition: "all 0.2s ease-in-out",
-              animation: "fadeSlideIn 0.25s ease-out forwards",
-              outline: "none",
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = darkMode ? "#2d2d30" : "#f9fafb";
-              e.currentTarget.style.transform = "translateX(-50%) translateY(-2px)";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = darkMode ? "#202123" : "#ffffff";
-              e.currentTarget.style.transform = "translateX(-50%) translateY(0)";
-            }}
-            title="Lihat pesan baru di bawah"
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="12" y1="5" x2="12" y2="19"></line>
-              <polyline points="19 12 12 19 5 12"></polyline>
-            </svg>
-          </button>
-        )}
         
-        {/* Isolated doc banner */}
-        {activeIsolatedTitle && (
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              background: darkMode
-                ? "rgba(99, 102, 241, 0.15)"
-                : "rgba(37, 99, 235, 0.08)",
-              border: `1px solid ${darkMode ? "#6366f1" : "#2563eb"}`,
-              borderRadius: "12px",
-              padding: "8px 16px",
-              marginBottom: "10px",
-              fontSize: "13px",
-              fontWeight: 500,
-              color: darkMode ? "#a5b4fc" : "#1e3a8a",
-            }}
-          >
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "8px",
-                minWidth: 0,
-              }}
-            >
-              <span>🔒</span>
-              <span
-                style={{
-                  whiteSpace: "nowrap",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                }}
-              >
-                Mode Fokus: Menanyai isi <strong>{activeIsolatedTitle}</strong>
-              </span>
-            </div>
-            <button
-              type="button"
-              onClick={() => setContextIsolation(null, null)}
-              style={{
-                background: "transparent",
-                border: "none",
-                color: darkMode ? "#9ca3af" : "#4b5563",
-                cursor: "pointer",
-                fontWeight: "bold",
-              }}
-            >
-              ✕
-            </button>
-          </div>
-        )}
+        <ScrollBottomButton
+          isBottom={isBottom}
+          showScrollBottom={showScrollBottom}
+          showWelcome={showWelcome}
+          messages={messages}
+          messagesContainerRef={messagesContainerRef}
+          darkMode={darkMode}
+        />
+        
+        <IsolatedDocBanner
+          activeIsolatedTitle={activeIsolatedTitle}
+          setContextIsolation={setContextIsolation}
+          darkMode={darkMode}
+        />
 
-        {/* File preview */}
-        {selectedFiles.length > 0 && (
-          <div
-            style={{
-              display: "flex",
-              flexWrap: "wrap",
-              gap: "10px",
-              marginBottom: "12px",
-              padding: "4px 6px",
-              width: "100%",
-            }}
-          >
-            {selectedFiles.map((file, idx) => {
-              const fileName = file.name.toLowerCase();
-              const isImage = file.type.startsWith("image/");
-
-              const extSplit = fileName.split(".");
-              const ext = extSplit.length > 1 ? extSplit.pop().toUpperCase() : "FILE";
-
-              return (
-                <div
-                  key={idx}
-                  style={{
-                    position: "relative",
-                    width: "120px",
-                    height: "120px",
-                    borderRadius: "12px",
-                    overflow: "hidden",
-                    background: darkMode ? "#2a2b2d" : "#f3f4f6",
-                    border: `1px solid ${darkMode ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.08)"}`,
-                    display: "flex",
-                    flexDirection: "column",
-                    boxShadow: "0 2px 4px rgba(0,0,0,0.1)",
-                  }}
-                >
-                  {isImage ? (
-                    <img
-                      src={URL.createObjectURL(file)}
-                      alt="preview"
-                      style={{
-                        width: "100%",
-                        height: "100%",
-                        objectFit: "cover",
-                      }}
-                    />
-                  ) : (
-                    <div
-                      style={{
-                        padding: "12px",
-                        display: "flex",
-                        flexDirection: "column",
-                        justifyContent: "space-between",
-                        height: "100%",
-                        width: "100%",
-                        boxSizing: "border-box"
-                      }}
-                    >
-                      <div style={{ overflow: "hidden" }}>
-                        <div style={{
-                          color: darkMode ? "#ffffff" : "#111827",
-                          fontSize: "14px",
-                          fontWeight: 600,
-                          whiteSpace: "nowrap",
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          marginBottom: "4px",
-                          fontFamily: "'Inter', sans-serif"
-                        }}>
-                          {file.name}
-                        </div>
-                        <div style={{
-                          color: theme.secondaryText,
-                          fontSize: "12px",
-                          fontWeight: 500
-                        }}>
-                          {file._lines !== undefined
-                            ? `${file._lines} lines`
-                            : (file.size > 1024 * 1024
-                              ? (file.size / (1024 * 1024)).toFixed(1) + " MB"
-                              : (file.size / 1024).toFixed(1) + " KB")}
-                        </div>
-                      </div>
-
-                      <div style={{
-                        alignSelf: "flex-start",
-                        border: `1px solid ${darkMode ? "rgba(255,255,255,0.15)" : "rgba(0,0,0,0.15)"}`,
-                        borderRadius: "6px",
-                        padding: "2px 6px",
-                        fontSize: "11px",
-                        fontWeight: 700,
-                        color: theme.secondaryText,
-                        background: darkMode ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.05)",
-                        letterSpacing: "0.5px"
-                      }}>
-                        {ext}
-                      </div>
-                    </div>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => removeFilePreview(idx)}
-                    style={{
-                      position: "absolute",
-                      top: "2px",
-                      right: "2px",
-                      background: "rgba(0,0,0,0.6)",
-                      border: "none",
-                      borderRadius: "50%",
-                      width: "16px",
-                      height: "16px",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      color: "#ffffff",
-                      fontSize: "9px",
-                      cursor: "pointer",
-                      fontWeight: "bold",
-                      zIndex: 2,
-                    }}
-                  >
-                    ✕
-                  </button>
-                </div>
-              );
-            })}
-          </div>
-        )}
+        <AttachmentPreview
+          selectedFiles={selectedFiles}
+          removeFilePreview={removeFilePreview}
+          darkMode={darkMode}
+          theme={theme}
+        />
 
         <form
           onSubmit={handleSubmit}

@@ -24,6 +24,11 @@ async def generate_session_title(
         # 1. Bersihkan input & batasi biar Qwen gak pusing kebanyakan context
         clean_user = user_message.strip()[:80]
         
+        if not clean_user and first_response:
+            clean_user = f"Menjelaskan: {first_response.strip()[:80]}"
+        elif not clean_user:
+            clean_user = "Membahas gambar/dokumen"
+        
         # 2. PROMPT HARDENING: Singkat, padat, ke intinya (Sangat ramah buat model kecil)
         # Buat prompt seminimalis mungkin tanpa menyertakan teks contoh yang bisa dicopas salah oleh Qwen
         title_prompt = f"""[TASK] Buat 1 judul Topik percakapan yang sesuai dengan pesan user berikut "{clean_user}" (2-4 kata saja) dalam Bahasa Indonesia.
@@ -83,6 +88,9 @@ def _fallback_title(text: str, word_count: int = 5) -> str:
     Returns:
         str: Simple title
     """
+    if not text.strip():
+        return "Obrolan Gambar/File"
+
     words = text.split()[:word_count]
     title = " ".join(words)
     

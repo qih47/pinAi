@@ -59,11 +59,36 @@ export default function FileGenerationCard({
 
   const isDone = stage === 'done';
   const isError = stage === 'error';
-  const isActive = stage === 'creating' || stage === 'streaming';
-
-  if (!isDone) return null;
+  const isActive = stage === 'creating' || stage === 'streaming' || stage === 'code_chunk';
 
   const fileMeta = getFileMeta(filename);
+
+  if (isActive) {
+    return (
+      <div className="cakra-pipeline-card" style={{
+        fontFamily: 'system-ui, -apple-system, sans-serif',
+        width: '100%',
+        background: darkMode ? 'rgba(255, 255, 255, 0.02)' : 'rgba(0, 0, 0, 0.02)',
+        border: darkMode ? '1px solid rgba(255, 255, 255, 0.05)' : '1px solid rgba(0, 0, 0, 0.05)',
+        borderRadius: '10px',
+        padding: '12px 16px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        boxSizing: 'border-box'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <PulseLoader />
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
+            <span style={{ fontSize: '14px', color: darkMode ? '#e2e8f0' : '#1e293b', fontWeight: '500' }}>Menyiapkan {filename}</span>
+            <span style={{ fontSize: '12px', color: darkMode ? '#94a3b8' : '#64748b' }}>Generating {fileMeta.label} code...</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!isDone && !isError) return null;
 
   const handleCopy = (e) => {
     e.stopPropagation();
@@ -104,8 +129,8 @@ export default function FileGenerationCard({
       <div 
         onClick={handleOpenClick}
         style={{
-        background: 'rgba(255, 255, 255, 0.03)',
-        border: '1px solid rgba(255, 255, 255, 0.08)',
+        background: darkMode ? 'rgba(255, 255, 255, 0.03)' : 'rgba(0, 0, 0, 0.03)',
+        border: darkMode ? '1px solid rgba(255, 255, 255, 0.08)' : '1px solid rgba(0, 0, 0, 0.1)',
         borderRadius: '10px',
         padding: '12px 16px',
         display: 'flex',
@@ -117,10 +142,10 @@ export default function FileGenerationCard({
         transition: 'background 0.2s'
       }}
       onMouseEnter={(e) => {
-        if (onOpenArtifact) e.currentTarget.style.background = 'rgba(255, 255, 255, 0.06)';
+        if (onOpenArtifact) e.currentTarget.style.background = darkMode ? 'rgba(255, 255, 255, 0.06)' : 'rgba(0, 0, 0, 0.06)';
       }}
       onMouseLeave={(e) => {
-        if (onOpenArtifact) e.currentTarget.style.background = 'rgba(255, 255, 255, 0.03)';
+        if (onOpenArtifact) e.currentTarget.style.background = darkMode ? 'rgba(255, 255, 255, 0.03)' : 'rgba(0, 0, 0, 0.03)';
       }}
       >
         {/* Bagian Kiri: Icon Skematis & Info Nama File */}
@@ -130,18 +155,18 @@ export default function FileGenerationCard({
               width: '40px',
               height: '46px',
               borderRadius: '6px',
-              border: '1px solid rgba(255, 255, 255, 0.12)',
-              background: 'linear-gradient(135deg, rgba(255,255,255,0.02) 0%, rgba(255,255,255,0.05) 100%)',
+              border: darkMode ? '1px solid rgba(255, 255, 255, 0.12)' : '1px solid rgba(0, 0, 0, 0.15)',
+              background: darkMode ? 'linear-gradient(135deg, rgba(255,255,255,0.02) 0%, rgba(255,255,255,0.05) 100%)' : 'linear-gradient(135deg, rgba(0,0,0,0.02) 0%, rgba(0,0,0,0.05) 100%)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
               position: 'relative',
               flexShrink: 0,
               transform: 'perspective(100px) rotateY(-5deg)',
-              boxShadow: '-4px 4px 10px rgba(0,0,0,0.3)'
+              boxShadow: darkMode ? '-4px 4px 10px rgba(0,0,0,0.3)' : '-4px 4px 10px rgba(0,0,0,0.1)'
             }}>
               {/* Mini Skema Garis Teks Dokumen */}
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.4)" strokeWidth="2" strokeLinecap="round">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={darkMode ? "rgba(255,255,255,0.4)" : "rgba(0,0,0,0.5)"} strokeWidth="2" strokeLinecap="round">
                 <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
                 <polyline points="14 2 14 8 20 8"></polyline>
                 <line x1="16" y1="13" x2="8" y2="13"></line>
@@ -155,7 +180,7 @@ export default function FileGenerationCard({
               <div style={{
                 fontSize: '15px',
                 fontWeight: '500',
-                color: '#ffffff',
+                color: darkMode ? '#ffffff' : '#1e293b',
                 whiteSpace: 'nowrap',
                 overflow: 'hidden',
                 textOverflow: 'ellipsis',
@@ -165,7 +190,7 @@ export default function FileGenerationCard({
               </div>
               <div style={{
                 fontSize: '12px',
-                color: 'rgba(255, 255, 255, 0.4)',
+                color: darkMode ? 'rgba(255, 255, 255, 0.4)' : 'rgba(0, 0, 0, 0.5)',
                 fontFamily: 'monospace'
               }}>
                 {fileMeta.type} · {fileMeta.label}
@@ -201,23 +226,23 @@ export default function FileGenerationCard({
               onClick={handleDownload}
               style={{
                 background: 'transparent',
-                border: '1px solid rgba(255, 255, 255, 0.15)',
+                border: darkMode ? '1px solid rgba(255, 255, 255, 0.15)' : '1px solid rgba(0, 0, 0, 0.2)',
                 borderRadius: '8px',
                 padding: '8px 16px',
-                color: '#ffffff',
+                color: darkMode ? '#ffffff' : '#1e293b',
                 fontSize: '13px',
                 fontWeight: '500',
                 cursor: 'pointer',
                 transition: 'all 0.2s ease',
-                boxShadow: '0 2px 6px rgba(0,0,0,0.2)'
+                boxShadow: darkMode ? '0 2px 6px rgba(0,0,0,0.2)' : '0 2px 6px rgba(0,0,0,0.05)'
               }}
               onMouseEnter={(e) => {
-                e.currentTarget.style.background = '#ffffff';
-                e.currentTarget.style.color = '#18181b';
+                e.currentTarget.style.background = darkMode ? '#ffffff' : '#1e293b';
+                e.currentTarget.style.color = darkMode ? '#18181b' : '#ffffff';
               }}
               onMouseLeave={(e) => {
                 e.currentTarget.style.background = 'transparent';
-                e.currentTarget.style.color = '#ffffff';
+                e.currentTarget.style.color = darkMode ? '#ffffff' : '#1e293b';
               }}
             >
               Download

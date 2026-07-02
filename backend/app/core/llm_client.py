@@ -154,12 +154,23 @@ async def stream_ollama_chat(
 
         inference_start_time = datetime.now()
 
+        # Hybrid Token Budget Processing
+        # Mengambil token_budget (misal 1120 untuk PDF, 280 untuk Gambar biasa)
+        token_budget = kwargs.pop("token_budget", None)
+        num_predict = kwargs.pop("num_predict", 8192 if is_thinking else 2048)
+        
+        if token_budget:
+            # Gemma akan dibatasi outputnya berdasarkan budget token agar tidak hallucination
+            logger.info(f"🪙 [TOKEN HYBRID] Menerapkan Token Budget sebesar: {token_budget} (Model: {model_name})")
+            # Jika budget di-set secara spesifik, kita bisa membatasi max tokens generation:
+            num_predict = min(num_predict, token_budget * 2) # Mengijinkan sisa margin 
+
         ollama_options = {
             "temperature": temperature,
             "top_p": 0.95,
             "top_k": 64,
             "num_ctx": num_ctx,
-            "num_predict": kwargs.pop("num_predict", 2048),
+            "num_predict": num_predict,
             **kwargs,
         }
 
