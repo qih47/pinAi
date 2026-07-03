@@ -193,6 +193,10 @@ logger.info(f"🌐 [MOUNT] db_doc → {DB_DOC_DIR}")
 app.mount("/accounts", StaticFiles(directory=ACCOUNTS_DIR), name="accounts")
 logger.info(f"🌐 [MOUNT] accounts → {ACCOUNTS_DIR}")
 
+FILE_PERATURAN_DIR = os.path.join(ROOT_DIR, "file_peraturan")
+app.mount("/file_peraturan", StaticFiles(directory=FILE_PERATURAN_DIR), name="file_peraturan")
+logger.info(f"🌐 [MOUNT] file_peraturan → {FILE_PERATURAN_DIR}")
+
 origins = [
     "http://192.168.11.80:5173",
     "http://localhost:5173",

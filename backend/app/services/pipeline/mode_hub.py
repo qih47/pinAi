@@ -63,6 +63,28 @@ class ModeHub:
                 session_chunks_text = "\n\n[KNOWLEDGE DARI FILE SEBELUMNYA DI SESI INI]\n" + "\n---\n".join(chunks)
         precheck["_session_chunks_text"] = session_chunks_text
 
+        # ── Fast-path Bypass untuk Context Isolation (Focus Mode) ──────────────────
+        if context_isolation and context_isolation.get("isolated_doc_id"):
+            logger.info("[MODE_HUB] Context Isolation detected! Routing to Focus Mode.")
+            from backend.app.services.pipeline.modes.mode_focus import ModeFocus
+            if "focus" not in self.mode_handlers:
+                self.mode_handlers["focus"] = ModeFocus()
+            
+            handler = self.mode_handlers["focus"]
+            async for chunk in handler.execute(
+                user_message=user_message,
+                chat_history=chat_history,
+                is_thinking=is_thinking,
+                attachments=attachments,
+                context_isolation=context_isolation,
+                routing_data=precheck,
+                request=request,
+                employee_name=employee_name,
+                current_user_npp=current_user_npp
+            ):
+                yield chunk
+            return
+
         # ── Fast-path Bypass untuk Attachment ──────────────────────────────────────
         if has_attachment:
             logger.info("[MODE_HUB] Attachment detected! Bypassing Call 1 and routing to Attachment Mode.")

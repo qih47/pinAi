@@ -20,8 +20,12 @@ venv/
 # Ignore isi rag_env tapi tetap push foldernya
 rag_env/*
 !rag_env/.gitkeep
+
 accounts/*
 !accounts/.gitkeep
+
+file_peraturan/*
+!file_peraturan/.gitkeep
 
 # Ignore isi db_doc tapi tetap push foldernya
 db_doc/*

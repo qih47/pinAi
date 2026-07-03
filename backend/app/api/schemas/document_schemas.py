@@ -4,7 +4,7 @@ from datetime import datetime
 
 class DocumentBaseSchema(BaseModel):
     """Base schema untuk document info"""
-    title: str = Field(..., min_length=1, max_length=255, description="Judul dokumen")
+    title: str = Field(..., min_length=1, max_length=2000, description="Judul dokumen")
     description: Optional[str] = Field(None, max_length=1000, description="Deskripsi detail dokumen")
     source_type: str = Field("upload", description="Tipe sumber: upload, url, atau internal")
     
@@ -33,6 +33,7 @@ class DocumentSchema(DocumentBaseSchema):
     tanggal: Optional[datetime] = Field(None, description="Tanggal dokumen")
     filename: Optional[str] = Field(None, description="Filename asli dokumen")
     jenis_dokumen: Optional[str] = Field(None, description="Nama jenis dokumen")
+    stataktif: Optional[str] = Field(None, description="Status aktif dokumen (batal/obsolete/kosong)")
     
     class Config:
         from_attributes = True
@@ -51,7 +52,7 @@ class DocumentListSchema(BaseModel):
 
 class DocumentIngestSchema(BaseModel):
     """Schema untuk document ingest (upload + chunk + embed)"""
-    title: str = Field(..., min_length=1, max_length=255, description="Judul dokumen")
+    title: str = Field(..., min_length=1, max_length=2000, description="Judul dokumen")
     description: Optional[str] = Field(None, max_length=1000, description="Deskripsi dokumen")
     
     class Config:

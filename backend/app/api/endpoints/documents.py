@@ -61,6 +61,7 @@ async def list_documents(
     offset: int = Query(0, ge=0, description="Offset untuk pagination"),
     limit: int = Query(20, ge=1, le=100, description="Limit items per halaman"),
     search: Optional[str] = Query(None, description="Kata kunci pencarian"),
+    status: Optional[str] = Query(None, description="Filter status aktif (berlaku/batal/obsolete)"),
 ):
     """
     List semua dokumen dengan pagination.
@@ -82,18 +83,25 @@ async def list_documents(
     try:
         async with get_peraturan_db() as conn:
             async with conn.cursor(aiomysql.DictCursor) as cursor:
-                # Menentukan klausa WHERE berdasarkan input search
-                where_clause = ""
+                conditions = []
                 params_count = []
                 params_data = []
                 
                 if search:
                     search_term = f"%{search}%"
-                    where_clause = "WHERE b.judul LIKE %s OR b.noper LIKE %s"
-                    params_count = [search_term, search_term]
-                    params_data = [search_term, search_term, limit, offset]
-                else:
-                    params_data = [limit, offset]
+                    conditions.append("(b.judul LIKE %s OR b.noper LIKE %s)")
+                    params_count.extend([search_term, search_term])
+                    params_data.extend([search_term, search_term])
+                
+                if status:
+                    if status.lower() == "berlaku":
+                        conditions.append("b.stataktif = ''")
+                    elif status.lower() in ["batal", "obsolete"]:
+                        conditions.append("b.stataktif = %s")
+                        params_count.append(status.lower())
+                        params_data.append(status.lower())
+                
+                where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
                 
                 # Count total
                 await cursor.execute(f"SELECT COUNT(*) AS total FROM berita b {where_clause}", params_count)
@@ -110,12 +118,13 @@ async def list_documents(
                         b.tanggal AS created_at, 
                         COALESCE(NULLIF(b.gambar, ''), NULLIF(b.gambar2, ''), NULLIF(b.gambar3, '')) AS filename, 
                         k.nama_kategori AS jenis_dokumen,
+                        b.stataktif AS stataktif,
                         0 AS chunk_count
                     FROM berita b
                     LEFT JOIN kategori k ON b.id_kategori = k.id_kategori
                     {where_clause}
                     ORDER BY b.id_berita DESC
-                    LIMIT %s OFFSET %s
+                    LIMIT {limit} OFFSET {offset}
                     """,
                     params_data
                 )
@@ -123,6 +132,12 @@ async def list_documents(
             
             documents = []
             for row in rows:
+                raw_date = row["created_at"]
+                if isinstance(raw_date, str) and ("0000-00-00" in raw_date):
+                    valid_date = None
+                else:
+                    valid_date = raw_date
+                    
                 documents.append(DocumentSchema(
                     id=row["id"],
                     title=row["title"] or "Tanpa Judul",
@@ -131,14 +146,15 @@ async def list_documents(
                     file_path=row["filename"],
                     file_size=0,
                     file_type="application/pdf",
-                    created_at=row["created_at"] or datetime.utcnow(),
+                    created_at=valid_date or datetime.utcnow(),
                     updated_at=None,
                     chunk_count=row["chunk_count"] or 0,
                     embedding_status="completed",
                     nomor=row["nomor"],
-                    tanggal=row["created_at"],
+                    tanggal=valid_date,
                     filename=row["filename"],
-                    jenis_dokumen=row["jenis_dokumen"]
+                    jenis_dokumen=row["jenis_dokumen"],
+                    stataktif=row.get("stataktif")
                 ))
             
             logger.info(f"📋 [DOCUMENTS] Listed {len(documents)}/{total} dokumen (offset={offset}, limit={limit})")
@@ -147,12 +163,40 @@ async def list_documents(
                 items=documents,
                 total=total,
                 offset=offset,
-                limit=limit,
+                limit=limit
             )
-    
+            
     except Exception as e:
         logger.error(f"❌ [DOCUMENTS] Error listing documents: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Gagal mengambil daftar dokumen")
+
+
+@router.get("/preview_b64/{encoded_filename}")
+async def preview_document_b64(encoded_filename: str):
+    """
+    Preview dokumen PDF dengan base64 filename untuk bypass IDM
+    """
+    from fastapi import Response
+    from backend.app.core.paths import BASE_DIR
+    import os
+    import base64
+    
+    try:
+        filename = base64.b64decode(encoded_filename).decode('utf-8')
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid filename encoding")
+        
+    file_path = os.path.join(BASE_DIR, "file_peraturan", filename)
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="File tidak ditemukan")
+        
+    with open(file_path, "rb") as f:
+        content = f.read()
+        
+    return Response(
+        content=content,
+        media_type="application/octet-stream"
+    )
 
 
 # ══════════════════════════════════════════════════════════════════════════════

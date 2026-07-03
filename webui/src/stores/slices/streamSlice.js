@@ -68,10 +68,11 @@ export const createStreamSlice = (set, get) => ({
             .filter(Boolean);
 
         const currentIsolatedDocId = get().activeIsolatedDocId;
+        const effectiveChatMode = currentIsolatedDocId ? 'focus' : chatMode;
 
         // Sinkronisasi state chatMode sebelum perubahan rute URL
         set({
-            chatMode: chatMode, // Menyinkronkan chatMode ke store
+            chatMode: effectiveChatMode, // Menyinkronkan chatMode ke store
             messages: [...updatedMessages, assistantMessage],
             isStreaming: true,
             // isLoading: true,
@@ -89,7 +90,7 @@ export const createStreamSlice = (set, get) => ({
             npp,
             currentIsolatedDocId,
             currentAttachmentPaths,
-            chatMode,
+            effectiveChatMode,
             isThinkingMode,
             toast
         );
@@ -141,6 +142,10 @@ export const createStreamSlice = (set, get) => ({
             .filter(Boolean);
 
         // 4. Panggil stream dengan target parameter (index + 1) dan editIndex = index
+        const currentIsolatedDocId = get().activeIsolatedDocId;
+        const currentChatMode = get().chatMode || 'auto';
+        const effectiveChatMode = currentIsolatedDocId ? 'focus' : currentChatMode;
+        
         await performStream(
             set,
             get,
@@ -148,9 +153,9 @@ export const createStreamSlice = (set, get) => ({
             assistantMessage,
             sessionUuid,
             npp,
-            get().activeIsolatedDocId,
+            currentIsolatedDocId,
             currentAttachmentPaths,
-            get().chatMode,
+            effectiveChatMode,
             get().isThinkingMode,
             toast,
             index + 1, // targetAssistantIdx

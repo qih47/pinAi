@@ -15,6 +15,13 @@ export const createChatSlice = (set, get) => ({
         });
     },
 
+    setContextIsolation: (docId, docTitle) => {
+        set({
+            activeIsolatedDocId: docId || null,
+            activeIsolatedTitle: docTitle || null
+        });
+    },
+
     fetchChatHistory: async (npp) => {
         if (!npp) return { status: "error", data: [] };
         try {

@@ -15,6 +15,9 @@ export default function ContextIsolationModal({
   const [docSearchQuery, setDocSearchQuery] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
+  const [previewPdfUrl, setPreviewPdfUrl] = useState(null);
+  const [previewPdfBlobUrl, setPreviewPdfBlobUrl] = useState(null);
+  const [isLoadingPdf, setIsLoadingPdf] = useState(false);
   const limit = 15;
 
   useEffect(() => {
@@ -58,7 +61,7 @@ export default function ContextIsolationModal({
           background: darkMode ? "#1e1e20" : "#ffffff",
           color: theme.textColor,
           width: "100%",
-          maxWidth: "550px",
+          maxWidth: "850px",
           borderRadius: "16px",
           border: `1px solid ${theme.borderColor}`,
           boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.3)",
@@ -128,20 +131,32 @@ export default function ContextIsolationModal({
               flexDirection: "column",
               gap: "8px",
               marginTop: "4px",
+              position: "relative",
+              minHeight: documents && documents.length > 0 ? "400px" : "auto",
             }}
             className="custom-scroll-gemini"
           >
-            {isLoadingDocuments ? (
+            {isLoadingDocuments && (
               <div
                 style={{
-                  textAlign: "center",
-                  padding: "20px",
-                  color: theme.secondaryText,
+                  position: "absolute",
+                  inset: 0,
+                  background: darkMode ? "rgba(30, 30, 32, 0.6)" : "rgba(255, 255, 255, 0.6)",
+                  backdropFilter: "blur(2px)",
+                  zIndex: 10,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  borderRadius: "10px",
+                  color: theme.textColor,
+                  fontWeight: 600,
                 }}
               >
                 Memuat dokumen...
               </div>
-            ) : (!documents || documents.length === 0) ? (
+            )}
+
+            {(!documents || documents.length === 0) && !isLoadingDocuments ? (
               <div
                 style={{
                   textAlign: "center",
@@ -152,7 +167,7 @@ export default function ContextIsolationModal({
                 Tidak ada dokumen ditemukan.
               </div>
             ) : (
-              documents.map((doc) => {
+              (documents || []).map((doc) => {
                 const isIsolated = activeIsolatedDocId === doc.id;
                 return (
                   <div
@@ -184,9 +199,10 @@ export default function ContextIsolationModal({
                         style={{
                           fontWeight: 600,
                           fontSize: "13.5px",
-                          whiteSpace: "nowrap",
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
+                          lineHeight: "1.4",
+                          overflowWrap: "break-word",
+                          wordBreak: "break-word",
+                          color: theme.textColor,
                         }}
                       >
                         {doc.title}
@@ -200,10 +216,107 @@ export default function ContextIsolationModal({
                       >
                         No: {doc.nomor || "-"} | Tipe: {doc.jenis_dokumen || "-"}
                       </div>
+                      <div
+                        style={{
+                          display: "inline-block",
+                          marginTop: "6px",
+                          padding: "2px 8px",
+                          borderRadius: "12px",
+                          fontSize: "10px",
+                          fontWeight: 600,
+                          backgroundColor:
+                            doc.stataktif === "batal" ? "rgba(239, 68, 68, 0.15)" :
+                            doc.stataktif === "obsolete" ? "rgba(245, 158, 11, 0.15)" :
+                            "rgba(16, 185, 129, 0.15)",
+                          color:
+                            doc.stataktif === "batal" ? "#ef4444" :
+                            doc.stataktif === "obsolete" ? "#f59e0b" :
+                            "#10b981",
+                        }}
+                      >
+                        {doc.stataktif === "batal" ? "Dicabut" :
+                         doc.stataktif === "obsolete" ? "Tidak Berlaku" :
+                         "Berlaku"}
+                      </div>
                     </div>
-                    <button
+                    
+                    <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                      {doc.filename && (
+                        <>
+                          <button
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              setPreviewPdfUrl(`${import.meta.env.VITE_API_BASE_URL || "http://192.168.11.80:5000"}/api/documents/preview/${doc.filename}`);
+                              setIsLoadingPdf(true);
+                              try {
+                                const encodedFilename = btoa(doc.filename);
+                                const res = await fetch(`${import.meta.env.VITE_API_BASE_URL || "http://192.168.11.80:5000"}/api/documents/preview_b64/${encodedFilename}`);
+                                const rawBlob = await res.blob();
+                                const pdfBlob = new Blob([rawBlob], { type: "application/pdf" });
+                                setPreviewPdfBlobUrl(URL.createObjectURL(pdfBlob));
+                              } catch (err) {
+                                console.error("Error loading PDF", err);
+                              } finally {
+                                setIsLoadingPdf(false);
+                              }
+                            }}
+                            title="Lihat Dokumen"
+                            style={{
+                              padding: "6px",
+                              borderRadius: "6px",
+                              border: `1px solid ${theme.borderColor}`,
+                              background: "transparent",
+                              color: theme.primaryText,
+                              cursor: "pointer",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                            }}
+                          >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                              <circle cx="12" cy="12" r="3"></circle>
+                            </svg>
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              const link = document.createElement("a");
+                              link.href = `${import.meta.env.VITE_API_BASE_URL || "http://192.168.11.80:5000"}/file_peraturan/${doc.filename}`;
+                              link.download = doc.filename;
+                              link.target = "_blank";
+                              document.body.appendChild(link);
+                              link.click();
+                              document.body.removeChild(link);
+                            }}
+                            title="Download Dokumen"
+                            style={{
+                              padding: "6px",
+                              borderRadius: "6px",
+                              border: `1px solid ${theme.borderColor}`,
+                              background: "transparent",
+                              color: theme.primaryText,
+                              cursor: "pointer",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                            }}
+                          >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                              <polyline points="7 10 12 15 17 10"></polyline>
+                              <line x1="12" y1="15" x2="12" y2="3"></line>
+                            </svg>
+                          </button>
+                        </>
+                      )}
+                      <button
                       onClick={() => {
-                        onSelectDocument(doc.id, doc.title);
+                        if (isIsolated) {
+                          onSelectDocument(null, "");
+                        } else {
+                          onSelectDocument(doc.id, doc.title);
+                        }
                         onClose();
                       }}
                       style={{
@@ -219,8 +332,9 @@ export default function ContextIsolationModal({
                         flexShrink: 0,
                       }}
                     >
-                      {isIsolated ? "Batal Fokus" : "Fokus"}
-                    </button>
+                        {isIsolated ? "Batal Fokus" : "Fokus"}
+                      </button>
+                    </div>
                   </div>
                 );
               })
@@ -278,6 +392,92 @@ export default function ContextIsolationModal({
           </button>
         </div>
       </div>
+
+      {/* PDF Preview Modal Overlay */}
+      {previewPdfUrl && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 1000,
+            background: "rgba(0,0,0,0.75)",
+            backdropFilter: "blur(4px)",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 0,
+            animation: "fadeIn 0.2s ease-out",
+          }}
+          onClick={() => {
+            setPreviewPdfUrl(null);
+            if (previewPdfBlobUrl) URL.revokeObjectURL(previewPdfBlobUrl);
+            setPreviewPdfBlobUrl(null);
+          }}
+        >
+          <div
+            style={{
+              width: "100%",
+              height: "100%",
+              background: "#000000",
+              position: "relative",
+              display: "flex",
+              flexDirection: "column",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Floating Close Button */}
+            <button
+              onClick={() => {
+                setPreviewPdfUrl(null);
+                if (previewPdfBlobUrl) URL.revokeObjectURL(previewPdfBlobUrl);
+                setPreviewPdfBlobUrl(null);
+              }}
+              style={{
+                position: "absolute",
+                top: "20px",
+                right: "20px",
+                zIndex: 1001,
+                background: "rgba(0,0,0,0.5)",
+                border: "none",
+                borderRadius: "50%",
+                color: "#ffffff",
+                cursor: "pointer",
+                padding: "8px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                backdropFilter: "blur(4px)",
+                transition: "all 0.2s ease",
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(239,68,68,0.8)")}
+              onMouseLeave={(e) => (e.currentTarget.style.background = "rgba(0,0,0,0.5)")}
+            >
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+              </svg>
+            </button>
+            
+            {/* PDF Viewer */}
+            <div style={{ flex: 1, position: "relative", width: "100%", height: "100%" }}>
+              {isLoadingPdf ? (
+                <div style={{ display: "flex", justifyContent: "center", alignItems: "center", height: "100%", color: theme.secondaryText }}>
+                  Memuat dokumen...
+                </div>
+              ) : previewPdfBlobUrl ? (
+                <iframe
+                  src={`${previewPdfBlobUrl}#view=FitH`}
+                  title="Preview Dokumen"
+                  width="100%"
+                  height="100%"
+                  style={{ border: "none", display: "block" }}
+                />
+              ) : null}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -180,3 +180,54 @@ Langsung minta maaf secara tulus dan perbaiki jawaban sebelumnya. Jawaban yang b
     prompt += f"\n{_get_tone_guidance(pronoun)}\n"
     return prompt
 
+def build_response_prompt_focus(
+    employee_name: str,
+    precheck: Dict[str, Any],
+    is_thinking: bool,
+    start_page: int,
+    end_page: int,
+    filename: str,
+    extracted_text: str,
+    is_scanned: bool
+) -> str:
+    pronoun = precheck.get("pronoun", "unknown")
+    prompt = _get_base_persona(employee_name, "MODE FOKUS REGULASI")
+    
+    prompt += f"""
+Anda sedang berada dalam Mode Fokus untuk menanyai dan menganalisis SATU dokumen spesifik secara mendalam.
+
+Berikut adalah ekstrak halaman {start_page + 1} sampai {end_page} dari dokumen '{filename}':
+
+{extracted_text if not is_scanned else '[DOKUMEN GAMBAR SCAN TERTOLAK DI BAWAH]'}
+
+TUGAS UTAMA ANDA:
+1. Jawab pertanyaan user BERDASARKAN teks/gambar di atas.
+2. Jaga empati, gaya bahasa, dan interaksi persona CAKRA AI seperti biasa sesuai profil Anda. Sapalah user dengan ramah dan berikan respons yang interaktif (tidak kaku seperti robot).
+3. PENTING: Anda DILARANG KERAS merubah makna, substansi, atau menambahkan informasi fiktif yang tidak ada di dalam dokumen. Poin-poin dan tata nilai harus persis atau semakna mungkin dengan isi PDF aslinya.
+4. JIKA jawaban dari pertanyaan user TIDAK ADA atau TIDAK DITEMUKAN sama sekali di dalam halaman/gambar tersebut, Anda HARUS menjawab dengan persis SATU KATA saja: 'KOSONG'. (Jangan beri penjelasan apapun, jangan minta maaf, cukup ketik 'KOSONG' tanpa tambahan karakter apapun).
+"""
+    if is_thinking:
+        prompt += """
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🚨 CRITICAL SYSTEM ENFORCEMENT: CRITICAL THINKING LANGUAGE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+<thinking_protocol>
+- CRITICAL RULE: You MUST perform your internal reasoning, document selection, and drafting PURELY in BAHASA INDONESIA.
+- Anda DILARANG KERAS menulis proses berpikir dalam bahasa Inggris atau bahasa lain.
+- Paksa token prediktif internal Anda untuk menggunakan kosakata Bahasa Indonesia di dalam pipa <thinking> atau .thinking channel.
+</thinking_protocol>
+
+Fokus pemikiran untuk Mode Fokus:
+LANGKAH 1: Analisis pertanyaan user dan cari kata kuncinya.
+LANGKAH 2: Cari secara teliti di teks/gambar halaman di atas. Jika tidak ada sama sekali, bersiaplah menjawab dengan KOSONG.
+LANGKAH 3: Jika ada, rancang jawaban yang empatik, logis, interaktif, dan sesuai persona. Ingat, konten fakta JANGAN SAMPAI diubah dari aslinya!
+"""
+    else:
+        prompt += """
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+⚡ INSTRUKSI DETAIL (THINKING MODE: OFF)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Pastikan Anda langsung menjawab dengan penuh empati berdasarkan teks di atas. Jangan kaku. Jika informasi tidak ditemukan, ingat Aturan #4: HANYA KETIK KOSONG.
+"""
+    prompt += f"\n{_get_tone_guidance(pronoun)}\n"
+    return prompt
