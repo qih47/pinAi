@@ -14,7 +14,8 @@ def _build_ollama_request_payload(
     temperature: float,
     num_predict: int,
     num_ctx: int,
-    stop_sequences: List[str] = None
+    stop_sequences: List[str] = None,
+    images: Optional[List[str]] = None
 ) -> Dict[str, Any]:
     """
     Build exact payload structure for /api/generate.
@@ -29,7 +30,7 @@ def _build_ollama_request_payload(
     if stop_sequences:
         options["stop"] = stop_sequences
 
-    return {
+    payload = {
         "model": model_name,
         "raw": True,
         "prompt": raw_prompt,
@@ -37,6 +38,9 @@ def _build_ollama_request_payload(
         "options": options,
         "keep_alive": -1
     }
+    if images:
+        payload["images"] = images
+    return payload
 
 @asynccontextmanager
 async def _acquire_gpu_slot(request: Optional[Request]) -> AsyncGenerator:
@@ -56,7 +60,8 @@ async def call_ollama_generate_raw(
     num_predict: int = 2048,
     num_ctx: int = 32000,
     stop_sequences: List[str] = None,
-    request: Optional[Request] = None  # For GPU semaphore
+    request: Optional[Request] = None,  # For GPU semaphore
+    images: Optional[List[str]] = None
 ) -> AsyncGenerator[str, None]:
     """
     Call Ollama /api/generate endpoint with raw mode.
@@ -78,7 +83,7 @@ async def call_ollama_generate_raw(
         httpx.HTTPStatusError
     """
     payload = _build_ollama_request_payload(
-        model_name, raw_prompt, temperature, num_predict, num_ctx, stop_sequences
+        model_name, raw_prompt, temperature, num_predict, num_ctx, stop_sequences, images
     )
     
     base_url = getattr(settings, "OLLAMA_BASE_URL", "http://localhost:11434")

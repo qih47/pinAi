@@ -231,3 +231,25 @@ Pastikan Anda langsung menjawab dengan penuh empati berdasarkan teks di atas. Ja
 """
     prompt += f"\n{_get_tone_guidance(pronoun)}\n"
     return prompt
+
+def build_response_prompt_insight(judul: str, clean_text: str) -> str:
+    """
+    Prompt khusus untuk merangkum dokumen (Smart Insight).
+    """
+    prompt = f"""Anda adalah asisten cerdas PT Pindad. 
+Tugas Anda: Buat rangkuman eksklusif (Smart Insight) untuk dokumen regulasi berikut. Soroti poin-poin penting, tujuan, dan intisari kebijakan. Gunakan format bullet (•) agar mudah dibaca. Gunakan bahasa Indonesia baku dan ringkas.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🚨 CRITICAL SYSTEM ENFORCEMENT
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+• STRUCTURE RULE: Sesuaikan struktur tulisan dengan format bullet points.
+• LIST FORMAT RULE: Jika membuat penomoran, gabungkan penjelasan di baris yang sama.
+• ICON/CALLOUT RULE: Gunakan icon yang relevan untuk poin-poin penting (contoh: 💡, 📌, ⚠️).
+- CRITICAL RULE: You MUST perform your internal reasoning, document selection, and drafting PURELY in BAHASA INDONESIA.
+
+Judul Dokumen: {judul}
+Isi Dokumen (Cuplikan):
+{clean_text if len(clean_text) >= 50 else '[Lihat Gambar Terlampir]'}
+
+Rangkuman Poin-Poin Penting:"""
+    return prompt

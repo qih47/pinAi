@@ -39,6 +39,7 @@ from backend.app.api.schemas.document import (
     DocumentReindexSchema,
     DocumentStatsSchema,
 )
+from backend.app.api.schemas.document_schemas import DocumentLineageSchema, DocumentLineageItemSchema
 from backend.app.services.rag.rag_service import rag_service
 from backend.app.services.documents.document_manager import document_manager
 from backend.app.utils.upload_validator import (
@@ -89,9 +90,9 @@ async def list_documents(
                 
                 if search:
                     search_term = f"%{search}%"
-                    conditions.append("(b.judul LIKE %s OR b.noper LIKE %s)")
-                    params_count.extend([search_term, search_term])
-                    params_data.extend([search_term, search_term])
+                    conditions.append("(b.judul LIKE %s OR b.noper LIKE %s OR b.isi_berita LIKE %s)")
+                    params_count.extend([search_term, search_term, search_term])
+                    params_data.extend([search_term, search_term, search_term])
                 
                 if status:
                     if status.lower() == "berlaku":
@@ -119,6 +120,7 @@ async def list_documents(
                         COALESCE(NULLIF(b.gambar, ''), NULLIF(b.gambar2, ''), NULLIF(b.gambar3, '')) AS filename, 
                         k.nama_kategori AS jenis_dokumen,
                         b.stataktif AS stataktif,
+                        b.isi_berita AS isi_berita,
                         0 AS chunk_count
                     FROM berita b
                     LEFT JOIN kategori k ON b.id_kategori = k.id_kategori
@@ -130,6 +132,30 @@ async def list_documents(
                 )
                 rows = await cursor.fetchall()
             
+            import re
+            
+            def extract_snippet(text, keyword, window=100):
+                if not text or not keyword: return None
+                # Strip HTML
+                clean_text = re.sub('<[^<]+>', ' ', text)
+                clean_text = ' '.join(clean_text.split())
+                
+                idx = clean_text.lower().find(keyword.lower())
+                if idx == -1: return None
+                
+                start = max(0, idx - window)
+                end = min(len(clean_text), idx + len(keyword) + window)
+                
+                snippet = clean_text[start:end]
+                if start > 0: snippet = "..." + snippet
+                if end < len(clean_text): snippet = snippet + "..."
+                
+                # Highlight keyword
+                # Case insensitive highlight
+                pattern = re.compile(f'({re.escape(keyword)})', re.IGNORECASE)
+                snippet = pattern.sub(r'<b>\1</b>', snippet)
+                return snippet
+
             documents = []
             for row in rows:
                 raw_date = row["created_at"]
@@ -137,6 +163,10 @@ async def list_documents(
                     valid_date = None
                 else:
                     valid_date = raw_date
+                
+                snip = None
+                if search:
+                    snip = extract_snippet(row.get("isi_berita", ""), search)
                     
                 documents.append(DocumentSchema(
                     id=row["id"],
@@ -154,7 +184,8 @@ async def list_documents(
                     tanggal=valid_date,
                     filename=row["filename"],
                     jenis_dokumen=row["jenis_dokumen"],
-                    stataktif=row.get("stataktif")
+                    stataktif=row.get("stataktif"),
+                    snippet=snip
                 ))
             
             logger.info(f"📋 [DOCUMENTS] Listed {len(documents)}/{total} dokumen (offset={offset}, limit={limit})")
@@ -169,6 +200,145 @@ async def list_documents(
     except Exception as e:
         logger.error(f"❌ [DOCUMENTS] Error listing documents: {e}")
         raise HTTPException(status_code=500, detail="Gagal mengambil daftar dokumen")
+
+
+@router.get("/{document_id}/lineage", response_model=DocumentLineageSchema)
+async def get_document_lineage(document_id: int):
+    """
+    Mengambil silsilah dokumen (siapa yang dicabut dan siapa yang mencabut)
+    """
+    from backend.app.core.database import get_peraturan_db
+    
+    try:
+        async with get_peraturan_db() as conn:
+            async with conn.cursor(aiomysql.DictCursor) as cursor:
+                # 1. Ambil dokumen saat ini
+                await cursor.execute(
+                    "SELECT id_berita, noper, judul, stataktif, tanggal, mencabut FROM berita WHERE id_berita = %s",
+                    (document_id,)
+                )
+                row_current = await cursor.fetchone()
+                
+                if not row_current:
+                    raise HTTPException(status_code=404, detail="Dokumen tidak ditemukan")
+                
+                current_item = DocumentLineageItemSchema(
+                    id=row_current["id_berita"],
+                    noper=row_current["noper"],
+                    judul=row_current["judul"],
+                    stataktif=row_current["stataktif"],
+                    tanggal=row_current["tanggal"] if not isinstance(row_current["tanggal"], str) else None,
+                    relation_type="Saat ini"
+                )
+                
+                # 2. Cari dokumen yang dicabut oleh dokumen ini (revokes)
+                revokes = []
+                mencabut_str = row_current.get("mencabut", "")
+                if mencabut_str:
+                    ids_to_revoke = [x for x in mencabut_str.split("|") if x.strip().isdigit()]
+                    if ids_to_revoke:
+                        format_strings = ','.join(['%s'] * len(ids_to_revoke))
+                        await cursor.execute(
+                            f"SELECT id_berita, noper, judul, stataktif, tanggal FROM berita WHERE id_berita IN ({format_strings})",
+                            tuple(ids_to_revoke)
+                        )
+                        rows_revokes = await cursor.fetchall()
+                        for r in rows_revokes:
+                            revokes.append(DocumentLineageItemSchema(
+                                id=r["id_berita"],
+                                noper=r["noper"],
+                                judul=r["judul"],
+                                stataktif=r["stataktif"],
+                                tanggal=r["tanggal"] if not isinstance(r["tanggal"], str) else None,
+                                relation_type="Dicabut oleh dokumen ini"
+                            ))
+                
+                # 3. Cari dokumen yang mencabut dokumen ini (revoked_by)
+                revoked_by = []
+                doc_id_str = str(document_id)
+                await cursor.execute(
+                    """
+                    SELECT id_berita, noper, judul, stataktif, tanggal 
+                    FROM berita 
+                    WHERE mencabut = %s 
+                       OR mencabut LIKE %s 
+                       OR mencabut LIKE %s 
+                       OR mencabut LIKE %s
+                    """,
+                    (doc_id_str, f"{doc_id_str}|%", f"%|{doc_id_str}|%", f"%|{doc_id_str}")
+                )
+                rows_revoked_by = await cursor.fetchall()
+                for r in rows_revoked_by:
+                    revoked_by.append(DocumentLineageItemSchema(
+                        id=r["id_berita"],
+                        noper=r["noper"],
+                        judul=r["judul"],
+                        stataktif=r["stataktif"],
+                        tanggal=r["tanggal"] if not isinstance(r["tanggal"], str) else None,
+                        relation_type="Mencabut dokumen ini"
+                    ))
+                
+                return DocumentLineageSchema(
+                    current=current_item,
+                    revokes=revokes,
+                    revoked_by=revoked_by
+                )
+                
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ [DOCUMENTS] Error getting lineage: {e}")
+        raise HTTPException(status_code=500, detail="Gagal mengambil silsilah dokumen")
+
+from pydantic import BaseModel
+from fastapi import Request
+
+class DocumentInsightResponse(BaseModel):
+    insight: str
+
+@router.get("/{document_id}/insight", response_model=DocumentInsightResponse)
+async def get_document_insight(document_id: int, request: Request):
+    """
+    Menghasilkan rangkuman cerdas (AI Insight) poin penting dari isi dokumen
+    """
+    from backend.app.services.pipeline.mode_hub import ModeHub
+    import json
+    import re
+    
+    try:
+        mode_hub = ModeHub()
+        gen = mode_hub.execute(
+            user_message="",
+            chat_history=[],
+            chat_mode="insight",
+            is_thinking=False,
+            context_isolation={"isolated_doc_id": document_id},
+            request=request
+        )
+        
+        full_response = ""
+        async for chunk_str in gen:
+            try:
+                data_json = chunk_str.strip()
+                if data_json:
+                    data = json.loads(data_json)
+                    if data.get("event_type") == "chunk":
+                        chunk_text = data.get("chunk")
+                        if chunk_text:
+                            full_response += chunk_text
+            except Exception as e:
+                logger.error(f"Error parsing insight chunk: {e}")
+
+        # Bersihkan tag internal LLM jika ada (misal <|channel>thought)
+        clean_response = re.sub(r'<\|channel>thought.*?<channel\|>', '', full_response, flags=re.DOTALL)
+        clean_response = clean_response.replace("<|channel>thought", "").replace("<channel|>", "").strip()
+        
+        return DocumentInsightResponse(insight=clean_response)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ [DOCUMENTS] Error generating insight: {e}")
+        raise HTTPException(status_code=500, detail=f"Gagal membuat rangkuman dokumen: {str(e)}")
 
 
 @router.get("/preview_b64/{encoded_filename}")

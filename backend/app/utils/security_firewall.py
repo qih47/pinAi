@@ -228,6 +228,7 @@ _PROMPT_INJECTION_PATTERNS = [
     re.compile(r"(?i)<\s*/?system\s*>"),              # Fake system tags
     re.compile(r"(?i)\[INST\]"),                      # LLaMA instruction injection
     re.compile(r"(?i)###\s*instruction"),             # Alpaca-style injection
+    re.compile(r"(?i)(abaikan|ignore|keluar|bypass|lupakan)\s+(dari\s+)?(mode|fokus|focus|insight|lineage|silsilah)"), # Protect specialized modes
 ]
 
 _ALL_INJECTION_CHECKS = [
@@ -261,7 +262,7 @@ def _scan_dict_recursive(data: Any, path: str = "root", skip_injection: bool = F
             _scan_for_injections(data, path)
     elif isinstance(data, dict):
         for k, v in data.items():
-            if str(k) in ("content", "liveCode", "code", "fileGenerations"):
+            if str(k) in ("content", "liveCode", "code", "fileGenerations", "chat_mode", "focus", "insight", "lineage"):
                 _scan_dict_recursive(v, f"{path}.{k}", skip_injection=True)
             else:
                 if not skip_injection:

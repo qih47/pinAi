@@ -41,6 +41,15 @@ file_koreksi/*
 uploads/*
 !uploads/.gitkeep
 
+tests/*
+!tests/.gitkeep
+
+backend/tests/*
+!backend/tests/.gitkeep
+
+webui/tests/*
+!webui/tests/.gitkeep
+
 backend/uploads/*
 !backend/uploads/.gitkeep
 

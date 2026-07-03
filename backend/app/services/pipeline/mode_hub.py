@@ -9,6 +9,7 @@ from backend.app.services.pipeline.modes.mode_documents import ModeDocuments
 from backend.app.services.pipeline.modes.mode_guest import ModeGuest
 from backend.app.services.pipeline.modes.mode_attachment import ModeAttachment
 from backend.app.services.pipeline.modes.mode_generate_file import ModeGenerateFile
+from backend.app.services.pipeline.modes.mode_insight import ModeInsight
 
 from backend.app.services.pipeline.modes.mode_utils import detect_precheck
 from backend.app.services.pipeline.call1_router import execute_call1_routing
@@ -29,6 +30,7 @@ class ModeHub:
             "guest": ModeGuest(),
             "attachment": ModeAttachment(),
             "generate_file": ModeGenerateFile(),  # Interceptor-Analyst Pipeline
+            "insight": ModeInsight(),
         }
 
     async def execute(
@@ -62,6 +64,23 @@ class ModeHub:
             if chunks:
                 session_chunks_text = "\n\n[KNOWLEDGE DARI FILE SEBELUMNYA DI SESI INI]\n" + "\n---\n".join(chunks)
         precheck["_session_chunks_text"] = session_chunks_text
+
+        if chat_mode == "insight":
+            logger.info("[MODE_HUB] Explicit Insight Mode detected! Bypassing call 1.")
+            handler = self.mode_handlers["insight"]
+            async for chunk in handler.execute(
+                user_message=user_message,
+                chat_history=chat_history,
+                is_thinking=is_thinking,
+                attachments=attachments,
+                context_isolation=context_isolation,
+                routing_data=precheck,
+                request=request,
+                employee_name=employee_name,
+                current_user_npp=current_user_npp
+            ):
+                yield chunk
+            return
 
         # ── Fast-path Bypass untuk Context Isolation (Focus Mode) ──────────────────
         if context_isolation and context_isolation.get("isolated_doc_id"):

@@ -34,9 +34,27 @@ class DocumentSchema(DocumentBaseSchema):
     filename: Optional[str] = Field(None, description="Filename asli dokumen")
     jenis_dokumen: Optional[str] = Field(None, description="Nama jenis dokumen")
     stataktif: Optional[str] = Field(None, description="Status aktif dokumen (batal/obsolete/kosong)")
+    snippet: Optional[str] = Field(None, description="Cuplikan teks dari isi berita yang cocok dengan kata kunci pencarian")
+    
     
     class Config:
         from_attributes = True
+
+
+class DocumentLineageItemSchema(BaseModel):
+    """Item silsilah dokumen"""
+    id: int
+    noper: Optional[str]
+    judul: str
+    stataktif: Optional[str]
+    tanggal: Optional[datetime]
+    relation_type: str = Field(..., description="Mencabut, Dicabut oleh, atau Saat ini")
+
+class DocumentLineageSchema(BaseModel):
+    """Schema untuk silsilah lengkap"""
+    current: DocumentLineageItemSchema
+    revokes: List[DocumentLineageItemSchema] = []
+    revoked_by: List[DocumentLineageItemSchema] = []
 
 
 class DocumentListSchema(BaseModel):
