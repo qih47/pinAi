@@ -1,45 +1,66 @@
-```
-# Python
+# ==============================================================================
+# ENVIRONMENT & SECRETS
+# ==============================================================================
+.env
+.env.*
+.env.local
+*.env
+
+# ==============================================================================
+# PYTHON / BACKEND
+# ==============================================================================
 __pycache__/
-*.pyc
-*.pyo
-*.pyd
+*.py[cod]
+*$py.class
 .Python
 venv/
 .venv/
-.env
-.env.local
-.env.*
-
-# 1. Ignore semua file .md yang berada TEPAT di root folder
-/*.md
-
-# 2. Berikan pengecualian khusus untuk README.md agar TIDAK di-ignore
-!/README.md
-
-# Ignore isi rag_env tapi tetap push foldernya
 rag_env/*
 !rag_env/.gitkeep
 
-accounts/*
-!accounts/.gitkeep
+# ==============================================================================
+# NODE / FRONTEND
+# ==============================================================================
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+webui/.vite/
+dist/
+build/
+target/
+
+# ==============================================================================
+# DATABASES & STORAGE (Ignore content but keep directory structure)
+# ==============================================================================
+db_doc/*
+!db_doc/.gitkeep
 
 file_peraturan/*
 !file_peraturan/.gitkeep
 
-# Ignore isi db_doc tapi tetap push foldernya
-db_doc/*
-!db_doc/.gitkeep
-
-docs/*
-
-# Ignore isi file_koreksi tapi tetap push foldernya
 file_koreksi/*
 !file_koreksi/.gitkeep
 
-# Ignore isi uploads tapi tetap push foldernya
 uploads/*
 !uploads/.gitkeep
+
+backend/uploads/*
+!backend/uploads/.gitkeep
+
+ocr_file/*
+!ocr_file/.gitkeep
+
+accounts/*
+!accounts/.gitkeep
+
+# ==============================================================================
+# TESTING & AGENTS
+# ==============================================================================
+coverage/
+htmlcov/
+.coverage
+.pytest_cache/
 
 tests/*
 !tests/.gitkeep
@@ -50,62 +71,34 @@ backend/tests/*
 webui/tests/*
 !webui/tests/.gitkeep
 
-backend/uploads/*
-!backend/uploads/.gitkeep
+.agents/*
+!.agents/.gitkeep
 
+# ==============================================================================
+# LOGS & TEMPORARY FILES
+# ==============================================================================
+*.log
+logs/*
+!logs/.gitkeep
 
-# Ignore isi ocr_file tapi tetap push foldernya
-ocr_file/*
-!ocr_file/.gitkeep
-
-
-# Node.js/JavaScript
-node_modules/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-
-# Build/dist directories
-dist/
-build/
-target/
-
-# Backup folder
-aibackup/
-webui/.vite
-webui/.vite/deps
-webui/.vite/deps/package.json
-webui/.vite/deps/package-lock.json
-webui/.vite/deps/package-lock.json
-
-
-# IDE specific
-.vscode/
-.idea/
+*.tmp
+*.temp
 *.swp
 *.swo
 
-# Logs
-*.log
-logs/*
-
-# OS generated files
+# ==============================================================================
+# IDE & OS FILES
+# ==============================================================================
+.vscode/
+.idea/
 .DS_Store
 Thumbs.db
 
-# Coverage reports
-coverage/
-htmlcov/
-.coverage
+# ==============================================================================
+# ARCHIVES & BACKUPS
+# ==============================================================================
+aibackup/
 
-# Temporary files
-*.tmp
-*.temp
-
-*.env
-
-
-# Compressed files
 *.zip
 *.gz
 *.tar
@@ -128,5 +121,14 @@ htmlcov/
 *.tar.bz2
 *.tar.xz
 *.tar.zst
-```cuda_11.8.0_520.61.05_linux.run
 *.run
+
+# ==============================================================================
+# DOCUMENTATION
+# ==============================================================================
+# Ignore semua file .md yang berada TEPAT di root folder kecuali README.md
+/*.md
+!/README.md
+
+docs/*
+!docs/.gitkeep
