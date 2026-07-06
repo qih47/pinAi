@@ -583,19 +583,13 @@ export function useChatLogic({ isGuest,
       const { sessionUuid, title } = e.detail;
       if (!title) return;
       
-      // Lakukan animasi typing pada sidebar dengan mengupdate chatHistory per karakter
-      let i = 0;
-      const animateTitle = setInterval(() => {
-        setChatHistory(prev => prev.map(session => {
-          if (session.session_uuid === sessionUuid) {
-            return { ...session, judul: title.substring(0, i + 1) };
-          }
-          return session;
-        }));
-        
-        i++;
-        if (i >= title.length) clearInterval(animateTitle);
-      }, 50); // Kecepatan ketik
+      // Update state dengan _titleUpdated = true agar komponen TypewriterTitle terpicu
+      setChatHistory(prev => prev.map(session => {
+        if (session.session_uuid === sessionUuid) {
+          return { ...session, judul: title, _titleUpdated: true };
+        }
+        return session;
+      }));
     };
 
     window.addEventListener("cakra_title_update", handleTitleUpdate);

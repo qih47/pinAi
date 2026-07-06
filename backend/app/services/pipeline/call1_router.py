@@ -116,7 +116,7 @@ async def execute_call1_routing(
             messages=messages,
             request=request,
             temperature=0.0,
-            num_ctx=4096,
+            num_ctx=16384,
             num_predict=1024,
             timeout=30.0,
         )
@@ -143,6 +143,7 @@ def _validate_and_normalize_routing(
     default_routing = {
         "need_rag": False,
         "queries": [],
+        "query_judul": None,
         "is_coding": False,
         "is_generate_file": False,  # MODE GENERATE FILE: True jika user meminta dibuatkan file
         "need_analytic": False,
@@ -167,6 +168,8 @@ def _validate_and_normalize_routing(
         ][:3]
     else:
         routing["queries"] = []
+
+    routing["query_judul"] = routing_json.get("query_judul")
 
     routing["is_coding"] = bool(routing_json.get("is_coding", False))
     routing["is_generate_file"] = bool(routing_json.get("is_generate_file", False))
@@ -244,6 +247,7 @@ def _build_fallback_routing(precheck: Dict[str, Any]) -> Dict[str, Any]:
         return {
             "need_rag": True,
             "queries": queries,
+            "query_judul": user_message,
             "is_coding": False,
             "is_generate_file": False,
             "needs_code_analysis": False,
@@ -261,7 +265,9 @@ def _build_fallback_routing(precheck: Dict[str, Any]) -> Dict[str, Any]:
         return {
             "need_rag": False,
             "queries": [],
+            "query_judul": None,
             "is_coding": precheck.get("is_coding", False),
+            "is_generate_file": False,
             "needs_code_analysis": False,
             "need_analytic": False,
             "is_self_correction": False,

@@ -148,6 +148,45 @@ export default function SidebarHeader({
           </span>
         </button>
 
+        {/* ── TOMBOL: ANALYTICS (HANYA UNTUK 06652) ── */}
+        {userData?.npp === '06652' && (
+          <button
+            onClick={() => navigate('/analytics')}
+            className="flex items-center rounded-full hover:bg-gray-200 dark:hover:bg-gray-800 transition-colors group overflow-hidden text-[14px]"
+            style={{
+              padding: isOpen ? "8px 12px" : "8px",
+              width: isOpen ? "100%" : "auto",
+              gap: isOpen ? "12px" : "0",
+            }}
+            title="Analytics"
+          >
+            <span className="h-5 w-5 flex items-center justify-center flex-shrink-0">
+              <svg
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke={theme?.iconColor || "currentColor"}
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="group-hover:text-cyan-500 transition-colors"
+              >
+                <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+                <line x1="8" y1="21" x2="16" y2="21"></line>
+                <line x1="12" y1="17" x2="12" y2="21"></line>
+              </svg>
+            </span>
+            <span
+              className={`font-medium whitespace-nowrap transition-opacity duration-300 ${!isOpen ? "hidden" : "opacity-100"
+                }`}
+              style={{ color: theme?.textColor }}
+            >
+              Analytics
+            </span>
+          </button>
+        )}
+
         {/* ── TOMBOL: AUDIT LOGS (DULU EMOJI 🛡️, SEKARANG SVG) ── */}
         {userData?.role === 'admin' && (
           <button

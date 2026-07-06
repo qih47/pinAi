@@ -152,13 +152,13 @@ def build_call2_system_prompt(
 
 def get_module_config(module_name: str) -> Dict[str, Any]:
     configs = {
-        "chitchat": {"num_ctx": 8192, "temperature": 1.0},
-        "coding": {"num_ctx": 8192, "temperature": 1.0},
+        "chitchat": {"num_ctx": 16384, "temperature": 1.0},
+        "coding": {"num_ctx": 16384, "temperature": 1.0},
         "rag": {"num_ctx": 16384, "temperature": 1.0},
         "multi_document": {"num_ctx": 16384, "temperature": 1.0},
-        "analytic": {"num_ctx": 8192, "temperature": 1.0},
-        "self_correction": {"num_ctx": 8192, "temperature": 1.0},
-        "ambiguous": {"num_ctx": 4096, "temperature": 1.0},
-        "general_expert": {"num_ctx": 8192, "temperature": 1.0},
+        "analytic": {"num_ctx": 16384, "temperature": 1.0},
+        "self_correction": {"num_ctx": 16384, "temperature": 1.0},
+        "ambiguous": {"num_ctx": 16384, "temperature": 1.0},
+        "general_expert": {"num_ctx": 16384, "temperature": 1.0},
     }
-    return configs.get(module_name, configs["chitchat"])
+    return configs.get(module_name, {"num_ctx": 16384, "temperature": 1.0})

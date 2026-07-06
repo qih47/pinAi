@@ -5,20 +5,11 @@ logger = logging.getLogger("CAKRA_PROMPTS")
 
 _RAG_CONTEXT_MAX_CHARS = 60_000
 
-from .core_prompts import _get_base_persona, _get_tone_guidance
+from .core_prompts import COMMON_BASE_PERSONA, COMMON_TONE_GUIDANCE
+from backend.app.services.pipeline.prompt_manager import prompt_manager
 
-
-
-def build_response_prompt_coding(
-    employee_name: str,
-    precheck: Dict[str, Any],
-    is_thinking: bool = True,
-) -> str:
-    pronoun = precheck.get("pronoun", "unknown")
-    prompt = _get_base_persona(employee_name, "CODING & TECHNICAL EXPERT")
-    
-    if is_thinking:
-        prompt += """
+PROMPT_CODING_TEMPLATE = COMMON_BASE_PERSONA + """
+{% if is_thinking %}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 🚨 CRITICAL SYSTEM ENFORCEMENT: CRITICAL THINKING LANGUAGE
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -30,25 +21,40 @@ def build_response_prompt_coding(
 
 Gunakan fitur penalaran internal (native thinking) kamu untuk memikirkan langkah-langkah sebelum menjawab.
 Fokus pemikiran untuk CODING: Analisis arsitektur, edge cases, dan struktur kode sebelum menjawab.
-"""
-    else:
-        prompt += """
+{% else %}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ⚡ INSTRUKSI DETAIL (THINKING MODE: OFF)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Jawaban akhir WAJIB komprehensif dan panjang.
 Jika ada kode, JANGAN sekadar menaruh snippet. Berikan pengantar, tulis kodenya, lalu jelaskan alurnya (step-by-step) agar user paham cara kerjanya.
-"""
+{% endif %}
 
-    prompt += f"""
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 🎨 GAYA BAHASA & ATURAN
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-{_get_tone_guidance(pronoun)}
-• Sapa {employee_name} dengan ramah.
+""" + COMMON_TONE_GUIDANCE + """
+• Sapa {{ employee_name }} dengan ramah.
 • WAJIB gunakan markdown code block.
 • DILARANG hallucination API/Fungsi.
 • DILARANG menyebut nama model LLM lain.
 """
-    return prompt
+
+prompt_manager.register_default(
+    name="RESPONSE_PROMPT_CODING",
+    template_str=PROMPT_CODING_TEMPLATE,
+    description="Asisten khusus koding dan teknikal."
+)
+
+def build_response_prompt_coding(
+    employee_name: str,
+    precheck: Dict[str, Any],
+    is_thinking: bool = True,
+) -> str:
+    return prompt_manager.render(
+        name="RESPONSE_PROMPT_CODING",
+        employee_name=employee_name,
+        mode_title="CODING & TECHNICAL EXPERT",
+        pronoun=precheck.get("pronoun", "unknown"),
+        is_thinking=is_thinking
+    )
 

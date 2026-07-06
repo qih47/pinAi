@@ -243,3 +243,175 @@ async def optimize_vector_index_endpoint(
     except Exception as e:
         logger.error(f"❌ [ADMIN] Optimize index error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to optimize vector index: {str(e)}")
+
+# =========================================================================================
+# OPSI 4: GENERATED ARTIFACTS VAULT & AUDIT
+# =========================================================================================
+
+from backend.app.core.paths import ACCOUNTS_DIR
+from fastapi.responses import PlainTextResponse, FileResponse
+import os
+from pathlib import Path
+from datetime import datetime
+
+@router.get("/artifacts")
+async def admin_list_artifacts(
+    current_user_npp: Optional[str] = Depends(get_current_user_npp),
+):
+    """
+    Mengambil seluruh daftar artifact yang pernah digenerate oleh AI.
+    Hanya bisa diakses oleh Admin.
+    """
+    if not current_user_npp:
+        raise HTTPException(status_code=401, detail="Login required for admin functions")
+        
+    artifacts_list = []
+    base_dir = Path(ACCOUNTS_DIR)
+    
+    if not base_dir.exists():
+        return {"status": "success", "artifacts": []}
+        
+    # Struktur direktori: accounts/{npp}/{session_id}/artifacts/{filename}
+    try:
+        for npp_dir in base_dir.iterdir():
+            if not npp_dir.is_dir():
+                continue
+            npp = npp_dir.name
+            
+            for session_dir in npp_dir.iterdir():
+                if not session_dir.is_dir():
+                    continue
+                session_id = session_dir.name
+                
+                artifact_folder = session_dir / "artifacts"
+                if not artifact_folder.exists() or not artifact_folder.is_dir():
+                    continue
+                    
+                for file_path in artifact_folder.iterdir():
+                    if file_path.is_file():
+                        stat = file_path.stat()
+                        artifacts_list.append({
+                            "npp": npp,
+                            "session_id": session_id,
+                            "filename": file_path.name,
+                            "size": stat.st_size,
+                            "created_at": datetime.fromtimestamp(stat.st_mtime).isoformat()
+                        })
+                        
+        # Urutkan berdasarkan waktu pembuatan terbaru
+        artifacts_list.sort(key=lambda x: x["created_at"], reverse=True)
+        
+        return {
+            "status": "success",
+            "artifacts": artifacts_list
+        }
+    except Exception as e:
+        logger.error(f"❌ [ADMIN] Failed to list artifacts: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to list artifacts: {str(e)}")
+
+
+@router.get("/artifacts/read", response_class=PlainTextResponse)
+async def admin_read_artifact(
+    npp: str,
+    session_id: str,
+    filename: str,
+    current_user_npp: Optional[str] = Depends(get_current_user_npp),
+):
+    """
+    Membaca konten file artifact (Admin Bypass).
+    """
+    if not current_user_npp:
+        raise HTTPException(status_code=401, detail="Login required for admin functions")
+        
+    safe_name = Path(filename).name
+    if not safe_name or safe_name.startswith(".") or "/" in safe_name or "\\" in safe_name:
+        raise HTTPException(status_code=400, detail="Nama file tidak valid.")
+        
+    target = Path(ACCOUNTS_DIR) / str(npp) / str(session_id) / "artifacts" / safe_name
+    
+    if not target.exists() or not target.is_file():
+        raise HTTPException(status_code=404, detail="Artifact tidak ditemukan.")
+        
+    if target.stat().st_size > 5 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="File terlalu besar untuk dibaca langsung.")
+        
+    return PlainTextResponse(content=target.read_text(encoding="utf-8", errors="replace"), media_type="text/plain; charset=utf-8")
+
+
+@router.get("/artifacts/download")
+async def admin_download_artifact(
+    npp: str,
+    session_id: str,
+    filename: str,
+    current_user_npp: Optional[str] = Depends(get_current_user_npp),
+):
+    """
+    Mengunduh file artifact secara langsung.
+    """
+    if not current_user_npp:
+        raise HTTPException(status_code=401, detail="Login required for admin functions")
+        
+    safe_name = Path(filename).name
+    if not safe_name or safe_name.startswith(".") or "/" in safe_name or "\\" in safe_name:
+        raise HTTPException(status_code=400, detail="Nama file tidak valid.")
+        
+    target = Path(ACCOUNTS_DIR) / str(npp) / str(session_id) / "artifacts" / safe_name
+    
+    if not target.exists() or not target.is_file():
+        raise HTTPException(status_code=404, detail="Artifact tidak ditemukan.")
+        
+    return FileResponse(
+        path=target,
+        filename=safe_name,
+        media_type="application/octet-stream"
+    )
+
+import zipfile
+import io
+from fastapi.responses import StreamingResponse
+
+@router.get("/artifacts/download_all")
+async def admin_download_all_artifacts(
+    current_user_npp: Optional[str] = Depends(get_current_user_npp),
+):
+    """
+    Mengunduh SEMUA artifact dari semua user dan sesi sebagai file ZIP.
+    Hanya bisa diakses oleh Admin.
+    """
+    if not current_user_npp:
+        raise HTTPException(status_code=401, detail="Login required for admin functions")
+
+    base_dir = Path(ACCOUNTS_DIR)
+    if not base_dir.exists():
+        raise HTTPException(status_code=404, detail="Tidak ada artifact di sistem.")
+
+    zip_buffer = io.BytesIO()
+    file_count = 0
+    
+    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
+        for npp_dir in base_dir.iterdir():
+            if not npp_dir.is_dir(): continue
+            for session_dir in npp_dir.iterdir():
+                if not session_dir.is_dir(): continue
+                artifact_folder = session_dir / "artifacts"
+                if not artifact_folder.exists() or not artifact_folder.is_dir(): continue
+                
+                for file_path in artifact_folder.iterdir():
+                    if file_path.is_file():
+                        # Create an organized path in the zip: npp/session_id/filename
+                        arcname = f"{npp_dir.name}/{session_dir.name}/{file_path.name}"
+                        zip_file.write(file_path, arcname)
+                        file_count += 1
+                        
+    if file_count == 0:
+        raise HTTPException(status_code=404, detail="Tidak ada file yang bisa didownload.")
+
+    zip_buffer.seek(0)
+    logger.info(f"[ADMIN] Download All Artifacts by {current_user_npp} ({file_count} files)")
+    
+    return StreamingResponse(
+        zip_buffer,
+        media_type="application/zip",
+        headers={"Content-Disposition": f"attachment; filename=all_cakra_artifacts.zip"}
+    )
+

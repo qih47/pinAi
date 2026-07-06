@@ -250,6 +250,31 @@ async def stream_ollama_chat(
                         if session_uuid and session_uuid != "GLOBAL_SESSION":
                             try:
                                 from backend.app.services.chat_history_service import chat_history_service
+                                # Log TPS if available
+                                eval_count_stat = yield_data.get("eval_count")
+                                eval_duration_stat = yield_data.get("eval_duration")
+                                if eval_count_stat and eval_duration_stat:
+                                    tps = eval_count_stat / (eval_duration_stat / 1e9)
+                                    obs_dict = {
+                                        "msg": "Inference completed",
+                                        "stats": {
+                                            "eval_count": eval_count_stat,
+                                            "eval_duration_sec": eval_duration_stat / 1e9,
+                                            "tps": tps
+                                        }
+                                    }
+                                    await chat_history_service.save_agent_step(
+                                        session_id=session_uuid,
+                                        step_number=4,
+                                        tool_called="INFERENCE_STATS",
+                                        tool_input=f"Model: {model_name}",
+                                        observation=json.dumps(obs_dict)
+                                    )
+                            except Exception as stat_err:
+                                logger.warning(f"[LLM_CLIENT] Failed to save inference stats: {str(stat_err)}")
+
+                            try:
+                                from backend.app.services.chat_history_service import chat_history_service
                                 user_query = next(
                                     (m["content"] for m in reversed(messages) if m["role"] == "user"),
                                     "Kueri tidak terdeteksi",

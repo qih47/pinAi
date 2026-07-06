@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useChatAuthStore } from '@/stores/authStore';
 import { fetchAuditLogs, fetchAuditStats, exportAuditLogs, downloadAuditExport } from '@/services/auditService';
+import GodModeTelepathyPanel from './components/GodModeTelepathyPanel';
 
 // ===================================================================
 // AUDIT LOG EVENT TYPES
@@ -99,6 +100,7 @@ export default function AuditLogsPage() {
   const [isExporting, setIsExporting] = useState(false);
   const [exportFormat, setExportFormat] = useState('csv');
   const [showExportMenu, setShowExportMenu] = useState(false);
+  const [selectedTelepathyNpp, setSelectedTelepathyNpp] = useState(null);
   const exportRef = useRef(null);
 
   // Check admin access
@@ -199,8 +201,9 @@ export default function AuditLogsPage() {
 
   return (
     <div style={{
-      minHeight: '100vh',
-      background: '#0f1117',
+      height: '100%',
+      display: 'flex',
+      flexDirection: 'column',
       color: '#e2e8f0',
       fontFamily: "'Inter', 'Segoe UI', sans-serif",
       padding: '0',
@@ -209,39 +212,13 @@ export default function AuditLogsPage() {
           HEADER BAR
       ========================================================= */}
       <div style={{
-        background: 'rgba(21,21,23,0.98)',
-        borderBottom: '1px solid rgba(255,255,255,0.08)',
-        padding: '0 32px',
+        background: 'transparent',
+        padding: '0 0 16px 0',
         display: 'flex',
         alignItems: 'center',
-        height: '64px',
         gap: '16px',
-        position: 'sticky',
-        top: 0,
         zIndex: 100,
-        backdropFilter: 'blur(12px)',
       }}>
-        <button
-          onClick={() => navigate(-1)}
-          style={{
-            background: 'rgba(255,255,255,0.06)',
-            border: '1px solid rgba(255,255,255,0.1)',
-            borderRadius: '10px',
-            color: '#94a3b8',
-            padding: '7px 14px',
-            fontSize: '13px',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '6px',
-            transition: 'all 0.2s',
-          }}
-          onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.1)'; e.currentTarget.style.color = '#e2e8f0'; }}
-          onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.06)'; e.currentTarget.style.color = '#94a3b8'; }}
-        >
-          ← Kembali
-        </button>
-
         <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '12px' }}>
           <span style={{ fontSize: '20px' }}>🛡️</span>
           <div>
@@ -309,7 +286,7 @@ export default function AuditLogsPage() {
       {/* =========================================================
           MAIN CONTENT
       ========================================================= */}
-      <div style={{ padding: '32px', maxWidth: '1400px', margin: '0 auto' }}>
+      <div style={{ padding: '16px 0', width: '100%' }}>
 
         {/* STATS ROW */}
         <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', marginBottom: '28px' }}>
@@ -411,7 +388,7 @@ export default function AuditLogsPage() {
           {/* Table Header */}
           <div style={{
             display: 'grid',
-            gridTemplateColumns: '180px 100px 120px 1fr 120px 70px',
+            gridTemplateColumns: '180px 100px 120px 1fr 120px 70px 90px',
             padding: '12px 20px',
             background: 'rgba(255,255,255,0.04)',
             borderBottom: '1px solid rgba(255,255,255,0.07)',
@@ -428,6 +405,7 @@ export default function AuditLogsPage() {
             <span>Detail / IP</span>
             <span>IP Address</span>
             <span>Status</span>
+            <span>Action</span>
           </div>
 
           {/* Table Body */}
@@ -460,7 +438,7 @@ export default function AuditLogsPage() {
                   key={log.id || idx}
                   style={{
                     display: 'grid',
-                    gridTemplateColumns: '180px 100px 120px 1fr 120px 70px',
+                    gridTemplateColumns: '180px 100px 120px 1fr 120px 70px 90px',
                     padding: '12px 20px',
                     borderBottom: '1px solid rgba(255,255,255,0.04)',
                     fontSize: '12px',
@@ -512,6 +490,28 @@ export default function AuditLogsPage() {
                       {log.status || 'OK'}
                     </span>
                   </span>
+                  <span>
+                    {log.npp && (
+                      <button 
+                        onClick={() => setSelectedTelepathyNpp(log.npp)}
+                        style={{
+                          background: 'rgba(99,102,241,0.1)',
+                          color: '#818cf8',
+                          border: '1px solid rgba(99,102,241,0.3)',
+                          borderRadius: '6px',
+                          padding: '3px 8px',
+                          fontSize: '10px',
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                          transition: 'all 0.2s'
+                        }}
+                        onMouseEnter={e => e.currentTarget.style.background = 'rgba(99,102,241,0.2)'}
+                        onMouseLeave={e => e.currentTarget.style.background = 'rgba(99,102,241,0.1)'}
+                      >
+                        🧠 X-Ray
+                      </button>
+                    )}
+                  </span>
                 </div>
               );
             })
@@ -547,6 +547,14 @@ export default function AuditLogsPage() {
           </div>
         )}
       </div>
+
+      {/* GOD MODE TELEPATHY PANEL */}
+      {selectedTelepathyNpp && (
+        <GodModeTelepathyPanel 
+          npp={selectedTelepathyNpp} 
+          onClose={() => setSelectedTelepathyNpp(null)} 
+        />
+      )}
     </div>
   );
 }

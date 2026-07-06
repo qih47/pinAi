@@ -61,6 +61,10 @@ async def init_db_pool():
                 await _update_chat_sessions_settings_column(conn)
                 await _update_chat_messages_feedback_column(conn)
                 await _update_chat_messages_metadata_column(conn)
+                await _create_security_logs_table(conn)
+                await _create_system_prompts_table(conn)
+                await _create_api_keys_table(conn)
+                await _create_training_jobs_table(conn)
             except asyncpg.exceptions.InsufficientPrivilegeError as e:
                 logger.warning(f"⚠️ [DB_MIGRATION] Izin ditolak untuk memodifikasi schema public. Minta admin untuk jalankan DDL secara manual: {e}")
             except Exception as e:
@@ -216,6 +220,75 @@ async def _update_chat_messages_metadata_column(conn):
     await conn.execute("""
         ALTER TABLE chat_messages 
         ADD COLUMN IF NOT EXISTS metadata JSONB;
+    """)
+
+async def _create_security_logs_table(conn):
+    """
+    Create audit table for security anomalies (SOC).
+    """
+    await conn.execute("""
+        CREATE TABLE IF NOT EXISTS security_logs (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            timestamp TIMESTAMPTZ NOT NULL DEFAULT now(),
+            event_type VARCHAR(50) NOT NULL,
+            npp VARCHAR(50),
+            ip_address VARCHAR(50),
+            description TEXT,
+            severity VARCHAR(20) DEFAULT 'MEDIUM'
+        );
+        CREATE INDEX IF NOT EXISTS idx_security_logs_timestamp ON security_logs(timestamp DESC);
+    """)
+
+async def _create_system_prompts_table(conn):
+    """
+    Create table for Dynamic Prompt Engineering Studio (Opsi 3).
+    """
+    await conn.execute("""
+        CREATE TABLE IF NOT EXISTS system_prompts (
+            name VARCHAR(100) PRIMARY KEY,
+            template TEXT NOT NULL,
+            description TEXT,
+            version INT DEFAULT 1,
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        );
+    """)
+
+async def _create_api_keys_table(conn):
+    """
+    Create table for API Key Management (Server-to-Server Auth).
+    """
+    await conn.execute("""
+        CREATE TABLE IF NOT EXISTS api_keys (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            key_hash VARCHAR(255) NOT NULL UNIQUE,
+            key_prefix VARCHAR(20) NOT NULL,
+            app_name VARCHAR(100) NOT NULL,
+            owner_npp VARCHAR(50) NOT NULL,
+            is_active BOOLEAN DEFAULT TRUE,
+            total_requests INT DEFAULT 0,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            last_used_at TIMESTAMPTZ
+        );
+        CREATE INDEX IF NOT EXISTS idx_api_keys_hash ON api_keys(key_hash);
+    """)
+
+async def _create_training_jobs_table(conn):
+    """
+    Create table for Deep Learning / Ingestion Background Jobs.
+    """
+    await conn.execute("""
+        CREATE TABLE IF NOT EXISTS training_jobs (
+            job_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            dokumen_id INT NOT NULL,
+            tipe_training VARCHAR(50) NOT NULL,
+            status VARCHAR(50) NOT NULL DEFAULT 'PENDING',
+            progress INT DEFAULT 0,
+            logs TEXT,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        );
+        CREATE INDEX IF NOT EXISTS idx_training_jobs_status ON training_jobs(status);
+        CREATE INDEX IF NOT EXISTS idx_training_jobs_dokumen ON training_jobs(dokumen_id);
     """)
 
 async def get_continuation_state(session_uuid: str) -> dict:

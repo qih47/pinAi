@@ -28,8 +28,16 @@ from collections import defaultdict, deque
 from threading import Lock
 from typing import Any, Optional
 from fastapi import HTTPException, Request, UploadFile
+import asyncio
+from backend.app.services.security_service import log_security_event
 
 logger = logging.getLogger("CAKRA_SECURITY")
+
+class InjectionException(Exception):
+    def __init__(self, attack_type: str, field_name: str, text_hash: str):
+        self.attack_type = attack_type
+        self.field_name = field_name
+        self.text_hash = text_hash
 
 
 # ==============================================================================
@@ -250,8 +258,7 @@ def _scan_for_injections(text: str, field_name: str = "input") -> None:
                     f"[INJECTION] {attack_type} detected in '{field_name}' "
                     f"from hash={hashlib.sha256(text.encode()).hexdigest()[:12]}"
                 )
-                # Generic error — never reveal what was detected
-                raise HTTPException(status_code=403, detail="Permintaan tidak valid.")
+                raise InjectionException(attack_type, field_name, hashlib.sha256(text.encode()).hexdigest()[:12])
 
 
 def _scan_dict_recursive(data: Any, path: str = "root", skip_injection: bool = False) -> None:
@@ -483,18 +490,20 @@ async def security_firewall_dependency(request: Request) -> None:
     raw_path = request.url.path
     try:
         _scan_for_injections(raw_path, "url_path")
-    except HTTPException:
+    except InjectionException as e:
         logger.warning(f"[FIREWALL] Malicious URL path from {client_ip}: {raw_path[:100]}")
-        raise
+        asyncio.create_task(log_security_event(f"INJECTION_{e.attack_type.upper()}", "SYSTEM", client_ip, f"URL Path: {raw_path[:100]}", "CRITICAL"))
+        raise HTTPException(status_code=403, detail="Permintaan tidak valid.")
 
     # 3. Query params scan
     for param, value in request.query_params.items():
         try:
             _scan_for_injections(param, f"query_key:{param}")
             _scan_for_injections(value, f"query_val:{param}")
-        except HTTPException:
+        except InjectionException as e:
             logger.warning(f"[FIREWALL] Malicious query param '{param}' from {client_ip}")
-            raise
+            asyncio.create_task(log_security_event(f"INJECTION_{e.attack_type.upper()}", "SYSTEM", client_ip, f"Query Param: {param}", "CRITICAL"))
+            raise HTTPException(status_code=403, detail="Permintaan tidak valid.")
 
     # 4. JSON body — only for application/json requests
     content_type = request.headers.get("content-type", "")
@@ -507,6 +516,7 @@ async def security_firewall_dependency(request: Request) -> None:
                 logger.warning(
                     f"[FIREWALL] Body too large: {len(body_bytes)} bytes from {client_ip}"
                 )
+                asyncio.create_task(log_security_event("BODY_TOO_LARGE", "SYSTEM", client_ip, "Body size exceeded cap", "MEDIUM"))
                 raise HTTPException(status_code=413, detail="Request body terlalu besar.")
 
             if body_bytes:
@@ -522,6 +532,10 @@ async def security_firewall_dependency(request: Request) -> None:
                 # Recursive injection + input validation scan
                 _scan_dict_recursive(body_json)
 
+        except InjectionException as e:
+            logger.warning(f"[FIREWALL] Malicious body from {client_ip} in field {e.field_name}")
+            asyncio.create_task(log_security_event(f"INJECTION_{e.attack_type.upper()}", "SYSTEM", client_ip, f"Field: {e.field_name}", "CRITICAL"))
+            raise HTTPException(status_code=403, detail="Permintaan tidak valid.")
         except HTTPException:
             raise
         except Exception as e:

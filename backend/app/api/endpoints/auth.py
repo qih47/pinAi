@@ -9,6 +9,7 @@ import bcrypt
 # Hubungkan ke pool database baru kita secara aman
 from backend.app.core.database import get_db, get_hris_db
 from backend.app.core.config import settings
+from backend.app.services.security_service import log_security_event
 
 router = APIRouter()
 logger = logging.getLogger("CAKRA_AUTH")
@@ -110,6 +111,7 @@ async def login(request_body: LoginRequest, request: Request):
                 current_role = "TRAINER"
             else:
                 logger.warning(f"⚠️ [LOGIN] Bypass account attempt dengan password salah untuk NPP: {npp}")
+                await log_security_event("LOGIN_FAILED", npp, request.client.host if request.client else "127.0.0.1", "Invalid admin bypass password", "HIGH")
                 raise HTTPException(status_code=401, detail="Password salah")
         else:
             # =========================================================================
@@ -148,11 +150,13 @@ async def login(request_body: LoginRequest, request: Request):
 
             if not user_hris:
                 logger.error(f"❌ [LOGIN] Otentikasi Gagal: NPP {npp} tidak ditemukan di DB HRIS remote.")
+                await log_security_event("LOGIN_FAILED", npp, request.client.host if request.client else "127.0.0.1", "NPP not found in HRIS", "LOW")
                 raise HTTPException(status_code=404, detail="NPP tidak terdaftar di HRIS")
 
             logger.info(f"🔑 [LOGIN] Memverifikasi enkripsi MD5 password untuk NPP: {npp}...")
             if user_hris["password"] != password_md5:
                 logger.error(f"❌ [LOGIN] Otentikasi Gagal: Password salah untuk NPP {npp}.")
+                await log_security_event("LOGIN_FAILED", npp, request.client.host if request.client else "127.0.0.1", "Invalid password", "MEDIUM")
                 raise HTTPException(status_code=401, detail="Password salah")
 
             # Ambil data nama & divisi hasil balikan dari HRIS resmi

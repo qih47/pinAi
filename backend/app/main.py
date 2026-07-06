@@ -80,7 +80,7 @@ async def _warmup_and_pin_models():
                     "messages": [{"role": "user", "content": "hi"}],
                     "stream": False,
                     "keep_alive": -1,   # permanent — tidak di-evict sampai service restart
-                    "options": {"temperature": 0.1, "num_predict": 1},
+                    "options": {"temperature": 0.1, "num_predict": 1, "num_ctx": 16384},
                 }
                 resp = await client.post(url, json=payload)
                 if resp.status_code == 200:
@@ -121,6 +121,9 @@ async def lifespan(app: FastAPI):
     try:
         await init_db_pool()
         logger.info("[DB_POOL] Dual-pool database connection initialized.")
+
+        from backend.app.services.pipeline.prompt_manager import prompt_manager
+        await prompt_manager.initialize()
 
         await setup_token_expiry_migration()
         await setup_hnsw_index()

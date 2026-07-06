@@ -47,6 +47,34 @@ class MessageRepository:
                 logger.error(f"[CHAT_HISTORY_ERROR] Failed to save chat message: {str(e)}")
                 return False
 
+    async def save_agent_step(
+        self, session_id: str, step_number: int, tool_called: str, tool_input: str, observation: str
+    ) -> bool:
+        """Menyimpan langkah agen (Agentic Pipeline) ke database."""
+        async with get_db() as conn:
+            try:
+                session_pk = await self._resolve_session_pk(conn, session_id)
+                if not session_pk:
+                    return False
+                
+                # Cari message_id terakhir untuk sesi ini (yaitu pesan user terakhir)
+                message_id = await conn.fetchval(
+                    "SELECT id FROM chat_messages WHERE session_id = $1 ORDER BY timestamp DESC LIMIT 1", 
+                    session_pk
+                )
+                if not message_id:
+                    return False
+
+                query = """
+                    INSERT INTO ai_agent_steps (message_id, step_number, tool_called, tool_input, observation)
+                    VALUES ($1, $2, $3, $4, $5)
+                """
+                await conn.execute(query, message_id, step_number, tool_called, tool_input, observation)
+                return True
+            except Exception as e:
+                logger.error(f"[CHAT_HISTORY_ERROR] Failed to save agent step: {str(e)}")
+                return False
+
     async def update_chat_message(
         self, session_id: str, edit_index: int, role: str, text: str, thought: Optional[str] = None, sources: Optional[list] = None, metadata: Optional[dict] = None
     ) -> bool:

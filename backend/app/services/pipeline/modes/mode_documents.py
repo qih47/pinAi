@@ -45,7 +45,16 @@ class ModeDocuments:
         rag_context = None
         rag_sources = None
 
-        # ── Step 2: RAG Pipeline Execution ────────────────────────────────────────
+        # ── Step 2: Parallel Data Fetching ────────────────────────────────────────
+        # 2A: Setup Background Tasks
+        from backend.app.services.pipeline.community_knowledge import search_community_knowledge
+        from backend.app.services.peraturan_service import search_and_ocr_by_judul
+        
+        task_community = asyncio.create_task(search_community_knowledge(user_message, is_guest=(current_user_npp == "GUEST")))
+        query_judul = routing_data.get("query_judul")
+        task_peraturan = asyncio.create_task(search_and_ocr_by_judul(query_judul))
+
+        # 2B: Stream RAG progress while tasks run in background
         if rag_queries:
             logger.info(f"[MODE_DOCUMENTS] RAG triggered via Sub-Queries | queries={rag_queries}")
             yield format_sse(status="🔍 Mencari dokumen regulasi terkait", event_type=SSEEventType.STATUS)
@@ -68,6 +77,30 @@ class ModeDocuments:
                         rag_context = data["payload"].get("context")
                         rag_sources = data["payload"].get("sources")
                         logger.info(f"[MODE_DOCUMENTS] RAG done | {len(rag_context or '')} chars | {len(rag_sources or [])} sources")
+                        
+                        # Log Agent Step for RAG Search
+                        session_uuid = routing_data.get("_session_uuid") if routing_data else None
+                        if session_uuid:
+                            from backend.app.services.chat_history_service import chat_history_service
+                            sources_data = []
+                            for s in (rag_sources or []):
+                                sources_data.append({
+                                    "title": s.get('title') or s.get('filename') or s.get('document_title', 'Unknown'),
+                                    "doc_id": s.get('dokumen_id') or s.get('id') or s.get('document_id', ''),
+                                    "score": s.get('score') or s.get('similarity', 0)
+                                })
+                            obs_json = {
+                                "msg": f"Found {len(rag_sources or [])} sources",
+                                "queries": rag_queries,
+                                "sources": sources_data
+                            }
+                            await chat_history_service.save_agent_step(
+                                session_id=session_uuid,
+                                step_number=2,
+                                tool_called="RAG_SEARCH",
+                                tool_input=str(rag_queries),
+                                observation=json.dumps(obs_json)
+                            )
 
                     if event_type in (SSEEventType.SOURCES, SSEEventType.THINKING, SSEEventType.STATUS):
                         yield sse
@@ -76,6 +109,11 @@ class ModeDocuments:
                 except (json.JSONDecodeError, AttributeError):
                     yield sse
                     await asyncio.sleep(0.01)
+
+        # 2C: Tunggu proses paralel selesai
+        yield format_sse(status="⏳ Memproses riwayat percakapan & scan file...", event_type=SSEEventType.STATUS)
+        community_context = await task_community
+        judul_context, ocr_attachments = await task_peraturan
 
         # ── Step 3: LLM Execution (Call 2) ────────────────────────────────────────
         module_name = select_call2_module(routing_data, has_rag_context=bool(rag_context))
@@ -98,11 +136,11 @@ class ModeDocuments:
             rag_sources=rag_sources
         )
 
-        # Fetch Community Knowledge untuk User Resmi (is_guest=False)
-        from backend.app.services.pipeline.community_knowledge import search_community_knowledge
-        community_context = await search_community_knowledge(user_message, is_guest=False)
+        # Inject Community Knowledge & Title Search Context
         if community_context:
             system_prompt += community_context
+        if judul_context:
+            system_prompt += judul_context
 
         # Inject Long-Term Memory (ai_document_chunks)
         session_chunks = routing_data.get("_session_chunks_text", "")
@@ -113,6 +151,12 @@ class ModeDocuments:
         # Mengambil 5 history + 1 current message = 6
         trimmed_messages = messages_dict[-6:] if len(messages_dict) > 6 else messages_dict
         
+        # Inject OCR Images to the last user message
+        if ocr_attachments:
+            images = [att["base64"] for att in ocr_attachments if att.get("type") == "image"]
+            if images:
+                trimmed_messages[-1]["images"] = images
+                
         stream_messages = [
             {"role": "system", "content": system_prompt},
             *trimmed_messages,
@@ -121,6 +165,34 @@ class ModeDocuments:
         module_config = get_module_config(module_name)
         num_ctx = module_config["num_ctx"]
         temperature = module_config["temperature"]
+
+        # Hitung estimasi token (1 token ~ 4 karakter)
+        sys_tokens = len(system_prompt) // 4
+        hist_tokens = sum(len(m.get("content", "")) for m in trimmed_messages) // 4
+        rag_tokens = len(rag_context or "") // 4
+        total_used = sys_tokens + hist_tokens + rag_tokens
+        
+        # Log Agent Step for Call 2 Synthesis
+        session_uuid = routing_data.get("_session_uuid") if routing_data else None
+        if session_uuid:
+            from backend.app.services.chat_history_service import chat_history_service
+            obs_dict = {
+                "msg": f"Generating response using module: {module_name}",
+                "memory": {
+                    "system_tokens": sys_tokens,
+                    "history_tokens": hist_tokens,
+                    "rag_tokens": rag_tokens,
+                    "total_used": total_used,
+                    "max_ctx": num_ctx
+                }
+            }
+            await chat_history_service.save_agent_step(
+                session_id=session_uuid,
+                step_number=3,
+                tool_called="CALL_2_SYNTHESIS",
+                tool_input=f"Prompt chars: {len(system_prompt)} | Contexts: {len(rag_context or '')}",
+                observation=json.dumps(obs_dict)
+            )
 
         try:
             async for chunk_line in stream_ollama_chat(

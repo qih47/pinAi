@@ -11,12 +11,35 @@ _GUEST_NPP_PLACEHOLDERS = frozenset({"NPP ------", "NPP -----", "NPP------", "GU
 
 async def get_current_user_npp(
     request: Request, 
-    x_npp_header: Optional[str] = Header(None, alias="X-NPP-Header")
+    x_npp_header: Optional[str] = Header(None, alias="X-NPP-Header"),
+    x_api_key: Optional[str] = Header(None, alias="X-API-Key")
 ) -> Optional[str]:
     """
-    Dependency Validator untuk membedakan Pegawai Resmi vs Guest Mode.
+    Dependency Validator untuk membedakan Pegawai Resmi vs Guest Mode,
+    serta mendukung Server-to-Server Auth via X-API-Key.
     """
     
+    # 0. CEK API KEY (SERVER-TO-SERVER)
+    if x_api_key:
+        import hashlib
+        key_hash = hashlib.sha256(x_api_key.encode()).hexdigest()
+        async with get_db() as conn:
+            row = await conn.fetchrow(
+                "SELECT owner_npp, is_active FROM api_keys WHERE key_hash = $1", 
+                key_hash
+            )
+            if not row or not row['is_active']:
+                logger.warning(f"[AUTH] Tolak akses API Key tidak valid. Hash: {key_hash[:10]}...")
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="API Key tidak valid atau sudah dicabut."
+                )
+            
+            # Update tracker secara asinkron
+            await conn.execute("UPDATE api_keys SET total_requests = total_requests + 1, last_used_at = now() WHERE key_hash = $1", key_hash)
+            logger.info(f"[AUTH] Akses via API Key valid. Owner: {row['owner_npp']}")
+            return row['owner_npp']
+
     # 1. Jika tidak ada header NPP atau placeholder UI guest, masuk GUEST MODE
     if not x_npp_header or x_npp_header.strip() == "":
         return None

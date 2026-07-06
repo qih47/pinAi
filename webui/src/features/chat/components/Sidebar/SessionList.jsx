@@ -1,17 +1,43 @@
 import React, { useState, useEffect } from "react";
 import { useSessionTitle } from "../../../../hooks/useSessionTitle";
 
-const TypewriterTitle = ({ text }) => (
-  <span style={{
-    display: 'inline-block',
-    width: '6px',
-    height: '1.1em',
-    background: '#10b981',
-    marginLeft: '2px',
-    verticalAlign: 'text-bottom',
-    animation: 'cakraCursorBlink 1s step-end infinite',
-  }} />
-);
+const TypewriterTitle = ({ text }) => {
+  const [displayedText, setDisplayedText] = React.useState("");
+  const [isTyping, setIsTyping] = React.useState(true);
+  
+  React.useEffect(() => {
+    let i = 0;
+    setDisplayedText("");
+    setIsTyping(true);
+    const timer = setInterval(() => {
+      setDisplayedText(text.substring(0, i + 1));
+      i++;
+      if (i >= text.length) {
+        clearInterval(timer);
+        // Hilangkan kursor berkedip setelah 1.5 detik agar terlihat rapi
+        setTimeout(() => setIsTyping(false), 1500);
+      }
+    }, 50);
+    return () => clearInterval(timer);
+  }, [text]);
+
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center' }}>
+      <span>{displayedText}</span>
+      {isTyping && (
+        <span style={{
+          display: 'inline-block',
+          width: '6px',
+          height: '1.1em',
+          background: '#10b981',
+          marginLeft: '2px',
+          verticalAlign: 'text-bottom',
+          animation: 'cakraCursorBlink 1s step-end infinite',
+        }} />
+      )}
+    </span>
+  );
+};
 
 export default function SessionList({
   isOpen,

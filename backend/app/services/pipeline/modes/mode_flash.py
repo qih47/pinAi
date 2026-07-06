@@ -78,6 +78,34 @@ class ModeFlash:
 
         yield format_sse(status="⚡ Mengeksekusi (Flash Mode)", event_type=SSEEventType.STATUS)
 
+        # Hitung estimasi token (1 token ~ 4 karakter)
+        sys_tokens = len(system_prompt) // 4
+        hist_tokens = sum(len(m.get("content", "")) for m in trimmed_messages) // 4
+        rag_tokens = 0 # Flash mode tidak pakai RAG
+        total_used = sys_tokens + hist_tokens + rag_tokens
+        
+        # Log Agent Step for Call 2 Flash
+        session_uuid_to_use = session_uuid or (routing_data.get("_session_uuid") if routing_data else None)
+        if session_uuid_to_use:
+            from backend.app.services.chat_history_service import chat_history_service
+            obs_dict = {
+                "msg": f"Generating fast response using module: {module_name}",
+                "memory": {
+                    "system_tokens": sys_tokens,
+                    "history_tokens": hist_tokens,
+                    "rag_tokens": rag_tokens,
+                    "total_used": total_used,
+                    "max_ctx": num_ctx
+                }
+            }
+            await chat_history_service.save_agent_step(
+                session_id=session_uuid_to_use,
+                step_number=2,
+                tool_called="CALL_2_FLASH",
+                tool_input=f"Prompt chars: {len(system_prompt)}",
+                observation=json.dumps(obs_dict)
+            )
+
         try:
             async for chunk_line in stream_ollama_chat(
                 model_name=getattr(settings, "MODEL_PERSONA", "gemma4:12b"),

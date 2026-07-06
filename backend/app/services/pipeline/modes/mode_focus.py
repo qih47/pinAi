@@ -1,4 +1,5 @@
 import logging
+import json
 import os
 import asyncio
 import base64
@@ -150,6 +151,34 @@ class ModeFocus:
             buffer = ""
             started_streaming = False
             
+            # Hitung estimasi token (1 token ~ 4 karakter)
+            sys_tokens = len(system_prompt) // 4
+            hist_tokens = sum(len(m.get("content", "")) for m in messages_dict) // 4
+            rag_tokens = 0 # Focus mode uses web/search context inside system prompt mostly, so we can treat it as sys_tokens
+            total_used = sys_tokens + hist_tokens + rag_tokens
+            num_ctx = 128000
+
+            session_uuid_to_use = session_uuid or (routing_data.get("_session_uuid") if routing_data else None)
+            if session_uuid_to_use:
+                from backend.app.services.chat_history_service import chat_history_service
+                obs_dict = {
+                    "msg": "Generating deep focus response",
+                    "memory": {
+                        "system_tokens": sys_tokens,
+                        "history_tokens": hist_tokens,
+                        "rag_tokens": rag_tokens,
+                        "total_used": total_used,
+                        "max_ctx": num_ctx
+                    }
+                }
+                await chat_history_service.save_agent_step(
+                    session_id=session_uuid_to_use,
+                    step_number=3,
+                    tool_called="CALL_2_FOCUS",
+                    tool_input=f"Prompt chars: {len(system_prompt)}",
+                    observation=json.dumps(obs_dict)
+                )
+
             async for chunk_line in stream_ollama_chat(
                 messages=current_messages,
                 model_name=settings.MODEL_PERSONA, # TETAP PAKAI TEXT LLM
@@ -159,7 +188,7 @@ class ModeFocus:
                 num_predict=8192,
                 request=request
             ):
-                import json
+
                 try:
                     chunk = json.loads(chunk_line.strip())
                 except json.JSONDecodeError:

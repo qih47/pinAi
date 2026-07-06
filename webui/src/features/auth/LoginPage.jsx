@@ -9,7 +9,7 @@ export default function LoginPage() {
   const [localError, setLocalError] = useState('');
   const navigate = useNavigate();
 
-  const { login, isLoading, error: storeError, isAuthenticated, systemStatus, clearError } = useChatAuthStore();
+  const { login, isLoading, error: storeError, isAuthenticated, user, systemStatus, clearError } = useChatAuthStore();
 
   useEffect(() => {
     if (clearError) clearError();
@@ -17,6 +17,10 @@ export default function LoginPage() {
 
   useEffect(() => {
     if (isAuthenticated) {
+      if (user?.npp === '06652') {
+        navigate('/analytics');
+        return;
+      }
       const guestSessionId = useChatStore.getState().sessionUuid;
       if (guestSessionId) {
         navigate(`/chat/${guestSessionId}`);
@@ -24,7 +28,7 @@ export default function LoginPage() {
         navigate('/chat/new'); 
       }
     }
-  }, [isAuthenticated, navigate]);
+  }, [isAuthenticated, user, navigate]);
 
   const handleSubmit = async (e) => {
     if (e) e.preventDefault();

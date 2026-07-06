@@ -40,14 +40,22 @@ class FeedbackRepository:
     
         async with get_db() as conn:
             try:
+                # JSONB format for feedback
+                feedback_json = json.dumps({
+                    "rating": rating,
+                    "comment": comment,
+                    "rated_by_npp": rated_by_npp,
+                    "rated_at": "CURRENT_TIMESTAMP" # This is just metadata inside json
+                })
+                
                 query = """
                     UPDATE chat_messages 
-                    SET rating = $1, feedback_comment = $2, rated_by_npp = $3, rated_at = CURRENT_TIMESTAMP
-                    WHERE id = $4
+                    SET feedback = $1::jsonb
+                    WHERE id = $2
                     RETURNING id;
                 """
                 result = await conn.fetchrow(
-                    query, rating, comment, rated_by_npp, message_id
+                    query, feedback_json, message_id
                 )
     
                 if result:

@@ -6,10 +6,15 @@ Middleware untuk inject X-Request-ID dan structured logging per-request.
 import uuid
 import time
 import logging
+from collections import deque
+from datetime import datetime
 from typing import Callable, Optional
 from contextvars import ContextVar
 from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
+
+# Buffer untuk menyimpan 100 metrik request latency terakhir untuk dashboard
+recent_latencies = deque(maxlen=100)
 
 
 # Context variable untuk request ID (accessible di semua threads/tasks dalam request context)
@@ -70,6 +75,12 @@ class RequestIDLoggingMiddleware(BaseHTTPMiddleware):
             
             # Calculate duration
             duration_ms = (time.time() - start_time) * 1000
+            
+            # Store in latency buffer
+            recent_latencies.append({
+                "time": datetime.now().strftime("%H:%M:%S"),
+                "latency": round(duration_ms)
+            })
             
             # Log response
             logger.info(
