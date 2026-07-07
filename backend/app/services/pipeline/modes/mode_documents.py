@@ -115,7 +115,7 @@ class ModeDocuments:
         # 2C: Tunggu proses paralel selesai
         yield format_sse(status="⏳ Memproses riwayat percakapan & scan file...", event_type=SSEEventType.STATUS)
         community_context = await task_community
-        judul_context, ocr_attachments = await task_peraturan
+        judul_context, ocr_attachments, judul_source = await task_peraturan
 
         # ── Step 3: LLM Execution (Call 2) ────────────────────────────────────────
         module_name = select_call2_module(routing_data, has_rag_context=bool(rag_context))
@@ -123,6 +123,12 @@ class ModeDocuments:
 
         yield format_sse(status="✍️ Menyusun jawaban", event_type=SSEEventType.STATUS)
         await asyncio.sleep(0.01)
+
+        # Jika dapet file spesifik dari MySQL (Peraturan Service), paksa gabungin ke RAG Sources!
+        if judul_source:
+            if not rag_sources:
+                rag_sources = []
+            rag_sources.insert(0, judul_source) # Taruh di urutan pertama (paling relevan)
 
         if rag_sources:
             # User Feedback: "harusnya ngasih 1 aja yang sudah pasti"

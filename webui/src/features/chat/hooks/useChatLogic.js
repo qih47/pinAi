@@ -54,6 +54,7 @@ export function useChatLogic({ isGuest,
   const documentsTotal = useChatStore((state) => state.documentsTotal);
   const fetchDocumentsList = useChatStore((state) => state.fetchDocumentsList);
   const artifacts = useChatStore((state) => state.artifacts || []);
+  const isSplitScreen = useChatStore((state) => state.isSplitScreen);
 
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [isUploadingFile, setIsUploadingFile] = useState(false);
@@ -532,6 +533,14 @@ export function useChatLogic({ isGuest,
   useEffect(() => {
     setSidebarOpen(!isMobile);
   }, [isMobile]);
+
+  // 🔥 Auto-tutup sidebar kiri saat Document Interrogator (PDF Viewer) terbuka agar lega
+  useEffect(() => {
+    if (isSplitScreen && !isMobile) {
+      wasLeftSidebarOpenRef.current = sidebarOpen;
+      setSidebarOpen(false);
+    }
+  }, [isSplitScreen]);
 
   const [showDocumentList, setShowDocumentList] = useState(false);
   const [chatHistory, setChatHistory] = useState([]);

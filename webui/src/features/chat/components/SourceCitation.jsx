@@ -2,6 +2,7 @@
 import React, { useState } from 'react';
 
 import { useChatStore } from '../../../stores/chatStore';
+import { getUploadUrl } from '../../../services/endpoints';
 
 const SourceCitation = ({ sources, darkMode, theme, onPreview, onActivateIsolation, activeIsolatedDocId }) => {
   const [hoveredIndex, setHoveredIndex] = useState(null);
@@ -11,7 +12,8 @@ const SourceCitation = ({ sources, darkMode, theme, onPreview, onActivateIsolati
 
   const handleView = (e, source) => {
     e.stopPropagation(); // Mencegah trigger click card utama
-    const fileUrl = source.url || source.file_path;
+    const rawPath = source.url || source.file_path;
+    const fileUrl = rawPath ? getUploadUrl(rawPath) : null;
     
     // Aktifkan Split Screen Mode
     if (fileUrl) {

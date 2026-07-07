@@ -70,13 +70,14 @@ def _process_pdf_sync(abs_path: str) -> Tuple[str, List[Dict[str, Any]]]:
     return "", formatted_attachments
 
 
-async def search_and_ocr_by_judul(query_judul: Optional[str]) -> Tuple[str, List[Dict[str, Any]]]:
+async def search_and_ocr_by_judul(query_judul: Optional[str]) -> Tuple[str, List[Dict[str, Any]], Optional[Dict[str, Any]]]:
     """
     Cari judul di MySQL `berita`, jika ada ambil PDF-nya dan lakukan ekstraksi/OCR.
     Berjalan secara paralel di event loop via run_in_executor untuk tugas berat.
+    Returns: context_text, formatted_attachments, source_metadata
     """
     if not query_judul or not query_judul.strip():
-        return "", []
+        return "", [], None
         
     logger.info(f"[PERATURAN_SERVICE] Searching title in DB: '{query_judul}'")
     
@@ -84,13 +85,18 @@ async def search_and_ocr_by_judul(query_judul: Optional[str]) -> Tuple[str, List
         async with get_peraturan_db() as conn:
             async with conn.cursor() as cur:
                 # Cari berdasarkan judul
+                # Ubah spasi menjadi wildcard '%' agar pencarian lebih fleksibel
+                # Misal: "Work From Home WFH PT Pindad" menjadi "%Work%From%Home%WFH%PT%Pindad%"
+                # Sehingga bisa match dengan "Pelaksanaan Work From Home (WFH) di PT Pindad"
+                search_pattern = "%" + "%".join(query_judul.strip().split()) + "%"
+                
                 sql = "SELECT judul, gambar, gambar2, gambar3 FROM berita WHERE judul LIKE %s LIMIT 1"
-                await cur.execute(sql, (f"%{query_judul.strip()}%",))
+                await cur.execute(sql, (search_pattern,))
                 row = await cur.fetchone()
                 
                 if not row:
                     logger.info(f"[PERATURAN_SERVICE] No matching title found for '{query_judul}'")
-                    return "", []
+                    return "", [], None
                     
                 judul, gambar, gambar2, gambar3 = row
                 logger.info(f"[PERATURAN_SERVICE] Found match: '{judul}'")
@@ -106,7 +112,7 @@ async def search_and_ocr_by_judul(query_judul: Optional[str]) -> Tuple[str, List
                             
                 if not valid_file:
                     logger.warning(f"[PERATURAN_SERVICE] Match found but PDF file not exist in {PERATURAN_DIR}")
-                    return "", []
+                    return "", [], None
                 
                 # Eksekusi sinkronus OCR & PDF Parsing di background thread agar tidak memblokir event loop
                 loop = asyncio.get_running_loop()
@@ -119,12 +125,23 @@ async def search_and_ocr_by_judul(query_judul: Optional[str]) -> Tuple[str, List
                     context_text = f"--- DOKUMEN SPESIFIK (JUDUL: {judul}) ---\n{extracted_text}\n-------------------\n"
                 elif formatted_attachments:
                     context_text = f"--- DOKUMEN SPESIFIK (JUDUL: {judul}) ---\n[Dokumen hasil scan telah dilampirkan sebagai gambar untuk dianalisa]\n-------------------\n"
+                # Buat metadata sumber dokumen resmi untuk ditimpa ke RAG
+                source_metadata = {
+                    "id": file_name,
+                    "title": judul,
+                    "document_title": judul,
+                    "file_path": valid_file,  # INI PATH YANG BENAR (pinAi/file_peraturan)
+                    "score": 10.0, # Beri score sangat tinggi agar pasti terpilih
+                    "similarity": 10.0,
+                    "cache_hit": True,
+                    "is_exact_match": True
+                }
                     
-                return context_text, formatted_attachments
+                return context_text, formatted_attachments, source_metadata
                 
     except Exception as e:
         logger.error(f"[PERATURAN_SERVICE] Database error during title search: {e}")
-        return "", []
+        return "", [], None
 
 async def simulate_ocr_extraction(file_path: str) -> Tuple[str, List[Dict[str, Any]]]:
     """

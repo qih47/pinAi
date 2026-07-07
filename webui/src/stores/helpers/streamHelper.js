@@ -141,6 +141,14 @@ export async function performStream(set, get, messagesToSend, assistantMessage, 
                         accumulatedReply += chunk;
                         let cleanReply = accumulatedReply.replace(/<\|channel>thought/g, '').replace(/<channel\|>/g, '');
 
+                        // 🔥 HANDLE <thinking> LEAKAGE 🔥
+                        // Tangkap jika model membocorkan pemikiran ke tag <thinking> di main stream
+                        let leakedThinking = "";
+                        cleanReply = cleanReply.replace(/<thinking>([\s\S]*?)(?:<\/thinking>|$)/gi, (match, p1) => {
+                            leakedThinking += p1;
+                            return ""; // Hapus dari output chat utama
+                        });
+
                         // 🔥 DYNAMIC FRONTEND PARSER 🔥
                         const openTagRegex = /<(create_file|edit_file)\s+filename=["']([^"'>\s]+)["']\s*>/gi;
                         const closeTagRegex = /<\/(create_file|edit_file)\s*>/gi;
@@ -199,6 +207,12 @@ export async function performStream(set, get, messagesToSend, assistantMessage, 
                             content: textDisplay,
                             fileGenerations: existingGens 
                         };
+                        
+                        // Gabungkan hasil pemikiran yang bocor jika ada
+                        if (leakedThinking) {
+                            assistantMessage.thinking = accumulatedThinking + "\n" + leakedThinking.trim();
+                            assistantMessage.isThinking = true;
+                        }
 
                         if (!renderTimeout) {
                             renderTimeout = requestAnimationFrame(() => {

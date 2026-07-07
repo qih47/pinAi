@@ -18,6 +18,10 @@ export function getUploadUrl(filePath) {
   if (filePath.startsWith('accounts/')) {
     return `${getApiBase()}/${filePath}`;
   }
+  if (filePath.includes('file_peraturan/')) {
+    const filename = filePath.split('file_peraturan/').pop();
+    return `${getApiBase()}/file_peraturan/${filename}`;
+  }
   const filename = filePath.includes('/') ? filePath.split('/').pop() : filePath;
   return `${getApiBase()}/uploads/${filename}`;
 }
