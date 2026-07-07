@@ -269,7 +269,7 @@ def _scan_dict_recursive(data: Any, path: str = "root", skip_injection: bool = F
             _scan_for_injections(data, path)
     elif isinstance(data, dict):
         for k, v in data.items():
-            if str(k) in ("content", "liveCode", "code", "fileGenerations", "chat_mode", "focus", "insight", "lineage"):
+            if str(k) in ("content", "liveCode", "code", "fileGenerations", "chat_mode", "focus", "insight", "lineage", "email_content", "email_subject", "instruction"):
                 _scan_dict_recursive(v, f"{path}.{k}", skip_injection=True)
             else:
                 if not skip_injection:

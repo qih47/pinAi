@@ -314,6 +314,7 @@ export function useChatLogic({ isGuest,
     npp: authUser?.npp || "NPP ------",
     divisi: authUser?.divisi || "Pegawai Resmi",
     role: authUser?.role || "user",
+    email: authUser?.email || null,
   };
 
   const activeSessionId = sessionId && sessionId !== "new" ? sessionId : null;

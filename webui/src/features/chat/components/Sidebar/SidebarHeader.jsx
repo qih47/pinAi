@@ -148,6 +148,82 @@ export default function SidebarHeader({
           </span>
         </button>
 
+        {/* ── CORPORATE TOOLS SECTION ── */}
+        <div className={`pt-4 pb-1 transition-all duration-300 ${!isOpen ? "opacity-0 h-0 overflow-hidden" : "opacity-100 h-auto"}`}>
+          <p className="text-[10px] font-bold tracking-widest uppercase" style={{ color: theme?.secondaryText || "#9ca3af", paddingLeft: "12px" }}>
+            Corporate Tools
+          </p>
+        </div>
+
+        {/* 1. Smart Mail */}
+        <button
+          onClick={() => navigate('/corporate/mail')}
+          className="flex items-center rounded-full hover:bg-gray-200 dark:hover:bg-gray-800 transition-colors group overflow-hidden text-[14px]"
+          style={{
+            padding: isOpen ? "8px 12px" : "8px",
+            width: isOpen ? "100%" : "auto",
+            gap: isOpen ? "12px" : "0",
+          }}
+          title="Smart Mail"
+        >
+          <span className="h-5 w-5 flex items-center justify-center flex-shrink-0">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={theme?.iconColor || "currentColor"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="group-hover:text-blue-500 transition-colors">
+              <rect x="2" y="4" width="20" height="16" rx="2" ry="2"></rect>
+              <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"></path>
+            </svg>
+          </span>
+          <span className={`font-medium whitespace-nowrap transition-opacity duration-300 ${!isOpen ? "hidden" : "opacity-100"}`} style={{ color: theme?.textColor }}>
+            Smart Mail
+          </span>
+        </button>
+
+        {/* 2. Nota Dinas Gen */}
+        <button
+          onClick={() => navigate('/corporate/notadinas')}
+          className="flex items-center rounded-full hover:bg-gray-200 dark:hover:bg-gray-800 transition-colors group overflow-hidden text-[14px]"
+          style={{
+            padding: isOpen ? "8px 12px" : "8px",
+            width: isOpen ? "100%" : "auto",
+            gap: isOpen ? "12px" : "0",
+          }}
+          title="Nota Dinas Gen"
+        >
+          <span className="h-5 w-5 flex items-center justify-center flex-shrink-0">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={theme?.iconColor || "currentColor"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="group-hover:text-emerald-500 transition-colors">
+              <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"></path>
+              <polyline points="14 2 14 8 20 8"></polyline>
+              <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
+              <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
+            </svg>
+          </span>
+          <span className={`font-medium whitespace-nowrap transition-opacity duration-300 ${!isOpen ? "hidden" : "opacity-100"}`} style={{ color: theme?.textColor }}>
+            Nota Dinas Gen
+          </span>
+        </button>
+
+        {/* 3. Vendor Analyzer */}
+        <button
+          onClick={() => navigate('/corporate/vendor')}
+          className="flex items-center rounded-full hover:bg-gray-200 dark:hover:bg-gray-800 transition-colors group overflow-hidden text-[14px]"
+          style={{
+            padding: isOpen ? "8px 12px" : "8px",
+            width: isOpen ? "100%" : "auto",
+            gap: isOpen ? "12px" : "0",
+          }}
+          title="Vendor Analyzer"
+        >
+          <span className="h-5 w-5 flex items-center justify-center flex-shrink-0">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={theme?.iconColor || "currentColor"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="group-hover:text-purple-500 transition-colors">
+              <line x1="18" y1="20" x2="18" y2="10"></line>
+              <line x1="12" y1="20" x2="12" y2="4"></line>
+              <line x1="6" y1="20" x2="6" y2="14"></line>
+            </svg>
+          </span>
+          <span className={`font-medium whitespace-nowrap transition-opacity duration-300 ${!isOpen ? "hidden" : "opacity-100"}`} style={{ color: theme?.textColor }}>
+            Vendor Analyzer
+          </span>
+        </button>
+
         {/* ── TOMBOL: ANALYTICS (HANYA UNTUK 06652) ── */}
         {userData?.npp === '06652' && (
           <button

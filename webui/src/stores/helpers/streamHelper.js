@@ -105,14 +105,17 @@ export async function performStream(set, get, messagesToSend, assistantMessage, 
                     },
                     onStatus: (statusStr) => {
                         // Dipanggil oleh RAG / pipeline statis
+                        const updatedAssistantMsg = {
+                            ...assistantMessage,
+                            statusMessage: statusStr
+                        };
+                        assistantMessage = updatedAssistantMsg;
+
                         set(state => {
                             const newMessages = [...state.messages];
                             const idx = targetAssistantIdx !== null ? targetAssistantIdx : newMessages.length - 1;
                             if (newMessages[idx]) {
-                                newMessages[idx] = {
-                                    ...newMessages[idx],
-                                    statusMessage: statusStr
-                                };
+                                newMessages[idx] = updatedAssistantMsg;
                             }
                             return {
                                 messages: newMessages,

@@ -103,6 +103,8 @@ class ModeDocuments:
                             )
 
                     if event_type in (SSEEventType.SOURCES, SSEEventType.THINKING, SSEEventType.STATUS):
+                        if event_type == SSEEventType.SOURCES:
+                            continue # Intercept and delay rendering sources to FE until we filter it
                         yield sse
                         await asyncio.sleep(0.005)
 
@@ -123,24 +125,48 @@ class ModeDocuments:
         await asyncio.sleep(0.01)
 
         if rag_sources:
+            # User Feedback: "harusnya ngasih 1 aja yang sudah pasti"
+            # Sort by similarity/score and take only the TOP 1 most relevant document for the UI & LLM.
+            rag_sources = sorted(rag_sources, key=lambda x: x.get('score', x.get('similarity', 0)), reverse=True)[:1]
             yield format_sse("", "", False, sources=rag_sources, event_type=SSEEventType.SOURCES)
             await asyncio.sleep(0.01)
 
         # Build prompt dengan parameter is_thinking dari FE
+        # Amankan ukuran RAG context sebelum dirender
+        safe_rag_context = rag_context[:25000] if rag_context else None
+        
         system_prompt = build_call2_system_prompt(
             module_name=module_name,
             employee_name=employee_name,
             precheck=routing_data,
             is_thinking=is_thinking,
-            rag_context=rag_context,
+            rag_context=safe_rag_context,
             rag_sources=rag_sources
         )
 
-        # Inject Community Knowledge & Title Search Context
+        # ── Smart Context Truncation (Max ~42,000 chars / ~12k tokens total) ──
+        # Tujuannya agar tersisa 4000 token untuk generasi jawaban.
+        
+        # Alokasikan budget karakter
+        rag_budget = 25000 if not judul_context else 15000
+        judul_budget = 25000 if not rag_context else 15000
+        community_budget = 3000
+        
+        # Inject Community Knowledge
         if community_context:
-            system_prompt += community_context
+            system_prompt += "\n\n" + community_context[:community_budget]
+            
+        # Inject Peraturan/Title Context
         if judul_context:
-            system_prompt += judul_context
+            system_prompt += "\n\n" + judul_context[:judul_budget]
+            if len(judul_context) > judul_budget:
+                system_prompt += "\n...[Teks Terpotong]..."
+                
+        # Perbaiki rag_context yang sebelumnya mungkin terlalu besar saat di-render di mode_utils
+        # (Karena render prompt sudah terjadi, kita tidak bisa motong rag_context yang sudah di-inject,
+        # TAPI kita harus pastikan RAG context di awal juga tidak kebesaran.
+        # RAG context dibatasi oleh _RAG_CONTEXT_MAX_CHARS di rag_prompts.py, tapi kita potong aja textnya 
+        # sebelum di pass ke build_call2_system_prompt di atas)
 
         # Inject Long-Term Memory (ai_document_chunks)
         session_chunks = routing_data.get("_session_chunks_text", "")

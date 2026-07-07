@@ -41,10 +41,21 @@ async def start_background_scheduler(app):
             coalesce=True,
         )
         
+        # Job 3: Auditor Knowledge Decay (Setiap Senin Jam 03:00 WIB)
+        from backend.app.services.pipeline.background_auditor import scan_knowledge_decay
+        scheduler.add_job(
+            scan_knowledge_decay,
+            CronTrigger(day_of_week="sun", hour=20, minute=0, second=0, timezone="UTC"), # Sunday 20:00 UTC = Monday 03:00 WIB
+            id="knowledge_decay_auditor",
+            name="Weekly Knowledge Decay Audit (03:00 WIB)",
+            replace_existing=True,
+            coalesce=True,
+        )
+        
         # Mulai scheduler
         scheduler.start()
         logger.info("[SCHEDULER_INIT_SUCCESS] Background task scheduler started successfully.")
-        logger.info("[SCHEDULER_JOBS_SCHEDULED] Jobs scheduled: Memory Consolidation daily @ 02:00 WIB, Session Cleanup every 30m.")
+        logger.info("[SCHEDULER_JOBS_SCHEDULED] Jobs scheduled: Memory Consolidation daily @ 02:00 WIB, Session Cleanup every 30m, Decay Auditor weekly @ 03:00 WIB.")
         
     except Exception as e:
         logger.error(f"[SCHEDULER_INIT_ERROR] Failed to start background scheduler: {e}")

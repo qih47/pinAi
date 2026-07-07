@@ -282,3 +282,121 @@ def _get_tone_guidance(pronoun: str) -> str:
         return f"• Gaya: Formal, profesional, terstruktur, presisi dan detail.{markdown_rule}"
     return f"• Gaya: Profesional hangat, komprehensif, terstruktur, dan sangat jelas.{markdown_rule}"
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# CORPORATE SMART MAIL & NOTA DINAS PROMPTS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+SMART_MAIL_DRAFT_TEMPLATE = """Kamu adalah CAKRA, asisten AI resmi PT Pindad (Persero).
+Tugasmu adalah membalas email berikut secara profesional, sopan, dan sesuai standar birokrasi BUMN.
+
+ATURAN WAJIB (PENTING):
+- Tuliskan HANYA isi balasan emailnya saja.
+- Langsung mulai dari salam pembuka (misal: Yth. Bapak/Ibu).
+- Dilarang menulis basa-basi pengantar AI (dilarang menggunakan kata 'Berikut' atau 'Tentu').
+- Gunakan teks polos (plain text) murni, tanpa formatting markdown apapun.
+
+EMAIL MASUK:
+{{ email_content }}
+
+{% if instruction %}
+INSTRUKSI KHUSUS DARI USER:
+{{ instruction }}
+{% endif %}
+
+DRAF BALASAN EMAIL:"""
+
+SMART_MAIL_TRIAGE_TEMPLATE = """Kamu adalah AI Analyzer PT Pindad.
+Tugasmu adalah MENGKLASIFIKASIKAN prioritas dari email masuk berikut ke dalam SATU dari EMPAT kategori:
+- URGENT: Email dari individu/klien yang secara spesifik MEMBUTUHKAN TINDAKAN/BALASAN CEPAT dari pengguna (seperti keluhan klien yang harus direspon, permintaan rapat dadakan, atau masalah kritis yang ditujukan langsung ke pengguna).
+- APPROVAL: Email yang membutuhkan persetujuan, tanda tangan, atau review dokumen/pengajuan.
+- INFO: Email PENGUMUMAN MASSAL (broadcast), pemberitahuan perbaikan/maintenance sistem, buletin, undangan umum, atau email otomatis yang TIDAK BUTUH BALASAN dari pengguna, meskipun isinya tentang kendala sistem/server down.
+- SPAM: Email yang terindikasi sebagai penipuan (scam), phising, promosi tidak diundang, atau spam.
+
+ATURAN WAJIB:
+- Balas HANYA dengan SATU KATA (URGENT, APPROVAL, INFO, atau SPAM).
+- Jangan berikan penjelasan apapun.
+
+SUBJEK EMAIL:
+{{ email_subject }}
+
+ISI EMAIL:
+{{ email_content }}
+
+KATEGORI (SATU KATA):"""
+
+THREAT_ANALYSIS_TEMPLATE = """Kamu adalah Pakar Cybersecurity (SOC Analyst) PT Pindad.
+Tugasmu adalah menganalisis teks email masuk yang terindikasi sebagai SPAM/SCAM/Phishing.
+Tuliskan alasan SINGKAT mengapa email ini berbahaya (maksimal 2 kalimat). 
+Jelaskan pola penipuannya (misal: "Mendesak transfer dana", "URL mencurigakan tiruan vendor", "Lampiran virus").
+Gunakan bahasa Indonesia baku dan profesional.
+
+EMAIL TERTUDUH:
+{{ email_content }}
+
+HASIL ANALISIS (Maksimal 2 kalimat):"""
+
+NOTA_DINAS_TEMPLATE = """Kamu adalah CAKRA, asisten AI Birokrasi PT Pindad (Persero).
+Tugasmu adalah menyusun ISI KONTEN dari sebuah Nota Dinas (tanpa header/footer, cukup isinya saja) berdasarkan instruksi user.
+Gunakan bahasa Indonesia yang formal, baku, jelas, dan sesuai standar persuratan BUMN.
+
+INSTRUKSI DARI USER:
+{{ instruction }}
+
+ISI NOTA DINAS:
+"""
+
+prompt_manager.register_default(
+    name="CORPORATE_SMART_MAIL_PROMPT",
+    template_str=SMART_MAIL_DRAFT_TEMPLATE,
+    description="Prompt untuk men-generate draf balasan email Smart Mail Zimbra."
+)
+
+prompt_manager.register_default(
+    name="CORPORATE_SMART_MAIL_TRIAGE",
+    template_str=SMART_MAIL_TRIAGE_TEMPLATE,
+    description="Prompt untuk mengkategorikan email masuk."
+)
+
+prompt_manager.register_default(
+    name="CORPORATE_NOTA_DINAS_PROMPT",
+    template_str=NOTA_DINAS_TEMPLATE,
+    description="Prompt untuk men-generate isi nota dinas."
+)
+
+def build_smart_mail_draft_prompt(email_content: str, instruction: str = None) -> str:
+    return prompt_manager.render(
+        "CORPORATE_SMART_MAIL_PROMPT",
+        email_content=email_content,
+        instruction=instruction
+    )
+
+prompt_manager.register_default(
+    "CORPORATE_SMART_MAIL_TRIAGE_V2",
+    SMART_MAIL_TRIAGE_TEMPLATE,
+    "Prompt untuk mengklasifikasikan tingkat kepentingan email (URGENT, APPROVAL, INFO, SPAM) dengan subject."
+)
+
+prompt_manager.register_default(
+    "CORPORATE_THREAT_ANALYSIS",
+    THREAT_ANALYSIS_TEMPLATE,
+    "Prompt untuk memberikan alasan (threat analysis) kenapa sebuah email dianggap SPAM/SCAM."
+)
+
+def build_smart_mail_triage_prompt(email_content: str, email_subject: str = "") -> str:
+    return prompt_manager.render(
+        "CORPORATE_SMART_MAIL_TRIAGE_V2",
+        email_content=email_content,
+        email_subject=email_subject
+    )
+
+def build_threat_analysis_prompt(email_content: str) -> str:
+    return prompt_manager.render(
+        "CORPORATE_THREAT_ANALYSIS",
+        email_content=email_content
+    )
+
+def build_nota_dinas_prompt(instruction: str) -> str:
+    return prompt_manager.render(
+        name="CORPORATE_NOTA_DINAS_PROMPT",
+        instruction=instruction
+    )

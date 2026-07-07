@@ -13,8 +13,13 @@ import HeaderDropdownMenu from "./components/HeaderDropdownMenu";
 import NotificationBell from "../../components/NotificationBell"; // 👈 W16: Notification center
 import PreviewImageModal from "./components/modals/PreviewImageModal";
 import ContextIsolationModal from "./components/modals/ContextIsolationModal";
+import GhostWriterModal from "./components/modals/GhostWriterModal";
 import RightSidebar from "./components/RightSidebar";
 import ChatInputArea from "./components/ChatInputArea";
+import EmailTriageTab from "../corporate/EmailTriageTab";
+import DocumentGeneratorTab from "../corporate/DocumentGeneratorTab";
+import VendorAnalyzerTab from "../corporate/VendorAnalyzerTab";
+import PdfInterrogator from "./components/PdfInterrogator";
 
 // ============================================================
 // MAIN COMPONENT
@@ -29,7 +34,8 @@ import { useChatLogic } from "./hooks/useChatLogic";
 export default function ChatPage({ isGuest,
   isLoggedIn: propsIsLoggedIn,
   userData: propsUserData,
-  getGreeting, }) {
+  getGreeting, 
+  corporateMode }) {
   const chatLogic = useChatLogic({ isGuest,
   isLoggedIn: propsIsLoggedIn,
   userData: propsUserData,
@@ -375,30 +381,39 @@ export default function ChatPage({ isGuest,
           </div>
         </header>
 
-        <div
-          style={{
-            flex: 1,
-            position: "relative",
-            display: "flex",
-            flexDirection: "column",
-            minHeight: 0,
-            overflow: "hidden",
-            marginRight: mainMarginRight,
-            transition: "margin-right 0.3s ease-in-out",
-          }}
-        >
-          <div
+        {/* WRAPPER FOR SPLIT SCREEN */}
+        <div style={{ flex: 1, display: "flex", flexDirection: "row", overflow: "hidden", marginTop: "56px" }}>
+            <PdfInterrogator />
+            <div
+              style={{
+                flex: 1,
+                position: "relative",
+                display: "flex",
+                flexDirection: "column",
+                minHeight: 0,
+                overflow: "hidden",
+                marginRight: mainMarginRight,
+                transition: "margin-right 0.3s ease-in-out",
+              }}
+            >
+              <div
             style={{
               flex: 1,
               minHeight: 0,
-              opacity: showWelcome ? 0 : 1,
+              opacity: showWelcome && !corporateMode ? 0 : 1,
               transition: "opacity 0.2s ease",
-              pointerEvents: showWelcome ? "none" : "auto",
+              pointerEvents: showWelcome && !corporateMode ? "none" : "auto",
               display: "flex",
               flexDirection: "column",
             }}
           >
-            {/* 🔍 Message Search Bar */}
+            {corporateMode === 'mail' && <EmailTriageTab theme={theme} darkMode={darkMode} userData={currentUserData} />}
+            {corporateMode === 'notadinas' && <DocumentGeneratorTab theme={theme} darkMode={darkMode} userData={currentUserData} />}
+            {corporateMode === 'vendor' && <VendorAnalyzerTab theme={theme} darkMode={darkMode} userData={currentUserData} />}
+
+            {!corporateMode && (
+              <>
+                {/* 🔍 Message Search Bar */}
             {showMsgSearch && (
               <div
                 style={{
@@ -465,9 +480,11 @@ export default function ChatPage({ isGuest,
               onOpenArtifact={handleOpenArtifact}
               handleDownloadAllArtifacts={handleDownloadAllArtifacts}
             />
+              </>
+            )}
           </div>
 
-          {showWelcome && (
+          {showWelcome && !corporateMode && (
             <div
               style={{
                 position: "absolute",
@@ -546,8 +563,9 @@ export default function ChatPage({ isGuest,
             </div>
           )}
 
-          {/* Hanya render input di bawah jika chat sudah ada */}
-          {!showWelcome && (
+
+          {/* Hanya render input di bawah jika chat sudah ada dan bukan corporate mode */}
+          {!showWelcome && !corporateMode && (
             <ChatInputArea
               theme={theme}
               darkMode={darkMode}
@@ -584,6 +602,7 @@ export default function ChatPage({ isGuest,
               styles={styles}
             />
           )}
+        </div>
         </div>
 
       </main>
@@ -840,6 +859,9 @@ export default function ChatPage({ isGuest,
         previewImage={previewImage}
         onClose={() => setPreviewImage(null)}
       />
+
+      {/* ✍️ GHOSTWRITER MODAL */}
+      <GhostWriterModal darkMode={darkMode} theme={theme} />
     </div>
   );
 }

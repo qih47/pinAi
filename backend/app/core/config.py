@@ -34,6 +34,9 @@ class Settings(BaseSettings):
 
     OLLAMA_BASE_URL: str = "http://localhost:11434"
 
+    ZIMBRA_EMAIL: Optional[str] = None
+    ZIMBRA_PASSWORD: Optional[str] = None
+
     MODEL_PERSONA: str = "gemma4:12b"       # Satu-satunya LLM — Gemma4 Agentic Engine
     MODEL_VISION: str = "minicpm-v:latest"   # Vision/OCR untuk attachment PDF & image
     MODEL_EMBEDDING: str = "mxbai-embed-large:latest"  # Embedding untuk RAG

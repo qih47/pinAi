@@ -1,19 +1,23 @@
 // src/features/chat/components/SourceCitation.jsx
 import React, { useState } from 'react';
 
+import { useChatStore } from '../../../stores/chatStore';
+
 const SourceCitation = ({ sources, darkMode, theme, onPreview, onActivateIsolation, activeIsolatedDocId }) => {
   const [hoveredIndex, setHoveredIndex] = useState(null);
+  const setSplitScreen = useChatStore(state => state.setSplitScreen);
 
   if (!sources || sources.length === 0) return null;
 
   const handleView = (e, source) => {
     e.stopPropagation(); // Mencegah trigger click card utama
-    if (onPreview) {
+    const fileUrl = source.url || source.file_path;
+    
+    // Aktifkan Split Screen Mode
+    if (fileUrl) {
+      setSplitScreen(true, fileUrl);
+    } else if (onPreview) {
       onPreview(source);
-    } else {
-      // Fallback: Buka URL PDF langsung di tab baru jika ada properti url/file_path
-      const fileUrl = source.url || source.file_path;
-      if (fileUrl) window.open(fileUrl, '_blank');
     }
   };
 

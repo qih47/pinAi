@@ -17,7 +17,7 @@ import Layout from "./components/Layout";
 import ToastProvider from "./components/ui/ToastProvider";
 import { useTokenRefresh } from "./hooks/useTokenRefresh"; // 👈 W18: Token auto-refresh
 import OllamaThinkTest from '@/features/chat/components/OllamaThinkTest';
-function SessionRouteWrapper({ isGuest }) {
+function SessionRouteWrapper({ isGuest, corporateMode = null }) {
   const { sessionId } = useParams();
   const isAuthenticated = useChatAuthStore((state) => state.isAuthenticated);
 
@@ -47,7 +47,7 @@ function SessionRouteWrapper({ isGuest }) {
     // Untuk /chat/:uuid — jangan timpa store di sini agar tidak bentrok dengan load sidebar
   }, [sessionId, isGuest]);
 
-  return <ChatPage isGuest={isGuest} />;
+  return <ChatPage isGuest={isGuest} corporateMode={corporateMode} />;
 }
 
 export default function App() {
@@ -117,6 +117,18 @@ function AppContent() {
         <Route
           path="/chat/:sessionId"
           element={<SessionRouteWrapper isGuest={false} />}
+        />
+        <Route
+          path="/corporate/mail"
+          element={<SessionRouteWrapper isGuest={false} corporateMode="mail" />}
+        />
+        <Route
+          path="/corporate/notadinas"
+          element={<SessionRouteWrapper isGuest={false} corporateMode="notadinas" />}
+        />
+        <Route
+          path="/corporate/vendor"
+          element={<SessionRouteWrapper isGuest={false} corporateMode="vendor" />}
         />
       </Route>
     </Routes>

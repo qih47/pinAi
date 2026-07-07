@@ -50,6 +50,17 @@ async def verify_session(token: str = Query(None)):
                 )
                 logger.info(f"🕒 [AUTH] last_activity updated untuk NPP: {user['npp']}")
 
+                user_email = None
+                try:
+                    async with get_hris_db() as hris_conn:
+                        hris_data = await hris_conn.fetchrow(
+                            "SELECT email_internet, email_intranet FROM master_personil WHERE npp = $1", user["npp"]
+                        )
+                        if hris_data:
+                            user_email = hris_data["email_internet"] or hris_data["email_intranet"]
+                except Exception as e:
+                    logger.error(f"Gagal mengambil email dari HRIS untuk NPP {user['npp']}: {e}")
+
                 return LoginResponse(
                     status="success",
                     data={
@@ -58,6 +69,8 @@ async def verify_session(token: str = Query(None)):
                         "fullname": user["fullname"],
                         "divisi": user["divisi"],
                         "role": user["role"],
+                        "email": user_email,
+                        "session_token": token,
                         "expires_at": user["expires_at"].isoformat() if user["expires_at"] else None
                     }
                 )
@@ -138,7 +151,8 @@ async def login(request_body: LoginRequest, request: Request):
                     """
                     SELECT 
                         mp.nama_lengkap as nama, tu.npp, tu.password, 
-                        split_part(ref_unit.unit_path::text, '->'::text, 2) AS divisi
+                        split_part(ref_unit.unit_path::text, '->'::text, 2) AS divisi,
+                        mp.email_internet, mp.email_intranet
                     FROM master_unit unit
                     JOIN temp_ref_unit ref_unit ON ref_unit.kode_unit = unit.kode_unit
                     LEFT JOIN master_personil mp ON mp.kode_unit = unit.kode_unit
@@ -237,6 +251,7 @@ async def login(request_body: LoginRequest, request: Request):
                 logger.error(f"Gagal migrasi sesi GUEST: {e}")
 
         logger.info(f"🟩 [SUCCESS] Login tuntas! {user_fullname} [{current_role}] masuk ke sistem CAKRA AI.")
+        user_email = user_hris.get("email_internet") or user_hris.get("email_intranet") if user_hris else None
         return LoginResponse(
             status="success",
             data={
@@ -245,6 +260,7 @@ async def login(request_body: LoginRequest, request: Request):
                 "fullname": user_fullname,
                 "divisi": user_divisi,
                 "role": current_role,
+                "email": user_email,
                 "expires_at": expires_at.isoformat() if expires_at else None,
             },
         )

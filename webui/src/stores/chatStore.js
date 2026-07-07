@@ -24,6 +24,10 @@ export const useChatStore = create((set, get) => ({
     isLoadingDocuments: false,
     abortController: null,
     artifacts: [],
+    isSplitScreen: false,
+    activePdfUrl: null,
+    showGhostWriter: false,
+    ghostWriterContent: "",
 
     // Slices
     ...createChatSlice(set, get),

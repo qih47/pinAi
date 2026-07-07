@@ -12,6 +12,11 @@ export const createChatSlice = (set, get) => ({
             activeIsolatedDocId: null,
             activeIsolatedTitle: null,
             artifacts: [],  // ← Reset artifacts saat session baru
+            isSplitScreen: false,
+            activePdfUrl: null,
+            showGhostWriter: false,
+            ghostWriterContent: "",
+            sessionAttachments: []
         });
     },
 
@@ -20,6 +25,17 @@ export const createChatSlice = (set, get) => ({
             activeIsolatedDocId: docId || null,
             activeIsolatedTitle: docTitle || null
         });
+    },
+
+    setSplitScreen: (isSplit, url = null) => {
+        set({
+            isSplitScreen: isSplit,
+            activePdfUrl: url
+        });
+    },
+
+    setGhostWriter: (isOpen, content = "") => {
+        set({ showGhostWriter: isOpen, ghostWriterContent: content });
     },
 
     fetchChatHistory: async (npp) => {

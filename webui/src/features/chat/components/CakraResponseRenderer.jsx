@@ -5,6 +5,7 @@ import ThoughtAccordion from './ThoughtAccordion';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import CodeBlockHeader from './CodeBlockHeader';
+import ChatActionWidgets from './ChatActionWidgets';
 
 const highlightText = (text, query) => {
     if (!query || typeof text !== 'string') return text;
@@ -76,10 +77,45 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
         ul({ children, ...props }) {
             return <ul style={{ marginLeft: '18px', paddingLeft: '12px', listStyleType: 'disc', marginTop: '8px', marginBottom: '16px' }} {...props}>{recursiveHighlight(children, searchQuery)}</ul>;
         },
-        li({ children, ...props }) {
-            // paddingLeft: '8px' ini kuncinya cuy! Dia ngasih jarak antara titik/angka dengan huruf pertama.
-            // list-style-position bawaan browser otomatis akan bikin baris kedua sejajar sama huruf pertama (hanging indent)
+        li({ children, className, ...props }) {
+            // Deteksi jika ini adalah task list item (checklist) dari remark-gfm
+            if (className === 'task-list-item') {
+                return (
+                    <li className="flex items-start gap-2 mb-2 group" style={{ listStyleType: 'none', paddingLeft: 0, marginLeft: '-18px' }} {...props}>
+                        <div className="mt-1 flex-shrink-0 cursor-pointer">
+                            {/* Input di-handle di bawah */}
+                            {recursiveHighlight(children, searchQuery)}
+                        </div>
+                    </li>
+                );
+            }
             return <li style={{ marginBottom: '10px', lineHeight: '1.7', paddingLeft: '8px' }} {...props}>{recursiveHighlight(children, searchQuery)}</li>;
+        },
+        input({ type, checked, disabled, ...props }) {
+            if (type === 'checkbox') {
+                return (
+                    <input 
+                        type="checkbox" 
+                        defaultChecked={checked}
+                        className="w-[18px] h-[18px] text-indigo-600 bg-white border-gray-300 rounded cursor-pointer mr-3 align-middle focus:ring-indigo-500 transition-all dark:bg-gray-800 dark:border-gray-600 shadow-sm"
+                        style={{ cursor: 'pointer' }}
+                        onChange={(e) => {
+                             const el = e.target;
+                             const parentLi = el.closest('li');
+                             if (parentLi) {
+                                 if (el.checked) {
+                                     parentLi.style.opacity = "0.6";
+                                     parentLi.style.textDecoration = "line-through";
+                                 } else {
+                                     parentLi.style.opacity = "1";
+                                     parentLi.style.textDecoration = "none";
+                                 }
+                             }
+                        }}
+                    />
+                );
+            }
+            return <input type={type} checked={checked} disabled={disabled} {...props} />;
         },
 
         // 4. TEKS BOLD & KUTIPAN (BLOCKQUOTE)
@@ -178,6 +214,7 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
                         components={markdownComponents}
                         remarkPlugins={[remarkGfm]}
                     />
+                    <ChatActionWidgets rawContent={finalResponseBlock} />
                 </div>
             )}
         </div>

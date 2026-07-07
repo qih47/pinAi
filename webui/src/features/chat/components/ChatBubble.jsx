@@ -124,7 +124,8 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
     useEffect(() => {
         if (!isThinkingMsg) return;
 
-        const nextThought = formatThinkingPhase(msg.thought);
+        // PRIORITIZE msg.statusMessage (e.g. from RAG SSE status event) over static fallback
+        const nextThought = msg.statusMessage ? msg.statusMessage : formatThinkingPhase(msg.thought);
 
         if (nextThought !== displayThought) {
             if (thoughtTimerRef.current) {
@@ -142,7 +143,7 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
         return () => {
             if (thoughtTimerRef.current) clearTimeout(thoughtTimerRef.current);
         };
-    }, [msg.thought, isThinkingMsg, displayThought]);
+    }, [msg.thought, msg.statusMessage, isThinkingMsg, displayThought]);
 
     return (
         <div style={styles.assistantRow}>
