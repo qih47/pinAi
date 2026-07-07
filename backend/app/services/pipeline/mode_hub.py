@@ -4,13 +4,17 @@ import asyncio
 from typing import AsyncGenerator, List, Dict, Any, Optional
 from fastapi import Request
 
-from backend.app.api.schemas.chat_schemas import ChatMessageSchema
+from backend.app.api.schemas.chat_schemas import ChatMessageSchema, ChatMode
 from backend.app.services.pipeline.modes.mode_flash import ModeFlash
 from backend.app.services.pipeline.modes.mode_documents import ModeDocuments
 from backend.app.services.pipeline.modes.mode_guest import ModeGuest
 from backend.app.services.pipeline.modes.mode_attachment import ModeAttachment
 from backend.app.services.pipeline.modes.mode_generate_file import ModeGenerateFile
 from backend.app.services.pipeline.modes.mode_insight import ModeInsight
+from backend.app.services.pipeline.modes.mode_focus import ModeFocus
+from backend.app.services.pipeline.modes.mode_compliance import ModeCompliance
+from backend.app.services.pipeline.modes.mode_redteam import ModeRedTeam
+from backend.app.services.pipeline.modes.mode_email import ModeEmail
 
 from backend.app.services.pipeline.modes.mode_utils import detect_precheck
 from backend.app.services.pipeline.call1_router import execute_call1_routing
@@ -32,6 +36,10 @@ class ModeHub:
             "attachment": ModeAttachment(),
             "generate_file": ModeGenerateFile(),  # Interceptor-Analyst Pipeline
             "insight": ModeInsight(),
+            "focus": ModeFocus(),
+            "compliance": ModeCompliance(),
+            "redteam": ModeRedTeam(),
+            "email": ModeEmail()
         }
 
     async def execute(
@@ -66,6 +74,40 @@ class ModeHub:
                 session_chunks_text = "\n\n[KNOWLEDGE DARI FILE SEBELUMNYA DI SESI INI]\n" + "\n---\n".join(chunks)
         precheck["_session_chunks_text"] = session_chunks_text
         precheck["_session_uuid"] = session_uuid
+
+        if chat_mode == "redteam":
+            logger.info("[MODE_HUB] Routing to Red-Team Mode.")
+            handler = self.mode_handlers["redteam"]
+            async for chunk in handler.execute(
+                user_message=user_message,
+                chat_history=chat_history,
+                is_thinking=is_thinking,
+                attachments=attachments,
+                context_isolation=context_isolation,
+                routing_data=precheck,
+                request=request,
+                employee_name=employee_name,
+                current_user_npp=current_user_npp
+            ):
+                yield chunk
+            return
+            
+        if chat_mode == "compliance":
+            logger.info("[MODE_HUB] Routing to Compliance Mode.")
+            handler = self.mode_handlers["compliance"]
+            async for chunk in handler.execute(
+                user_message=user_message,
+                chat_history=chat_history,
+                is_thinking=is_thinking,
+                attachments=attachments,
+                context_isolation=context_isolation,
+                routing_data=precheck,
+                request=request,
+                employee_name=employee_name,
+                current_user_npp=current_user_npp
+            ):
+                yield chunk
+            return
 
         if chat_mode == "insight":
             logger.info("[MODE_HUB] Explicit Insight Mode detected! Bypassing call 1.")
@@ -296,6 +338,9 @@ class ModeHub:
         if routing_data.get("is_generate_file") and not is_guest:
             logger.info("[MODE_HUB] is_generate_file=True detected → routing to GENERATE_FILE mode")
             mode = "generate_file"
+        elif routing_data.get("is_generate_email") and not is_guest:
+            logger.info("[MODE_HUB] is_generate_email=True detected → routing to EMAIL mode")
+            mode = "email"
         elif mode == "auto":
             need_rag = routing_data.get("need_rag", False)
             if need_rag:

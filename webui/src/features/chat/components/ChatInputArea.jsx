@@ -79,6 +79,7 @@ export default function ChatInputArea({
           activeIsolatedTitle={activeIsolatedTitle}
           setContextIsolation={setContextIsolation}
           darkMode={darkMode}
+          chatMode={chatMode}
         />
 
         <AttachmentPreview

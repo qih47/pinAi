@@ -115,7 +115,7 @@ class ModeDocuments:
         # 2C: Tunggu proses paralel selesai
         yield format_sse(status="⏳ Memproses riwayat percakapan & scan file...", event_type=SSEEventType.STATUS)
         community_context = await task_community
-        judul_context, ocr_attachments, judul_source = await task_peraturan
+        judul_context, ocr_attachments, judul_sources = await task_peraturan
 
         # ── Step 3: LLM Execution (Call 2) ────────────────────────────────────────
         module_name = select_call2_module(routing_data, has_rag_context=bool(rag_context))
@@ -125,15 +125,15 @@ class ModeDocuments:
         await asyncio.sleep(0.01)
 
         # Jika dapet file spesifik dari MySQL (Peraturan Service), paksa gabungin ke RAG Sources!
-        if judul_source:
+        if judul_sources:
             if not rag_sources:
                 rag_sources = []
-            rag_sources.insert(0, judul_source) # Taruh di urutan pertama (paling relevan)
+            for src in reversed(judul_sources):
+                rag_sources.insert(0, src) # Taruh di urutan pertama (paling relevan)
 
         if rag_sources:
-            # User Feedback: "harusnya ngasih 1 aja yang sudah pasti"
-            # Sort by similarity/score and take only the TOP 1 most relevant document for the UI & LLM.
-            rag_sources = sorted(rag_sources, key=lambda x: x.get('score', x.get('similarity', 0)), reverse=True)[:1]
+            # Sort by similarity/score and take only the TOP 3 most relevant documents for the UI & LLM.
+            rag_sources = sorted(rag_sources, key=lambda x: x.get('score', x.get('similarity', 0)), reverse=True)[:3]
             yield format_sse("", "", False, sources=rag_sources, event_type=SSEEventType.SOURCES)
             await asyncio.sleep(0.01)
 

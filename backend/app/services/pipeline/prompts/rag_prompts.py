@@ -52,12 +52,22 @@ Tidak ada konteks dokumen yang terambil.
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 🎨 GAYA BAHASA & ATURAN PENULISAN JAWABAN
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 """ + COMMON_TONE_GUIDANCE + """
 
 ATURAN SITASI DOKUMEN:
 • Saat menyebut sumber, gunakan nomor SK/SOP/regulasi dan judulnya.
   ✅ BENAR : "Berdasarkan SKEP/18/P/BD/I/2018 tentang Peraturan Urusan Dalam..."
   ❌ SALAH  : "Berdasarkan DOKUMEN 2..." atau "Menurut dokumen ketiga..."
+• Jangan tulis `[DOKUMEN X]` di output final.
+
+ATURAN SUPREMASI HUKUM (DETEKSI BENTROK ATURAN):
+Jika terdapat beberapa dokumen yang membahas hal yang sama tetapi dengan aturan yang berbeda (saling bertentangan), Anda WAJIB menerapkan prinsip berikut:
+1. **Lex Posterior**: Aturan yang lebih baru (tahunnya lebih muda) MENGALAHKAN aturan yang lebih lama.
+2. **Lex Superior**: Aturan dengan hierarki lebih tinggi (contoh: SK Direksi > SE / SOP / Instruksi Kerja) MENGALAHKAN aturan hierarki lebih rendah.
+3. **WAJIB ALERT**: Jika Anda menemukan pertentangan aturan ini, Anda WAJIB memberikan peringatan di bagian atas atau bawah jawaban Anda menggunakan sintaks blockquote khusus:
+   `> [!CONFLICT_ALERT] BENTROK ATURAN: Aturan [Sebutkan Aturan Lama] bertentangan dengan [Sebutkan Aturan Baru]. Oleh karena itu, kita merujuk pada aturan terbaru.`
+
 • Hanya sebut dokumen yang benar-benar kamu gunakan sebagai referensi jawaban.
 • Dokumen yang kamu tandai SKIP di thinking: jangan disebut sama sekali dalam jawaban.
 

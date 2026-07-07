@@ -1,5 +1,6 @@
 from pydantic import BaseModel, Field
-from typing import List, Optional
+from typing import List, Optional, Union
+from enum import Enum
 
 class ChatMessageSchema(BaseModel):
     """Skema untuk memvalidasi setiap butir pesan dalam array chat history"""
@@ -10,14 +11,21 @@ class ChatMessageSchema(BaseModel):
         from_attributes = True
 
 
+class ChatMode(str, Enum):
+    global_chat = "global_chat" # Slot 1: Mode Documents (Global)
+    focus = "focus"             # Slot 2: Mode Focus (Satu Dokumen)
+    compliance = "compliance"   # Slot 3: Mode Compliance
+    redteam = "redteam"         # Slot 4: Mode Red-Team (Bedah Celah)
+
+
 class ChatStreamRequest(BaseModel):
     """Skema validasi payload utama yang dikirim Frontend saat menembak endpoint /stream"""
     session_uuid: Optional[str] = Field(None, description="UUID Sesi obrolan aktif dari database RAGDB")
     messages: List[ChatMessageSchema] = Field(..., description="Daftar riwayat percakapan dalam sesi ini")
-    mode: Optional[str] = Field("normal", description="Mode operasi: normal, document, atau search")
+    mode: Optional[str] = Field("normal", description="Mode operasi: normal, document, search, focus, atau compliance")
     thinking: Optional[bool] = Field(True, description="Enable or disable LLM thinking")
     temperature: Optional[float] = Field(0.7, ge=0.0, le=2.0, description="Tingkat kreativitas inferensi model LLM")
-    isolated_doc_id: Optional[int] = Field(None, description="ID dokumen RAG terisolasi")
+    isolated_doc_id: Optional[Union[int, str]] = Field(None, description="ID dokumen RAG terisolasi atau nama file PDF")
     attachment_paths: Optional[List[str]] = Field(default=[], description="Daftar path file fisik lampiran chat untuk pemrosesan MiniCPM-V")
     edit_index: Optional[int] = Field(None, description="Indeks array dari chat user yang ingin diedit di DB (In-Place Update)")
 

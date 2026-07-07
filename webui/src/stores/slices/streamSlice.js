@@ -68,7 +68,12 @@ export const createStreamSlice = (set, get) => ({
             .filter(Boolean);
 
         const currentIsolatedDocId = get().activeIsolatedDocId;
-        const effectiveChatMode = currentIsolatedDocId ? 'focus' : chatMode;
+        const currentChatMode = get().chatMode;
+        
+        let effectiveChatMode = chatMode;
+        if (currentIsolatedDocId) {
+            effectiveChatMode = currentChatMode === 'compliance' ? 'compliance' : 'focus';
+        }
 
         // Sinkronisasi state chatMode sebelum perubahan rute URL
         set({
@@ -144,7 +149,10 @@ export const createStreamSlice = (set, get) => ({
         // 4. Panggil stream dengan target parameter (index + 1) dan editIndex = index
         const currentIsolatedDocId = get().activeIsolatedDocId;
         const currentChatMode = get().chatMode || 'auto';
-        const effectiveChatMode = currentIsolatedDocId ? 'focus' : currentChatMode;
+        let effectiveChatMode = currentChatMode;
+        if (currentIsolatedDocId) {
+            effectiveChatMode = currentChatMode === 'compliance' ? 'compliance' : 'focus';
+        }
         
         await performStream(
             set,

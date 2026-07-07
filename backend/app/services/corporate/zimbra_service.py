@@ -225,7 +225,51 @@ def send_email_reply(email_address: str, password: str, to_address: str, subject
     else:
         msg['Subject'] = subject
         
-    msg.attach(MIMEText(body, 'plain'))
+    try:
+        import markdown
+        import re
+        
+        # Pre-process body to fix common LLM markdown formatting issues
+        # 1. Ensure blank line before list items
+        processed_body = re.sub(r'([^\n])\n(\s*[\*\-]\s)', r'\1\n\n\2', body)
+        # 2. Unescape blockquotes if the LLM escaped them (e.g. \>)
+        processed_body = processed_body.replace('\\>', '>')
+        
+        raw_html = markdown.markdown(processed_body)
+        
+        # Bungkus dengan styling CSS dasar agar rapi di email client
+        html_body = f"""
+        <html>
+        <head>
+        <style>
+            body {{ font-family: Arial, sans-serif; font-size: 14px; line-height: 1.6; color: #333; }}
+            ul, ol {{ margin-top: 5px; margin-bottom: 15px; padding-left: 20px; }}
+            li {{ margin-bottom: 5px; }}
+            blockquote {{ 
+                margin: 15px 0; 
+                padding: 10px 15px; 
+                border-left: 4px solid #ccc; 
+                background-color: #f9f9f9; 
+                color: #555;
+            }}
+            p {{ margin-bottom: 15px; }}
+        </style>
+        </head>
+        <body>
+            {raw_html}
+        </body>
+        </html>
+        """
+    except ImportError:
+        # Fallback manual ganti newline ke <br> dan hapus markdown symbol dasar
+        html_body = body.replace("\n", "<br>").replace("**", "<b>").replace("* ", "<li>")
+        
+    # Gunakan multipart/alternative agar mendukung email client jadul dan modern
+    msg_alt = MIMEMultipart('alternative')
+    msg.attach(msg_alt)
+    
+    msg_alt.attach(MIMEText(body, 'plain'))
+    msg_alt.attach(MIMEText(html_body, 'html'))
     
     destinations = [to_address]
     if cc_address:

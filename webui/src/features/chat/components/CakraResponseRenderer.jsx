@@ -6,6 +6,10 @@ import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import CodeBlockHeader from './CodeBlockHeader';
 import ChatActionWidgets from './ChatActionWidgets';
+import { Suspense, lazy } from 'react';
+
+const LazyMermaidViewer = lazy(() => import('./MermaidViewer'));
+const LazySmartMailWidget = lazy(() => import('./SmartMailChatWidget'));
 
 const highlightText = (text, query) => {
     if (!query || typeof text !== 'string') return text;
@@ -30,6 +34,57 @@ const recursiveHighlight = (children, query) => {
         }
         return child;
     });
+};
+
+// =========================================================================
+// 🔮 CAKRA MARKDOWN TABLE (SMART FORM EXPORTER)
+// =========================================================================
+const MarkdownTable = ({ children, darkMode, theme, searchQuery, ...props }) => {
+    const tableRef = React.useRef(null);
+    const [copied, setCopied] = React.useState(false);
+
+    const handleCopy = () => {
+        if (!tableRef.current) return;
+        const range = document.createRange();
+        range.selectNode(tableRef.current);
+        window.getSelection().removeAllRanges();
+        window.getSelection().addRange(range);
+        try {
+            document.execCommand('copy');
+            window.getSelection().removeAllRanges();
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000);
+        } catch(err) {
+            console.error("Gagal menyalin tabel:", err);
+        }
+    };
+
+    return (
+        <div className="relative group my-4 rounded-lg overflow-hidden border" style={{ borderColor: theme?.borderColor || '#e5e7eb' }}>
+            <button 
+                onClick={handleCopy}
+                title="Salin Tabel (Bisa dipaste ke Excel/Spreadsheet)"
+                className={`absolute right-2 top-2 z-10 px-2.5 py-1.5 flex items-center gap-1.5 rounded-lg text-xs font-semibold backdrop-blur-sm transition-all opacity-0 group-hover:opacity-100 ${darkMode ? 'bg-slate-800/90 text-slate-200 hover:bg-slate-700 hover:text-white border border-slate-600 shadow-md' : 'bg-white/90 text-slate-600 hover:bg-slate-50 hover:text-slate-900 shadow-[0_2px_8px_rgba(0,0,0,0.08)] border border-slate-200'}`}
+            >
+                {copied ? (
+                    <>
+                        <svg className="w-3.5 h-3.5 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg>
+                        <span>Tersalin!</span>
+                    </>
+                ) : (
+                    <>
+                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+                        <span>Salin Data</span>
+                    </>
+                )}
+            </button>
+            <div className="overflow-x-auto">
+                <table ref={tableRef} className="w-full text-left border-collapse" style={{ fontSize: '13.5px' }} {...props}>
+                    {recursiveHighlight(children, searchQuery)}
+                </table>
+            </div>
+        </div>
+    );
 };
 
 // =========================================================================
@@ -122,7 +177,37 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
         strong({ children, ...props }) {
             return <strong style={{ fontWeight: 700, color: darkMode ? '#f8fafc' : '#0f172a' }} {...props}>{recursiveHighlight(children, searchQuery)}</strong>;
         },
-        blockquote({ children, ...props }) {
+        blockquote({ children, node, ...props }) {
+            // Helper untuk nge-ekstrak raw text dari AST node buat ngecek tag konflik
+            const getText = (n) => {
+                if (n.type === 'text') return n.value || '';
+                if (n.children) return n.children.map(getText).join('');
+                return '';
+            };
+            const textContent = getText(node);
+
+            // Jika ada tag konflik, render UI peringatan yang mencolok dan bisa di-klik (collapsible)
+            if (textContent.includes('[!CONFLICT_ALERT]')) {
+                // Hapus string '[!CONFLICT_ALERT]' dari tampilan
+                const cleanContent = textContent.replace('[!CONFLICT_ALERT]', '').trim();
+                return (
+                    <details className="my-5 border border-red-500/40 bg-red-500/10 rounded-xl overflow-hidden shadow-[0_0_15px_rgba(239,68,68,0.1)] group cursor-pointer transition-all">
+                        <summary className="bg-red-500/20 px-4 py-2.5 border-b border-red-500/20 flex items-center gap-2 select-none hover:bg-red-500/30">
+                            <svg className="w-5 h-5 text-red-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                            </svg>
+                            <span className="font-bold text-red-500 text-[13px] tracking-wide uppercase flex-1">Bentrok Aturan Terdeteksi</span>
+                            <svg className="w-4 h-4 text-red-500 transition-transform group-open:rotate-180" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                            </svg>
+                        </summary>
+                        <div className="p-4 text-[13.5px] text-red-400 font-medium leading-relaxed [&>p]:m-0">
+                            {recursiveHighlight(children, searchQuery)}
+                        </div>
+                    </details>
+                );
+            }
+
             return (
                 <blockquote style={{ borderLeft: `4px solid ${darkMode ? '#6366f1' : '#3b82f6'}`, padding: '8px 16px', margin: '16px 0', background: darkMode ? 'rgba(99, 102, 241, 0.1)' : 'rgba(59, 130, 246, 0.05)', borderRadius: '0 8px 8px 0', fontStyle: 'italic', color: theme?.secondaryText || '#6b7280' }} {...props}>
                     {recursiveHighlight(children, searchQuery)}
@@ -130,15 +215,9 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
             );
         },
 
-        // 5. TABEL (Dengan Header Background)
+        // 5. TABEL (Dengan Header Background & Copy to Clipboard)
         table({ children, ...props }) {
-            return (
-                <div style={{ overflowX: 'auto', margin: '16px 0' }}>
-                    <table style={{ width: '100%', borderCollapse: 'collapse', border: `1px solid ${theme?.borderColor || '#e5e7eb'}`, fontSize: '13.5px' }} {...props}>
-                        {recursiveHighlight(children, searchQuery)}
-                    </table>
-                </div>
-            );
+            return <MarkdownTable children={children} darkMode={darkMode} theme={theme} searchQuery={searchQuery} {...props} />;
         },
         thead({ children, ...props }) {
             return <thead style={{ background: darkMode ? '#334155' : '#f8fafc' }} {...props}>{recursiveHighlight(children, searchQuery)}</thead>;
@@ -153,10 +232,31 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
             return <span {...props}>{recursiveHighlight(children, searchQuery)}</span>;
         },
 
+        // Override pre supaya komponen custom (SyntaxHighlighter & MermaidViewer) nggak dibungkus tag <pre> bawaan yang merusak flexbox layout
+        pre({ children, ...props }) {
+            return <div className="markdown-pre-wrapper" {...props}>{children}</div>;
+        },
+
         // 6. BLOK KODE (Tetap seperti milik lu aslinya, super aman)
         code({ node, inline, className, children, ...props }) {
             const match = /language-(\w+)/.exec(className || '');
             const cleanCode = String(children).replace(/\n$/, '');
+
+            if (!inline && match && match[1] === 'mermaid') {
+                return (
+                    <Suspense fallback={<div className="animate-pulse p-8 border border-dashed rounded-xl text-sm text-center font-medium my-4">Memuat engine diagram...</div>}>
+                        <LazyMermaidViewer chartCode={cleanCode} darkMode={darkMode} />
+                    </Suspense>
+                );
+            }
+
+            if (!inline && match && match[1] === 'smartmail') {
+                return (
+                    <Suspense fallback={<div className="animate-pulse p-8 border border-dashed rounded-xl text-sm text-center font-medium my-4">Memuat editor email...</div>}>
+                        <LazySmartMailWidget initialData={cleanCode} darkMode={darkMode} theme={theme} />
+                    </Suspense>
+                );
+            }
 
             return !inline && match ? (
                 <div key={`code-block-${match[1]}`} style={{ borderRadius: '10px', overflow: 'hidden', margin: '12px 0', boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)', border: '1px solid rgba(255, 255, 255, 0.05)' }}>

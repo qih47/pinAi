@@ -9,17 +9,17 @@ from fastapi import Request
 from backend.app.api.schemas.chat_schemas import ChatMessageSchema
 from backend.app.services.pipeline.sse_validation import format_sse, SSEEventType
 from backend.app.services.pipeline.modes.mode_utils import detect_precheck
-from backend.app.services.pipeline.prompts.rag_prompts import build_response_prompt_focus
+from backend.app.services.pipeline.prompts.compliance_prompts import build_response_prompt_compliance
 from backend.app.core.llm_client import stream_ollama_chat
 from backend.app.core.paths import get_abs_path, BASE_DIR
 from backend.app.core.database import get_peraturan_db
 from backend.app.core.config import settings
 
-logger = logging.getLogger("MODE_FOCUS")
+logger = logging.getLogger("MODE_COMPLIANCE")
 
-class ModeFocus:
+class ModeCompliance:
     """
-    Mode Focus: Context Isolation.
+    Mode Compliance: Sandbox Uji Kepatuhan.
     Membaca dokumen PDF (teks/scan) secara iteratif (Sliding Window per 20 halaman).
     Jika jawaban tidak ada (dijawab 'KOSONG' oleh LLM), maju ke 20 halaman berikutnya.
     """
@@ -38,10 +38,10 @@ class ModeFocus:
         session_uuid: Optional[str] = None
     ) -> AsyncGenerator[str, None]:
         
-        logger.info("[MODE_FOCUS] Starting Focus Mode Execution")
+        logger.info("[MODE_COMPLIANCE] Starting Compliance Mode Execution")
         isolated_doc_id = context_isolation.get("isolated_doc_id")
         
-        yield format_sse(status="🎯 Menginisialisasi Mode Fokus...", event_type=SSEEventType.STATUS)
+        yield format_sse(status="🎯 Menginisialisasi Mode Uji Kepatuhan...", event_type=SSEEventType.STATUS)
         await asyncio.sleep(0.01)
 
         # 1. Fetch Filename from Database
@@ -136,9 +136,9 @@ class ModeFocus:
                     encoded = base64.b64encode(img_data).decode("utf-8")
                     base64_images.append(encoded)
 
-            precheck = detect_precheck(user_message, "focus", False)
+            precheck = detect_precheck(user_message, "compliance", False)
             # Siapkan system prompt
-            system_prompt = build_response_prompt_focus(
+            system_prompt = build_response_prompt_compliance(
                 employee_name=employee_name,
                 precheck=precheck,
                 is_thinking=is_thinking,
@@ -146,12 +146,9 @@ class ModeFocus:
                 end_page=end_page,
                 filename=filename,
                 extracted_text=extracted_text,
-                is_scanned=is_scanned
+                is_scanned=is_scanned,
+                user_scenario=user_message
             )
-            
-            if precheck and precheck.get("requires_visual"):
-                from backend.app.services.pipeline.prompts.visual_prompts import VISUAL_SYSTEM_PROMPT
-                system_prompt += "\n\n" + VISUAL_SYSTEM_PROMPT + "\n\n"
 
             # Buat message payload
             user_payload = {"role": "user", "content": user_message}
@@ -187,7 +184,7 @@ class ModeFocus:
                 await chat_history_service.save_agent_step(
                     session_id=session_uuid_to_use,
                     step_number=3,
-                    tool_called="CALL_2_FOCUS",
+                    tool_called="CALL_2_COMPLIANCE",
                     tool_input=f"Prompt chars: {len(system_prompt)}",
                     observation=json.dumps(obs_dict)
                 )

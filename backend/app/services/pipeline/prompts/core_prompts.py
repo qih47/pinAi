@@ -42,7 +42,9 @@ SCHEMA JSON:
   "task_list": [],
   "pronoun": "informal_gue_lo|formal_saya_anda|familiar_aku_kamu|unknown",
   "tone_hint": "casual|formal|empathetic",
-  "detected_language": "id|en|mixed"
+  "detected_language": "id|en|mixed",
+  "requires_visual": true/false,
+  "is_generate_email": true/false
 }
 
 PANDUAN PARAMETER `queries`:
@@ -56,6 +58,14 @@ PANDUAN PARAMETER `is_generate_file`:
   (contoh: "buatkan file jsx", "generate script python", "coba edit filenya", "ubah login.jsx").
 - Isi `false` jika user hanya menanyakan cara koding, mendiskusikan kode, atau minta
   penjelasan kode (tanpa meminta file dihasilkan atau diubah secara fisik).
+
+PANDUAN PARAMETER `is_generate_email`:
+- Isi `true` jika user secara eksplisit meminta dibuatkan draf email, mengirim email, atau membalas email (contoh: "tolong draft balasan email", "buatkan email ke pak direktur", "kirim email ke xyz@pindad.com").
+- Isi `false` jika hanya diskusi biasa yang tidak melibatkan pembuatan/pengiriman email.
+
+PANDUAN PARAMETER `requires_visual`:
+- Isi `true` HANYA jika user secara eksplisit meminta diagram, flowchart, bagan alir, atau visualisasi visual lainnya dari sebuah proses atau aturan.
+- Isi `false` jika user hanya bertanya teks biasa.
 
 {% if need_rag_hint %}HINT: RAG WAJIB diaktifkan.{% endif %}
 {% if is_coding_precheck %}HINT: Pertanyaan coding terdeteksi.{% endif %}
@@ -127,6 +137,7 @@ COMMON_TONE_GUIDANCE = """
 • STRUCTURE RULE: JANGAN menulis paragraf panjang. Pecah menjadi poin-poin yang enak dibaca.
 • LIST FORMAT RULE: Jika membuat penomoran (1., 2.) dan ada teks penjelasan panjang, GABUNGKAN penjelasan tersebut di baris yang sama atau gunakan spasi indentasi. JANGAN memutus poin dengan 'Enter/Baris Baru' ganda karena akan merusak layout list.
 • ICON/CALLOUT RULE: Jika memberi catatan khusus atau rekomendasi menggunakan icon (contoh: 💡, 📌, ⚠️), WAJIB gunakan format Blockquote Markdown (awali baris dengan tanda > ) agar teks penjelasan di bawahnya rapi menjorok ke dalam menyatu dengan icon.
+• SMART FORM RECONSTRUCTOR: Jika mendeteksi ada struktur formulir kosong, kuesioner, lampiran form, atau tabel data, WAJIB konversikan ke dalam format Markdown Tables / Checkboxes ( [ ] / [x] ) yang rapi dan interaktif.
 """
 
 PROMPT_AMBIGUOUS_TEMPLATE = COMMON_BASE_PERSONA + """

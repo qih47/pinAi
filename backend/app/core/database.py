@@ -83,7 +83,8 @@ async def close_db_pool():
     if hris_pool:
         await hris_pool.close()
     if peraturan_pool:
-        await peraturan_pool.close()
+        peraturan_pool.close()
+        await peraturan_pool.wait_closed()
     logger.info("🛑 [DATABASE] All database connection pools closed clean.")
 
 @asynccontextmanager

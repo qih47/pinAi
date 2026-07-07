@@ -27,6 +27,26 @@ const SourceCitation = ({ sources, darkMode, theme, onPreview, onActivateIsolati
     e.stopPropagation(); // Mencegah trigger click card utama
     if (onActivateIsolation) {
       // Pemicu callback menuju chatStore untuk mengunci context ke id dokumen ini
+      // Harus menggunakan setState({ chatMode: 'focus' })
+      useChatStore.setState({ chatMode: 'focus' });
+      onActivateIsolation(source);
+    }
+  };
+
+  const handleComplianceIsolation = (e, source) => {
+    e.stopPropagation(); 
+    if (onActivateIsolation) {
+      // Set mode ke compliance sebelum isolasi
+      useChatStore.setState({ chatMode: 'compliance' });
+      onActivateIsolation(source);
+    }
+  };
+
+  const handleRedTeamIsolation = (e, source) => {
+    e.stopPropagation(); 
+    if (onActivateIsolation) {
+      // Set mode ke redteam sebelum isolasi
+      useChatStore.setState({ chatMode: 'redteam' });
       onActivateIsolation(source);
     }
   };
@@ -34,7 +54,7 @@ const SourceCitation = ({ sources, darkMode, theme, onPreview, onActivateIsolati
   // Sasis utama grid layout responsif penampung kartu dokumen
   const containerStyle = {
     display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))',
+    gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
     gap: '12px',
     marginTop: '16px',
     marginBottom: '50px',
@@ -86,9 +106,8 @@ const SourceCitation = ({ sources, darkMode, theme, onPreview, onActivateIsolati
     fontSize: '13px',
     fontWeight: 600,
     color: theme?.textColor || (darkMode ? '#e2e8f0' : '#1f2937'),
-    whiteSpace: 'nowrap',
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
+    whiteSpace: 'normal',
+    wordBreak: 'break-word',
     lineHeight: '1.4'
   };
 
@@ -114,12 +133,13 @@ const SourceCitation = ({ sources, darkMode, theme, onPreview, onActivateIsolati
 
   const btnStyle = (isPrimary, isHovered) => ({
     flex: 1,
-    padding: '6px 10px',
-    borderRadius: '20px',
-    fontSize: '11px',
+    padding: '4px 6px',
+    borderRadius: '12px',
+    fontSize: '10px',
     fontWeight: 600,
     textAlign: 'center',
     cursor: 'pointer',
+    whiteSpace: 'nowrap',
     border: isPrimary ? 'none' : `1px solid ${darkMode ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.12)'}`,
     background: isPrimary 
       ? (darkMode ? '#6366f1' : '#2563eb')
@@ -175,7 +195,7 @@ const SourceCitation = ({ sources, darkMode, theme, onPreview, onActivateIsolati
                   }}>
                     {src.jenis || 'Regulasi'}
                   </span>
-                  <span>{regNomor} {page ? `• Hal. ${page}` : ''}</span>
+                  <span>{regNomor} {page ? `• Hal. ${page}` : ''} {src.jumlah_halaman ? `• Total ${src.jumlah_halaman} Hal` : ''}</span>
                 </span>
 
                 {/* Tampilkan Daftar BAB/Pasal jika ada */}
@@ -217,14 +237,38 @@ const SourceCitation = ({ sources, darkMode, theme, onPreview, onActivateIsolati
                 onClick={(e) => handleView(e, src)}
                 style={btnStyle(false, isHovered)}
               >
-                👁️ Lihat (PDF)
+                👁️ PDF
               </button>
               <button
                 type="button"
                 onClick={(e) => handleChatIsolation(e, src)}
                 style={btnStyle(true, isHovered)}
               >
-                {isCurrentlyIsolated ? '🔒 Terfokus' : '💬 Chat'}
+                {isCurrentlyIsolated && useChatStore.getState().chatMode !== 'compliance' ? '🔒 Fokus' : '💬 Tanya'}
+              </button>
+              <button
+                type="button"
+                onClick={(e) => handleComplianceIsolation(e, src)}
+                style={{
+                  ...btnStyle(true, isHovered),
+                  background: isCurrentlyIsolated && useChatStore.getState().chatMode === 'compliance' ? '#ef4444' : (darkMode ? 'rgba(239, 68, 68, 0.15)' : 'rgba(239, 68, 68, 0.1)'),
+                  color: isCurrentlyIsolated && useChatStore.getState().chatMode === 'compliance' ? '#ffffff' : (darkMode ? '#fca5a5' : '#b91c1c'),
+                  border: `1px solid ${isCurrentlyIsolated && useChatStore.getState().chatMode === 'compliance' ? '#ef4444' : (darkMode ? 'rgba(239, 68, 68, 0.3)' : 'rgba(239, 68, 68, 0.2)')}`,
+                }}
+              >
+                {isCurrentlyIsolated && useChatStore.getState().chatMode === 'compliance' ? '🔒 Kepatuhan' : '⚖️ Kepatuhan'}
+              </button>
+              <button
+                type="button"
+                onClick={(e) => handleRedTeamIsolation(e, src)}
+                style={{
+                  ...btnStyle(true, isHovered),
+                  background: isCurrentlyIsolated && useChatStore.getState().chatMode === 'redteam' ? '#f97316' : (darkMode ? 'rgba(249, 115, 22, 0.15)' : 'rgba(249, 115, 22, 0.1)'),
+                  color: isCurrentlyIsolated && useChatStore.getState().chatMode === 'redteam' ? '#ffffff' : (darkMode ? '#fdba74' : '#c2410c'),
+                  border: `1px solid ${isCurrentlyIsolated && useChatStore.getState().chatMode === 'redteam' ? '#f97316' : (darkMode ? 'rgba(249, 115, 22, 0.3)' : 'rgba(249, 115, 22, 0.2)')}`,
+                }}
+              >
+                {isCurrentlyIsolated && useChatStore.getState().chatMode === 'redteam' ? '🔒 Red-Team' : '🕵️ Bedah'}
               </button>
             </div>
           </div>

@@ -11,6 +11,12 @@ def detect_precheck(user_message: str, chat_mode: str, has_attachment: bool) -> 
     is_coding = any(kw in msg_lower for kw in _CODING_KEYWORDS)
     is_greeting = any(kw in msg_lower for kw in _GREETING_KEYWORDS)
     is_doc_query = any(kw in msg_lower for kw in _DOC_KEYWORDS)
+    
+    _EMAIL_KEYWORDS = ["kirim email", "buat email", "draft email", "balas email", "email ke", "draf email"]
+    is_generate_email = any(kw in msg_lower for kw in _EMAIL_KEYWORDS)
+    
+    _VISUAL_KEYWORDS = ["visual", "diagram", "alur", "flowchart", "grafik", "bagan"]
+    requires_visual = any(kw in msg_lower for kw in _VISUAL_KEYWORDS)
 
     if any(w in msg_lower for w in ["gue", "lo", "gw"]):
         pronoun, mirroring = "informal_gue_lo", "mirror_casual"
@@ -25,6 +31,10 @@ def detect_precheck(user_message: str, chat_mode: str, has_attachment: bool) -> 
     profanity = "low_misuh" if any(w in msg_lower for w in ["asu", "jancuk", "anjir", "bangsat"]) else "none"
 
     word_count = len(user_message.split())
+    # Jangan anggap is_greeting jika pesannya terlalu panjang (kemungkinan ada instruksi setelah sapaan)
+    if word_count > 8:
+        is_greeting = False
+        
     is_chitchat = is_greeting or (word_count <= 5 and not is_coding and not is_doc_query and not has_attachment)
 
     if chat_mode == "documents" or has_attachment:
@@ -36,6 +46,10 @@ def detect_precheck(user_message: str, chat_mode: str, has_attachment: bool) -> 
         need_rag_hint = True
     else:
         need_rag_hint = None
+        
+    if is_generate_email:
+        is_chitchat = False
+        need_rag_hint = False
 
     return {
         "is_chitchat": is_chitchat,
@@ -48,6 +62,8 @@ def detect_precheck(user_message: str, chat_mode: str, has_attachment: bool) -> 
         "slang": slang,
         "profanity": profanity,
         "word_count": word_count,
+        "requires_visual": requires_visual,
+        "is_generate_email": is_generate_email,
         "_user_message": user_message
     }
 
@@ -126,6 +142,8 @@ def build_call2_system_prompt(
         build_response_prompt_ambiguous,
         build_response_prompt_general_expert,
     )
+    from backend.app.services.pipeline.prompts.visual_prompts import VISUAL_SYSTEM_PROMPT
+
     if module_name == "chitchat":
         prompt = build_response_prompt_chitchat(employee_name, precheck, is_thinking)
     elif module_name == "coding":
@@ -144,6 +162,9 @@ def build_call2_system_prompt(
         prompt = build_response_prompt_general_expert(employee_name, precheck, is_thinking)
     else:
         prompt = build_response_prompt_chitchat(employee_name, precheck, is_thinking)
+
+    if precheck and precheck.get("requires_visual") is True:
+        prompt += "\n\n" + VISUAL_SYSTEM_PROMPT + "\n\n"
 
     if is_thinking:
         prompt = "<|think|>\n" + prompt

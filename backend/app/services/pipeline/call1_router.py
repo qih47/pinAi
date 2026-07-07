@@ -146,6 +146,7 @@ def _validate_and_normalize_routing(
         "query_judul": None,
         "is_coding": False,
         "is_generate_file": False,  # MODE GENERATE FILE: True jika user meminta dibuatkan file
+        "is_generate_email": False, # MODE EMAIL: True jika user meminta dibuatkan email
         "need_analytic": False,
         "is_self_correction": False,
         "is_ambiguous": False,
@@ -173,6 +174,7 @@ def _validate_and_normalize_routing(
 
     routing["is_coding"] = bool(routing_json.get("is_coding", False))
     routing["is_generate_file"] = bool(routing_json.get("is_generate_file", False))
+    routing["is_generate_email"] = bool(routing_json.get("is_generate_email", False))
     routing["needs_code_analysis"] = bool(routing_json.get("needs_code_analysis", False))
     routing["need_analytic"] = bool(routing_json.get("need_analytic", False))
     routing["is_self_correction"] = bool(routing_json.get("is_self_correction", False))
@@ -213,6 +215,10 @@ def _validate_and_normalize_routing(
     if precheck.get("is_coding") and not routing["is_coding"]:
         logger.warning("[CALL1] Precheck override: is_coding forced to True")
         routing["is_coding"] = True
+        
+    if precheck.get("is_generate_email") and not routing["is_generate_email"]:
+        logger.warning("[CALL1] Precheck override: is_generate_email forced to True")
+        routing["is_generate_email"] = True
 
     if routing["need_rag"]:
         from backend.app.services.pipeline.modes.mode_utils import build_rule_based_queries
@@ -250,6 +256,7 @@ def _build_fallback_routing(precheck: Dict[str, Any]) -> Dict[str, Any]:
             "query_judul": user_message,
             "is_coding": False,
             "is_generate_file": False,
+            "is_generate_email": False,
             "needs_code_analysis": False,
             "need_analytic": False,
             "is_self_correction": False,
@@ -268,6 +275,7 @@ def _build_fallback_routing(precheck: Dict[str, Any]) -> Dict[str, Any]:
             "query_judul": None,
             "is_coding": precheck.get("is_coding", False),
             "is_generate_file": False,
+            "is_generate_email": False,
             "needs_code_analysis": False,
             "need_analytic": False,
             "is_self_correction": False,
