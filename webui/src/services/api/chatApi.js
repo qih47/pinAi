@@ -102,7 +102,7 @@ export async function streamChat(
       headers,
       body: JSON.stringify({
         session_uuid: sessionUuid,
-        messages: messages,
+        messages: (messages || []).map(({ thought, thinking, ...rest }) => rest),
         mode: chatMode,
         thinking: thinking,
         temperature: 0.7,

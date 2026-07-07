@@ -90,7 +90,12 @@ async def search_and_ocr_by_judul(query_judul: Optional[str]) -> Tuple[str, List
                 # Sehingga bisa match dengan "Pelaksanaan Work From Home (WFH) di PT Pindad"
                 search_pattern = "%" + "%".join(query_judul.strip().split()) + "%"
                 
-                sql = "SELECT judul, gambar, gambar2, gambar3 FROM berita WHERE judul LIKE %s LIMIT 1"
+                sql = """
+                    SELECT b.id_berita, b.judul, b.gambar, b.gambar2, b.gambar3, k.nama_kategori 
+                    FROM berita b
+                    LEFT JOIN kategori k ON b.id_kategori = k.id_kategori
+                    WHERE b.judul LIKE %s LIMIT 1
+                """
                 await cur.execute(sql, (search_pattern,))
                 row = await cur.fetchone()
                 
@@ -98,7 +103,7 @@ async def search_and_ocr_by_judul(query_judul: Optional[str]) -> Tuple[str, List
                     logger.info(f"[PERATURAN_SERVICE] No matching title found for '{query_judul}'")
                     return "", [], None
                     
-                judul, gambar, gambar2, gambar3 = row
+                id_berita, judul, gambar, gambar2, gambar3, nama_kategori = row
                 logger.info(f"[PERATURAN_SERVICE] Found match: '{judul}'")
                 
                 # Coba cari file yang valid dari ketiga kolom
@@ -127,9 +132,10 @@ async def search_and_ocr_by_judul(query_judul: Optional[str]) -> Tuple[str, List
                     context_text = f"--- DOKUMEN SPESIFIK (JUDUL: {judul}) ---\n[Dokumen hasil scan telah dilampirkan sebagai gambar untuk dianalisa]\n-------------------\n"
                 # Buat metadata sumber dokumen resmi untuk ditimpa ke RAG
                 source_metadata = {
-                    "id": file_name,
+                    "id": id_berita,
                     "title": judul,
                     "document_title": judul,
+                    "kategori": nama_kategori,
                     "file_path": valid_file,  # INI PATH YANG BENAR (pinAi/file_peraturan)
                     "score": 10.0, # Beri score sangat tinggi agar pasti terpilih
                     "similarity": 10.0,

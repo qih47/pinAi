@@ -217,7 +217,6 @@ _PATH_TRAVERSAL_PATTERNS = [
 _CMDI_PATTERNS = [
     re.compile(r"(?:;|\||&&|\$\(|\`)\s*(?:ls|cat|pwd|whoami|id|uname|curl|wget|nc|bash|sh|python|perl|ruby|php)", re.IGNORECASE),
     re.compile(r"\$\(.*?\)"),             # $(command)
-    re.compile(r"`[^`]{2,100}`"),         # backtick execution
     re.compile(r"(?i)\|\s*bash"),
     re.compile(r"(?i)&&\s*rm\s+-rf"),
 ]

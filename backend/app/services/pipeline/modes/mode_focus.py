@@ -91,8 +91,17 @@ class ModeFocus:
             yield format_sse("", "", True, event_type=SSEEventType.DONE)
             return
 
-        # 4. Iterative Sliding Window (20 Pages Chunk)
-        chunk_size = 20
+        # 4. Deteksi Tipe PDF (Text vs Scan) & Set Chunk Size
+        sample_text = ""
+        for i in range(min(3, total_pages)):
+            sample_text += doc.load_page(i).get_text("text").strip()
+            
+        is_document_scanned = len(sample_text.strip()) < 50
+        
+        # Jika text PDF, LLM bisa menampung banyak halaman sekaligus (128k context)
+        # Jika scanned (gambar), kita harus melimit batch agar tidak OOM
+        chunk_size = 15 if is_document_scanned else 200
+
         start_page = 0
         answer_found = False
 
@@ -114,7 +123,7 @@ class ModeFocus:
                 if text:
                     extracted_text += f"\n--- HALAMAN {page_num + 1} ---\n{text}\n"
 
-            is_scanned = len(extracted_text.strip()) < 50
+            is_scanned = len(extracted_text.strip()) < 50 or is_document_scanned
             
             if is_scanned:
                 # Dokumen Scan -> Convert ke Image
@@ -156,7 +165,7 @@ class ModeFocus:
             hist_tokens = sum(len(m.get("content", "")) for m in messages_dict) // 4
             rag_tokens = 0 # Focus mode uses web/search context inside system prompt mostly, so we can treat it as sys_tokens
             total_used = sys_tokens + hist_tokens + rag_tokens
-            num_ctx = 128000
+            num_ctx = 256000
 
             session_uuid_to_use = session_uuid or (routing_data.get("_session_uuid") if routing_data else None)
             if session_uuid_to_use:
@@ -184,7 +193,7 @@ class ModeFocus:
                 model_name=settings.MODEL_PERSONA, # TETAP PAKAI TEXT LLM
                 is_thinking=is_thinking,
                 temperature=0.1,
-                num_ctx=128000,
+                num_ctx=256000,
                 num_predict=8192,
                 request=request
             ):
@@ -208,8 +217,8 @@ class ModeFocus:
                         if char:
                             buffer += char
                         
-                        # Buffer hingga 15 karakter untuk mendeteksi kata KOSONG
-                        if len(buffer) >= 12 or is_done:
+                        # Buffer hingga 30 karakter untuk mendeteksi kata KOSONG dengan aman
+                        if len(buffer) >= 30 or is_done:
                             if "KOSONG" in buffer.upper():
                                 is_empty_flag = True
                                 break # Stop LLM stream, langsung lanjut iterasi berikutnya
@@ -228,7 +237,7 @@ class ModeFocus:
                 yield format_sse("", "", True, event_type=SSEEventType.DONE)
                 return
             elif not started_streaming and "KOSONG" not in buffer.upper():
-                # Kasus jika jawaban LLM sangat pendek (di bawah 12 karakter) tapi bukan KOSONG
+                # Kasus jika jawaban LLM sangat pendek (di bawah 30 karakter) tapi bukan KOSONG
                 answer_found = True
                 yield format_sse(status="✨ Menemukan jawaban!", event_type=SSEEventType.STATUS)
                 yield format_sse(buffer, "", False, event_type=SSEEventType.CHUNK)
