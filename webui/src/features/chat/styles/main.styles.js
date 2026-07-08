@@ -178,17 +178,9 @@ export const styles = {
         whiteSpace: 'normal',
         margin: 0,
         fontSize: '15px',
-        color: 'transparent', // Wajib transparent agar gradient-nya kelihatan
-        WebkitBackgroundClip: 'text',
-        backgroundClip: 'text',
-
         opacity: 0,  // Mulai dari invisible
         animation: 'geminiReveal 0.5s cubic-bezier(0.22, 0.61, 0.36, 1) forwards',  // Easing natural
         transition: 'all 0.3s ease-out',  // Smooth transition untuk update
-
-        // Optional: Gradient fade di ujung kanan (kayak Gemini)
-        backgroundImage: 'linear-gradient(to right, currentColor 85%, transparent 100%)',
-
     },
 
     inputArea: {

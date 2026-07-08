@@ -60,6 +60,7 @@ class InterceptorParser:
 
     def reset(self):
         self._buffer       = ""         
+        self._transition_buffer = ""
         self._code_buffer  = []         
         self._state        = "STREAMING_PREAMBLE"
         self._filename     = None
@@ -67,6 +68,7 @@ class InterceptorParser:
 
     def reset_for_next_file(self):
         self._buffer       = ""
+        self._transition_buffer = ""
         self._code_buffer  = []
         self._state        = "WAITING_FOR_NEXT_FILE"
         self._filename     = None
@@ -96,9 +98,13 @@ class InterceptorParser:
             m = _RE_OPEN_TAG.search(self._buffer)
             if m:
                 pre_tag_text = self._buffer[:m.start()]
-                if pre_tag_text.strip():
-                    results.append(("preamble", pre_tag_text))
-                    # Jika WAITING_FOR_NEXT_FILE dan ada teks transisi, emit batch_break
+                full_preamble = pre_tag_text
+                if self._state == "WAITING_FOR_NEXT_FILE":
+                    full_preamble = self._transition_buffer + pre_tag_text
+                    self._transition_buffer = ""
+                
+                if full_preamble.strip():
+                    results.append(("preamble", full_preamble))
                     if self._state == "WAITING_FOR_NEXT_FILE":
                         results.append(("batch_break", {}))
                 
@@ -120,19 +126,18 @@ class InterceptorParser:
                     safe_to_stream = self._buffer[:last_lt]
                     self._buffer   = self._buffer[last_lt:]
                     if safe_to_stream:
-                        results.append(("preamble", safe_to_stream))
-                        if self._state == "WAITING_FOR_NEXT_FILE" and safe_to_stream.strip():
-                            # Kita transisi ke state PREAMBLE lagi agar batch_break dipancarkan nanti
-                            results.append(("batch_break", {}))
-                            self._state = "STREAMING_PREAMBLE"
+                        if self._state == "STREAMING_PREAMBLE":
+                            results.append(("preamble", safe_to_stream))
+                        else:
+                            self._transition_buffer += safe_to_stream
                 elif last_lt == -1 and len(self._buffer) > 80:
                     safe_to_stream = self._buffer[:-10]
                     self._buffer   = self._buffer[-10:]
                     if safe_to_stream:
-                        results.append(("preamble", safe_to_stream))
-                        if self._state == "WAITING_FOR_NEXT_FILE" and safe_to_stream.strip():
-                            results.append(("batch_break", {}))
-                            self._state = "STREAMING_PREAMBLE"
+                        if self._state == "STREAMING_PREAMBLE":
+                            results.append(("preamble", safe_to_stream))
+                        else:
+                            self._transition_buffer += safe_to_stream
 
         elif self._state == "CAPTURING_CODE":
             rest = self._buffer

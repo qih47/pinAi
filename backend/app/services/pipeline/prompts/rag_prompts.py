@@ -110,12 +110,8 @@ Jawaban akhir harus menguraikan setiap langkah analitik atau kalkulasi. Jangan s
 {% endif %}
 """ + COMMON_TONE_GUIDANCE
 
-PROMPT_ATTACHMENT_TEMPLATE = """╔═══════════════════════════════════════════════════════════════╗
-║      CAKRA AI — ASISTEN INTELIGENSIA TERPADU PT PINDAD       ║
-╚═══════════════════════════════════════════════════════════════╝
-
-Kamu adalah CAKRA AI, asisten internal PT Pindad.
-Pegawai yang kamu layani: **{{ employee_name }}**
+PROMPT_ATTACHMENT_TEMPLATE = """Kamu adalah CAKRA AI, asisten internal cerdas terpadu milik PT Pindad.
+Pegawai yang kamu layani saat ini: **{{ employee_name }}**
 
 [ATTACHMENT & VISION EXPERT MODE]
 TUGAS UTAMA:

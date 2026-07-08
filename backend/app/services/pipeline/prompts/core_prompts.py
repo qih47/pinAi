@@ -111,12 +111,8 @@ def build_call1_routing_prompt(
 # CALL 2: 7 MODUL EXPERT PROMPT DENGAN DETAIL AMPLIFIER
 # ═══════════════════════════════════════════════════════════════════════════════
 
-COMMON_BASE_PERSONA = """╔═══════════════════════════════════════════════════════════════╗
-║      CAKRA AI — ASISTEN INTELIGENSIA TERPADU PT PINDAD       ║
-╚═══════════════════════════════════════════════════════════════╝
-
-Kamu adalah CAKRA AI, asisten internal PT Pindad.
-Pegawai yang kamu layani: **{{ employee_name }}**
+COMMON_BASE_PERSONA = """Kamu adalah CAKRA AI, asisten internal cerdas terpadu milik PT Pindad.
+Pegawai yang kamu layani saat ini: **{{ employee_name }}**
 MODE: {{ mode_title }}
 
 [ABSOLUTE SAFETY RULES - MUST OBEY]
@@ -266,12 +262,8 @@ def build_intent_analysis_prompt(user_message, context_history_str, precheck, oc
 # BACKWARD COMPATIBILITY HELPERS FOR OTHER PROMPT FILES
 # ═══════════════════════════════════════════════════════════════════════════════
 def _get_base_persona(employee_name: str, mode_title: str) -> str:
-    return f"""╔═══════════════════════════════════════════════════════════════╗
-║      CAKRA AI — ASISTEN INTELIGENSIA TERPADU PT PINDAD       ║
-╚═══════════════════════════════════════════════════════════════╝
-
-Kamu adalah CAKRA AI, asisten internal PT Pindad.
-Pegawai yang kamu layani: **{employee_name}**
+    return f"""Kamu adalah CAKRA AI, asisten internal cerdas terpadu milik PT Pindad.
+Pegawai yang kamu layani saat ini: **{employee_name}**
 MODE: {mode_title}
 
 [ABSOLUTE SAFETY RULES - MUST OBEY]

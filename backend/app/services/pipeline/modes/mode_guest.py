@@ -70,7 +70,7 @@ class ModeGuest:
         # Pastikan thinking selalu off
         is_thinking = False
 
-        yield format_sse(status="⚡ Mengeksekusi (Guest Mode)", event_type=SSEEventType.STATUS)
+        yield format_sse(status="⚡ Analisa konteks...", event_type=SSEEventType.STATUS)
 
         # Hitung estimasi token (1 token ~ 4 karakter)
         sys_tokens = len(system_prompt) // 4

@@ -107,6 +107,8 @@ export default function FileProcessLog({ fileGenerations, darkMode, batchIndex =
 
   return (
     <div style={{
+      display: 'block',
+      width: '100%',
       marginBottom: '16px',
       fontFamily: 'system-ui, -apple-system, sans-serif'
     }}>
@@ -126,8 +128,9 @@ export default function FileProcessLog({ fileGenerations, darkMode, batchIndex =
       <div 
         onClick={() => setExpanded(!expanded)}
         style={{
-          display: 'inline-flex',
+          display: 'flex',
           alignItems: 'center',
+          width: 'fit-content',
           gap: '6px',
           cursor: 'pointer',
           userSelect: 'none',

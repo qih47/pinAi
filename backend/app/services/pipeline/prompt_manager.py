@@ -42,6 +42,15 @@ class PromptManager:
                             name, data["template"], data["description"]
                         )
                         db_prompts[name] = data["template"]
+                    else:
+                        # 🔥 UPDATE: Selalu overwrite isi DB dengan versi terbaru dari file Python
+                        # agar perubahan prompt di file .py selalu tersinkronisasi ke DB
+                        logger.info(f"[PROMPT_MANAGER] Updating prompt in DB from Python default: {name}")
+                        await conn.execute(
+                            "UPDATE system_prompts SET template = $1, description = $2 WHERE name = $3",
+                            data["template"], data["description"], name
+                        )
+                        db_prompts[name] = data["template"]
                 
                 # Rebuild Cache
                 self._cache.clear()

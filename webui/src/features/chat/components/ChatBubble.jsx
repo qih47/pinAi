@@ -286,7 +286,7 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
                         })()}
 
                         {/* 🔥 POSISI BERHASIL DIPINDAHKAN DI AKHIR STREAM (DI BAWAH RENDERING TEKS JAWABAN) */}
-                        {msg.fileGenerations && msg.fileGenerations.length > 0 && msg.fileGenerations.every(g => g.stage === 'done' || g.stage === 'error') && !isThisMessageStreaming && (
+                        {msg.fileGenerations && msg.fileGenerations.length > 0 && msg.statusMessage !== "✍️ Sedang membuat file..." && msg.fileGenerations.every(g => g.stage === 'done' || g.stage === 'error') && (
                             <div style={{ marginTop: '12px', marginBottom: '8px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
                                 {msg.fileGenerations.map((fg, fgIdx) => (
                                     <FileGenerationCard 

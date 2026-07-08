@@ -76,7 +76,7 @@ class ModeFlash:
         num_ctx = module_config["num_ctx"]
         temperature = module_config["temperature"]
 
-        yield format_sse(status="⚡ Mengeksekusi (Flash Mode)", event_type=SSEEventType.STATUS)
+        yield format_sse(status="⚡ Analisa konteks...", event_type=SSEEventType.STATUS)
 
         # Hitung estimasi token (1 token ~ 4 karakter)
         sys_tokens = len(system_prompt) // 4
