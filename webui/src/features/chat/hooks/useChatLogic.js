@@ -609,33 +609,34 @@ export function useChatLogic({ isGuest,
   // Load documents when document list is opened
 
 
-  const {
-    messages,
-    isStreaming,
-    isLoading,
-    currentThinking,
-    sendMessage,
-    clearChat: storeClearChat,
-    loadChatSession: storeLoadChatSession,
-  } = useChatStore();
+  // 🔥 FIX: Gunakan selector individual agar tidak subscribe ke seluruh store.
+  // Jika pakai useChatStore() tanpa selector, setiap chunk stream menyebabkan
+  // re-render yang membuat storeLoadChatSession menjadi referensi baru, memicu
+  // useEffect berkali-kali dan bisa menyebabkan race condition navigasi.
+  const messages = useChatStore((s) => s.messages);
+  const isStreaming = useChatStore((s) => s.isStreaming);
+  const isLoading = useChatStore((s) => s.isLoading);
+  const currentThinking = useChatStore((s) => s.currentThinking);
+  const sendMessage = useChatStore((s) => s.sendMessage);
+  const storeClearChat = useChatStore((s) => s.clearChat);
 
   const sessionAttachments = useMemo(() => {
     return messages.flatMap((msg) => msg.attachments || []);
   }, [messages]);
 
   useEffect(() => {
-    if (isStreaming) return; // 🛡️ GUARD TAMBAHAN: Cegah mutasi apa pun jika stream aktif
+    // 🔥 FIX: Ambil loadChatSession dari getState() agar tidak pernah stale.
     if (!sessionId || sessionId === "new") {
       lastLoadedSessionRef.current = null;
       return;
     }
     if (lastLoadedSessionRef.current === sessionId) return;
     lastLoadedSessionRef.current = sessionId;
-    storeLoadChatSession(sessionId);
-  }, [sessionId, isStreaming, storeLoadChatSession]);
+    useChatStore.getState().loadChatSession(sessionId);
+  }, [sessionId]);
 
   const loadChatSession = (id) => {
-    if (!id || id === "new" || id === sessionId) return;
+    if (!id || id === "new") return;
     lastLoadedSessionRef.current = null;
     navigate(`/chat/${id}`);
   };
@@ -915,6 +916,16 @@ export function useChatLogic({ isGuest,
     if (textareaRef.current) {
       textareaRef.current.style.height = "auto";
     }
+
+    // PAKSA SCROLL KE BAWAH KETIKA PESAN DIKIRIM (Bypass Virtuoso restrictions)
+    setTimeout(() => {
+      if (messagesContainerRef?.current) {
+        messagesContainerRef.current.scrollTo({
+          top: 9999999,
+          behavior: "smooth",
+        });
+      }
+    }, 100);
   };
 
   const handleKeyDown = (e) => {

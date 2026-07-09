@@ -223,8 +223,10 @@ class ModeHub:
 
         # ── Fast-path Bypass untuk Sapaan Ringan ──────────────────────────────────
         is_guest = (current_user_npp == "GUEST")
+        is_first_chat = len(chat_history) <= 1
 
-        if precheck.get("is_chitchat") or precheck.get("is_greeting"):
+        # Jangan bypass Call 1 jika ini adalah first chat, agar Gemma bisa merumuskan session_title!
+        if not is_first_chat and (precheck.get("is_chitchat") or precheck.get("is_greeting")):
             from backend.app.services.pipeline.call1_router import _build_fallback_routing
             logger.info("[MODE_HUB] Bypassing Call 1 for simple chitchat/greeting")
             routing_data = _build_fallback_routing(precheck)
@@ -236,12 +238,36 @@ class ModeHub:
                 precheck=precheck,
                 ocr_text=None,
                 is_guest=is_guest,
+                is_first_chat=is_first_chat,
             )
 
         logger.info(
             f"[MODE_HUB] Call 1 complete | need_rag={routing_data.get('need_rag')} | "
             f"is_coding={routing_data.get('is_coding')} | queries={routing_data.get('queries')}"
         )
+        
+        # ── Update Session Title (Gemma 4 Native) ──────────────────────────────────
+        if is_first_chat and routing_data.get("session_title") and session_uuid:
+            try:
+                new_title = routing_data["session_title"].strip().strip('"').strip("'").strip(".").title()
+                from backend.app.services.chat.chat_history_service import chat_history_service
+                asyncio.create_task(
+                    chat_history_service.update_title_direct(session_uuid, new_title)
+                )
+            except Exception as e:
+                logger.error(f"[MODE_HUB] Failed to update session title direct: {e}")
+        
+        # ── Self-Learning Tone Memory (Background) ────────────────────────────────
+        if current_user_npp and current_user_npp != "GUEST":
+            detected_pronoun = routing_data.get("pronoun", "unknown")
+            if detected_pronoun in ["informal_gue_lo", "formal_saya_anda"]:
+                from backend.app.services.memory.memory_service import memory_service
+                asyncio.create_task(
+                    memory_service.update_communication_style_memory(
+                        npp=current_user_npp, 
+                        pronoun=detected_pronoun
+                    )
+                )
         
         # Construct Agentic Decision Radar data — Additive Gradual Scoring (0-100)
         user_msg_lower = user_message.lower()

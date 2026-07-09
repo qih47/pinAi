@@ -133,7 +133,7 @@ export const getHeaderDropdownMenuStyles = (darkMode) => ({
     }
 });
 
-export const getPlusButtonStyles = (darkMode, selectedFiles, isStreaming) => ({
+export const getPlusButtonStyles = (darkMode, selectedFiles, disabled) => ({
     button: {
         background: selectedFiles.length > 0
             ? (darkMode ? 'rgba(99, 102, 241, 0.2)' : 'rgba(37, 99, 235, 0.1)')
@@ -147,7 +147,7 @@ export const getPlusButtonStyles = (darkMode, selectedFiles, isStreaming) => ({
         justifyContent: 'center',
         flexShrink: 0,
         color: selectedFiles.length > 0 ? (darkMode ? '#818cf8' : '#2563eb') : (darkMode ? '#9ca3af' : '#6b7280'),
-        cursor: isStreaming ? 'not-allowed' : 'pointer',
+        cursor: disabled ? 'not-allowed' : 'pointer',
         transition: 'all 0.2s ease'
     }
 });

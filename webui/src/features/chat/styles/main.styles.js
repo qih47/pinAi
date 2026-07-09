@@ -92,6 +92,7 @@ export const styles = {
         display: 'flex', flexDirection: 'column'
     },
     chatInner: {
+        flex: 1, minHeight: 0,
         maxWidth: 865, width: '100%', margin: '0 auto',
         padding: '24px 24px 40px', display: 'flex', flexDirection: 'column', gap: 24
     },
@@ -292,10 +293,12 @@ export const styles = {
         padding: '8px 16px',
         position: 'absolute',
         top: '64px',
-        left: 0,
-        right: 0,
+        right: '24px',
+        width: '320px',
+        borderRadius: '12px',
+        boxShadow: '0 4px 15px rgba(0,0,0,0.1)',
         zIndex: 30,
-        borderBottom: '1px solid',
+        border: '1px solid',
         animation: 'fadeInUp 0.15s ease-out',
         transition: 'all 0.2s ease'
     }

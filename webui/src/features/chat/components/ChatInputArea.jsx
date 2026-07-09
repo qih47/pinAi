@@ -97,7 +97,9 @@ export default function ChatInputArea({
           onDrop={handleDrop}
           style={{
             ...styles.inputForm,
-            background: theme.inputBg,
+            background: darkMode ? "rgba(30, 30, 34, 0.75)" : "rgba(255, 255, 255, 0.75)",
+            backdropFilter: "blur(16px)",
+            WebkitBackdropFilter: "blur(16px)",
             borderColor: isDragOver
               ? darkMode
                 ? "#6366f1"
@@ -105,7 +107,7 @@ export default function ChatInputArea({
               : theme.inputBorder,
             borderWidth: isDragOver ? "2px" : "1px",
             borderStyle: isDragOver ? "dashed" : "solid",
-            boxShadow: theme.inputShadow,
+            boxShadow: darkMode ? "0 4px 30px rgba(0,0,0,0.3)" : "0 4px 30px rgba(0,0,0,0.08)",
             display: "flex",
             flexDirection: "column",
             paddingTop: "8px",
@@ -143,7 +145,7 @@ export default function ChatInputArea({
               <div style={{ flexShrink: 0, paddingBottom: "0px" }}>
                 <PlusButton
                   onClick={() => fileInputRef.current?.click()}
-                  disabled={isStreaming || isUploadingFile}
+                  disabled={isUploadingFile}
                   selectedFiles={selectedFiles}
                   darkMode={darkMode}
                   isStreaming={isStreaming}
@@ -211,7 +213,7 @@ export default function ChatInputArea({
                   <CustomModeSelector
                     value={chatMode}
                     onChange={handleChatModeChange}
-                    disabled={isStreaming}
+                    disabled={false}
                     darkMode={darkMode}
                     thinking={isThinkingMode}
                     onThinkingChange={handleThinkingModeChange}
@@ -245,7 +247,7 @@ export default function ChatInputArea({
               {/* Kiri: Plus */}
               <PlusButton
                 onClick={() => fileInputRef.current?.click()}
-                disabled={isStreaming || isUploadingFile}
+                disabled={isUploadingFile}
                 selectedFiles={selectedFiles}
                 darkMode={darkMode}
                 isStreaming={isStreaming}
@@ -270,7 +272,7 @@ export default function ChatInputArea({
                   <CustomModeSelector
                     value={chatMode}
                     onChange={handleChatModeChange}
-                    disabled={isStreaming}
+                    disabled={false}
                     darkMode={darkMode}
                   />
                 )}

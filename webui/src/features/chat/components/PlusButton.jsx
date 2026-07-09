@@ -2,7 +2,7 @@ import React from 'react';
 import { getPlusButtonStyles } from '../chatPage.styles';
 
 export default function PlusButton({ onClick, disabled, selectedFiles, darkMode, isStreaming }) {
-  const buttonStyles = getPlusButtonStyles(darkMode, selectedFiles, isStreaming);
+  const buttonStyles = getPlusButtonStyles(darkMode, selectedFiles, disabled);
 
   return (
     <button
@@ -11,7 +11,7 @@ export default function PlusButton({ onClick, disabled, selectedFiles, darkMode,
       disabled={disabled}
       style={buttonStyles.button}
       onMouseEnter={(e) => {
-        if (!isStreaming) {
+        if (!disabled) {
           e.currentTarget.style.background = darkMode
             ? 'rgba(255,255,255,0.08)'
             : 'rgba(0,0,0,0.05)';

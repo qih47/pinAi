@@ -106,7 +106,7 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
     const markdownComponents = useMemo(() => ({
         // 1. PARAGRAF (Spasi yang proporsional)
         p({ children, ...props }) {
-            return <p style={{ marginTop: 0, marginBottom: '12px', lineHeight: '1.6', whiteSpace: 'normal' }} {...props}>{recursiveHighlight(children, searchQuery)}</p>;
+            return <p style={{ marginTop: 0, marginBottom: '14px', fontSize: '15px', lineHeight: '1.75', whiteSpace: 'normal', color: darkMode ? '#f1f5f9' : '#334155' }} {...props}>{recursiveHighlight(children, searchQuery)}</p>;
         },
 
         // 2. HEADINGS (Mengembalikan ukuran judul yang ke-reset oleh Tailwind!)
@@ -144,7 +144,7 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
                     </li>
                 );
             }
-            return <li style={{ marginBottom: '10px', lineHeight: '1.7', paddingLeft: '8px' }} {...props}>{recursiveHighlight(children, searchQuery)}</li>;
+            return <li style={{ marginBottom: '12px', fontSize: '15px', lineHeight: '1.75', paddingLeft: '8px', color: darkMode ? '#f1f5f9' : '#334155' }} {...props}>{recursiveHighlight(children, searchQuery)}</li>;
         },
         input({ type, checked, disabled, ...props }) {
             if (type === 'checkbox') {
@@ -278,7 +278,7 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
                     />
                 </div>
             ) : (
-                <code className={className} style={{ background: darkMode ? '#2d2d30' : '#f1f5f9', color: darkMode ? '#e2e8f0' : '#1e293b', padding: '2px 6px', borderRadius: '4px', fontFamily: "monospace", fontSize: '13px', border: `1px solid ${darkMode ? '#3f3f46' : '#e2e8f0'}` }} {...props}>
+                <code className={className} style={{ background: darkMode ? 'rgba(192, 132, 252, 0.15)' : 'rgba(126, 34, 206, 0.08)', color: darkMode ? '#c084fc' : '#7e22ce', padding: '3px 6px', borderRadius: '6px', fontFamily: "'Fira Code', 'Courier New', monospace", fontSize: '13.5px', border: `1px solid ${darkMode ? 'rgba(192, 132, 252, 0.2)' : 'rgba(126, 34, 206, 0.15)'}` }} {...props}>
                     {children}
                 </code>
             );
@@ -307,16 +307,25 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
             {middleContent}
 
             {/* 📝 2. RENDER UTAMA JAWABAN: Ditampilkan tepat di bawah proses berpikir */}
-            {finalResponseBlock.trim() && (
-                <div style={{ width: '100%', transition: 'all 0.3s' }}>
-                    <ReactMarkdown
-                        children={finalResponseBlock}
-                        components={markdownComponents}
-                        remarkPlugins={[remarkGfm]}
-                    />
-                    <ChatActionWidgets rawContent={finalResponseBlock} />
-                </div>
-            )}
+            {finalResponseBlock.trim() && (() => {
+                // Hapus sintaks widget agar tidak tampil sebagai teks biasa di chat bubble
+                const sanitizedResponseBlock = finalResponseBlock
+                    .replace(/\[ACTION:(.*?)\]/g, '')
+                    .replace(/\[GHOSTWRITER\]/ig, '')
+                    .replace(/\[LINEAGE\]/ig, '')
+                    .trim();
+
+                return (
+                    <div style={{ width: '100%', transition: 'all 0.3s' }}>
+                        <ReactMarkdown
+                            children={sanitizedResponseBlock}
+                            components={markdownComponents}
+                            remarkPlugins={[remarkGfm]}
+                        />
+                        <ChatActionWidgets rawContent={finalResponseBlock} />
+                    </div>
+                );
+            })()}
         </div>
     );
 };

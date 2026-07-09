@@ -41,6 +41,24 @@ class ModeDocuments:
         rag_queries = routing_data.get("queries") 
         if not rag_queries:
             rag_queries = [user_message]
+            
+        # ENRICHMENT DENGAN TAGS DAN CONTEXT SNIPPETS
+        search_tags = routing_data.get("search_tags", [])
+        context_snippets = routing_data.get("context_snippets", [])
+        query_judul_list = routing_data.get("query_judul", [])
+        
+        enrichment_str = ""
+        if isinstance(query_judul_list, list) and query_judul_list:
+            enrichment_str += " ".join(query_judul_list) + " "
+        if isinstance(search_tags, list) and search_tags:
+            enrichment_str += " ".join(search_tags) + " "
+        if isinstance(context_snippets, list) and context_snippets:
+            enrichment_str += " ".join(context_snippets)
+            
+        enrichment_str = enrichment_str.strip()
+        
+        if enrichment_str and rag_queries:
+            rag_queries[0] = f"{rag_queries[0]} {enrichment_str}"
 
         rag_context = None
         rag_sources = None
@@ -51,8 +69,9 @@ class ModeDocuments:
         from backend.app.services.peraturan_service import search_and_ocr_by_judul
         
         task_community = asyncio.create_task(search_community_knowledge(user_message, is_guest=(current_user_npp == "GUEST")))
-        query_judul = routing_data.get("query_judul")
-        task_peraturan = asyncio.create_task(search_and_ocr_by_judul(query_judul))
+        query_judul_list = routing_data.get("query_judul") or []
+        query_judul_str = " ".join(query_judul_list) if isinstance(query_judul_list, list) else str(query_judul_list)
+        task_peraturan = asyncio.create_task(search_and_ocr_by_judul(query_judul_list))
 
         # 2B: Stream RAG progress while tasks run in background
         if rag_queries:
@@ -65,6 +84,7 @@ class ModeDocuments:
                 rewritten_queries=rag_queries,
                 limit_per_query=3,
                 npp=current_user_npp,
+                use_cache=False, # SPRINT 5: Nonaktifkan semantic cache di mode documents
             ):
                 raw = sse.strip()
                 if not raw:
@@ -117,6 +137,36 @@ class ModeDocuments:
         community_context = await task_community
         judul_context, ocr_attachments, judul_sources = await task_peraturan
 
+        # ── 2D: EVALUASI DAN LOG HASIL PENCARIAN KE TERMINAL ──
+        has_title = False
+        has_tag = False
+        has_isi = False
+        has_rag = bool(rag_sources)
+
+        has_community = bool(community_context and community_context.strip())
+
+        search_words = [w.lower() for w in query_judul_str.split() if len(w) > 2]
+        
+        if judul_sources:
+            for src in judul_sources:
+                raw_judul = str(src.pop("raw_judul", "")).lower()
+                raw_tag = str(src.pop("raw_tag", "")).lower()
+                raw_isi = str(src.pop("raw_isi", "")).lower()
+                
+                for word in search_words:
+                    if word in raw_judul: has_title = True
+                    if word in raw_tag: has_tag = True
+                    if word in raw_isi: has_isi = True
+
+        logger.info("\n" + "="*40 + "\n" +
+                    "🔍 LOG STATUS PENCARIAN DOKUMEN\n" +
+                    f"SEARCH_TITLE               : {'ADA' if has_title else 'TIDAK ADA'}\n" +
+                    f"SEARCH_TAG                 : {'ADA' if has_tag else 'TIDAK ADA'}\n" +
+                    f"SEARCH_ISI_BERITA          : {'ADA' if has_isi else 'TIDAK ADA'}\n" +
+                    f"SEARCH_RAG                 : {'ADA' if has_rag else 'TIDAK ADA'}\n" +
+                    f"SEARCH_AI_DIALOGUE_CORPUS  : {'ADA' if has_community else 'TIDAK ADA'}\n" +
+                    "="*40)
+
         # ── Step 3: LLM Execution (Call 2) ────────────────────────────────────────
         module_name = select_call2_module(routing_data, has_rag_context=bool(rag_context))
         logger.info(f"[MODE_DOCUMENTS] Selected module: {module_name}")
@@ -132,14 +182,34 @@ class ModeDocuments:
                 rag_sources.insert(0, src) # Taruh di urutan pertama (paling relevan)
 
         if rag_sources:
-            # Sort by similarity/score and take only the TOP 3 most relevant documents for the UI & LLM.
-            rag_sources = sorted(rag_sources, key=lambda x: x.get('score', x.get('similarity', 0)), reverse=True)[:3]
-            yield format_sse("", "", False, sources=rag_sources, event_type=SSEEventType.SOURCES)
-            await asyncio.sleep(0.01)
+            # Sort by similarity/score and take up to 15 documents to preserve genealogy/silsilah history.
+            rag_sources = sorted(rag_sources, key=lambda x: x.get('score', x.get('similarity', 0)), reverse=True)[:15]
+            # SPRINT 5: Kita TUNDA pengiriman event SOURCES ke frontend di sini!
+            # Event SOURCES baru akan dikirim nanti setelah di-filter lewat interceptor <sources_json>
+            # yield format_sse("", "", False, sources=rag_sources, event_type=SSEEventType.SOURCES)
 
         # Build prompt dengan parameter is_thinking dari FE
-        # Amankan ukuran RAG context sebelum dirender
-        safe_rag_context = rag_context[:25000] if rag_context else None
+        # ── Smart Context Truncation (Max ~42,000 chars / ~12k tokens total) ──
+        # Tujuannya agar tersisa 4000 token untuk generasi jawaban.
+        
+        # Alokasikan budget karakter
+        rag_budget = 25000 if not judul_context else 15000
+        judul_budget = 25000 if not rag_context else 15000
+        community_budget = 3000
+        
+        # Gabungkan dokumen fisik ke dalam satu block context
+        combined_documents = ""
+        if judul_context:
+            combined_documents += judul_context[:judul_budget]
+            if len(judul_context) > judul_budget:
+                combined_documents += "\n...[Teks Terpotong]...\n"
+                
+        if rag_context:
+            if combined_documents:
+                combined_documents += "\n\n"
+            combined_documents += rag_context[:rag_budget]
+            
+        safe_rag_context = combined_documents if combined_documents else None
         
         system_prompt = build_call2_system_prompt(
             module_name=module_name,
@@ -150,34 +220,24 @@ class ModeDocuments:
             rag_sources=rag_sources
         )
 
-        # ── Smart Context Truncation (Max ~42,000 chars / ~12k tokens total) ──
-        # Tujuannya agar tersisa 4000 token untuk generasi jawaban.
-        
-        # Alokasikan budget karakter
-        rag_budget = 25000 if not judul_context else 15000
-        judul_budget = 25000 if not rag_context else 15000
-        community_budget = 3000
-        
-        # Inject Community Knowledge
+        # Inject Community Knowledge (Di awal atau sebelum history)
         if community_context:
-            system_prompt += "\n\n" + community_context[:community_budget]
+            community_str = ""
+            if not judul_context and not rag_context:
+                community_str += "\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                community_str += "🚨 ATURAN WAJIB (MURNI INGATAN / AI CORPUS)\n"
+                community_str += "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                community_str += "Saat ini kamu MURNI menjawab menggunakan ingatanmu sendiri (AI Dialogue Corpus) karena tidak ada dokumen pendukung (RAG/Title) yang ditemukan untuk pertanyaan ini.\n"
+                community_str += "OLEH KARENA ITU, KAMU DILARANG KERAS mengatakan 'Silakan cek dokumen sumber', 'Menurut dokumen di atas', atau menyuruh user membaca referensi dokumen pendukung (karena memang tidak ada). Jawablah langsung secara natural tanpa merujuk ke dokumen lampiran.\n\n"
             
-        # Inject Peraturan/Title Context
-        if judul_context:
-            system_prompt += "\n\n" + judul_context[:judul_budget]
-            if len(judul_context) > judul_budget:
-                system_prompt += "\n...[Teks Terpotong]..."
-                
-        # Perbaiki rag_context yang sebelumnya mungkin terlalu besar saat di-render di mode_utils
-        # (Karena render prompt sudah terjadi, kita tidak bisa motong rag_context yang sudah di-inject,
-        # TAPI kita harus pastikan RAG context di awal juga tidak kebesaran.
-        # RAG context dibatasi oleh _RAG_CONTEXT_MAX_CHARS di rag_prompts.py, tapi kita potong aja textnya 
-        # sebelum di pass ke build_call2_system_prompt di atas)
+            community_str += community_context[:community_budget]
+            # Karena system_prompt sudah jadi, lebih aman kita taruh community di paling awal agar tidak merusak instruksi JSON di akhir
+            system_prompt = community_str + "\n\n" + system_prompt
 
         # Inject Long-Term Memory (ai_document_chunks)
         session_chunks = routing_data.get("_session_chunks_text", "")
         if session_chunks:
-            system_prompt += session_chunks
+            system_prompt = session_chunks + "\n\n" + system_prompt
 
         messages_dict = [{"role": m.role, "content": m.content} for m in chat_history]
         # Mengambil 5 history + 1 current message = 6
@@ -226,6 +286,12 @@ class ModeDocuments:
                 observation=json.dumps(obs_dict)
             )
 
+        # State variables for stream interception
+        import re
+        intercept_buffer = ""
+        is_intercepting = False
+        json_intercepted = False
+        
         try:
             async for chunk_line in stream_ollama_chat(
                 model_name=getattr(settings, "MODEL_PERSONA", "gemma4:12b"),
@@ -260,9 +326,68 @@ class ModeDocuments:
                 # Tampilkan thought hanya jika is_thinking (dari FE) True
                 if native_thought and is_thinking:
                     yield format_sse("", native_thought, False, event_type=SSEEventType.THINKING)
-                elif chunk_text or (eval_count > 0):
-                    yield format_sse(chunk_text, "", False, event_type=SSEEventType.CHUNK, eval_count=eval_count, eval_duration=eval_duration)
+                    
+                if chunk_text:
+                    if not json_intercepted:
+                        intercept_buffer += chunk_text
+                        if "<sources_json>" in intercept_buffer and not is_intercepting:
+                            is_intercepting = True
+                            
+                        if is_intercepting:
+                            if "</sources_json>" in intercept_buffer:
+                                is_intercepting = False
+                                json_intercepted = True
+                                
+                                start_idx = intercept_buffer.find("<sources_json>") + len("<sources_json>")
+                                end_idx = intercept_buffer.find("</sources_json>")
+                                json_str = intercept_buffer[start_idx:end_idx].strip()
+                                
+                                filtered_sources = []
+                                parsing_success = False
+                                try:
+                                    if json_str:
+                                        json_str = re.sub(r'```json|```', '', json_str).strip()
+                                        used_docs = json.loads(json_str)
+                                        used_ids = [str(doc.get("id", "")) for doc in used_docs]
+                                        
+                                        for doc_id in used_ids:
+                                            for src in rag_sources:
+                                                if str(src.get("id", "")) == doc_id:
+                                                    if src not in filtered_sources:
+                                                        filtered_sources.append(src)
+                                                    break
+                                        parsing_success = True
+                                except Exception as e:
+                                    logger.warning(f"[MODE_DOCUMENTS] Gagal parse sources_json: {e}. Raw: {json_str}")
+                                
+                                if parsing_success:
+                                    final_sources = filtered_sources
+                                else:
+                                    final_sources = rag_sources[:3] if rag_sources else []
+                                
+                                yield format_sse("", "", False, sources=final_sources, event_type=SSEEventType.SOURCES)
+                                
+                                remainder = intercept_buffer[end_idx + len("</sources_json>"):]
+                                if remainder:
+                                    yield format_sse(remainder, "", False, event_type=SSEEventType.CHUNK)
+                                intercept_buffer = ""
+                        else:
+                            if len(intercept_buffer) > 25 and "<sources_json>" not in intercept_buffer:
+                                json_intercepted = True
+                                yield format_sse("", "", False, sources=rag_sources[:10] if rag_sources else [], event_type=SSEEventType.SOURCES)
+                                yield format_sse(intercept_buffer, "", False, event_type=SSEEventType.CHUNK)
+                                intercept_buffer = ""
+                    else:
+                        yield format_sse(chunk_text, "", False, event_type=SSEEventType.CHUNK, eval_count=eval_count, eval_duration=eval_duration)
+                elif eval_count > 0:
+                    yield format_sse("", "", False, event_type=SSEEventType.CHUNK, eval_count=eval_count, eval_duration=eval_duration)
 
         except Exception as e:
             logger.error(f"[MODE_DOCUMENTS] Stream error: {e}")
             yield format_sse(f"Maaf, terjadi kendala teknis: {str(e)}", "", False, event_type=SSEEventType.CHUNK)
+            
+        # Ensure we flush if stream ends before interceptor finishes
+        if not json_intercepted:
+            yield format_sse("", "", False, sources=rag_sources[:10] if rag_sources else [], event_type=SSEEventType.SOURCES)
+            if intercept_buffer:
+                yield format_sse(intercept_buffer, "", False, event_type=SSEEventType.CHUNK)

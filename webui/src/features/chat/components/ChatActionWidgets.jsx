@@ -52,7 +52,7 @@ const ChatActionWidgets = ({ rawContent }) => {
     if (actions.length === 0 && !hasGhostWriter && !hasLineage) return null;
 
     return (
-        <div className="flex flex-col gap-2 mt-4 pt-2 border-t border-gray-100 dark:border-gray-800">
+        <div className="flex flex-col gap-2 mt-4 mb-3 pt-2 border-t border-gray-100 dark:border-gray-800">
             {hasLineage && <LineageGraphWidget />}
             
             <div className="flex flex-wrap items-center gap-2">

@@ -16,7 +16,7 @@ import re
 import json
 import logging
 from typing import List, Dict, Any, Optional, Tuple
-from backend.app.core.database import get_db
+from backend.app.core.database import get_db, get_peraturan_db
 
 logger = logging.getLogger("CAKRA_RAG_SERVICE")
 
@@ -31,11 +31,11 @@ _STOPWORDS_ID = {
 # ── SPRINT 3: THRESHOLD REALISTIS UNTUK BGE SIGMOID OUTPUT ───────────────────
 # BGE CrossEncoder pakai sigmoid → output 0.0-1.0
 # 0.5 = model tidak yakin (netral), BUKAN relevan
-# Dokumen dianggap relevan hanya jika BGE cukup yakin: >= 0.55
-HARD_FLOOR = 0.55
+# Dokumen dianggap relevan hanya jika BGE cukup yakin: >= 0.51
+HARD_FLOOR = 0.51
 
 # Cap maksimum dokumen yang dikirim ke LLM — lebih sedikit = lebih fokus
-MAX_DOCS_TO_LLM = 3
+MAX_DOCS_TO_LLM = 15
 
 
 def _get_score_label(score: float) -> str:
@@ -164,7 +164,7 @@ class RagService:
                         dc.dokumen_id,
                         dc.content AS chunk_content,
                         dc.chunk_id AS chunk_seq,
-                        COALESCE(NULLIF(dc.page_number, ''), '1') AS page_str
+                        COALESCE(NULLIF(NULLIF(dc.page_number, '0'), ''), '1') AS page_str
                     FROM ranked_candidates rc
                     INNER JOIN dokumen_chunk dc ON rc.chunk_id = dc.id
                     ORDER BY rc.rrf_score DESC
@@ -182,7 +182,7 @@ class RagService:
                             dc.dokumen_id,
                             dc.content AS chunk_content,
                             dc.chunk_id AS chunk_seq,
-                            COALESCE(NULLIF(dc.page_number, ''), '1') AS page_str
+                            COALESCE(NULLIF(NULLIF(dc.page_number, '0'), ''), '1') AS page_str
                         FROM dokumen_chunk dc
                         ORDER BY dc.embedding <=> $1::vector
                         LIMIT $2 * 4;
@@ -231,13 +231,70 @@ class RagService:
         async with get_db() as conn:
             try:
                 parent_sql = """
-                    SELECT d.id, d.judul, d.nomor, j.nama AS nama_jenis
+                    SELECT d.id, d.judul, d.nomor, d.filename, d.tanggal, j.nama AS nama_jenis
                     FROM dokumen d
                     LEFT JOIN jenis_dokumen j ON d.id_jenis = j.id
                     WHERE d.id = ANY($1);
                 """
                 parent_rows = await conn.fetch(parent_sql, candidate_doc_ids)
-                parent_map = {r["id"]: r for r in parent_rows}
+                parent_map = {r["id"]: dict(r) for r in parent_rows}
+                
+                # Fetch status berlaku dan filename asli dari MySQL berdasarkan NOMOR
+                try:
+                    nomors = [r["nomor"] for r in parent_rows if r["nomor"]]
+                    if nomors:
+                        async with get_peraturan_db() as p_conn:
+                            async with p_conn.cursor() as p_cur:
+                                format_strings = ','.join(['%s'] * len(nomors))
+                                await p_cur.execute(
+                                    f"SELECT noper, gambar, gambar2, gambar3, stataktif, mencabut "
+                                    f"FROM berita WHERE noper IN ({format_strings})", 
+                                    tuple(nomors)
+                                )
+                                peraturan_rows = await p_cur.fetchall()
+                                
+                                import os
+                                PERATURAN_DIR = "/home/qisthi/pinAi/file_peraturan"
+                                
+                                mysql_map = {}
+                                for prow in peraturan_rows:
+                                    noper = prow[0]
+                                    gambar1 = prow[1]
+                                    gambar2 = prow[2]
+                                    gambar3 = prow[3]
+                                    stataktif = prow[4]
+                                    mencabut = prow[5]
+                                    
+                                    valid_file = None
+                                    for file_name in [gambar1, gambar2, gambar3]:
+                                        if file_name and isinstance(file_name, str) and file_name.lower().endswith(".pdf"):
+                                            abs_path = os.path.join(PERATURAN_DIR, file_name)
+                                            if os.path.exists(abs_path):
+                                                valid_file = file_name
+                                                break
+                                                
+                                    if noper:
+                                        mysql_map[noper] = (valid_file, stataktif, mencabut)
+                                
+                                for pid, pdata in parent_map.items():
+                                    nomor = pdata.get("nomor")
+                                    if nomor and nomor in mysql_map:
+                                        mysql_fname, stataktif, mencabut = mysql_map[nomor]
+                                        pdata["mysql_filename"] = mysql_fname
+                                        if stataktif == "batal":
+                                            pdata["status_berlaku"] = "Dicabut"
+                                        elif stataktif == "obsolete":
+                                            pdata["status_berlaku"] = "Tidak Berlaku"
+                                        else:
+                                            pdata["status_berlaku"] = "Berlaku"
+                                        pdata["mencabut"] = mencabut
+                                    else:
+                                        pdata["mysql_filename"] = None
+                                        pdata["status_berlaku"] = "Berlaku"
+                                        pdata["mencabut"] = None
+                except Exception as e:
+                    logger.error(f"[RAG_SERVICE] Failed fetching stataktif from MySQL: {e}")
+
 
                 for doc_id, doc_info in document_candidates.items():
                     parent = parent_map.get(doc_id)
@@ -279,7 +336,16 @@ class RagService:
                         text_segments.append(segment_text)
 
                     combined_text = "\n\n".join(text_segments).strip()
-                    sorted_pages = sorted(list(doc_info["pages"]))
+                    
+                    cleaned_pages = []
+                    for p in doc_info["pages"]:
+                        p_str = str(p).strip()
+                        if not p_str or p_str in ["0", "0.0", "null", "None", ""]:
+                            cleaned_pages.append("1")
+                        else:
+                            cleaned_pages.append(p_str)
+                    
+                    sorted_pages = sorted(list(set(cleaned_pages)))
                     sorted_sections = sorted(list(sections_found))
 
                     expanded_blocks.append({
@@ -287,10 +353,13 @@ class RagService:
                         "jenis": parent["nama_jenis"] or "Regulasi Resmi",
                         "judul": parent["judul"] or "Dokumen Internal Pindad",
                         "nomor": parent["nomor"] or "N/A",
+                        "mysql_filename": parent.get("mysql_filename"),
                         "halaman": ", ".join(sorted_pages),
                         "sections": sorted_sections,
                         "rrf_score": doc_info["rrf_score"],
                         "text": combined_text,
+                        "status_berlaku": parent.get("status_berlaku", "Berlaku"),
+                        "tanggal": str(parent.get("tanggal")) if parent.get("tanggal") else "Tidak diketahui",
                     })
 
             except Exception as e:
@@ -366,22 +435,36 @@ class RagService:
                 continue
 
             score_label = _get_score_label(f_score)
+            status_berlaku = b.get("status_berlaku", "Berlaku")
+            tanggal = b.get("tanggal", "Tidak diketahui")
 
             block_str = (
                 f"[DOKUMEN {inserted_count + 1}] Tingkat Relevansi: {score_label} (Skor: {f_score:.2f})\n"
-                f"• Jenis Regulasi  : {b['jenis']}\n"
-                f"• Judul           : {b['judul']}\n"
-                f"• No. Regulasi    : {b['nomor']}\n"
-                f"• Estimasi Halaman: {b['halaman']}\n"
-                f"• Isi Kandungan Dokumen:\n{b['text']}\n"
+                f"ID Dokumen: {b['id']}\n"
+                f"Status Berlaku: {status_berlaku}\n"
+                f"Tanggal Terbit: {tanggal}\n"
+                f"Jenis Regulasi: {b['jenis']}\n"
+                f"Judul: {b['judul']}\n"
+                f"No. Regulasi: {b['nomor']}\n"
+                f"Estimasi Halaman: {b['halaman']}\n"
+                f"Isi Kandungan Dokumen:\n{b['text']}\n"
             )
             final_contexts.append(block_str)
+
+            # Ambil filename hanya jika ada kecocokan di MySQL
+            filename_val = b.get("mysql_filename")
+            if filename_val:
+                file_path_val = f"file_peraturan/{filename_val}"
+            else:
+                filename_val = None
+                file_path_val = None
 
             sources_metadata.append({
                 "id": b["id"],
                 "dokumen_id": b["id"],
                 "title": b["judul"],
-                "filename": b["judul"],
+                "filename": filename_val,
+                "file_path": file_path_val,
                 "nomor": b["nomor"],
                 "page": b["halaman"],
                 "page_number": b["halaman"],
@@ -389,6 +472,7 @@ class RagService:
                 "sections": b.get("sections", []),
                 "score": f_score,
                 "score_label": score_label,
+                "stataktif": b.get("status_berlaku", "Berlaku"),
             })
 
             inserted_count += 1

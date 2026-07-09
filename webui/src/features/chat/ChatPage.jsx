@@ -34,12 +34,14 @@ import { useChatLogic } from "./hooks/useChatLogic";
 export default function ChatPage({ isGuest,
   isLoggedIn: propsIsLoggedIn,
   userData: propsUserData,
-  getGreeting, 
+  getGreeting,
   corporateMode }) {
-  const chatLogic = useChatLogic({ isGuest,
-  isLoggedIn: propsIsLoggedIn,
-  userData: propsUserData,
-  getGreeting, });
+  const chatLogic = useChatLogic({
+    isGuest,
+    isLoggedIn: propsIsLoggedIn,
+    userData: propsUserData,
+    getGreeting,
+  });
   const {
     activeIsolatedDocId, activeIsolatedTitle, activeSessionId, artifactContent, artifacts, authUser, baselineHeightRef, bottomRef, chatHistory, chatMode, chatModeRef, currentIsLoggedIn, currentThinking, currentUserData, darkMode, defaultGetGreeting, detectLang, docContent, docSearchQuery, documents, documentsTotal, fetchDocumentsList, fileInputRef, handleChatModeChange, handleClearChat, handleDownloadAllArtifacts, handleDownloadArtifact, handleDragLeave, handleDragOver, handleDrop, handleFileChange, handleFileClick, handleKeyDown, handleOpenArtifact, handlePaste, handleSubmit, handleThinkingModeChange, hasSidebar, input, isArtifactLoading, isAuthenticated, isDocLoading, isDragOver, isEmptyChat, isLoading, isLoadingDocuments, isMobile, isMultiLine, isResizingRightSidebar, isStreaming, isStreamingText, isThinking, isThinkingMode, isThinkingModeRef, isUploadingFile, lastAssistantIndex, lastLoadedSessionRef, loadChatSession, logout, mainMarginLeft, mainMarginRight, messageSearchInputRef, messages, messagesContainerRef, msgSearchQuery, navigate, previewArtifact, previewDoc, previewImage, removeFilePreview, rightSidebarWidth, selectedFiles, selectedMode, sessionAttachments, setChatHistory, setChatMode, setContextIsolation, setDarkMode, setDocContent, setDocSearchQuery, setInput, setIsArtifactLoading, setIsDocLoading, setIsDragOver, setIsMobile, setIsMultiLine, setIsThinkingMode, setIsUploadingFile, setMsgSearchQuery, setPreviewArtifact, setPreviewDoc, setPreviewImage, setRightSidebarWidth, setSelectedFiles, setSelectedMode, setShowDocumentList, setShowMsgSearch, setShowRightSidebar, setShowScrollBottom, setSidebarOpen, setStagedAttachments, showDocumentList, showMsgSearch, showRightSidebar, showScrollBottom, showWelcome, sidebarOpen, singleLineWidthRef, stagedAttachments, startResizingRightSidebar, storeChatMode, textareaRef, theme, toast, toggleRightSidebar, triggerLogout, validateFile, wasLeftSidebarOpenRef
   } = chatLogic;
@@ -175,7 +177,7 @@ export default function ChatPage({ isGuest,
       >
         <header style={{
           ...styles.header,
-          display: "flex",
+          display: corporateMode === 'mail' ? 'none' : 'flex',
           alignItems: "center",
           justifyContent: "space-between",
           width: "100%",
@@ -276,14 +278,50 @@ export default function ChatPage({ isGuest,
               </button>
             )}
 
+            {/* 🔍 INPUT PENCARIAN DI NAVBAR */}
+            {showMsgSearch && (
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  background: darkMode ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.05)",
+                  borderRadius: '20px',
+                  padding: '4px 12px',
+                  marginRight: '4px',
+                  border: `1px solid ${darkMode ? "rgba(255,255,255,0.15)" : "rgba(0,0,0,0.1)"}`,
+                }}
+              >
+                <input
+                  ref={messageSearchInputRef}
+                  type="text"
+                  placeholder="Cari kata kunci..."
+                  value={msgSearchQuery}
+                  onChange={(e) => setMsgSearchQuery(e.target.value)}
+                  style={{
+                    border: "none",
+                    background: "transparent",
+                    outline: "none",
+                    color: theme.textColor,
+                    fontSize: "13px",
+                    width: "160px"
+                  }}
+                />
+              </div>
+            )}
+
             {/* 🔍 TOMBOL CARI (Dipindah ke kiri File) */}
             {messages.length > 0 && (
               <button
                 onClick={() => {
-                  setShowMsgSearch((prev) => !prev);
-                  setTimeout(() => {
-                    if (!showMsgSearch) messageSearchInputRef.current?.focus();
-                  }, 100);
+                  if (showMsgSearch) {
+                    setShowMsgSearch(false);
+                    setMsgSearchQuery("");
+                  } else {
+                    setShowMsgSearch(true);
+                    setTimeout(() => {
+                      messageSearchInputRef.current?.focus();
+                    }, 100);
+                  }
                 }}
                 style={{
                   background: "transparent",
@@ -382,227 +420,183 @@ export default function ChatPage({ isGuest,
         </header>
 
         {/* WRAPPER FOR SPLIT SCREEN */}
-        <div style={{ flex: 1, display: "flex", flexDirection: "row", overflow: "hidden", marginTop: "56px" }}>
-            <PdfInterrogator />
+        <div style={{ flex: 1, display: "flex", flexDirection: "row", overflow: "hidden", marginTop: corporateMode === 'mail' ? 0 : "56px" }}>
+          <PdfInterrogator darkMode={darkMode} />
+          <div
+            style={{
+              flex: 1,
+              position: "relative",
+              display: "flex",
+              flexDirection: "column",
+              minHeight: 0,
+              overflow: "hidden",
+              marginRight: mainMarginRight,
+              transition: "margin-right 0.3s ease-in-out",
+            }}
+          >
             <div
               style={{
                 flex: 1,
-                position: "relative",
+                minHeight: 0,
+                opacity: showWelcome && !corporateMode ? 0 : 1,
+                transition: "opacity 0.2s ease",
+                pointerEvents: showWelcome && !corporateMode ? "none" : "auto",
                 display: "flex",
                 flexDirection: "column",
-                minHeight: 0,
-                overflow: "hidden",
-                marginRight: mainMarginRight,
-                transition: "margin-right 0.3s ease-in-out",
               }}
             >
-              <div
-            style={{
-              flex: 1,
-              minHeight: 0,
-              opacity: showWelcome && !corporateMode ? 0 : 1,
-              transition: "opacity 0.2s ease",
-              pointerEvents: showWelcome && !corporateMode ? "none" : "auto",
-              display: "flex",
-              flexDirection: "column",
-            }}
-          >
-            {corporateMode === 'mail' && <EmailTriageTab theme={theme} darkMode={darkMode} userData={currentUserData} />}
-            {corporateMode === 'notadinas' && <DocumentGeneratorTab theme={theme} darkMode={darkMode} userData={currentUserData} />}
-            {corporateMode === 'vendor' && <VendorAnalyzerTab theme={theme} darkMode={darkMode} userData={currentUserData} />}
+              {corporateMode === 'mail' && <EmailTriageTab theme={theme} darkMode={darkMode} userData={currentUserData} />}
+              {corporateMode === 'notadinas' && <DocumentGeneratorTab theme={theme} darkMode={darkMode} userData={currentUserData} />}
+              {corporateMode === 'vendor' && <VendorAnalyzerTab theme={theme} darkMode={darkMode} userData={currentUserData} />}
 
-            {!corporateMode && (
-              <>
-                {/* 🔍 Message Search Bar */}
-            {showMsgSearch && (
+              {!corporateMode && (
+                <>
+
+
+                  <ChatArea
+                    key={activeSessionId || 'new'}
+                    messages={messages}
+                    isStreaming={isStreaming}
+                    theme={theme}
+                    darkMode={darkMode}
+                    bottomRef={bottomRef}
+                    messagesContainerRef={messagesContainerRef}
+                    setInput={setInput}
+                    isThinking={isThinking}
+                    currentThinking={currentThinking}
+                    isStreamingText={isStreamingText}
+                    lastAssistantIndex={lastAssistantIndex}
+                    searchQuery={msgSearchQuery}
+                    isLoading={isLoading}
+                    onAtBottomChange={(isAtBottom) => setShowScrollBottom(!isAtBottom)}
+                    onFileClick={handleFileClick}
+                    setPreviewImage={setPreviewImage}
+                    onOpenArtifact={handleOpenArtifact}
+                    handleDownloadAllArtifacts={handleDownloadAllArtifacts}
+                  />
+                </>
+              )}
+            </div>
+
+            {showWelcome && !corporateMode && (
               <div
                 style={{
-                  ...styles.msgSearchContainer,
-                  background: theme.inputBg,
-                  borderBottomColor: theme.borderColor,
+                  position: "absolute",
+                  inset: 0,
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  transform: "translateY(-8%)",
+                  zIndex: 10,
+                  animation: "fadeInUp 0.4s ease-out",
+                  pointerEvents: "none",
                 }}
               >
-                <span style={{ fontSize: "14px", color: theme.secondaryText }}>
-                  🔍
-                </span>
-                <input
-                  ref={messageSearchInputRef}
-                  type="text"
-                  placeholder="Cari kata kunci dalam percakapan ini..."
-                  value={msgSearchQuery}
-                  onChange={(e) => setMsgSearchQuery(e.target.value)}
+                <div style={{ pointerEvents: "auto" }}>
+                  <GuestWelcome
+                    isLoggedIn={currentIsLoggedIn}
+                    userData={{
+                      fullname:
+                        currentUserData?.name ||
+                        currentUserData?.fullname ||
+                        "Pegawai",
+                      npp: currentUserData?.npp || "NPP -----",
+                    }}
+                    getGreeting={getGreeting || defaultGetGreeting}
+                    theme={theme}
+                    darkMode={darkMode}
+                    isMobile={isMobile}
+                  />
+                </div>
+                <div
                   style={{
-                    flex: 1,
-                    border: "none",
-                    background: "transparent",
-                    outline: "none",
-                    color: theme.textColor,
-                    fontSize: "14px",
-                  }}
-                />
-                <button
-                  onClick={() => {
-                    setShowMsgSearch(false);
-                    setMsgSearchQuery("");
-                  }}
-                  style={{
-                    background: "transparent",
-                    border: "none",
-                    color: theme.secondaryText,
-                    cursor: "pointer",
-                    fontSize: "14px",
-                    fontWeight: "bold",
-                    padding: "4px 8px",
+                    width: "100%",
+                    maxWidth: "700px",
+                    padding: "0 20px",
+                    marginTop: "0px",
+                    pointerEvents: "auto",
                   }}
                 >
-                  ✕
-                </button>
+                  <ChatInputArea
+                    theme={theme}
+                    darkMode={darkMode}
+                    isBottom={true}
+                    showScrollBottom={showScrollBottom}
+                    showWelcome={showWelcome}
+                    messages={messages}
+                    messagesContainerRef={messagesContainerRef}
+                    activeIsolatedTitle={activeIsolatedTitle}
+                    setContextIsolation={setContextIsolation}
+                    selectedFiles={selectedFiles}
+                    removeFilePreview={removeFilePreview}
+                    handleSubmit={handleSubmit}
+                    handlePaste={handlePaste}
+                    handleDragOver={handleDragOver}
+                    handleDragLeave={handleDragLeave}
+                    handleDrop={handleDrop}
+                    isDragOver={isDragOver}
+                    fileInputRef={fileInputRef}
+                    handleFileChange={handleFileChange}
+                    isGuest={isGuest}
+                    currentIsLoggedIn={currentIsLoggedIn}
+                    isMultiLine={isMultiLine}
+                    isStreaming={isStreaming}
+                    isUploadingFile={isUploadingFile}
+                    textareaRef={textareaRef}
+                    input={input}
+                    setInput={setInput}
+                    handleKeyDown={handleKeyDown}
+                    chatMode={chatMode}
+                    handleChatModeChange={handleChatModeChange}
+                    isThinkingMode={isThinkingMode}
+                    handleThinkingModeChange={handleThinkingModeChange}
+                    styles={styles}
+                  />
+                </div>
               </div>
             )}
 
-            <ChatArea
-              messages={messages}
-              isStreaming={isStreaming}
-              theme={theme}
-              darkMode={darkMode}
-              bottomRef={bottomRef}
-              messagesContainerRef={messagesContainerRef}
-              setInput={setInput}
-              isThinking={isThinking}
-              currentThinking={currentThinking}
-              isStreamingText={isStreamingText}
-              lastAssistantIndex={lastAssistantIndex}
-              searchQuery={msgSearchQuery}
-              isLoading={isLoading}
-              onAtBottomChange={(isAtBottom) => setShowScrollBottom(!isAtBottom)}
-              onFileClick={handleFileClick}
-              setPreviewImage={setPreviewImage}
-              onOpenArtifact={handleOpenArtifact}
-              handleDownloadAllArtifacts={handleDownloadAllArtifacts}
-            />
-              </>
+
+            {/* Hanya render input di bawah jika chat sudah ada dan bukan corporate mode */}
+            {!showWelcome && !corporateMode && (
+              <ChatInputArea
+                theme={theme}
+                darkMode={darkMode}
+                isBottom={true}
+                showScrollBottom={showScrollBottom}
+                showWelcome={showWelcome}
+                messages={messages}
+                messagesContainerRef={messagesContainerRef}
+                activeIsolatedTitle={activeIsolatedTitle}
+                setContextIsolation={setContextIsolation}
+                selectedFiles={selectedFiles}
+                removeFilePreview={removeFilePreview}
+                handleSubmit={handleSubmit}
+                handlePaste={handlePaste}
+                handleDragOver={handleDragOver}
+                handleDragLeave={handleDragLeave}
+                handleDrop={handleDrop}
+                isDragOver={isDragOver}
+                fileInputRef={fileInputRef}
+                handleFileChange={handleFileChange}
+                isGuest={isGuest}
+                currentIsLoggedIn={currentIsLoggedIn}
+                isMultiLine={isMultiLine}
+                isStreaming={isStreaming}
+                isUploadingFile={isUploadingFile}
+                textareaRef={textareaRef}
+                input={input}
+                setInput={setInput}
+                handleKeyDown={handleKeyDown}
+                chatMode={chatMode}
+                handleChatModeChange={handleChatModeChange}
+                isThinkingMode={isThinkingMode}
+                handleThinkingModeChange={handleThinkingModeChange}
+                styles={styles}
+              />
             )}
           </div>
-
-          {showWelcome && !corporateMode && (
-            <div
-              style={{
-                position: "absolute",
-                inset: 0,
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                justifyContent: "center",
-                transform: "translateY(-8%)",
-                zIndex: 10,
-                animation: "fadeInUp 0.4s ease-out",
-                pointerEvents: "none",
-              }}
-            >
-              <div style={{ pointerEvents: "auto" }}>
-                <GuestWelcome
-                  isLoggedIn={currentIsLoggedIn}
-                  userData={{
-                    fullname:
-                      currentUserData?.name ||
-                      currentUserData?.fullname ||
-                      "Pegawai",
-                    npp: currentUserData?.npp || "NPP -----",
-                  }}
-                  getGreeting={getGreeting || defaultGetGreeting}
-                  theme={theme}
-                  darkMode={darkMode}
-                  isMobile={isMobile}
-                />
-              </div>
-              <div
-                style={{
-                  width: "100%",
-                  maxWidth: "700px",
-                  padding: "0 20px",
-                  marginTop: "0px",
-                  pointerEvents: "auto",
-                }}
-              >
-                <ChatInputArea
-                  theme={theme}
-                  darkMode={darkMode}
-                  isBottom={true}
-                  showScrollBottom={showScrollBottom}
-                  showWelcome={showWelcome}
-                  messages={messages}
-                  messagesContainerRef={messagesContainerRef}
-                  activeIsolatedTitle={activeIsolatedTitle}
-                  setContextIsolation={setContextIsolation}
-                  selectedFiles={selectedFiles}
-                  removeFilePreview={removeFilePreview}
-                  handleSubmit={handleSubmit}
-                  handlePaste={handlePaste}
-                  handleDragOver={handleDragOver}
-                  handleDragLeave={handleDragLeave}
-                  handleDrop={handleDrop}
-                  isDragOver={isDragOver}
-                  fileInputRef={fileInputRef}
-                  handleFileChange={handleFileChange}
-                  isGuest={isGuest}
-                  currentIsLoggedIn={currentIsLoggedIn}
-                  isMultiLine={isMultiLine}
-                  isStreaming={isStreaming}
-                  isUploadingFile={isUploadingFile}
-                  textareaRef={textareaRef}
-                  input={input}
-                  setInput={setInput}
-                  handleKeyDown={handleKeyDown}
-                  chatMode={chatMode}
-                  handleChatModeChange={handleChatModeChange}
-                  isThinkingMode={isThinkingMode}
-                  handleThinkingModeChange={handleThinkingModeChange}
-                  styles={styles}
-                />
-              </div>
-            </div>
-          )}
-
-
-          {/* Hanya render input di bawah jika chat sudah ada dan bukan corporate mode */}
-          {!showWelcome && !corporateMode && (
-            <ChatInputArea
-              theme={theme}
-              darkMode={darkMode}
-              isBottom={true}
-              showScrollBottom={showScrollBottom}
-              showWelcome={showWelcome}
-              messages={messages}
-              messagesContainerRef={messagesContainerRef}
-              activeIsolatedTitle={activeIsolatedTitle}
-              setContextIsolation={setContextIsolation}
-              selectedFiles={selectedFiles}
-              removeFilePreview={removeFilePreview}
-              handleSubmit={handleSubmit}
-              handlePaste={handlePaste}
-              handleDragOver={handleDragOver}
-              handleDragLeave={handleDragLeave}
-              handleDrop={handleDrop}
-              isDragOver={isDragOver}
-              fileInputRef={fileInputRef}
-              handleFileChange={handleFileChange}
-              isGuest={isGuest}
-              currentIsLoggedIn={currentIsLoggedIn}
-              isMultiLine={isMultiLine}
-              isStreaming={isStreaming}
-              isUploadingFile={isUploadingFile}
-              textareaRef={textareaRef}
-              input={input}
-              setInput={setInput}
-              handleKeyDown={handleKeyDown}
-              chatMode={chatMode}
-              handleChatModeChange={handleChatModeChange}
-              isThinkingMode={isThinkingMode}
-              handleThinkingModeChange={handleThinkingModeChange}
-              styles={styles}
-            />
-          )}
-        </div>
         </div>
 
       </main>

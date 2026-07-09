@@ -92,31 +92,33 @@ function ToastItem({ toast, onClose }) {
 
   // Color theme map for background border and text
   const getStyles = () => {
+    const baseBg = 'rgba(17, 24, 39, 0.9)'; // Dark premium glass background, readable in all modes
+    const baseShadow = '0 8px 16px rgba(0,0,0,0.15)';
     switch (type) {
       case 'success':
         return {
-          background: 'rgba(16, 185, 129, 0.1)',
+          background: baseBg,
           borderLeft: '4px solid #10B981',
-          boxShadow: '0 4px 12px rgba(16, 185, 129, 0.15)',
+          boxShadow: baseShadow,
         };
       case 'error':
         return {
-          background: 'rgba(239, 68, 68, 0.1)',
+          background: baseBg,
           borderLeft: '4px solid #EF4444',
-          boxShadow: '0 4px 12px rgba(239, 68, 68, 0.15)',
+          boxShadow: baseShadow,
         };
       case 'warning':
         return {
-          background: 'rgba(245, 158, 11, 0.1)',
+          background: baseBg,
           borderLeft: '4px solid #F59E0B',
-          boxShadow: '0 4px 12px rgba(245, 158, 11, 0.15)',
+          boxShadow: baseShadow,
         };
       case 'info':
       default:
         return {
-          background: 'rgba(59, 82, 246, 0.1)',
+          background: baseBg,
           borderLeft: '4px solid #3B82F6',
-          boxShadow: '0 4px 12px rgba(59, 82, 246, 0.15)',
+          boxShadow: baseShadow,
         };
     }
   };

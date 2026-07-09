@@ -14,7 +14,7 @@ const SourceCitation = ({ sources, darkMode, theme, onPreview, onActivateIsolati
     e.stopPropagation(); // Mencegah trigger click card utama
     const rawPath = source.url || source.file_path;
     const fileUrl = rawPath ? getUploadUrl(rawPath) : null;
-    
+
     // Aktifkan Split Screen Mode
     if (fileUrl) {
       setSplitScreen(true, fileUrl);
@@ -34,7 +34,7 @@ const SourceCitation = ({ sources, darkMode, theme, onPreview, onActivateIsolati
   };
 
   const handleComplianceIsolation = (e, source) => {
-    e.stopPropagation(); 
+    e.stopPropagation();
     if (onActivateIsolation) {
       // Set mode ke compliance sebelum isolasi
       useChatStore.setState({ chatMode: 'compliance' });
@@ -43,7 +43,7 @@ const SourceCitation = ({ sources, darkMode, theme, onPreview, onActivateIsolati
   };
 
   const handleRedTeamIsolation = (e, source) => {
-    e.stopPropagation(); 
+    e.stopPropagation();
     if (onActivateIsolation) {
       // Set mode ke redteam sebelum isolasi
       useChatStore.setState({ chatMode: 'redteam' });
@@ -57,7 +57,7 @@ const SourceCitation = ({ sources, darkMode, theme, onPreview, onActivateIsolati
     gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
     gap: '12px',
     marginTop: '16px',
-    marginBottom: '50px',
+    marginBottom: '20px',
     width: '100%'
   };
 
@@ -69,11 +69,10 @@ const SourceCitation = ({ sources, darkMode, theme, onPreview, onActivateIsolati
       ? isCurrentlyIsolated ? 'rgba(99, 102, 241, 0.2)' : (isHovered ? 'rgba(255, 255, 255, 0.06)' : '#1E1E20')
       : isCurrentlyIsolated ? 'rgba(99, 102, 241, 0.1)' : (isHovered ? 'rgba(0, 0, 0, 0.04)' : '#F3F4F6'),
     borderRadius: '16px',
-    border: `1px solid ${
-      isCurrentlyIsolated 
-        ? '#6366f1' 
-        : (darkMode ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.06)')
-    }`,
+    border: `1px solid ${isCurrentlyIsolated
+      ? '#6366f1'
+      : (darkMode ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.06)')
+      }`,
     transition: 'all 0.2s cubic-bezier(0.2, 0.9, 0.4, 1.1)',
     transform: isHovered ? 'translateY(-2px)' : 'translateY(0)',
     boxShadow: isHovered ? (darkMode ? '0 6px 16px rgba(0,0,0,0.4)' : '0 4px 12px rgba(0,0,0,0.06)') : 'none',
@@ -141,11 +140,11 @@ const SourceCitation = ({ sources, darkMode, theme, onPreview, onActivateIsolati
     cursor: 'pointer',
     whiteSpace: 'nowrap',
     border: isPrimary ? 'none' : `1px solid ${darkMode ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.12)'}`,
-    background: isPrimary 
+    background: isPrimary
       ? (darkMode ? '#6366f1' : '#2563eb')
       : (darkMode ? 'rgba(255,255,255,0.02)' : '#ffffff'),
-    color: isPrimary 
-      ? '#ffffff' 
+    color: isPrimary
+      ? '#ffffff'
       : (theme?.textColor || (darkMode ? '#e2e8f0' : '#1f2937')),
     transition: 'opacity 0.15s ease',
     opacity: isHovered ? 0.85 : 1
@@ -157,9 +156,9 @@ const SourceCitation = ({ sources, darkMode, theme, onPreview, onActivateIsolati
         const title = src.title || src.filename || src.name || 'Dokumen';
         const docId = src.id || src.dokumen_id;
         const regNomor = src.nomor || 'No Regulasi ----';
-        const page = src.page || src.page_number;
+        const page = src.page || src.page_number || src.halaman;
         const isHovered = hoveredIndex === idx;
-        
+
         // Cek apakah kartu ini adalah dokumen yang sedang dikunci/diisolasi mode chat-nya
         const isCurrentlyIsolated = activeIsolatedDocId === docId;
 
@@ -195,7 +194,7 @@ const SourceCitation = ({ sources, darkMode, theme, onPreview, onActivateIsolati
                   }}>
                     {src.jenis || 'Regulasi'}
                   </span>
-                  <span>{regNomor} {page ? `• Hal. ${page}` : ''} {src.jumlah_halaman ? `• Total ${src.jumlah_halaman} Hal` : ''}</span>
+                  <span>{regNomor} {src.total_pages ? `• ${src.total_pages} Halaman` : (page ? `• Hal. ${page}` : '')}</span>
                 </span>
 
                 {/* Tampilkan Daftar BAB/Pasal jika ada */}

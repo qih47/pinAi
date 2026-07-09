@@ -146,7 +146,7 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
     }, [msg.thought, msg.statusMessage, isThinkingMsg, displayThought]);
 
     return (
-        <div style={styles.assistantRow}>
+        <div style={{ ...styles.assistantRow, animation: 'fadeInUp 0.4s ease-out forwards' }}>
             <div style={styles.assistantMessageWrapper}>
                 <div style={styles.assistantHeader}>
                     <div style={styles.avatarWrap}>

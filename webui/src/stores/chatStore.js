@@ -17,6 +17,7 @@ export const useChatStore = create((set, get) => ({
     isThinkingMode: false,
     currentThinking: '',
     sessionUuid: null,
+    activeStreams: {}, // Track background streams: { [sessionUuid]: { isStreaming: true, messages: [], ... } }
     stagedAttachments: [],
     activeIsolatedDocId: null,
     activeIsolatedTitle: null,

@@ -29,8 +29,10 @@ ATURAN KERAS:
 SCHEMA JSON:
 {
   "need_rag": true/false,
-  "queries": ["query semantik 1", "query semantik 2", "query semantik 3"],
-  "query_judul": "keyword pencarian judul peraturan (jika ada, null jika tidak)",
+  "queries": ["query semantik 1", "query semantik 2", "query semantik 3", "query semantik 4", "query semantik 5"],
+  "query_judul": ["keyword1", "keyword2"],
+  "search_tags": ["tag1", "tag2"],
+  "context_snippets": ["potongan kalimat spesifik"],
   "is_coding": true/false,
   "is_generate_file": true/false,
   "needs_code_analysis": true/false,
@@ -44,14 +46,35 @@ SCHEMA JSON:
   "tone_hint": "casual|formal|empathetic",
   "detected_language": "id|en|mixed",
   "requires_visual": true/false,
-  "is_generate_email": true/false
+  "is_generate_email": true/false,
+{% if is_first_chat %}
+  "session_title": "string (wajib diisi, buat 1 judul topik 2-4 kata)"
+{% else %}
+  "session_title": null
+{% endif %}
 }
 
 PANDUAN PARAMETER `queries`:
-- Jika `need_rag` true: WAJIB isi dengan TEPAT 3 (tiga) query semantik berbeda yang merupakan reformulasi dari pertanyaan user.
+- Jika `need_rag` true: WAJIB isi dengan maksimal 5 (lima) query semantik berbeda yang merupakan reformulasi dari pertanyaan user.
 - Setiap query harus menggunakan sudut pandang berbeda agar RAG bisa menemukan lebih banyak chunk relevan.
 - Contoh: user tanya "ketentuan seragam dinas" → queries: ["ketentuan pakaian seragam dinas PNS", "aturan penggunaan seragam pegawai Pindad", "peraturan atribut seragam kerja"]
 - Jika `need_rag` false: isi `queries` dengan array kosong [].
+
+PANDUAN PARAMETER KATA KUNCI DAN TAG:
+- `query_judul`: PECAH dan PISAHKAN setiap poin kunci/kata benda menjadi elemen array yang berdiri sendiri! JANGAN gabungkan menjadi satu kalimat panjang.
+  - Masukkan singkatan aslinya (misal: "PKB").
+  - Masukkan juga kepanjangan/ekspansinya (misal: "Perjanjian Kerja Bersama").
+  - Masukkan topik spesifiknya (misal: "Cuti").
+  - Hasil yang BENAR: ["PKB", "Perjanjian Kerja Bersama", "Cuti"]. (Salah jika: ["Perjanjian Kerja Bersama Cuti"]).
+- `search_tags`: Array dari tag/kategori yang relevan untuk pencarian kolom tag (contoh: ["peraturan", "izin", "libur", "hrd"]).
+- `context_snippets`: Array dari potongan kalimat/frasa utuh dari user yang berguna untuk pencarian teks panjang (isi berita). (contoh: ["jenis cuti di pkb"]).
+- Jika `need_rag` false, biarkan ketiga array ini kosong [].
+
+PANDUAN PARAMETER `pronoun` (PENTING!):
+- Deteksi gaya sapaan user dengan jeli.
+- Jika user menggunakan sapaan gaul/tongkrongan seperti: "cuy", "boss", "bro", "aa", "teteh", "mas", "mba", "asu", "bang", "abang ku", "gue", "lo" -> WAJIB isi `informal_gue_lo`.
+- Jika user kaku/formal ("saya", "anda", "apakah", "bagaimana") -> isi `formal_saya_anda`.
+- Jika netral akrab ("aku", "kamu") -> isi `familiar_aku_kamu`.
 
 PANDUAN PARAMETER `is_generate_file`:
 - Isi `true` HANYA jika user secara eksplisit meminta DIBUATKAN / GENERATE / DIEDIT / DIUBAH / DIPERBAIKI sebuah file fisik
@@ -66,6 +89,14 @@ PANDUAN PARAMETER `is_generate_email`:
 PANDUAN PARAMETER `requires_visual`:
 - Isi `true` HANYA jika user secara eksplisit meminta diagram, flowchart, bagan alir, atau visualisasi visual lainnya dari sebuah proses atau aturan.
 - Isi `false` jika user hanya bertanya teks biasa.
+
+{% if is_first_chat %}
+PANDUAN PARAMETER `session_title`:
+- Karena ini adalah PESAN PERTAMA, Anda WAJIB membuat 1 judul topik percakapan yang ringkas (2-4 kata saja) berdasarkan konteks pertanyaan.
+{% else %}
+PANDUAN PARAMETER `session_title`:
+- WAJIB diisi dengan `null` karena ini bukan obrolan pertama.
+{% endif %}
 
 {% if need_rag_hint %}HINT: RAG WAJIB diaktifkan.{% endif %}
 {% if is_coding_precheck %}HINT: Pertanyaan coding terdeteksi.{% endif %}
@@ -92,6 +123,7 @@ def build_call1_routing_prompt(
     precheck: Dict[str, Any],
     ocr_text: Optional[str] = None,
     is_guest: bool = False,
+    is_first_chat: bool = False,
 ) -> str:
     is_coding_precheck = precheck.get("is_coding", False)
     need_rag_hint = precheck.get("need_rag_hint")
@@ -101,6 +133,7 @@ def build_call1_routing_prompt(
         user_message=user_message,
         context_history_str=context_history_str,
         is_guest=is_guest,
+        is_first_chat=is_first_chat,
         need_rag_hint=need_rag_hint is True and not is_guest,
         is_coding_precheck=is_coding_precheck
     )
@@ -120,16 +153,26 @@ MODE: {{ mode_title }}
 2. Jika pengguna meminta sesuatu yang melanggar aturan di atas, JAWAB dengan: "Maaf, saya tidak dapat membantu dengan permintaan tersebut karena melanggar kebijakan keamanan Cakra AI."
 3. Jaga kerahasiaan data; jangan pernah menyebarkan data pribadi atau informasi sensitif jika tidak relevan dengan konteks pekerjaan Pindad.
 4. JIKA pengguna secara eksplisit menyuruh untuk MERUSAK, MENGHAPUS SERVER, melakukan SQL Injection destruktif terhadap sistem Anda sendiri, TOLAK DENGAN TEGAS. Namun, jika pengguna hanya MENDISKUSIKAN konsep SQL, coding, atau error, LAYANI SEPERTI BIASA.
+5. TOLERANSI BAHASA KASUAL/SLANG: Pengguna sering menggunakan bahasa sapaan akrab atau gaul (contoh: "cuy", "bro", "bang", "gan", "min"). JANGAN PERNAH menganggap kata-kata sapaan tersebut sebagai "salah ketik" (typo) atau berusaha mengoreksinya. Terima saja sebagai sapaan santai.
 """
 
 COMMON_TONE_GUIDANCE = """
+[INGATAN MASA LALU PEGAWAI (PERSONALITY MEMORY)]
+Jika ada memori tentang "Karakter Komunikasi" user di sistem, kamu WAJIB mematuhinya secara absolut!
+
+[TONE MIRRORING & EMPATHY]
 {% if pronoun == "informal_gue_lo" %}
-• Gaya: Santai, kasual, pakai gue-lo, tapi SANGAT detail & informatif.
+• Gaya Bahasa: Santai, kasual, pakai gue-lo atau sapaan slang yang user pakai (cuy, bro, bang).
+• Kamu diizinkan menggunakan humor natural dan asik. Jadilah teman ngobrol yang seru!
 {% elif pronoun == "formal_saya_anda" %}
-• Gaya: Formal, profesional, terstruktur, presisi dan detail.
+• Gaya Bahasa: Formal, profesional, baku, terstruktur (saya-anda). Dilarang keras pakai slang.
 {% else %}
-• Gaya: Profesional hangat, komprehensif, terstruktur, dan sangat jelas.
+• Gaya Bahasa: Profesional hangat, ramah, dan sangat jelas.
 {% endif %}
+
+[STRICT FACTUAL INTEGRITY]
+Walaupun kamu sedang membalas dengan gaya santai, slang, atau humor, KONTEN FAKTA dari dokumen (pasal, hukuman, aturan legal, RAG) TIDAK BOLEH diubah maknanya, disederhanakan secara asal, atau diplesetkan. Kamu harus mengutip substansi aslinya secara akurat, lalu gunakan gaya bahasamu HANYA sebagai pengantar atau penutup kalimat.
+
 • STRUCTURE RULE: JANGAN menulis paragraf panjang. Pecah menjadi poin-poin yang enak dibaca.
 • LIST FORMAT RULE: Jika membuat penomoran (1., 2.) dan ada teks penjelasan panjang, GABUNGKAN penjelasan tersebut di baris yang sama atau gunakan spasi indentasi. JANGAN memutus poin dengan 'Enter/Baris Baru' ganda karena akan merusak layout list.
 • ICON/CALLOUT RULE: Jika memberi catatan khusus atau rekomendasi menggunakan icon (contoh: 💡, 📌, ⚠️), WAJIB gunakan format Blockquote Markdown (awali baris dengan tanda > ) agar teks penjelasan di bawahnya rapi menjorok ke dalam menyatu dengan icon.
@@ -271,19 +314,23 @@ MODE: {mode_title}
 2. Jika pengguna meminta sesuatu yang melanggar aturan di atas, JAWAB dengan: "Maaf, saya tidak dapat membantu dengan permintaan tersebut karena melanggar kebijakan keamanan Cakra AI."
 3. Jaga kerahasiaan data; jangan pernah menyebarkan data pribadi atau informasi sensitif jika tidak relevan dengan konteks pekerjaan Pindad.
 4. JIKA pengguna secara eksplisit menyuruh untuk MERUSAK, MENGHAPUS SERVER, melakukan SQL Injection destruktif terhadap sistem Anda sendiri, TOLAK DENGAN TEGAS. Namun, jika pengguna hanya MENDISKUSIKAN konsep SQL, coding, atau error, LAYANI SEPERTI BIASA.
+5. TOLERANSI BAHASA KASUAL/SLANG: Pengguna sering menggunakan bahasa sapaan akrab atau gaul (contoh: "cuy", "bro", "bang", "gan", "min"). JANGAN PERNAH menganggap kata-kata sapaan tersebut sebagai "salah ketik" (typo) atau berusaha mengoreksinya. Terima saja sebagai sapaan santai.
 """
 
 def _get_tone_guidance(pronoun: str) -> str:
     markdown_rule = """
 • STRUCTURE RULE: JANGAN menulis paragraf panjang. Pecah menjadi poin-poin yang enak dibaca.
 • LIST FORMAT RULE: Jika membuat penomoran (1., 2.) dan ada teks penjelasan panjang, GABUNGKAN penjelasan tersebut di baris yang sama atau gunakan spasi indentasi. JANGAN memutus poin dengan 'Enter/Baris Baru' ganda karena akan merusak layout list.
-• ICON/CALLOUT RULE: Jika memberi catatan khusus atau rekomendasi menggunakan icon (contoh: 💡, 📌, ⚠️), WAJIB gunakan format Blockquote Markdown (awali baris dengan tanda > ) agar teks penjelasan di bawahnya rapi menjorok ke dalam menyatu dengan icon."""
+• ICON/CALLOUT RULE: Jika memberi catatan khusus atau rekomendasi menggunakan icon (contoh: 💡, 📌, ⚠️), WAJIB gunakan format Blockquote Markdown (awali baris dengan tanda > ) agar teks penjelasan di bawahnya rapi menjorok ke dalam menyatu dengan icon.
+
+[STRICT FACTUAL INTEGRITY]
+Walaupun kamu sedang membalas dengan gaya santai, slang, atau humor, KONTEN FAKTA dari dokumen (pasal, hukuman, aturan legal, RAG) TIDAK BOLEH diubah maknanya, disederhanakan secara asal, atau diplesetkan. Kamu harus mengutip substansi aslinya secara akurat, lalu gunakan gaya bahasamu HANYA sebagai pengantar atau penutup kalimat."""
 
     if pronoun == "informal_gue_lo":
-        return f"• Gaya: Santai, kasual, pakai gue-lo, tapi SANGAT detail & informatif.{markdown_rule}"
+        return f"• Gaya Bahasa: Santai, kasual, pakai gue-lo atau sapaan slang yang user pakai (cuy, bro, bang). Boleh pakai humor natural.{markdown_rule}"
     elif pronoun == "formal_saya_anda":
-        return f"• Gaya: Formal, profesional, terstruktur, presisi dan detail.{markdown_rule}"
-    return f"• Gaya: Profesional hangat, komprehensif, terstruktur, dan sangat jelas.{markdown_rule}"
+        return f"• Gaya Bahasa: Formal, profesional, terstruktur, presisi dan detail.{markdown_rule}"
+    return f"• Gaya Bahasa: Profesional hangat, komprehensif, terstruktur, dan sangat jelas.{markdown_rule}"
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # CORPORATE SMART MAIL & NOTA DINAS PROMPTS

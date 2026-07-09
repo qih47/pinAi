@@ -157,6 +157,7 @@ const Sidebar = ({
         setIsHovered={setIsHovered}
         cakraLogo={cakraLogo}
         theme={theme}
+        darkMode={darkMode}
         clearChat={clearChat}
         showDocumentList={showDocumentList}
         setShowDocumentList={setShowDocumentList}

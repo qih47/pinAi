@@ -80,6 +80,7 @@ async def execute_call1_routing(
     precheck: Dict[str, Any],
     ocr_text: Optional[str] = None,
     is_guest: bool = False,
+    is_first_chat: bool = False,
 ) -> Dict[str, Any]:
     """
     Execute Call 1: Intent Classification & Routing.
@@ -99,6 +100,7 @@ async def execute_call1_routing(
         precheck=precheck,
         ocr_text=ocr_text,
         is_guest=is_guest,
+        is_first_chat=is_first_chat,
     )
 
     messages = [
@@ -143,7 +145,9 @@ def _validate_and_normalize_routing(
     default_routing = {
         "need_rag": False,
         "queries": [],
-        "query_judul": None,
+        "query_judul": [],
+        "search_tags": [],
+        "context_snippets": [],
         "is_coding": False,
         "is_generate_file": False,  # MODE GENERATE FILE: True jika user meminta dibuatkan file
         "is_generate_email": False, # MODE EMAIL: True jika user meminta dibuatkan email
@@ -154,11 +158,13 @@ def _validate_and_normalize_routing(
         "is_multi_turn_task": False,
         "task_list": [],
         "pronoun": "unknown",
-        "tone_hint": "formal",
+        "tone_hint": "casual",
         "detected_language": "id",
+        "requires_visual": False,
+        "session_title": None,
     }
 
-    routing = default_routing.copy()
+    routing = {**default_routing, **routing_json}
 
     routing["need_rag"] = bool(routing_json.get("need_rag", False))
 
@@ -166,11 +172,27 @@ def _validate_and_normalize_routing(
     if isinstance(queries, list):
         routing["queries"] = [
             str(q).strip() for q in queries if isinstance(q, str) and q.strip()
-        ][:3]
+        ][:5]
     else:
         routing["queries"] = []
 
-    routing["query_judul"] = routing_json.get("query_judul")
+    query_judul = routing_json.get("query_judul", [])
+    if isinstance(query_judul, list):
+        routing["query_judul"] = [str(q).strip() for q in query_judul if isinstance(q, str) and q.strip()]
+    else:
+        routing["query_judul"] = [str(query_judul)] if query_judul else []
+
+    search_tags = routing_json.get("search_tags", [])
+    if isinstance(search_tags, list):
+        routing["search_tags"] = [str(t).strip() for t in search_tags if isinstance(t, str) and t.strip()]
+    else:
+        routing["search_tags"] = []
+
+    context_snippets = routing_json.get("context_snippets", [])
+    if isinstance(context_snippets, list):
+        routing["context_snippets"] = [str(c).strip() for c in context_snippets if isinstance(c, str) and c.strip()]
+    else:
+        routing["context_snippets"] = []
 
     routing["is_coding"] = bool(routing_json.get("is_coding", False))
     routing["is_generate_file"] = bool(routing_json.get("is_generate_file", False))
@@ -253,7 +275,9 @@ def _build_fallback_routing(precheck: Dict[str, Any]) -> Dict[str, Any]:
         return {
             "need_rag": True,
             "queries": queries,
-            "query_judul": user_message,
+            "query_judul": [user_message],
+            "search_tags": [],
+            "context_snippets": [],
             "is_coding": False,
             "is_generate_file": False,
             "is_generate_email": False,
@@ -272,7 +296,9 @@ def _build_fallback_routing(precheck: Dict[str, Any]) -> Dict[str, Any]:
         return {
             "need_rag": False,
             "queries": [],
-            "query_judul": None,
+            "query_judul": [],
+            "search_tags": [],
+            "context_snippets": [],
             "is_coding": precheck.get("is_coding", False),
             "is_generate_file": False,
             "is_generate_email": False,

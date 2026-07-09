@@ -31,7 +31,8 @@ class MemoryService:
                 query = """
                     SELECT mem_key, mem_value FROM ai_memory 
                     WHERE npp = $1 
-                    ORDER BY created_at DESC LIMIT 5;
+                    ORDER BY (CASE WHEN mem_key = 'Karakter Komunikasi' THEN 1 ELSE 2 END) ASC, created_at DESC 
+                    LIMIT 6;
                 """
                 rows = await conn.fetch(query, npp)
                 if not rows:
@@ -45,6 +46,36 @@ class MemoryService:
             except Exception as e:
                 logger.error(f"[MEMORY_RETRIEVAL_ERROR] Failed to retrieve employee memory: {str(e)}")
                 return ""
+
+    async def update_communication_style_memory(self, npp: str, pronoun: str) -> None:
+        """
+        Background task: Update memori gaya bahasa user secara real-time ke database 
+        berdasarkan deteksi pronoun dari Router AI.
+        """
+        if npp == "GUEST" or not npp or not pronoun:
+            return
+            
+        mem_value = ""
+        if pronoun == "informal_gue_lo":
+            mem_value = "User terbiasa dengan gaya bahasa santai/slang (cuy, bro, lo, gue, kang, boss). Balas dengan gaya setara yang asik, ramah, dan boleh gunakan humor natural."
+        elif pronoun == "formal_saya_anda":
+            mem_value = "User lebih suka gaya bahasa baku, formal, dan profesional. Jangan gunakan slang."
+        else:
+            # Jika netral, tidak perlu update atau over-write
+            return
+            
+        async with get_db() as conn:
+            try:
+                query_insert_memory = """
+                    INSERT INTO ai_memory (npp, mem_key, mem_value, category, created_at, updated_at)
+                    VALUES ($1, 'Karakter Komunikasi', $2, 'personal', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                    ON CONFLICT (mem_key, npp) 
+                    DO UPDATE SET mem_value = EXCLUDED.mem_value, updated_at = CURRENT_TIMESTAMP;
+                """
+                await conn.execute(query_insert_memory, npp, mem_value)
+                logger.debug(f"[MEMORY_SERVICE] Real-time tone memory updated for NPP {npp}: {pronoun}")
+            except Exception as write_err:
+                logger.error(f"[MEMORY_SERVICE_ERROR] Failed to write tone memory: {str(write_err)}")
 
     async def consolidate_nightly_memory(self) -> Dict[str, Any]:
         """

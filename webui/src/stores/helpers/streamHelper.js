@@ -27,6 +27,48 @@ export async function performStream(set, get, messagesToSend, assistantMessage, 
     let success = false;
     const activeSessionUuid = forcedSessionUuid || get().sessionUuid;
 
+    const updateStreamState = (updater) => {
+        set(state => {
+            let newState = {};
+            const activeStreams = { ...state.activeStreams };
+            
+            // Inisialisasi stream jika belum ada
+            if (!activeStreams[activeSessionUuid]) {
+                activeStreams[activeSessionUuid] = { 
+                    messages: state.messages || [], 
+                    isStreaming: true, 
+                    isThinking: true,
+                    currentThinking: state.currentThinking || ''
+                };
+            }
+            
+            const currentStream = { ...activeStreams[activeSessionUuid] };
+            const currentMessages = [...currentStream.messages];
+            
+            // Panggil fungsi atau object updater (kompatibel dengan setState bawaan Zustand)
+            let changes = typeof updater === 'function' ? updater({ ...state, messages: currentMessages }) : updater;
+            
+            if (changes.messages) currentStream.messages = changes.messages;
+            if (changes.currentThinking !== undefined) currentStream.currentThinking = changes.currentThinking;
+            if (changes.isThinking !== undefined) currentStream.isThinking = changes.isThinking;
+            if (changes.isStreaming !== undefined) currentStream.isStreaming = changes.isStreaming;
+            if (changes.isLoading !== undefined) currentStream.isLoading = changes.isLoading;
+            
+            activeStreams[activeSessionUuid] = currentStream;
+            newState.activeStreams = activeStreams;
+
+            // SINKRONISASI ke state global HANYA JIKA user sedang berada di sesi ini
+            if (state.sessionUuid === activeSessionUuid) {
+                if (changes.messages) newState.messages = changes.messages;
+                if (changes.currentThinking !== undefined) newState.currentThinking = changes.currentThinking;
+                if (changes.isThinking !== undefined) newState.isThinking = changes.isThinking;
+                if (changes.isStreaming !== undefined) newState.isStreaming = changes.isStreaming;
+                if (changes.isLoading !== undefined) newState.isLoading = changes.isLoading;
+            }
+            return newState;
+        });
+    };
+
     while (attempts < maxAttempts && !success) {
         try {
             if (attempts > 0) {
@@ -89,7 +131,7 @@ export async function performStream(set, get, messagesToSend, assistantMessage, 
                             content: accumulatedReply // Preserve actual content independently
                         };
 
-                        set(state => {
+                        updateStreamState(state => {
                             const newMessages = [...state.messages];
                             const idx = targetAssistantIdx !== null ? targetAssistantIdx : newMessages.length - 1;
                             if (newMessages[idx]) {
@@ -111,7 +153,7 @@ export async function performStream(set, get, messagesToSend, assistantMessage, 
                         };
                         assistantMessage = updatedAssistantMsg;
 
-                        set(state => {
+                        updateStreamState(state => {
                             const newMessages = [...state.messages];
                             const idx = targetAssistantIdx !== null ? targetAssistantIdx : newMessages.length - 1;
                             if (newMessages[idx]) {
@@ -130,12 +172,12 @@ export async function performStream(set, get, messagesToSend, assistantMessage, 
                             sources: sources,
                             citations: sources
                         };
-                        const currentMessages = [...get().messages];
+                        const currentMessages = [...(get().activeStreams[activeSessionUuid]?.messages || get().messages)];
                         const idxToUpdate = targetAssistantIdx !== null ? targetAssistantIdx : currentMessages.length - 1;
                         currentMessages[idxToUpdate] = updatedAssistantMsg;
 
                         assistantMessage = updatedAssistantMsg;
-                        set({ messages: currentMessages });
+                        updateStreamState({ messages: currentMessages });
                     },
                     onChunk: (chunk) => {
                         accumulatedReply += chunk;
@@ -216,11 +258,11 @@ export async function performStream(set, get, messagesToSend, assistantMessage, 
 
                         if (!renderTimeout) {
                             renderTimeout = requestAnimationFrame(() => {
-                                const currentMessages = [...get().messages];
+                                const currentMessages = [...(get().activeStreams[activeSessionUuid]?.messages || get().messages)];
                                 const idxToUpdate = targetAssistantIdx !== null ? targetAssistantIdx : currentMessages.length - 1;
                                 currentMessages[idxToUpdate] = assistantMessage;
 
-                                set({
+                                updateStreamState({
                                     messages: currentMessages,
                                     isThinking: false
                                 });
@@ -259,7 +301,7 @@ export async function performStream(set, get, messagesToSend, assistantMessage, 
                             
                             // ── Merekam ke Sidebar (Artifacts) ──
                             if (fileStatus.file_path) {
-                                set(state => {
+                                updateStreamState(state => {
                                     const currentArtifacts = [...state.artifacts];
                                     const exArtIdx = currentArtifacts.findIndex(a => a.filename === filename);
                                     const newArt = {
@@ -316,10 +358,10 @@ export async function performStream(set, get, messagesToSend, assistantMessage, 
 
                         if (!renderTimeout) {
                             renderTimeout = requestAnimationFrame(() => {
-                                const currentMessages = [...get().messages];
+                                const currentMessages = [...(get().activeStreams[activeSessionUuid]?.messages || get().messages)];
                                 const idx = targetAssistantIdx !== null ? targetAssistantIdx : currentMessages.length - 1;
                                 currentMessages[idx] = assistantMessage;
-                                set({ messages: currentMessages });
+                                updateStreamState({ messages: currentMessages });
                                 renderTimeout = null;
                             });
                         }
@@ -337,12 +379,12 @@ export async function performStream(set, get, messagesToSend, assistantMessage, 
                             }));
                         }
                         
-                        const currentMessages = [...get().messages];
+                        const currentMessages = [...(get().activeStreams[activeSessionUuid]?.messages || get().messages)];
                         const idxToUpdate = targetAssistantIdx !== null ? targetAssistantIdx : currentMessages.length - 1;
                         currentMessages[idxToUpdate] = assistantMessage;
-                        set({ messages: currentMessages });
+                        updateStreamState({ messages: currentMessages });
                         
-                        set({
+                        updateStreamState({
                             isThinking: false,
                             isStreaming: false,
                             currentThinking: ''
@@ -358,10 +400,10 @@ export async function performStream(set, get, messagesToSend, assistantMessage, 
                 assistantMessage.content += ' *Respons dihentikan*';
                 assistantMessage.isStreaming = false;
                 assistantMessage.isThinking = false;
-                const currentMessages = [...get().messages];
+                const currentMessages = [...(get().activeStreams[activeSessionUuid]?.messages || get().messages)];
                 const idxToUpdate = targetAssistantIdx !== null ? targetAssistantIdx : currentMessages.length - 1;
                 currentMessages[idxToUpdate] = assistantMessage;
-                set({ messages: currentMessages, isThinking: false, currentThinking: '', isStreaming: false, isLoading: false });
+                updateStreamState({ messages: currentMessages, isThinking: false, currentThinking: '', isStreaming: false, isLoading: false });
                 break; // Stop retry loop
             }
 
@@ -370,13 +412,13 @@ export async function performStream(set, get, messagesToSend, assistantMessage, 
                 assistantMessage.content = '⚠️ Gagal memuat balasan. Koneksi terputus sepenuhnya.';
                 assistantMessage.isStreaming = false;
                 assistantMessage.isThinking = false;
-                const currentMessages = [...get().messages];
+                const currentMessages = [...(get().activeStreams[activeSessionUuid]?.messages || get().messages)];
                 const idxToUpdate = targetAssistantIdx !== null ? targetAssistantIdx : currentMessages.length - 1;
                 currentMessages[idxToUpdate] = assistantMessage;
-                set({ messages: currentMessages, isThinking: false, currentThinking: '' });
+                updateStreamState({ messages: currentMessages, isThinking: false, currentThinking: '' });
                 if (toast) toast.error('Koneksi terputus. Gagal memuat balasan.');
             }
         }
     }
-    set({ isStreaming: false, isLoading: false, isThinking: false });
+    updateStreamState({ isStreaming: false, isLoading: false, isThinking: false });
 }

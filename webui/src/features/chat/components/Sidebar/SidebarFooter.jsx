@@ -31,7 +31,7 @@ export default function SidebarFooter({
       {showLogoutPopup && (
         <div
           ref={popupRef}
-          className="absolute bottom-full left-2 mb-2 w-52 rounded-xl shadow-2xl py-2 z-50 transition-all bg-white border border-gray-200 dark:bg-[#232326] dark:border-gray-800"
+          className={`absolute bottom-full left-2 mb-2 w-52 rounded-xl shadow-2xl py-2 z-50 transition-all border ${darkMode ? "bg-[#232326] border-gray-800" : "bg-white border-gray-200"}`}
           style={{
             left: !isOpen ? "100%" : "8px",
             marginLeft: !isOpen ? "8px" : "0px",
@@ -39,28 +39,28 @@ export default function SidebarFooter({
           }}
         >
           <div className="px-4 py-2">
-            <p className="text-xs text-gray-400 dark:text-gray-400">
+            <p className="text-xs text-gray-400">
               Akun Anda
             </p>
-            <p className="text-xs font-semibold truncate dark:text-white">
+            <p className={`text-xs font-semibold truncate ${darkMode ? "text-white" : "text-gray-800"}`}>
               {profileName}
             </p>
           </div>
 
-          <div className="px-4 py-2 border-t border-gray-100 dark:border-gray-800 space-y-1">
+          <div className={`px-4 py-2 border-t space-y-1 ${darkMode ? "border-gray-800" : "border-gray-100"}`}>
             <p className="text-[10px] uppercase font-bold tracking-wider text-gray-400 mb-1">
               Pilihan Tema
             </p>
-            <div className="flex bg-gray-100 dark:bg-gray-800 p-0.5 rounded-lg text-[11px]">
+            <div className={`flex p-0.5 rounded-lg text-[11px] ${darkMode ? "bg-gray-800" : "bg-gray-100"}`}>
               <button
                 onClick={() => setDarkMode(false)}
-                className={`flex-1 py-1 text-center rounded-md font-medium transition-all ${!darkMode ? "bg-white text-black shadow-sm" : "text-gray-500 hover:text-black dark:text-gray-400"}`}
+                className={`flex-1 py-1 text-center rounded-md font-medium transition-all ${!darkMode ? "bg-white text-black shadow-sm" : "text-gray-500 hover:text-black"}`}
               >
                 ☀️ Light
               </button>
               <button
                 onClick={() => setDarkMode(true)}
-                className={`flex-1 py-1 text-center rounded-md font-medium transition-all ${darkMode ? "bg-white dark:bg-gray-700 text-black dark:text-white shadow-sm" : "text-gray-500 hover:text-black dark:text-gray-400"}`}
+                className={`flex-1 py-1 text-center rounded-md font-medium transition-all ${darkMode ? "bg-gray-700 text-white shadow-sm" : "text-gray-500 hover:text-black"}`}
               >
                 🌙 Dark
               </button>
@@ -72,7 +72,7 @@ export default function SidebarFooter({
               setShowLogoutPopup(false);
               triggerLogout();
             }}
-            className="w-full flex items-center space-x-3 px-4 py-2 text-red-500 hover:bg-gray-100 transition-colors dark:hover:bg-gray-900 border-t border-gray-100 dark:border-gray-800"
+            className={`w-full flex items-center space-x-3 px-4 py-2 text-red-500 transition-colors border-t ${darkMode ? "hover:bg-gray-900 border-gray-800" : "hover:bg-gray-100 border-gray-100"}`}
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"

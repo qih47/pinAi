@@ -2,17 +2,37 @@ import * as endpoints from "../../services/endpoints";
 import { performStream, normalizeAttachments } from "../helpers/streamHelper";
 
 export const createStreamSlice = (set, get) => ({
-    stopStream: () => {
-        const controller = get().abortController;
-        if (controller) {
-            controller.abort();
+    stopStream: (sessionUuid = null) => {
+        const targetSession = sessionUuid || get().sessionUuid;
+        const activeStreams = { ...get().activeStreams };
+        
+        if (activeStreams[targetSession] && activeStreams[targetSession].abortController) {
+            activeStreams[targetSession].abortController.abort();
+            delete activeStreams[targetSession];
+            set({ activeStreams });
+        }
+        
+        if (targetSession === get().sessionUuid) {
+            const controller = get().abortController;
+            if (controller) controller.abort();
             set({ isStreaming: false, isThinking: false, abortController: null });
         }
     },
 
     sendMessage: async (content, npp, onSessionCreatedCallback, directUploadedFiles = null, chatMode = 'auto', isThinkingMode = true, toast = null) => {
         const hasAttachments = (directUploadedFiles?.length > 0) || (get().stagedAttachments?.length > 0);
-        if ((!content.trim() && !hasAttachments) || get().isStreaming) return;
+        if (!content.trim() && !hasAttachments) return;
+
+        const currentActiveStreams = get().activeStreams || {};
+        if (Object.keys(currentActiveStreams).length >= 2) {
+            if (toast) toast.error("Maksimal 2 obrolan bersamaan sedang berjalan. Harap tunggu.");
+            return;
+        }
+        
+        const activeSessionUuid_temp = get().sessionUuid;
+        if (currentActiveStreams[activeSessionUuid_temp]?.isStreaming) {
+            return; // Cegah kirim di sesi yang sama jika sedang stream
+        }
 
         // ── GUEST OVERRIDE (FE GUARD) ──
         if (npp === 'GUEST') {
@@ -75,13 +95,26 @@ export const createStreamSlice = (set, get) => ({
             effectiveChatMode = currentChatMode === 'compliance' ? 'compliance' : 'focus';
         }
 
+        // Setup Multi-Session Stream State
+        const controller = new AbortController();
+        const activeStreams = { ...get().activeStreams };
+        activeStreams[currentSessionUuid] = {
+            messages: [...updatedMessages, assistantMessage],
+            isStreaming: true,
+            isThinking: true,
+            abortController: controller,
+            currentThinking: ''
+        };
+
         // Sinkronisasi state chatMode sebelum perubahan rute URL
         set({
+            activeStreams,
             chatMode: effectiveChatMode, // Menyinkronkan chatMode ke store
             messages: [...updatedMessages, assistantMessage],
             isStreaming: true,
             // isLoading: true,
-            isThinking: true
+            isThinking: true,
+            abortController: controller
         });
 
         await new Promise(resolve => setTimeout(resolve, 100));
@@ -104,7 +137,8 @@ export const createStreamSlice = (set, get) => ({
     },
 
     editAndRegenerate: async (index, newContent, toast = null) => {
-        if (!newContent.trim() || get().isStreaming) return;
+        const activeSessionUuid_temp = get().sessionUuid;
+        if (!newContent.trim() || get().activeStreams?.[activeSessionUuid_temp]?.isStreaming) return;
 
         const currentMessages = [...get().messages];
         const sessionUuid = get().sessionUuid;
@@ -129,10 +163,22 @@ export const createStreamSlice = (set, get) => ({
             currentMessages.splice(index + 1, 0, assistantMessage);
         }
 
-        set({
+        const controller = new AbortController();
+        const activeStreams = { ...get().activeStreams };
+        activeStreams[sessionUuid] = {
             messages: currentMessages,
             isStreaming: true,
-            isThinking: true, // ALWAYS true as initial loading state, just like sendMessage
+            isThinking: true,
+            abortController: controller,
+            currentThinking: get().isThinkingMode ? 'Sedang berpikir...' : ''
+        };
+
+        set({
+            activeStreams,
+            messages: currentMessages,
+            isStreaming: true,
+            isThinking: true,
+            abortController: controller,
             currentThinking: get().isThinkingMode ? 'Sedang berpikir...' : ''
         });
 

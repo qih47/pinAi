@@ -52,9 +52,27 @@ export const createChatSlice = (set, get) => ({
     loadChatSession: async (sessionUuid) => {
         if (!sessionUuid || sessionUuid === 'new') return;
 
+        // 🔥 MULTI-SESSION BACKGROUND STREAM RESUMPTION
+        const activeStream = get().activeStreams?.[sessionUuid];
+        if (activeStream) {
+            console.log('📥 [STORE] Resuming background stream session:', sessionUuid);
+            set({ 
+                sessionUuid, 
+                messages: activeStream.messages, 
+                isStreaming: activeStream.isStreaming, 
+                isThinking: activeStream.isThinking,
+                currentThinking: activeStream.currentThinking,
+                isLoading: false,
+                activeIsolatedDocId: null, 
+                activeIsolatedTitle: null, 
+                artifacts: [] // Should technically preserve artifacts if any, but stream doesn't produce artifacts until done
+            });
+            return;
+        }
+
         const seq = ++_sessionLoadSeq;
         console.log('📥 [STORE] Loading session:', sessionUuid);
-        set({ sessionUuid, messages: [], isLoading: true, activeIsolatedDocId: null, activeIsolatedTitle: null, artifacts: [] });
+        set({ sessionUuid, messages: [], isLoading: true, activeIsolatedDocId: null, activeIsolatedTitle: null, artifacts: [], isStreaming: false, isThinking: false });
 
         try {
             const npp = JSON.parse(localStorage.getItem('cakra_user'))?.npp || '';

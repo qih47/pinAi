@@ -304,15 +304,6 @@ async def _sequential_pipeline_generator(
         full_response_text = error_msg
 
     # ── Save assistant response & finalize ────────────────────────────────────
-    new_title = None
-    if payload.session_uuid:
-        try:
-            # Panggil auto_update_session_title secara sinkron agar bisa diumpankan ke DONE event
-            new_title = await chat_history_service.auto_update_session_title(
-                payload.session_uuid, user_message, full_response_text
-            )
-        except Exception as e:
-            logger.error(f"[TITLE] Gagal mengupdate judul sesi secara sinkron: {e}")
 
     async def _save_to_db():
         try:
@@ -358,6 +349,11 @@ async def _sequential_pipeline_generator(
 
     # Jalankan save (selain title) di background agar kebal terhadap CancelledError
     asyncio.create_task(_save_to_db())
+
+    # Ambil judul terbaru (mungkin diubah oleh Call 1 / Mode Hub)
+    new_title = None
+    if payload.session_uuid:
+        new_title = await chat_history_service.get_session_title(payload.session_uuid)
 
     logger.info(f"[PIPELINE] Complete ✅ | Title: {new_title}")
     yield format_sse("", "", True, sources=preloaded_rag_sources, event_type=SSEEventType.DONE, title=new_title)

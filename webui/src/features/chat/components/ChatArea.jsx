@@ -44,17 +44,57 @@ export default function ChatArea({
   handleDownloadArtifact,
 }) {
   const virtuosoRef = useRef(null);
-  const prevMessagesLengthRef = useRef(messages.length);
 
-  // 🔥 TRICK UNTUK MEMASTIKAN VIRTUOSO RE-BIND PARENT SCROLL SAAT REF TERISI
-  const [scrollParent, setScrollParent] = useState(undefined);
-
+  // scrollParent via useState — set saat isLoading=true (Virtuoso belum ada)
+  // sehingga ketika isLoading=false, Virtuoso mount langsung dengan scrollParent yang benar.
+  const [scrollParent, setScrollParent] = useState(null);
   useEffect(() => {
-    if (messagesContainerRef?.current) {
+    if (messagesContainerRef?.current && !scrollParent) {
       setScrollParent(messagesContainerRef.current);
     }
-  }, [messagesContainerRef]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
+  // AUTO SCROLL SAAT STREAMING SELESAI
+  const prevIsStreamingRef = useRef(isStreaming);
+  useEffect(() => {
+    if (prevIsStreamingRef.current === true && isStreaming === false) {
+      if (messagesContainerRef?.current) {
+        setTimeout(() => {
+          if (messagesContainerRef.current) {
+            messagesContainerRef.current.scrollTo({
+              top: messagesContainerRef.current.scrollHeight,
+              behavior: 'smooth',
+            });
+          }
+        }, 150);
+      }
+    }
+    prevIsStreamingRef.current = isStreaming;
+  }, [isStreaming, messagesContainerRef]);
+
+  // SCROLL TO BOTTOM SAAT SESSION DI-LOAD
+  // Sama seperti ScrollBottomButton: scrollTo({ top: 9999999 }).
+  // Dua attempt: rAF (setelah DOM commit) + 200ms (setelah Virtuoso setup virtual padding).
+  const prevIsLoadingRef = useRef(isLoading);
+  const prevMsgLenRef = useRef(messages.length);
+  useEffect(() => {
+    const wasLoading = prevIsLoadingRef.current;
+    const appeared = prevMsgLenRef.current === 0 && messages.length > 0;
+
+    if ((wasLoading && !isLoading && messages.length > 0) || appeared) {
+      const scrollToBottom = () => {
+        if (messagesContainerRef?.current) {
+          messagesContainerRef.current.scrollTo({ top: 9999999, behavior: 'instant' });
+        }
+      };
+      requestAnimationFrame(scrollToBottom);
+      setTimeout(scrollToBottom, 200);
+    }
+
+    prevIsLoadingRef.current = isLoading;
+    prevMsgLenRef.current = messages.length;
+  }, [isLoading, messages.length, messagesContainerRef]);
 
   const itemContent = useCallback((idx, msg) => (
     <ChatBubble
@@ -82,14 +122,18 @@ export default function ChatArea({
           <div style={styles.assistantMessageWrapper}>
             <div style={styles.assistantHeader}>
               <div style={styles.avatarWrap}>
-                <img src={cakraLogo} alt="CAKRA" style={{ width: 25, height: 25, borderRadius: 8, objectFit: 'cover', background: 'transparent', animation: 'cakraSpin 1.2s linear infinite' }} />
+                <img
+                  src={cakraLogo}
+                  alt="CAKRA"
+                  style={{ width: 25, height: 25, borderRadius: 8, objectFit: 'cover', background: 'transparent', animation: 'cakraSpin 1.2s linear infinite' }}
+                />
                 <span style={{ ...styles.statusDot, background: '#ef4444', borderColor: theme.mainBg }} />
               </div>
               <span style={{ ...styles.thinkingInline, color: theme.secondaryText, marginLeft: 10 }}>
-                {currentThinking || "CAKRA sedang berpikir"}
+                {currentThinking || 'CAKRA sedang berpikir'}
               </span>
             </div>
-            <div style={styles.assistantContent}></div>
+            <div style={styles.assistantContent} />
           </div>
         </div>
       )}
@@ -105,7 +149,9 @@ export default function ChatArea({
     >
       <div style={styles.chatInner}>
         {isLoading ? (
-          <SkeletonChat />
+          <div style={{ animation: 'fadeSlideIn 0.2s ease-out' }}>
+            <SkeletonChat />
+          </div>
         ) : messages.length === 0 ? (
           <div style={styles.emptyState}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '16px' }}>
@@ -117,28 +163,27 @@ export default function ChatArea({
             <p style={{ ...styles.emptySubtitle, color: theme.secondaryText }}>Ada yang bisa saya bantu hari ini?</p>
           </div>
         ) : (
-          <div className="assistant-content-container" style={{ position: 'relative' }}>
+          <div
+            className="assistant-content-container"
+            style={{ flex: 1, minHeight: 0, position: 'relative', animation: 'fadeSlideIn 0.15s ease-out' }}
+          >
             <Virtuoso
               ref={virtuosoRef}
+              style={{ height: '100%' }}
               data={messages}
-              // 🔥 JALUR AMAN: Gunakan local state scrollParent agar terikat sempurna saat ref siap
               customScrollParent={scrollParent}
               useWindowScroll={false}
               itemContent={itemContent}
+              initialTopMostItemIndex={messages.length > 0 ? messages.length - 1 : 0}
               atBottomStateChange={(atBottom) => {
                 if (onAtBottomChange) onAtBottomChange(atBottom);
               }}
               followOutput={(isAtBottom) => {
-                if (isAtBottom) {
-                  return isStreamingText ? 'auto' : 'smooth';
-                }
+                if (isAtBottom) return isStreamingText ? 'auto' : 'smooth';
                 return false;
               }}
               increaseViewportBy={{ top: 800, bottom: 800 }}
-              initialTopMostItemIndex={Math.max(0, messages.length - 1)}
-              components={{
-                Footer: FooterComponent
-              }}
+              components={{ Footer: FooterComponent }}
             />
           </div>
         )}

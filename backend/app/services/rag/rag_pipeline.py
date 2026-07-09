@@ -28,7 +28,8 @@ _SLOW_SEARCH_THRESHOLD_S = 3.0
 async def run_rag_pipeline(
     rewritten_queries: List[str],
     limit_per_query: int = 3,
-    npp: Optional[str] = None,  # ✅ FIXED: Gunakan Optional[str]
+    npp: Optional[str] = None,
+    use_cache: bool = False,
 ) -> AsyncGenerator[str, None]:
     if not rewritten_queries:
         logger.info("[RAG_PIPELINE] No queries → skip RAG")
@@ -41,7 +42,9 @@ async def run_rag_pipeline(
     start_time = time.time()
 
     # ── SPRINT 2: SEMANTIC CACHE CHECK ───────────────────────────────────────
-    cache_result = await _check_cache_for_queries(rewritten_queries, npp)
+    cache_result = None
+    if use_cache:
+        cache_result = await _check_cache_for_queries(rewritten_queries, npp)
 
     if cache_result:
         duration_ms = int((time.time() - start_time) * 1000)
@@ -126,7 +129,7 @@ async def run_rag_pipeline(
     )
 
     # ── SPRINT 2: SAVE TO SEMANTIC CACHE ─────────────────────────────────────
-    if combined_context and combined_sources:
+    if combined_context and combined_sources and use_cache:
         await _save_cache_for_queries(
             rewritten_queries, combined_context, combined_sources, npp
         )

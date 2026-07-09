@@ -9,6 +9,7 @@ export default function SidebarHeader({
   setIsHovered,
   cakraLogo,
   theme,
+  darkMode,
   clearChat,
   showDocumentList,
   setShowDocumentList,
@@ -41,7 +42,7 @@ export default function SidebarHeader({
         {!isMobile && (
           <button
             onClick={() => setIsOpen(!isOpen)}
-            className="absolute transition-all duration-300 p-1 hover:bg-gray-200 dark:hover:bg-gray-800 rounded"
+            className={`absolute transition-all duration-300 p-1 rounded ${darkMode ? 'hover:bg-gray-800' : 'hover:bg-gray-200'}`}
             style={{
               color: theme?.iconColor,
               top: isOpen ? "20px" : "12px",
@@ -71,14 +72,14 @@ export default function SidebarHeader({
       </div>
 
       <div
-        className={`p-3 space-y-3 ${!isOpen && "flex flex-col items-center"}`}
+        className={`p-3 space-y-0 ${!isOpen && "flex flex-col items-center"}`}
       >
         <SessionExpiryStatus />
 
         {/* ── TOMBOL: NEW CHAT ── */}
         <button
           onClick={clearChat}
-          className="flex items-center rounded-full hover:bg-gray-200 dark:hover:bg-gray-800 transition-colors group overflow-hidden text-[14px]"
+          className={`flex items-center rounded-full transition-colors group overflow-hidden text-[14px] ${darkMode ? 'hover:bg-gray-800' : 'hover:bg-gray-200'}`}
           style={{
             padding: isOpen ? "8px 12px" : "8px",
             width: isOpen ? "100%" : "auto",
@@ -112,7 +113,7 @@ export default function SidebarHeader({
         {/* ── TOMBOL: DOCUMENTS (DULU EMOJI 📄, SEKARANG SVG) ── */}
         <button
           onClick={() => setShowDocumentList(!showDocumentList)}
-          className="flex items-center rounded-full hover:bg-gray-200 dark:hover:bg-gray-800 transition-colors group overflow-hidden text-[14px]"
+          className={`flex items-center rounded-full transition-colors group overflow-hidden text-[14px] ${darkMode ? 'hover:bg-gray-800' : 'hover:bg-gray-200'}`}
           style={{
             padding: isOpen ? "8px 12px" : "8px",
             width: isOpen ? "100%" : "auto",
@@ -158,7 +159,7 @@ export default function SidebarHeader({
         {/* 1. Smart Mail */}
         <button
           onClick={() => navigate('/corporate/mail')}
-          className="flex items-center rounded-full hover:bg-gray-200 dark:hover:bg-gray-800 transition-colors group overflow-hidden text-[14px]"
+          className={`flex items-center rounded-full transition-colors group overflow-hidden text-[14px] ${darkMode ? 'hover:bg-gray-800' : 'hover:bg-gray-200'}`}
           style={{
             padding: isOpen ? "8px 12px" : "8px",
             width: isOpen ? "100%" : "auto",
@@ -180,7 +181,7 @@ export default function SidebarHeader({
         {/* 2. Nota Dinas Gen */}
         <button
           onClick={() => navigate('/corporate/notadinas')}
-          className="flex items-center rounded-full hover:bg-gray-200 dark:hover:bg-gray-800 transition-colors group overflow-hidden text-[14px]"
+          className={`flex items-center rounded-full transition-colors group overflow-hidden text-[14px] ${darkMode ? 'hover:bg-gray-800' : 'hover:bg-gray-200'}`}
           style={{
             padding: isOpen ? "8px 12px" : "8px",
             width: isOpen ? "100%" : "auto",
@@ -204,7 +205,7 @@ export default function SidebarHeader({
         {/* 3. Vendor Analyzer */}
         <button
           onClick={() => navigate('/corporate/vendor')}
-          className="flex items-center rounded-full hover:bg-gray-200 dark:hover:bg-gray-800 transition-colors group overflow-hidden text-[14px]"
+          className={`flex items-center rounded-full transition-colors group overflow-hidden text-[14px] ${darkMode ? 'hover:bg-gray-800' : 'hover:bg-gray-200'}`}
           style={{
             padding: isOpen ? "8px 12px" : "8px",
             width: isOpen ? "100%" : "auto",
@@ -228,7 +229,7 @@ export default function SidebarHeader({
         {userData?.npp === '06652' && (
           <button
             onClick={() => navigate('/analytics')}
-            className="flex items-center rounded-full hover:bg-gray-200 dark:hover:bg-gray-800 transition-colors group overflow-hidden text-[14px]"
+            className={`flex items-center rounded-full transition-colors group overflow-hidden text-[14px] ${darkMode ? 'hover:bg-gray-800' : 'hover:bg-gray-200'}`}
             style={{
               padding: isOpen ? "8px 12px" : "8px",
               width: isOpen ? "100%" : "auto",

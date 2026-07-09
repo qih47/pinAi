@@ -153,10 +153,9 @@ class SessionRepository:
                 return None
 
     
-    async def auto_update_session_title(self, session_uuid: str, trigger_text: str, first_response: str = "") -> Optional[str]:
+    async def update_title_direct(self, session_uuid: str, new_title: str) -> bool:
         """
-        Auto-generate judul sesi jika masih 'Obrolan Baru'.
-        Mengembalikan judul baru jika berhasil di-update, atau None jika tidak perlu di-update.
+        Update judul sesi secara langsung (dari Gemma 4 di Call 1).
         """
         async with get_db() as conn:
             try:
@@ -165,19 +164,28 @@ class SessionRepository:
                     session_uuid,
                 )
                 if check_title and check_title["judul"] == "Obrolan Baru":
-                    from backend.app.utils.title_generator import enqueue_title_generation
-                    
-                    # Lempar ke background task LLM title generation
-                    await enqueue_title_generation(
-                        session_uuid=session_uuid,
-                        user_message=trigger_text,
-                        first_response=first_response
+                    await conn.execute(
+                        "UPDATE chat_sessions SET judul = $1 WHERE session_uuid = $2",
+                        new_title,
+                        session_uuid
                     )
-                    
-                    # Return string temporary untuk indikasi background process berjalan
-                    return "Sedang membuat judul..."
-                return None
+                    logger.info(f"✅ [SESSION] Title updated directly via Call 1 for {session_uuid}: '{new_title}'")
+                    return True
+                return False
             except Exception as e:
-                logger.warning(f"[AUTO_TITLE_WARNING] Failed auto title update: {str(e)}")
+                logger.error(f"❌ [SESSION] Failed to update title directly for {session_uuid}: {e}")
+                return False
+
+    async def get_session_title(self, session_uuid: str) -> Optional[str]:
+        """Ambil judul sesi saat ini dari DB"""
+        async with get_db() as conn:
+            try:
+                row = await conn.fetchrow(
+                    "SELECT judul FROM chat_sessions WHERE session_uuid = $1",
+                    session_uuid
+                )
+                return row["judul"] if row else None
+            except Exception as e:
+                logger.error(f"[SESSION] Gagal mengambil judul untuk {session_uuid}: {e}")
                 return None
 

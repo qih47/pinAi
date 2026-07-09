@@ -69,7 +69,7 @@ const UserBubble = memo(function UserBubble({
 
   return (
     <div
-      style={bubbleStyles.container}
+      style={{ ...bubbleStyles.container, animation: 'fadeInUp 0.4s ease-out forwards' }}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >

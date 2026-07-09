@@ -39,7 +39,7 @@ class ModeFocus:
     ) -> AsyncGenerator[str, None]:
         
         logger.info("[MODE_FOCUS] Starting Focus Mode Execution")
-        isolated_doc_id = context_isolation.get("isolated_doc_id")
+        isolated_doc_id = context_isolation.get("isolated_doc_id") if context_isolation else None
         
         yield format_sse(status="🎯 Menginisialisasi Mode Fokus...", event_type=SSEEventType.STATUS)
         await asyncio.sleep(0.01)
@@ -61,10 +61,29 @@ class ModeFocus:
         except Exception as e:
             logger.error(f"[MODE_FOCUS] DB Error: {e}")
                 
+        async def fallback_to_rag(reason: str):
+            logger.warning(f"[MODE_FOCUS] Fallback to RAG triggered: {reason}")
+            yield format_sse(status="🔄 File target tidak tersedia, beralih ke pencarian global...", event_type=SSEEventType.STATUS)
+            await asyncio.sleep(0.01)
+            from backend.app.services.pipeline.modes.mode_documents import ModeDocuments
+            fallback_handler = ModeDocuments()
+            async for chunk in fallback_handler.execute(
+                user_message=user_message,
+                chat_history=chat_history,
+                is_thinking=is_thinking,
+                attachments=attachments,
+                context_isolation=None,
+                routing_data=routing_data,
+                request=request,
+                employee_name=employee_name,
+                current_user_npp=current_user_npp,
+                session_uuid=session_uuid
+            ):
+                yield chunk
+
         if not filename:
-            error_msg = "Maaf, file dokumen untuk ID tersebut tidak ditemukan di database."
-            yield format_sse(error_msg, "", False, event_type=SSEEventType.CHUNK)
-            yield format_sse("", "", True, event_type=SSEEventType.DONE)
+            async for chunk in fallback_to_rag("File not found in DB or missing isolated_doc_id"):
+                yield chunk
             return
 
         # 2. Resolve File Path (pinAi/file_peraturan)
@@ -72,9 +91,8 @@ class ModeFocus:
         logger.info(f"[MODE_FOCUS] Target file: {file_path}")
 
         if not os.path.exists(file_path):
-            error_msg = f"Maaf, file fisik '{filename}' tidak ditemukan di server."
-            yield format_sse(error_msg, "", False, event_type=SSEEventType.CHUNK)
-            yield format_sse("", "", True, event_type=SSEEventType.DONE)
+            async for chunk in fallback_to_rag(f"Physical file '{filename}' not found"):
+                yield chunk
             return
 
         # 3. Read PDF (Using PyMuPDF)
@@ -87,8 +105,8 @@ class ModeFocus:
             total_pages = len(doc)
         except Exception as e:
             logger.error(f"[MODE_FOCUS] Error opening PDF: {e}")
-            yield format_sse("Maaf, file PDF tidak dapat dibaca atau rusak.", "", False, event_type=SSEEventType.CHUNK)
-            yield format_sse("", "", True, event_type=SSEEventType.DONE)
+            async for chunk in fallback_to_rag(f"Failed to open PDF: {e}"):
+                yield chunk
             return
 
         # 4. Deteksi Tipe PDF (Text vs Scan) & Set Chunk Size

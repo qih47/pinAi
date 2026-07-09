@@ -230,7 +230,7 @@ export default function HeaderDropdownMenu({ isGuest, onLogin, darkMode, setDark
             </div>
           </button>
 
-          {messages.length > 0 && (
+          {messages.filter(m => m.role === 'user').length > 0 && (
             <>
               <div style={menuStyles.divider} />
               <button
