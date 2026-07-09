@@ -9,7 +9,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from typing import Optional
 
 from backend.app.api.dependencies.auth import get_current_user_npp
-from backend.app.services.background_tasks import trigger_manual_memory_consolidation
+from backend.app.services.system.background_tasks import trigger_manual_memory_consolidation
 
 router = APIRouter()
 logger = logging.getLogger("CAKRA_ADMIN")
@@ -60,7 +60,7 @@ async def get_system_status(
     
     try:
         import torch
-        from backend.app.services.background_tasks import scheduler
+        from backend.app.services.system.background_tasks import scheduler
         
         gpu_available = torch.cuda.is_available()
         gpu_name = torch.cuda.get_device_name(0) if gpu_available else "N/A"

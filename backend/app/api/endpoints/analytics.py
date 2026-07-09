@@ -218,11 +218,10 @@ async def simulate_ocr(file: UploadFile = File(...)):
 @router.get("/prompts")
 async def get_all_prompts():
     """Mengambil semua prompt dari database untuk Prompt Studio."""
-    from backend.app.core.database import get_db
+    from backend.app.services.pipeline.prompt_manager import prompt_manager
     try:
-        async with get_db() as conn:
-            rows = await conn.fetch("SELECT name, template, description, version, updated_at FROM system_prompts ORDER BY name ASC")
-            return {"status": "success", "prompts": [dict(r) for r in rows]}
+        prompts = await prompt_manager.get_all_prompts()
+        return {"status": "success", "prompts": prompts}
     except Exception as e:
         logger.error(f"Failed to fetch prompts: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -233,16 +232,9 @@ class PromptUpdateRequest(BaseModel):
 @router.put("/prompts/{name}")
 async def update_prompt(name: str, request: PromptUpdateRequest):
     """Update sebuah prompt di DB dan picu hot-reload di PromptManager."""
-    from backend.app.core.database import get_db
     from backend.app.services.pipeline.prompt_manager import prompt_manager
     try:
-        async with get_db() as conn:
-            await conn.execute(
-                "UPDATE system_prompts SET template = $1, version = version + 1, updated_at = now() WHERE name = $2",
-                request.template, name
-            )
-        # Trigger Hot-Reload
-        await prompt_manager.refresh()
+        await prompt_manager.update_prompt(name, request.template)
         return {"status": "success", "message": f"Prompt {name} updated and hot-reloaded successfully"}
     except Exception as e:
         logger.error(f"Failed to update prompt {name}: {e}")

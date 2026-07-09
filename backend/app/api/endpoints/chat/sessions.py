@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from backend.app.api.dependencies.auth import get_current_user_npp
 from backend.app.core.config import settings
-from backend.app.services.chat_history_service import chat_history_service
+from backend.app.services.chat.chat_history_service import chat_history_service
 from backend.app.api.schemas.chat import TitleUpdateSchema
 
 router = APIRouter()
@@ -24,17 +24,10 @@ async def get_chat_session(
     session_uuid: str,
     current_user_npp: Optional[str] = Depends(get_current_user_npp),
 ):
-    from backend.app.core.database import get_db
-    async with get_db() as conn:
-        session = await conn.fetchrow(
-            "SELECT * FROM chat_sessions WHERE session_uuid = $1",
-            session_uuid
-        )
-        if not session:
-            raise HTTPException(status_code=404, detail="Session not found")
-        return {"status": "success", "data": dict(session)}
-
-
+    session = await chat_history_service.get_session(session_uuid)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return {"status": "success", "data": session}
 @router.post("/sessions/create")
 async def create_new_chat_session(
     current_user_npp: Optional[str] = Depends(get_current_user_npp),

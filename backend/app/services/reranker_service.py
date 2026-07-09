@@ -1,1 +1,0 @@
-from backend.app.services.rag.reranker_service import reranker_service

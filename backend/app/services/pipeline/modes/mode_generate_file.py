@@ -469,7 +469,7 @@ class ModeGenerateFile:
 
         session_uuid_to_use = session_uuid or (routing_data.get("_session_uuid") if routing_data else None)
         if session_uuid_to_use:
-            from backend.app.services.chat_history_service import chat_history_service
+            from backend.app.services.chat.chat_history_service import chat_history_service
             obs_dict = {
                 "msg": "Generating file analysis response",
                 "memory": {

@@ -5,7 +5,7 @@ from typing import List, Optional
 from fastapi import APIRouter, HTTPException, UploadFile, File, Form, Request, Depends
 
 from backend.app.core.paths import get_account_dir
-from backend.app.services.chat_history_service import chat_history_service
+from backend.app.services.chat.chat_history_service import chat_history_service
 from backend.app.api.dependencies.auth import get_current_user_npp
 from backend.app.utils.upload_validator import (
     validate_uploaded_file,

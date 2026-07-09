@@ -249,7 +249,7 @@ async def stream_ollama_chat(
 
                         if session_uuid and session_uuid != "GLOBAL_SESSION":
                             try:
-                                from backend.app.services.chat_history_service import chat_history_service
+                                from backend.app.services.chat.chat_history_service import chat_history_service
                                 # Log TPS if available
                                 eval_count_stat = yield_data.get("eval_count")
                                 eval_duration_stat = yield_data.get("eval_duration")
@@ -274,7 +274,7 @@ async def stream_ollama_chat(
                                 logger.warning(f"[LLM_CLIENT] Failed to save inference stats: {str(stat_err)}")
 
                             try:
-                                from backend.app.services.chat_history_service import chat_history_service
+                                from backend.app.services.chat.chat_history_service import chat_history_service
                                 user_query = next(
                                     (m["content"] for m in reversed(messages) if m["role"] == "user"),
                                     "Kueri tidak terdeteksi",

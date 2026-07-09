@@ -1,1 +1,0 @@
-from backend.app.services.memory.memory_service import memory_service

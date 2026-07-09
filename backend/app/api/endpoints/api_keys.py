@@ -1,11 +1,10 @@
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
-import secrets
-import hashlib
 import logging
 from typing import Optional, List
-from backend.app.core.database import get_db
+
 from backend.app.api.dependencies.auth import get_current_user_npp
+from backend.app.services.auth.api_key_service import api_key_service
 
 router = APIRouter()
 logger = logging.getLogger("CAKRA_API_KEYS")
@@ -35,30 +34,17 @@ async def generate_api_key(
     if not current_user_npp:
         raise HTTPException(status_code=401, detail="Login required")
 
-    # Double check if user is admin (optional, assuming dashboard restricts UI)
-    # But for safety, we allow it to be linked to their NPP.
-    
-    raw_key = "cakra_live_" + secrets.token_urlsafe(32)
-    key_hash = hashlib.sha256(raw_key.encode()).hexdigest()
-    key_prefix = raw_key[:16] + "..."
-
     try:
-        async with get_db() as conn:
-            await conn.execute("""
-                INSERT INTO api_keys (key_hash, key_prefix, app_name, owner_npp)
-                VALUES ($1, $2, $3, $4)
-            """, key_hash, key_prefix, request.app_name, current_user_npp)
-            logger.info(f"🔑 [API_KEY] New key generated for {request.app_name} by {current_user_npp}")
+        result = await api_key_service.generate_api_key(request.app_name, current_user_npp)
+        return {
+            "status": "success",
+            "message": "Kunci API berhasil dibuat. SIMPAN KUNCI INI SEKARANG KARENA TIDAK AKAN DITAMPILKAN LAGI.",
+            "raw_key": result["raw_key"],
+            "app_name": result["app_name"]
+        }
     except Exception as e:
-        logger.error(f"Failed to generate API Key: {e}")
+        logger.error(f"Generate API Key error: {e}")
         raise HTTPException(status_code=500, detail="Database error")
-
-    return {
-        "status": "success",
-        "message": "Kunci API berhasil dibuat. SIMPAN KUNCI INI SEKARANG KARENA TIDAK AKAN DITAMPILKAN LAGI.",
-        "raw_key": raw_key,
-        "app_name": request.app_name
-    }
 
 @router.get("/list", response_model=List[APIKeyResponse])
 async def list_api_keys(
@@ -69,26 +55,21 @@ async def list_api_keys(
         raise HTTPException(status_code=401, detail="Login required")
 
     try:
-        async with get_db() as conn:
-            rows = await conn.fetch("""
-                SELECT id, key_prefix, app_name, owner_npp, is_active, total_requests, created_at, last_used_at
-                FROM api_keys
-                ORDER BY created_at DESC
-            """)
-            return [
-                APIKeyResponse(
-                    id=str(r['id']),
-                    key_prefix=r['key_prefix'],
-                    app_name=r['app_name'],
-                    owner_npp=r['owner_npp'],
-                    is_active=r['is_active'],
-                    total_requests=r['total_requests'],
-                    created_at=r['created_at'].isoformat(),
-                    last_used_at=r['last_used_at'].isoformat() if r['last_used_at'] else None
-                ) for r in rows
-            ]
+        rows = await api_key_service.list_api_keys()
+        return [
+            APIKeyResponse(
+                id=str(r['id']),
+                key_prefix=r['key_prefix'],
+                app_name=r['app_name'],
+                owner_npp=r['owner_npp'],
+                is_active=r['is_active'],
+                total_requests=r['total_requests'],
+                created_at=r['created_at'].isoformat() if hasattr(r['created_at'], 'isoformat') else r['created_at'],
+                last_used_at=r['last_used_at'].isoformat() if r['last_used_at'] and hasattr(r['last_used_at'], 'isoformat') else r['last_used_at']
+            ) for r in rows
+        ]
     except Exception as e:
-        logger.error(f"Failed to list API Keys: {e}")
+        logger.error(f"List API Keys error: {e}")
         raise HTTPException(status_code=500, detail="Database error")
 
 @router.delete("/revoke/{key_id}")
@@ -101,14 +82,16 @@ async def revoke_api_key(
         raise HTTPException(status_code=401, detail="Login required")
 
     try:
-        async with get_db() as conn:
-            res = await conn.execute("UPDATE api_keys SET is_active = FALSE WHERE id = $1", key_id)
-            if res == "UPDATE 0":
-                raise HTTPException(status_code=404, detail="API Key not found")
-            logger.info(f"🚫 [API_KEY] Key {key_id} revoked by {current_user_npp}")
-            return {"status": "success", "message": "API Key berhasil dicabut."}
+        success = await api_key_service.revoke_api_key(key_id)
+        if not success:
+            raise HTTPException(status_code=404, detail="API Key not found or already revoked")
+            
+        return {
+            "status": "success",
+            "message": "API Key berhasil dicabut/deaktivasi."
+        }
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to revoke API Key: {e}")
+        logger.error(f"Revoke API Key error: {e}")
         raise HTTPException(status_code=500, detail="Database error")

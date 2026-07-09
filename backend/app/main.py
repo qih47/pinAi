@@ -28,7 +28,7 @@ from backend.app.api.router import api_router
 from backend.app.core.llm_client import warm_up_model
 from backend.app.core.hardware import check_gpu_status
 from backend.app.core.paths import DOCUMENTS_DIR, UPLOAD_DIR, ACCOUNTS_DIR
-from backend.app.services.background_tasks import start_background_scheduler, stop_background_scheduler
+from backend.app.services.system.background_tasks import start_background_scheduler, stop_background_scheduler
 from backend.app.utils.request_logging import RequestIDLoggingMiddleware, setup_request_id_logging
 from backend.app.utils.token_expiry import setup_token_expiry_migration
 from backend.app.utils.vector_index import setup_hnsw_index, optimize_vector_search

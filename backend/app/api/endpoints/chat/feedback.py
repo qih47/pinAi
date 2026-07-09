@@ -3,7 +3,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 
 from backend.app.api.dependencies.auth import get_current_user_npp
-from backend.app.services.chat_history_service import chat_history_service
+from backend.app.services.chat.chat_history_service import chat_history_service
 from backend.app.api.schemas.chat import FeedbackSchema
 
 router = APIRouter()

@@ -1,1 +1,0 @@
-from backend.app.services.rag.rag_service import rag_service

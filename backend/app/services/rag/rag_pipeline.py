@@ -13,7 +13,7 @@ import logging
 import time
 from typing import AsyncGenerator, List, Dict, Any, Tuple, Optional  # ✅ FIXED: Tambah Optional
 
-from backend.app.services.rag_service import rag_service
+from backend.app.services.rag.rag_service import rag_service
 from backend.app.services.pipeline.sse_validation import (
     SSEEventType,
     format_sse,

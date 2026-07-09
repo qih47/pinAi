@@ -110,36 +110,38 @@ Setiap request masuk (khususnya ke `/api/chat/stream`) melewati beberapa lapisan
 
 ## Struktur Folder Lengkap
 
-Pemisahan tanggung jawab sudah sangat jelas antara *routing*, *orchestration*, *mode execution*, dan *prompts*.
+Pemisahan tanggung jawab sudah sangat jelas antara *routing* (API), *orchestration*, *mode execution*, dan *services* (Logika Bisnis/DB) — mematuhi prinsip Anti-Spaghetti arsitektur CAKRA AI.
 
 ```text
 cakra/
 ├── backend/
 │   ├── app/
 │   │   ├── api/
-│   │   │   ├── endpoints/
-│   │   │   │   ├── chat/                  # Chat session & SSE streaming endpoint
-│   │   │   │   ├── documents.py           # Insight, Lineage, Search CRUD
-│   │   │   │   └── ...                    # Auth, Admin, Health, dsb
-│   │   │   └── schemas/                   # Pydantic Schemas
+│   │   │   ├── endpoints/                 # Routing API HANYA mendelegasikan tugas
+│   │   │   │   ├── chat/                  # Endpoint chat & SSE streaming
+│   │   │   │   ├── documents.py           # Endpoint dokumen
+│   │   │   │   └── ...                    # Auth, Admin, Health, Analytics, dll
+│   │   │   └── schemas/                   # Pydantic Schemas untuk validasi I/O
 │   │   ├── core/
-│   │   │   └── database.py                # Setup PostgreSQL Dual-Pool
-│   │   ├── services/
-│   │   │   ├── chat/                      # Chat History (DB CRUD)
+│   │   │   ├── database.py                # Setup PostgreSQL Dual-Pool & MySQL
+│   │   │   └── config.py                  # Environment vars
+│   │   ├── services/                      # ★ LOGIKA BISNIS & DATABASE ★
+│   │   │   ├── auth/                      # auth_service, api_key_service
+│   │   │   ├── chat/                      # session_repository, chat_history_service
+│   │   │   ├── documents/                 # documents_service, document_manager
+│   │   │   ├── notifications/             # audit_service, notification_service
+│   │   │   ├── system/                    # background_tasks, scheduler
+│   │   │   ├── training/                  # training_service, job_manager
 │   │   │   ├── pipeline/                  # ★ KELUARGA ORCHESTRATOR ★
 │   │   │   │   ├── pipeline_orchestrator.py
 │   │   │   │   ├── mode_hub.py            # Central mode router
 │   │   │   │   ├── modes/                 # Handlers per-mode (focus, insight, dll)
-│   │   │   │   │   ├── mode_focus.py
-│   │   │   │   │   ├── mode_insight.py
-│   │   │   │   │   └── ...
-│   │   │   │   ├── prompts/               # Kumpulan prompt LLM (rag_prompts, dll)
+│   │   │   │   ├── prompts/               # Kumpulan prompt LLM & prompt_manager
 │   │   │   │   └── ollama_raw_client.py   # Streaming client + Token Continuation
 │   │   │   └── rag/                       # pgvector, bm25, bge_reranker
 │   │   └── utils/
 │   │       ├── security_firewall.py       # Global Security Interceptor
-│   │       ├── employee_cache.py          # LRU Caching HRIS
-│   │       └── ...
+│   │       └── employee_cache.py          # LRU Caching HRIS
 │   └── tests/                             # Unit Test (Ollama Token, Prefill, dll)
 │
 └── webui/

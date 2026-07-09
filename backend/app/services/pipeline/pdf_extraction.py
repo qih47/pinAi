@@ -26,7 +26,7 @@ async def extract_pdf_text(file_paths: List[str]) -> Dict[str, Any]:
     if not extracted:
         logger.info("📸 [PDF] Teks kosong → fallback ke MiniCPM-V OCR...")
         try:
-            from backend.app.services.vision_service import extract_text_from_files
+            from backend.app.services.vision.vision_service import extract_text_from_files
             result = await extract_text_from_files(file_paths)
             extracted = result.get("extracted_text", "")
             page_count = result.get("page_count", page_count)

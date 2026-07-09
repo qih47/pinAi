@@ -73,4 +73,22 @@ class TrainingJobManager:
             logger.error(f"❌ [JOB_MANAGER] Job {job_id} failed: {str(e)}")
             await self.update_job_progress(job_id, "FAILED", 0, f"Error: {str(e)}")
 
+    async def get_active_jobs(self) -> list:
+        """
+        Fetches all currently running or recently finished jobs.
+        """
+        try:
+            async with get_db() as conn:
+                rows = await conn.fetch("""
+                    SELECT job_id, dokumen_id, tipe_training, status, progress, logs, updated_at
+                    FROM training_jobs
+                    ORDER BY updated_at DESC
+                    LIMIT 50
+                """)
+                
+                return [dict(r) for r in rows]
+        except Exception as e:
+            logger.error(f"Failed to fetch job statuses: {e}")
+            raise RuntimeError(f"Database error when fetching jobs: {e}")
+
 job_manager = TrainingJobManager()

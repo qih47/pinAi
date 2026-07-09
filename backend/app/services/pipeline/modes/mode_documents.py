@@ -101,7 +101,7 @@ class ModeDocuments:
                         # Log Agent Step for RAG Search
                         session_uuid = routing_data.get("_session_uuid") if routing_data else None
                         if session_uuid:
-                            from backend.app.services.chat_history_service import chat_history_service
+                            from backend.app.services.chat.chat_history_service import chat_history_service
                             sources_data = []
                             for s in (rag_sources or []):
                                 sources_data.append({
@@ -267,7 +267,7 @@ class ModeDocuments:
         # Log Agent Step for Call 2 Synthesis
         session_uuid = routing_data.get("_session_uuid") if routing_data else None
         if session_uuid:
-            from backend.app.services.chat_history_service import chat_history_service
+            from backend.app.services.chat.chat_history_service import chat_history_service
             obs_dict = {
                 "msg": f"Generating response using module: {module_name}",
                 "memory": {

@@ -11,7 +11,7 @@ from backend.app.services.pipeline.sse_validation import (
 from backend.app.core.llm_client import stream_ollama_chat
 from backend.app.core.config import settings
 from backend.app.services.peraturan_service import search_and_ocr_by_judul
-from backend.app.services.chat_history_service import chat_history_service
+from backend.app.services.chat.chat_history_service import chat_history_service
 from backend.app.services.pipeline.prompts.redteam_prompts import build_redteam_system_prompt
 
 import logging

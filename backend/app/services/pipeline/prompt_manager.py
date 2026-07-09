@@ -90,4 +90,28 @@ class PromptManager:
             logger.error(f"[PROMPT_MANAGER] Error rendering prompt '{name}': {e}")
             return f"[PROMPT RENDERING ERROR] {e}"
 
+    async def get_all_prompts(self) -> list:
+        """Mengambil semua prompt dari database untuk Prompt Studio."""
+        try:
+            async with get_db() as conn:
+                rows = await conn.fetch("SELECT name, template, description, version, updated_at FROM system_prompts ORDER BY name ASC")
+                return [dict(r) for r in rows]
+        except Exception as e:
+            logger.error(f"Failed to fetch prompts: {e}")
+            raise RuntimeError(f"Database error: {e}")
+
+    async def update_prompt(self, name: str, template: str):
+        """Update sebuah prompt di DB dan picu hot-reload di PromptManager."""
+        try:
+            async with get_db() as conn:
+                await conn.execute(
+                    "UPDATE system_prompts SET template = $1, version = version + 1, updated_at = now() WHERE name = $2",
+                    template, name
+                )
+            # Trigger Hot-Reload
+            await self.refresh()
+        except Exception as e:
+            logger.error(f"Failed to update prompt {name}: {e}")
+            raise RuntimeError(f"Database error: {e}")
+
 prompt_manager = PromptManager()

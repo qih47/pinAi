@@ -68,7 +68,7 @@ class ModeHub:
         # ── Fetch Long-Term Memory (ai_document_chunks) ────────────────────────
         session_chunks_text = ""
         if session_uuid:
-            from backend.app.services.chat_history_service import chat_history_service
+            from backend.app.services.chat.chat_history_service import chat_history_service
             chunks = await chat_history_service.get_session_document_chunks(session_uuid)
             if chunks:
                 session_chunks_text = "\n\n[KNOWLEDGE DARI FILE SEBELUMNYA DI SESI INI]\n" + "\n---\n".join(chunks)
@@ -112,7 +112,7 @@ class ModeHub:
         if chat_mode == "insight":
             logger.info("[MODE_HUB] Explicit Insight Mode detected! Bypassing call 1.")
             if session_uuid:
-                from backend.app.services.chat_history_service import chat_history_service
+                from backend.app.services.chat.chat_history_service import chat_history_service
                 radar_scores = {"dokumen": 10, "coding": 10, "chitchat": 10, "analitik": 100, "ambigu": 10}
                 obs_dict = {"msg": "Bypassing Call 1 -> INSIGHT", "radar": radar_scores}
                 await chat_history_service.save_agent_step(
@@ -141,7 +141,7 @@ class ModeHub:
         if context_isolation and context_isolation.get("isolated_doc_id"):
             logger.info("[MODE_HUB] Context Isolation detected! Routing to Focus Mode.")
             if session_uuid:
-                from backend.app.services.chat_history_service import chat_history_service
+                from backend.app.services.chat.chat_history_service import chat_history_service
                 radar_scores = {"dokumen": 100, "coding": 10, "chitchat": 10, "analitik": 10, "ambigu": 10}
                 obs_dict = {"msg": "Bypassing Call 1 -> FOCUS", "radar": radar_scores}
                 await chat_history_service.save_agent_step(
@@ -174,7 +174,7 @@ class ModeHub:
         if has_attachment:
             logger.info("[MODE_HUB] Attachment detected! Bypassing Call 1 and routing to Attachment Mode.")
             if session_uuid:
-                from backend.app.services.chat_history_service import chat_history_service
+                from backend.app.services.chat.chat_history_service import chat_history_service
                 radar_scores = {"dokumen": 100, "coding": 10, "chitchat": 10, "analitik": 100, "ambigu": 10}
                 obs_dict = {"msg": "Bypassing Call 1 -> ATTACHMENT", "radar": radar_scores}
                 await chat_history_service.save_agent_step(
@@ -335,7 +335,7 @@ class ModeHub:
         
         # Log Router Agent Step
         if session_uuid:
-            from backend.app.services.chat_history_service import chat_history_service
+            from backend.app.services.chat.chat_history_service import chat_history_service
             
             queries = routing_data.get('queries', [])
             obs_dict = {

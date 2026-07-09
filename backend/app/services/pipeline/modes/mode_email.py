@@ -87,7 +87,7 @@ class ModeEmail:
         # Log to DB
         session_uuid = routing_data.get("_session_uuid") if routing_data else None
         if session_uuid:
-            from backend.app.services.chat_history_service import chat_history_service
+            from backend.app.services.chat.chat_history_service import chat_history_service
             obs_dict = {
                 "msg": f"Email Draft generated.",
                 "radar": {"dokumen": 10, "coding": 10, "chitchat": 10, "analitik": 10, "ambigu": 10}

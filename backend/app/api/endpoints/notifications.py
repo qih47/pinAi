@@ -21,11 +21,13 @@ from fastapi.responses import StreamingResponse
 
 from backend.app.api.dependencies.auth import get_current_user_npp
 from backend.app.core.database import get_db
-from backend.app.services.notification_service import (
+from backend.app.services.notifications.notification_service import (
     get_notification_broker,
     Notification,
     NotificationType,
 )
+from backend.app.services.auth.auth_service import auth_service
+from backend.app.services.system.audit_service import audit_service
 
 logger = logging.getLogger("CAKRA_NOTIFICATIONS_API")
 
@@ -108,11 +110,7 @@ async def get_notification_stats(
     """
     Get notification broker statistics (admin only).
     """
-    async with get_db() as conn:
-        user_role = await conn.fetchval(
-            "SELECT role FROM users WHERE npp = $1",
-            current_user_npp,
-        )
+    user_role = await auth_service.get_user_role(current_user_npp)
     
     if user_role not in ("ADMIN", "SUPERADMIN"):
         raise HTTPException(status_code=403, detail="Admin access required")
@@ -148,88 +146,15 @@ async def get_audit_logs(
     """
     Get audit logs dengan filtering dan pagination.
     """
-    async with get_db() as conn:
-        user_role = await conn.fetchval(
-            "SELECT role FROM users WHERE npp = $1",
-            current_user_npp,
-        )
+    user_role = await auth_service.get_user_role(current_user_npp)
     
     # if user_role not in ("ADMIN", "SUPERADMIN", "TRAINER"):
     #     raise HTTPException(status_code=403, detail="Admin access required")
     
     try:
-        async with get_db() as conn:
-            where_parts = ["created_at >= NOW() - INTERVAL '1 day' * $1"]
-            params = [days]
-            param_count = 1
-            
-            if event_type:
-                param_count += 1
-                where_parts.append(f"action = ${param_count}")
-                params.append(event_type)
-            
-            if npp:
-                param_count += 1
-                where_parts.append(f"npp = ${param_count}")
-                params.append(npp)
-            
-            where_clause = " AND ".join(where_parts)
-            
-            total = await conn.fetchval(
-                f"SELECT COUNT(*) FROM history_login WHERE {where_clause}",
-                *params,
-            )
-            
-            param_count += 1
-            limit_idx = param_count
-            params.append(limit)
-            
-            param_count += 1
-            offset_idx = param_count
-            params.append(offset)
-            
-            rows = await conn.fetch(
-                f"""
-                SELECT 
-                    id, npp, action as event_type, ip_address, 
-                    user_agent as device_info, created_at, 'SUCCESS' as status,
-                    '' as description
-                FROM history_login
-                WHERE {where_clause}
-                ORDER BY created_at DESC
-                LIMIT ${limit_idx} OFFSET ${offset_idx}
-                """,
-                *params,
-            )
-            
-            audit_logs = [
-                {
-                    "id": row["id"],
-                    "npp": row["npp"],
-                    "event_type": row["event_type"],
-                    "ip_address": row["ip_address"],
-                    "device_info": row["device_info"],
-                    "timestamp": row["created_at"].isoformat() if row["created_at"] else None,
-                    "status": row["status"],
-                    "description": row["description"],
-                }
-                for row in rows
-            ]
-            
-            logger.info(f"📋 [AUDIT] Retrieved {len(audit_logs)} logs (total: {total})")
-            
-            return {
-                "items": audit_logs,
-                "total": total or 0,
-                "limit": limit,
-                "offset": offset,
-                "filters": {
-                    "event_type": event_type,
-                    "npp": npp,
-                    "days": days,
-                },
-            }
-    
+        result = await audit_service.get_audit_logs(event_type, npp, days, limit, offset)
+        logger.info(f"📋 [AUDIT] Retrieved logs (total: {result['total']})")
+        return result
     except Exception as e:
         logger.error(f"❌ [AUDIT] Error fetching logs: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -243,77 +168,15 @@ async def get_audit_stats(
     """
     Get audit statistics dashboard untuk admin.
     """
-    async with get_db() as conn:
-        user_role = await conn.fetchval(
-            "SELECT role FROM users WHERE npp = $1",
-            current_user_npp,
-        )
+    user_role = await auth_service.get_user_role(current_user_npp)
     
     # if user_role not in ("ADMIN", "SUPERADMIN", "TRAINER"):
     #     raise HTTPException(status_code=403, detail="Admin access required")
     
     try:
-        async with get_db() as conn:
-            total_logins = await conn.fetchval(
-                "SELECT COUNT(*) FROM history_login WHERE created_at >= NOW() - INTERVAL '1 day' * $1",
-                days,
-            )
-            
-            unique_users = await conn.fetchval(
-                "SELECT COUNT(DISTINCT npp) FROM history_login WHERE created_at >= NOW() - INTERVAL '1 day' * $1",
-                days,
-            )
-            
-            failed_logins = await conn.fetchval(
-                "SELECT COUNT(*) FROM history_login WHERE action = $1 AND created_at >= NOW() - INTERVAL '1 day' * $2",
-                "FAILED",
-                days,
-            )
-            
-            top_users = await conn.fetch(
-                """
-                SELECT npp, COUNT(*) as login_count
-                FROM history_login
-                WHERE created_at >= NOW() - INTERVAL '1 day' * $1
-                GROUP BY npp
-                ORDER BY login_count DESC
-                LIMIT 10
-                """,
-                days,
-            )
-            
-            top_ips = await conn.fetch(
-                """
-                SELECT ip_address, COUNT(*) as count
-                FROM history_login
-                WHERE created_at >= NOW() - INTERVAL '1 day' * $1
-                GROUP BY ip_address
-                ORDER BY count DESC
-                LIMIT 5
-                """,
-                days,
-            )
-            
-            logger.info(f"📊 [AUDIT STATS] Generated statistics for {days} days")
-            
-            return {
-                "period_days": days,
-                "summary": {
-                    "total_logins": total_logins or 0,
-                    "unique_users": unique_users or 0,
-                    "failed_logins": failed_logins or 0,
-                    "success_rate": f"{((total_logins - (failed_logins or 0)) / total_logins * 100):.1f}%" if total_logins else "N/A",
-                },
-                "top_users": [
-                    {"npp": row["npp"], "login_count": row["login_count"]}
-                    for row in top_users
-                ],
-                "top_ips": [
-                    {"ip_address": row["ip_address"], "count": row["count"]}
-                    for row in top_ips
-                ],
-            }
-    
+        result = await audit_service.get_audit_stats(days)
+        logger.info(f"📊 [AUDIT STATS] Generated statistics for {days} days")
+        return result
     except Exception as e:
         logger.error(f"❌ [AUDIT STATS] Error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -330,11 +193,7 @@ async def export_audit_logs(
     """
     Export audit logs dalam format JSON atau CSV untuk compliance.
     """
-    async with get_db() as conn:
-        user_role = await conn.fetchval(
-            "SELECT role FROM users WHERE npp = $1",
-            current_user_npp,
-        )
+    user_role = await auth_service.get_user_role(current_user_npp)
     
     # if user_role not in ("ADMIN", "SUPERADMIN", "TRAINER"):
     #     raise HTTPException(status_code=403, detail="Admin access required")

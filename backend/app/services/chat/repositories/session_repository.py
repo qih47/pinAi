@@ -46,6 +46,15 @@ class SessionRepository:
             rows = await conn.fetch(query, npp)
             return [dict(r) for r in rows]
 
+    async def get_session(self, session_uuid: str) -> Optional[Dict[str, Any]]:
+        """Mengambil data sesi tunggal berdasarkan session_uuid"""
+        async with get_db() as conn:
+            session = await conn.fetchrow(
+                "SELECT * FROM chat_sessions WHERE session_uuid = $1 AND is_deleted = FALSE",
+                session_uuid
+            )
+            return dict(session) if session else None
+
     
     async def _resolve_session_pk(self, conn, session_uuid: str) -> Optional[int]:
         """Resolve session_uuid (string) ke chat_sessions.id (integer FK)."""
