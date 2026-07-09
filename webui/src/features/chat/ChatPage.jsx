@@ -420,7 +420,7 @@ export default function ChatPage({ isGuest,
         </header>
 
         {/* WRAPPER FOR SPLIT SCREEN */}
-        <div style={{ flex: 1, display: "flex", flexDirection: "row", overflow: "hidden", marginTop: corporateMode === 'mail' ? 0 : "56px" }}>
+        <div style={{ flex: 1, display: "flex", flexDirection: "row", overflow: "hidden", marginTop: 0 }}>
           <PdfInterrogator darkMode={darkMode} />
           <div
             style={{

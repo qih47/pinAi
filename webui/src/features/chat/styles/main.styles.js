@@ -94,7 +94,7 @@ export const styles = {
     chatInner: {
         flex: 1, minHeight: 0,
         maxWidth: 865, width: '100%', margin: '0 auto',
-        padding: '24px 24px 40px', display: 'flex', flexDirection: 'column', gap: 24
+        padding: '72px 24px 40px', display: 'flex', flexDirection: 'column', gap: 24
     },
 
     emptyState: {
