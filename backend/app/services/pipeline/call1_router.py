@@ -30,6 +30,9 @@ def extract_routing_signals_for_call1(user_content: str) -> str:
     Memotong lemak token (kodingan/log panjang) dari teks user untuk
     menjaga context window Call 1, tanpa menghilangkan instruksi manusia.
     """
+    # Hapus ISI FILE secara total dari pertimbangan routing
+    user_content = re.sub(r'--- ISI FILE:.*?-------------------', '', user_content, flags=re.DOTALL)
+    
     lines = user_content.split("\n")
     filtered_lines = []
 

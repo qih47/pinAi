@@ -1,6 +1,6 @@
 import logging
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, Body
+from fastapi import APIRouter, Depends, HTTPException, Body, Response
 from pydantic import BaseModel
 import requests
 from requests.auth import HTTPBasicAuth
@@ -107,7 +107,9 @@ async def download_file(
             timeout=15
         )
         if response.status_code == 200:
-            return {"status": "success", "content": response.text}
+            # Return raw binary content so frontend can create a valid File Blob
+            content_type = response.headers.get("Content-Type", "application/octet-stream")
+            return Response(content=response.content, media_type=content_type)
         else:
             raise HTTPException(status_code=response.status_code, detail=f"Nextcloud download error: {response.text}")
     except requests.exceptions.RequestException as e:

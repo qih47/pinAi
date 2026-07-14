@@ -202,24 +202,26 @@ export default function ChatInputArea({
                       Upload file
                     </button>
 
-                    <button
-                      onClick={() => {
-                        setIsAttachmentMenuOpen(false);
-                        openNextcloudModal();
-                      }}
-                      style={{
-                        display: 'flex', alignItems: 'center', gap: '16px',
-                        padding: '10px 16px', margin: '2px 8px', border: 'none', background: 'transparent',
-                        color: darkMode ? '#e3e3e3' : '#374151',
-                        fontSize: '14.5px', fontWeight: '500', cursor: 'pointer', textAlign: 'left',
-                        borderRadius: '8px', transition: 'background 0.2s ease'
-                      }}
-                      onMouseEnter={(e) => e.currentTarget.style.background = darkMode ? '#333336' : '#f3f4f6'}
-                      onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                    >
-                      <Cloud size={18} color={darkMode ? '#c4c7c5' : '#64748b'} />
-                      Upload dari PinCloud
-                    </button>
+                    {!isGuest && currentIsLoggedIn && (
+                      <button
+                        onClick={() => {
+                          setIsAttachmentMenuOpen(false);
+                          openNextcloudModal();
+                        }}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: '16px',
+                          padding: '10px 16px', margin: '2px 8px', border: 'none', background: 'transparent',
+                          color: darkMode ? '#e3e3e3' : '#374151',
+                          fontSize: '14.5px', fontWeight: '500', cursor: 'pointer', textAlign: 'left',
+                          borderRadius: '8px', transition: 'background 0.2s ease'
+                        }}
+                        onMouseEnter={(e) => e.currentTarget.style.background = darkMode ? '#333336' : '#f3f4f6'}
+                        onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                      >
+                        <Cloud size={18} color={darkMode ? '#c4c7c5' : '#64748b'} />
+                        Upload dari PinCloud
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
@@ -360,24 +362,26 @@ export default function ChatInputArea({
                       <Paperclip size={18} color={darkMode ? '#c4c7c5' : '#64748b'} />
                       Upload file
                     </button>
-                    <button
-                      onClick={() => {
-                        setIsAttachmentMenuOpen(false);
-                        openNextcloudModal();
-                      }}
-                      style={{
-                        display: 'flex', alignItems: 'center', gap: '16px',
-                        padding: '10px 16px', margin: '2px 8px', border: 'none', background: 'transparent',
-                        color: darkMode ? '#e3e3e3' : '#374151',
-                        fontSize: '14.5px', fontWeight: '500', cursor: 'pointer', textAlign: 'left',
-                        borderRadius: '8px', transition: 'background 0.2s ease'
-                      }}
-                      onMouseEnter={(e) => e.currentTarget.style.background = darkMode ? '#333336' : '#f3f4f6'}
-                      onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                    >
-                      <Cloud size={18} color={darkMode ? '#c4c7c5' : '#64748b'} />
-                      Upload dari PinCloud
-                    </button>
+                    {!isGuest && currentIsLoggedIn && (
+                      <button
+                        onClick={() => {
+                          setIsAttachmentMenuOpen(false);
+                          openNextcloudModal();
+                        }}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: '16px',
+                          padding: '10px 16px', margin: '2px 8px', border: 'none', background: 'transparent',
+                          color: darkMode ? '#e3e3e3' : '#374151',
+                          fontSize: '14.5px', fontWeight: '500', cursor: 'pointer', textAlign: 'left',
+                          borderRadius: '8px', transition: 'background 0.2s ease'
+                        }}
+                        onMouseEnter={(e) => e.currentTarget.style.background = darkMode ? '#333336' : '#f3f4f6'}
+                        onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                      >
+                        <Cloud size={18} color={darkMode ? '#c4c7c5' : '#64748b'} />
+                        Upload dari PinCloud
+                      </button>
+                    )}
                   </div>
                 )}
               </div>

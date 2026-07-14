@@ -94,13 +94,22 @@ async def _sequential_pipeline_generator(
                     ext = os.path.splitext(filename)[1].lower()
                     extracted = ""
                     if ext == ".pdf":
-                        import PyPDF2
-                        with open(abs_path, "rb") as f:
-                            reader = PyPDF2.PdfReader(f)
-                            for page in reader.pages:
-                                page_text = page.extract_text()
+                        import fitz
+                        try:
+                            doc = fitz.open(abs_path)
+                            for page in doc:
+                                page_text = page.get_text()
                                 if page_text:
                                     extracted += page_text + "\n"
+                        except Exception as e:
+                            logger.warning(f"[PDF] fitz extraction failed, fallback PyPDF2: {e}")
+                            import PyPDF2
+                            with open(abs_path, "rb") as f:
+                                reader = PyPDF2.PdfReader(f)
+                                for page in reader.pages:
+                                    page_text = page.extract_text()
+                                    if page_text:
+                                        extracted += page_text + "\n"
                         
                         # Fallback untuk PDF Scan (kosong teksnya), jalankan pre-restorasi OCRmyPDF lalu render jadi gambar
                         if not extracted.strip():
@@ -148,9 +157,11 @@ async def _sequential_pipeline_generator(
                 except Exception as e:
                     logger.error(f"[PIPELINE] Gagal mengekstrak isi file {path}: {e}")
                     
-    # Append extracted texts to user message
-    if extracted_file_texts:
-        user_message += "\n\n" + "\n\n".join(extracted_file_texts)
+    # Append extracted texts to user message ONLY IF stateless (no session_uuid)
+    # If session_uuid exists, the text is saved to ai_document_chunks and injected by mode_hub.py!
+    if extracted_file_texts and not payload.session_uuid:
+        truncated_texts = [txt[:15000] + "...[TRUNCATED]" if len(txt) > 15000 else txt for txt in extracted_file_texts]
+        user_message += "\n\n" + "\n\n".join(truncated_texts)
         if payload.messages:
             payload.messages[-1].content = user_message
 

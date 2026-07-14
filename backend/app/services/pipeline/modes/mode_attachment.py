@@ -51,6 +51,10 @@ class ModeAttachment:
         if is_thinking:
             system_prompt = "<|think|>\n" + system_prompt
 
+        session_chunks = routing_data.get("_session_chunks_text", "") if routing_data else ""
+        if session_chunks:
+            system_prompt = session_chunks + "\n\n" + system_prompt
+
         stream_messages = [
             {"role": "system", "content": system_prompt},
             *trimmed_messages,

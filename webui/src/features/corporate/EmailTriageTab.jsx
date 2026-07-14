@@ -307,17 +307,37 @@ export default function EmailTriageTab({ theme, darkMode, userData }) {
 
   return (
     <div style={{ flex: 1, padding: '20px', color: theme.textColor, display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-        <h2 style={{ fontSize: '1.5rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <Mail size={24} /> CAKRA Smart Mail (Triage & Auto-Draft)
-        </h2>
-        <div style={{ fontSize: '14px', background: darkMode ? '#2A2A2D' : '#F3F4F6', padding: '6px 12px', borderRadius: '20px', color: theme.secondaryText, marginRight: '24px' }}>
-          Kotak Masuk: <strong style={{ color: theme.textColor }}>{userEmail}</strong>
+      {isZimbraAuthenticated && (
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+          <h2 style={{ fontSize: '1.5rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Mail size={24} /> CAKRA Smart Mail (Triage & Auto-Draft)
+          </h2>
+          <div style={{ fontSize: '14px', background: darkMode ? '#2A2A2D' : '#F3F4F6', padding: '6px 12px', borderRadius: '20px', color: theme.secondaryText, marginRight: '24px' }}>
+            Kotak Masuk: <strong style={{ color: theme.textColor }}>{userEmail}</strong>
+          </div>
         </div>
-      </div>
-      <div style={{ display: 'flex', gap: '20px', flex: 1, minHeight: 0, height: '100%' }}>
+      )}
+      <div style={{ 
+        display: 'flex', 
+        gap: '20px', 
+        flex: 1, 
+        minHeight: 0, 
+        height: '100%',
+        justifyContent: isZimbraAuthenticated ? 'flex-start' : 'center',
+        alignItems: isZimbraAuthenticated ? 'stretch' : 'center'
+      }}>
         {/* Kiri: Inbox List */}
-        <div style={{ width: '380px', background: darkMode ? '#1E1E22' : '#F9FAFB', borderRadius: '12px', padding: '16px', border: `1px solid ${theme.borderColor}`, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+        <div style={{ 
+          width: '380px', 
+          background: darkMode ? '#1E1E22' : '#F9FAFB', 
+          borderRadius: '12px', 
+          padding: '16px', 
+          border: `1px solid ${theme.borderColor}`, 
+          display: 'flex', 
+          flexDirection: 'column', 
+          minHeight: 0,
+          height: isZimbraAuthenticated ? '100%' : 'auto'
+        }}>
           
           {!isZimbraAuthenticated ? (
             <div style={{ display: 'flex', flexDirection: 'column', height: '100%', justifyContent: 'center' }}>
@@ -444,7 +464,8 @@ export default function EmailTriageTab({ theme, darkMode, userData }) {
         </div>
 
         {/* Kanan: AI Assistant & Detail */}
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+        {isZimbraAuthenticated && (
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
           {/* Email Reading Bubble */}
           <div style={{ background: darkMode ? '#1E1E22' : 'white', borderRadius: '12px', padding: '24px', border: `1px solid ${theme.borderColor}`, flex: 1, minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
             {selectedEmail ? (
@@ -719,6 +740,7 @@ export default function EmailTriageTab({ theme, darkMode, userData }) {
             )}
           </div>
         </div>
+        )}
       </div>
     </div>
   );

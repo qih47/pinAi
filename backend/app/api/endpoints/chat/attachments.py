@@ -15,6 +15,8 @@ from backend.app.utils.upload_validator import (
 from backend.app.utils.security_firewall import (
     check_rate_limit,
     validate_attachment_security,
+    _scan_for_injections,
+    InjectionException
 )
 
 router = APIRouter()
@@ -44,6 +46,14 @@ async def upload_chat_attachments(
             status_code=429,
             detail="Terlalu banyak upload request. Coba lagi dalam beberapa menit."
         )
+        
+    # ── 1.5 Firewall Scan for Form Data (Session UUID) ────────────────────────
+    if session_uuid:
+        try:
+            _scan_for_injections(session_uuid, "form_data:session_uuid")
+        except InjectionException as e:
+            logger.warning(f"🚨 [FIREWALL] Form data injection blocked in {e.field_name}")
+            raise HTTPException(status_code=403, detail="Permintaan tidak valid (Form Data).")
 
     uploaded_meta_list = []
 
