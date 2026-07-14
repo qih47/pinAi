@@ -1,13 +1,18 @@
 import React, { useState, useEffect } from 'react';
 import apiClient from '../../services/apiClient';
 import DOMPurify from 'dompurify';
-import { Mail, Lock, RefreshCw, Bot, CircleDot, CheckCircle2, Send, Forward as ForwardIcon, Hourglass, Ban, ShieldAlert, Key } from 'lucide-react';
+import { Mail, Lock, RefreshCw, Bot, CircleDot, CheckCircle2, Send, Forward as ForwardIcon, Hourglass, Ban, ShieldAlert, Key, LogOut } from 'lucide-react';
+import { useCorporateStore } from '../../stores/corporateStore';
 
 export default function EmailTriageTab({ theme, darkMode, userData }) {
   // Gunakan email dari DB jika ada, jika tidak, construct dari NPP
   const userEmail = userData?.email || (userData?.npp ? `${userData.npp}@pindad.com` : "user@pindad.com");
 
-  const [emails, setEmails] = useState([]);
+  const zimbraEmails = useCorporateStore(state => state.zimbraEmails);
+  const setZimbraEmails = useCorporateStore(state => state.setZimbraEmails);
+  const updateZimbraEmail = useCorporateStore(state => state.updateZimbraEmail);
+  const clearZimbraEmails = useCorporateStore(state => state.clearZimbraEmails);
+
   const [selectedEmail, setSelectedEmail] = useState(null);
   const [isLoadingEmails, setIsLoadingEmails] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
@@ -65,7 +70,14 @@ export default function EmailTriageTab({ theme, darkMode, userData }) {
 
   useEffect(() => {
     if (zimbraPassword) {
-      fetchEmails(zimbraPassword);
+      if (zimbraEmails.length === 0) {
+        fetchEmails(zimbraPassword);
+      } else {
+        setIsZimbraAuthenticated(true);
+        if (!selectedEmail && zimbraEmails.length > 0) {
+           setSelectedEmail(zimbraEmails[0]);
+        }
+      }
     }
   }, [zimbraPassword]);
 
@@ -93,12 +105,12 @@ export default function EmailTriageTab({ theme, darkMode, userData }) {
   // Background AI Triage Tagging (Sequential to prevent GPU DDoS)
   useEffect(() => {
     const processTriageQueue = async () => {
-      const pendingEmails = emails.filter(email => (email.priority === '🔴 Unread' || email.priority === '🟢 Read') && !email.has_triage);
+      const pendingEmails = zimbraEmails.filter(email => (email.priority === '🔴 Unread' || email.priority === '🟢 Read') && !email.has_triage);
       if (pendingEmails.length === 0) return;
 
       // Mark as scanning locally so we don't re-process on re-renders
       const idsToScan = pendingEmails.map(e => e.id);
-      setEmails(prev => prev.map(e => idsToScan.includes(e.id) ? { ...e, has_triage: true, priority: '⏳ Scanning...' } : e));
+      idsToScan.forEach(id => updateZimbraEmail(id, { has_triage: true, priority: '⏳ Scanning...' }));
 
       // Process sequentially
       for (const email of pendingEmails) {
@@ -109,19 +121,19 @@ export default function EmailTriageTab({ theme, darkMode, userData }) {
           });
           
           if (res.data.status === 'success') {
-             setEmails(prev => prev.map(e => e.id === email.id ? { ...e, priority: res.data.data.priority } : e));
+             updateZimbraEmail(email.id, { priority: res.data.data.priority });
           } else {
-             setEmails(prev => prev.map(e => e.id === email.id ? { ...e, priority: email.priority } : e));
+             updateZimbraEmail(email.id, { priority: email.priority });
           }
         } catch (err) {
           console.error("Triage failed for", email.id, err);
-          setEmails(prev => prev.map(e => e.id === email.id ? { ...e, priority: email.priority } : e));
+          updateZimbraEmail(email.id, { priority: email.priority });
         }
       }
     };
 
     processTriageQueue();
-  }, [emails]);
+  }, [zimbraEmails, updateZimbraEmail]);
 
   useEffect(() => {
     if (selectedEmail && !draftContent && !isGenerating) {
@@ -149,7 +161,7 @@ export default function EmailTriageTab({ theme, darkMode, userData }) {
     }
   };
 
-  const fetchEmails = async (passwordOverride = null) => {
+  const fetchEmails = async (passwordOverride = null, isRefresh = false) => {
     const passwordToUse = passwordOverride || zimbraPassword;
     if (!passwordToUse) return;
 
@@ -162,9 +174,20 @@ export default function EmailTriageTab({ theme, darkMode, userData }) {
         password: passwordToUse
       });
       if (response.data.status === 'success') {
-        setEmails(response.data.data);
-        if (response.data.data.length > 0) {
-          setSelectedEmail(response.data.data[0]);
+        const fetchedEmails = response.data.data;
+        if (isRefresh || zimbraEmails.length > 0) {
+           // Merge: only add emails that don't exist in current zimbraEmails cache
+           const existingIds = new Set(zimbraEmails.map(e => e.id));
+           const newEmails = fetchedEmails.filter(e => !existingIds.has(e.id));
+           if (newEmails.length > 0) {
+              setZimbraEmails([...newEmails, ...zimbraEmails]);
+           }
+        } else {
+           setZimbraEmails(fetchedEmails);
+        }
+
+        if (!selectedEmail && fetchedEmails.length > 0) {
+          setSelectedEmail(fetchedEmails[0]);
         }
         setIsZimbraAuthenticated(true);
         sessionStorage.setItem('cakra_zimbra_pw', passwordToUse);
@@ -181,6 +204,14 @@ export default function EmailTriageTab({ theme, darkMode, userData }) {
     } finally {
       setIsLoadingEmails(false);
     }
+  };
+
+  const handleLogoutZimbra = () => {
+    sessionStorage.removeItem('cakra_zimbra_pw');
+    setZimbraPassword("");
+    setIsZimbraAuthenticated(false);
+    clearZimbraEmails();
+    setSelectedEmail(null);
   };
 
   const handleLoginZimbra = (e) => {
@@ -341,22 +372,27 @@ export default function EmailTriageTab({ theme, darkMode, userData }) {
             <>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
                 <h3 style={{ fontSize: '1rem', fontWeight: '600' }}>Inbox (Zimbra)</h3>
-                <button onClick={() => fetchEmails()} disabled={isLoadingEmails} style={{ background: 'transparent', border: 'none', cursor: isLoadingEmails ? 'not-allowed' : 'pointer', opacity: isLoadingEmails ? 0.5 : 1, display: 'flex', alignItems: 'center', color: theme.textColor }}>
-                  <RefreshCw size={18} />
-                </button>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button onClick={() => fetchEmails(null, true)} disabled={isLoadingEmails} title="Refresh Email" style={{ background: 'transparent', border: 'none', cursor: isLoadingEmails ? 'not-allowed' : 'pointer', opacity: isLoadingEmails ? 0.5 : 1, display: 'flex', alignItems: 'center', color: theme.textColor }}>
+                    <RefreshCw size={18} />
+                  </button>
+                  <button onClick={handleLogoutZimbra} title="Logout Zimbra" style={{ background: 'transparent', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', color: '#ef4444' }}>
+                    <LogOut size={18} />
+                  </button>
+                </div>
               </div>
               
               <div style={{ flex: 1, overflowY: 'auto', paddingRight: '8px' }}>
-              {isLoadingEmails ? (
+              {isLoadingEmails && zimbraEmails.length === 0 ? (
                 <div style={{ textAlign: 'center', padding: '20px', color: theme.secondaryText }}>Menyinkronkan ulang...</div>
               ) : errorMsg ? (
                 <div style={{ padding: '12px', background: darkMode ? '#3f1a1a' : '#fee2e2', color: '#ef4444', borderRadius: '8px', fontSize: '12px' }}>
                   {errorMsg}
                 </div>
-              ) : emails.length === 0 ? (
+              ) : zimbraEmails.length === 0 ? (
                 <div style={{ textAlign: 'center', padding: '20px', color: theme.secondaryText }}>Tidak ada email.</div>
               ) : (
-                emails.map((email) => (
+                zimbraEmails.map((email) => (
                   <div 
                     key={email.id}
                     onClick={() => { setSelectedEmail(email); setDraftContent(""); setInstruction(""); }}

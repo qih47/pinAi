@@ -1,10 +1,11 @@
 import logging
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException, Query, Depends
+from fastapi import APIRouter, HTTPException, Query, Depends, Form
 from fastapi.responses import PlainTextResponse
 
 from backend.app.core.config import settings
+import base64
 from backend.app.core.paths import get_account_session_dir
 from backend.app.api.dependencies.auth import get_current_user_npp
 
@@ -90,3 +91,32 @@ async def download_all_artifacts(
         media_type="application/zip",
         headers={"Content-Disposition": f"attachment; filename=artifacts_{session_id[:8]}.zip"}
     )
+
+
+@router.post("/artifacts/download_b64")
+async def download_b64_artifact(
+    base64_data: str = Form(...),
+    filename: str = Form(...),
+    mime_type: str = Form(...)
+):
+    """
+    Mengunduh data base64 sebagai file attachment.
+    Ini berguna untuk mem-bypass pemblokiran browser terhadap 'blob:' atau 'data:'
+    pada download HTTP non-localhost.
+    """
+    try:
+        # Strip header if present
+        if "," in base64_data:
+            base64_data = base64_data.split(",")[1]
+            
+        file_bytes = base64.b64decode(base64_data)
+        file_like = io.BytesIO(file_bytes)
+        
+        return StreamingResponse(
+            file_like,
+            media_type=mime_type,
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+        )
+    except Exception as e:
+        logger.error(f"[ARTIFACTS] Failed to decode base64 for {filename}: {e}")
+        raise HTTPException(status_code=400, detail="Data base64 tidak valid.")

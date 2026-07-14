@@ -14,6 +14,7 @@ import NotificationBell from "../../components/NotificationBell"; // 👈 W16: N
 import PreviewImageModal from "./components/modals/PreviewImageModal";
 import ContextIsolationModal from "./components/modals/ContextIsolationModal";
 import GhostWriterModal from "./components/modals/GhostWriterModal";
+import NextcloudModal from "./components/NextcloudModal";
 import RightSidebar from "./components/RightSidebar";
 import ChatInputArea from "./components/ChatInputArea";
 import EmailTriageTab from "../corporate/EmailTriageTab";
@@ -45,6 +46,12 @@ export default function ChatPage({ isGuest,
   const {
     activeIsolatedDocId, activeIsolatedTitle, activeSessionId, artifactContent, artifacts, authUser, baselineHeightRef, bottomRef, chatHistory, chatMode, chatModeRef, currentIsLoggedIn, currentThinking, currentUserData, darkMode, defaultGetGreeting, detectLang, docContent, docSearchQuery, documents, documentsTotal, fetchDocumentsList, fileInputRef, handleChatModeChange, handleClearChat, handleDownloadAllArtifacts, handleDownloadArtifact, handleDragLeave, handleDragOver, handleDrop, handleFileChange, handleFileClick, handleKeyDown, handleOpenArtifact, handlePaste, handleSubmit, handleThinkingModeChange, hasSidebar, input, isArtifactLoading, isAuthenticated, isDocLoading, isDragOver, isEmptyChat, isLoading, isLoadingDocuments, isMobile, isMultiLine, isResizingRightSidebar, isStreaming, isStreamingText, isThinking, isThinkingMode, isThinkingModeRef, isUploadingFile, lastAssistantIndex, lastLoadedSessionRef, loadChatSession, logout, mainMarginLeft, mainMarginRight, messageSearchInputRef, messages, messagesContainerRef, msgSearchQuery, navigate, previewArtifact, previewDoc, previewImage, removeFilePreview, rightSidebarWidth, selectedFiles, selectedMode, sessionAttachments, setChatHistory, setChatMode, setContextIsolation, setDarkMode, setDocContent, setDocSearchQuery, setInput, setIsArtifactLoading, setIsDocLoading, setIsDragOver, setIsMobile, setIsMultiLine, setIsThinkingMode, setIsUploadingFile, setMsgSearchQuery, setPreviewArtifact, setPreviewDoc, setPreviewImage, setRightSidebarWidth, setSelectedFiles, setSelectedMode, setShowDocumentList, setShowMsgSearch, setShowRightSidebar, setShowScrollBottom, setSidebarOpen, setStagedAttachments, showDocumentList, showMsgSearch, showRightSidebar, showScrollBottom, showWelcome, sidebarOpen, singleLineWidthRef, stagedAttachments, startResizingRightSidebar, storeChatMode, textareaRef, theme, toast, toggleRightSidebar, triggerLogout, validateFile, wasLeftSidebarOpenRef
   } = chatLogic;
+
+  React.useEffect(() => {
+    if (corporateMode) {
+      setShowRightSidebar(false);
+    }
+  }, [corporateMode, setShowRightSidebar]);
 
   return (
     <div style={{ ...styles.root, background: theme.rootBg }}>
@@ -855,6 +862,15 @@ export default function ChatPage({ isGuest,
       <PreviewImageModal
         previewImage={previewImage}
         onClose={() => setPreviewImage(null)}
+      />
+
+      {/* ☁️ NEXTCLOUD MODAL */}
+      <NextcloudModal 
+        darkMode={darkMode}
+        onFileSelect={(files) => {
+          // Add downloaded file to selectedFiles
+          setSelectedFiles((prev) => [...prev, ...files]);
+        }}
       />
 
       {/* ✍️ GHOSTWRITER MODAL */}

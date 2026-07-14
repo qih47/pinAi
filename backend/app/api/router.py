@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 import logging
-from backend.app.api.endpoints import auth, chat, health, documents, admin, notifications, analytics, api_keys, training, corporate, synthetic
+from backend.app.api.endpoints import auth, chat, health, documents, admin, notifications, analytics, api_keys, training, corporate, synthetic, nextcloud
 
 logger = logging.getLogger("CAKRA_ROUTER")
 
@@ -20,5 +20,6 @@ api_router.include_router(admin.router, prefix="/admin", tags=["Admin"])
 api_router.include_router(notifications.router, prefix="/notifications", tags=["Notifications"])
 api_router.include_router(notifications.audit_router, tags=["Audit Logs"])
 api_router.include_router(analytics.router, prefix="/analytics", tags=["Analytics"])
+api_router.include_router(nextcloud.router, prefix="/nextcloud", tags=["Nextcloud Integration"])
 
-logger.info("[ROUTER_INIT] Main api_router loaded: /auth, /chat, /health, /documents, /admin, /notifications, /audit-logs, /analytics, /synthetic")
+logger.info("[ROUTER_INIT] Main api_router loaded: /auth, /chat, /health, /documents, /admin, /notifications, /audit-logs, /analytics, /synthetic, /nextcloud")

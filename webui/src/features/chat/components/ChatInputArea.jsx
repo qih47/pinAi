@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState, useRef, useEffect } from "react";
 import PlusButton from "./PlusButton";
 import CustomModeSelector from "./CustomModeSelector";
 import SendButton from "./SendButton";
@@ -6,6 +6,8 @@ import { useChatStore } from "../../../stores/chatStore";
 import ScrollBottomButton from "./ChatInputArea/ScrollBottomButton";
 import IsolatedDocBanner from "./ChatInputArea/IsolatedDocBanner";
 import AttachmentPreview from "./ChatInputArea/AttachmentPreview";
+import useNextcloudStore from "../../../stores/nextcloudStore";
+import { Paperclip, Cloud } from "lucide-react";
 
 export default function ChatInputArea({
   theme,
@@ -42,6 +44,20 @@ export default function ChatInputArea({
   handleThinkingModeChange,
   styles,
 }) {
+  const [isAttachmentMenuOpen, setIsAttachmentMenuOpen] = useState(false);
+  const attachmentMenuRef = useRef(null);
+  const openNextcloudModal = useNextcloudStore(state => state.openModal);
+
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (attachmentMenuRef.current && !attachmentMenuRef.current.contains(event.target)) {
+        setIsAttachmentMenuOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
   return (
     <div
       style={{
@@ -65,7 +81,7 @@ export default function ChatInputArea({
       }}
     >
       <div style={styles.inputContainer}>
-        
+
         <ScrollBottomButton
           isBottom={isBottom}
           showScrollBottom={showScrollBottom}
@@ -74,7 +90,7 @@ export default function ChatInputArea({
           messagesContainerRef={messagesContainerRef}
           darkMode={darkMode}
         />
-        
+
         <IsolatedDocBanner
           activeIsolatedTitle={activeIsolatedTitle}
           setContextIsolation={setContextIsolation}
@@ -142,14 +158,70 @@ export default function ChatInputArea({
           >
             {/* Plus button — kiri, selalu align bottom */}
             {!isMultiLine && (
-              <div style={{ flexShrink: 0, paddingBottom: "0px" }}>
+              <div style={{ flexShrink: 0, paddingBottom: "0px", position: "relative" }} ref={attachmentMenuRef}>
                 <PlusButton
-                  onClick={() => fileInputRef.current?.click()}
+                  onClick={() => setIsAttachmentMenuOpen(!isAttachmentMenuOpen)}
                   disabled={isUploadingFile}
                   selectedFiles={selectedFiles}
                   darkMode={darkMode}
                   isStreaming={isStreaming}
                 />
+
+                {isAttachmentMenuOpen && (
+                  <div style={{
+                    position: 'absolute',
+                    bottom: '100%',
+                    left: 0,
+                    marginBottom: '10px',
+                    background: darkMode ? '#1e1e20' : '#ffffff',
+                    border: darkMode ? 'none' : '1px solid #e2e8f0',
+                    borderRadius: '16px',
+                    boxShadow: darkMode ? '0 4px 20px rgba(0,0,0,0.5), 0 0 2px rgba(255,255,255,0.1)' : '0 4px 15px rgba(0,0,0,0.1)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    minWidth: '250px',
+                    padding: '8px 0',
+                    zIndex: 50
+                  }}>
+                    <button
+                      onClick={() => {
+                        setIsAttachmentMenuOpen(false);
+                        fileInputRef.current?.click();
+                      }}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: '16px',
+                        padding: '10px 16px', margin: '2px 8px', border: 'none', background: 'transparent',
+                        color: darkMode ? '#e3e3e3' : '#374151',
+                        fontSize: '14.5px', fontWeight: '500', cursor: 'pointer', textAlign: 'left',
+                        borderRadius: '8px', transition: 'background 0.2s ease'
+                      }}
+                      onMouseEnter={(e) => e.currentTarget.style.background = darkMode ? '#333336' : '#f3f4f6'}
+                      onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                    >
+                      <Paperclip size={18} color={darkMode ? '#c4c7c5' : '#64748b'} />
+                      Upload file
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        setIsAttachmentMenuOpen(false);
+                        openNextcloudModal();
+                      }}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: '16px',
+                        padding: '10px 16px', margin: '2px 8px', border: 'none', background: 'transparent',
+                        color: darkMode ? '#e3e3e3' : '#374151',
+                        fontSize: '14.5px', fontWeight: '500', cursor: 'pointer', textAlign: 'left',
+                        borderRadius: '8px', transition: 'background 0.2s ease'
+                      }}
+                      onMouseEnter={(e) => e.currentTarget.style.background = darkMode ? '#333336' : '#f3f4f6'}
+                      onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                    >
+                      <Cloud size={18} color={darkMode ? '#c4c7c5' : '#64748b'} />
+                      Upload dari PinCloud
+                    </button>
+                  </div>
+                )}
               </div>
             )}
 
@@ -245,13 +317,70 @@ export default function ChatInputArea({
               }}
             >
               {/* Kiri: Plus */}
-              <PlusButton
-                onClick={() => fileInputRef.current?.click()}
-                disabled={isUploadingFile}
-                selectedFiles={selectedFiles}
-                darkMode={darkMode}
-                isStreaming={isStreaming}
-              />
+              <div style={{ display: 'flex', gap: '4px', position: "relative" }} ref={attachmentMenuRef}>
+                <PlusButton
+                  onClick={() => setIsAttachmentMenuOpen(!isAttachmentMenuOpen)}
+                  disabled={isUploadingFile}
+                  selectedFiles={selectedFiles}
+                  darkMode={darkMode}
+                  isStreaming={isStreaming}
+                />
+
+                {isAttachmentMenuOpen && (
+                  <div style={{
+                    position: 'absolute',
+                    bottom: '100%',
+                    left: 0,
+                    marginBottom: '10px',
+                    background: darkMode ? '#1e1e20' : '#ffffff',
+                    border: darkMode ? 'none' : '1px solid #e2e8f0',
+                    borderRadius: '16px',
+                    boxShadow: darkMode ? '0 4px 20px rgba(0,0,0,0.5), 0 0 2px rgba(255,255,255,0.1)' : '0 4px 15px rgba(0,0,0,0.1)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    minWidth: '250px',
+                    padding: '8px 0',
+                    zIndex: 50
+                  }}>
+                    <button
+                      onClick={() => {
+                        setIsAttachmentMenuOpen(false);
+                        fileInputRef.current?.click();
+                      }}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: '16px',
+                        padding: '10px 16px', margin: '2px 8px', border: 'none', background: 'transparent',
+                        color: darkMode ? '#e3e3e3' : '#374151',
+                        fontSize: '14.5px', fontWeight: '500', cursor: 'pointer', textAlign: 'left',
+                        borderRadius: '8px', transition: 'background 0.2s ease'
+                      }}
+                      onMouseEnter={(e) => e.currentTarget.style.background = darkMode ? '#333336' : '#f3f4f6'}
+                      onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                    >
+                      <Paperclip size={18} color={darkMode ? '#c4c7c5' : '#64748b'} />
+                      Upload file
+                    </button>
+                    <button
+                      onClick={() => {
+                        setIsAttachmentMenuOpen(false);
+                        openNextcloudModal();
+                      }}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: '16px',
+                        padding: '10px 16px', margin: '2px 8px', border: 'none', background: 'transparent',
+                        color: darkMode ? '#e3e3e3' : '#374151',
+                        fontSize: '14.5px', fontWeight: '500', cursor: 'pointer', textAlign: 'left',
+                        borderRadius: '8px', transition: 'background 0.2s ease'
+                      }}
+                      onMouseEnter={(e) => e.currentTarget.style.background = darkMode ? '#333336' : '#f3f4f6'}
+                      onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                    >
+                      <Cloud size={18} color={darkMode ? '#c4c7c5' : '#64748b'} />
+                      Upload dari PinCloud
+                    </button>
+                  </div>
+                )}
+              </div>
 
               {/* Kanan: Auto + Send */}
               <div

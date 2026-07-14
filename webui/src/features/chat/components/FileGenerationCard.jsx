@@ -7,6 +7,9 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
+import useNextcloudStore from '../../../stores/nextcloudStore';
+
+const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://192.168.11.80:5000';
 
 // ─── Sleek Loader UI ─────────────────────────────────────────────────────────
 const PulseLoader = () => (
@@ -109,6 +112,41 @@ export default function FileGenerationCard({
       a.download = filename || 'file.txt';
       a.click();
       URL.revokeObjectURL(url);
+    }
+  };
+
+  const { credentials, isLoggedIn, openModal } = useNextcloudStore();
+  const [isSavingCloud, setIsSavingCloud] = useState(false);
+
+  const handleSaveToNextcloud = async (e) => {
+    e.stopPropagation();
+    if (!isLoggedIn) {
+      openModal();
+      return;
+    }
+
+    setIsSavingCloud(true);
+    try {
+      const response = await fetch(`${API_BASE}/api/nextcloud/upload`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          auth: credentials,
+          path: '/Cakra_AI_Exports',
+          filename: filename || 'file.txt',
+          content: liveCode || ''
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('Gagal upload ke Nextcloud');
+      }
+      
+      alert('Berhasil disimpan ke Nextcloud (Cakra_AI_Exports)');
+    } catch (err) {
+      alert('Error: ' + err.message);
+    } finally {
+      setIsSavingCloud(false);
     }
   };
 
@@ -220,6 +258,41 @@ export default function FileGenerationCard({
             </button> */}
 
 
+
+            {/* Tombol Cloud: Save to Nextcloud */}
+            <button
+              onClick={handleSaveToNextcloud}
+              disabled={isSavingCloud}
+              title="Save to Nextcloud"
+              style={{
+                background: 'transparent',
+                border: darkMode ? '1px solid rgba(59, 130, 246, 0.4)' : '1px solid rgba(59, 130, 246, 0.4)',
+                borderRadius: '8px',
+                padding: '8px 12px',
+                color: '#3b82f6',
+                fontSize: '13px',
+                fontWeight: '500',
+                cursor: 'pointer',
+                transition: 'all 0.2s ease',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = '#3b82f6';
+                e.currentTarget.style.color = '#ffffff';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'transparent';
+                e.currentTarget.style.color = '#3b82f6';
+              }}
+            >
+              {isSavingCloud ? (
+                <svg className="animate-spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+              ) : (
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></svg>
+              )}
+            </button>
 
             {/* Tombol Utama: Download (Persis image_c936bf.png) */}
             <button

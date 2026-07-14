@@ -10,6 +10,8 @@ import { Suspense, lazy } from 'react';
 
 const LazyMermaidViewer = lazy(() => import('./MermaidViewer'));
 const LazySmartMailWidget = lazy(() => import('./SmartMailChatWidget'));
+const LazyGanttViewer = lazy(() => import('./GanttViewer'));
+const LazyTimelineInfographic = lazy(() => import('./TimelineInfographic'));
 
 const highlightText = (text, query) => {
     if (!query || typeof text !== 'string') return text;
@@ -260,6 +262,22 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
                 );
             }
 
+            if (!inline && match && match[1] === 'gantt') {
+                return (
+                    <Suspense fallback={<div className="animate-pulse p-8 border border-dashed rounded-xl text-sm text-center font-medium my-4">Memuat Gantt Chart...</div>}>
+                        <LazyGanttViewer chartCode={cleanCode} darkMode={darkMode} isStreaming={isStreaming} />
+                    </Suspense>
+                );
+            }
+
+            if (!inline && match && match[1] === 'infographic') {
+                return (
+                    <Suspense fallback={<div className="animate-pulse p-8 border border-dashed rounded-xl text-sm text-center font-medium my-4">Memuat Infografis Timeline...</div>}>
+                        <LazyTimelineInfographic chartCode={cleanCode} darkMode={darkMode} isStreaming={isStreaming} />
+                    </Suspense>
+                );
+            }
+
             if (!inline && match && match[1] === 'smartmail') {
                 return (
                     <Suspense fallback={<div className="animate-pulse p-8 border border-dashed rounded-xl text-sm text-center font-medium my-4">Memuat editor email...</div>}>
@@ -293,7 +311,7 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
                 </code>
             );
         }
-    }), [darkMode, theme, searchQuery]);
+    }), [darkMode, theme, searchQuery, isStreaming]);
 
     // 🛠️ FIX AMAN: guard render kosong dipindah ke bawah useMemo agar
     // hooks tidak dipanggil secara kondisional (Rules of Hooks)
