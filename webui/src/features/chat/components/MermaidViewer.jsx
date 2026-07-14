@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import mermaid from 'mermaid';
 import { Maximize2, Minimize2, Download } from 'lucide-react';
 
-const MermaidViewer = ({ chartCode, darkMode }) => {
+const MermaidViewer = ({ chartCode, darkMode, isStreaming }) => {
   const containerRef = useRef(null);
   const [svgContent, setSvgContent] = useState('');
   const [error, setError] = useState(null);
@@ -25,8 +25,11 @@ const MermaidViewer = ({ chartCode, darkMode }) => {
         try {
           await mermaid.parse(chartCode);
         } catch (parseError) {
-          console.warn('Mermaid syntax is not complete yet (streaming)');
-          return;
+          if (isStreaming) {
+            console.warn('Mermaid syntax is not complete yet (streaming)');
+            return;
+          }
+          throw parseError;
         }
         
         setError(null);
@@ -34,8 +37,13 @@ const MermaidViewer = ({ chartCode, darkMode }) => {
         const { svg } = await mermaid.render(id, chartCode);
         setSvgContent(svg);
       } catch (err) {
-        // Abaikan error saat sedang streaming (kode belum lengkap)
-        console.warn('Mermaid partial render error (ignored during stream)');
+        if (isStreaming) {
+          // Abaikan error saat sedang streaming (kode belum lengkap)
+          console.warn('Mermaid partial render error (ignored during stream)');
+        } else {
+          console.error('Mermaid render error:', err);
+          setError(err.message || 'Gagal me-render diagram. Pastikan sintaks Mermaid valid.');
+        }
       }
     };
 
@@ -82,7 +90,7 @@ const MermaidViewer = ({ chartCode, darkMode }) => {
         darkMode ? 'border-gray-700 bg-gray-900/50' : 'border-gray-200 bg-gray-50'
       }`}>
         <span className={`text-xs font-semibold mr-auto ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-          Mermaid Diagram
+          Cakra AI Diagram
         </span>
         <button
           onClick={handleDownload}

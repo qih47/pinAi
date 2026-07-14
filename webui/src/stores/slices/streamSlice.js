@@ -24,8 +24,8 @@ export const createStreamSlice = (set, get) => ({
         if (!content.trim() && !hasAttachments) return;
 
         const currentActiveStreams = get().activeStreams || {};
-        if (Object.keys(currentActiveStreams).length >= 2) {
-            if (toast) toast.error("Maksimal 2 obrolan bersamaan sedang berjalan. Harap tunggu.");
+        if (Object.keys(currentActiveStreams).length >= 4) {
+            if (toast) toast.error("Maksimal 4 obrolan bersamaan sedang berjalan. Harap tunggu.");
             return;
         }
         

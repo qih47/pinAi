@@ -28,10 +28,10 @@ export const createChatSlice = (set, get) => ({
     },
 
     setSplitScreen: (isSplit, url = null) => {
-        set({
+        set((state) => ({
             isSplitScreen: isSplit,
-            activePdfUrl: url
-        });
+            activePdfUrl: isSplit ? url : state.activePdfUrl // Pertahankan URL saat close biar animasi smooth
+        }));
     },
 
     setGhostWriter: (isOpen, content = "") => {

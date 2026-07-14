@@ -181,6 +181,8 @@ def _validate_and_normalize_routing(
         routing["query_judul"] = [str(q).strip() for q in query_judul if isinstance(q, str) and q.strip()]
     else:
         routing["query_judul"] = [str(query_judul)] if query_judul else []
+        
+    logger.info(f"[CALL1] Extracted query_judul: {routing['query_judul']}")
 
     search_tags = routing_json.get("search_tags", [])
     if isinstance(search_tags, list):

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useChatStore } from '../../stores/chatStore';
 import { Activity, ShieldAlert, FileText, Settings, LogOut, Hexagon, Wrench, Database, ChevronLeft, ChevronRight, FileSearch, Code2, Archive, Key, Brain } from 'lucide-react';
 import { LiveTerminal } from './components/LiveTerminal';
 import { RequestLatencyChart } from './components/RequestLatencyChart';
@@ -23,6 +24,7 @@ import { PromptStudio } from '../admin/components/PromptStudio';
 import ArtifactVault from '../admin/components/ArtifactVault';
 import ApiManagement from '../admin/components/ApiManagement';
 import DeepLearningTab from '../admin/components/DeepLearningTab';
+import SyntheticQATab from '../admin/components/SyntheticQATab';
 import { useChatAuthStore } from '../../stores/authStore';
 
 export const DashboardLayout = () => {
@@ -63,6 +65,7 @@ export const DashboardLayout = () => {
           <NavItem icon={<Activity />} label="Overview" active={activeTab === 'overview'} onClick={() => setActiveTab('overview')} isExpanded={isSidebarExpanded} />
           <NavItem icon={<Database />} label="Knowledge Base" active={activeTab === 'knowledge'} onClick={() => setActiveTab('knowledge')} isExpanded={isSidebarExpanded} />
           <NavItem icon={<Brain />} label="Deep Learning" active={activeTab === 'training'} onClick={() => setActiveTab('training')} isExpanded={isSidebarExpanded} />
+          <NavItem icon={<Brain />} label="Synthetic RAG Training" active={activeTab === 'synthetic'} onClick={() => setActiveTab('synthetic')} isExpanded={isSidebarExpanded} />
           <NavItem icon={<ShieldAlert />} label="Cyber Security" active={activeTab === 'security'} onClick={() => setActiveTab('security')} isExpanded={isSidebarExpanded} />
           <NavItem icon={<Code2 />} label="Prompt Studio" active={activeTab === 'prompts'} onClick={() => setActiveTab('prompts')} isExpanded={isSidebarExpanded} />
           <NavItem icon={<Archive />} label="Artifact Vault" active={activeTab === 'artifacts'} onClick={() => setActiveTab('artifacts')} isExpanded={isSidebarExpanded} />
@@ -75,7 +78,10 @@ export const DashboardLayout = () => {
 
         <div className={`${isSidebarExpanded ? 'px-4' : 'px-3'} pb-4 space-y-2`}>
           <button 
-            onClick={() => navigate('/chat/new')}
+            onClick={() => {
+              useChatStore.getState().clearChat();
+              navigate('/chat/new');
+            }}
             className={`w-full flex items-center ${isSidebarExpanded ? 'justify-start' : 'justify-center'} gap-3 p-3 rounded-lg text-gray-500 hover:bg-gray-800/50 hover:text-gray-300 transition-colors`}
           >
             <Hexagon size={20} className="shrink-0" />
@@ -211,6 +217,11 @@ export const DashboardLayout = () => {
             {activeTab === 'training' && (
               <div className="flex-1 flex flex-col min-h-0 animate-in fade-in slide-in-from-bottom-4 duration-500">
                 <DeepLearningTab />
+              </div>
+            )}
+            {activeTab === 'synthetic' && (
+              <div className="flex-1 flex flex-col min-h-0 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                <SyntheticQATab />
               </div>
             )}
             {activeTab === 'security' && (

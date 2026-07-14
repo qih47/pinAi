@@ -21,8 +21,11 @@ export default function LoginPage() {
         navigate('/analytics');
         return;
       }
-      const guestSessionId = useChatStore.getState().sessionUuid;
-      if (guestSessionId) {
+      const storeSessionId = useChatStore.getState().sessionUuid;
+      const localSessionId = localStorage.getItem("cakra_last_session");
+      const guestSessionId = (storeSessionId && storeSessionId !== "new") ? storeSessionId : localSessionId;
+      
+      if (guestSessionId && guestSessionId !== "new") {
         navigate(`/chat/${guestSessionId}`);
       } else {
         navigate('/chat/new'); 

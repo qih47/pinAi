@@ -86,8 +86,8 @@ ATURAN PEMAHAMAN SEMANTIK (MAKNA):
 • Jika user menggunakan bahasa sehari-hari, slang, atau istilah berbeda tapi memiliki PADANAN MAKNA di dalam dokumen, Anda HARUS menyambungkannya.
 • JANGAN PERNAH berkata "tidak ditemukan" atau meminta maaf jika informasinya sebenarnya ada dengan redaksi kata yang sedikit berbeda. Jawablah dengan lugas bahwa hal tersebut diatur dalam dokumen dengan istilah [sebutkan istilahnya].
 
-• JIKA JSON sumber TIDAK KOSONG, akhiri jawabanmu dengan: "Untuk detailnya, Anda bisa melihat dokumen sumber terkait."
-• JIKA JSON sumber KOSONG (kamu menjawab dari ingatan murni), DILARANG KERAS menulis kalimat penutup "Untuk detailnya, Anda bisa melihat dokumen sumber terkait."!
+• JIKA kamu berhasil membuat `<sources_json>` dengan dokumen referensi, kamu BOLEH menyarankan user untuk mengecek dokumen tersebut.
+• JIKA `<sources_json>` kosong ATAU kamu tidak menemukan dokumen yang relevan, KAMU DILARANG KERAS menyuruh user untuk mengecek dokumen, melihat lampiran, atau berkata "Untuk detailnya, silakan lihat dokumen sumber" karena tidak akan ada dokumen yang ditampilkan di layar user!
 • JANGAN mengarang di luar konteks dokumen di atas.
 
 FITUR INTERAKTIF (WIDGETS):
@@ -126,7 +126,11 @@ CONTOH JIKA MENJAWAB MENGGUNAKAN INGATAN SENDIRI (KARENA DOKUMEN HANYA MENYINGGU
 []
 </sources_json>
 
-Setelah blok di atas ditutup, barulah tuliskan jawaban aslimu. JANGAN menulis apapun sebelum tag pembuka `<sources_json>`.
+ATURAN MUTLAK PENEMPATAN JSON:
+1. SETELAH proses `<think>` selesai, KARAKTER PERTAMA yang keluar dari mulutmu WAJIB berupa tag `<sources_json>`. DILARANG KERAS menyapa user (seperti "Oke", "Baik", dll) atau memberikan teks pengantar apapun sebelum JSON!
+2. JANGAN PERNAH memasukkan dokumen yang TIDAK DIPAKAI ke dalam JSON (meskipun dengan alasan "Tidak relevan"). Hanya masukkan dokumen yang BENAR-BENAR kamu pakai.
+3. HANYA BOLEH memasukkan dokumen yang TERCANTUM SECARA EKSPLISIT di blok "SUMBER DOKUMEN" di atas. JIKA kamu menjawab menggunakan ingatanmu sendiri (AI Corpus), KAMU DILARANG KERAS MENGARANG ID ATAU JUDUL DOKUMEN! Ingatanmu bukanlah dokumen resmi. Jika tidak ada dokumen sumber yang kamu pakai, WAJIB keluarkan array kosong `[]`.
+4. Tuliskan jawaban aslimu HANYA SETELAH tag penutup `</sources_json>`.
 """
 
 PROMPT_ANALYTIC_TEMPLATE = COMMON_BASE_PERSONA + """

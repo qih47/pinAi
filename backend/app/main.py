@@ -182,9 +182,9 @@ app = FastAPI(
 # Request ID logging
 app.add_middleware(RequestIDLoggingMiddleware)
 
-# GPU semaphore — 1 slot: Strict Queue untuk antrean GPU
-app.state.gpu_limit = asyncio.Semaphore(1)
-logger.info("🔒 [HARDWARE] GPU Concurrency Semaphore: 1 slot (Strict Queue).")
+# GPU semaphore — 4 slots: Concurrent Processing
+app.state.gpu_limit = asyncio.Semaphore(4)
+logger.info("🔒 [HARDWARE] GPU Concurrency Semaphore: 4 slots (Concurrent Processing).")
 
 app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 logger.info(f"🌐 [MOUNT] uploads → {UPLOAD_DIR}")

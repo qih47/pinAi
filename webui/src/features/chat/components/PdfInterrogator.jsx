@@ -24,7 +24,8 @@ const PdfInterrogator = ({ darkMode }) => {
     const [scale, setScale] = useState(1.0);
     const [viewMode, setViewMode] = useState('scroll'); // 'scroll' atau 'page'
 
-    if (!isSplitScreen || !activePdfUrl) return null;
+    // Hapus early return agar animasi penutup bisa berjalan
+    // if (!isSplitScreen || !activePdfUrl) return null;
 
     const onDocumentLoadSuccess = ({ numPages }) => {
         setNumPages(numPages);
@@ -42,7 +43,15 @@ const PdfInterrogator = ({ darkMode }) => {
     const zoomOut = () => setScale(prev => Math.max(prev - 0.2, 0.5));
 
     return (
-        <div className={`flex flex-col h-full shadow-xl transition-all duration-300 w-1/2 ${darkMode ? 'bg-[#151517] border-[#2a2a2d]' : 'bg-white border-gray-200'}`}>
+        <div 
+            className={`flex flex-col h-full shadow-xl transition-all ease-in-out ${darkMode ? 'bg-[#151517] border-[#2a2a2d]' : 'bg-white border-gray-200'} ${isSplitScreen ? 'w-1/2 opacity-100 border-r' : 'w-0 opacity-0 border-none'}`}
+            style={{ 
+                visibility: isSplitScreen ? 'visible' : 'hidden',
+                transition: 'width 0.4s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.3s ease-in-out, visibility 0.4s',
+                overflow: 'hidden',
+                flexShrink: 0 // Biar gak tertekan oleh flex sebelahnya saat nutup
+            }}
+        >
             {/* Toolbar Atas */}
             <div className={`flex items-center justify-between p-3 ${darkMode ? 'bg-[#151517] border-[#2a2a2d]' : 'bg-white border-gray-200'}`}>
                 <div className="flex items-center space-x-2">
@@ -74,7 +83,7 @@ const PdfInterrogator = ({ darkMode }) => {
 
             {/* Content Area dengan Custom Scrollbar bawaan CSS Global */}
             <div className={`flex-1 overflow-y-auto relative p-4 ${darkMode ? 'bg-[#151517]' : 'bg-gray-200'}`}>
-                {activePdfUrl.endsWith('.pdf') || activePdfUrl.includes('/api/') ? (
+                {activePdfUrl && (activePdfUrl.endsWith('.pdf') || activePdfUrl.includes('/api/')) ? (
                     <Document
                         file={activePdfUrl}
                         onLoadSuccess={onDocumentLoadSuccess}

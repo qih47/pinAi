@@ -188,6 +188,8 @@ export default function ChatPage({ isGuest,
           background: "transparent",
           borderBottom: "none",
           boxShadow: "none",
+          
+          pointerEvents: "none", // 🔥 Biar klik bisa tembus ke Document Interrogator di bawahnya
 
           // Posisi tetap di atas melayang
           position: "absolute",
@@ -200,7 +202,7 @@ export default function ChatPage({ isGuest,
         }}>
 
           {/* ── BLOK KIRI: Hamburger Menu ── */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0px', pointerEvents: 'auto' }}>
             {/* ☰ HAMBURGER MENU MOBILE */}
             {isMobile && hasSidebar && (
               <button
@@ -250,6 +252,7 @@ export default function ChatPage({ isGuest,
               display: "flex",
               alignItems: "center",
               gap: "8px",
+              pointerEvents: "auto",
             }}
           >
             {/* ✚ TOMBOL NEW CHAT MOBILE */}

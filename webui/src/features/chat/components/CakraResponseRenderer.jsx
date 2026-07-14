@@ -98,7 +98,17 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
     // dihitung ulang saat rawContent benar-benar berubah, bukan setiap render
     const { thinkingBlock, finalResponseBlock } = useMemo(() => {
         const thinking = thinkingContent || "";
-        const final = rawContent || "";
+        let final = rawContent || "";
+
+        // Samarkan kata 'mermaid' menjadi 'Cakra AI Diagram' agar user tidak bingung,
+        // tapi JANGAN ubah ```mermaid agar engine render tetap jalan
+        final = final.replace(/\bmermaid\b/gi, (match, offset, string) => {
+            const prevChars = string.slice(Math.max(0, offset - 3), offset);
+            if (prevChars === '```') {
+                return match; 
+            }
+            return match[0] === 'M' ? 'Cakra AI Diagram' : 'cakra ai diagram';
+        });
 
         return { thinkingBlock: thinking, finalResponseBlock: final };
     }, [rawContent, thinkingContent]);
@@ -245,7 +255,7 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
             if (!inline && match && match[1] === 'mermaid') {
                 return (
                     <Suspense fallback={<div className="animate-pulse p-8 border border-dashed rounded-xl text-sm text-center font-medium my-4">Memuat engine diagram...</div>}>
-                        <LazyMermaidViewer chartCode={cleanCode} darkMode={darkMode} />
+                        <LazyMermaidViewer chartCode={cleanCode} darkMode={darkMode} isStreaming={isStreaming} />
                     </Suspense>
                 );
             }

@@ -42,36 +42,25 @@ class ModeDocuments:
         if not rag_queries:
             rag_queries = [user_message]
             
-        # ENRICHMENT DENGAN TAGS DAN CONTEXT SNIPPETS
-        search_tags = routing_data.get("search_tags", [])
-        context_snippets = routing_data.get("context_snippets", [])
+        # (Dihapus: Logika penggabungan enrichment_str ke rag_queries[0] karena merusak natural language untuk pgvector/BGE reranker)
+        
         query_judul_list = routing_data.get("query_judul", [])
         
-        enrichment_str = ""
-        if isinstance(query_judul_list, list) and query_judul_list:
-            enrichment_str += " ".join(query_judul_list) + " "
-        if isinstance(search_tags, list) and search_tags:
-            enrichment_str += " ".join(search_tags) + " "
-        if isinstance(context_snippets, list) and context_snippets:
-            enrichment_str += " ".join(context_snippets)
-            
-        enrichment_str = enrichment_str.strip()
-        
-        if enrichment_str and rag_queries:
-            rag_queries[0] = f"{rag_queries[0]} {enrichment_str}"
-
         rag_context = None
         rag_sources = None
 
         # ── Step 2: Parallel Data Fetching ────────────────────────────────────────
         # 2A: Setup Background Tasks
         from backend.app.services.pipeline.community_knowledge import search_community_knowledge
-        from backend.app.services.peraturan_service import search_and_ocr_by_judul
+        from backend.app.services.peraturan_service import search_and_ocr_by_judul, search_and_ocr_by_synthetic_qa, hybrid_document_search
         
         task_community = asyncio.create_task(search_community_knowledge(user_message, is_guest=(current_user_npp == "GUEST")))
         query_judul_list = routing_data.get("query_judul") or []
         query_judul_str = " ".join(query_judul_list) if isinstance(query_judul_list, list) else str(query_judul_list)
-        task_peraturan = asyncio.create_task(search_and_ocr_by_judul(query_judul_list))
+        
+        # FASE 3: HYBRID LATE FUSION RERANKING
+        logger.info(f"[MODE_DOCUMENTS] Sending query_judul_list to Hybrid FTS: {query_judul_list}")
+        task_peraturan = asyncio.create_task(hybrid_document_search(user_message, query_judul_list))
 
         # 2B: Stream RAG progress while tasks run in background
         if rag_queries:
@@ -158,11 +147,14 @@ class ModeDocuments:
                     if word in raw_tag: has_tag = True
                     if word in raw_isi: has_isi = True
 
+        has_semantic = bool(judul_sources)
+        
         logger.info("\n" + "="*40 + "\n" +
                     "🔍 LOG STATUS PENCARIAN DOKUMEN\n" +
                     f"SEARCH_TITLE               : {'ADA' if has_title else 'TIDAK ADA'}\n" +
                     f"SEARCH_TAG                 : {'ADA' if has_tag else 'TIDAK ADA'}\n" +
                     f"SEARCH_ISI_BERITA          : {'ADA' if has_isi else 'TIDAK ADA'}\n" +
+                    f"SEARCH_SEMANTIC            : {'ADA' if has_semantic else 'TIDAK ADA'}\n" +
                     f"SEARCH_RAG                 : {'ADA' if has_rag else 'TIDAK ADA'}\n" +
                     f"SEARCH_AI_DIALOGUE_CORPUS  : {'ADA' if has_community else 'TIDAK ADA'}\n" +
                     "="*40)
@@ -348,14 +340,134 @@ class ModeDocuments:
                                     if json_str:
                                         json_str = re.sub(r'```json|```', '', json_str).strip()
                                         used_docs = json.loads(json_str)
+                                        
+                                        # SPRINT 5: Python-level filter to forcefully drop hallucinated unused docs
+                                        valid_used_docs = []
+                                        for doc in used_docs:
+                                            alasan = str(doc.get("alasan", "")).lower()
+                                            if any(neg in alasan for neg in ["tidak digunakan", "tidak relevan", "tidak dipakai", "tidak merujuk", "tidak digunakan karena"]):
+                                                logger.warning(f"[MODE_DOCUMENTS] 🚫 Membuang doc {doc.get('id')} secara paksa karena alasan: {alasan}")
+                                                continue
+                                            valid_used_docs.append(doc)
+                                        used_docs = valid_used_docs
+                                        
                                         used_ids = [str(doc.get("id", "")) for doc in used_docs]
                                         
-                                        for doc_id in used_ids:
+                                        missing_docs = []
+                                        for doc in used_docs:
+                                            doc_id = str(doc.get("id", ""))
+                                            found = False
                                             for src in rag_sources:
                                                 if str(src.get("id", "")) == doc_id:
                                                     if src not in filtered_sources:
                                                         filtered_sources.append(src)
+                                                    found = True
                                                     break
+                                            if not found:
+                                                missing_docs.append(doc)
+                                                
+                                        if missing_docs:
+                                            from backend.app.core.database import get_peraturan_db
+                                            import os
+                                            PERATURAN_DIR = "/home/qisthi/pinAi/file_peraturan"
+                                            async with get_peraturan_db() as conn_my:
+                                                async with conn_my.cursor() as cur:
+                                                    for mdoc in missing_docs:
+                                                        m_id = str(mdoc.get("id", ""))
+                                                        m_judul = str(mdoc.get("judul", ""))
+                                                        row = None
+                                                        
+                                                        # Coba fetch by ID dulu
+                                                        if m_id.isdigit():
+                                                            sql = """
+                                                                SELECT b.id_berita, b.judul, b.gambar, b.gambar2, b.gambar3, k.nama_kategori, b.noper
+                                                                FROM berita b
+                                                                LEFT JOIN kategori k ON b.id_kategori = k.id_kategori
+                                                                WHERE b.id_berita = %s
+                                                            """
+                                                            await cur.execute(sql, (int(m_id),))
+                                                            candidate_row = await cur.fetchone()
+                                                            
+                                                            if candidate_row:
+                                                                db_judul = candidate_row[1].lower()
+                                                                db_words = {w for w in db_judul.replace("/", " ").replace("-", " ").split() if len(w) > 3}
+                                                                llm_words = {w for w in m_judul.lower().replace("/", " ").replace("-", " ").split() if len(w) > 3}
+                                                                # Validasi kemiripan
+                                                                if db_words and llm_words and db_words.intersection(llm_words):
+                                                                    row = candidate_row
+                                                                else:
+                                                                    logger.warning(f"[MODE_DOCUMENTS] ❌ REJECTED AI Memory ID {m_id}! DB Judul: '{db_judul}' != LLM Judul: '{m_judul}'")
+                                                        
+                                                        # Coba fetch by Noper jika m_id bukan angka (seringkali LLM menaruh noper di field ID)
+                                                        if not row and m_id and not m_id.isdigit():
+                                                            sql = """
+                                                                SELECT b.id_berita, b.judul, b.gambar, b.gambar2, b.gambar3, k.nama_kategori, b.noper
+                                                                FROM berita b
+                                                                LEFT JOIN kategori k ON b.id_kategori = k.id_kategori
+                                                                WHERE b.noper = %s OR b.judul LIKE %s
+                                                                LIMIT 1
+                                                            """
+                                                            await cur.execute(sql, (m_id, f"%{m_id}%"))
+                                                            candidate_row = await cur.fetchone()
+                                                            if candidate_row:
+                                                                row = candidate_row
+                                                                logger.info(f"[MODE_DOCUMENTS] 🌟 AI Memory Recovered: Noper found in ID field: {m_id}")
+                                                                
+                                                        # Kalau ID salah (halusinasi), cari by judul (FULL TEXT SEARCH) sebagai Fallback Recovery
+                                                        if not row and m_judul:
+                                                            safe_judul = m_judul.replace("/", " ").replace("-", " ").replace(".", " ")
+                                                            safe_judul = "".join([c for c in safe_judul[:100] if c.isalnum() or c.isspace()]).strip()
+                                                            words = [w for w in safe_judul.split() if len(w) > 3]
+                                                            if words:
+                                                                match_str = " ".join([w for w in words[:6]]) # Tanpa `+` agar tidak wajib (soft match ranked)
+                                                                sql = """
+                                                                    SELECT b.id_berita, b.judul, b.gambar, b.gambar2, b.gambar3, k.nama_kategori, b.noper 
+                                                                    FROM berita b 
+                                                                    LEFT JOIN kategori k ON b.id_kategori = k.id_kategori 
+                                                                    WHERE MATCH(b.judul, b.tag, b.isi_berita) AGAINST(%s IN NATURAL LANGUAGE MODE) 
+                                                                    LIMIT 5
+                                                                """
+                                                                await cur.execute(sql, (match_str,))
+                                                                candidates = await cur.fetchall()
+                                                                
+                                                                import difflib
+                                                                best_match = None
+                                                                best_ratio = 0.0
+                                                                
+                                                                llm_combined = f"{m_id} {m_judul}".lower()
+                                                                for candidate_row in candidates:
+                                                                    db_combined = f"{candidate_row[6] or ''} {candidate_row[1]}".lower()
+                                                                    ratio = difflib.SequenceMatcher(None, db_combined, llm_combined).ratio()
+                                                                    if ratio > best_ratio:
+                                                                        best_ratio = ratio
+                                                                        best_match = candidate_row
+                                                                        
+                                                                if best_match and best_ratio > 0.65:
+                                                                    row = best_match
+                                                                    logger.info(f"[MODE_DOCUMENTS] 🌟 AI Memory Recovered: Hallucinated ID {m_id} -> Found real ID {row[0]} using Title search: '{m_judul}' (Ratio: {best_ratio:.2f})")
+                                                                else:
+                                                                    logger.warning(f"[MODE_DOCUMENTS] ❌ FTS Fallback REJECTED! Best ratio {best_ratio:.2f} for LLM Judul: '{llm_combined}'")
+                                                        
+                                                        if row:
+                                                            id_berita, db_judul, gambar, gambar2, gambar3, nama_kategori, noper = row
+                                                            
+                                                            valid_file = None
+                                                            for file_name in [gambar, gambar2, gambar3]:
+                                                                if file_name and isinstance(file_name, str) and file_name.lower().endswith(".pdf"):
+                                                                    valid_file = file_name
+                                                                    break
+                                                            if valid_file:
+                                                                filtered_sources.append({
+                                                                    "id": str(id_berita),
+                                                                    "title": db_judul,
+                                                                    "document_title": db_judul,
+                                                                    "filename": valid_file,
+                                                                    "file_path": f"file_peraturan/{valid_file}",
+                                                                    "jenis": nama_kategori or "Regulasi",
+                                                                    "nomor": noper or "N/A",
+                                                                    "score_label": "AI_MEMORY_RECOVERED",
+                                                                    "score": 1.0
+                                                                })
                                         parsing_success = True
                                 except Exception as e:
                                     logger.warning(f"[MODE_DOCUMENTS] Gagal parse sources_json: {e}. Raw: {json_str}")
@@ -363,7 +475,7 @@ class ModeDocuments:
                                 if parsing_success:
                                     final_sources = filtered_sources
                                 else:
-                                    final_sources = rag_sources[:3] if rag_sources else []
+                                    final_sources = []
                                 
                                 yield format_sse("", "", False, sources=final_sources, event_type=SSEEventType.SOURCES)
                                 

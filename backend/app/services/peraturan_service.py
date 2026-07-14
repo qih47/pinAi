@@ -291,3 +291,416 @@ async def simulate_ocr_extraction(file_path: str) -> Tuple[str, List[Dict[str, A
     except Exception as e:
         logger.error(f"[PERATURAN_SERVICE] Simulation failed: {e}")
         raise e
+
+async def search_and_ocr_by_synthetic_qa(user_message: str) -> Tuple[str, List[Dict[str, Any]], List[Dict[str, Any]]]:
+    """
+    Mencari metadata peraturan berdasarkan semantic match antara user_message (full text)
+    dan rag_document_questions (Synthetic QA dari Fase 1).
+    Menggantikan search_and_ocr_by_judul yang lama.
+    """
+    if not user_message or not user_message.strip():
+        return "", [], []
+        
+    logger.info(f"[PERATURAN_SERVICE] Searching Synthetic QA for: '{user_message}'")
+    
+    try:
+        from backend.app.services.rag.vector_service import vector_service
+        from backend.app.core.database import get_db
+        
+        # 1. Embed the user's full message
+        query_embedding = await vector_service.get_query_embedding(user_message)
+        if not query_embedding:
+            return "", [], []
+            
+        # Convert list to string for pgvector: '[0.1, 0.2, ...]'
+        embedding_str = str(query_embedding)
+            
+        # 2. Search pgvector table for top matching source_ids
+        async with get_db() as conn_pg:
+            pg_sql = """
+                SELECT source_id, 1 - (embedding <=> $1::vector) as similarity
+                FROM rag_document_questions
+                ORDER BY embedding <=> $1::vector
+                LIMIT 30
+            """
+            records = await conn_pg.fetch(pg_sql, embedding_str)
+            
+        if not records:
+            return "", [], []
+            
+        unique_source_ids = []
+        source_scores = {}
+        for r in records:
+            s_id = r["source_id"]
+            if s_id not in source_scores:
+                source_scores[s_id] = r["similarity"]
+                unique_source_ids.append(s_id)
+            if len(unique_source_ids) >= 15:
+                break
+                
+        if not unique_source_ids:
+            return "", [], []
+            
+        # 3. Fetch metadata from MySQL (berita) for these source_ids
+        async with get_peraturan_db() as conn_my:
+            async with conn_my.cursor() as cur:
+                format_strings = ','.join(['%s'] * len(unique_source_ids))
+                sql = f"""
+                    SELECT b.id_berita, b.noper, b.judul, b.gambar, b.gambar2, b.gambar3, k.nama_kategori, b.tanggal, b.stataktif, b.mencabut, b.linkper,
+                           1.0 as dummy_score,
+                           b.tag,
+                           SUBSTRING(b.isi_berita, 1, 5000) as isi_snippet
+                    FROM berita b
+                    LEFT JOIN kategori k ON b.id_kategori = k.id_kategori
+                    WHERE b.id_berita IN ({format_strings})
+                """
+                await cur.execute(sql, tuple(unique_source_ids))
+                raw_rows = await cur.fetchall()
+                
+                if not raw_rows:
+                    return "", [], []
+                    
+                rows_dict = {row[0]: list(row) for row in raw_rows}
+                rows = []
+                for s_id in unique_source_ids:
+                    if s_id in rows_dict:
+                        row_data = rows_dict[s_id]
+                        row_data[11] = source_scores[s_id] # Replace score
+                        rows.append(tuple(row_data))
+                
+                # Threshold untuk Cosine Similarity model mxbai-embed-large
+                # Nilai 0.75-0.79 biasanya masih nyasar/random. True match ada di > 0.80
+                rows = [r for r in rows if r[11] >= 0.80]
+                if not rows:
+                    return "", [], []
+                    
+                combined_context_text = ""
+                all_formatted_attachments = []
+                all_source_metadata = []
+
+                loop = asyncio.get_running_loop()
+                
+                found_ids = {row[0] for row in rows}
+                dicabut_oleh = {}
+                
+                for row in rows:
+                    curr_id = row[0]
+                    curr_judul = row[2]
+                    mencabut_str = row[9] or ""
+                    linkper_str = row[10] or ""
+                    
+                    all_replaced = []
+                    if mencabut_str:
+                        all_replaced.extend([x.strip() for x in mencabut_str.split('|') if x.strip()])
+                    if linkper_str:
+                        all_replaced.extend([x.strip() for x in linkper_str.split('|') if x.strip()])
+                        
+                    for rep_id_str in all_replaced:
+                        if rep_id_str.isdigit():
+                            rep_id = int(rep_id_str)
+                            if rep_id in found_ids:
+                                dicabut_oleh[rep_id] = (curr_id, curr_judul)
+                
+                parsed_count = 0
+                for row in rows:
+                    id_berita, noper, judul, gambar, gambar2, gambar3, nama_kategori, tanggal, stataktif, mencabut_str, linkper_str, score, _tag_val, _isi_val = row
+                    logger.info(f"[PERATURAN_SERVICE_SYNTHETIC] Found match: '{judul}' (Score: {score:.4f})")
+                    
+                    valid_file = None
+                    for file_name in [gambar, gambar2, gambar3]:
+                        if file_name and isinstance(file_name, str) and file_name.lower().endswith(".pdf"):
+                            abs_path = os.path.join(PERATURAN_DIR, file_name)
+                            if os.path.exists(abs_path):
+                                valid_file = abs_path
+                                break
+                                
+                    if not valid_file:
+                        continue
+                        
+                    import fitz
+                    try:
+                        with fitz.open(valid_file) as pdf_doc:
+                            total_pages = pdf_doc.page_count
+                    except Exception:
+                        total_pages = 0
+                    
+                    if id_berita in dicabut_oleh:
+                        pengganti_judul = dicabut_oleh[id_berita][1]
+                        status_berlaku_str = f"Tidak Berlaku (Digantikan oleh: {pengganti_judul})"
+                    else:
+                        status_berlaku_str = "Berlaku"
+                        if stataktif == "batal":
+                            status_berlaku_str = "Dicabut"
+                        elif stataktif == "obsolete":
+                            status_berlaku_str = "Tidak Berlaku"
+
+                    meta_str = f"ID Dokumen: {id_berita}\nStatus Berlaku: {status_berlaku_str}\nTanggal Terbit: {tanggal}\nNomor Regulasi: {noper}\nMencabut: {mencabut_str if mencabut_str else '-'}\n"
+                    
+                    if status_berlaku_str == "Berlaku" and parsed_count < 3:
+                        extracted_text, formatted_attachments, _ = await loop.run_in_executor(
+                            None, _process_pdf_sync, valid_file
+                        )
+                        parsed_count += 1
+                        
+                        if extracted_text:
+                            if len(extracted_text) > 4000:
+                                extracted_text = extracted_text[:4000] + "\n...[Teks halaman selanjutnya dipotong untuk menghemat memori. Gunakan teks ini hanya untuk gambaran umum dokumen]..."
+                                
+                            combined_context_text += f"--- DOKUMEN SPESIFIK (JUDUL: {judul}) ---\n{meta_str}{extracted_text}\n-------------------\n\n"
+                        elif formatted_attachments:
+                            combined_context_text += f"--- DOKUMEN SPESIFIK (JUDUL: {judul}) ---\n{meta_str}[Dokumen hasil scan telah dilampirkan sebagai gambar untuk dianalisa]\n-------------------\n\n"
+                        
+                        if formatted_attachments:
+                            all_formatted_attachments.extend(formatted_attachments)
+                    else:
+                        combined_context_text += f"--- DOKUMEN SPESIFIK (JUDUL: {judul}) ---\n{meta_str}[Teks isi fisik dokumen tidak dimuat untuk menghemat kuota memori LLM. Namun dokumen ini TETAP BERLAKU dan WAJIB direkomendasikan jika berupa Form/Surat Izin/Lampiran!]\n-------------------\n\n"
+                        
+                    all_source_metadata.append({
+                        "id": id_berita,
+                        "title": judul,
+                        "document_title": judul,
+                        "filename": os.path.basename(valid_file),
+                        "file_path": f"file_peraturan/{os.path.basename(valid_file)}",
+                        "jenis": nama_kategori or "Regulasi",
+                        "nomor": noper or "N/A",
+                        "page_number": "1",
+                        "total_pages": str(total_pages) if total_pages > 0 else "",
+                        "cache_hit": False,
+                        "score_label": "SYNTHETIC_QA",
+                        "score": float(score) if isinstance(score, (float, int)) else 1.0,
+                        "raw_judul": judul,
+                        "raw_tag": _tag_val,
+                        "raw_isi": _isi_val
+                    })
+                    
+                return combined_context_text, all_formatted_attachments, all_source_metadata
+                
+    except Exception as e:
+        logger.error(f"[PERATURAN_SERVICE_SYNTHETIC] Error during Synthetic QA search: {e}")
+        return "", [], []
+
+async def hybrid_document_search(user_message: str, query_judul_list: List[str]) -> Tuple[str, List[Dict[str, Any]], List[Dict[str, Any]]]:
+    """
+    Fase 3: Late Fusion Reranking.
+    Menggabungkan kandidat dari FTS MySQL & pgvector Synthetic QA, 
+    Lalu di-Rerank secara serentak menggunakan BGE CrossEncoder.
+    """
+    if not user_message or not user_message.strip():
+        return "", [], []
+        
+    logger.info(f"[PERATURAN_SERVICE_HYBRID] Starting Late Fusion for: '{user_message}'")
+    
+    try:
+        from backend.app.services.rag.vector_service import vector_service
+        from backend.app.core.database import get_db
+        
+        candidate_ids = set()
+        
+        # 1. Fetch from pgvector Semantic QA
+        query_embedding = await vector_service.get_query_embedding(user_message)
+        if query_embedding:
+            embedding_str = str(query_embedding)
+            async with get_db() as conn_pg:
+                pg_sql = """
+                    SELECT source_id, 1 - (embedding <=> $1::vector) as similarity
+                    FROM rag_document_questions
+                    ORDER BY embedding <=> $1::vector
+                    LIMIT 20
+                """
+                records = await conn_pg.fetch(pg_sql, embedding_str)
+                for r in records:
+                    candidate_ids.add(r["source_id"])
+                    
+        # 2. Fetch from MySQL FTS
+        if query_judul_list:
+            async with get_peraturan_db() as conn_my:
+                async with conn_my.cursor() as cur:
+                    for query_judul in query_judul_list:
+                        safe_judul = "".join([c for c in query_judul[:200] if c.isalnum() or c.isspace()]).strip()
+                        words = [w for w in safe_judul.split() if len(w) > 2]
+                        if not words: continue
+                        
+                        match_str = " ".join(words)
+                        
+                        # Coba FTS dulu
+                        sql_fts = f"""
+                            SELECT id_berita
+                            FROM berita 
+                            WHERE MATCH(judul, tag, isi_berita) AGAINST (%s IN NATURAL LANGUAGE MODE)
+                            ORDER BY MATCH(judul, tag, isi_berita) AGAINST (%s IN NATURAL LANGUAGE MODE) DESC
+                            LIMIT 10
+                        """
+                        await cur.execute(sql_fts, (match_str, match_str))
+                        rows = await cur.fetchall()
+                        for row in rows:
+                            candidate_ids.add(row[0])
+                            
+                        # SPRINT 5: Fallback LIKE untuk menangkap singkatan pendek (misal "PKB", "SOP") yang sering diabaikan FTS MySQL
+                        if len(words) == 1 and len(words[0]) <= 5:
+                            like_str = f"%{words[0]}%"
+                            sql_like = """
+                                SELECT id_berita
+                                FROM berita
+                                WHERE judul LIKE %s OR tag LIKE %s
+                                LIMIT 10
+                            """
+                            await cur.execute(sql_like, (like_str, like_str))
+                            rows_like = await cur.fetchall()
+                            for row in rows_like:
+                                candidate_ids.add(row[0])
+                            
+        if not candidate_ids:
+            logger.info("[PERATURAN_SERVICE_HYBRID] No candidates found from any path.")
+            return "", [], []
+            
+        logger.info(f"[PERATURAN_SERVICE_HYBRID] Pooled {len(candidate_ids)} unique candidates. Fetching metadata...")
+        
+        # 3. Fetch metadata for all candidates
+        async with get_peraturan_db() as conn_my:
+            async with conn_my.cursor() as cur:
+                format_strings = ','.join(['%s'] * len(candidate_ids))
+                sql = f"""
+                    SELECT b.id_berita, b.noper, b.judul, b.gambar, b.gambar2, b.gambar3, k.nama_kategori, b.tanggal, b.stataktif, b.mencabut, b.linkper,
+                           1.0 as dummy_score,
+                           b.tag,
+                           SUBSTRING(b.isi_berita, 1, 5000) as isi_snippet
+                    FROM berita b
+                    LEFT JOIN kategori k ON b.id_kategori = k.id_kategori
+                    WHERE b.id_berita IN ({format_strings})
+                """
+                await cur.execute(sql, tuple(candidate_ids))
+                raw_rows = await cur.fetchall()
+                
+        if not raw_rows:
+            return "", [], []
+            
+        rows = [list(r) for r in raw_rows]
+        
+        # 4. Rerank candidates using BGE CrossEncoder
+        from backend.app.services.rag.reranker_service import reranker_service
+        # Corpus text for reranker: Judul + Tag
+        corpus_texts = [f"{r[2]} - Tag: {r[12]}" for r in rows]
+        
+        scores = await reranker_service.compute_scores(user_message, corpus_texts)
+        
+        scored_rows = []
+        for i, r in enumerate(rows):
+            r[11] = float(scores[i])
+            scored_rows.append(r)
+            
+        # Urutkan dan Filter (BGE Sigmoid > 0.45 = Relevant)
+        scored_rows.sort(key=lambda x: x[11], reverse=True)
+        scored_rows = [x for x in scored_rows if x[11] > 0.45]
+        
+        if not scored_rows:
+            logger.info("[PERATURAN_SERVICE_HYBRID] All candidates dropped by Reranker (Score <= 0.45).")
+            return "", [], []
+            
+        logger.info(f"[PERATURAN_SERVICE_HYBRID] {len(scored_rows)} candidates passed Reranker.")
+        
+        # 5. Eksekusi OCR dan Pengolahan Silsilah Dokumen
+        combined_context_text = ""
+        all_formatted_attachments = []
+        all_source_metadata = []
+
+        loop = asyncio.get_running_loop()
+        
+        found_ids = {row[0] for row in scored_rows}
+        dicabut_oleh = {}
+        
+        for row in scored_rows:
+            curr_id = row[0]
+            curr_judul = row[2]
+            mencabut_str = row[9] or ""
+            linkper_str = row[10] or ""
+            
+            all_replaced = []
+            if mencabut_str:
+                all_replaced.extend([x.strip() for x in mencabut_str.split('|') if x.strip()])
+            if linkper_str:
+                all_replaced.extend([x.strip() for x in linkper_str.split('|') if x.strip()])
+                
+            for rep_id_str in all_replaced:
+                if rep_id_str.isdigit():
+                    rep_id = int(rep_id_str)
+                    if rep_id in found_ids:
+                        dicabut_oleh[rep_id] = (curr_id, curr_judul)
+        
+        parsed_count = 0
+        for row in scored_rows:
+            id_berita, noper, judul, gambar, gambar2, gambar3, nama_kategori, tanggal, stataktif, mencabut_str, linkper_str, score, _tag_val, _isi_val = row
+            logger.info(f"[PERATURAN_SERVICE_HYBRID] Selected Top Match: '{judul}' (BGE Score: {score:.4f})")
+            
+            valid_file = None
+            for file_name in [gambar, gambar2, gambar3]:
+                if file_name and isinstance(file_name, str) and file_name.lower().endswith(".pdf"):
+                    abs_path = os.path.join(PERATURAN_DIR, file_name)
+                    if os.path.exists(abs_path):
+                        valid_file = abs_path
+                        break
+                        
+            if not valid_file:
+                logger.warning(f"[PERATURAN_SERVICE_HYBRID] PDF not exist in {PERATURAN_DIR}")
+                continue
+                
+            import fitz
+            try:
+                with fitz.open(valid_file) as pdf_doc:
+                    total_pages = pdf_doc.page_count
+            except Exception:
+                total_pages = 0
+            
+            if id_berita in dicabut_oleh:
+                pengganti_judul = dicabut_oleh[id_berita][1]
+                status_berlaku_str = f"Tidak Berlaku (Digantikan oleh: {pengganti_judul})"
+            else:
+                status_berlaku_str = "Berlaku"
+                if stataktif == "batal":
+                    status_berlaku_str = "Dicabut"
+                elif stataktif == "obsolete":
+                    status_berlaku_str = "Tidak Berlaku"
+
+            meta_str = f"ID Dokumen: {id_berita}\nStatus Berlaku: {status_berlaku_str}\nTanggal Terbit: {tanggal}\nNomor Regulasi: {noper}\nMencabut: {mencabut_str if mencabut_str else '-'}\n"
+            
+            if status_berlaku_str == "Berlaku" and parsed_count < 3:
+                extracted_text, formatted_attachments, _ = await loop.run_in_executor(
+                    None, _process_pdf_sync, valid_file
+                )
+                parsed_count += 1
+                
+                if extracted_text:
+                    if len(extracted_text) > 4000:
+                        extracted_text = extracted_text[:4000] + "\n...[Teks halaman selanjutnya dipotong untuk menghemat memori. Gunakan teks ini hanya untuk gambaran umum dokumen]..."
+                        
+                    combined_context_text += f"--- DOKUMEN SPESIFIK (JUDUL: {judul}) ---\n{meta_str}{extracted_text}\n-------------------\n\n"
+                elif formatted_attachments:
+                    combined_context_text += f"--- DOKUMEN SPESIFIK (JUDUL: {judul}) ---\n{meta_str}[Dokumen hasil scan telah dilampirkan sebagai gambar untuk dianalisa]\n-------------------\n\n"
+                
+                if formatted_attachments:
+                    all_formatted_attachments.extend(formatted_attachments)
+            else:
+                combined_context_text += f"--- DOKUMEN SPESIFIK (JUDUL: {judul}) ---\n{meta_str}[Teks isi fisik dokumen tidak dimuat untuk menghemat kuota memori LLM. Namun dokumen ini TETAP BERLAKU dan WAJIB direkomendasikan jika berupa Form/Surat Izin/Lampiran!]\n-------------------\n\n"
+                
+            all_source_metadata.append({
+                "id": id_berita,
+                "title": judul,
+                "document_title": judul,
+                "filename": os.path.basename(valid_file),
+                "file_path": f"file_peraturan/{os.path.basename(valid_file)}",
+                "jenis": nama_kategori or "Regulasi",
+                "nomor": noper or "N/A",
+                "page_number": "1",
+                "total_pages": str(total_pages) if total_pages > 0 else "",
+                "cache_hit": False,
+                "score_label": "HYBRID_RERANKER",
+                "score": score,
+                "raw_judul": judul,
+                "raw_tag": _tag_val,
+                "raw_isi": _isi_val
+            })
+            
+        return combined_context_text, all_formatted_attachments, all_source_metadata
+        
+    except Exception as e:
+        logger.error(f"[PERATURAN_SERVICE_HYBRID] Error during Hybrid Search: {e}")
+        return "", [], []

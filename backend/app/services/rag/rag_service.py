@@ -32,7 +32,7 @@ _STOPWORDS_ID = {
 # BGE CrossEncoder pakai sigmoid → output 0.0-1.0
 # 0.5 = model tidak yakin (netral), BUKAN relevan
 # Dokumen dianggap relevan hanya jika BGE cukup yakin: >= 0.51
-HARD_FLOOR = 0.51
+HARD_FLOOR = 0.45
 
 # Cap maksimum dokumen yang dikirim ke LLM — lebih sedikit = lebih fokus
 MAX_DOCS_TO_LLM = 15
@@ -265,22 +265,31 @@ class RagService:
                                     stataktif = prow[4]
                                     mencabut = prow[5]
                                     
+                                    total_pages = 0
                                     valid_file = None
                                     for file_name in [gambar1, gambar2, gambar3]:
                                         if file_name and isinstance(file_name, str) and file_name.lower().endswith(".pdf"):
                                             abs_path = os.path.join(PERATURAN_DIR, file_name)
                                             if os.path.exists(abs_path):
                                                 valid_file = file_name
+                                                try:
+                                                    import fitz
+                                                    with fitz.open(abs_path) as pdf_doc:
+                                                        total_pages = pdf_doc.page_count
+                                                except Exception:
+                                                    pass
                                                 break
                                                 
                                     if noper:
-                                        mysql_map[noper] = (valid_file, stataktif, mencabut)
+                                        # Use lower() for case-insensitive matching between MySQL and Postgres
+                                        mysql_map[noper.lower()] = (valid_file, stataktif, mencabut, total_pages)
                                 
                                 for pid, pdata in parent_map.items():
                                     nomor = pdata.get("nomor")
-                                    if nomor and nomor in mysql_map:
-                                        mysql_fname, stataktif, mencabut = mysql_map[nomor]
+                                    if nomor and nomor.lower() in mysql_map:
+                                        mysql_fname, stataktif, mencabut, total_pages = mysql_map[nomor.lower()]
                                         pdata["mysql_filename"] = mysql_fname
+                                        pdata["total_pages"] = total_pages
                                         if stataktif == "batal":
                                             pdata["status_berlaku"] = "Dicabut"
                                         elif stataktif == "obsolete":
@@ -354,6 +363,7 @@ class RagService:
                         "judul": parent["judul"] or "Dokumen Internal Pindad",
                         "nomor": parent["nomor"] or "N/A",
                         "mysql_filename": parent.get("mysql_filename"),
+                        "total_pages": parent.get("total_pages", ""),
                         "halaman": ", ".join(sorted_pages),
                         "sections": sorted_sections,
                         "rrf_score": doc_info["rrf_score"],
@@ -468,6 +478,7 @@ class RagService:
                 "nomor": b["nomor"],
                 "page": b["halaman"],
                 "page_number": b["halaman"],
+                "total_pages": b.get("total_pages", ""),
                 "jenis": b["jenis"],
                 "sections": b.get("sections", []),
                 "score": f_score,
