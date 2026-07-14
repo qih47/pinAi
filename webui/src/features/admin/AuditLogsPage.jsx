@@ -293,20 +293,20 @@ export default function AuditLogsPage() {
           <StatCard
             icon="🔐"
             label="Total Login"
-            value={stats?.total_logins}
+            value={stats?.summary?.total_logins ?? stats?.total_logins}
             color="#22c55e"
-            trend={isStatsLoading ? 'Memuat...' : null}
+            trend={isStatsLoading ? 'Memuat...' : (stats?.summary?.success_rate ? `${stats.summary.success_rate} Success Rate` : null)}
           />
           <StatCard
             icon="👥"
             label="Pengguna Unik"
-            value={stats?.unique_users}
+            value={stats?.summary?.unique_users ?? stats?.unique_users}
             color="#6366f1"
           />
           <StatCard
             icon="❌"
             label="Login Gagal"
-            value={stats?.failed_attempts}
+            value={stats?.summary?.failed_logins ?? stats?.failed_attempts}
             color="#ef4444"
           />
           <StatCard

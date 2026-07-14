@@ -17,17 +17,20 @@ export const ContextMemoryBar = () => {
     try {
       const res = await apiClient.get('/analytics/pipeline');
       if (res.data.status === 'success' && res.data.steps) {
-        // Cari step CALL_2_SYNTHESIS atau CALL_2_FLASH terbaru
-        const call2Step = res.data.steps.find(s => s.tool_called === 'CALL_2_SYNTHESIS' || s.tool_called === 'CALL_2_FLASH');
-        if (call2Step && call2Step.observation) {
+        // Cari step dengan observasi JSON yang mengandung atribut 'memory'
+        const memoryStep = [...res.data.steps].reverse().find(s => {
+          if (!s.observation) return false;
           try {
-            const obsJson = JSON.parse(call2Step.observation);
-            if (obsJson.memory) {
-              setMemory(obsJson.memory);
-            }
-          } catch (err) {
-            // Not a JSON or no memory
+            const obsJson = JSON.parse(s.observation);
+            return !!obsJson.memory;
+          } catch {
+            return false;
           }
+        });
+
+        if (memoryStep) {
+          const obsJson = JSON.parse(memoryStep.observation);
+          setMemory(obsJson.memory);
         }
       }
     } catch (e) {

@@ -86,30 +86,6 @@ class ModeDocuments:
                         rag_context = data["payload"].get("context")
                         rag_sources = data["payload"].get("sources")
                         logger.info(f"[MODE_DOCUMENTS] RAG done | {len(rag_context or '')} chars | {len(rag_sources or [])} sources")
-                        
-                        # Log Agent Step for RAG Search
-                        session_uuid = routing_data.get("_session_uuid") if routing_data else None
-                        if session_uuid:
-                            from backend.app.services.chat.chat_history_service import chat_history_service
-                            sources_data = []
-                            for s in (rag_sources or []):
-                                sources_data.append({
-                                    "title": s.get('title') or s.get('filename') or s.get('document_title', 'Unknown'),
-                                    "doc_id": s.get('dokumen_id') or s.get('id') or s.get('document_id', ''),
-                                    "score": s.get('score') or s.get('similarity', 0)
-                                })
-                            obs_json = {
-                                "msg": f"Found {len(rag_sources or [])} sources",
-                                "queries": rag_queries,
-                                "sources": sources_data
-                            }
-                            await chat_history_service.save_agent_step(
-                                session_id=session_uuid,
-                                step_number=2,
-                                tool_called="RAG_SEARCH",
-                                tool_input=str(rag_queries),
-                                observation=json.dumps(obs_json)
-                            )
 
                     if event_type in (SSEEventType.SOURCES, SSEEventType.THINKING, SSEEventType.STATUS):
                         if event_type == SSEEventType.SOURCES:
@@ -179,6 +155,47 @@ class ModeDocuments:
             # SPRINT 5: Kita TUNDA pengiriman event SOURCES ke frontend di sini!
             # Event SOURCES baru akan dikirim nanti setelah di-filter lewat interceptor <sources_json>
             # yield format_sse("", "", False, sources=rag_sources, event_type=SSEEventType.SOURCES)
+
+
+        # ── Log Agent Step for Hybrid RAG Search (Semantic + Title) ──
+        session_uuid = routing_data.get("_session_uuid") if routing_data else None
+        if session_uuid:
+            from backend.app.services.chat.chat_history_service import chat_history_service
+            
+            # 1. Format Queries
+            formatted_queries = []
+            for q in (rag_queries or []):
+                formatted_queries.append({"text": q, "type": "SEMANTIC"})
+            
+            if query_judul_list:
+                for q in (query_judul_list if isinstance(query_judul_list, list) else [query_judul_list]):
+                    formatted_queries.append({"text": q, "type": "TITLE_SEARCH"})
+                    
+            if community_context and community_context.strip():
+                formatted_queries.append({"text": "Konteks Perusahaan", "type": "COMMUNITY_KNOWLEDGE"})
+                
+            # 2. Format Sources
+            sources_data = []
+            for s in (rag_sources or []):
+                sources_data.append({
+                    "title": s.get('title') or s.get('filename') or s.get('document_title', 'Unknown'),
+                    "doc_id": s.get('dokumen_id') or s.get('id') or s.get('document_id', ''),
+                    "score": s.get('score') or s.get('similarity', 0),
+                    "type": "TITLE" if (judul_sources and s in judul_sources) else "SEMANTIC"
+                })
+                
+            obs_json = {
+                "msg": f"Found {len(rag_sources or [])} sources from Hybrid Search",
+                "queries": formatted_queries,
+                "sources": sources_data
+            }
+            await chat_history_service.save_agent_step(
+                session_id=session_uuid,
+                step_number=2,
+                tool_called="RAG_SEARCH",
+                tool_input=str(formatted_queries),
+                observation=json.dumps(obs_json)
+            )
 
         # Build prompt dengan parameter is_thinking dari FE
         # ── Smart Context Truncation (Max ~42,000 chars / ~12k tokens total) ──

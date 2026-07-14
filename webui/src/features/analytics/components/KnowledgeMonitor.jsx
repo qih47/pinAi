@@ -25,20 +25,20 @@ export const KnowledgeMonitor = () => {
   // Fetch Live Graph
   const fetchLiveRAG = async () => {
     try {
-      const res = await apiClient.get('/analytics/pipeline');
-      if (res.data.status === 'success' && res.data.steps) {
-        const ragStep = [...res.data.steps].reverse().find(s => s.tool_called === 'RAG_SEARCH');
-        if (ragStep && ragStep.observation) {
-          try {
-            const obsJson = JSON.parse(ragStep.observation);
-            setRagData({
-              queries: obsJson.queries || [],
-              sources: obsJson.sources || []
-            });
-          } catch (e) {
-            console.error("Parse error", e);
-          }
+      const res = await apiClient.get('/analytics/knowledge/latest-rag');
+      if (res.data.status === 'success' && res.data.step && res.data.step.observation) {
+        try {
+          const obsJson = JSON.parse(res.data.step.observation);
+          setRagData({
+            queries: obsJson.queries || [],
+            sources: obsJson.sources || []
+          });
+        } catch (e) {
+          console.error("Parse error", e);
         }
+      } else {
+        // If no RAG step is found globally, we don't clear the data if it was already loaded,
+        // or we keep it as null.
       }
     } catch (e) {
       console.error("Failed to fetch pipeline", e);
@@ -147,31 +147,34 @@ export const KnowledgeMonitor = () => {
       </div>
 
       {activeTab === 'graph' && (() => {
-        // ── Layout constants (SVG viewBox = 1000 x 500) ───────────────────────
-        const VW = 1000, VH = 500;
-        const ENGINE_X = 130, ENGINE_Y = VH / 2;
-        const QUERY_X  = 420;
-        const DOC_X    = 750;
-
         const qCount = ragData?.queries?.length || 0;
         const dCount = ragData?.sources?.length || 0;
 
-        const queryY = (i) => VH / 2 + (i - (qCount - 1) / 2) * 110;
-        const docY   = (i) => VH / 2 + (i - (dCount - 1) / 2) * 90;
+        // ── Layout constants (Horizontal Top-to-Bottom flow) ──
+        const VH = 600; // Fixed height, scroll horizontal
+        const VW = Math.max(1000, Math.max(qCount * 240, dCount * 210) + 120);
+        
+        const ENGINE_X = VW / 2, ENGINE_Y = 100;
+        const QUERY_Y  = 280;
+        const DOC_Y    = 480;
+
+        const queryX = (i) => VW / 2 + (i - (qCount - 1) / 2) * 240;
+        const docX   = (i) => VW / 2 + (i - (dCount - 1) / 2) * 210;
 
         return (
-        <div className="flex-1 bg-[#090C15] border border-gray-800 rounded-xl relative overflow-hidden min-h-[480px]">
-          {/* Background Grid */}
-          <div className="absolute inset-0 opacity-10 pointer-events-none"
-               style={{ backgroundImage: 'linear-gradient(#374151 1px, transparent 1px), linear-gradient(90deg, #374151 1px, transparent 1px)', backgroundSize: '40px 40px' }}/>
+        <div className="flex-1 bg-[#090C15] border border-gray-800 rounded-xl overflow-auto min-h-[480px]">
+          <div style={{ minWidth: Math.max(1000, VW), minHeight: 480, position: 'relative' }}>
+            {/* Background Grid */}
+            <div className="absolute inset-0 opacity-10 pointer-events-none"
+                 style={{ backgroundImage: 'linear-gradient(#374151 1px, transparent 1px), linear-gradient(90deg, #374151 1px, transparent 1px)', backgroundSize: '40px 40px' }}/>
 
-          {!ragData ? (
-            <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 text-gray-600">
-              <Waypoints className="w-12 h-12 opacity-50" />
-              <p className="text-sm font-medium tracking-widest uppercase">Waiting for RAG Execution...</p>
-            </div>
-          ) : (
-            <svg viewBox={`0 0 ${VW} ${VH}`} className="absolute inset-0 w-full h-full" preserveAspectRatio="xMidYMid meet">
+            {!ragData ? (
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 text-gray-600">
+                <Waypoints className="w-12 h-12 opacity-50" />
+                <p className="text-sm font-medium tracking-widest uppercase">Waiting for RAG Execution...</p>
+              </div>
+            ) : (
+              <svg width={VW} height="100%" viewBox={`0 0 ${VW} ${VH}`} className="absolute top-0 left-0 min-h-max">
               <defs>
                 <linearGradient id="lineEQ" x1="0" y1="0" x2="1" y2="0">
                   <stop offset="0%" stopColor="#10b981" stopOpacity="0.9"/>
@@ -190,7 +193,7 @@ export const KnowledgeMonitor = () => {
               {/* ── Lines: Engine → Queries ── */}
               {ragData.queries.map((_, i) => (
                 <path key={`eq-${i}`}
-                  d={`M ${ENGINE_X + 36} ${ENGINE_Y} C ${(ENGINE_X + QUERY_X) / 2} ${ENGINE_Y}, ${(ENGINE_X + QUERY_X) / 2} ${queryY(i)}, ${QUERY_X - 110} ${queryY(i)}`}
+                  d={`M ${ENGINE_X} ${ENGINE_Y + 44} C ${ENGINE_X} ${(ENGINE_Y + QUERY_Y) / 2}, ${queryX(i)} ${(ENGINE_Y + QUERY_Y) / 2}, ${queryX(i)} ${QUERY_Y - 32}`}
                   fill="none" stroke="url(#lineEQ)" strokeWidth="2.5" strokeLinecap="round"
                   filter="url(#glow)"
                 />
@@ -200,9 +203,9 @@ export const KnowledgeMonitor = () => {
               {ragData.queries.map((_, qi) =>
                 ragData.sources.map((_, di) => (
                   <path key={`qd-${qi}-${di}`}
-                    d={`M ${QUERY_X + 110} ${queryY(qi)} C ${(QUERY_X + DOC_X) / 2} ${queryY(qi)}, ${(QUERY_X + DOC_X) / 2} ${docY(di)}, ${DOC_X - 95} ${docY(di)}`}
+                    d={`M ${queryX(qi)} ${QUERY_Y + 32} C ${queryX(qi)} ${(QUERY_Y + DOC_Y) / 2}, ${docX(di)} ${(QUERY_Y + DOC_Y) / 2}, ${docX(di)} ${DOC_Y - 38}`}
                     fill="none" stroke="url(#lineQD)" strokeWidth="1.5" strokeLinecap="round"
-                    strokeDasharray="6 4" opacity="0.6"
+                    strokeDasharray="6 4" opacity="0.15"
                   />
                 ))
               )}
@@ -216,48 +219,72 @@ export const KnowledgeMonitor = () => {
                 <rect x={ENGINE_X - 16} y={ENGINE_Y - 16} width="32" height="32" rx="4" fill="none" stroke="#10b981" strokeWidth="1.5"/>
                 <rect x={ENGINE_X - 8} y={ENGINE_Y - 8} width="16" height="16" rx="2" fill="#10b981" fillOpacity="0.4"/>
               </g>
-              <text x={ENGINE_X} y={ENGINE_Y + 52} textAnchor="middle" fill="#10b981" fontSize="11" fontWeight="bold" letterSpacing="1">CORE ENGINE</text>
+              <text x={ENGINE_X} y={ENGINE_Y + 62} textAnchor="middle" fill="#10b981" fontSize="11" fontWeight="bold" letterSpacing="1">CORE ENGINE</text>
 
               {/* ── Nodes: Queries ── */}
-              {ragData.queries.map((q, i) => (
-                <g key={`q-node-${i}`}>
-                  <rect x={QUERY_X - 110} y={queryY(i) - 32} width="220" height="64" rx="10"
-                        fill="#0f172a" stroke="#3b82f6" strokeWidth="1.5" filter="url(#glow)"/>
-                  <rect x={QUERY_X - 110} y={queryY(i) - 32} width="220" height="64" rx="10"
-                        fill="#3b82f6" fillOpacity="0.07"/>
-                  <text x={QUERY_X - 100} y={queryY(i) - 12} fill="#60a5fa" fontSize="8" fontWeight="bold" letterSpacing="1">SUB-QUERY {i + 1}</text>
-                  <foreignObject x={QUERY_X - 105} y={queryY(i) - 6} width="210" height="34">
-                    <div xmlns="http://www.w3.org/1999/xhtml"
-                         style={{ fontSize: '11px', color: '#d1d5db', overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
-                      {q}
-                    </div>
-                  </foreignObject>
-                </g>
-              ))}
+              {ragData.queries.map((q, i) => {
+                const isObj = typeof q === 'object' && q !== null;
+                const text = isObj ? q.text : q;
+                const type = isObj ? q.type : "SEMANTIC";
+                
+                let strokeColor = "#3b82f6"; // Default Blue for Semantic
+                let label = `SUB-QUERY ${i + 1}`;
+                
+                if (type === "TITLE_SEARCH") {
+                  strokeColor = "#f59e0b"; // Orange for Title
+                  label = "TITLE SEARCH";
+                } else if (type === "COMMUNITY_KNOWLEDGE") {
+                  strokeColor = "#10b981"; // Emerald for Community
+                  label = "AI CORPUS";
+                } else {
+                  label = `SEMANTIC QUERY ${i + 1}`;
+                }
+
+                return (
+                  <g key={`q-node-${i}`}>
+                    <rect x={queryX(i) - 110} y={QUERY_Y - 32} width="220" height="64" rx="10"
+                          fill="#0f172a" stroke={strokeColor} strokeWidth="1.5" filter="url(#glow)"/>
+                    <rect x={queryX(i) - 110} y={QUERY_Y - 32} width="220" height="64" rx="10"
+                          fill={strokeColor} fillOpacity="0.07"/>
+                    <text x={queryX(i) - 100} y={QUERY_Y - 12} fill={strokeColor} fontSize="8" fontWeight="bold" letterSpacing="1">{label}</text>
+                    <foreignObject x={queryX(i) - 105} y={QUERY_Y - 6} width="210" height="34">
+                      <div xmlns="http://www.w3.org/1999/xhtml"
+                           style={{ fontSize: '11px', color: '#d1d5db', overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
+                        {text}
+                      </div>
+                    </foreignObject>
+                  </g>
+                );
+              })}
 
               {/* ── Nodes: Documents ── */}
               {ragData.sources.map((s, i) => {
                 const score = typeof s.score === 'string' ? parseFloat(s.score) : (s.score || 0);
                 const pct = Math.min(1, score);
+                const isTitle = s.type === 'TITLE';
+                const strokeColor = isTitle ? '#f59e0b' : '#7c3aed';
+                const fillLabelColor = isTitle ? '#fbbf24' : '#a78bfa';
+                const labelText = isTitle ? `FTS DOC #${String(s.doc_id || i).slice(0, 6)}` : (s.doc_id ? `SEMANTIC DOC #${String(s.doc_id).slice(0, 6)}` : `DOKUMEN ${i + 1}`);
+
                 return (
                   <g key={`d-node-${i}`}>
-                    <rect x={DOC_X - 95} y={docY(i) - 38} width="190" height="76" rx="10"
-                          fill="#0f172a" stroke="#7c3aed" strokeWidth="1.5" filter="url(#glow)"/>
-                    <rect x={DOC_X - 95} y={docY(i) - 38} width="190" height="76" rx="10"
-                          fill="#7c3aed" fillOpacity="0.07"/>
-                    <text x={DOC_X - 85} y={docY(i) - 18} fill="#a78bfa" fontSize="7.5" fontWeight="bold" letterSpacing="0.8">
-                      {s.doc_id ? `DOC #${String(s.doc_id).slice(0, 6)}` : `DOKUMEN ${i + 1}`}
+                    <rect x={docX(i) - 95} y={DOC_Y - 38} width="190" height="76" rx="10"
+                          fill="#0f172a" stroke={strokeColor} strokeWidth="1.5" filter="url(#glow)"/>
+                    <rect x={docX(i) - 95} y={DOC_Y - 38} width="190" height="76" rx="10"
+                          fill={strokeColor} fillOpacity="0.07"/>
+                    <text x={docX(i) - 85} y={DOC_Y - 18} fill={fillLabelColor} fontSize="7.5" fontWeight="bold" letterSpacing="0.8">
+                      {labelText}
                     </text>
-                    <foreignObject x={DOC_X - 90} y={docY(i) - 10} width="180" height="24">
+                    <foreignObject x={docX(i) - 90} y={DOC_Y - 10} width="180" height="24">
                       <div xmlns="http://www.w3.org/1999/xhtml"
                            style={{ fontSize: '11px', color: '#e5e7eb', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis', fontWeight: '500' }}>
                         {s.title || 'Dokumen Internal'}
                       </div>
                     </foreignObject>
                     {/* Score bar */}
-                    <rect x={DOC_X - 85} y={docY(i) + 20} width="140" height="5" rx="3" fill="#1f2937"/>
-                    <rect x={DOC_X - 85} y={docY(i) + 20} width={140 * pct} height="5" rx="3" fill="#8b5cf6"/>
-                    <text x={DOC_X + 60} y={docY(i) + 26} fill="#9ca3af" fontSize="8" textAnchor="end">
+                    <rect x={docX(i) - 85} y={DOC_Y + 20} width="140" height="5" rx="3" fill="#1f2937"/>
+                    <rect x={docX(i) - 85} y={DOC_Y + 20} width={140 * pct} height="5" rx="3" fill={strokeColor}/>
+                    <text x={docX(i) + 60} y={DOC_Y + 26} fill="#9ca3af" fontSize="8" textAnchor="end">
                       {(pct * 100).toFixed(1)}%
                     </text>
                   </g>
@@ -265,6 +292,7 @@ export const KnowledgeMonitor = () => {
               })}
             </svg>
           )}
+          </div>
         </div>
         );
       })()}
@@ -492,11 +520,21 @@ export const KnowledgeMonitor = () => {
             {/* Queries used */}
             {queries.length > 0 && (
               <div className="flex flex-wrap gap-2">
-                {queries.map((q, i) => (
-                  <span key={i} className="text-xs bg-blue-500/10 border border-blue-500/30 text-blue-300 px-3 py-1 rounded-full font-mono">
-                    🔍 {q}
-                  </span>
-                ))}
+                {queries.map((q, i) => {
+                  const isObj = typeof q === 'object' && q !== null;
+                  const text = isObj ? q.text : q;
+                  const type = isObj ? q.type : "SEMANTIC";
+                  
+                  let bgClass = "bg-blue-500/10 border-blue-500/30 text-blue-300";
+                  if (type === "TITLE_SEARCH") bgClass = "bg-orange-500/10 border-orange-500/30 text-orange-300";
+                  if (type === "COMMUNITY_KNOWLEDGE") bgClass = "bg-emerald-500/10 border-emerald-500/30 text-emerald-300";
+                  
+                  return (
+                    <span key={i} className={`text-xs border px-3 py-1 rounded-full font-mono ${bgClass}`}>
+                      🔍 {text}
+                    </span>
+                  );
+                })}
               </div>
             )}
 

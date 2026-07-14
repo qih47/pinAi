@@ -163,6 +163,15 @@ async def hardware_telemetry():
     telemetry = await get_hardware_telemetry()
     return {"status": "success", "telemetry": telemetry}
 
+
+@router.get("/knowledge/latest-rag")
+async def latest_rag_step():
+    """Mengambil step RAG terakhir dari seluruh sistem"""
+    from backend.app.services.analytics_service import get_latest_rag_step
+    step = await get_latest_rag_step()
+    return {"status": "success", "step": step}
+
+
 class RagSimulationRequest(BaseModel):
     query: str
 

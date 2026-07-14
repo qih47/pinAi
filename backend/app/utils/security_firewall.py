@@ -260,23 +260,37 @@ def _scan_for_injections(text: str, field_name: str = "input") -> None:
                 raise InjectionException(attack_type, field_name, hashlib.sha256(text.encode()).hexdigest()[:12])
 
 
-def _scan_dict_recursive(data: Any, path: str = "root", skip_injection: bool = False) -> None:
+
+def _scan_for_prompt_injections_only(text: str, field_name: str = "input") -> None:
+    """Run ONLY prompt injection patterns on a string."""
+    for pattern in _PROMPT_INJECTION_PATTERNS:
+        if pattern.search(text):
+            logger.warning(
+                f"[INJECTION] PromptInjection detected in '{field_name}' "
+                f"from hash={hashlib.sha256(text.encode()).hexdigest()[:12]}"
+            )
+            raise InjectionException("PromptInjection", field_name, hashlib.sha256(text.encode()).hexdigest()[:12])
+
+def _scan_dict_recursive(data: Any, path: str = "root", skip_injection: bool = False, prompt_injection_only: bool = False) -> None:
     """Recursively scan all string values in nested dicts/lists."""
     if isinstance(data, str):
         _check_string_safety(data, path)
-        if not skip_injection:
+        if prompt_injection_only:
+            _scan_for_prompt_injections_only(data, path)
+        elif not skip_injection:
             _scan_for_injections(data, path)
     elif isinstance(data, dict):
         for k, v in data.items():
             if str(k) in ("content", "liveCode", "code", "fileGenerations", "chat_mode", "focus", "insight", "lineage", "email_content", "email_subject", "instruction"):
-                _scan_dict_recursive(v, f"{path}.{k}", skip_injection=True)
+                # Run ONLY prompt injection checks on these sensitive chat fields
+                _scan_dict_recursive(v, f"{path}.{k}", skip_injection=True, prompt_injection_only=True)
             else:
-                if not skip_injection:
+                if not skip_injection and not prompt_injection_only:
                     _scan_for_injections(str(k), f"{path}.key")
-                _scan_dict_recursive(v, f"{path}.{k}", skip_injection)
+                _scan_dict_recursive(v, f"{path}.{k}", skip_injection, prompt_injection_only)
     elif isinstance(data, list):
         for i, item in enumerate(data):
-            _scan_dict_recursive(item, f"{path}[{i}]", skip_injection)
+            _scan_dict_recursive(item, f"{path}[{i}]", skip_injection, prompt_injection_only)
 
 
 # ==============================================================================

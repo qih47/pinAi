@@ -405,6 +405,46 @@ async def get_agent_steps(limit: int = 20) -> List[Dict[str, Any]]:
         return []
 
 
+
+async def get_latest_rag_step() -> Dict[str, Any]:
+    """Mengambil step RAG_SEARCH terakhir di seluruh sistem untuk divisualisasikan."""
+    if database.db_pool is None:
+        return {}
+    try:
+        async with database.db_pool.acquire() as conn:
+            query = """
+                SELECT 
+                    a.id, a.message_id, a.step_number, a.tool_called, 
+                    a.tool_input, a.observation, a.created_at,
+                    m.session_id, s.session_uuid, s.npp
+                FROM ai_agent_steps a
+                JOIN chat_messages m ON a.message_id = m.id
+                JOIN chat_sessions s ON m.session_id = s.id
+                WHERE a.tool_called = 'RAG_SEARCH'
+                ORDER BY a.created_at DESC
+                LIMIT 1
+            """
+            r = await conn.fetchrow(query)
+            if not r:
+                return {}
+            
+            return {
+                "id": r["id"],
+                "message_id": r["message_id"],
+                "step_number": r["step_number"],
+                "tool_called": r["tool_called"],
+                "tool_input": r["tool_input"],
+                "observation": r["observation"],
+                "created_at": r["created_at"].isoformat() if r["created_at"] else None,
+                "session_uuid": str(r["session_uuid"]),
+                "npp": r["npp"]
+            }
+    except Exception as e:
+        import logging
+        logging.error(f"Failed to fetch latest rag step: {e}")
+        return {}
+
+
 async def get_security_threat_score() -> Dict[str, Any]:
     """
     Hitung Threat Score (0-100) berdasarkan security_logs 24 jam terakhir.

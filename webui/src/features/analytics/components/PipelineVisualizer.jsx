@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Activity, Network, ArrowRight, BrainCircuit, Database, Server, ChevronRight, Zap, Search, Paperclip, Code, User } from 'lucide-react';
+import { Activity, Network, ArrowRight, BrainCircuit, Database, Server, ChevronRight, Zap, Search, Paperclip, Code, User, Shield, Mail, FileText, Building, Scan } from 'lucide-react';
 import apiClient from '../../../services/apiClient';
 
 export const PipelineVisualizer = () => {
@@ -31,9 +31,14 @@ export const PipelineVisualizer = () => {
     if (t.includes('FLASH')) return <Zap size={16} />;
     if (t.includes('FOCUS')) return <Search size={16} />;
     if (t.includes('ATTACHMENT')) return <Paperclip size={16} />;
-    if (t.includes('ANALYST') || t.includes('CODE')) return <Code size={16} />;
+    if (t.includes('ANALYST') || t.includes('CODE') || t.includes('GENERATE')) return <Code size={16} />;
     if (t.includes('GUEST')) return <User size={16} />;
-    if (t.includes('SYNTHESIS') || t.includes('RAG')) return <Network size={16} />;
+    if (t.includes('COMPLIANCE')) return <Shield size={16} />;
+    if (t.includes('EMAIL') || t.includes('MAIL')) return <Mail size={16} />;
+    if (t.includes('NOTADINAS')) return <FileText size={16} />;
+    if (t.includes('VENDOR')) return <Building size={16} />;
+    if (t.includes('OCR')) return <Scan size={16} />;
+    if (t.includes('SYNTHESIS') || t.includes('RAG') || t.includes('DOCUMENT')) return <Network size={16} />;
     if (t.includes('SQL') || t.includes('DB')) return <Database size={16} />;
     return <Server size={16} />;
   };
@@ -44,9 +49,14 @@ export const PipelineVisualizer = () => {
     if (t.includes('FLASH')) return 'bg-yellow-500/20 text-yellow-400 border-yellow-500/50';
     if (t.includes('FOCUS')) return 'bg-fuchsia-500/20 text-fuchsia-400 border-fuchsia-500/50';
     if (t.includes('ATTACHMENT')) return 'bg-orange-500/20 text-orange-400 border-orange-500/50';
-    if (t.includes('ANALYST')) return 'bg-emerald-500/20 text-emerald-400 border-emerald-500/50';
+    if (t.includes('ANALYST') || t.includes('CODE') || t.includes('GENERATE')) return 'bg-emerald-500/20 text-emerald-400 border-emerald-500/50';
+    if (t.includes('COMPLIANCE')) return 'bg-teal-500/20 text-teal-400 border-teal-500/50';
+    if (t.includes('EMAIL') || t.includes('MAIL')) return 'bg-amber-500/20 text-amber-400 border-amber-500/50';
+    if (t.includes('NOTADINAS')) return 'bg-indigo-500/20 text-indigo-400 border-indigo-500/50';
+    if (t.includes('VENDOR')) return 'bg-rose-500/20 text-rose-400 border-rose-500/50';
+    if (t.includes('OCR')) return 'bg-slate-500/20 text-slate-400 border-slate-500/50';
     if (t.includes('GUEST')) return 'bg-gray-500/20 text-gray-400 border-gray-500/50';
-    if (t.includes('SYNTHESIS')) return 'bg-blue-500/20 text-blue-400 border-blue-500/50';
+    if (t.includes('SYNTHESIS') || t.includes('DOCUMENT')) return 'bg-blue-500/20 text-blue-400 border-blue-500/50';
     if (t.includes('SQL')) return 'bg-emerald-500/20 text-emerald-400 border-emerald-500/50';
     if (t.includes('SEARCH')) return 'bg-purple-500/20 text-purple-400 border-purple-500/50';
     return 'bg-blue-500/20 text-blue-400 border-blue-500/50';
