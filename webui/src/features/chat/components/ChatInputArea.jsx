@@ -8,6 +8,7 @@ import IsolatedDocBanner from "./ChatInputArea/IsolatedDocBanner";
 import AttachmentPreview from "./ChatInputArea/AttachmentPreview";
 import useNextcloudStore from "../../../stores/nextcloudStore";
 import { Paperclip, Cloud } from "lucide-react";
+import VoiceButton from "./ChatInputArea/VoiceButton";
 
 export default function ChatInputArea({
   theme,
@@ -293,6 +294,15 @@ export default function ChatInputArea({
                     onThinkingChange={handleThinkingModeChange}
                   />
                 )}
+                
+                <VoiceButton 
+                  darkMode={darkMode} 
+                  disabled={isStreaming || isUploadingFile}
+                  onTranscriptionSuccess={(text) => {
+                    setInput(prev => prev ? `${prev} ${text}` : text);
+                  }}
+                />
+
                 <SendButton
                   isStreaming={isStreaming}
                   isUploadingFile={isUploadingFile}
@@ -409,6 +419,15 @@ export default function ChatInputArea({
                     darkMode={darkMode}
                   />
                 )}
+                
+                <VoiceButton 
+                  darkMode={darkMode} 
+                  disabled={isStreaming || isUploadingFile}
+                  onTranscriptionSuccess={(text) => {
+                    setInput(prev => prev ? `${prev} ${text}` : text);
+                  }}
+                />
+
                 <SendButton
                   isStreaming={isStreaming}
                   isUploadingFile={isUploadingFile}

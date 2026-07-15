@@ -181,3 +181,5 @@ yarl==1.20.1
 zipp==1.0.0
 zope.interface==5.4.0
 zstandard==0.25.0
+faster-whisper==1.2.1
+python-multipart==0.0.32
