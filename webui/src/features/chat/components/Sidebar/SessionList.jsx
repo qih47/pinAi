@@ -253,7 +253,7 @@ export default function SessionList({
                       )}
                     </span>
 
-                    <span className="truncate flex-1 text-left pr-4 text-[13px] leading-relaxed">
+                    <span className="flex-1 text-left pr-4 text-[13px] leading-relaxed min-w-0 flex items-center">
                       {editingSessionId === chat.session_uuid ? (
                         <input
                           autoFocus
@@ -268,8 +268,8 @@ export default function SessionList({
                           onClick={(e) => e.stopPropagation()}
                         />
                       ) : (
-                        <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                          <span className="truncate flex items-center gap-1.5">
+                        <span className="flex items-center gap-1 min-w-0 flex-1">
+                          <span className="truncate" title={chat.judul || t.newChatTitle}>
                             {chat._titleUpdated && !animatedTitles.current.has(chat.session_uuid) ? (
                               <TypewriterTitle
                                 text={chat.judul}
@@ -281,12 +281,12 @@ export default function SessionList({
                             ) : (
                               chat.judul || t.newChatTitle
                             )}
-                            {activeStreams[chat.session_uuid]?.isStreaming && (
-                              <svg className="animate-spin text-blue-500 flex-shrink-0" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                              </svg>
-                            )}
                           </span>
+                          {activeStreams[chat.session_uuid]?.isStreaming && (
+                            <svg className="animate-spin text-blue-500 flex-shrink-0" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                            </svg>
+                          )}
                           {isTitleGenerating(chat.session_uuid) && (
                             <span
                               title="Generating better title..."

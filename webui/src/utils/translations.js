@@ -3,7 +3,7 @@ export const translations = {
     sidebar: {
       newChat: "Percakapan Baru",
       search: "Cari",
-      chats: "Obrolan",
+      chats: "Percakapan",
       starred: "Berbintang",
       today: "Hari Ini",
       yesterday: "Kemarin",

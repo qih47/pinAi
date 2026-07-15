@@ -516,6 +516,10 @@ export function useChatLogic({ isGuest,
     return localStorage.getItem("cakra_language") || "id";
   });
 
+  useEffect(() => {
+    localStorage.setItem("cakra_language", language);
+  }, [language]);
+
   const [darkMode, setDarkMode] = useState(() => {
     const savedTheme = localStorage.getItem("cakra-theme");
     if (savedTheme !== null) return savedTheme === "dark";
