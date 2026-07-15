@@ -9,6 +9,7 @@ import AttachmentPreview from "./ChatInputArea/AttachmentPreview";
 import useNextcloudStore from "../../../stores/nextcloudStore";
 import { Paperclip, Cloud } from "lucide-react";
 import VoiceButton from "./ChatInputArea/VoiceButton";
+import { translations } from "../../../utils/translations";
 
 export default function ChatInputArea({
   theme,
@@ -44,9 +45,11 @@ export default function ChatInputArea({
   isThinkingMode,
   handleThinkingModeChange,
   styles,
+  language
 }) {
   const [isAttachmentMenuOpen, setIsAttachmentMenuOpen] = useState(false);
   const attachmentMenuRef = useRef(null);
+  const t = translations[language]?.chatInput || translations.id.chatInput;
   const openNextcloudModal = useNextcloudStore(state => state.openModal);
 
   useEffect(() => {
@@ -200,7 +203,7 @@ export default function ChatInputArea({
                       onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
                     >
                       <Paperclip size={18} color={darkMode ? '#c4c7c5' : '#64748b'} />
-                      Upload file
+                      {t.uploadFile}
                     </button>
 
                     {!isGuest && currentIsLoggedIn && (
@@ -220,7 +223,7 @@ export default function ChatInputArea({
                         onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
                       >
                         <Cloud size={18} color={darkMode ? '#c4c7c5' : '#64748b'} />
-                        Upload dari PinCloud
+                        {t.uploadCloud}
                       </button>
                     )}
                   </div>
@@ -235,8 +238,8 @@ export default function ChatInputArea({
               onKeyDown={handleKeyDown}
               placeholder={
                 activeIsolatedTitle
-                  ? "Tanyakan perihal isi dokumen ini..."
-                  : "Tanya CAKRA"
+                  ? t.askDoc
+                  : t.askCakra
               }
               rows={1}
               style={{
@@ -292,11 +295,12 @@ export default function ChatInputArea({
                     darkMode={darkMode}
                     thinking={isThinkingMode}
                     onThinkingChange={handleThinkingModeChange}
+                    language={language}
                   />
                 )}
-                
-                <VoiceButton 
-                  darkMode={darkMode} 
+
+                <VoiceButton
+                  darkMode={darkMode}
                   disabled={isStreaming || isUploadingFile}
                   onTranscriptionSuccess={(text) => {
                     setInput(prev => prev ? `${prev} ${text}` : text);
@@ -419,9 +423,9 @@ export default function ChatInputArea({
                     darkMode={darkMode}
                   />
                 )}
-                
-                <VoiceButton 
-                  darkMode={darkMode} 
+
+                <VoiceButton
+                  darkMode={darkMode}
                   disabled={isStreaming || isUploadingFile}
                   onTranscriptionSuccess={(text) => {
                     setInput(prev => prev ? `${prev} ${text}` : text);
@@ -477,15 +481,10 @@ export default function ChatInputArea({
         </form>
 
         {isBottom && (
-          <div
-            style={{
-              ...styles.inputFooter,
-              color: theme.secondaryText,
-              marginTop: "8px",
-            }}
-          >
-            CAKRA AI dapat membuat kesalahan. Pertimbangkan untuk memeriksa
-            informasi penting.
+          <div className="flex justify-center px-4 pt-1">
+            <p className="text-[10px] text-gray-400 font-medium tracking-wide">
+              {t.disclaimer}
+            </p>
           </div>
         )}
       </div>

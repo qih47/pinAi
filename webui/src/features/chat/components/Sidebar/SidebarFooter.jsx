@@ -1,4 +1,5 @@
 import React from "react";
+import { translations } from "../../../../utils/translations";
 
 export default function SidebarFooter({
   isOpen,
@@ -11,8 +12,12 @@ export default function SidebarFooter({
   profileDivisi,
   setDarkMode,
   triggerLogout,
-  userData
+  userData,
+  language,
+  setLanguage
 }) {
+  const t = translations[language]?.settings || translations.id.settings;
+
   return (
     <div
       className={`relative flex items-center p-4 ${!isOpen
@@ -40,7 +45,7 @@ export default function SidebarFooter({
         >
           <div className="px-4 py-2">
             <p className="text-xs text-gray-400">
-              Akun Anda
+              {t.account}
             </p>
             <p className={`text-xs font-semibold truncate ${darkMode ? "text-white" : "text-gray-800"}`}>
               {profileName}
@@ -49,20 +54,40 @@ export default function SidebarFooter({
 
           <div className={`px-4 py-2 border-t space-y-1 ${darkMode ? "border-gray-800" : "border-gray-100"}`}>
             <p className="text-[10px] uppercase font-bold tracking-wider text-gray-400 mb-1">
-              Pilihan Tema
+              {t.theme}
             </p>
             <div className={`flex p-0.5 rounded-lg text-[11px] ${darkMode ? "bg-gray-800" : "bg-gray-100"}`}>
               <button
                 onClick={() => setDarkMode(false)}
                 className={`flex-1 py-1 text-center rounded-md font-medium transition-all ${!darkMode ? "bg-white text-black shadow-sm" : "text-gray-500 hover:text-black"}`}
               >
-                ☀️ Light
+                ☀️ {t.light}
               </button>
               <button
                 onClick={() => setDarkMode(true)}
                 className={`flex-1 py-1 text-center rounded-md font-medium transition-all ${darkMode ? "bg-gray-700 text-white shadow-sm" : "text-gray-500 hover:text-black"}`}
               >
-                🌙 Dark
+                🌙 {t.dark}
+              </button>
+            </div>
+          </div>
+
+          <div className={`px-4 py-2 border-t space-y-1 ${darkMode ? "border-gray-800" : "border-gray-100"}`}>
+            <p className="text-[10px] uppercase font-bold tracking-wider text-gray-400 mb-1">
+              {t.language}
+            </p>
+            <div className={`flex p-0.5 rounded-lg text-[11px] ${darkMode ? "bg-gray-800" : "bg-gray-100"}`}>
+              <button
+                onClick={() => setLanguage("id")}
+                className={`flex-1 py-1 text-center rounded-md font-medium transition-all ${language === "id" ? "bg-white text-black shadow-sm" : "text-gray-500 hover:text-black"}`}
+              >
+                ID
+              </button>
+              <button
+                onClick={() => setLanguage("en")}
+                className={`flex-1 py-1 text-center rounded-md font-medium transition-all ${language === "en" ? "bg-white text-black shadow-sm" : "text-gray-500 hover:text-black"}`}
+              >
+                EN
               </button>
             </div>
           </div>
@@ -88,7 +113,7 @@ export default function SidebarFooter({
                 d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
               />
             </svg>
-            <span className="text-sm font-medium">Keluar (Logout)</span>
+            <span className="text-sm font-medium">{t.logout}</span>
           </button>
         </div>
       )}

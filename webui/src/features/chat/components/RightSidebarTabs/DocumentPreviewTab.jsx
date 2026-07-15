@@ -12,7 +12,8 @@ export default function DocumentPreviewTab({
   toast,
   borderStyleColor,
   baseBgColor,
-  containerBgColor
+  containerBgColor,
+  t
 }) {
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
@@ -30,7 +31,7 @@ export default function DocumentPreviewTab({
             </span>
             <span style={{ fontSize: "11px", color: "#64748b" }}>
               {previewDoc.size ? `${parseFloat((previewDoc.size / 1024).toFixed(2))} KB • ` : ''}
-              {docContent ? `${docContent.split('\n').length} baris` : 'Memuat...'}
+              {docContent ? `${docContent.split('\n').length} ${t.lines}` : t.loading}
             </span>
           </div>
         </div>
@@ -48,13 +49,13 @@ export default function DocumentPreviewTab({
                     textArea.focus(); textArea.select(); document.execCommand('copy');
                     document.body.removeChild(textArea);
                   }
-                  toast.success("Konten berhasil disalin!");
-                } catch (err) { toast.error("Gagal menyalin teks"); }
+                  toast.success(t.contentCopied);
+                } catch (err) { toast.error(t.failedToCopy); }
               }}
               style={{ background: "transparent", border: "none", color: "#64748b", padding: "8px", borderRadius: "8px", cursor: "pointer", display: "flex", transition: "all 0.2s" }}
               onMouseEnter={(e) => { e.currentTarget.style.background = darkMode ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.04)"; e.currentTarget.style.color = theme.textColor; }}
               onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "#64748b"; }}
-              title="Copy Konten"
+              title={t.copyContent}
             >
               <IconCopy size={16} />
             </button>
@@ -66,7 +67,7 @@ export default function DocumentPreviewTab({
               setTimeout(() => setPreviewDoc(null), 300);
             }}
             style={{ background: darkMode ? "rgba(239,68,68,0.1)" : "rgba(239,68,68,0.05)", border: `1px solid ${darkMode ? "rgba(239,68,68,0.2)" : "rgba(239,68,68,0.15)"}`, color: "#ef4444", padding: "6px", borderRadius: "8px", cursor: "pointer", display: "flex", flexShrink: 0, marginLeft: "4px" }}
-            title="Tutup Panel"
+            title={t.closePanel}
           >
             <IconClose />
           </button>
@@ -78,7 +79,7 @@ export default function DocumentPreviewTab({
           {isDocLoading ? (
             <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", gap: "10px", color: "#64748b" }}>
               <div style={{ width: "20px", height: "20px", border: "2px solid rgba(99,102,241,0.2)", borderTopColor: "#6366f1", borderRadius: "50%", animation: "rotate-spin 0.8s linear infinite" }} />
-              <span style={{ fontSize: "12px", animation: "custom-pulse 1.5s infinite" }}>Membaca file dokumen...</span>
+              <span style={{ fontSize: "12px", animation: "custom-pulse 1.5s infinite" }}>{t.readingDoc}</span>
             </div>
           ) : (
             <pre style={{ margin: 0, whiteSpace: "pre-wrap", color: darkMode ? "#a6adba" : "#334155", fontFamily: '"JetBrains Mono", monospace', fontSize: "12.5px", lineHeight: "1.6" }}>

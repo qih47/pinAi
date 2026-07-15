@@ -198,7 +198,7 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
                         </span>
                     ) : (
                         <span style={{ ...styles.avatarLabel, color: theme.textColor, marginLeft: 8, transition: 'opacity 0.3s' }}>
-                            CAKRA AI
+                            CAKRA
                         </span>
                     )}
                 </div>
@@ -226,11 +226,11 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
                                         searchQuery={searchQuery}
                                         statusMessage={msg.statusMessage}
                                         middleContent={fileGens.length > 0 ? (
-                                            <FileProcessLog 
-                                                fileGenerations={fileGens} 
-                                                darkMode={darkMode} 
-                                                batchIndex={0} 
-                                                isFinalBatch={true} 
+                                            <FileProcessLog
+                                                fileGenerations={fileGens}
+                                                darkMode={darkMode}
+                                                batchIndex={0}
+                                                isFinalBatch={true}
                                             />
                                         ) : null}
                                     />
@@ -238,7 +238,7 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
                             }
 
                             const renderedParts = [];
-                            
+
                             renderedParts.push(
                                 <CakraResponseRenderer
                                     key="renderer-0"
@@ -255,21 +255,21 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
                             for (let i = 1; i < parts.length; i += 2) {
                                 const bIdx = parts[i] ? parseInt(parts[i], 10) : 0;
                                 const nextText = parts[i + 1] || '';
-                                
+
                                 renderedParts.push(
-                                    <FileProcessLog 
-                                        key={`log-${bIdx}`} 
-                                        fileGenerations={fileGens} 
-                                        darkMode={darkMode} 
+                                    <FileProcessLog
+                                        key={`log-${bIdx}`}
+                                        fileGenerations={fileGens}
+                                        darkMode={darkMode}
                                         batchIndex={bIdx}
-                                        isFinalBatch={bIdx === highestBatchIndex} 
+                                        isFinalBatch={bIdx === highestBatchIndex}
                                     />
                                 );
-                                
+
                                 if (nextText) {
                                     renderedParts.push(
                                         <CakraResponseRenderer
-                                            key={`renderer-${i+1}`}
+                                            key={`renderer-${i + 1}`}
                                             rawContent={nextText}
                                             thinkingContent=""
                                             isStreaming={isThisMessageStreaming}
@@ -289,7 +289,7 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
                         {msg.fileGenerations && msg.fileGenerations.length > 0 && msg.statusMessage !== "✍️ Sedang membuat file..." && msg.fileGenerations.every(g => g.stage === 'done' || g.stage === 'error') && (
                             <div style={{ marginTop: '12px', marginBottom: '8px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
                                 {msg.fileGenerations.map((fg, fgIdx) => (
-                                    <FileGenerationCard 
+                                    <FileGenerationCard
                                         key={fg.filename + fgIdx}
                                         filename={fg.filename}
                                         stage={fg.stage}

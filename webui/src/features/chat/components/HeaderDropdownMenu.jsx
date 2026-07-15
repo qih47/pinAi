@@ -1,10 +1,13 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { getHeaderDropdownMenuStyles } from '../chatPage.styles';
 import { useChatStore } from '../../../stores/chatStore';
+import { translations } from '../../../utils/translations';
 
-export default function HeaderDropdownMenu({ isGuest, onLogin, darkMode, setDarkMode, theme }) {
+export default function HeaderDropdownMenu({ isGuest, onLogin, darkMode, setDarkMode, theme, language }) {
   const [isOpen, setIsOpen] = useState(false);
   const menuRef = useRef(null);
+  
+  const t = translations[language]?.dropdown || translations.id.dropdown;
 
   const messages = useChatStore((state) => state.messages || []);
   const sessionUuid = useChatStore((state) => state.sessionUuid);
@@ -202,7 +205,7 @@ export default function HeaderDropdownMenu({ isGuest, onLogin, darkMode, setDark
                 e.currentTarget.style.background = 'transparent';
               }}
             >
-              <span>🔑</span> Masuk
+              <span>🔑</span> {t.login}
             </button>
           )}
 
@@ -226,7 +229,7 @@ export default function HeaderDropdownMenu({ isGuest, onLogin, darkMode, setDark
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <span>{darkMode ? '☀️' : '🌙'}</span>
-              <span>{darkMode ? 'Terang' : 'Gelap'}</span>
+              <span>{darkMode ? t.light : t.dark}</span>
             </div>
           </button>
 
@@ -248,7 +251,7 @@ export default function HeaderDropdownMenu({ isGuest, onLogin, darkMode, setDark
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <span>📝</span>
-                  <span>Ekspor Markdown</span>
+                  <span>{t.exportMd}</span>
                 </div>
               </button>
 
@@ -267,7 +270,7 @@ export default function HeaderDropdownMenu({ isGuest, onLogin, darkMode, setDark
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <span>🖨️</span>
-                  <span>Cetak / PDF</span>
+                  <span>{t.printPdf}</span>
                 </div>
               </button>
             </>

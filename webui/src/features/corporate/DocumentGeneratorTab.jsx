@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
 import apiClient from '../../services/apiClient';
 import { FileText, File, Settings } from 'lucide-react';
+import { translations } from '../../utils/translations';
 
-export default function DocumentGeneratorTab({ theme, darkMode }) {
+export default function DocumentGeneratorTab({ theme, darkMode, language }) {
+  const t = translations[language]?.documentGen || translations.id.documentGen;
   const [instruction, setInstruction] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedDoc, setGeneratedDoc] = useState(null);
@@ -21,7 +23,7 @@ export default function DocumentGeneratorTab({ theme, darkMode }) {
       }
     } catch (error) {
       console.error("Gagal generate nota dinas", error);
-      setGeneratedDoc("<div style='color:red; text-align:center;'>Gagal mengenerate dokumen. Cek koneksi AI.</div>");
+      setGeneratedDoc(`<div style='color:red; text-align:center;'>${t.error}</div>`);
     } finally {
       setIsGenerating(false);
     }
@@ -30,22 +32,22 @@ export default function DocumentGeneratorTab({ theme, darkMode }) {
   return (
     <div style={{ flex: 1, padding: '20px', color: theme.textColor, display: 'flex', flexDirection: 'column' }}>
       <h2 style={{ fontSize: '1.5rem', fontWeight: 'bold', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-        <FileText size={24} /> CAKRA Surat Dinas Generator
+        <FileText size={24} /> {t.title}
       </h2>
       <div style={{ display: 'flex', gap: '20px', flex: 1 }}>
         
         {/* Kiri: Instruksi */}
         <div style={{ width: '350px', background: darkMode ? '#1E1E22' : '#F9FAFB', borderRadius: '12px', padding: '16px', border: `1px solid ${theme.borderColor}`, display: 'flex', flexDirection: 'column' }}>
-          <h3 style={{ fontSize: '1rem', fontWeight: '600', marginBottom: '16px' }}>Instruksi Dokumen</h3>
+          <h3 style={{ fontSize: '1rem', fontWeight: '600', marginBottom: '16px' }}>{t.docInstruction}</h3>
           
           <p style={{ fontSize: '12px', color: theme.secondaryText, marginBottom: '12px' }}>
-            Deskripsikan dengan bahasa santai apa isi surat dinas yang ingin dibuat. CAKRA akan mengubahnya menjadi bahasa formal sesuai template Pindad.
+            {t.docDesc}
           </p>
           
           <textarea 
             value={instruction}
             onChange={(e) => setInstruction(e.target.value)}
-            placeholder="Contoh: Buatkan nota dinas cuti selama 3 hari untuk acara keluarga di luar kota..."
+            placeholder={t.placeholder}
             style={{ 
               width: '100%', 
               flex: 1, 
@@ -74,17 +76,17 @@ export default function DocumentGeneratorTab({ theme, darkMode }) {
               cursor: isGenerating ? 'not-allowed' : 'pointer' 
             }}
           >
-            {isGenerating ? 'AI Sedang Merangkai...' : 'Generate Format Dinas'}
+            {isGenerating ? t.generating : t.generateBtn}
           </button>
         </div>
 
         {/* Kanan: Preview Dokumen */}
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: darkMode ? '#1E1E22' : 'white', borderRadius: '12px', border: `1px solid ${theme.borderColor}`, overflow: 'hidden' }}>
           <div style={{ padding: '12px 20px', background: darkMode ? '#2A2A2D' : '#F3F4F6', borderBottom: `1px solid ${theme.borderColor}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontWeight: '600', fontSize: '14px' }}>Pratinjau Dokumen (Preview)</span>
+            <span style={{ fontWeight: '600', fontSize: '14px' }}>{t.preview}</span>
             {generatedDoc && (
               <button style={{ background: '#3B82F6', color: 'white', padding: '6px 16px', borderRadius: '4px', fontSize: '12px', border: 'none', cursor: 'pointer' }}>
-                Download PDF
+                {t.download}
               </button>
             )}
           </div>
@@ -93,7 +95,7 @@ export default function DocumentGeneratorTab({ theme, darkMode }) {
             {isGenerating ? (
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#4b5563' }}>
                 <Settings size={30} style={{ animation: 'spin 2s linear infinite', color: '#6b7280' }} />
-                <p style={{ marginTop: '16px', fontWeight: '500' }}>Menyesuaikan format resmi perusahaan...</p>
+                <p style={{ marginTop: '16px', fontWeight: '500' }}>{t.adjusting}</p>
               </div>
             ) : generatedDoc ? (
               <div 
@@ -103,7 +105,7 @@ export default function DocumentGeneratorTab({ theme, darkMode }) {
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#6b7280' }}>
                 <File size={40} style={{ opacity: 0.5, marginBottom: '16px' }} />
-                <p>Silakan isi instruksi di panel kiri dan klik Generate.</p>
+                <p>{t.empty}</p>
               </div>
             )}
           </div>

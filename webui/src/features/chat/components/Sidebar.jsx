@@ -3,6 +3,7 @@ import { useChatStore } from "@/stores/chatStore";
 import SidebarHeader from "./Sidebar/SidebarHeader";
 import SessionList from "./Sidebar/SessionList";
 import SidebarFooter from "./Sidebar/SidebarFooter";
+import SearchModal from "./modals/SearchModal";
 
 const Sidebar = ({
   clearChat,
@@ -21,6 +22,8 @@ const Sidebar = ({
   navigate,
   darkMode,
   setDarkMode,
+  language,
+  setLanguage,
   theme,
 }) => {
   const [activeMenuId, setActiveMenuId] = useState(null);
@@ -33,6 +36,7 @@ const Sidebar = ({
   const [showLogoutPopup, setShowLogoutPopup] = useState(false);
   const popupRef = useRef(null);
   const [isDeletingId, setIsDeletingId] = useState(null);
+  const [isSearchModalOpen, setIsSearchModalOpen] = useState(false);
 
   const pinChat = useChatStore((state) => state.pinChat);
   const renameChat = useChatStore((state) => state.renameChat);
@@ -46,10 +50,7 @@ const Sidebar = ({
     const handleKeyDown = (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
-        setIsOpen(true);
-        setTimeout(() => {
-          sidebarSearchInputRef.current?.focus();
-        }, 100);
+        setIsSearchModalOpen(true);
       }
     };
     window.addEventListener("keydown", handleKeyDown);
@@ -163,6 +164,8 @@ const Sidebar = ({
         setShowDocumentList={setShowDocumentList}
         userData={userData}
         navigate={navigate}
+        setIsSearchModalOpen={setIsSearchModalOpen}
+        language={language}
       />
 
       <SessionList
@@ -184,6 +187,7 @@ const Sidebar = ({
         sidebarSearchInputRef={sidebarSearchInputRef}
         confirmDelete={confirmDelete}
         isDeletingId={isDeletingId}
+        language={language}
       />
 
       <SidebarFooter
@@ -198,6 +202,8 @@ const Sidebar = ({
         setDarkMode={setDarkMode}
         triggerLogout={triggerLogout}
         userData={userData}
+        language={language}
+        setLanguage={setLanguage}
       />
 
       {showDeleteModal && (
@@ -235,6 +241,20 @@ const Sidebar = ({
           </div>
         </div>
       )}
+
+      {/* SEARCH MODAL */}
+      <SearchModal 
+        isOpen={isSearchModalOpen} 
+        onClose={() => setIsSearchModalOpen(false)} 
+        chatHistory={chatHistory} 
+        loadChatSession={(uuid) => {
+          loadChatSession(uuid);
+          setIsSearchModalOpen(false);
+        }} 
+        darkMode={darkMode}
+        theme={theme}
+        language={language}
+      />
     </div>
   );
 };

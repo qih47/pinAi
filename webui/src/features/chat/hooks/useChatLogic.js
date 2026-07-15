@@ -512,6 +512,10 @@ export function useChatLogic({ isGuest,
     if (allowed.length > 0) setSelectedFiles((prev) => [...prev, ...allowed]);
   };
 
+  const [language, setLanguage] = useState(() => {
+    return localStorage.getItem("cakra_language") || "id";
+  });
+
   const [darkMode, setDarkMode] = useState(() => {
     const savedTheme = localStorage.getItem("cakra-theme");
     if (savedTheme !== null) return savedTheme === "dark";
@@ -556,6 +560,8 @@ export function useChatLogic({ isGuest,
     const handleStorageChange = (e) => {
       if (e.key === "cakra-theme") {
         setDarkMode(e.newValue === "dark");
+      } else if (e.key === "cakra_language" && e.newValue) {
+        setLanguage(e.newValue);
       }
     };
     window.addEventListener("storage", handleStorageChange);
@@ -1037,6 +1043,8 @@ export function useChatLogic({ isGuest,
     setChatMode,
     setContextIsolation,
     setDarkMode,
+    language,
+    setLanguage,
     setDocContent,
     setDocSearchQuery,
     setInput,

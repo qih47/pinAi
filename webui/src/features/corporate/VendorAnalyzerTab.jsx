@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
 import { BarChart2, FolderOpen, Sparkles, Star } from 'lucide-react';
+import { translations } from '../../utils/translations';
 
-export default function VendorAnalyzerTab({ theme, darkMode }) {
+export default function VendorAnalyzerTab({ theme, darkMode, language }) {
+  const t = translations[language]?.vendorAnalyzer || translations.id.vendorAnalyzer;
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [showResult, setShowResult] = useState(false);
 
@@ -16,7 +18,7 @@ export default function VendorAnalyzerTab({ theme, darkMode }) {
   return (
     <div style={{ flex: 1, padding: '20px', color: theme.textColor, display: 'flex', flexDirection: 'column' }}>
       <h2 style={{ fontSize: '1.5rem', fontWeight: 'bold', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-        <BarChart2 size={24} /> CAKRA Vendor Benchmarking (Matrix Analyzer)
+        <BarChart2 size={24} /> {t.title}
       </h2>
       
       {!isAnalyzing && !showResult && (
@@ -32,8 +34,8 @@ export default function VendorAnalyzerTab({ theme, darkMode }) {
           margin: '20px 0'
         }}>
           <FolderOpen size={48} style={{ marginBottom: '16px', color: theme.secondaryText }} />
-          <h3 style={{ fontSize: '1.2rem', fontWeight: 'bold', marginBottom: '8px' }}>Tarik & Lepas Dokumen Penawaran Vendor (PDF/Word)</h3>
-          <p style={{ color: theme.secondaryText, marginBottom: '24px' }}>Unggah minimal 2 dokumen untuk dianalisa dan dibuat matriks perbandingannya.</p>
+          <h3 style={{ fontSize: '1.2rem', fontWeight: 'bold', marginBottom: '8px' }}>{t.dropTitle}</h3>
+          <p style={{ color: theme.secondaryText, marginBottom: '24px' }}>{t.dropDesc}</p>
           <button 
             onClick={handleSimulateUpload}
             style={{ 
@@ -46,7 +48,7 @@ export default function VendorAnalyzerTab({ theme, darkMode }) {
               cursor: 'pointer' 
             }}
           >
-            Simulasikan Unggahan 3 Vendor
+            {t.simulateBtn}
           </button>
         </div>
       )}

@@ -21,6 +21,7 @@ import EmailTriageTab from "../corporate/EmailTriageTab";
 import DocumentGeneratorTab from "../corporate/DocumentGeneratorTab";
 import VendorAnalyzerTab from "../corporate/VendorAnalyzerTab";
 import PdfInterrogator from "./components/PdfInterrogator";
+import { translations } from "../../utils/translations";
 
 // ============================================================
 // MAIN COMPONENT
@@ -44,8 +45,10 @@ export default function ChatPage({ isGuest,
     getGreeting,
   });
   const {
-    activeIsolatedDocId, activeIsolatedTitle, activeSessionId, artifactContent, artifacts, authUser, baselineHeightRef, bottomRef, chatHistory, chatMode, chatModeRef, currentIsLoggedIn, currentThinking, currentUserData, darkMode, defaultGetGreeting, detectLang, docContent, docSearchQuery, documents, documentsTotal, fetchDocumentsList, fileInputRef, handleChatModeChange, handleClearChat, handleDownloadAllArtifacts, handleDownloadArtifact, handleDragLeave, handleDragOver, handleDrop, handleFileChange, handleFileClick, handleKeyDown, handleOpenArtifact, handlePaste, handleSubmit, handleThinkingModeChange, hasSidebar, input, isArtifactLoading, isAuthenticated, isDocLoading, isDragOver, isEmptyChat, isLoading, isLoadingDocuments, isMobile, isMultiLine, isResizingRightSidebar, isStreaming, isStreamingText, isThinking, isThinkingMode, isThinkingModeRef, isUploadingFile, lastAssistantIndex, lastLoadedSessionRef, loadChatSession, logout, mainMarginLeft, mainMarginRight, messageSearchInputRef, messages, messagesContainerRef, msgSearchQuery, navigate, previewArtifact, previewDoc, previewImage, removeFilePreview, rightSidebarWidth, selectedFiles, selectedMode, sessionAttachments, setChatHistory, setChatMode, setContextIsolation, setDarkMode, setDocContent, setDocSearchQuery, setInput, setIsArtifactLoading, setIsDocLoading, setIsDragOver, setIsMobile, setIsMultiLine, setIsThinkingMode, setIsUploadingFile, setMsgSearchQuery, setPreviewArtifact, setPreviewDoc, setPreviewImage, setRightSidebarWidth, setSelectedFiles, setSelectedMode, setShowDocumentList, setShowMsgSearch, setShowRightSidebar, setShowScrollBottom, setSidebarOpen, setStagedAttachments, showDocumentList, showMsgSearch, showRightSidebar, showScrollBottom, showWelcome, sidebarOpen, singleLineWidthRef, stagedAttachments, startResizingRightSidebar, storeChatMode, textareaRef, theme, toast, toggleRightSidebar, triggerLogout, validateFile, wasLeftSidebarOpenRef
+    activeIsolatedDocId, activeIsolatedTitle, activeSessionId, artifactContent, artifacts, authUser, baselineHeightRef, bottomRef, chatHistory, chatMode, chatModeRef, currentIsLoggedIn, currentThinking, currentUserData, darkMode, defaultGetGreeting, detectLang, docContent, docSearchQuery, documents, documentsTotal, fetchDocumentsList, fileInputRef, handleChatModeChange, handleClearChat, handleDownloadAllArtifacts, handleDownloadArtifact, handleDragLeave, handleDragOver, handleDrop, handleFileChange, handleFileClick, handleKeyDown, handleOpenArtifact, handlePaste, handleSubmit, handleThinkingModeChange, hasSidebar, input, isArtifactLoading, isAuthenticated, isDocLoading, isDragOver, isEmptyChat, isLoading, isLoadingDocuments, isMobile, isMultiLine, isResizingRightSidebar, isStreaming, isStreamingText, isThinking, isThinkingMode, isThinkingModeRef, isUploadingFile, lastAssistantIndex, lastLoadedSessionRef, language, loadChatSession, logout, mainMarginLeft, mainMarginRight, messageSearchInputRef, messages, messagesContainerRef, msgSearchQuery, navigate, previewArtifact, previewDoc, previewImage, removeFilePreview, rightSidebarWidth, selectedFiles, selectedMode, sessionAttachments, setChatHistory, setChatMode, setContextIsolation, setDarkMode, setDocContent, setDocSearchQuery, setInput, setIsArtifactLoading, setIsDocLoading, setIsDragOver, setIsMobile, setIsMultiLine, setIsThinkingMode, setIsUploadingFile, setLanguage, setMsgSearchQuery, setPreviewArtifact, setPreviewDoc, setPreviewImage, setRightSidebarWidth, setSelectedFiles, setSelectedMode, setShowDocumentList, setShowMsgSearch, setShowRightSidebar, setShowScrollBottom, setSidebarOpen, setStagedAttachments, showDocumentList, showMsgSearch, showRightSidebar, showScrollBottom, showWelcome, sidebarOpen, singleLineWidthRef, stagedAttachments, startResizingRightSidebar, storeChatMode, textareaRef, theme, toast, toggleRightSidebar, triggerLogout, validateFile, wasLeftSidebarOpenRef
   } = chatLogic;
+
+  const t = translations[language]?.chatPage || translations.id.chatPage;
 
   React.useEffect(() => {
     if (corporateMode) {
@@ -159,6 +162,8 @@ export default function ChatPage({ isGuest,
           isMobile={isMobile}
           darkMode={darkMode}
           setDarkMode={setDarkMode}
+          language={language}
+          setLanguage={setLanguage}
           theme={theme}
           clearChat={handleClearChat}
           showDocumentList={showDocumentList}
@@ -225,7 +230,7 @@ export default function ChatPage({ isGuest,
                   padding: "6px",
                   borderRadius: "8px",
                 }}
-                title="Buka Menu"
+                title={t.openMenu}
               >
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
@@ -280,7 +285,7 @@ export default function ChatPage({ isGuest,
                   transition: "background 0.2s",
                   outline: "none",
                 }}
-                title="Chat Baru"
+                title={t.newChat}
               >
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M12 5v14M5 12h14" />
@@ -304,7 +309,7 @@ export default function ChatPage({ isGuest,
                 <input
                   ref={messageSearchInputRef}
                   type="text"
-                  placeholder="Cari kata kunci..."
+                  placeholder={t.searchKeyword}
                   value={msgSearchQuery}
                   onChange={(e) => setMsgSearchQuery(e.target.value)}
                   style={{
@@ -355,7 +360,7 @@ export default function ChatPage({ isGuest,
                 onMouseLeave={(e) =>
                   (e.currentTarget.style.background = "transparent")
                 }
-                title="Cari kata kunci dalam percakapan ini (Ctrl+F)"
+                title={t.searchTooltip}
               >
                 {/* 🔥 ICON SVG MINIMALIS MODERN */}
                 <svg
@@ -400,7 +405,7 @@ export default function ChatPage({ isGuest,
                 onMouseLeave={(e) => {
                   if (!showRightSidebar) e.currentTarget.style.background = "transparent";
                 }}
-                title="File Sesi Ini"
+                title={t.sessionFiles}
               >
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
@@ -412,7 +417,6 @@ export default function ChatPage({ isGuest,
               </button>
             )}
             {/* 👇 W16: Notification Bell */}
-            {!isGuest}
             <HeaderDropdownMenu
               isGuest={isGuest}
               onLogin={() => {
@@ -425,6 +429,7 @@ export default function ChatPage({ isGuest,
               darkMode={darkMode}
               setDarkMode={setDarkMode}
               theme={theme}
+              language={language}
             />
           </div>
         </header>
@@ -455,9 +460,9 @@ export default function ChatPage({ isGuest,
                 flexDirection: "column",
               }}
             >
-              {corporateMode === 'mail' && <EmailTriageTab theme={theme} darkMode={darkMode} userData={currentUserData} />}
-              {corporateMode === 'notadinas' && <DocumentGeneratorTab theme={theme} darkMode={darkMode} userData={currentUserData} />}
-              {corporateMode === 'vendor' && <VendorAnalyzerTab theme={theme} darkMode={darkMode} userData={currentUserData} />}
+              {corporateMode === 'mail' && <EmailTriageTab theme={theme} darkMode={darkMode} userData={currentUserData} language={language} />}
+              {corporateMode === 'notadinas' && <DocumentGeneratorTab theme={theme} darkMode={darkMode} userData={currentUserData} language={language} />}
+              {corporateMode === 'vendor' && <VendorAnalyzerTab theme={theme} darkMode={darkMode} userData={currentUserData} language={language} />}
 
               {!corporateMode && (
                 <>
@@ -483,6 +488,7 @@ export default function ChatPage({ isGuest,
                     setPreviewImage={setPreviewImage}
                     onOpenArtifact={handleOpenArtifact}
                     handleDownloadAllArtifacts={handleDownloadAllArtifacts}
+                    language={language}
                   />
                 </>
               )}
@@ -517,6 +523,7 @@ export default function ChatPage({ isGuest,
                     theme={theme}
                     darkMode={darkMode}
                     isMobile={isMobile}
+                    language={language}
                   />
                 </div>
                 <div
@@ -562,6 +569,7 @@ export default function ChatPage({ isGuest,
                     isThinkingMode={isThinkingMode}
                     handleThinkingModeChange={handleThinkingModeChange}
                     styles={styles}
+                    language={language}
                   />
                 </div>
               </div>
@@ -604,6 +612,7 @@ export default function ChatPage({ isGuest,
                 isThinkingMode={isThinkingMode}
                 handleThinkingModeChange={handleThinkingModeChange}
                 styles={styles}
+                language={language}
               />
             )}
           </div>
@@ -623,6 +632,7 @@ export default function ChatPage({ isGuest,
         onSelectDocument={setContextIsolation}
         theme={theme}
         darkMode={darkMode}
+        language={language}
       />
       {false && (
         <div
@@ -856,6 +866,7 @@ export default function ChatPage({ isGuest,
         handleDownloadAllArtifacts={handleDownloadAllArtifacts}
         setPreviewImage={setPreviewImage}
         setShowRightSidebar={setShowRightSidebar}
+        language={language}
       />
 
       {/* 🖼️ IMAGE PREVIEW MODAL */}

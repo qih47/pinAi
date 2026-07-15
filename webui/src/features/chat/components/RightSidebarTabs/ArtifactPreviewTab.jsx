@@ -13,7 +13,8 @@ export default function ArtifactPreviewTab({
   darkMode,
   toast,
   containerBgColor,
-  setShowRightSidebar
+  setShowRightSidebar,
+  t
 }) {
   const ext = previewArtifact?.filename?.split('.').pop()?.toLowerCase();
   const isMarkdownOrText = ext === 'md' || ext === 'txt';
@@ -51,7 +52,7 @@ export default function ArtifactPreviewTab({
             }}
             style={{ background: darkMode ? "rgba(255,255,255,0.04)" : "#ffffff", border: `1px solid ${darkMode ? "rgba(255,255,255,0.08)" : "#e2e8f0"}`, color: theme.textColor, padding: "6px 12px", borderRadius: "8px", cursor: "pointer", fontSize: "12px", fontWeight: 500, display: "flex", alignItems: "center", gap: "6px" }}
           >
-            <IconCopy size={13} /> Copy
+            <IconCopy size={13} /> {t.copy}
           </button>
           
           <button
@@ -60,7 +61,7 @@ export default function ArtifactPreviewTab({
               setTimeout(() => setPreviewArtifact(null), 300);
             }}
             style={{ background: darkMode ? "rgba(239,68,68,0.1)" : "rgba(239,68,68,0.05)", border: `1px solid ${darkMode ? "rgba(239,68,68,0.2)" : "rgba(239,68,68,0.15)"}`, color: "#ef4444", padding: "6px", borderRadius: "8px", cursor: "pointer", display: "flex", flexShrink: 0, marginLeft: "4px" }}
-            title="Tutup Panel"
+            title={t.closePanel}
           >
             <IconClose />
           </button>
@@ -71,7 +72,7 @@ export default function ArtifactPreviewTab({
         {isArtifactLoading ? (
           <div style={{ padding: "60px 24px", display: "flex", flexDirection: "column", alignItems: "center", gap: "12px", color: "#64748b" }}>
             <div style={{ width: "24px", height: "24px", border: "2px solid rgba(99,102,241,0.1)", borderTopColor: "#6366f1", borderRadius: "50%", animation: "rotate-spin 0.6s linear infinite" }} />
-            <span style={{ fontSize: "12px" }}>Menyusun arsitektur kode...</span>
+            <span style={{ fontSize: "12px" }}>{t.loadingArtifact}</span>
           </div>
         ) : (
           isMarkdownOrText ? (

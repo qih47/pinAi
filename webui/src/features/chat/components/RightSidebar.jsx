@@ -1,8 +1,9 @@
-import React from "react";
+import React, { useState } from "react";
 import useToast from "../../../hooks/useToast";
 import DocumentPreviewTab from "./RightSidebarTabs/DocumentPreviewTab";
 import ArtifactPreviewTab from "./RightSidebarTabs/ArtifactPreviewTab";
 import WorkspaceExplorerTab from "./RightSidebarTabs/WorkspaceExplorerTab";
+import { translations } from "../../../utils/translations";
 
 export default function RightSidebar({
   isMobile,
@@ -27,8 +28,11 @@ export default function RightSidebar({
   handleDownloadAllArtifacts,
   setPreviewImage,
   setShowRightSidebar,
+  language
 }) {
   const toast = useToast();
+  const [activeTab, setActiveTab] = useState("workspace");
+  const t = translations[language]?.rightSidebar || translations.id.rightSidebar;
   const isPreviewMode = !!(previewDoc || previewArtifact);
 
   const baseBgColor = darkMode ? "#1e1f22" : "#ffffff";
@@ -86,7 +90,10 @@ export default function RightSidebar({
           setPreviewDoc={setPreviewDoc}
           docContent={docContent}
           isDocLoading={isDocLoading}
+          setActiveTab={setActiveTab}
           theme={theme}
+          language={language}
+          t={t}
           darkMode={darkMode}
           setShowRightSidebar={setShowRightSidebar}
           toast={toast}
@@ -102,6 +109,8 @@ export default function RightSidebar({
           artifactContent={artifactContent}
           isArtifactLoading={isArtifactLoading}
           theme={theme}
+          language={language}
+          t={t}
           darkMode={darkMode}
           toast={toast}
           containerBgColor={containerBgColor}
@@ -120,6 +129,8 @@ export default function RightSidebar({
           setPreviewImage={setPreviewImage}
           setPreviewDoc={setPreviewDoc}
           borderStyleColor={borderStyleColor}
+          language={language}
+          t={t}
         />
       )}
     </aside>

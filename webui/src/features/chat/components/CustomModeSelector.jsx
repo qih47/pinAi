@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { getCustomModeSelectorStyles } from '../chatPage.styles';
+import { translations } from '../../../utils/translations';
 
 export default function CustomModeSelector({ 
   value, 
@@ -7,8 +8,10 @@ export default function CustomModeSelector({
   disabled, 
   darkMode,
   thinking,           
-  onThinkingChange    
+  onThinkingChange,
+  language
 }) {
+  const t = translations[language]?.chatInput || translations.id.chatInput;
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef(null);
 
@@ -23,9 +26,9 @@ export default function CustomModeSelector({
   }, []);
 
   const options = [
-    { value: 'auto', label: 'Auto' },
-    { value: 'flash', label: 'Flash' },
-    { value: 'documents', label: 'Documents' }
+    { value: 'auto', label: t.autoMode },
+    { value: 'flash', label: t.flashMode },
+    { value: 'documents', label: t.docMode }
   ];
 
   const selectedOption = options.find((opt) => opt.value === value);
@@ -136,13 +139,7 @@ export default function CustomModeSelector({
                 fontWeight: 600, 
                 color: darkMode ? '#e5e7eb' : '#374151' 
               }}>
-                Thinking
-              </span>
-              <span style={{ 
-                fontSize: '11px', 
-                color: darkMode ? '#9ca3af' : '#6b7280' 
-              }}>
-                {/* Can think for more complex tasks */}
+                {t.thinkingToggle}
               </span>
             </div>
             

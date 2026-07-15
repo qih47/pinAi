@@ -71,9 +71,9 @@ backend/tests/*
 webui/tests/*
 !webui/tests/.gitkeep
 
-.agents/*
-!.agents/.gitkeep
-
+.agents/scratch/
+.agents/**/*.log
+.agents/**/*.tmp
 # ==============================================================================
 # LOGS & TEMPORARY FILES
 # ==============================================================================

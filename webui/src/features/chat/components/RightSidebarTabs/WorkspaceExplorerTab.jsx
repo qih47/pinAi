@@ -12,7 +12,8 @@ export default function WorkspaceExplorerTab({
   handleDownloadAllArtifacts,
   setPreviewImage,
   setPreviewDoc,
-  borderStyleColor
+  borderStyleColor,
+  t
 }) {
   // Helper fungsi download blob agar kode di bawah lebih rapi
   const executeDownload = (filename, codeString) => {
@@ -28,7 +29,7 @@ export default function WorkspaceExplorerTab({
   return (
     <>
       <div style={{ padding: "18px 20px" }}>
-        <h3 style={{ margin: 0, color: theme.textColor, fontSize: "14px", fontWeight: 600, letterSpacing: '0.5px', textTransform: "uppercase", opacity: 0.9 }}>Workspace Explorer</h3>
+        <h3 style={{ margin: 0, color: theme.textColor, fontSize: "14px", fontWeight: 600, letterSpacing: '0.5px', textTransform: "uppercase", opacity: 0.9 }}>{t.workspace}</h3>
       </div>
 
       <div className="premium-scroll" style={{ flex: 1, overflowY: "auto", padding: "20px", display: "flex", flexDirection: "column", gap: "24px" }}>
@@ -38,7 +39,7 @@ export default function WorkspaceExplorerTab({
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
             <div style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "12px", fontWeight: 600, color: darkMode ? "#94a3b8" : "#475569" }}>
               <span style={{ color: "#eab308", display: "flex" }}><IconLightning /></span>
-              <span>GENERATED ARTIFACTS</span>
+              <span>{t.artifacts}</span>
             </div>
             {artifacts.length > 0 && (
               <button
@@ -62,14 +63,14 @@ export default function WorkspaceExplorerTab({
                   borderRadius: "6px"
                 }}
               >
-                <IconDownload size={14} /> Download all
+                <IconDownload size={14} /> {t.downloadAll}
               </button>
             )}
           </div>
 
           {artifacts.length === 0 ? (
             <div style={{ padding: "24px 16px", textAlign: "center", color: "#64748b", fontSize: "12px", background: darkMode ? "rgba(255,255,255,0.01)" : "rgba(0,0,0,0.01)", borderRadius: "10px", border: `1px dashed ${borderStyleColor}` }}>
-              Tidak ada sistem eksekusi kode terdeteksi.
+              {t.noArtifacts}
             </div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
@@ -108,7 +109,7 @@ export default function WorkspaceExplorerTab({
                           {art.filename}
                         </div>
                         <div style={{ fontSize: "10px", color: "#64748b", marginTop: "1px" }}>
-                          {art.lines_count ? art.lines_count : (art.code || '').split('\n').length} baris kode
+                          {art.lines_count ? art.lines_count : (art.code || '').split('\n').length} {t.lines}
                         </div>
                       </div>
                     </div>
@@ -124,7 +125,7 @@ export default function WorkspaceExplorerTab({
                             executeDownload(art.filename, art.code);
                         }
                       }}
-                      title={`Unduh ${art.filename}`}
+                      title={`${t.download} ${art.filename}`}
                       style={{
                         background: "transparent",
                         border: "none",
@@ -152,12 +153,12 @@ export default function WorkspaceExplorerTab({
         <div>
           <div style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "12px", fontWeight: 600, color: darkMode ? "#94a3b8" : "#475569", marginBottom: "12px" }}>
             <span style={{ color: "#3b82f6", display: "flex" }}><IconFolder /></span>
-            <span>UPLOADED ATTACHMENTS</span>
+            <span>{t.attachments}</span>
           </div>
 
           {sessionAttachments.length === 0 ? (
             <div style={{ padding: "24px 16px", textAlign: "center", color: "#64748b", fontSize: "12px", background: darkMode ? "rgba(255,255,255,0.01)" : "rgba(0,0,0,0.01)", borderRadius: "10px", border: `1px dashed ${borderStyleColor}` }}>
-              Belum ada aset data eksternal.
+              {t.noAttachments}
             </div>
           ) : (
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>

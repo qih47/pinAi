@@ -3,6 +3,7 @@ import { Virtuoso } from 'react-virtuoso';
 import ChatBubble from './ChatBubble';
 import cakraLogo from '../../../assets/cakra.png';
 import { styles } from '../chatPage.styles';
+import { translations } from '../../../utils/translations';
 
 const SkeletonChat = () => (
   <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', width: '100%', padding: '12px 0' }}>
@@ -42,6 +43,7 @@ export default function ChatArea({
   onOpenArtifact,
   handleDownloadAllArtifacts,
   handleDownloadArtifact,
+  language
 }) {
   const virtuosoRef = useRef(null);
 
@@ -115,6 +117,8 @@ export default function ChatArea({
     />
   ), [darkMode, theme, isThinking, isStreamingText, sendMessage, searchQuery, messages.length, onFileClick, setPreviewImage, onOpenArtifact, handleDownloadAllArtifacts, handleDownloadArtifact]);
 
+  const t = translations[language]?.chatArea || translations.id.chatArea;
+
   const FooterComponent = useCallback(() => (
     <>
       {isStreaming && lastAssistantIndex === -1 && (
@@ -130,7 +134,7 @@ export default function ChatArea({
                 <span style={{ ...styles.statusDot, background: '#ef4444', borderColor: theme.mainBg }} />
               </div>
               <span style={{ ...styles.thinkingInline, color: theme.secondaryText, marginLeft: 10 }}>
-                {currentThinking || 'CAKRA sedang berpikir'}
+                {currentThinking || t.thinking}
               </span>
             </div>
             <div style={styles.assistantContent} />
@@ -158,9 +162,9 @@ export default function ChatArea({
               <div style={styles.emptyLogoWrap}>
                 <img src={cakraLogo} alt="CAKRA" style={styles.emptyLogo} />
               </div>
-              <h1 style={{ ...styles.emptyTitle, color: theme.textColor }}>Halo, saya CAKRA</h1>
+              <h1 style={{ ...styles.emptyTitle, color: theme.textColor }}>{t.welcomeTitle}</h1>
             </div>
-            <p style={{ ...styles.emptySubtitle, color: theme.secondaryText }}>Ada yang bisa saya bantu hari ini?</p>
+            <p style={{ ...styles.emptySubtitle, color: theme.secondaryText }}>{t.welcomeSubtitle}</p>
           </div>
         ) : (
           <div
@@ -174,6 +178,7 @@ export default function ChatArea({
               customScrollParent={scrollParent}
               useWindowScroll={false}
               itemContent={itemContent}
+              language={language}
               initialTopMostItemIndex={messages.length > 0 ? messages.length - 1 : 0}
               atBottomStateChange={(atBottom) => {
                 if (onAtBottomChange) onAtBottomChange(atBottom);

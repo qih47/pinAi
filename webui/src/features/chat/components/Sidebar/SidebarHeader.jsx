@@ -1,5 +1,6 @@
 import React from "react";
 import SessionExpiryStatus from "../../../../components/SessionExpiryStatus";
+import { translations } from "../../../../utils/translations";
 
 export default function SidebarHeader({
   isOpen,
@@ -14,8 +15,12 @@ export default function SidebarHeader({
   showDocumentList,
   setShowDocumentList,
   userData,
-  navigate
+  navigate,
+  setIsSearchModalOpen,
+  language
 }) {
+  const t = translations[language]?.sidebar || translations.id.sidebar;
+
   return (
     <>
       <div
@@ -35,7 +40,7 @@ export default function SidebarHeader({
               }`}
             style={{ color: theme?.textColor }}
           >
-            CAKRA AI
+            CAKRA
           </h1>
         </div>
 
@@ -52,7 +57,7 @@ export default function SidebarHeader({
               opacity: isOpen ? 1 : isHovered ? 1 : 0,
               pointerEvents: isOpen ? "auto" : isHovered ? "auto" : "none",
             }}
-            title={isOpen ? "Ciutkan" : "Lebarkan"}
+            title={isOpen ? t.collapse : t.expand}
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"
@@ -85,7 +90,7 @@ export default function SidebarHeader({
             width: isOpen ? "100%" : "auto",
             gap: isOpen ? "12px" : "0",
           }}
-          title="New Chat"
+          title={t.newChat}
         >
           <svg
             xmlns="http://www.w3.org/2000/svg"
@@ -106,8 +111,55 @@ export default function SidebarHeader({
               }`}
             style={{ color: theme?.textColor }}
           >
-            New Chat
+            {t.newChat}
           </span>
+        </button>
+
+        {/* ── TOMBOL: SEARCH (CTRL+K) ── */}
+        <button
+          onClick={() => setIsSearchModalOpen(true)}
+          className={`flex items-center rounded-full transition-colors group overflow-hidden text-[14px] ${darkMode ? 'hover:bg-gray-800' : 'hover:bg-gray-200'}`}
+          style={{
+            padding: isOpen ? "8px 12px" : "8px",
+            width: isOpen ? "100%" : "auto",
+            gap: isOpen ? "12px" : "0",
+          }}
+          title={t.searchChat}
+        >
+          <span className="h-5 w-5 flex items-center justify-center flex-shrink-0">
+            <svg
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke={theme?.iconColor || "currentColor"}
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="group-hover:text-blue-500 transition-colors"
+            >
+              <circle cx="11" cy="11" r="8"></circle>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+            </svg>
+          </span>
+          <span
+            className={`font-medium whitespace-nowrap transition-opacity duration-300 flex-1 text-left ${!isOpen ? "hidden" : "opacity-100"
+              }`}
+            style={{ color: theme?.textColor }}
+          >
+            {t.searchChat}
+          </span>
+          {isOpen && (
+            <span
+              className="text-[10px] px-1.5 py-0.5 rounded border opacity-60 ml-auto"
+              style={{
+                borderColor: darkMode ? "#4B5563" : "#D1D5DB",
+                color: darkMode ? "#9CA3AF" : "#6B7280"
+              }}
+            >
+              Ctrl K
+            </span>
+          )}
         </button>
 
         {/* ── TOMBOL: DOCUMENTS (DULU EMOJI 📄, SEKARANG SVG) ── */}
@@ -119,7 +171,7 @@ export default function SidebarHeader({
             width: isOpen ? "100%" : "auto",
             gap: isOpen ? "12px" : "0",
           }}
-          title="Documents"
+          title={t.documents}
         >
           <span className="h-5 w-5 flex items-center justify-center flex-shrink-0">
             <svg
@@ -145,14 +197,14 @@ export default function SidebarHeader({
               }`}
             style={{ color: theme?.textColor }}
           >
-            Documents
+            {t.documents}
           </span>
         </button>
 
         {/* ── CORPORATE TOOLS SECTION ── */}
         <div className={`pt-4 pb-1 transition-all duration-300 ${!isOpen ? "opacity-0 h-0 overflow-hidden" : "opacity-100 h-auto"}`}>
           <p className="text-[10px] font-bold tracking-widest uppercase" style={{ color: theme?.secondaryText || "#9ca3af", paddingLeft: "12px" }}>
-            Corporate Tools
+            {t.corporateTools}
           </p>
         </div>
 
@@ -165,7 +217,7 @@ export default function SidebarHeader({
             width: isOpen ? "100%" : "auto",
             gap: isOpen ? "12px" : "0",
           }}
-          title="Smart Mail"
+          title={t.smartMail}
         >
           <span className="h-5 w-5 flex items-center justify-center flex-shrink-0">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={theme?.iconColor || "currentColor"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="group-hover:text-blue-500 transition-colors">
@@ -174,7 +226,7 @@ export default function SidebarHeader({
             </svg>
           </span>
           <span className={`font-medium whitespace-nowrap transition-opacity duration-300 ${!isOpen ? "hidden" : "opacity-100"}`} style={{ color: theme?.textColor }}>
-            Smart Mail
+            {t.smartMail}
           </span>
         </button>
 
@@ -187,7 +239,7 @@ export default function SidebarHeader({
             width: isOpen ? "100%" : "auto",
             gap: isOpen ? "12px" : "0",
           }}
-          title="Nota Dinas Gen"
+          title={t.notaDinasGen}
         >
           <span className="h-5 w-5 flex items-center justify-center flex-shrink-0">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={theme?.iconColor || "currentColor"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="group-hover:text-emerald-500 transition-colors">
@@ -198,7 +250,7 @@ export default function SidebarHeader({
             </svg>
           </span>
           <span className={`font-medium whitespace-nowrap transition-opacity duration-300 ${!isOpen ? "hidden" : "opacity-100"}`} style={{ color: theme?.textColor }}>
-            Nota Dinas Gen
+            {t.notaDinasGen}
           </span>
         </button>
 
@@ -211,7 +263,7 @@ export default function SidebarHeader({
             width: isOpen ? "100%" : "auto",
             gap: isOpen ? "12px" : "0",
           }}
-          title="Vendor Analyzer"
+          title={t.vendorAnalyzer}
         >
           <span className="h-5 w-5 flex items-center justify-center flex-shrink-0">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={theme?.iconColor || "currentColor"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="group-hover:text-purple-500 transition-colors">
@@ -221,7 +273,7 @@ export default function SidebarHeader({
             </svg>
           </span>
           <span className={`font-medium whitespace-nowrap transition-opacity duration-300 ${!isOpen ? "hidden" : "opacity-100"}`} style={{ color: theme?.textColor }}>
-            Vendor Analyzer
+            {t.vendorAnalyzer}
           </span>
         </button>
 
@@ -235,7 +287,7 @@ export default function SidebarHeader({
               width: isOpen ? "100%" : "auto",
               gap: isOpen ? "12px" : "0",
             }}
-            title="Analytics"
+            title={t.analytics}
           >
             <span className="h-5 w-5 flex items-center justify-center flex-shrink-0">
               <svg
@@ -259,7 +311,7 @@ export default function SidebarHeader({
                 }`}
               style={{ color: theme?.textColor }}
             >
-              Analytics
+              {t.analytics}
             </span>
           </button>
         )}
@@ -274,7 +326,7 @@ export default function SidebarHeader({
               width: isOpen ? "100%" : "auto",
               gap: isOpen ? "12px" : "0",
             }}
-            title="Audit Logs (Admin)"
+            title={t.auditLogs}
           >
             <span className="h-5 w-5 flex items-center justify-center flex-shrink-0">
               <svg
@@ -295,7 +347,7 @@ export default function SidebarHeader({
                 }`}
               style={{ color: '#ef4444', fontSize: '13px' }}
             >
-              Audit Logs
+              {t.auditLogs}
             </span>
           </button>
         )}
@@ -310,7 +362,7 @@ export default function SidebarHeader({
               width: isOpen ? "100%" : "auto",
               gap: isOpen ? "12px" : "0",
             }}
-            title="Cache & Performance (Admin)"
+            title={t.cacheIndex}
           >
             <span className="h-5 w-5 flex items-center justify-center flex-shrink-0">
               <svg
@@ -331,7 +383,7 @@ export default function SidebarHeader({
                 }`}
               style={{ color: '#818cf8', fontSize: '13px' }}
             >
-              Cache & Index
+              {t.cacheIndex}
             </span>
           </button>
         )}

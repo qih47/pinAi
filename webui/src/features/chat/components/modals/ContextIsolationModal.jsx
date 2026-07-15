@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { translations } from "../../../../utils/translations";
 
 export default function ContextIsolationModal({
   showModal,
@@ -13,7 +14,10 @@ export default function ContextIsolationModal({
   onSelectDocument,
   theme,
   darkMode,
+  language
 }) {
+  const t = translations[language]?.contextModal || translations.id.contextModal;
+
   const [docSearchQuery, setDocSearchQuery] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
@@ -93,7 +97,7 @@ export default function ContextIsolationModal({
           }}
         >
           <h3 style={{ margin: 0, fontSize: "16px", fontWeight: 600 }}>
-            Daftar Dokumen Regulasi
+            {t.title}
           </h3>
           <button
             onClick={onClose}
@@ -122,7 +126,7 @@ export default function ContextIsolationModal({
         >
           <input
             type="text"
-            placeholder="Cari nama dokumen atau nomor..."
+            placeholder={t.searchPlaceholder}
             value={docSearchQuery}
             onChange={(e) => setDocSearchQuery(e.target.value)}
             style={{
@@ -164,7 +168,7 @@ export default function ContextIsolationModal({
                   fontWeight: 600,
                 }}
               >
-                Memuat dokumen...
+                {t.loading}
               </div>
             )}
 
@@ -176,7 +180,7 @@ export default function ContextIsolationModal({
                   color: theme.secondaryText,
                 }}
               >
-                Tidak ada dokumen ditemukan.
+                {t.noDocs}
               </div>
             ) : (
               (documents || []).map((doc) => {
@@ -225,7 +229,7 @@ export default function ContextIsolationModal({
                             marginTop: "2px",
                           }}
                         >
-                          No: {doc.nomor || "-"} | Tipe: {doc.jenis_dokumen || "-"}
+                          {t.number}: {doc.nomor || "-"} | {t.type}: {doc.jenis_dokumen || "-"}
                         </div>
                         {doc.snippet && (
                           <div
@@ -261,9 +265,9 @@ export default function ContextIsolationModal({
                                   "#10b981",
                           }}
                         >
-                          {doc.stataktif === "batal" ? "Dicabut" :
-                            doc.stataktif === "obsolete" ? "Tidak Berlaku" :
-                              "Berlaku"}
+                          {doc.stataktif === "batal" ? t.revokedStatus :
+                            doc.stataktif === "obsolete" ? t.obsoleteStatus :
+                              t.validStatus}
                         </div>
                       </div>
 
@@ -287,7 +291,7 @@ export default function ContextIsolationModal({
                                   setIsLoadingPdf(false);
                                 }
                               }}
-                              title="Lihat Dokumen"
+                              title={t.viewDoc}
                               style={{
                                 background: "transparent",
                                 border: "none",
@@ -313,7 +317,7 @@ export default function ContextIsolationModal({
                                 link.click();
                                 document.body.removeChild(link);
                               }}
-                              title="Download Dokumen"
+                              title={t.downloadDoc}
                               style={{
                                 padding: "4px",
                                 background: "transparent",
@@ -355,7 +359,7 @@ export default function ContextIsolationModal({
                                   setIsLoadingLineage(false);
                                 }
                               }}
-                              title="Silsilah Dokumen"
+                              title={t.lineageDoc}
                               style={{
                                 background: expandedLineageDocId === doc.id ? "rgba(99, 102, 241, 0.15)" : "transparent",
                                 border: "none",
@@ -375,7 +379,7 @@ export default function ContextIsolationModal({
                                 <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
                                 <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
                               </svg>
-                              Silsilah
+                              {t.lineageBtn}
                             </button>
 
                             <button
@@ -420,7 +424,7 @@ export default function ContextIsolationModal({
                               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                                 <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
                               </svg>
-                              Insight
+                              {t.insightBtn}
                             </button>
 
                           </>
@@ -447,7 +451,7 @@ export default function ContextIsolationModal({
                             flexShrink: 0,
                           }}
                         >
-                          {isIsolated ? "Batal Fokus" : "Fokus"}
+                          {isIsolated ? t.unfocus : t.focus}
                         </button>
                       </div>
                     </div>
@@ -465,19 +469,19 @@ export default function ContextIsolationModal({
                         }}
                       >
                         {isLoadingLineage ? (
-                          <div style={{ color: theme.secondaryText, fontSize: "12px", textAlign: "center" }}>Melacak silsilah dokumen...</div>
+                          <div style={{ color: theme.secondaryText, fontSize: "12px", textAlign: "center" }}>{t.trackingLineage}</div>
                         ) : lineageData ? (
                           <div style={{ display: "flex", flexDirection: "column", gap: "12px", fontSize: "12px" }}>
                             {/* Yg dicabut oleh doc ini */}
                             {lineageData.revokes && lineageData.revokes.length > 0 && (
-                              <div>
-                                <div style={{ color: theme.secondaryText, marginBottom: "4px" }}>Mencabut Dokumen Sebelumnya:</div>
+                              <div style={{ marginBottom: "12px" }}>
+                                <div style={{ color: theme.secondaryText, marginBottom: "4px" }}>{t.revokes}</div>
                                 <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
                                   {lineageData.revokes.map(r => (
                                     <div key={r.id} style={{ padding: "6px 10px", background: darkMode ? "#2a2a2d" : "#f1f5f9", borderRadius: "6px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                                       <div style={{ display: "flex", flexDirection: "column", gap: "2px", flex: 1, paddingRight: "10px" }}>
-                                        <span style={{ fontWeight: 500, color: theme.textColor }}>{r.noper || "Tanpa Nomor"} - {r.judul}</span>
-                                        <span style={{ color: "#ef4444", fontSize: "11px", fontWeight: 600 }}>[Batal]</span>
+                                        <span style={{ fontWeight: 500, color: theme.textColor }}>{r.noper || t.noNumber} - {r.judul}</span>
+                                        <span style={{ color: "#ef4444", fontSize: "11px", fontWeight: 600 }}>{t.inactive}</span>
                                       </div>
                                       <button
                                         onClick={(e) => {
@@ -497,7 +501,7 @@ export default function ContextIsolationModal({
                                           flexShrink: 0,
                                         }}
                                       >
-                                        Fokus
+                                        {t.focus}
                                       </button>
                                     </div>
                                   ))}
@@ -506,21 +510,21 @@ export default function ContextIsolationModal({
                             )}
 
                             {/* Current Doc Highlight */}
-                            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                              <div style={{ width: "8px", height: "8px", borderRadius: "50%", background: "#10b981" }}></div>
-                              <div style={{ fontWeight: 600, color: "#10b981" }}>Dokumen Saat Ini</div>
+                            <div style={{ padding: "8px 12px", background: darkMode ? "rgba(255,255,255,0.03)" : "#f8fafc", borderRadius: "8px", border: `1px solid ${theme.borderColor}`, marginBottom: "12px", display: "flex", alignItems: "center", gap: "8px" }}>
+                              <span style={{ color: "#10b981", display: "flex" }}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg></span>
+                              <div style={{ fontWeight: 600, color: "#10b981" }}>{t.currentDoc}</div>
                             </div>
 
                             {/* Yg mencabut doc ini */}
                             {lineageData.revoked_by && lineageData.revoked_by.length > 0 && (
                               <div>
-                                <div style={{ color: theme.secondaryText, marginBottom: "4px" }}>Digantikan Oleh Dokumen Baru:</div>
+                                <div style={{ color: theme.secondaryText, marginBottom: "4px" }}>{t.revokedBy}</div>
                                 <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
                                   {lineageData.revoked_by.map(r => (
                                     <div key={r.id} style={{ padding: "6px 10px", background: darkMode ? "rgba(16, 185, 129, 0.15)" : "#d1fae5", border: "1px solid #10b981", borderRadius: "6px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                                       <div style={{ display: "flex", flexDirection: "column", gap: "2px", flex: 1, paddingRight: "10px" }}>
-                                        <span style={{ fontWeight: 500, color: theme.textColor }}>{r.noper || "Tanpa Nomor"} - {r.judul}</span>
-                                        <span style={{ color: "#10b981", fontSize: "11px", fontWeight: 600 }}>[Berlaku]</span>
+                                        <span style={{ fontWeight: 500, color: theme.textColor }}>{r.noper || t.noNumber} - {r.judul}</span>
+                                        <span style={{ color: "#10b981", fontSize: "11px", fontWeight: 600 }}>{t.active}</span>
                                       </div>
                                       <button
                                         onClick={(e) => {
@@ -540,7 +544,7 @@ export default function ContextIsolationModal({
                                           flexShrink: 0,
                                         }}
                                       >
-                                        Fokus
+                                        {t.focus}
                                       </button>
                                     </div>
                                   ))}
@@ -550,7 +554,7 @@ export default function ContextIsolationModal({
 
                             {(!lineageData.revokes?.length && !lineageData.revoked_by?.length) && (
                               <div style={{ color: theme.secondaryText, fontStyle: "italic", textAlign: "center" }}>
-                                Tidak ada riwayat silsilah ditemukan untuk dokumen ini.
+                                {t.noLineage}
                               </div>
                             )}
                           </div>
@@ -573,9 +577,10 @@ export default function ContextIsolationModal({
                         {isLoadingInsight ? (
                           <div style={{ display: "flex", alignItems: "center", gap: "8px", color: "#f59e0b", fontSize: "12px", justifyContent: "center" }}>
                             <svg className="animate-spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                              <path d="M21 12a9 9 0 11-6.219-8.56"></path>
+                              <circle cx="12" cy="12" r="10" stroke="currentColor" strokeOpacity="0.25" />
+                              <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" strokeLinecap="round" />
                             </svg>
-                            <span>CAKRA sedang membaca dan merangkum dokumen...</span>
+                            <span>{t.readingInsight}</span>
                           </div>
                         ) : insightData ? (
                           <div>
@@ -608,7 +613,7 @@ export default function ContextIsolationModal({
                             </div>
                           </div>
                         ) : (
-                          <div style={{ color: theme.secondaryText, fontSize: "12px", textAlign: "center" }}>Gagal membuat rangkuman.</div>
+                          <div style={{ color: theme.secondaryText, fontSize: "12px", textAlign: "center" }}>{t.insightFailed}</div>
                         )}
                       </div>
                     )}
@@ -644,11 +649,11 @@ export default function ContextIsolationModal({
               cursor: (currentPage <= 1 || isLoadingDocuments) ? "not-allowed" : "pointer",
             }}
           >
-            &laquo; Sebelumnya
+            {t.prev}
           </button>
 
           <div style={{ fontSize: "12px", color: theme.secondaryText }}>
-            Halaman {totalPages > 0 ? currentPage : 0} dari {totalPages}
+            {t.page} {totalPages > 0 ? currentPage : 0} {t.of} {totalPages}
           </div>
 
           <button
@@ -665,7 +670,7 @@ export default function ContextIsolationModal({
               cursor: (currentPage >= totalPages || isLoadingDocuments) ? "not-allowed" : "pointer",
             }}
           >
-            Selanjutnya &raquo;
+            {t.next}
           </button>
         </div>
       </div>

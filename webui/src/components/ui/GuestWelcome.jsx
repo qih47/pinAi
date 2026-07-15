@@ -14,13 +14,17 @@ const GREETING_TEMPLATES = [
   "Target apa yang ingin diselesaikan sekarang"
 ];
 
+import { translations } from '../../utils/translations';
+
 export default function GuestWelcome({
   isLoggedIn,
   userData,
   getGreeting, // Not used anymore for logged in, but kept for signature compatibility
   theme,
   isMobile,
+  language
 }) {
+  const t = translations[language]?.welcome || translations.id.welcome;
   const [randomGreeting, setRandomGreeting] = useState("");
 
   useEffect(() => {
@@ -93,8 +97,8 @@ export default function GuestWelcome({
           color: 'transparent'
         }}>
           {isLoggedIn
-            ? `${randomGreeting}, ${firstName}?`
-            : "Halo, saya CAKRA"}
+            ? `${t.greeting}, ${firstName}?`
+            : t.guest}
         </h2>
       </div>
 

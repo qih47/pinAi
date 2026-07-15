@@ -41,7 +41,7 @@ const MermaidViewer = ({ chartCode, darkMode, isStreaming }) => {
           }
           throw parseError;
         }
-        
+
         setError(null);
         const id = `mermaid-${Math.random().toString(36).substr(2, 9)}`;
         const { svg } = await mermaid.render(id, chartCode);
@@ -63,7 +63,7 @@ const MermaidViewer = ({ chartCode, darkMode, isStreaming }) => {
       const timeoutId = setTimeout(() => {
         renderChart();
       }, isExporting ? 50 : 500);
-      
+
       return () => clearTimeout(timeoutId);
     }
   }, [chartCode, activeDarkMode, isExporting]);
@@ -76,33 +76,33 @@ const MermaidViewer = ({ chartCode, darkMode, isStreaming }) => {
     if (format === 'svg' && svgContent) {
       const encodedSvg = encodeURIComponent(svgContent);
       const dataUrl = `data:image/svg+xml;charset=utf-8,${encodedSvg}`;
-      
+
       const form = document.createElement('form');
       form.method = 'POST';
       form.action = `${API_BASE}/api/chat/artifacts/download_b64`;
-      
+
       const b64Input = document.createElement('input');
       b64Input.type = 'hidden';
       b64Input.name = 'base64_data';
       b64Input.value = dataUrl;
       form.appendChild(b64Input);
-      
+
       const filenameInput = document.createElement('input');
       filenameInput.type = 'hidden';
       filenameInput.name = 'filename';
       filenameInput.value = `cakra-diagram-${new Date().getTime()}.svg`;
       form.appendChild(filenameInput);
-      
+
       const mimeInput = document.createElement('input');
       mimeInput.type = 'hidden';
       mimeInput.name = 'mime_type';
       mimeInput.value = 'image/svg+xml';
       form.appendChild(mimeInput);
-      
+
       document.body.appendChild(form);
       form.submit();
       setTimeout(() => document.body.removeChild(form), 1000);
-      
+
     } else if (format === 'png' && printRef.current) {
       try {
         const targetWidth = printRef.current.scrollWidth;
@@ -114,8 +114,8 @@ const MermaidViewer = ({ chartCode, darkMode, isStreaming }) => {
           backgroundColor: '#ffffff', // Force white background
           width: targetWidth,
           height: targetHeight,
-          style: { 
-            transform: 'scale(1)', 
+          style: {
+            transform: 'scale(1)',
             transformOrigin: 'top left',
             width: `${targetWidth}px`,
             height: `${targetHeight}px`
@@ -124,33 +124,33 @@ const MermaidViewer = ({ chartCode, darkMode, isStreaming }) => {
           fontEmbedCSS: '',
         };
         const dataUrl = await toPng(printRef.current, config);
-        
+
         const form = document.createElement('form');
         form.method = 'POST';
         form.action = `${API_BASE}/api/chat/artifacts/download_b64`;
-        
+
         const b64Input = document.createElement('input');
         b64Input.type = 'hidden';
         b64Input.name = 'base64_data';
         b64Input.value = dataUrl;
         form.appendChild(b64Input);
-        
+
         const filenameInput = document.createElement('input');
         filenameInput.type = 'hidden';
         filenameInput.name = 'filename';
         filenameInput.value = `cakra-diagram-${new Date().getTime()}.png`;
         form.appendChild(filenameInput);
-        
+
         const mimeInput = document.createElement('input');
         mimeInput.type = 'hidden';
         mimeInput.name = 'mime_type';
         mimeInput.value = 'image/png';
         form.appendChild(mimeInput);
-        
+
         document.body.appendChild(form);
         form.submit();
         setTimeout(() => document.body.removeChild(form), 1000);
-        
+
       } catch (err) {
         console.error('Error downloading image:', err);
         alert('Gagal mengunduh diagram');
@@ -162,7 +162,7 @@ const MermaidViewer = ({ chartCode, darkMode, isStreaming }) => {
     if (!svgContent) return;
     setIsDownloading(true);
     setIsDownloadMenuOpen(false);
-    
+
     if (darkMode) {
       setIsExporting(true);
       // Tunggu mermaid re-render ke light mode
@@ -182,48 +182,42 @@ const MermaidViewer = ({ chartCode, darkMode, isStreaming }) => {
   const viewerContent = (
     <div
       ref={containerRef}
-      className={`group rounded-xl border flex flex-col transition-all duration-300 ${
-        activeDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'
-      } ${isFullscreen ? 'w-full h-full shadow-2xl overflow-auto' : 'relative w-full my-4 overflow-hidden'}`}
+      className={`group rounded-xl border flex flex-col transition-all duration-300 ${activeDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'
+        } ${isFullscreen ? 'w-full h-full shadow-2xl overflow-auto' : 'relative w-full my-4 overflow-hidden'}`}
       style={isFullscreen ? { minHeight: 0 } : {}}
     >
       {/* Toolbar */}
-      <div className={`flex justify-end items-center gap-2 px-3 py-2 border-b ${
-        activeDarkMode ? 'border-gray-700 bg-gray-900/50' : 'border-gray-200 bg-gray-50'
-      }`}>
+      <div className={`flex justify-end items-center gap-2 px-3 py-2 border-b ${activeDarkMode ? 'border-gray-700 bg-gray-900/50' : 'border-gray-200 bg-gray-50'
+        }`}>
         <span className={`text-xs font-semibold mr-auto ${activeDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-          Cakra AI Diagram
+          Cakra Diagram
         </span>
         {/* Download Dropdown */}
         <div className="relative">
-          <button 
+          <button
             onClick={() => setIsDownloadMenuOpen(!isDownloadMenuOpen)}
             disabled={isDownloading}
-            className={`p-1.5 rounded-md transition-colors flex items-center gap-1 ${
-              activeDarkMode ? 'hover:bg-gray-700 text-gray-400' : 'hover:bg-gray-200 text-gray-600'
-            } disabled:opacity-50`}
+            className={`p-1.5 rounded-md transition-colors flex items-center gap-1 ${activeDarkMode ? 'hover:bg-gray-700 text-gray-400' : 'hover:bg-gray-200 text-gray-600'
+              } disabled:opacity-50`}
             title="Download Diagram"
           >
             <Download size={14} />
           </button>
-          
+
           {isDownloadMenuOpen && (
-            <div className={`absolute right-0 top-full mt-1 w-32 rounded-lg shadow-xl overflow-hidden z-50 border ${
-              activeDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'
-            }`}>
-              <button 
+            <div className={`absolute right-0 top-full mt-1 w-32 rounded-lg shadow-xl overflow-hidden z-50 border ${activeDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'
+              }`}>
+              <button
                 onClick={() => handleDownload('png')}
-                className={`w-full text-left px-4 py-2 text-xs font-semibold transition-colors ${
-                  activeDarkMode ? 'text-gray-200 hover:bg-gray-700' : 'text-gray-700 hover:bg-gray-100'
-                }`}
+                className={`w-full text-left px-4 py-2 text-xs font-semibold transition-colors ${activeDarkMode ? 'text-gray-200 hover:bg-gray-700' : 'text-gray-700 hover:bg-gray-100'
+                  }`}
               >
                 Unduh PNG
               </button>
-              <button 
+              <button
                 onClick={() => handleDownload('svg')}
-                className={`w-full text-left px-4 py-2 text-xs font-semibold transition-colors border-t ${
-                  activeDarkMode ? 'text-gray-200 hover:bg-gray-700 border-gray-700' : 'text-gray-700 hover:bg-gray-100 border-gray-100'
-                }`}
+                className={`w-full text-left px-4 py-2 text-xs font-semibold transition-colors border-t ${activeDarkMode ? 'text-gray-200 hover:bg-gray-700 border-gray-700' : 'text-gray-700 hover:bg-gray-100 border-gray-100'
+                  }`}
               >
                 Unduh SVG
               </button>
@@ -233,38 +227,36 @@ const MermaidViewer = ({ chartCode, darkMode, isStreaming }) => {
         <button
           onClick={toggleFullscreen}
           title={isFullscreen ? 'Keluar Layar Penuh' : 'Layar Penuh'}
-          className={`p-1.5 rounded-md transition-colors ${
-            activeDarkMode ? 'hover:bg-gray-700 text-gray-400' : 'hover:bg-gray-200 text-gray-600'
-          }`}
+          className={`p-1.5 rounded-md transition-colors ${activeDarkMode ? 'hover:bg-gray-700 text-gray-400' : 'hover:bg-gray-200 text-gray-600'
+            }`}
         >
           {isFullscreen ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
         </button>
       </div>
 
       {/* Scrollable Wrapper */}
-      <div 
-        className={`flex-1 flex overflow-auto ${
-          activeDarkMode ? 'text-gray-200' : 'text-gray-800'
-        }`}
+      <div
+        className={`flex-1 flex overflow-auto ${activeDarkMode ? 'text-gray-200' : 'text-gray-800'
+          }`}
         style={isFullscreen ? { minHeight: 0 } : { minHeight: '200px' }}
       >
         {/* Render Area (No overflow hidden/auto on the print container) */}
-        <div 
+        <div
           ref={printRef}
           className="flex-1 flex items-center justify-center p-4 min-w-max min-h-max"
         >
-        {error ? (
-          <div className="text-red-500 text-sm font-medium text-center bg-red-500/10 p-4 rounded-lg">
-            {error}
-          </div>
-        ) : svgContent ? (
-          <div 
-            dangerouslySetInnerHTML={{ __html: svgContent }} 
-            className="w-full h-full flex justify-center [&>svg]:max-w-full [&>svg]:h-auto"
-          />
-        ) : (
-          <div className="animate-pulse text-sm">Me-render diagram...</div>
-        )}
+          {error ? (
+            <div className="text-red-500 text-sm font-medium text-center bg-red-500/10 p-4 rounded-lg">
+              {error}
+            </div>
+          ) : svgContent ? (
+            <div
+              dangerouslySetInnerHTML={{ __html: svgContent }}
+              className="w-full h-full flex justify-center [&>svg]:max-w-full [&>svg]:h-auto"
+            />
+          ) : (
+            <div className="animate-pulse text-sm">Me-render diagram...</div>
+          )}
         </div>
       </div>
     </div>

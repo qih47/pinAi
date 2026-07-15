@@ -3,8 +3,11 @@ import apiClient from '../../services/apiClient';
 import DOMPurify from 'dompurify';
 import { Mail, Lock, RefreshCw, Bot, CircleDot, CheckCircle2, Send, Forward as ForwardIcon, Hourglass, Ban, ShieldAlert, Key, LogOut } from 'lucide-react';
 import { useCorporateStore } from '../../stores/corporateStore';
+import { translations } from '../../utils/translations';
 
-export default function EmailTriageTab({ theme, darkMode, userData }) {
+export default function EmailTriageTab({ theme, darkMode, userData, language }) {
+  const t = translations[language]?.smartMail || translations.id.smartMail;
+  const tz = translations[language]?.zimbraAuth || translations.id.zimbraAuth;
   // Gunakan email dari DB jika ada, jika tidak, construct dari NPP
   const userEmail = userData?.email || (userData?.npp ? `${userData.npp}@pindad.com` : "user@pindad.com");
 
@@ -310,7 +313,7 @@ export default function EmailTriageTab({ theme, darkMode, userData }) {
       {isZimbraAuthenticated && (
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
           <h2 style={{ fontSize: '1.5rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Mail size={24} /> CAKRA Smart Mail (Triage & Auto-Draft)
+            <Mail size={24} /> {t.title}
           </h2>
           <div style={{ fontSize: '14px', background: darkMode ? '#2A2A2D' : '#F3F4F6', padding: '6px 12px', borderRadius: '20px', color: theme.secondaryText, marginRight: '24px' }}>
             Kotak Masuk: <strong style={{ color: theme.textColor }}>{userEmail}</strong>
@@ -343,15 +346,15 @@ export default function EmailTriageTab({ theme, darkMode, userData }) {
             <div style={{ display: 'flex', flexDirection: 'column', height: '100%', justifyContent: 'center' }}>
               <div style={{ textAlign: 'center', marginBottom: '20px' }}>
                 <Lock size={40} style={{ margin: '0 auto', color: theme.secondaryText }} />
-                <h3 style={{ fontSize: '1.2rem', fontWeight: 'bold', marginTop: '12px', marginBottom: '8px' }}>Otentikasi Zimbra</h3>
-                <p style={{ fontSize: '12px', color: theme.secondaryText }}>Masukkan password email Pindad Anda untuk menarik kotak masuk.</p>
+                <h3 style={{ fontSize: '1.2rem', fontWeight: 'bold', marginTop: '12px', marginBottom: '8px' }}>{tz.title}</h3>
+                <p style={{ fontSize: '12px', color: theme.secondaryText }}>{tz.description}</p>
                 <div style={{ fontSize: '12px', background: darkMode ? '#2A2A2D' : '#e5e7eb', padding: '4px 8px', borderRadius: '4px', marginTop: '8px', display: 'inline-block' }}>{userEmail}</div>
               </div>
               
               <form onSubmit={handleLoginZimbra} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                 <input 
                   type="password" 
-                  placeholder="Password Zimbra..."
+                  placeholder={tz.placeholder}
                   value={zimbraPassword}
                   onChange={(e) => setZimbraPassword(e.target.value)}
                   style={{
@@ -378,7 +381,7 @@ export default function EmailTriageTab({ theme, darkMode, userData }) {
                     opacity: isLoadingEmails ? 0.7 : 1
                   }}
                 >
-                  {isLoadingEmails ? 'Menghubungkan...' : 'Login ke Zimbra'}
+                  {isLoadingEmails ? tz.loggingIn : tz.loginBtn}
                 </button>
               </form>
 
