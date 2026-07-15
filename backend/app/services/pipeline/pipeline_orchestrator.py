@@ -157,17 +157,19 @@ async def _sequential_pipeline_generator(
                 except Exception as e:
                     logger.error(f"[PIPELINE] Gagal mengekstrak isi file {path}: {e}")
                     
-    # Append extracted texts to user message ONLY IF stateless (no session_uuid)
-    # If session_uuid exists, the text is saved to ai_document_chunks and injected by mode_hub.py!
-    if extracted_file_texts and not payload.session_uuid:
+    # Save original user message for DB saving, so DB isn't bloated
+    original_user_message = user_message
+    
+    # Append extracted texts to user message so LLM sees it directly
+    if extracted_file_texts:
         truncated_texts = [txt[:15000] + "...[TRUNCATED]" if len(txt) > 15000 else txt for txt in extracted_file_texts]
-        user_message += "\n\n" + "\n\n".join(truncated_texts)
+        user_message += "\n\n[DOKUMEN LAMPIRAN BARU]\n" + "\n\n".join(truncated_texts)
         if payload.messages:
             payload.messages[-1].content = user_message
 
     # ── Save user message ─────────────────────────────────────────────────────
     if payload.session_uuid:
-        user_text = f"{user_message}"
+        user_text = f"{original_user_message}"
         
         if payload.edit_index is not None:
             await chat_history_service.update_chat_message(
@@ -261,7 +263,8 @@ async def _sequential_pipeline_generator(
             context_isolation={"isolated_doc_id": payload.isolated_doc_id} if payload.isolated_doc_id else None,
             employee_name=employee_name,
             current_user_npp=current_user_npp,
-            session_uuid=payload.session_uuid
+            session_uuid=payload.session_uuid,
+            has_new_document=bool(extracted_file_texts)
         )
 
         async for sse in agentic_engine:

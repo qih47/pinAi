@@ -374,7 +374,7 @@ ALLOWED_MIME_TYPES = {
     "image/webp",
     "image/bmp",
     "application/pdf",
-    "text/plain", "text/html", "text/css", "text/javascript", "text/csv",
+    "text/plain", "text/markdown", "text/html", "text/css", "text/javascript", "text/csv",
     "application/json", "application/javascript", "application/xml",
     "application/x-httpd-php", "text/x-php", "text/x-python", "text/x-script.python",
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",

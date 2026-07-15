@@ -53,7 +53,8 @@ class ModeHub:
         request: Optional[Request] = None,
         employee_name: str = "Pegawai",
         current_user_npp: Optional[str] = None,
-        session_uuid: Optional[str] = None
+        session_uuid: Optional[str] = None,
+        has_new_document: bool = False
     ) -> AsyncGenerator[str, None]:
         """
         Main entry point for stream.py to route the request to the correct mode handler.
@@ -61,7 +62,7 @@ class ModeHub:
         logger.info(f"[MODE_HUB] Starting execution for chat_mode: {chat_mode.upper()}")
         
         # ── Step 1: Pre-check rule-based ──────────────────────────────────────────
-        has_attachment = bool(attachments)
+        has_attachment = bool(attachments) or has_new_document
         precheck = detect_precheck(user_message, chat_mode, has_attachment)
         precheck["_user_message"] = user_message
 
