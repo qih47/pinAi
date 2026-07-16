@@ -58,7 +58,10 @@ export default function App() {
     const initializeAuth = async () => {
       try {
         // Beneran hit DB verify-session asinkronus, bolo!
-        await checkSession();
+        const isValid = await checkSession();
+        if (isValid) {
+          await useChatStore.getState().fetchSettings();
+        }
       } catch (e) {
         console.error("Gagal menginisiasi session awal:", e);
       } finally {

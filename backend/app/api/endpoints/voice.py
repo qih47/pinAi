@@ -7,6 +7,9 @@ from fastapi import APIRouter, Depends, File, UploadFile, HTTPException, Body
 from fastapi.responses import StreamingResponse
 import edge_tts
 import re
+import asyncio
+import io
+import soundfile as sf
 
 # Comprehensive phonetic map for common tech jargon, English loanwords, and Indonesian abbreviations
 # Comprehensive dictionary for root words
@@ -165,6 +168,93 @@ async def transcribe_voice(
             os.remove(tmp_path)
 
 
+# F5-TTS Global Instances (loaded once, lazily)
+_f5_ema_model = None
+_f5_vocoder = None
+
+# Arsitektur F5-TTS Base yang digunakan saat finetune
+_F5_MODEL_CFG = dict(dim=1024, depth=22, heads=16, ff_mult=2, text_dim=512, conv_layers=4)
+
+def get_f5_tts():
+    """Load & cache F5-TTS model + vocoder (thread-safe lazy init)."""
+    global _f5_ema_model, _f5_vocoder
+    if _f5_ema_model is not None:
+        return _f5_ema_model, _f5_vocoder
+
+    try:
+        import torch
+        import os
+        from f5_tts.infer.utils_infer import load_model, load_vocoder
+        from f5_tts.model import DiT
+
+        # Ensure SDPA math mode (stable, no Flash/MemEfficient bugs on older GPUs)
+        torch.backends.cuda.enable_flash_sdp(False)
+        torch.backends.cuda.enable_mem_efficient_sdp(False)
+        torch.backends.cuda.enable_math_sdp(True)
+
+        ckpt_file  = "/home/qisthi/pinAi/backend/models/f5_tts/f5_tts_indo_v2.pt"
+        vocab_file = "/home/qisthi/pinAi/backend/models/f5_tts/vocab.txt"
+
+        if not (os.path.exists(ckpt_file) and os.path.exists(vocab_file)):
+            logger.warning("[VOICE] F5-TTS weights not found, skipping load.")
+            return None, None
+
+        logger.info("[VOICE] Loading F5-TTS EMA model to GPU...")
+        _f5_ema_model = load_model(
+            model_cls=DiT,
+            model_cfg=_F5_MODEL_CFG,
+            ckpt_path=ckpt_file,
+            vocab_file=vocab_file,
+            ode_method="euler",
+            use_ema=True,
+            device="cuda",
+        )
+
+        logger.info("[VOICE] Loading F5-TTS vocoder (vocos)...")
+        _f5_vocoder = load_vocoder(
+            vocoder_name="vocos",
+            is_local=False,
+            device="cuda",
+        )
+        logger.info("[VOICE] F5-TTS Model loaded successfully.")
+
+    except ImportError:
+        logger.warning("[VOICE] f5_tts module not installed.")
+    except Exception as e:
+        import traceback
+        logger.error(f"[VOICE] Failed to load F5-TTS: {e}")
+        logger.error(traceback.format_exc())
+
+    return _f5_ema_model, _f5_vocoder
+
+
+def expand_numbers_id(text: str) -> str:
+    """Konversi angka ke teks bahasa Indonesia."""
+    satuan = ["", "satu", "dua", "tiga", "empat", "lima", "enam", "tujuh", "delapan", "sembilan", "sepuluh", "sebelas"]
+    
+    def to_words(n):
+        if n < 12: return satuan[n]
+        elif n < 20: return satuan[n-10] + " belas"
+        elif n < 100: return satuan[n//10] + " puluh " + satuan[n%10]
+        elif n < 200: return "seratus " + to_words(n-100)
+        elif n < 1000: return satuan[n//100] + " ratus " + to_words(n%100)
+        elif n < 2000: return "seribu " + to_words(n-1000)
+        elif n < 10000: return satuan[n//1000] + " ribu " + to_words(n%1000)
+        elif n < 1000000: return to_words(n//1000) + " ribu " + to_words(n%1000)
+        elif n < 1000000000: return to_words(n//1000000) + " juta " + to_words(n%1000000)
+        elif n < 1000000000000: return to_words(n//1000000000) + " miliar " + to_words(n%1000000000)
+        else: return str(n)
+        
+    import re
+    def replace_num(match):
+        try:
+            res = to_words(int(match.group(0))).strip()
+            return re.sub(r'\s{2,}', ' ', res)
+        except:
+            return match.group(0)
+            
+    return re.sub(r'\d+', replace_num, text)
+
 @router.post("/tts")
 async def text_to_speech(
     text: str = Body(..., embed=True),
@@ -173,8 +263,8 @@ async def text_to_speech(
     current_user_npp: Optional[str] = Depends(get_current_user_npp)
 ):
     """
-    Endpoint for Text-to-Speech using edge-tts.
-    Accepts text and returns a streaming audio response (MP3).
+    Endpoint for Text-to-Speech using edge-tts or F5-TTS.
+    Accepts text and returns a streaming audio response.
     """
     if not current_user_npp:
         raise HTTPException(status_code=401, detail="Unauthorized")
@@ -195,17 +285,136 @@ async def text_to_speech(
         }
         rate = rate_map.get(speed, "+0%")
         
-        communicate = edge_tts.Communicate(corrected_text, voice, rate=rate)
-        
-        async def audio_stream():
-            try:
-                async for chunk in communicate.stream():
-                    if chunk["type"] == "audio":
-                        yield chunk["data"]
-            except Exception as e:
-                logger.error(f"[VOICE] Error generating audio stream: {e}")
+        # Route to F5-TTS if voice is Indonesian and model is available
+        is_indo_voice = voice.startswith("id-")
+        ema_model, vocoder = None, None
+        if is_indo_voice:
+            ema_model, vocoder = await asyncio.to_thread(get_f5_tts)
+
+        if is_indo_voice and ema_model is not None:
+            logger.info(f"[VOICE] Routing to F5-TTS for voice: {voice}")
+
+            if voice == "id-ID-Pria1":
+                ref_file = "/home/qisthi/pinAi/backend/assets/voice_refs/male 1.mp3"
+                ref_text = "Halo Qisthi! Ada yang bisa saya bantu hari ini? Silakan sampaikan apa pun yang ingin kamu diskusikan atau tanyakan. Saya siap membantu.."
+            elif voice == "id-ID-Pria2":
+                ref_file = "/home/qisthi/pinAi/backend/assets/voice_refs/male 2.mp3"
+                ref_text = "Halo Qisthi! Ada yang bisa saya bantu hari ini? Silakan sampaikan apa pun yang ingin kamu diskusikan atau tanyakan. Saya siap membantu.."
+            elif voice == "id-ID-Wanita1":
+                ref_file = "/home/qisthi/pinAi/backend/assets/voice_refs/female 1.mp3"
+                ref_text = "Halo Qisthi! Ada yang bisa saya bantu hari ini? Silakan sampaikan apa pun yang ingin kamu diskusikan atau tanyakan. Saya siap membantu.."
+            elif voice == "id-ID-Wanita2":
+                ref_file = "/home/qisthi/pinAi/backend/assets/voice_refs/female 2.mp3"
+                ref_text = "Halo Qisthi! Ada yang bisa saya bantu hari ini? Silakan sampaikan apa pun yang ingin kamu diskusikan atau tanyakan. Saya siap membantu.."
+            else:
+                ref_file = "/home/qisthi/pinAi/backend/assets/voice_refs/male 1.mp3"
+                ref_text = "Halo Qisthi! Ada yang bisa saya bantu hari ini? Silakan sampaikan apa pun yang ingin kamu diskusikan atau tanyakan. Saya siap membantu.."
+
+            def _run_f5():
+                import torch
+                import io
+                from f5_tts.infer.utils_infer import preprocess_ref_audio_text, infer_process
+
+                # Ensure SDPA math mode in this worker thread too
+                torch.backends.cuda.enable_flash_sdp(False)
+                torch.backends.cuda.enable_mem_efficient_sdp(False)
+                torch.backends.cuda.enable_math_sdp(True)
+                # Bersihkan teks sebelum dikirim ke F5-TTS:
+                import re
+                clean_gen = corrected_text
+
+                # Hapus emoji (unicode ranges umum)
+                clean_gen = re.sub(r'[\U0001F300-\U0001FFFF\U00002600-\U000027FF]', '', clean_gen)
+                # Hapus markdown symbols
+                clean_gen = re.sub(r'[*_#`~]', '', clean_gen)
+                # Ganti tanda kurung dengan koma → natural pause
+                clean_gen = re.sub(r'[(\[{]', ', ', clean_gen)
+                clean_gen = re.sub(r'[)\]}]', ', ', clean_gen)
+                # Ganti titik dua (colon) → titik agar F5-TTS beri jeda panjang
+                clean_gen = re.sub(r':', '.', clean_gen)
+                # Ganti & → dan
+                clean_gen = re.sub(r'&', ' dan ', clean_gen)
                 
-        return StreamingResponse(audio_stream(), media_type="audio/mpeg")
+                # BACA ANGKA: F5-TTS tidak bisa baca digit (tidak ada di vocab)
+                # Jadi semua angka harus diexpand jadi teks ("1" -> "satu")
+                clean_gen = expand_numbers_id(clean_gen)
+
+                # Ganti tanda tanya & seru ganda menjadi tunggal
+                clean_gen = re.sub(r'[?!]{2,}', '.', clean_gen)
+                # Bersihkan koma berurutan & spasi ganda
+                clean_gen = re.sub(r',\s*,+', ',', clean_gen)
+                clean_gen = re.sub(r'\.\s*\.+', '.', clean_gen)
+                clean_gen = re.sub(r'\s{2,}', ' ', clean_gen).strip()
+
+                # KRITIS: Pastikan teks diakhiri tanda baca agar F5-TTS
+                # "nutup" fonem terakhir dengan sempurna (cegah cutoff "kerj")
+                if clean_gen and clean_gen[-1] not in '.?!,':
+                    clean_gen += '.'
+
+                logger.debug(f"[VOICE] clean_gen: {clean_gen[:80]}...")
+
+                # Preprocess ref audio (convert ke mono 24kHz temp WAV)
+                ref_audio_proc, ref_text_proc = preprocess_ref_audio_text(
+                    ref_audio_orig=ref_file,
+                    ref_text=ref_text,
+                )
+
+                # Inference — identik dengan test_tts.py
+                wav, sr, _ = infer_process(
+                    ref_audio=ref_audio_proc,
+                    ref_text=ref_text_proc,
+                    gen_text=clean_gen,
+                    model_obj=ema_model,
+                    vocoder=vocoder,
+                    mel_spec_type="vocos",
+                    cfg_strength=2.0,
+                    nfe_step=8,
+                    device="cuda",
+                    show_info=logger.info,
+                )
+
+                logger.info(f"[VOICE] F5-TTS generated {len(wav)/sr:.1f}s audio (sr={sr})")
+
+                # Tambah trailing silence 0.8 detik — cegah cutoff di akhir kalimat
+                import numpy as np
+                silence = np.zeros(int(0.8 * sr), dtype=wav.dtype)
+                wav = np.concatenate([wav, silence])
+
+                # Write ke in-memory WAV buffer
+                buf = io.BytesIO()
+                sf.write(buf, wav, sr, format='WAV', subtype='PCM_16')
+                return buf.getvalue()
+
+            audio_bytes = await asyncio.to_thread(_run_f5)
+            
+            # Use standard Response so FastAPI sends the Content-Length header.
+            # Chrome fails to play WAV files without Content-Length.
+            from fastapi import Response
+            return Response(content=audio_bytes, media_type="audio/wav")
+            
+        else:
+            if is_indo_voice:
+                logger.warning("[VOICE] F5-TTS model not ready, falling back to edge-tts.")
+                # Map custom voices back to standard edge-tts voices
+                if voice in ["id-ID-Pria1", "id-ID-Pria2"]:
+                    voice = "id-ID-ArdiNeural"
+                elif voice in ["id-ID-Wanita1", "id-ID-Wanita2"]:
+                    voice = "id-ID-GadisNeural"
+                    
+            logger.info(f"[VOICE] Routing to edge-tts for voice: {voice}")
+            communicate = edge_tts.Communicate(corrected_text, voice, rate=rate)
+            
+            async def audio_stream():
+                try:
+                    async for chunk in communicate.stream():
+                        if chunk["type"] == "audio":
+                            yield chunk["data"]
+                except Exception as e:
+                    logger.error(f"[VOICE] Error generating audio stream: {e}")
+                    
+            return StreamingResponse(audio_stream(), media_type="audio/mpeg")
     except Exception as e:
+        import traceback
         logger.error(f"[VOICE] TTS failed: {e}")
+        logger.error(traceback.format_exc())
         raise HTTPException(status_code=500, detail=f"TTS failed: {str(e)}")

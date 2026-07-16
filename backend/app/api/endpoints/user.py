@@ -1,7 +1,7 @@
 import logging
 import os
 import shutil
-from fastapi import APIRouter, HTTPException, Depends, UploadFile, File, Form, Body
+from fastapi import APIRouter, HTTPException, Depends, UploadFile, File, Form, Body, Query
 from typing import Optional
 from pydantic import BaseModel
 import bcrypt
@@ -151,3 +151,56 @@ async def update_password(req: PasswordUpdateRequest):
         await conn.execute("UPDATE users SET password_hash = $2 WHERE npp = $1", npp, new_hash)
         
     return {"status": "success", "message": "Password berhasil diperbarui"}
+
+
+import json
+
+@router.get("/settings")
+async def get_user_settings(token: str = Query(...)):
+    """Ambil pengaturan user dari database"""
+    try:
+        user_data = await verify_session(token=token)
+        if not user_data or not hasattr(user_data, 'data'):
+            raise HTTPException(status_code=401, detail="Unauthorized")
+        npp = user_data.data["npp"]
+    except Exception as e:
+        logger.error(f"Error verifikasi session settings: {e}")
+        raise HTTPException(status_code=401, detail="Unauthorized")
+        
+    async with get_db() as conn:
+        row = await conn.fetchrow("SELECT settings FROM user_settings WHERE npp = $1", npp)
+        settings_data = {}
+        if row and row["settings"]:
+            settings_data = json.loads(row["settings"])
+            
+    return {"status": "success", "settings": settings_data}
+
+@router.put("/settings")
+async def update_user_settings(payload: dict = Body(...)):
+    """Simpan pengaturan user ke database"""
+    token = payload.get("token")
+    settings_data = payload.get("settings", {})
+    
+    if not token:
+        raise HTTPException(status_code=401, detail="Token missing")
+        
+    try:
+        user_data = await verify_session(token=token)
+        if not user_data or not hasattr(user_data, 'data'):
+            raise HTTPException(status_code=401, detail="Unauthorized")
+        npp = user_data.data["npp"]
+    except Exception as e:
+        logger.error(f"Error verifikasi session settings: {e}")
+        raise HTTPException(status_code=401, detail="Unauthorized")
+        
+    async with get_db() as conn:
+        settings_json = json.dumps(settings_data)
+        await conn.execute("""
+            INSERT INTO user_settings (npp, settings, updated_at)
+            VALUES ($1, $2::jsonb, now())
+            ON CONFLICT (npp) DO UPDATE 
+            SET settings = $2::jsonb, updated_at = now()
+        """, npp, settings_json)
+        
+    return {"status": "success", "message": "Settings updated"}
+

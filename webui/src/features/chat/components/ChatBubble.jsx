@@ -93,14 +93,14 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
     const ttsVoice = useChatStore((state) => state.ttsVoice);
 
     // Clean text helper
-    const cleanTextForTTS = (text) => {
+    const cleanTextForTTS = useCallback((text) => {
         return text
             .replace(/\[\[CAKRA_FILE_PROCESS_LOG(?:_\d+)?\]\]/g, "")
             .replace(/[\p{Emoji_Presentation}\p{Extended_Pictographic}]/gu, "")
             .replace(/[*_#`~>"]/g, "") // Removed " to avoid 'kutip dua'
             .replace(/:/g, ",") // Replaced : with , to avoid 'titik dua' and create a natural pause
             .trim();
-    };
+    }, []);
 
     // Stop TTS completely
     const stopTTS = useCallback(() => {
@@ -200,7 +200,7 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
                 text: textToRead, 
                 voice: ttsVoice || 'id-ID-ArdiNeural',
                 speed: ttsSpeed || 'normal'
-            }, { responseType: 'blob' });
+            }, { responseType: 'blob', timeout: 120000 });
             if (ttsQueueRef.current.isStopped) return;
 
             const url = URL.createObjectURL(res.data);
@@ -217,16 +217,96 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
                 fetchNextTTS();
             }
         }
-    }, [playNextAudio]);
-
+    }, [playNextAudio, ttsVoice, ttsSpeed]);
     // Watch for text changes and chunk sentences
     useEffect(() => {
         if (!ttsActive || ttsQueueRef.current.isStopped) return;
 
+        const isF5Voice = ttsVoice && (ttsVoice.startsWith('id-ID-Pria') || ttsVoice.startsWith('id-ID-Wanita'));
+
+        // ── F5-TTS Mode (Indonesian voices) ─────────────────────────────────
+        // Strategy: split at ANY newline or ~150 char sentence boundary.
+        // Each chunk → 1 internal F5-TTS batch (no internal re-batching).
+        // Pipeline: while chunk N plays, chunk N+1 is being fetched.
+        if (isF5Voice) {
+            const content = msg.content || '';
+            let unprocessed = content.substring(ttsQueueRef.current.cursor);
+
+            let foundChunk = false;
+
+            // 1. Split at ANY newline (covers single \n for list items too)
+            const lineRegex = /\n+/g;
+            let lineMatch;
+            lineRegex.lastIndex = 0;
+            while ((lineMatch = lineRegex.exec(unprocessed)) !== null) {
+                const boundaryIdx = lineMatch.index;
+                const chunk = unprocessed.substring(0, boundaryIdx);
+                const cleaned = cleanTextForTTS(chunk);
+                if (cleaned) {
+                    if (!ttsQueueRef.current.chunkBuffer) ttsQueueRef.current.chunkBuffer = "";
+                    ttsQueueRef.current.chunkBuffer += cleaned + " ";
+                    // Flush buffer when it has enough content (>= 40 chars) or is a real paragraph break (\n\n)
+                    if (ttsQueueRef.current.chunkBuffer.length >= 40 || lineMatch[0].length > 1) {
+                        ttsQueueRef.current.textChunks.push(ttsQueueRef.current.chunkBuffer.trim());
+                        ttsQueueRef.current.chunkBuffer = "";
+                    }
+                }
+                ttsQueueRef.current.cursor += boundaryIdx + lineMatch[0].length;
+                unprocessed = content.substring(ttsQueueRef.current.cursor);
+                foundChunk = true;
+                lineRegex.lastIndex = 0; // reset to scan new unprocessed
+            }
+
+            // 2. If buffer > 150 chars with no newline yet, split at sentence boundary
+            if (!foundChunk && unprocessed.length > 150) {
+                const sentRegex = /[.?!,]+\s/g;
+                let lastEnd = -1;
+                let sm;
+                sentRegex.lastIndex = 0;
+                while ((sm = sentRegex.exec(unprocessed)) !== null) {
+                    const pos = sm.index + sm[0].length;
+                    if (pos > 150) break;
+                    lastEnd = pos;
+                }
+                if (lastEnd > 30) {
+                    const chunk = unprocessed.substring(0, lastEnd);
+                    const cleaned = cleanTextForTTS(chunk);
+                    if (cleaned) {
+                        if (!ttsQueueRef.current.chunkBuffer) ttsQueueRef.current.chunkBuffer = "";
+                        ttsQueueRef.current.chunkBuffer += cleaned + " ";
+                        if (ttsQueueRef.current.chunkBuffer.length >= 150) {
+                            ttsQueueRef.current.textChunks.push(ttsQueueRef.current.chunkBuffer.trim());
+                            ttsQueueRef.current.chunkBuffer = "";
+                        }
+                    }
+                    ttsQueueRef.current.cursor += lastEnd;
+                    foundChunk = true;
+                }
+            }
+
+            // 3. Flush remaining when LLM streaming is done
+            if (!isThisMessageStreaming) {
+                const remaining = content.substring(ttsQueueRef.current.cursor);
+                const cleaned = cleanTextForTTS(remaining);
+                const existingBuf = ttsQueueRef.current.chunkBuffer || "";
+                const finalChunk = (existingBuf + " " + (cleaned || "")).trim();
+                if (finalChunk) {
+                    ttsQueueRef.current.textChunks.push(finalChunk);
+                }
+                ttsQueueRef.current.chunkBuffer = "";
+                ttsQueueRef.current.cursor = content.length;
+            }
+
+            if (ttsQueueRef.current.textChunks.length > 0 && !ttsQueueRef.current.isFetching) {
+                fetchNextTTS();
+            }
+            return;
+        }
+
+        // ── Edge-TTS Mode (real-time streaming per sentence) ─────────────────
         const content = msg.content || '';
         let unprocessed = content.substring(ttsQueueRef.current.cursor);
 
-        // Find sentence boundaries (., ?, !, \n) or force chunk if too long (>80 chars)
         const sentenceRegex = /([.?!]+[\s\n]+|\n{1,})/g;
 
         let match;
@@ -239,45 +319,53 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
 
             const cleaned = cleanTextForTTS(chunk);
             if (cleaned) {
-                ttsQueueRef.current.textChunks.push(cleaned);
+                if (!ttsQueueRef.current.chunkBuffer) ttsQueueRef.current.chunkBuffer = "";
+                ttsQueueRef.current.chunkBuffer += cleaned + " ";
+                
+                if (ttsQueueRef.current.chunkBuffer.length > 50 || match[0].includes('\n')) {
+                    ttsQueueRef.current.textChunks.push(ttsQueueRef.current.chunkBuffer.trim());
+                    ttsQueueRef.current.chunkBuffer = "";
+                }
             }
 
             lastIndex = boundaryIndex;
             ttsQueueRef.current.cursor += chunk.length;
             foundChunk = true;
         }
-
-        // Force chunking if unprocessed is getting too long (e.g., long list without punctuation)
         unprocessed = content.substring(ttsQueueRef.current.cursor);
         if (!foundChunk && unprocessed.length > 80 && unprocessed.includes(' ')) {
-            // Find the last space to avoid cutting a word
             const lastSpaceIndex = unprocessed.lastIndexOf(' ');
             if (lastSpaceIndex > 0) {
                 const chunk = unprocessed.substring(0, lastSpaceIndex + 1);
                 const cleaned = cleanTextForTTS(chunk);
                 if (cleaned) {
-                    ttsQueueRef.current.textChunks.push(cleaned);
+                    if (!ttsQueueRef.current.chunkBuffer) ttsQueueRef.current.chunkBuffer = "";
+                    ttsQueueRef.current.chunkBuffer += cleaned + " ";
+                    ttsQueueRef.current.textChunks.push(ttsQueueRef.current.chunkBuffer.trim());
+                    ttsQueueRef.current.chunkBuffer = "";
                 }
                 ttsQueueRef.current.cursor += chunk.length;
             }
         }
 
-        // If streaming is finished, push the remaining text as the last chunk
         if (!isThisMessageStreaming && ttsQueueRef.current.cursor < content.length) {
             const remaining = content.substring(ttsQueueRef.current.cursor);
             const cleaned = cleanTextForTTS(remaining);
-            if (cleaned) {
-                ttsQueueRef.current.textChunks.push(cleaned);
+            if (cleaned || ttsQueueRef.current.chunkBuffer) {
+                const finalChunk = (ttsQueueRef.current.chunkBuffer || "") + " " + (cleaned || "");
+                if (finalChunk.trim()) {
+                    ttsQueueRef.current.textChunks.push(finalChunk.trim());
+                }
+                ttsQueueRef.current.chunkBuffer = "";
             }
             ttsQueueRef.current.cursor = content.length;
         }
 
-        // Trigger fetching if we have chunks
         if (ttsQueueRef.current.textChunks.length > 0 && !ttsQueueRef.current.isFetching) {
             fetchNextTTS();
         }
 
-    }, [msg.content, ttsActive, isThisMessageStreaming, fetchNextTTS]);
+    }, [msg.content, ttsActive, isThisMessageStreaming, fetchNextTTS, ttsVoice, cleanTextForTTS]);
 
     // Safety effect to reset TTS state if it gets stuck at the end
     useEffect(() => {

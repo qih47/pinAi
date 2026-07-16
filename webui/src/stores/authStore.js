@@ -21,8 +21,8 @@ export const useChatAuthStore = create((set) => ({
       });
 
       // Di dalam fungsi login & checkSession pada authStore.js lo, simpan objeknya utuh:
-      const { token, npp, fullname, divisi, role, email, expires_at } = response.data.data;
-      const userData = { npp, fullname, name: fullname, username: npp, divisi, role, email }; // 👈 Mengikuti struktur row data DB FastAPI lo
+      const { token, npp, fullname, preferred_name, profile_photo_url, divisi, role, email, expires_at } = response.data.data;
+      const userData = { npp, fullname, name: fullname, preferred_name, profile_photo_url, username: npp, divisi, role, email }; // 👈 Mengikuti struktur row data DB FastAPI lo
       
       // Parse expires_at timestamp (B10 Token Expiry Sync)
       const expiresAt = expires_at ? new Date(expires_at) : new Date(Date.now() + 8 * 60 * 60 * 1000);
@@ -50,13 +50,15 @@ export const useChatAuthStore = create((set) => ({
 
     try {
       const response = await apiClient.get(`/auth/verify-session?token=${currentToken}`);
-      const { npp, fullname, divisi, role, email, expires_at } = response.data.data;
+      const { npp, fullname, preferred_name, profile_photo_url, divisi, role, email, expires_at } = response.data.data;
 
       const userData = {
         npp,
         username: npp,
         name: fullname,
         fullname,
+        preferred_name,
+        profile_photo_url,
         divisi,
         role,
         email
@@ -65,6 +67,7 @@ export const useChatAuthStore = create((set) => ({
       // Parse expires_at timestamp (B10 Token Expiry Sync)
       const expiresAt = expires_at ? new Date(expires_at) : new Date(Date.now() + 8 * 60 * 60 * 1000);
       localStorage.setItem('cakra_expiresAt', expiresAt.toISOString());
+      localStorage.setItem('cakra_user', JSON.stringify(userData)); // Sync updated user profile to local storage
 
       set({
         user: userData,

@@ -138,6 +138,15 @@ async def lifespan(app: FastAPI):
         logger.info("⏳ [WARMUP] Memulai pinning BAAI/bge-reranker-v2-m3 ke memori...")
         await asyncio.get_event_loop().run_in_executor(None, _load_reranker)
 
+        # Warmup F5-TTS Model ke GPU (background thread, non-blocking)
+        logger.info("⏳ [WARMUP] Memulai preload F5-TTS Indo model ke GPU...")
+        from backend.app.api.endpoints.voice import get_f5_tts
+        ema_model, vocoder = await asyncio.get_event_loop().run_in_executor(None, get_f5_tts)
+        if ema_model is not None:
+            logger.info("✅ [WARMUP] F5-TTS model & vocoder siap di GPU.")
+        else:
+            logger.warning("⚠️ [WARMUP] F5-TTS model gagal preload (akan lazy-load saat request pertama).")
+
         await start_background_scheduler(app)
 
     except Exception as e:

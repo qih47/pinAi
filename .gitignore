@@ -39,6 +39,12 @@ db_doc/*
 file_peraturan/*
 !file_peraturan/.gitkeep
 
+backend/assets/*
+!backend/assets/.gitkeep
+
+backend/models/*
+!backend/models/.gitkeep
+
 file_koreksi/*
 !file_koreksi/.gitkeep
 

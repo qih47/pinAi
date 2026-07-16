@@ -19,6 +19,7 @@ def _load_reranker():
         "BAAI/bge-reranker-v2-m3",
         max_length=512,       # cukup untuk chunk dokumen Pindad
         device="cuda",        # GPU — model kecil ~570MB, tidak signifikan ngaruhi VRAM gemma4:e4b
+        local_files_only=True
     )
     logger.info("[RERANKER_MODEL_LOAD_SUCCESS] BAAI/bge-reranker-v2-m3 model loaded successfully.")
     return model
