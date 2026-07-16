@@ -1,7 +1,9 @@
 import React from 'react';
 import { getSendButtonStyles } from '../chatPage.styles';
+import { translations } from '../../../utils/translations';
 
-export default function SendButton({ isStreaming, isUploadingFile, input, selectedFiles, theme, onStop }) {
+export default function SendButton({ isStreaming, isUploadingFile, input, selectedFiles, theme, onStop, language = 'id' }) {
+  const tGlobal = translations[language] || translations.id;
   const buttonStyles = getSendButtonStyles(isStreaming, isUploadingFile, input, selectedFiles, theme);
   const isDisabled = isUploadingFile || (!isStreaming && !input.trim() && selectedFiles.length === 0);
 
@@ -11,7 +13,7 @@ export default function SendButton({ isStreaming, isUploadingFile, input, select
         type="button"
         onClick={onStop}
         style={{ ...buttonStyles.button, background: '#ef4444', opacity: 1, cursor: 'pointer' }}
-        title="Stop Response"
+        title={tGlobal.chat.stopResponse}
       >
         <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
           <rect x="6" y="6" width="12" height="12" rx="2" ry="2" />

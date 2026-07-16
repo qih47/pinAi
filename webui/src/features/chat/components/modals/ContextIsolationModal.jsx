@@ -745,7 +745,7 @@ export default function ContextIsolationModal({
             <div style={{ flex: 1, position: "relative", width: "100%", height: "100%" }}>
               {isLoadingPdf ? (
                 <div style={{ display: "flex", justifyContent: "center", alignItems: "center", height: "100%", color: theme.secondaryText }}>
-                  Memuat dokumen...
+                  {t.loadingPdf}
                 </div>
               ) : previewPdfBlobUrl ? (
                 <iframe

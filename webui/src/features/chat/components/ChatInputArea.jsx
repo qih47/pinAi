@@ -169,6 +169,7 @@ export default function ChatInputArea({
                   selectedFiles={selectedFiles}
                   darkMode={darkMode}
                   isStreaming={isStreaming}
+                  language={language}
                 />
 
                 {isAttachmentMenuOpen && (
@@ -314,6 +315,7 @@ export default function ChatInputArea({
                   selectedFiles={selectedFiles}
                   theme={theme}
                   onStop={() => useChatStore.getState().stopStream()}
+                  language={language}
                 />
               </div>
             )}
@@ -340,6 +342,7 @@ export default function ChatInputArea({
                   selectedFiles={selectedFiles}
                   darkMode={darkMode}
                   isStreaming={isStreaming}
+                  language={language}
                 />
 
                 {isAttachmentMenuOpen && (
@@ -439,6 +442,7 @@ export default function ChatInputArea({
                   selectedFiles={selectedFiles}
                   theme={theme}
                   onStop={() => useChatStore.getState().stopStream()}
+                  language={language}
                 />
               </div>
             </div>

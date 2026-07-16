@@ -8,6 +8,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import useNextcloudStore from '../../../stores/nextcloudStore';
+import { translations } from '../../../utils/translations';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://192.168.11.80:5000';
 
@@ -57,7 +58,9 @@ export default function FileGenerationCard({
   onOpenArtifact,  // callback(filename, code) -> trigger sidebar kanan
   file_path,       // path file di server
   handleDownloadArtifact, // prop untuk fetch download yang benar
+  language = 'id',
 }) {
+  const tGlobal = translations[language] || translations.id;
   const [copyDone, setCopyDone] = useState(false);
 
   const isDone = stage === 'done';
@@ -139,10 +142,10 @@ export default function FileGenerationCard({
       });
 
       if (!response.ok) {
-        throw new Error('Gagal upload ke Nextcloud');
+        throw new Error(tGlobal.fileCard.uploadFail);
       }
       
-      alert('Berhasil disimpan ke Nextcloud (Cakra_AI_Exports)');
+      alert(tGlobal.fileCard.uploadSuccess);
     } catch (err) {
       alert('Error: ' + err.message);
     } finally {
@@ -318,14 +321,14 @@ export default function FileGenerationCard({
                 e.currentTarget.style.color = darkMode ? '#ffffff' : '#1e293b';
               }}
             >
-              Download
+              {tGlobal.fileCard.download}
             </button>
           </div>
         </div>
       {/* ERROR STATE */}
       {isError && (
         <div style={{ marginLeft: '32px', padding: '6px 10px', borderRadius: '4px', background: 'rgba(239, 68, 68, 0.08)', border: '1px solid #ef4444', color: '#ef4444', fontSize: '12px' }}>
-          ⚠️ Pipeline Error: Gagal menulis file fisik ke disk server.
+          {tGlobal.fileCard.pipelineError}
         </div>
       )}
 

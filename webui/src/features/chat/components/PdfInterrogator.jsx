@@ -3,6 +3,7 @@ import { useChatStore } from '../../../stores/chatStore';
 import { X, ExternalLink, ChevronLeft, ChevronRight, ZoomIn, ZoomOut } from 'lucide-react';
 import { Document, Page, pdfjs } from 'react-pdf';
 import { Virtuoso } from 'react-virtuoso';
+import { translations } from '../../../utils/translations';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
 
@@ -12,7 +13,8 @@ pdfjs.GlobalWorkerOptions.workerSrc = new URL(
     import.meta.url,
 ).toString();
 
-const PdfInterrogator = ({ darkMode }) => {
+const PdfInterrogator = ({ darkMode, language = 'id' }) => {
+    const tGlobal = translations[language] || translations.id;
     const { isSplitScreen, activePdfUrl, setSplitScreen } = useChatStore((state) => ({
         isSplitScreen: state.isSplitScreen,
         activePdfUrl: state.activePdfUrl,
@@ -67,14 +69,14 @@ const PdfInterrogator = ({ darkMode }) => {
                     <button
                         onClick={() => window.open(activePdfUrl, '_blank')}
                         className={`p-1.5 shadow-sm hover:shadow-md hover:-translate-y-0.5 rounded transition-all active:translate-y-0 active:shadow-sm border ${darkMode ? 'text-gray-500 bg-[#1e1e20] border-[#2a2a2d] hover:text-blue-400' : 'text-gray-500 bg-white border-gray-200 hover:text-blue-600'}`}
-                        title="Open in new tab"
+                        title={tGlobal.pdf.openInNewTab}
                     >
                         <ExternalLink size={16} />
                     </button>
                     <button
                         onClick={() => setSplitScreen(false, null)}
                         className={`p-1.5 shadow-sm hover:shadow-md hover:-translate-y-0.5 rounded transition-all active:translate-y-0 active:shadow-sm border ${darkMode ? 'text-gray-500 bg-[#1e1e20] border-[#2a2a2d] hover:text-red-400' : 'text-gray-500 bg-white border-gray-200 hover:text-red-600'}`}
-                        title="Close Split Screen"
+                        title={tGlobal.pdf.closeSplitScreen}
                     >
                         <X size={16} />
                     </button>
@@ -94,7 +96,7 @@ const PdfInterrogator = ({ darkMode }) => {
                         }
                         error={
                             <div className="flex items-center justify-center h-full w-full text-red-500">
-                                Gagal memuat dokumen.
+                                {tGlobal.pdf.failLoad}
                             </div>
                         }
                         className="flex flex-col items-center h-full w-full"
@@ -147,7 +149,7 @@ const PdfInterrogator = ({ darkMode }) => {
                         <button
                             onClick={zoomOut}
                             className={`p-1.5 shadow-sm hover:shadow-md hover:-translate-y-0.5 rounded transition-all active:translate-y-0 active:shadow-sm border ${darkMode ? 'text-gray-500 bg-[#1e1e20] border-[#2a2a2d] hover:text-blue-400' : 'text-gray-500 bg-white border-gray-200 hover:text-blue-600'}`}
-                            title="Zoom Out"
+                            title={tGlobal.pdf.zoomOut}
                         >
                             <ZoomOut size={16} />
                         </button>
@@ -157,7 +159,7 @@ const PdfInterrogator = ({ darkMode }) => {
                         <button
                             onClick={zoomIn}
                             className={`p-1.5 shadow-sm hover:shadow-md hover:-translate-y-0.5 rounded transition-all active:translate-y-0 active:shadow-sm border ${darkMode ? 'text-gray-500 bg-[#1e1e20] border-[#2a2a2d] hover:text-blue-400' : 'text-gray-500 bg-white border-gray-200 hover:text-blue-600'}`}
-                            title="Zoom In"
+                            title={tGlobal.pdf.zoomIn}
                         >
                             <ZoomIn size={16} />
                         </button>
@@ -169,7 +171,7 @@ const PdfInterrogator = ({ darkMode }) => {
                             onClick={() => setViewMode(viewMode === 'scroll' ? 'page' : 'scroll')}
                             className={`px-3 py-1.5 text-xs font-medium rounded transition-colors ${darkMode ? 'text-gray-300 bg-[#2a2a2d] hover:bg-gray-700' : 'text-gray-600 bg-gray-100 hover:bg-gray-200'}`}
                         >
-                            {viewMode === 'scroll' ? 'Mode: Scroll' : 'Mode: Page'}
+                            {viewMode === 'scroll' ? tGlobal.pdf.modeScroll : tGlobal.pdf.modePage}
                         </button>
 
                         {viewMode === 'page' && (
@@ -182,7 +184,7 @@ const PdfInterrogator = ({ darkMode }) => {
                                     <ChevronLeft size={16} />
                                 </button>
                                 <span className={`text-xs font-medium ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-                                    Hal {pageNumber} dari {numPages}
+                                    {tGlobal.pdf.page} {pageNumber} {tGlobal.pdf.of} {numPages}
                                 </span>
                                 <button
                                     disabled={pageNumber >= numPages}

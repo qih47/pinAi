@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
+import { useLocation } from "react-router-dom";
 import { isToday, isYesterday, isThisWeek, isThisMonth } from "date-fns";
 import { translations } from "../../../../utils/translations";
 import { useSessionTitle } from "../../../../hooks/useSessionTitle";
@@ -64,8 +65,13 @@ export default function SessionList({
   sidebarSearchInputRef,
   confirmDelete,
   isDeletingId,
-  language
+  language,
+  showDocumentList,
+  setShowDocumentList,
+  userData,
+  navigate
 }) {
+  const location = useLocation();
   const t = translations[language]?.sidebar || translations.id.sidebar;
   const [hoveredChatId, setHoveredChatId] = useState(null);
   const [editingSessionId, setEditingSessionId] = useState(null);
@@ -131,19 +137,275 @@ export default function SessionList({
 
   return (
     <div
-      className={`flex-1 overflow-y-auto px-2 py-2 space-y-0.5 transition-opacity duration-300 no-scrollbar ${!isOpen ? "opacity-0 pointer-events-none hidden" : "opacity-100"
-        }`}
+      className="flex-1 overflow-y-auto px-2 pt-2 space-y-0.5"
       style={{
-        msOverflowStyle: "none",
-        scrollbarWidth: "none",
+        scrollbarWidth: "thin",
       }}
     >
-      <div
-        className="px-3 py-1 text-[11px] font-bold uppercase tracking-widest mb-1"
-        style={{ color: theme?.secondaryText || "#6b7280" }}
-      >
-        {t.chats}
+      {/* ── MENUS THAT SCROLL ALONG WITH CHATS ── */}
+      <div className="space-y-0 mb-4 px-1">
+        {/* ── TOMBOL: DOCUMENTS (DULU EMOJI 📄, SEKARANG SVG) ── */}
+        <button
+          onClick={() => setShowDocumentList(!showDocumentList)}
+          className={`flex items-center transition-all group overflow-hidden text-[14px] ${
+            showDocumentList
+              ? "bg-blue-500/10 text-blue-500 font-semibold border-l-2 border-blue-500 rounded-r-full"
+              : `rounded-full font-medium ${darkMode ? 'hover:bg-white/5' : 'hover:bg-gray-200/50'}`
+          }`}
+          style={{
+            padding: isOpen ? "8px 12px" : "8px",
+            width: isOpen ? "100%" : "auto",
+            gap: isOpen ? "12px" : "0",
+          }}
+          title={t.documents}
+        >
+          <span className="h-5 w-5 flex items-center justify-center flex-shrink-0">
+            <svg
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke={theme?.iconColor || "currentColor"}
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="group-hover:text-blue-500 transition-colors"
+            >
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+              <polyline points="14 2 14 8 20 8"></polyline>
+              <line x1="16" y1="13" x2="8" y2="13"></line>
+              <line x1="16" y1="17" x2="8" y2="17"></line>
+              <polyline points="10 9 9 9 8 9"></polyline>
+            </svg>
+          </span>
+          <span
+            className={`whitespace-nowrap transition-opacity duration-300 ${!isOpen ? "hidden" : "opacity-100"
+              }`}
+            style={{ color: showDocumentList ? '' : theme?.textColor }}
+          >
+            {t.documents}
+          </span>
+        </button>
+
+        {/* ── CORPORATE TOOLS SECTION ── */}
+        <div className={`pt-4 pb-1 transition-all duration-300 ${!isOpen ? "opacity-0 h-0 overflow-hidden" : "opacity-100 h-auto"}`}>
+          <p className="text-[10px] font-bold tracking-widest uppercase" style={{ color: theme?.secondaryText || "#9ca3af", paddingLeft: "12px" }}>
+            {t.corporateTools}
+          </p>
+        </div>
+
+        {/* 1. Smart Mail */}
+        <button
+          onClick={() => navigate('/corporate/mail')}
+          className={`flex items-center transition-all group overflow-hidden text-[14px] ${
+            location.pathname === '/corporate/mail'
+              ? "bg-blue-500/10 text-blue-500 font-semibold border-l-2 border-blue-500 rounded-r-full"
+              : `rounded-full font-medium ${darkMode ? 'hover:bg-white/5' : 'hover:bg-gray-200/50'}`
+          }`}
+          style={{
+            padding: isOpen ? "8px 12px" : "8px",
+            width: isOpen ? "100%" : "auto",
+            gap: isOpen ? "12px" : "0",
+          }}
+          title={t.smartMail}
+        >
+          <span className="h-5 w-5 flex items-center justify-center flex-shrink-0">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={location.pathname === '/corporate/mail' ? "currentColor" : (theme?.iconColor || "currentColor")} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="group-hover:text-blue-500 transition-colors">
+              <rect x="2" y="4" width="20" height="16" rx="2" ry="2"></rect>
+              <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"></path>
+            </svg>
+          </span>
+          <span className={`whitespace-nowrap transition-opacity duration-300 ${!isOpen ? "hidden" : "opacity-100"}`} style={{ color: location.pathname === '/corporate/mail' ? '' : theme?.textColor }}>
+            {t.smartMail}
+          </span>
+        </button>
+
+        {/* 2. Nota Dinas Gen */}
+        <button
+          onClick={() => navigate('/corporate/notadinas')}
+          className={`flex items-center transition-all group overflow-hidden text-[14px] ${
+            location.pathname === '/corporate/notadinas'
+              ? "bg-blue-500/10 text-blue-500 font-semibold border-l-2 border-blue-500 rounded-r-full"
+              : `rounded-full font-medium ${darkMode ? 'hover:bg-white/5' : 'hover:bg-gray-200/50'}`
+          }`}
+          style={{
+            padding: isOpen ? "8px 12px" : "8px",
+            width: isOpen ? "100%" : "auto",
+            gap: isOpen ? "12px" : "0",
+          }}
+          title={t.notaDinasGen}
+        >
+          <span className="h-5 w-5 flex items-center justify-center flex-shrink-0">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={location.pathname === '/corporate/notadinas' ? "currentColor" : (theme?.iconColor || "currentColor")} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="group-hover:text-emerald-500 transition-colors">
+              <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"></path>
+              <polyline points="14 2 14 8 20 8"></polyline>
+              <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
+              <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
+            </svg>
+          </span>
+          <span className={`whitespace-nowrap transition-opacity duration-300 ${!isOpen ? "hidden" : "opacity-100"}`} style={{ color: location.pathname === '/corporate/notadinas' ? '' : theme?.textColor }}>
+            {t.notaDinasGen}
+          </span>
+        </button>
+
+        {/* 3. Vendor Analyzer */}
+        <button
+          onClick={() => navigate('/corporate/vendor')}
+          className={`flex items-center transition-all group overflow-hidden text-[14px] ${
+            location.pathname === '/corporate/vendor'
+              ? "bg-blue-500/10 text-blue-500 font-semibold border-l-2 border-blue-500 rounded-r-full"
+              : `rounded-full font-medium ${darkMode ? 'hover:bg-white/5' : 'hover:bg-gray-200/50'}`
+          }`}
+          style={{
+            padding: isOpen ? "8px 12px" : "8px",
+            width: isOpen ? "100%" : "auto",
+            gap: isOpen ? "12px" : "0",
+          }}
+          title={t.vendorAnalyzer}
+        >
+          <span className="h-5 w-5 flex items-center justify-center flex-shrink-0">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={location.pathname === '/corporate/vendor' ? "currentColor" : (theme?.iconColor || "currentColor")} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="group-hover:text-purple-500 transition-colors">
+              <line x1="18" y1="20" x2="18" y2="10"></line>
+              <line x1="12" y1="20" x2="12" y2="4"></line>
+              <line x1="6" y1="20" x2="6" y2="14"></line>
+            </svg>
+          </span>
+          <span className={`whitespace-nowrap transition-opacity duration-300 ${!isOpen ? "hidden" : "opacity-100"}`} style={{ color: location.pathname === '/corporate/vendor' ? '' : theme?.textColor }}>
+            {t.vendorAnalyzer}
+          </span>
+        </button>
+
+        {/* ── TOMBOL: ANALYTICS (HANYA UNTUK 06652) ── */}
+        {userData?.npp === '06652' && (
+          <button
+            onClick={() => navigate('/analytics')}
+            className={`flex items-center transition-all group overflow-hidden text-[14px] ${
+              location.pathname === '/analytics'
+                ? "bg-blue-500/10 text-blue-500 font-semibold border-l-2 border-blue-500 rounded-r-full"
+                : `rounded-full font-medium ${darkMode ? 'hover:bg-white/5' : 'hover:bg-gray-200/50'}`
+            }`}
+            style={{
+              padding: isOpen ? "8px 12px" : "8px",
+              width: isOpen ? "100%" : "auto",
+              gap: isOpen ? "12px" : "0",
+            }}
+            title={t.analytics}
+          >
+            <span className="h-5 w-5 flex items-center justify-center flex-shrink-0">
+              <svg
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke={location.pathname === '/analytics' ? "currentColor" : (theme?.iconColor || "currentColor")}
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="group-hover:text-cyan-500 transition-colors"
+              >
+                <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+                <line x1="8" y1="21" x2="16" y2="21"></line>
+                <line x1="12" y1="17" x2="12" y2="21"></line>
+              </svg>
+            </span>
+            <span
+              className={`whitespace-nowrap transition-opacity duration-300 ${!isOpen ? "hidden" : "opacity-100"
+                }`}
+              style={{ color: location.pathname === '/analytics' ? '' : theme?.textColor }}
+            >
+              {t.analytics}
+            </span>
+          </button>
+        )}
+
+        {/* ── TOMBOL: AUDIT LOGS (DULU EMOJI 🛡️, SEKARANG SVG) ── */}
+        {userData?.role === 'admin' && (
+          <button
+            onClick={() => navigate('/admin/audit-logs')}
+            className={`flex items-center transition-all group overflow-hidden text-[14px] ${
+              location.pathname === '/admin/audit-logs'
+                ? "bg-red-500/10 text-red-500 font-semibold border-l-2 border-red-500 rounded-r-full"
+                : `rounded-full font-medium ${darkMode ? 'hover:bg-red-900/10' : 'hover:bg-red-50/50'}`
+            }`}
+            style={{
+              padding: isOpen ? "8px 12px" : "8px",
+              width: isOpen ? "100%" : "auto",
+              gap: isOpen ? "12px" : "0",
+            }}
+            title={t.auditLogs}
+          >
+            <span className="h-5 w-5 flex items-center justify-center flex-shrink-0">
+              <svg
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="#ef4444"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+              </svg>
+            </span>
+            <span
+              className={`whitespace-nowrap transition-opacity duration-300 ${!isOpen ? "hidden" : "opacity-100"
+                }`}
+              style={{ color: location.pathname === '/admin/audit-logs' ? '' : '#ef4444', fontSize: '13px' }}
+            >
+              {t.auditLogs}
+            </span>
+          </button>
+        )}
+
+        {/* ── TOMBOL: CACHE & INDEX (DULU EMOJI ⚡, SEKARANG SVG) ── */}
+        {userData?.role === 'admin' && (
+          <button
+            onClick={() => navigate('/admin/cache-stats')}
+            className={`flex items-center transition-all group overflow-hidden text-[14px] ${
+              location.pathname === '/admin/cache-stats'
+                ? "bg-indigo-500/10 text-indigo-500 font-semibold border-l-2 border-indigo-500 rounded-r-full"
+                : `rounded-full font-medium ${darkMode ? 'hover:bg-indigo-900/10' : 'hover:bg-indigo-50/50'}`
+            }`}
+            style={{
+              padding: isOpen ? "8px 12px" : "8px",
+              width: isOpen ? "100%" : "auto",
+              gap: isOpen ? "12px" : "0",
+            }}
+            title={t.cacheIndex}
+          >
+            <span className="h-5 w-5 flex items-center justify-center flex-shrink-0">
+              <svg
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="#818cf8"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+              </svg>
+            </span>
+            <span
+              className={`whitespace-nowrap transition-opacity duration-300 ${!isOpen ? "hidden" : "opacity-100"
+                }`}
+              style={{ color: location.pathname === '/admin/cache-stats' ? '' : '#818cf8', fontSize: '13px' }}
+            >
+              {t.cacheIndex}
+            </span>
+          </button>
+        )}
       </div>
+
+      <div className={`transition-opacity duration-300 ${!isOpen ? "opacity-0 pointer-events-none hidden" : "opacity-100"}`}>
+        <div
+          className="px-3 py-1 text-[11px] font-bold uppercase tracking-widest mb-1"
+          style={{ color: theme?.secondaryText || "#6b7280" }}
+        >
+          {t.chats}
+        </div>
 
       {(() => {
         if (chatHistory.length === 0) {
@@ -388,6 +650,7 @@ export default function SessionList({
           );
         });
       })()}
+      </div>
     </div>
   );
 }

@@ -114,8 +114,9 @@ export default function ChatArea({
       onOpenArtifact={onOpenArtifact}
       handleDownloadAllArtifacts={handleDownloadAllArtifacts}
       handleDownloadArtifact={handleDownloadArtifact}
+      language={language}
     />
-  ), [darkMode, theme, isThinking, isStreamingText, sendMessage, searchQuery, messages.length, onFileClick, setPreviewImage, onOpenArtifact, handleDownloadAllArtifacts, handleDownloadArtifact]);
+  ), [darkMode, theme, isThinking, isStreamingText, sendMessage, searchQuery, messages.length, onFileClick, setPreviewImage, onOpenArtifact, handleDownloadAllArtifacts, handleDownloadArtifact, language]);
 
   const t = translations[language]?.chatArea || translations.id.chatArea;
 

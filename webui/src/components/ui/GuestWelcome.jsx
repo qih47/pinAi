@@ -34,7 +34,7 @@ export default function GuestWelcome({
     }
   }, [isLoggedIn]);
 
-  const rawFirstName = userData?.fullname?.split(" ")[0] || "Guest";
+  const rawFirstName = userData?.preferred_name || userData?.fullname?.split(" ")[0] || "Guest";
   const firstName = rawFirstName.charAt(0).toUpperCase() + rawFirstName.slice(1).toLowerCase();
 
   return (

@@ -30,7 +30,7 @@ class AuthService:
         """Verify the session token and update last activity."""
         async with get_db() as conn:
             query = """
-                SELECT u.npp, u.fullname, u.divisi, u.role, s.expires_at
+                SELECT u.npp, u.fullname, u.preferred_name, u.divisi, u.role, s.expires_at, u.email, u.profile_photo_url
                 FROM session_login s
                 JOIN users u ON s.npp = u.npp
                 WHERE s.session_token = $1 AND s.is_login = TRUE AND s.expires_at > NOW()
@@ -44,24 +44,27 @@ class AuthService:
                     token,
                 )
                 
-                user_email = None
-                try:
-                    async with get_hris_db() as hris_conn:
-                        hris_data = await hris_conn.fetchrow(
-                            "SELECT email_internet, email_intranet FROM master_personil WHERE npp = $1", user["npp"]
-                        )
-                        if hris_data:
-                            user_email = hris_data["email_internet"] or hris_data["email_intranet"]
-                except Exception as e:
-                    logger.error(f"Gagal mengambil email dari HRIS untuk NPP {user['npp']}: {e}")
+                user_email = user["email"]
+                if not user_email:
+                    try:
+                        async with get_hris_db() as hris_conn:
+                            hris_data = await hris_conn.fetchrow(
+                                "SELECT email_internet, email_intranet FROM master_personil WHERE npp = $1", user["npp"]
+                            )
+                            if hris_data:
+                                user_email = hris_data["email_internet"] or hris_data["email_intranet"]
+                    except Exception as e:
+                        logger.error(f"Gagal mengambil email dari HRIS untuk NPP {user['npp']}: {e}")
 
                 return {
                     "npp": user["npp"],
                     "username": user["npp"],
                     "fullname": user["fullname"],
+                    "preferred_name": user["preferred_name"],
                     "divisi": user["divisi"],
                     "role": user["role"],
                     "email": user_email,
+                    "profile_photo_url": user["profile_photo_url"],
                     "session_token": token,
                     "expires_at": user["expires_at"].isoformat() if user["expires_at"] else None
                 }
@@ -96,37 +99,45 @@ class AuthService:
         else:
             async with get_db() as conn:
                 local_user = await conn.fetchrow(
-                    "SELECT fullname, divisi, role FROM users WHERE npp = $1", npp
+                    "SELECT fullname, divisi, role, password_hash FROM users WHERE npp = $1", npp
                 )
                 if local_user:
                     current_role = local_user["role"]
+                    if local_user["password_hash"]:
+                        if bcrypt.checkpw(password_input.encode(), local_user["password_hash"].encode()):
+                            user_fullname = local_user["fullname"]
+                            user_divisi = local_user["divisi"]
+                        else:
+                            await log_security_event("LOGIN_FAILED", npp, user_ip, "Invalid password (RAG DB)", "MEDIUM")
+                            return False, None, "Password salah"
 
-            async with get_hris_db() as conn:
-                user_hris = await conn.fetchrow(
-                    """
-                    SELECT 
-                        mp.nama_lengkap as nama, tu.npp, tu.password, 
-                        split_part(ref_unit.unit_path::text, '->'::text, 2) AS divisi,
-                        mp.email_internet, mp.email_intranet
-                    FROM master_unit unit
-                    JOIN temp_ref_unit ref_unit ON ref_unit.kode_unit = unit.kode_unit
-                    LEFT JOIN master_personil mp ON mp.kode_unit = unit.kode_unit
-                    LEFT JOIN tabel_user tu ON tu.npp = mp.npp
-                    WHERE tu.npp = $1
-                    """,
-                    npp,
-                )
+            if not user_fullname:
+                async with get_hris_db() as conn:
+                    user_hris = await conn.fetchrow(
+                        """
+                        SELECT 
+                            mp.nama_lengkap as nama, tu.npp, tu.password, 
+                            split_part(ref_unit.unit_path::text, '->'::text, 2) AS divisi,
+                            mp.email_internet, mp.email_intranet
+                        FROM master_unit unit
+                        JOIN temp_ref_unit ref_unit ON ref_unit.kode_unit = unit.kode_unit
+                        LEFT JOIN master_personil mp ON mp.kode_unit = unit.kode_unit
+                        LEFT JOIN tabel_user tu ON tu.npp = mp.npp
+                        WHERE tu.npp = $1
+                        """,
+                        npp,
+                    )
 
-            if not user_hris:
-                await log_security_event("LOGIN_FAILED", npp, user_ip, "NPP not found in HRIS", "LOW")
-                return False, None, "NPP tidak terdaftar di HRIS"
+                if not user_hris:
+                    await log_security_event("LOGIN_FAILED", npp, user_ip, "NPP not found in HRIS", "LOW")
+                    return False, None, "NPP tidak terdaftar di HRIS"
 
-            if user_hris["password"] != password_md5:
-                await log_security_event("LOGIN_FAILED", npp, user_ip, "Invalid password", "MEDIUM")
-                return False, None, "Password salah"
+                if user_hris["password"] != password_md5:
+                    await log_security_event("LOGIN_FAILED", npp, user_ip, "Invalid password", "MEDIUM")
+                    return False, None, "Password salah"
 
-            user_fullname = user_hris["nama"]
-            user_divisi = user_hris["divisi"] or "Umum"
+                user_fullname = user_hris["nama"]
+                user_divisi = user_hris["divisi"] or "Umum"
 
         session_token = str(uuid.uuid4())
 
@@ -141,6 +152,17 @@ class AuthService:
                         divisi = EXCLUDED.divisi;
                     """,
                     npp, user_fullname, user_divisi, current_role,
+                )
+
+                # Update password hash ke RAG DB untuk login berikutnya jika belum ada (tanpa nimpa yg sudah ada)
+                hashed_pw = bcrypt.hashpw(password_input.encode(), bcrypt.gensalt()).decode()
+                await conn.execute(
+                    """
+                    UPDATE users
+                    SET password_hash = $2
+                    WHERE npp = $1 AND password_hash IS NULL;
+                    """,
+                    npp, hashed_pw,
                 )
 
                 await conn.execute(

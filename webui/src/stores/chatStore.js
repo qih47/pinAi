@@ -28,7 +28,23 @@ export const useChatStore = create((set, get) => ({
     isSplitScreen: false,
     activePdfUrl: null,
     showGhostWriter: false,
+    showGhostWriter: false,
     ghostWriterContent: "",
+    autoReadAloud: localStorage.getItem('cakra_auto_read_aloud') === 'true',
+    setAutoReadAloud: (val) => {
+        localStorage.setItem('cakra_auto_read_aloud', val);
+        set({ autoReadAloud: val });
+    },
+    ttsVoice: localStorage.getItem('cakra_tts_voice') || 'id-ID-ArdiNeural',
+    setTtsVoice: (val) => {
+        localStorage.setItem('cakra_tts_voice', val);
+        set({ ttsVoice: val });
+    },
+    ttsSpeed: localStorage.getItem('cakra_tts_speed') || 'normal',
+    setTtsSpeed: (val) => {
+        localStorage.setItem('cakra_tts_speed', val);
+        set({ ttsSpeed: val });
+    },
 
     // Slices
     ...createChatSlice(set, get),

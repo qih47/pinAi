@@ -1,7 +1,9 @@
 import React from 'react';
 import { getPlusButtonStyles } from '../chatPage.styles';
+import { translations } from '../../../utils/translations';
 
-export default function PlusButton({ onClick, disabled, selectedFiles, darkMode, isStreaming }) {
+export default function PlusButton({ onClick, disabled, selectedFiles, darkMode, isStreaming, language = 'id' }) {
+  const tGlobal = translations[language] || translations.id;
   const buttonStyles = getPlusButtonStyles(darkMode, selectedFiles, disabled);
 
   return (
@@ -25,7 +27,7 @@ export default function PlusButton({ onClick, disabled, selectedFiles, darkMode,
               : 'rgba(37, 99, 235, 0.1)'
             : 'transparent';
       }}
-      title="Lampirkan Berkas (PDF / Gambar) atau Paste (Ctrl+V) atau Drag-Drop"
+      title={tGlobal.chat.attachFilePrompt}
     >
       <svg
         width="20"

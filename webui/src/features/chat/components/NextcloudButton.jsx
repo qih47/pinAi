@@ -3,7 +3,10 @@ import { Cloud } from 'lucide-react';
 import { getPlusButtonStyles } from '../chatPage.styles';
 import useNextcloudStore from '../../../stores/nextcloudStore';
 
-export default function NextcloudButton({ disabled, darkMode }) {
+import { translations } from '../../../utils/translations';
+
+export default function NextcloudButton({ disabled, darkMode, language = 'id' }) {
+  const tGlobal = translations[language] || translations.id;
   const openModal = useNextcloudStore(state => state.openModal);
   
   // Reuse plus button styles for consistency
@@ -31,7 +34,7 @@ export default function NextcloudButton({ disabled, darkMode }) {
       onMouseLeave={(e) => {
         e.currentTarget.style.background = 'transparent';
       }}
-      title="Pilih File dari Nextcloud Pindad"
+      title={tGlobal.chat.selectFromNextcloud}
     >
       <Cloud size={20} strokeWidth={2.5} color={darkMode ? '#9ca3af' : '#6b7280'} className="hover:text-blue-500 transition-colors" />
     </button>

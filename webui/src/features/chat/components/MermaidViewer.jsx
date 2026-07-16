@@ -3,10 +3,12 @@ import { createPortal } from 'react-dom';
 import mermaid from 'mermaid';
 import { toPng } from 'html-to-image';
 import { Maximize2, Minimize2, Download } from 'lucide-react';
+import { translations } from '../../../utils/translations';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://192.168.11.80:5000';
 
-const MermaidViewer = ({ chartCode, darkMode, isStreaming }) => {
+const MermaidViewer = ({ chartCode, darkMode, isStreaming, language = 'id' }) => {
+  const tGlobal = translations[language] || translations.id;
   const containerRef = useRef(null);
   const [svgContent, setSvgContent] = useState('');
   const [error, setError] = useState(null);
@@ -51,8 +53,7 @@ const MermaidViewer = ({ chartCode, darkMode, isStreaming }) => {
           // Abaikan error saat sedang streaming (kode belum lengkap)
           console.warn('Mermaid partial render error (ignored during stream)');
         } else {
-          console.error('Mermaid render error:', err);
-          setError(err.message || 'Gagal me-render diagram. Pastikan sintaks Mermaid valid.');
+          setError(err.message || tGlobal.render.mermaidRenderFail);
         }
       }
     };
@@ -152,8 +153,7 @@ const MermaidViewer = ({ chartCode, darkMode, isStreaming }) => {
         setTimeout(() => document.body.removeChild(form), 1000);
 
       } catch (err) {
-        console.error('Error downloading image:', err);
-        alert('Gagal mengunduh diagram');
+        alert(tGlobal.render.downloadFail);
       }
     }
   };
@@ -212,21 +212,21 @@ const MermaidViewer = ({ chartCode, darkMode, isStreaming }) => {
                 className={`w-full text-left px-4 py-2 text-xs font-semibold transition-colors ${activeDarkMode ? 'text-gray-200 hover:bg-gray-700' : 'text-gray-700 hover:bg-gray-100'
                   }`}
               >
-                Unduh PNG
+                {tGlobal.render.downloadPng}
               </button>
               <button
                 onClick={() => handleDownload('svg')}
                 className={`w-full text-left px-4 py-2 text-xs font-semibold transition-colors border-t ${activeDarkMode ? 'text-gray-200 hover:bg-gray-700 border-gray-700' : 'text-gray-700 hover:bg-gray-100 border-gray-100'
                   }`}
               >
-                Unduh SVG
+                {tGlobal.render.downloadSvg}
               </button>
             </div>
           )}
         </div>
         <button
           onClick={toggleFullscreen}
-          title={isFullscreen ? 'Keluar Layar Penuh' : 'Layar Penuh'}
+          title={isFullscreen ? tGlobal.render.exitFullscreen : tGlobal.render.fullscreen}
           className={`p-1.5 rounded-md transition-colors ${activeDarkMode ? 'hover:bg-gray-700 text-gray-400' : 'hover:bg-gray-200 text-gray-600'
             }`}
         >
@@ -255,7 +255,7 @@ const MermaidViewer = ({ chartCode, darkMode, isStreaming }) => {
               className="w-full h-full flex justify-center [&>svg]:max-w-full [&>svg]:h-auto"
             />
           ) : (
-            <div className="animate-pulse text-sm">Me-render diagram...</div>
+            <div className="animate-pulse text-sm">{tGlobal.render.renderingDiagram}</div>
           )}
         </div>
       </div>
@@ -265,9 +265,8 @@ const MermaidViewer = ({ chartCode, darkMode, isStreaming }) => {
   if (isFullscreen) {
     return (
       <>
-        {/* Placeholder in the chat bubble */}
         <div className="w-full my-4 p-8 border border-dashed rounded-xl text-center text-sm font-medium text-gray-500">
-          Mode Layar Penuh Aktif
+          {tGlobal.render.fullscreenModeActive}
         </div>
         {createPortal(
           <div className="fixed inset-0 z-[99999] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 md:p-8 animate-in fade-in duration-200">

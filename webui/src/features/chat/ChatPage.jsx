@@ -47,8 +47,10 @@ export default function ChatPage({ isGuest,
   const {
     activeIsolatedDocId, activeIsolatedTitle, activeSessionId, artifactContent, artifacts, authUser, baselineHeightRef, bottomRef, chatHistory, chatMode, chatModeRef, currentIsLoggedIn, currentThinking, currentUserData, darkMode, defaultGetGreeting, detectLang, docContent, docSearchQuery, documents, documentsTotal, fetchDocumentsList, fileInputRef, handleChatModeChange, handleClearChat, handleDownloadAllArtifacts, handleDownloadArtifact, handleDragLeave, handleDragOver, handleDrop, handleFileChange, handleFileClick, handleKeyDown, handleOpenArtifact, handlePaste, handleSubmit, handleThinkingModeChange, hasSidebar, input, isArtifactLoading, isAuthenticated, isDocLoading, isDragOver, isEmptyChat, isLoading, isLoadingDocuments, isMobile, isMultiLine, isResizingRightSidebar, isStreaming, isStreamingText, isThinking, isThinkingMode, isThinkingModeRef, isUploadingFile, lastAssistantIndex, lastLoadedSessionRef, language, loadChatSession, logout, mainMarginLeft, mainMarginRight, messageSearchInputRef, messages, messagesContainerRef, msgSearchQuery, navigate, previewArtifact, previewDoc, previewImage, removeFilePreview, rightSidebarWidth, selectedFiles, selectedMode, sessionAttachments, setChatHistory, setChatMode, setContextIsolation, setDarkMode, setDocContent, setDocSearchQuery, setInput, setIsArtifactLoading, setIsDocLoading, setIsDragOver, setIsMobile, setIsMultiLine, setIsThinkingMode, setIsUploadingFile, setLanguage, setMsgSearchQuery, setPreviewArtifact, setPreviewDoc, setPreviewImage, setRightSidebarWidth, setSelectedFiles, setSelectedMode, setShowDocumentList, setShowMsgSearch, setShowRightSidebar, setShowScrollBottom, setSidebarOpen, setStagedAttachments, showDocumentList, showMsgSearch, showRightSidebar, showScrollBottom, showWelcome, sidebarOpen, singleLineWidthRef, stagedAttachments, startResizingRightSidebar, storeChatMode, textareaRef, theme, toast, toggleRightSidebar, triggerLogout, validateFile, wasLeftSidebarOpenRef
   } = chatLogic;
+  const { themeSetting } = chatLogic;
 
   const t = translations[language]?.chatPage || translations.id.chatPage;
+  const tGlobal = translations[language] || translations.id;
 
   React.useEffect(() => {
     if (corporateMode) {
@@ -164,6 +166,7 @@ export default function ChatPage({ isGuest,
           setDarkMode={setDarkMode}
           language={language}
           setLanguage={setLanguage}
+          themeSetting={themeSetting}
           theme={theme}
           clearChat={handleClearChat}
           showDocumentList={showDocumentList}
@@ -436,7 +439,7 @@ export default function ChatPage({ isGuest,
 
         {/* WRAPPER FOR SPLIT SCREEN */}
         <div style={{ flex: 1, display: "flex", flexDirection: "row", overflow: "hidden", marginTop: 0 }}>
-          <PdfInterrogator darkMode={darkMode} />
+          <PdfInterrogator darkMode={darkMode} language={language} />
           <div
             style={{
               flex: 1,
@@ -703,7 +706,7 @@ export default function ChatPage({ isGuest,
             >
               <input
                 type="text"
-                placeholder="Cari nama dokumen atau nomor..."
+                placeholder={tGlobal.chat.searchDocPlaceholder}
                 value={docSearchQuery}
                 onChange={(e) => setDocSearchQuery(e.target.value)}
                 style={{
@@ -878,6 +881,7 @@ export default function ChatPage({ isGuest,
       {/* ☁️ NEXTCLOUD MODAL */}
       <NextcloudModal 
         darkMode={darkMode}
+        language={language}
         onFileSelect={(files) => {
           // Add downloaded file to selectedFiles
           setSelectedFiles((prev) => [...prev, ...files]);
@@ -885,7 +889,7 @@ export default function ChatPage({ isGuest,
       />
 
       {/* ✍️ GHOSTWRITER MODAL */}
-      <GhostWriterModal darkMode={darkMode} theme={theme} />
+      <GhostWriterModal darkMode={darkMode} theme={theme} language={language} />
     </div>
   );
 }

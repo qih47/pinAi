@@ -10,7 +10,7 @@ from fastapi.responses import StreamingResponse
 from backend.app.api.dependencies.auth import get_current_user_npp
 from backend.app.services.chat.chat_history_service import chat_history_service
 from backend.app.api.schemas.chat import ChatStreamRequest
-from backend.app.utils.employee_cache import get_cached_employee_fullname
+from backend.app.utils.employee_cache import get_cached_employee_data
 from backend.app.services.pipeline import (
     format_sse,
     SSEEventType,

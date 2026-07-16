@@ -3,8 +3,10 @@ import { Mail, Send, CheckCircle2, UserCircle2, Eye, Edit3 } from 'lucide-react'
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import apiClient from '../../../services/apiClient';
+import { translations } from '../../../utils/translations';
 
-export default function SmartMailChatWidget({ initialData, darkMode, theme }) {
+export default function SmartMailChatWidget({ initialData, darkMode, theme, language = 'id' }) {
+    const tGlobal = translations[language] || translations.id;
     const [viewMode, setViewMode] = useState('edit'); // 'edit' or 'preview'
     const [draftData, setDraftData] = useState(() => {
         try {
@@ -90,11 +92,11 @@ export default function SmartMailChatWidget({ initialData, darkMode, theme }) {
                 setSendSuccess(true);
                 localStorage.setItem(messageId, 'true');
             } else {
-                setErrorMsg("Gagal: " + (response.data.message || "Terdapat masalah koneksi."));
+                setErrorMsg(`${tGlobal.render.fail} ` + (response.data.message || tGlobal.smartMail.failConnection));
             }
         } catch (error) {
             console.error("Gagal mengirim:", error);
-            setErrorMsg("Gagal menghubungi server Zimbra.");
+            setErrorMsg(tGlobal.smartMail.failServer);
         } finally {
             setIsSending(false);
         }
@@ -105,9 +107,9 @@ export default function SmartMailChatWidget({ initialData, darkMode, theme }) {
             <div className={`my-4 p-5 rounded-xl border ${darkMode ? 'bg-green-900/20 border-green-800/50' : 'bg-green-50 border-green-200'} flex items-center gap-3`}>
                 <CheckCircle2 className="w-8 h-8 text-green-500 flex-shrink-0" />
                 <div>
-                    <h3 className={`font-bold ${darkMode ? 'text-green-400' : 'text-green-700'}`}>Email Berhasil Terkirim!</h3>
+                    <h3 className={`font-bold ${darkMode ? 'text-green-400' : 'text-green-700'}`}>{tGlobal.smartMail.emailSent}</h3>
                     <p className={`text-sm mt-1 ${darkMode ? 'text-green-200/70' : 'text-green-600/80'}`}>
-                        Pesan telah diteruskan ke mail server Pindad.
+                        {tGlobal.smartMail.emailForwarded}
                     </p>
                 </div>
             </div>
@@ -120,64 +122,64 @@ export default function SmartMailChatWidget({ initialData, darkMode, theme }) {
             <div className={`px-4 py-3 flex items-center justify-between border-b ${darkMode ? 'bg-[#252529] border-slate-700' : 'bg-slate-50 border-slate-200'}`}>
                 <div className="flex items-center gap-2">
                     <Mail className={`w-5 h-5 ${darkMode ? 'text-blue-400' : 'text-blue-600'}`} />
-                    <span className="font-bold text-sm tracking-wide">CAKRA Smart Mail Draft</span>
+                    <span className="font-bold text-sm tracking-wide">{tGlobal.smartMail.draftTitle}</span>
                 </div>
                 <div className={`px-2 py-1 rounded text-xs font-semibold ${darkMode ? 'bg-blue-900/30 text-blue-400' : 'bg-blue-100 text-blue-700'}`}>
-                    Siap Kirim
+                    {tGlobal.smartMail.readyToSend}
                 </div>
             </div>
 
             {/* Form Fields */}
             <div className="p-4 flex flex-col gap-3">
                 <div className="flex items-center gap-3">
-                    <span className={`text-xs font-bold w-12 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>KE:</span>
+                    <span className={`text-xs font-bold w-12 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{tGlobal.smartMail.to}</span>
                     <input 
                         type="text" 
                         value={draftData.to || ""}
                         onChange={(e) => setDraftData({...draftData, to: e.target.value})}
                         className={`flex-1 px-3 py-1.5 rounded-md text-sm border focus:outline-none focus:ring-1 focus:ring-blue-500 transition-shadow ${darkMode ? 'bg-[#2A2A2D] border-slate-600 text-white' : 'bg-white border-slate-300 text-slate-900'}`}
-                        placeholder="Alamat email penerima..."
+                        placeholder={tGlobal.smartMail.recipientPlaceholder}
                     />
                 </div>
                 
                 {draftData.cc && (
                     <div className="flex items-center gap-3">
-                        <span className={`text-xs font-bold w-12 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>CC:</span>
+                        <span className={`text-xs font-bold w-12 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{tGlobal.smartMail.cc}</span>
                         <input 
                             type="text" 
                             value={draftData.cc || ""}
                             onChange={(e) => setDraftData({...draftData, cc: e.target.value})}
                             className={`flex-1 px-3 py-1.5 rounded-md text-sm border focus:outline-none focus:ring-1 focus:ring-blue-500 transition-shadow ${darkMode ? 'bg-[#2A2A2D] border-slate-600 text-white' : 'bg-white border-slate-300 text-slate-900'}`}
-                            placeholder="CC email..."
+                            placeholder={tGlobal.smartMail.ccPlaceholder}
                         />
                     </div>
                 )}
 
                 <div className="flex items-center gap-3">
-                    <span className={`text-xs font-bold w-12 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>SUBJEK:</span>
+                    <span className={`text-xs font-bold w-12 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{tGlobal.smartMail.subject}</span>
                     <input 
                         type="text" 
                         value={draftData.subject || ""}
                         onChange={(e) => setDraftData({...draftData, subject: e.target.value})}
                         className={`flex-1 px-3 py-1.5 rounded-md text-sm border focus:outline-none focus:ring-1 focus:ring-blue-500 transition-shadow font-semibold ${darkMode ? 'bg-[#2A2A2D] border-slate-600 text-white' : 'bg-white border-slate-300 text-slate-900'}`}
-                        placeholder="Judul email..."
+                        placeholder={tGlobal.smartMail.subjectPlaceholder}
                     />
                 </div>
 
                 <div className="flex items-center justify-between mt-1">
-                    <span className={`text-xs font-bold ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>PESAN:</span>
+                    <span className={`text-xs font-bold ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{tGlobal.smartMail.messageLabel}</span>
                     <div className="flex items-center gap-1 bg-slate-200/50 dark:bg-slate-800/50 p-1 rounded-md">
                         <button 
                             onClick={() => setViewMode('edit')}
                             className={`px-3 py-1 text-xs font-medium rounded transition-all flex items-center gap-1.5 ${viewMode === 'edit' ? (darkMode ? 'bg-[#3b82f6] text-white' : 'bg-white shadow text-blue-600') : (darkMode ? 'text-slate-400 hover:text-white' : 'text-slate-500 hover:text-slate-800')}`}
                         >
-                            <Edit3 className="w-3.5 h-3.5" /> Edit
+                            <Edit3 className="w-3.5 h-3.5" /> {tGlobal.smartMail.edit}
                         </button>
                         <button 
                             onClick={() => setViewMode('preview')}
                             className={`px-3 py-1 text-xs font-medium rounded transition-all flex items-center gap-1.5 ${viewMode === 'preview' ? (darkMode ? 'bg-[#3b82f6] text-white' : 'bg-white shadow text-blue-600') : (darkMode ? 'text-slate-400 hover:text-white' : 'text-slate-500 hover:text-slate-800')}`}
                         >
-                            <Eye className="w-3.5 h-3.5" /> Preview
+                            <Eye className="w-3.5 h-3.5" /> {tGlobal.smartMail.preview}
                         </button>
                     </div>
                 </div>
@@ -213,14 +215,14 @@ export default function SmartMailChatWidget({ initialData, darkMode, theme }) {
                         <UserCircle2 className={`w-4 h-4 flex-shrink-0 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`} />
                         <input 
                             type="text"
-                            placeholder="Email Webmail..."
+                            placeholder={tGlobal.smartMail.webmailPlaceholder}
                             value={tempEmail}
                             onChange={(e) => setTempEmail(e.target.value)}
                             className={`w-1/3 px-3 py-1.5 rounded-md text-xs border focus:outline-none ${darkMode ? 'bg-[#1E1E22] border-slate-600 text-white' : 'bg-white border-slate-300'}`}
                         />
                         <input 
                             type="password"
-                            placeholder="Password..."
+                            placeholder={tGlobal.smartMail.passwordPlaceholder}
                             value={tempPassword}
                             onChange={(e) => setTempPassword(e.target.value)}
                             className={`w-1/3 px-3 py-1.5 rounded-md text-xs border focus:outline-none ${darkMode ? 'bg-[#1E1E22] border-slate-600 text-white' : 'bg-white border-slate-300'}`}
@@ -229,13 +231,13 @@ export default function SmartMailChatWidget({ initialData, darkMode, theme }) {
                 ) : (
                     <div className="flex items-center gap-3">
                         <div className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
-                            Terkirim sebagai: <span className="font-semibold">{sessionStorage.getItem('cakra_zimbra_email')}</span>
+                            {tGlobal.smartMail.sentAs} <span className="font-semibold">{sessionStorage.getItem('cakra_zimbra_email')}</span>
                         </div>
                         <button 
                             onClick={() => setShowAuthPrompt(true)}
                             className={`text-[10px] underline ${darkMode ? 'text-blue-400' : 'text-blue-600'}`}
                         >
-                            Ganti Akun
+                            {tGlobal.smartMail.switchAccount}
                         </button>
                     </div>
                 )}
@@ -251,7 +253,7 @@ export default function SmartMailChatWidget({ initialData, darkMode, theme }) {
                     `}
                 >
                     <Send className="w-4 h-4" />
-                    {isSending ? 'Mengirim...' : 'Kirim Email'}
+                    {isSending ? tGlobal.smartMail.sending : tGlobal.smartMail.sendEmail}
                 </button>
             </div>
         </div>

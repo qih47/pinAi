@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
 import { styles } from '../chatPage.styles';
+import { translations } from '../../../utils/translations';
 
-export default function CodeBlockHeader({ lang, code }) {
+export default function CodeBlockHeader({ lang, code, language = 'id' }) {
+  const tGlobal = translations[language] || translations.id;
   const [showToast, setShowToast] = useState(false);
   const [toastMsg, setToastMsg] = useState('');
 
@@ -19,11 +21,11 @@ export default function CodeBlockHeader({ lang, code }) {
         document.execCommand('copy');
         document.body.removeChild(textarea);
       }
-      setToastMsg('Kode berhasil disalin! 📋');
+      setToastMsg(tGlobal.render.copiedCodeSuccess);
       setShowToast(true);
       setTimeout(() => setShowToast(false), 2000);
     } catch (err) {
-      setToastMsg('Gagal menyalin kode! ❌');
+      setToastMsg(tGlobal.render.copiedCodeFail);
       setShowToast(true);
       setTimeout(() => setShowToast(false), 2000);
     }
@@ -74,7 +76,7 @@ export default function CodeBlockHeader({ lang, code }) {
         <button
           type="button"
           onClick={handleDownload}
-          title="Unduh Kode"
+          title={tGlobal.render.downloadCode}
           style={styles.codeBlockHeaderActionBtn}
         >
           <svg
@@ -91,12 +93,12 @@ export default function CodeBlockHeader({ lang, code }) {
             <polyline points="7 10 12 15 17 10" />
             <line x1="12" y1="15" x2="12" y2="3" />
           </svg>
-          <span>Unduh</span>
+          <span>{tGlobal.render.download}</span>
         </button>
         <button
           type="button"
           onClick={handleCopy}
-          title="Salin Kode"
+          title={tGlobal.render.copyCode}
           style={styles.codeBlockHeaderActionBtn}
         >
           <svg
@@ -112,7 +114,7 @@ export default function CodeBlockHeader({ lang, code }) {
             <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
             <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" />
           </svg>
-          <span>Salin</span>
+          <span>{tGlobal.render.copy}</span>
         </button>
       </div>
       {showToast && <div style={styles.codeBlockHeaderToast}>{toastMsg}</div>}

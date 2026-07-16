@@ -7,6 +7,7 @@ import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import CodeBlockHeader from './CodeBlockHeader';
 import ChatActionWidgets from './ChatActionWidgets';
 import { Suspense, lazy } from 'react';
+import { translations } from '../../../utils/translations';
 
 const LazyMermaidViewer = lazy(() => import('./MermaidViewer'));
 const LazySmartMailWidget = lazy(() => import('./SmartMailChatWidget'));
@@ -41,9 +42,10 @@ const recursiveHighlight = (children, query) => {
 // =========================================================================
 // 🔮 CAKRA MARKDOWN TABLE (SMART FORM EXPORTER)
 // =========================================================================
-const MarkdownTable = ({ children, darkMode, theme, searchQuery, ...props }) => {
+const MarkdownTable = ({ children, darkMode, theme, searchQuery, language = 'id', ...props }) => {
     const tableRef = React.useRef(null);
     const [copied, setCopied] = React.useState(false);
+    const tGlobal = translations[language] || translations.id;
 
     const handleCopy = () => {
         if (!tableRef.current) return;
@@ -65,18 +67,18 @@ const MarkdownTable = ({ children, darkMode, theme, searchQuery, ...props }) => 
         <div className="relative group my-4 rounded-lg overflow-hidden border" style={{ borderColor: theme?.borderColor || '#e5e7eb' }}>
             <button 
                 onClick={handleCopy}
-                title="Salin Tabel (Bisa dipaste ke Excel/Spreadsheet)"
+                title={tGlobal.render.copyTable}
                 className={`absolute right-2 top-2 z-10 px-2.5 py-1.5 flex items-center gap-1.5 rounded-lg text-xs font-semibold backdrop-blur-sm transition-all opacity-0 group-hover:opacity-100 ${darkMode ? 'bg-slate-800/90 text-slate-200 hover:bg-slate-700 hover:text-white border border-slate-600 shadow-md' : 'bg-white/90 text-slate-600 hover:bg-slate-50 hover:text-slate-900 shadow-[0_2px_8px_rgba(0,0,0,0.08)] border border-slate-200'}`}
             >
                 {copied ? (
                     <>
                         <svg className="w-3.5 h-3.5 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg>
-                        <span>Tersalin!</span>
+                        <span>{tGlobal.render.copied}</span>
                     </>
                 ) : (
                     <>
                         <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
-                        <span>Salin Data</span>
+                        <span>{tGlobal.render.copyData}</span>
                     </>
                 )}
             </button>
@@ -92,7 +94,8 @@ const MarkdownTable = ({ children, darkMode, theme, searchQuery, ...props }) => 
 // =========================================================================
 // 🔮 MAIN COMPONENT: CAKRA RESPONSE RENDERER
 // =========================================================================
-const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkMode, theme, searchQuery = '', statusMessage, middleContent }) => {
+const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkMode, theme, searchQuery = '', statusMessage, middleContent, language = 'id' }) => {
+    const tGlobal = translations[language] || translations.id;
     const thinkStartTag = "<think>";
     const thinkEndTag = "</think>";
 
@@ -229,7 +232,7 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
 
         // 5. TABEL (Dengan Header Background & Copy to Clipboard)
         table({ children, ...props }) {
-            return <MarkdownTable children={children} darkMode={darkMode} theme={theme} searchQuery={searchQuery} {...props} />;
+            return <MarkdownTable children={children} darkMode={darkMode} theme={theme} searchQuery={searchQuery} language={language} {...props} />;
         },
         thead({ children, ...props }) {
             return <thead style={{ background: darkMode ? '#334155' : '#f8fafc' }} {...props}>{recursiveHighlight(children, searchQuery)}</thead>;
@@ -257,7 +260,7 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
             if (!inline && match && match[1] === 'mermaid') {
                 return (
                     <Suspense fallback={<div className="animate-pulse p-8 border border-dashed rounded-xl text-sm text-center font-medium my-4">Memuat engine diagram...</div>}>
-                        <LazyMermaidViewer chartCode={cleanCode} darkMode={darkMode} isStreaming={isStreaming} />
+                        <LazyMermaidViewer chartCode={cleanCode} darkMode={darkMode} isStreaming={isStreaming} language={language} />
                     </Suspense>
                 );
             }
@@ -265,7 +268,7 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
             if (!inline && match && match[1] === 'gantt') {
                 return (
                     <Suspense fallback={<div className="animate-pulse p-8 border border-dashed rounded-xl text-sm text-center font-medium my-4">Memuat Gantt Chart...</div>}>
-                        <LazyGanttViewer chartCode={cleanCode} darkMode={darkMode} isStreaming={isStreaming} />
+                        <LazyGanttViewer chartCode={cleanCode} darkMode={darkMode} isStreaming={isStreaming} language={language} />
                     </Suspense>
                 );
             }
@@ -273,7 +276,7 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
             if (!inline && match && match[1] === 'infographic') {
                 return (
                     <Suspense fallback={<div className="animate-pulse p-8 border border-dashed rounded-xl text-sm text-center font-medium my-4">Memuat Infografis Timeline...</div>}>
-                        <LazyTimelineInfographic chartCode={cleanCode} darkMode={darkMode} isStreaming={isStreaming} />
+                        <LazyTimelineInfographic chartCode={cleanCode} darkMode={darkMode} isStreaming={isStreaming} language={language} />
                     </Suspense>
                 );
             }
@@ -281,14 +284,14 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
             if (!inline && match && match[1] === 'smartmail') {
                 return (
                     <Suspense fallback={<div className="animate-pulse p-8 border border-dashed rounded-xl text-sm text-center font-medium my-4">Memuat editor email...</div>}>
-                        <LazySmartMailWidget initialData={cleanCode} darkMode={darkMode} theme={theme} />
+                        <LazySmartMailWidget initialData={cleanCode} darkMode={darkMode} theme={theme} language={language} />
                     </Suspense>
                 );
             }
 
             return !inline && match ? (
                 <div key={`code-block-${match[1]}`} style={{ borderRadius: '10px', overflow: 'hidden', margin: '12px 0', boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)', border: '1px solid rgba(255, 255, 255, 0.05)' }}>
-                    <CodeBlockHeader lang={match[1]} code={cleanCode} />
+                    <CodeBlockHeader lang={match[1]} code={cleanCode} language={language} />
                     <SyntaxHighlighter
                         children={cleanCode}
                         style={vscDarkPlus}

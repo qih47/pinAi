@@ -520,13 +520,30 @@ export function useChatLogic({ isGuest,
     localStorage.setItem("cakra_language", language);
   }, [language]);
 
-  const [darkMode, setDarkMode] = useState(() => {
-    const savedTheme = localStorage.getItem("cakra-theme");
-    if (savedTheme !== null) return savedTheme === "dark";
-    if (window.matchMedia)
-      return window.matchMedia("(prefers-color-scheme: dark)").matches;
+  const [themeSetting, setThemeSetting] = useState(() => {
+    return localStorage.getItem("cakra-theme-setting") || "system";
+  });
+
+  const [darkMode, setDarkModeRaw] = useState(() => {
+    const setting = localStorage.getItem("cakra-theme-setting") || "system";
+    if (setting === "dark") return true;
+    if (setting === "light") return false;
+    if (window.matchMedia) return window.matchMedia("(prefers-color-scheme: dark)").matches;
     return false;
   });
+
+  const setDarkMode = (val) => {
+    if (val === "system") {
+      setThemeSetting("system");
+      localStorage.setItem("cakra-theme-setting", "system");
+      if (window.matchMedia) setDarkModeRaw(window.matchMedia("(prefers-color-scheme: dark)").matches);
+    } else {
+      const mode = val ? "dark" : "light";
+      setThemeSetting(mode);
+      localStorage.setItem("cakra-theme-setting", mode);
+      setDarkModeRaw(val);
+    }
+  };
 
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
   useEffect(() => {
@@ -562,8 +579,8 @@ export function useChatLogic({ isGuest,
   // 🔄 W8: Sinkronisasi mode tema antar tab browser
   useEffect(() => {
     const handleStorageChange = (e) => {
-      if (e.key === "cakra-theme") {
-        setDarkMode(e.newValue === "dark");
+      if (e.key === "cakra-theme-setting") {
+        setDarkMode(e.newValue === "system" ? "system" : e.newValue === "dark");
       } else if (e.key === "cakra_language" && e.newValue) {
         setLanguage(e.newValue);
       }
@@ -711,16 +728,12 @@ export function useChatLogic({ isGuest,
   useEffect(() => {
     const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
     const handleChange = (e) => {
-      const savedTheme = localStorage.getItem("cakra-theme");
-      if (savedTheme === null) setDarkMode(e.matches);
+      const savedTheme = localStorage.getItem("cakra-theme-setting");
+      if (!savedTheme || savedTheme === "system") setDarkModeRaw(e.matches);
     };
     mediaQuery.addEventListener("change", handleChange);
     return () => mediaQuery.removeEventListener("change", handleChange);
   }, []);
-
-  useEffect(() => {
-    localStorage.setItem("cakra-theme", darkMode ? "dark" : "light");
-  }, [darkMode]);
 
   useEffect(() => {
     if (darkMode) {
@@ -961,7 +974,7 @@ export function useChatLogic({ isGuest,
   // Jika desktop, margin-left menyesuaikan apakah sidebar buka/tutup
   const mainMarginLeft = isMobile
     ? "0"
-    : (hasSidebar ? (sidebarOpen ? "18rem" : "4rem") : "0");
+    : (hasSidebar ? (sidebarOpen ? "16rem" : "4rem") : "0");
 
   const mainMarginRight = isMobile
     ? "0"
@@ -1047,6 +1060,7 @@ export function useChatLogic({ isGuest,
     setChatMode,
     setContextIsolation,
     setDarkMode,
+    themeSetting,
     language,
     setLanguage,
     setDocContent,

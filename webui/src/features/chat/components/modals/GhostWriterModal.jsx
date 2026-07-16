@@ -1,15 +1,17 @@
 import React, { useState } from 'react';
 import { useChatStore } from '../../../../stores/chatStore';
 import { X, Save, FileText, Download } from 'lucide-react';
+import { translations } from '../../../../utils/translations';
 
-const GhostWriterModal = ({ darkMode, theme }) => {
+const GhostWriterModal = ({ darkMode, theme, language = 'id' }) => {
+    const tGlobal = translations[language] || translations.id;
     const { showGhostWriter, ghostWriterContent, setGhostWriter } = useChatStore((state) => ({
         showGhostWriter: state.showGhostWriter,
         ghostWriterContent: state.ghostWriterContent,
         setGhostWriter: state.setGhostWriter
     }));
 
-    const [content, setContent] = useState(ghostWriterContent || "Draft dokumen otomatis dari AI...\n\n(Silakan edit di sini)");
+    const [content, setContent] = useState(ghostWriterContent || tGlobal.ghostWriter.initialDraft);
 
     if (!showGhostWriter) return null;
 
@@ -28,10 +30,10 @@ const GhostWriterModal = ({ darkMode, theme }) => {
                         </div>
                         <div>
                             <h3 className={`font-semibold text-lg ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                GhostWriter Editor
+                                {tGlobal.ghostWriter.title}
                             </h3>
                             <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                                Mode Auto-Drafting AI. Anda bisa mengedit dokumen secara real-time.
+                                {tGlobal.ghostWriter.subtitle}
                             </p>
                         </div>
                     </div>
@@ -59,7 +61,7 @@ const GhostWriterModal = ({ darkMode, theme }) => {
                     </button>
                     <div className="w-px h-6 bg-gray-300 dark:bg-gray-700 mx-2" />
                     <button className="px-3 py-1.5 text-sm font-medium rounded hover:bg-gray-100 dark:hover:bg-gray-800 flex items-center gap-2 dark:text-gray-300">
-                        <Download size={16} /> Export PDF
+                        <Download size={16} /> {tGlobal.ghostWriter.exportPdf}
                     </button>
                 </div>
 
@@ -71,7 +73,7 @@ const GhostWriterModal = ({ darkMode, theme }) => {
                         className={`w-full h-full p-8 resize-none focus:outline-none font-serif text-[15px] leading-relaxed
                             ${darkMode ? 'bg-transparent text-gray-300 placeholder-gray-600' : 'bg-transparent text-gray-800 placeholder-gray-400'}
                         `}
-                        placeholder="Mulai menulis atau biarkan AI membuat draft..."
+                        placeholder={tGlobal.ghostWriter.placeholder}
                     />
                 </div>
 
@@ -83,7 +85,7 @@ const GhostWriterModal = ({ darkMode, theme }) => {
                             darkMode ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-600 hover:bg-gray-200'
                         }`}
                     >
-                        Tutup
+                        {tGlobal.ghostWriter.close}
                     </button>
                     <button 
                         onClick={() => {
@@ -92,7 +94,7 @@ const GhostWriterModal = ({ darkMode, theme }) => {
                         }}
                         className="px-6 py-2 rounded-xl text-sm font-medium bg-indigo-600 hover:bg-indigo-700 text-white flex items-center gap-2 shadow-md hover:shadow-lg transition-all"
                     >
-                        <Save size={16} /> Simpan Draft
+                        <Save size={16} /> {tGlobal.ghostWriter.saveDraft}
                     </button>
                 </div>
             </div>

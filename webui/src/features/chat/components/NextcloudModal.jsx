@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { X, Folder, File as FileIcon, LogIn, HardDrive, RefreshCw } from 'lucide-react';
 import useNextcloudStore from '../../../stores/nextcloudStore';
+import { translations } from '../../../utils/translations';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://192.168.11.80:5000';
 
-export default function NextcloudModal({ darkMode, onFileSelect }) {
+export default function NextcloudModal({ darkMode, onFileSelect, language = 'id' }) {
+  const tGlobal = translations[language] || translations.id;
   const { isModalOpen, closeModal, isLoggedIn, credentials, setCredentials, clearCredentials } = useNextcloudStore();
 
   const [username, setUsernameInput] = useState('');
@@ -37,7 +39,7 @@ export default function NextcloudModal({ darkMode, onFileSelect }) {
       });
 
       if (!response.ok) {
-        throw new Error('NPP atau Password salah');
+        throw new Error(tGlobal.nextcloud.loginError);
       }
 
       setCredentials(username, password);
@@ -66,7 +68,7 @@ export default function NextcloudModal({ darkMode, onFileSelect }) {
           clearCredentials();
           throw new Error('Sesi berakhir. Silakan login kembali.');
         }
-        throw new Error('Gagal mengambil data dari Nextcloud');
+        throw new Error(tGlobal.nextcloud.fetchError);
       }
 
       const data = await response.json();
@@ -125,7 +127,7 @@ export default function NextcloudModal({ darkMode, onFileSelect }) {
           body: JSON.stringify({ auth: credentials, path: file.path })
         });
 
-        if (!res.ok) throw new Error('Gagal mengunduh file');
+        if (!res.ok) throw new Error(tGlobal.nextcloud.downloadError);
 
         const blob = await res.blob();
         const downloadedFile = new File([blob], file.name, { type: blob.type || 'text/plain' });
@@ -189,7 +191,7 @@ export default function NextcloudModal({ darkMode, onFileSelect }) {
               </div>
 
               <div>
-                <label className="block text-xs font-semibold mb-1">Password</label>
+                <label className="block text-xs font-semibold mb-1">{tGlobal.nextcloud.passwordLabel}</label>
                 <input
                   type="password"
                   value={password}
@@ -207,7 +209,7 @@ export default function NextcloudModal({ darkMode, onFileSelect }) {
                 className="w-full bg-blue-600 hover:bg-blue-700 text-white p-2.5 rounded-lg font-bold text-sm flex items-center justify-center gap-2 transition-colors disabled:opacity-50"
               >
                 {loading ? <RefreshCw className="animate-spin" size={16} /> : <LogIn size={16} />}
-                Koneksikan Akun
+                {tGlobal.nextcloud.connectAccount}
               </button>
             </form>
           ) : (
@@ -241,7 +243,7 @@ export default function NextcloudModal({ darkMode, onFileSelect }) {
                     <RefreshCw className="animate-spin text-blue-500" size={24} />
                   </div>
                 ) : files.length === 0 ? (
-                  <div className="text-center text-sm text-gray-500 mt-10">Folder Kosong</div>
+                  <div className="text-center text-sm text-gray-500 mt-10">{tGlobal.nextcloud.emptyFolder}</div>
                 ) : (
                   <div className="space-y-1">
                     {files.map((file, idx) => (

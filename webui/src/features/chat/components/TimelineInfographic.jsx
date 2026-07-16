@@ -4,10 +4,12 @@ import { toPng, toSvg } from 'html-to-image';
 import { Target, ClipboardList, Gift, Calendar, CheckCircle, Trophy, Maximize2, Minimize2, Download, ChevronRight, CheckCircle2 } from 'lucide-react';
 
 import { parsePartialJSON } from '../../../utils/jsonHelper';
+import { translations } from '../../../utils/translations';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://192.168.11.80:5000';
 
-const TimelineInfographic = ({ chartCode, darkMode, isStreaming }) => {
+const TimelineInfographic = ({ chartCode, darkMode, isStreaming, language = 'id' }) => {
+  const tGlobal = translations[language] || translations.id;
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -28,7 +30,7 @@ const TimelineInfographic = ({ chartCode, darkMode, isStreaming }) => {
       if (isStreaming) {
         // Cukup biarkan saja, belum selesai
       } else {
-        setError("Gagal merender infografis. Format JSON tidak valid atau terpotong.");
+        setError(tGlobal.render.timelineRenderFail);
       }
       return;
     }
@@ -102,7 +104,7 @@ const TimelineInfographic = ({ chartCode, darkMode, isStreaming }) => {
 
     } catch (err) {
       console.error('Error downloading image:', err);
-      alert('Gagal mengunduh infografis');
+      alert(tGlobal.render.downloadFail);
     }
   };
 
@@ -150,7 +152,7 @@ const TimelineInfographic = ({ chartCode, darkMode, isStreaming }) => {
   if (!data) {
     return (
       <div className="p-8 border border-dashed rounded-xl text-sm text-center font-medium my-4 animate-pulse">
-        Menyiapkan Infografis Timeline...
+        {tGlobal.render.preparingTimeline}
       </div>
     );
   }
@@ -186,20 +188,20 @@ const TimelineInfographic = ({ chartCode, darkMode, isStreaming }) => {
                 className={`w-full text-left px-4 py-2 text-xs font-semibold transition-colors ${activeDarkMode ? 'text-gray-200 hover:bg-gray-700' : 'text-gray-700 hover:bg-gray-100'
                   }`}
               >
-                Unduh PNG
+                {tGlobal.render.downloadPng}
               </button>
               <button
                 onClick={() => handleDownload('svg')}
                 className={`w-full text-left px-4 py-2 text-xs font-semibold transition-colors border-t ${activeDarkMode ? 'text-gray-200 hover:bg-gray-700 border-gray-700' : 'text-gray-700 hover:bg-gray-100 border-gray-100'
                   }`}
               >
-                Unduh SVG
+                {tGlobal.render.downloadSvg}
               </button>
             </div>
           )}
         </div>
 
-        <button onClick={toggleFullscreen} className={`p-1.5 rounded-md transition-colors ${activeDarkMode ? 'hover:bg-gray-700 text-gray-400' : 'hover:bg-gray-200 text-gray-600'
+        <button title={isFullscreen ? tGlobal.render.exitFullscreen : tGlobal.render.fullscreen} onClick={toggleFullscreen} className={`p-1.5 rounded-md transition-colors ${activeDarkMode ? 'hover:bg-gray-700 text-gray-400' : 'hover:bg-gray-200 text-gray-600'
           }`}>
           {isFullscreen ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
         </button>
@@ -336,7 +338,7 @@ const TimelineInfographic = ({ chartCode, darkMode, isStreaming }) => {
       <>
         {/* Placeholder in the chat bubble so it doesn't collapse entirely */}
         <div className="w-full my-4 p-8 border border-dashed rounded-xl text-center text-sm font-medium text-gray-500">
-          Mode Layar Penuh Aktif
+          {tGlobal.render.fullscreenModeActive}
         </div>
         {createPortal(
           <div className="fixed inset-0 z-[99999] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 md:p-8 animate-in fade-in duration-200">

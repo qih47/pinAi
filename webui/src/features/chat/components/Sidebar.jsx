@@ -4,6 +4,7 @@ import SidebarHeader from "./Sidebar/SidebarHeader";
 import SessionList from "./Sidebar/SessionList";
 import SidebarFooter from "./Sidebar/SidebarFooter";
 import SearchModal from "./modals/SearchModal";
+import SettingsModal from "./SettingsModal";
 
 const Sidebar = ({
   clearChat,
@@ -24,6 +25,7 @@ const Sidebar = ({
   setDarkMode,
   language,
   setLanguage,
+  themeSetting,
   theme,
 }) => {
   const [activeMenuId, setActiveMenuId] = useState(null);
@@ -37,6 +39,7 @@ const Sidebar = ({
   const popupRef = useRef(null);
   const [isDeletingId, setIsDeletingId] = useState(null);
   const [isSearchModalOpen, setIsSearchModalOpen] = useState(false);
+  const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
 
   const pinChat = useChatStore((state) => state.pinChat);
   const renameChat = useChatStore((state) => state.renameChat);
@@ -138,12 +141,12 @@ const Sidebar = ({
   }, []);
 
   return (
-    <div
-      className={`fixed left-0 top-0 h-[100dvh] flex flex-col transition-all duration-300 z-40 ${
-        isMobile 
-          ? (isOpen ? "w-72 translate-x-0" : "w-72 -translate-x-full")
-          : (isOpen ? "w-72 translate-x-0" : "w-16 translate-x-0")
-      }`}
+    <>
+      <div
+      className={`fixed left-0 top-0 h-[100dvh] flex flex-col transition-all duration-300 z-40 ${isMobile
+          ? (isOpen ? "w-64 translate-x-0" : "w-64 -translate-x-full")
+          : (isOpen ? "w-64 translate-x-0" : "w-16 translate-x-0")
+        }`}
       style={{
         background: darkMode ? "#1E1E22" : theme?.sidebarBg || "#F7F8FC",
         color: theme?.textColor || (darkMode ? "#e2e8f0" : "#1f2937"),
@@ -188,6 +191,10 @@ const Sidebar = ({
         confirmDelete={confirmDelete}
         isDeletingId={isDeletingId}
         language={language}
+        showDocumentList={showDocumentList}
+        setShowDocumentList={setShowDocumentList}
+        userData={userData}
+        navigate={navigate}
       />
 
       <SidebarFooter
@@ -204,6 +211,7 @@ const Sidebar = ({
         userData={userData}
         language={language}
         setLanguage={setLanguage}
+        openSettingsModal={() => setIsSettingsModalOpen(true)}
       />
 
       {showDeleteModal && (
@@ -241,21 +249,35 @@ const Sidebar = ({
           </div>
         </div>
       )}
+      </div>
 
       {/* SEARCH MODAL */}
-      <SearchModal 
-        isOpen={isSearchModalOpen} 
-        onClose={() => setIsSearchModalOpen(false)} 
-        chatHistory={chatHistory} 
+      <SearchModal
+        isOpen={isSearchModalOpen}
+        onClose={() => setIsSearchModalOpen(false)}
+        chatHistory={chatHistory}
         loadChatSession={(uuid) => {
           loadChatSession(uuid);
           setIsSearchModalOpen(false);
-        }} 
+        }}
         darkMode={darkMode}
         theme={theme}
         language={language}
       />
-    </div>
+
+      <SettingsModal 
+        isOpen={isSettingsModalOpen}
+        onClose={() => setIsSettingsModalOpen(false)}
+        darkMode={darkMode}
+        theme={theme}
+        themeSetting={themeSetting}
+        language={language}
+        setLanguage={setLanguage}
+        setDarkMode={setDarkMode}
+        userData={userData}
+        triggerLogout={triggerLogout}
+      />
+    </>
   );
 };
 

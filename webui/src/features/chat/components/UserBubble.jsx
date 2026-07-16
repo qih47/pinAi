@@ -1,6 +1,7 @@
 import React, { useState, memo } from 'react';
 import { useChatStore, getUploadUrl } from '../../../stores/chatStore';
 import { getUserBubbleStyles } from '../chatPage.styles';
+import { translations } from '../../../utils/translations';
 
 const highlightText = (text, query) => {
   if (!query || typeof text !== 'string') return text;
@@ -22,8 +23,10 @@ const UserBubble = memo(function UserBubble({
   toastMsg,
   searchQuery = '',
   onFileClick,
-  setPreviewImage
+  setPreviewImage,
+  language = 'id'
 }) {
+  const tGlobal = translations[language] || translations.id;
   const CHARACTER_LIMIT = 300;
   const rawContent = msg.content || '';
   const cleanContent = rawContent.replace(/--- ISI FILE: [\s\S]*?-------------------/g, '').trim();
@@ -291,7 +294,7 @@ const UserBubble = memo(function UserBubble({
           <button
             type="button"
             onClick={() => executeTextCopy(msg.content)}
-            title="Salin Pesan"
+            title={tGlobal.chat.copyMessage}
             style={bubbleStyles.hoverActionBtn}
             onMouseEnter={(e) => {
               e.currentTarget.style.color = darkMode ? '#e2e8f0' : '#1f2937';
@@ -322,7 +325,7 @@ const UserBubble = memo(function UserBubble({
             <button
               type="button"
               onClick={() => setIsEditing(true)}
-              title="Edit Perintah"
+              title={tGlobal.chat.editCommand}
               style={bubbleStyles.hoverActionBtn}
               onMouseEnter={(e) => {
                 e.currentTarget.style.color = darkMode ? '#e2e8f0' : '#1f2937';

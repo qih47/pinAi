@@ -17,10 +17,10 @@ _employee_cache: Dict[str, tuple[str, float]] = {}
 _CACHE_TTL_SECONDS = 3600  # 1 hour TTL
 
 
-async def get_cached_employee_fullname(
+async def get_cached_employee_data(
     npp: str,
-    db_fetch_func=None,  # async function(npp) -> Optional[str]
-) -> Optional[str]:
+    db_fetch_func=None,  # async function(npp) -> Optional[dict]
+) -> Optional[dict]:
     """
     Get employee fullname from cache or fetch from DB if not cached/expired.
     
@@ -29,7 +29,7 @@ async def get_cached_employee_fullname(
         db_fetch_func: Async function that fetches fullname from DB
     
     Returns:
-        Employee fullname or None if not found
+        Employee data dict or None if not found
     """
     
     current_time = time.time()
@@ -50,11 +50,11 @@ async def get_cached_employee_fullname(
         return None
     
     try:
-        fullname = await db_fetch_func(npp)
-        if fullname:
-            _employee_cache[npp] = (fullname, current_time)
-            logger.info(f"📝 [CACHE SET] NPP {npp} → {fullname}")
-            return fullname
+        employee_data = await db_fetch_func(npp)
+        if employee_data:
+            _employee_cache[npp] = (employee_data, current_time)
+            logger.info(f"📝 [CACHE SET] NPP {npp} → {employee_data}")
+            return employee_data
         else:
             # Store negative result to avoid repeated DB hits
             _employee_cache[npp] = (None, current_time)

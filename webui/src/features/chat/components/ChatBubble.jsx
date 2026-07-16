@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, memo } from 'react';
+import React, { useState, useEffect, useRef, memo, useCallback } from 'react';
 import CakraResponseRenderer from './CakraResponseRenderer';
 import SourceCitation from './SourceCitation';
 import RAGMetrics from './RAGMetrics';
@@ -9,6 +9,7 @@ import { styles } from '../chatPage.styles';
 import { useChatStore } from '../../../stores/chatStore';
 import UserBubble from './UserBubble';
 import apiClient from '../../../services/apiClient';
+import { translations } from '../../../utils/translations';
 
 const toastFloatingStyle = {
     position: 'fixed',
@@ -65,9 +66,249 @@ function formatThinkingPhase(thought) {
     return activePhase;
 }
 
-const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThinking, isStreamingText, searchQuery = '', isLastMessage, onFileClick, setPreviewImage, onOpenArtifact, handleDownloadAllArtifacts, handleDownloadArtifact }) {
+const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThinking, isStreamingText, searchQuery = '', isLastMessage, onFileClick, setPreviewImage, onOpenArtifact, handleDownloadAllArtifacts, handleDownloadArtifact, language = 'id' }) {
+    const tGlobal = translations[language] || translations.id;
+    const tTTS = translations[language]?.tts || translations.id.tts;
     const [showToast, setShowToast] = useState(false);
     const [toastMsg, setToastMsg] = useState('');
+    const ttsSpeed = useChatStore(state => state.ttsSpeed);
+
+    // TTS Audio State
+    const [isAudioLoading, setIsAudioLoading] = useState(false);
+    const [isAudioPlaying, setIsAudioPlaying] = useState(false);
+    const [ttsActive, setTtsActive] = useState(false);
+
+    const ttsQueueRef = useRef({
+        textChunks: [],
+        audioUrls: [],
+        cursor: 0,
+        isFetching: false,
+        isPlaying: false,
+        isStopped: false,
+    });
+    const currentAudioRef = useRef(null);
+
+    const isThisMessageStreaming = msg.isStreaming === true;
+    const autoReadAloud = useChatStore((state) => state.autoReadAloud);
+    const ttsVoice = useChatStore((state) => state.ttsVoice);
+
+    // Clean text helper
+    const cleanTextForTTS = (text) => {
+        return text
+            .replace(/\[\[CAKRA_FILE_PROCESS_LOG(?:_\d+)?\]\]/g, "")
+            .replace(/[\p{Emoji_Presentation}\p{Extended_Pictographic}]/gu, "")
+            .replace(/[*_#`~>"]/g, "") // Removed " to avoid 'kutip dua'
+            .replace(/:/g, ",") // Replaced : with , to avoid 'titik dua' and create a natural pause
+            .trim();
+    };
+
+    // Stop TTS completely
+    const stopTTS = useCallback(() => {
+        ttsQueueRef.current.isStopped = true;
+        ttsQueueRef.current.textChunks = [];
+
+        // Revoke all remaining URLs
+        ttsQueueRef.current.audioUrls.forEach(url => URL.revokeObjectURL(url));
+        ttsQueueRef.current.audioUrls = [];
+
+        if (currentAudioRef.current) {
+            currentAudioRef.current.pause();
+            currentAudioRef.current = null;
+        }
+
+        setTtsActive(false);
+        setIsAudioPlaying(false);
+        setIsAudioLoading(false);
+    }, []);
+
+    // Cleanup on unmount
+    useEffect(() => {
+        return () => {
+            stopTTS();
+        };
+    }, [stopTTS]);
+
+    // Auto trigger on mount/streaming if autoReadAloud is true
+    useEffect(() => {
+        if (isLastMessage && autoReadAloud && msg.role === 'assistant' && isThisMessageStreaming) {
+            setTtsActive(true);
+            ttsQueueRef.current.isStopped = false;
+        }
+    }, [isLastMessage, autoReadAloud, msg.role, isThisMessageStreaming]);
+
+    const isThisMessageStreamingRef = useRef(isThisMessageStreaming);
+    useEffect(() => {
+        isThisMessageStreamingRef.current = isThisMessageStreaming;
+    }, [isThisMessageStreaming]);
+
+    // Process Audio Playback Queue
+    const playNextAudio = useCallback(() => {
+        if (ttsQueueRef.current.isStopped || ttsQueueRef.current.isPlaying) return;
+
+        if (ttsQueueRef.current.audioUrls.length > 0) {
+            ttsQueueRef.current.isPlaying = true;
+            setIsAudioPlaying(true);
+
+            const url = ttsQueueRef.current.audioUrls.shift();
+            const audio = new Audio(url);
+            currentAudioRef.current = audio;
+
+            audio.onended = () => {
+                URL.revokeObjectURL(url);
+                currentAudioRef.current = null;
+                ttsQueueRef.current.isPlaying = false;
+                playNextAudio();
+
+                // If everything is done
+                if (ttsQueueRef.current.textChunks.length === 0 && 
+                    ttsQueueRef.current.audioUrls.length === 0 && 
+                    !isThisMessageStreamingRef.current &&
+                    !ttsQueueRef.current.isFetching) {
+                    setIsAudioPlaying(false);
+                    setTtsActive(false);
+                }
+            };
+
+            audio.onerror = () => {
+                URL.revokeObjectURL(url);
+                currentAudioRef.current = null;
+                ttsQueueRef.current.isPlaying = false;
+                setToastMsg(tTTS.failedPlay);
+                setShowToast(true);
+                setTimeout(() => setShowToast(false), 2000);
+                playNextAudio();
+            };
+
+            audio.play().catch(e => {
+                console.error("Audio play error", e);
+                audio.onerror();
+            });
+        }
+    }, [isThisMessageStreaming, tTTS.failedPlay]);
+
+    // Process Text Fetching Queue
+    const fetchNextTTS = useCallback(async () => {
+        if (ttsQueueRef.current.isStopped || ttsQueueRef.current.isFetching || ttsQueueRef.current.textChunks.length === 0) return;
+
+        ttsQueueRef.current.isFetching = true;
+        setIsAudioLoading(true);
+
+        const textToRead = ttsQueueRef.current.textChunks.shift();
+
+        try {
+            const res = await apiClient.post('/voice/tts', { 
+                text: textToRead, 
+                voice: ttsVoice || 'id-ID-ArdiNeural',
+                speed: ttsSpeed || 'normal'
+            }, { responseType: 'blob' });
+            if (ttsQueueRef.current.isStopped) return;
+
+            const url = URL.createObjectURL(res.data);
+            ttsQueueRef.current.audioUrls.push(url);
+
+            playNextAudio();
+        } catch (err) {
+            console.error("TTS Error:", err);
+        } finally {
+            ttsQueueRef.current.isFetching = false;
+            setIsAudioLoading(false);
+
+            if (ttsQueueRef.current.textChunks.length > 0) {
+                fetchNextTTS();
+            }
+        }
+    }, [playNextAudio]);
+
+    // Watch for text changes and chunk sentences
+    useEffect(() => {
+        if (!ttsActive || ttsQueueRef.current.isStopped) return;
+
+        const content = msg.content || '';
+        let unprocessed = content.substring(ttsQueueRef.current.cursor);
+
+        // Find sentence boundaries (., ?, !, \n) or force chunk if too long (>80 chars)
+        const sentenceRegex = /([.?!]+[\s\n]+|\n{1,})/g;
+
+        let match;
+        let lastIndex = 0;
+        let foundChunk = false;
+
+        while ((match = sentenceRegex.exec(unprocessed)) !== null) {
+            const boundaryIndex = match.index + match[0].length;
+            const chunk = unprocessed.substring(lastIndex, boundaryIndex);
+
+            const cleaned = cleanTextForTTS(chunk);
+            if (cleaned) {
+                ttsQueueRef.current.textChunks.push(cleaned);
+            }
+
+            lastIndex = boundaryIndex;
+            ttsQueueRef.current.cursor += chunk.length;
+            foundChunk = true;
+        }
+
+        // Force chunking if unprocessed is getting too long (e.g., long list without punctuation)
+        unprocessed = content.substring(ttsQueueRef.current.cursor);
+        if (!foundChunk && unprocessed.length > 80 && unprocessed.includes(' ')) {
+            // Find the last space to avoid cutting a word
+            const lastSpaceIndex = unprocessed.lastIndexOf(' ');
+            if (lastSpaceIndex > 0) {
+                const chunk = unprocessed.substring(0, lastSpaceIndex + 1);
+                const cleaned = cleanTextForTTS(chunk);
+                if (cleaned) {
+                    ttsQueueRef.current.textChunks.push(cleaned);
+                }
+                ttsQueueRef.current.cursor += chunk.length;
+            }
+        }
+
+        // If streaming is finished, push the remaining text as the last chunk
+        if (!isThisMessageStreaming && ttsQueueRef.current.cursor < content.length) {
+            const remaining = content.substring(ttsQueueRef.current.cursor);
+            const cleaned = cleanTextForTTS(remaining);
+            if (cleaned) {
+                ttsQueueRef.current.textChunks.push(cleaned);
+            }
+            ttsQueueRef.current.cursor = content.length;
+        }
+
+        // Trigger fetching if we have chunks
+        if (ttsQueueRef.current.textChunks.length > 0 && !ttsQueueRef.current.isFetching) {
+            fetchNextTTS();
+        }
+
+    }, [msg.content, ttsActive, isThisMessageStreaming, fetchNextTTS]);
+
+    // Safety effect to reset TTS state if it gets stuck at the end
+    useEffect(() => {
+        if (ttsActive && 
+            !isThisMessageStreaming && 
+            ttsQueueRef.current.textChunks.length === 0 && 
+            ttsQueueRef.current.audioUrls.length === 0 && 
+            !ttsQueueRef.current.isFetching && 
+            !ttsQueueRef.current.isPlaying) {
+            
+            setIsAudioPlaying(false);
+            setTtsActive(false);
+        }
+    });
+
+    const toggleReadAloud = useCallback(() => {
+        if (ttsActive) {
+            stopTTS();
+        } else {
+            ttsQueueRef.current = {
+                textChunks: [],
+                audioUrls: [],
+                cursor: 0,
+                isFetching: false,
+                isPlaying: false,
+                isStopped: false,
+            };
+            setTtsActive(true);
+        }
+    }, [ttsActive, stopTTS]);
+
 
     const executeTextCopy = async (textToCopy) => {
         try {
@@ -107,11 +348,11 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
                 searchQuery={searchQuery}
                 onFileClick={onFileClick}
                 setPreviewImage={setPreviewImage}
+                language={language}
             />
         );
     }
 
-    const isThisMessageStreaming = msg.isStreaming === true;
     const isThinkingMsg = isThisMessageStreaming && globalIsThinking && (!msg.content || msg.content === '');
     const isStreamingMsg = isThisMessageStreaming && msg.content !== '';
     const isActive = isThinkingMsg || isStreamingMsg;
@@ -231,8 +472,10 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
                                                 darkMode={darkMode}
                                                 batchIndex={0}
                                                 isFinalBatch={true}
+                                                language={language}
                                             />
                                         ) : null}
+                                        language={language}
                                     />
                                 );
                             }
@@ -249,6 +492,7 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
                                     theme={theme}
                                     searchQuery={searchQuery}
                                     statusMessage={msg.statusMessage}
+                                    language={language}
                                 />
                             );
 
@@ -435,7 +679,7 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
                                     opacity: 0.5,
                                     color: darkMode ? '#94a3b8' : '#64748b' // Warna default abu-abu elegan monokrom
                                 }}
-                                title="Respons Bagus"
+                                title={tGlobal.chat.goodResponse}
                                 onMouseEnter={(e) => {
                                     e.currentTarget.style.opacity = '1';
                                     e.currentTarget.style.color = '#10b981'; // Glow Hijau pas di-hover
@@ -483,7 +727,7 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
                                     opacity: 0.5,
                                     color: darkMode ? '#94a3b8' : '#64748b'
                                 }}
-                                title="Respons Buruk"
+                                title={tGlobal.chat.badResponse}
                                 onMouseEnter={(e) => {
                                     e.currentTarget.style.opacity = '1';
                                     e.currentTarget.style.color = '#ef4444'; // Glow Merah pas di-hover
@@ -517,7 +761,7 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
                                     opacity: 0.5,
                                     color: darkMode ? '#94a3b8' : '#64748b'
                                 }}
-                                title="Salin Respons"
+                                title={tGlobal.chat.copyResponse}
                                 onMouseEnter={(e) => {
                                     e.currentTarget.style.opacity = '1';
                                     e.currentTarget.style.color = darkMode ? '#6366f1' : '#2563eb'; // Glow Tema Utama Indigo/Blue
@@ -533,6 +777,59 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
                                     <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
                                     <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
                                 </svg>
+                            </button>
+
+                            {/* 🔊 TOMBOL READ ALOUD (SPEAKER) */}
+                            <button
+                                type="button"
+                                onClick={toggleReadAloud}
+                                disabled={isAudioLoading}
+                                style={{
+                                    background: 'transparent',
+                                    border: 'none',
+                                    cursor: isAudioLoading ? 'wait' : 'pointer',
+                                    padding: '6px',
+                                    borderRadius: '6px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    transition: 'all 0.2s ease',
+                                    opacity: isAudioPlaying ? 1 : 0.5,
+                                    color: isAudioPlaying
+                                        ? '#3b82f6'
+                                        : (darkMode ? '#94a3b8' : '#64748b')
+                                }}
+                                title={isAudioPlaying ? tTTS.stopReading : tTTS.readAloud}
+                                onMouseEnter={(e) => {
+                                    if (!isAudioPlaying) {
+                                        e.currentTarget.style.opacity = '1';
+                                        e.currentTarget.style.color = '#3b82f6';
+                                        e.currentTarget.style.background = darkMode ? 'rgba(59,130,246,0.1)' : 'rgba(59,130,246,0.05)';
+                                    }
+                                }}
+                                onMouseLeave={(e) => {
+                                    if (!isAudioPlaying) {
+                                        e.currentTarget.style.opacity = '0.5';
+                                        e.currentTarget.style.color = darkMode ? '#94a3b8' : '#64748b';
+                                        e.currentTarget.style.background = 'transparent';
+                                    }
+                                }}
+                            >
+                                {isAudioLoading ? (
+                                    <svg className="animate-spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                                    </svg>
+                                ) : isAudioPlaying ? (
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                        <rect x="6" y="4" width="4" height="16"></rect>
+                                        <rect x="14" y="4" width="4" height="16"></rect>
+                                    </svg>
+                                ) : (
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                        <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+                                        <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+                                    </svg>
+                                )}
                             </button>
                         </div>
                     )}

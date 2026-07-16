@@ -1,5 +1,6 @@
 import React from "react";
 import { translations } from "../../../../utils/translations";
+import { useChatStore } from "../../../../stores/chatStore";
 
 export default function SidebarFooter({
   isOpen,
@@ -14,21 +15,18 @@ export default function SidebarFooter({
   triggerLogout,
   userData,
   language,
-  setLanguage
+  setLanguage,
+  openSettingsModal
 }) {
   const t = translations[language]?.settings || translations.id.settings;
 
   return (
     <div
-      className={`relative flex items-center p-4 ${!isOpen
-          ? "p-1 items-center absolute left-0 right-0 justify-center"
-          : "justify-center items-center py-3 px-3"
+      className={`relative flex items-center border-t z-20 flex-shrink-0 ${darkMode ? 'border-[#2a2a2d]' : 'border-gray-200'} ${!isOpen
+          ? "p-1 justify-center"
+          : "justify-center py-3 px-3 p-4"
         }`}
       style={{
-        position: "absolute",
-        bottom: 0,
-        left: 0,
-        right: 0,
         height: "60px",
         background: darkMode ? "#1E1E22" : theme?.sidebarBg || "#F7F8FC",
       }}
@@ -43,53 +41,32 @@ export default function SidebarFooter({
             bottom: !isOpen ? "8px" : "100%",
           }}
         >
-          <div className="px-4 py-2">
-            <p className="text-xs text-gray-400">
+          <div className="px-4 py-3">
+            <p className="text-[11px] text-gray-400 mb-1">
               {t.account}
             </p>
-            <p className={`text-xs font-semibold truncate ${darkMode ? "text-white" : "text-gray-800"}`}>
+            <p className={`text-sm font-bold truncate ${darkMode ? "text-white" : "text-gray-800"}`}>
               {profileName}
             </p>
+            <p className={`text-xs truncate mt-0.5 ${darkMode ? "text-gray-400" : "text-gray-500"}`}>
+              {userData?.email || `${userData?.npp || 'user'}@pindad.co.id`}
+            </p>
           </div>
 
-          <div className={`px-4 py-2 border-t space-y-1 ${darkMode ? "border-gray-800" : "border-gray-100"}`}>
-            <p className="text-[10px] uppercase font-bold tracking-wider text-gray-400 mb-1">
-              {t.theme}
-            </p>
-            <div className={`flex p-0.5 rounded-lg text-[11px] ${darkMode ? "bg-gray-800" : "bg-gray-100"}`}>
-              <button
-                onClick={() => setDarkMode(false)}
-                className={`flex-1 py-1 text-center rounded-md font-medium transition-all ${!darkMode ? "bg-white text-black shadow-sm" : "text-gray-500 hover:text-black"}`}
-              >
-                ☀️ {t.light}
-              </button>
-              <button
-                onClick={() => setDarkMode(true)}
-                className={`flex-1 py-1 text-center rounded-md font-medium transition-all ${darkMode ? "bg-gray-700 text-white shadow-sm" : "text-gray-500 hover:text-black"}`}
-              >
-                🌙 {t.dark}
-              </button>
-            </div>
-          </div>
-
-          <div className={`px-4 py-2 border-t space-y-1 ${darkMode ? "border-gray-800" : "border-gray-100"}`}>
-            <p className="text-[10px] uppercase font-bold tracking-wider text-gray-400 mb-1">
-              {t.language}
-            </p>
-            <div className={`flex p-0.5 rounded-lg text-[11px] ${darkMode ? "bg-gray-800" : "bg-gray-100"}`}>
-              <button
-                onClick={() => setLanguage("id")}
-                className={`flex-1 py-1 text-center rounded-md font-medium transition-all ${language === "id" ? "bg-white text-black shadow-sm" : "text-gray-500 hover:text-black"}`}
-              >
-                ID
-              </button>
-              <button
-                onClick={() => setLanguage("en")}
-                className={`flex-1 py-1 text-center rounded-md font-medium transition-all ${language === "en" ? "bg-white text-black shadow-sm" : "text-gray-500 hover:text-black"}`}
-              >
-                EN
-              </button>
-            </div>
+          <div className={`py-1 border-t ${darkMode ? "border-gray-800" : "border-gray-100"}`}>
+            <button
+              onClick={() => {
+                setShowLogoutPopup(false);
+                openSettingsModal();
+              }}
+              className={`w-full flex items-center space-x-3 px-4 py-2.5 transition-colors ${darkMode ? "hover:bg-gray-800 text-gray-300" : "hover:bg-gray-100 text-gray-700"}`}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="3"></circle>
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+              </svg>
+              <span className="text-sm font-medium">{t.settingsTitle}</span>
+            </button>
           </div>
 
           <button
@@ -97,11 +74,11 @@ export default function SidebarFooter({
               setShowLogoutPopup(false);
               triggerLogout();
             }}
-            className={`w-full flex items-center space-x-3 px-4 py-2 text-red-500 transition-colors border-t ${darkMode ? "hover:bg-gray-900 border-gray-800" : "hover:bg-gray-100 border-gray-100"}`}
+            className={`w-full flex items-center space-x-3 px-4 py-3 text-red-500 transition-colors border-t ${darkMode ? "hover:bg-red-900/10 border-gray-800" : "hover:bg-red-50 border-gray-100"}`}
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"
-              className="h-4 w-4"
+              className="h-5 w-5"
               fill="none"
               viewBox="0 0 24 24"
               stroke="currentColor"
@@ -119,11 +96,21 @@ export default function SidebarFooter({
       )}
 
       <div
-        className="flex items-center cursor-pointer flex-1 min-w-0"
+        className={`flex items-center cursor-pointer flex-1 min-w-0 ${!isOpen ? "justify-center" : ""}`}
         onClick={() => setShowLogoutPopup(!showLogoutPopup)}
       >
         <div className="w-8 h-8 rounded-full overflow-hidden flex-shrink-0 border border-gray-700 bg-gray-800 flex items-center justify-center shadow-inner">
-          {userData?.npp ? (
+          {userData?.profile_photo_url ? (
+            <img
+              src={`http://192.168.11.80:8000${userData.profile_photo_url}`}
+              alt="Profile"
+              className="w-full h-full object-cover"
+              onError={(e) => {
+                e.currentTarget.style.display = "none";
+                e.currentTarget.nextSibling.style.display = "flex";
+              }}
+            />
+          ) : userData?.npp ? (
             <>
               <img
                 src={`https://hris.pindad.co.id/assets/image/foto_pegawai_bumn/${userData.npp}.jpg`}

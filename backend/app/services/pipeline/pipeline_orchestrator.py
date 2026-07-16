@@ -10,7 +10,7 @@ import asyncio
 
 from backend.app.api.schemas.chat_schemas import ChatStreamRequest
 from backend.app.services.chat.chat_history_service import chat_history_service
-from backend.app.utils.employee_cache import get_cached_employee_fullname
+from backend.app.utils.employee_cache import get_cached_employee_data
 from backend.app.services.pipeline.sse_validation import format_sse, SSEEventType
 from backend.app.services.pipeline.mode_hub import mode_hub
 
@@ -209,21 +209,25 @@ async def _sequential_pipeline_generator(
         is_thinking = False
     elif current_user_npp:
         try:
-            async def fetch_employee_from_db(npp: str) -> Optional[str]:
+            async def fetch_employee_from_db(npp: str) -> Optional[dict]:
                 from backend.app.core.database import get_db
                 async with get_db() as conn:
                     row = await conn.fetchrow(
-                        "SELECT fullname FROM users WHERE npp = $1 LIMIT 1", npp
+                        "SELECT fullname, preferred_name FROM users WHERE npp = $1 LIMIT 1", npp
                     )
-                    return row.get("fullname") if row else None
+                    return dict(row) if row else None
 
-            full_name = await get_cached_employee_fullname(
+            emp_data = await get_cached_employee_data(
                 current_user_npp,
                 db_fetch_func=fetch_employee_from_db,
             )
-            if full_name:
-                name_parts = full_name.strip().split()
-                employee_name = name_parts[0].title() if name_parts else "Pegawai"
+            if emp_data:
+                if emp_data.get("preferred_name"):
+                    employee_name = emp_data["preferred_name"]
+                else:
+                    full_name = emp_data.get("fullname") or ""
+                    name_parts = full_name.strip().split()
+                    employee_name = name_parts[0].title() if name_parts else "Pegawai"
         except Exception:
             employee_name = "Pegawai"
 
