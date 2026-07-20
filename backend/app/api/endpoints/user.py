@@ -310,20 +310,17 @@ async def connect_cloud(payload: dict = Body(...)):
         
     # Verifikasi koneksi ke Nextcloud WebDAV
     if password != "MOCK_TEST":
-        import requests
-        from requests.auth import HTTPBasicAuth
+        import httpx
         try:
-            def verify_nextcloud():
-                response = requests.request(
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.request(
                     "PROPFIND",
                     "https://cloud.pindad.com/remote.php/webdav/",
-                    auth=HTTPBasicAuth(username, password),
-                    headers={"Depth": "0"},
-                    timeout=10
+                    auth=(username, password),
+                    headers={"Depth": "0"}
                 )
                 if response.status_code == 401 or response.status_code == 403:
                     raise Exception("Unauthorized")
-            await asyncio.to_thread(verify_nextcloud)
         except Exception as e:
             logger.error(f"[NEXTCLOUD] Verifikasi Gagal untuk {username}: {e}")
             raise HTTPException(status_code=400, detail="Kredensial salah atau gagal menghubungi cloud.pindad.com. Silakan periksa kembali Username dan Password Anda.")

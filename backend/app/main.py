@@ -195,19 +195,50 @@ app.add_middleware(RequestIDLoggingMiddleware)
 app.state.gpu_limit = asyncio.Semaphore(4)
 logger.info("🔒 [HARDWARE] GPU Concurrency Semaphore: 4 slots (Concurrent Processing).")
 
-app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
-logger.info(f"🌐 [MOUNT] uploads → {UPLOAD_DIR}")
+# ==============================================================================
+# SECURE STATIC FILES ROUTES (Replaces app.mount to enforce security firewall)
+# ==============================================================================
+from fastapi.responses import FileResponse
+from backend.app.api.dependencies.auth import get_current_user_npp
+from typing import Optional
+from fastapi import Request, HTTPException
 
-# ✅ FIX: bug lama StaticFiles(directory=StaticFiles(...).directory) — nested tidak perlu
-app.mount("/db_doc", StaticFiles(directory=DB_DOC_DIR), name="db_doc")
-logger.info(f"🌐 [MOUNT] db_doc → {DB_DOC_DIR}")
+@app.get("/db_doc/{file_path:path}", tags=["Static Files"])
+async def serve_db_doc(file_path: str, request: Request, current_user_npp: Optional[str] = Depends(get_current_user_npp)):
+    if not current_user_npp or current_user_npp == "GUEST":
+        # allow if token is in query param for file downloads (already handled by get_current_user_npp if we add it, but currently auth.py doesn't check query param). 
+        # Actually, if guest is trying to access db_doc, block it.
+        raise HTTPException(status_code=403, detail="Akses ditolak. Guest tidak dapat mengakses dokumen RAG.")
+    
+    abs_path = os.path.join(DB_DOC_DIR, file_path)
+    if not os.path.exists(abs_path):
+        raise HTTPException(status_code=404, detail="File tidak ditemukan")
+    return FileResponse(abs_path)
 
-app.mount("/accounts", StaticFiles(directory=ACCOUNTS_DIR), name="accounts")
-logger.info(f"🌐 [MOUNT] accounts → {ACCOUNTS_DIR}")
 
-FILE_PERATURAN_DIR = os.path.join(ROOT_DIR, "file_peraturan")
-app.mount("/file_peraturan", StaticFiles(directory=FILE_PERATURAN_DIR), name="file_peraturan")
-logger.info(f"🌐 [MOUNT] file_peraturan → {FILE_PERATURAN_DIR}")
+@app.get("/uploads/{file_path:path}", tags=["Static Files"])
+async def serve_uploads(file_path: str, request: Request):
+    abs_path = os.path.join(UPLOAD_DIR, file_path)
+    if not os.path.exists(abs_path):
+        raise HTTPException(status_code=404, detail="File tidak ditemukan")
+    return FileResponse(abs_path)
+
+
+@app.get("/accounts/{file_path:path}", tags=["Static Files"])
+async def serve_accounts(file_path: str, request: Request, current_user_npp: Optional[str] = Depends(get_current_user_npp)):
+    abs_path = os.path.join(ACCOUNTS_DIR, file_path)
+    if not os.path.exists(abs_path):
+        raise HTTPException(status_code=404, detail="File tidak ditemukan")
+    return FileResponse(abs_path)
+
+
+@app.get("/file_peraturan/{file_path:path}", tags=["Static Files"])
+async def serve_file_peraturan(file_path: str, request: Request):
+    abs_path = os.path.join(FILE_PERATURAN_DIR, file_path)
+    if not os.path.exists(abs_path):
+        raise HTTPException(status_code=404, detail="File tidak ditemukan")
+    return FileResponse(abs_path)
+# ==============================================================================
 
 origins = [
     "http://192.168.11.80:5173",

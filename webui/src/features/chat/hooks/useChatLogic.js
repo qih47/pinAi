@@ -85,24 +85,35 @@ export function useChatLogic({ isGuest,
   };
 
   useEffect(() => {
-    if (previewDoc) {
-      setIsDocLoading(true);
-      setDocContent("");
+    if (!previewDoc) return;
 
-      const endpoint = `${API_BASE}/api/chat/documents/extract?path=${encodeURIComponent(previewDoc.path)}`;
+    setIsDocLoading(true);
+    setDocContent("");
+    
+    const controller = new AbortController();
+    const endpoint = `${API_BASE}/api/chat/documents/extract?path=${encodeURIComponent(previewDoc.path)}`;
 
-      fetch(endpoint)
-        .then(res => res.json())
-        .then(data => {
-          if (data.content) {
-            setDocContent(data.content);
-          } else {
-            setDocContent("Gagal mengekstrak isi dokumen.");
-          }
-        })
-        .catch(err => setDocContent("Error saat membaca dokumen dari server."))
-        .finally(() => setIsDocLoading(false));
-    }
+    fetch(endpoint, { signal: controller.signal })
+      .then(res => res.json())
+      .then(data => {
+        if (data.content) {
+          setDocContent(data.content);
+        } else {
+          setDocContent("Gagal mengekstrak isi dokumen.");
+        }
+      })
+      .catch(err => {
+        if (err.name !== 'AbortError') {
+          setDocContent("Error saat membaca dokumen dari server.");
+        }
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) {
+          setIsDocLoading(false);
+        }
+      });
+      
+    return () => controller.abort();
   }, [previewDoc]);
 
   // Effect: Load artifact content dari server jika file_path tersedia
@@ -119,6 +130,8 @@ export function useChatLogic({ isGuest,
     setIsArtifactLoading(true);
     setArtifactContent('');
     
+    const controller = new AbortController();
+    
     // Siapkan header otentikasi agar backend bisa mengekstrak current_user_npp
     const headers = {};
     if (authUser?.npp) {
@@ -126,12 +139,23 @@ export function useChatLogic({ isGuest,
     }
     
     fetch(`${API_BASE}/api/chat/artifacts/read?filename=${encodeURIComponent(previewArtifact.file_path)}&session_id=${encodeURIComponent(activeSessionId)}`, {
-      headers
+      headers,
+      signal: controller.signal
     })
       .then(res => res.text())
       .then(text => setArtifactContent(text))
-      .catch(() => setArtifactContent(previewArtifact.code || '// Gagal memuat konten'))
-      .finally(() => setIsArtifactLoading(false));
+      .catch(err => {
+        if (err.name !== 'AbortError') {
+          setArtifactContent(previewArtifact.code || '// Gagal memuat konten');
+        }
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) {
+          setIsArtifactLoading(false);
+        }
+      });
+      
+    return () => controller.abort();
   }, [previewArtifact, sessionId, authUser]);
 
   const toggleRightSidebar = () => {

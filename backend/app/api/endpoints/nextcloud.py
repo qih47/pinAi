@@ -2,8 +2,7 @@ import logging
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Body, Response, Query
 from pydantic import BaseModel
-import requests
-from requests.auth import HTTPBasicAuth
+import httpx
 from backend.app.core.database import get_db
 from backend.app.api.endpoints.auth import verify_session
 
@@ -11,6 +10,7 @@ logger = logging.getLogger("CAKRA_NEXTCLOUD")
 router = APIRouter()
 
 NEXTCLOUD_BASE_URL = "https://cloud.pindad.com/remote.php/webdav"
+TIMEOUT_SECS = 60.0
 
 class NextcloudAuth(BaseModel):
     username: str
@@ -58,7 +58,6 @@ async def list_files(
     
     url = f"{NEXTCLOUD_BASE_URL}{path}"
     headers = {"Depth": "1"}
-    # Simplified XML for PROPFIND
     data = """<?xml version="1.0" encoding="utf-8" ?>
     <d:propfind xmlns:d="DAV:">
       <d:prop>
@@ -71,19 +70,20 @@ async def list_files(
     """
     
     try:
-        response = requests.request(
-            "PROPFIND", 
-            url, 
-            auth=HTTPBasicAuth(auth.username, auth.password),
-            headers=headers,
-            data=data,
-            timeout=10
-        )
-        if response.status_code in [207, 200]:
-            return {"status": "success", "message": "Successfully connected", "raw_xml": response.text}
-        else:
-            raise HTTPException(status_code=response.status_code, detail=f"Nextcloud error: {response.text}")
-    except requests.exceptions.RequestException as e:
+        async with httpx.AsyncClient(timeout=TIMEOUT_SECS) as client:
+            response = await client.request(
+                "PROPFIND", 
+                url, 
+                auth=(auth.username, auth.password),
+                headers=headers,
+                content=data
+            )
+            
+            if response.status_code in [207, 200]:
+                return {"status": "success", "message": "Successfully connected", "raw_xml": response.text}
+            else:
+                raise HTTPException(status_code=response.status_code, detail=f"Nextcloud error: {response.text}")
+    except httpx.RequestError as e:
         logger.error(f"[NEXTCLOUD] Failed to connect: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to connect to Nextcloud server")
 
@@ -96,22 +96,22 @@ async def upload_file(
     """
     auth = await get_nextcloud_credentials(req.token)
     
-    # Ensure path ends with /
     folder_path = req.path if req.path.endswith("/") else f"{req.path}/"
     url = f"{NEXTCLOUD_BASE_URL}{folder_path}{req.filename}"
     
     try:
-        response = requests.put(
-            url,
-            auth=HTTPBasicAuth(auth.username, auth.password),
-            data=req.content.encode('utf-8'),
-            timeout=15
-        )
-        if response.status_code in [200, 201, 204]:
-            return {"status": "success", "message": f"File {req.filename} uploaded successfully"}
-        else:
-            raise HTTPException(status_code=response.status_code, detail=f"Nextcloud upload error: {response.text}")
-    except requests.exceptions.RequestException as e:
+        async with httpx.AsyncClient(timeout=TIMEOUT_SECS) as client:
+            response = await client.put(
+                url,
+                auth=(auth.username, auth.password),
+                content=req.content.encode('utf-8')
+            )
+            
+            if response.status_code in [200, 201, 204]:
+                return {"status": "success", "message": f"File {req.filename} uploaded successfully"}
+            else:
+                raise HTTPException(status_code=response.status_code, detail=f"Nextcloud upload error: {response.text}")
+    except httpx.RequestError as e:
         logger.error(f"[NEXTCLOUD] Failed to upload: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to upload file to Nextcloud")
 
@@ -124,18 +124,19 @@ async def download_file(
     """
     auth = await get_nextcloud_credentials(req.token)
     url = f"{NEXTCLOUD_BASE_URL}{req.path}"
+    
     try:
-        response = requests.get(
-            url,
-            auth=HTTPBasicAuth(auth.username, auth.password),
-            timeout=15
-        )
-        if response.status_code == 200:
-            # Return raw binary content so frontend can create a valid File Blob
-            content_type = response.headers.get("Content-Type", "application/octet-stream")
-            return Response(content=response.content, media_type=content_type)
-        else:
-            raise HTTPException(status_code=response.status_code, detail=f"Nextcloud download error: {response.text}")
-    except requests.exceptions.RequestException as e:
+        async with httpx.AsyncClient(timeout=TIMEOUT_SECS) as client:
+            response = await client.get(
+                url,
+                auth=(auth.username, auth.password)
+            )
+            
+            if response.status_code == 200:
+                content_type = response.headers.get("Content-Type", "application/octet-stream")
+                return Response(content=response.content, media_type=content_type)
+            else:
+                raise HTTPException(status_code=response.status_code, detail=f"Nextcloud download error: {response.text}")
+    except httpx.RequestError as e:
         logger.error(f"[NEXTCLOUD] Failed to download: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to download file from Nextcloud")

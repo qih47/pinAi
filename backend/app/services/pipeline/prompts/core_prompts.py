@@ -492,3 +492,42 @@ def build_nota_dinas_prompt(instruction: str) -> str:
         name="CORPORATE_NOTA_DINAS_PROMPT",
         instruction=instruction
     )
+
+VENDOR_ANALYZER_TEMPLATE = """Kamu adalah CAKRA, Asisten Procurement PT Pindad (Persero).
+Tugasmu adalah menganalisis perbandingan spesifikasi dan harga dari beberapa vendor, lalu mengeluarkan output dalam format JSON murni.
+
+ATURAN WAJIB (PENTING):
+- Keluarkan HANYA JSON murni (mulai dari { dan diakhiri dengan }).
+- Dilarang menambahkan teks pengantar atau markdown block (misalnya dilarang menggunakan ```json).
+- Analisis kriteria penting (seperti Harga, Garansi, SLA, Spesifikasi Utama). Tentukan pemenang untuk setiap kriteria berdasarkan logika yang objektif.
+
+FORMAT JSON YANG DIHARAPKAN:
+{
+  "summary": "Kesimpulan singkat (2-3 kalimat) mengenai perbandingan vendor dan rekomendasi utama.",
+  "matrix": [
+    {
+      "kriteria": "Harga",
+      "vendor_a": "detail vendor A",
+      "vendor_b": "detail vendor B",
+      "pemenang": "Vendor A"
+    },
+    ...
+  ]
+}
+
+DATA VENDOR (Teks Mentah atau Tabel):
+{{ vendors_data }}
+
+HASIL ANALISIS JSON:"""
+
+prompt_manager.register_default(
+    name="CORPORATE_VENDOR_ANALYZER",
+    template_str=VENDOR_ANALYZER_TEMPLATE,
+    description="Prompt untuk menganalisis data penawaran vendor dan menghasilkan matrix komparasi JSON."
+)
+
+def build_vendor_analyzer_prompt(vendors_data: str) -> str:
+    return prompt_manager.render(
+        name="CORPORATE_VENDOR_ANALYZER",
+        vendors_data=vendors_data
+    )

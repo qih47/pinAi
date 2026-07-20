@@ -41,8 +41,13 @@ async def get_current_user_npp(
             return row['owner_npp']
 
     # 1. Jika tidak ada header NPP atau placeholder UI guest, masuk GUEST MODE
+    # Fallback to query parameter (e.g. for static files fetched via <img> or <iframe>)
     if not x_npp_header or x_npp_header.strip() == "":
-        return None
+        query_npp = request.query_params.get("npp")
+        if query_npp and query_npp.strip() != "":
+            x_npp_header = query_npp
+        else:
+            return None
 
     npp_clean = x_npp_header.strip()
     if npp_clean in _GUEST_NPP_PLACEHOLDERS:

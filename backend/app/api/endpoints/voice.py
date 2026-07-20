@@ -60,6 +60,11 @@ PHONETIC_ROOTS = {
     'pdf': 'pe de ef',
     'cv': 'si fi',
     'hr': 'eic ar',
+    'ac': 'a se',
+    # 'pt': 'pe te',
+    'tbk': 'te be ka',
+    'bumn': 'be u em en',
+    'pic': 'pi ai si',
     
     # Indonesian specific quirks
     'sip': 'siip',
@@ -76,7 +81,7 @@ PHONETIC_ROOTS = {
     'rp': 'rupiah',
     'jgn': 'jangan',
     'bgt': 'banget',
-    'cuy': 'cui',
+    # 'cuy': 'cui',
 }
 
 def phonetic_correction(text: str) -> str:
@@ -172,6 +177,7 @@ async def transcribe_voice(
 # F5-TTS Global Instances (loaded once, lazily)
 _f5_ema_model = None
 _f5_vocoder = None
+_ref_audio_cache = {}
 
 # Arsitektur F5-TTS Base yang digunakan saat finetune
 _F5_MODEL_CFG = dict(dim=1024, depth=22, heads=16, ff_mult=2, text_dim=512, conv_layers=4)
@@ -317,19 +323,35 @@ async def text_to_speech(
                 import torch
                 import io
                 from f5_tts.infer.utils_infer import preprocess_ref_audio_text, infer_process
+                
+                # Caching reference audio
+                global _ref_audio_cache
 
                 # Ensure SDPA math mode in this worker thread too
                 torch.backends.cuda.enable_flash_sdp(False)
                 torch.backends.cuda.enable_mem_efficient_sdp(False)
                 torch.backends.cuda.enable_math_sdp(True)
+                
                 # Bersihkan teks sebelum dikirim ke F5-TTS:
                 import re
                 clean_gen = corrected_text
 
                 # Hapus emoji (unicode ranges umum)
                 clean_gen = re.sub(r'[\U0001F300-\U0001FFFF\U00002600-\U000027FF]', '', clean_gen)
-                # Hapus markdown symbols
+                # Hapus tanda kutip (bikin model glitch/stuttering)
+                clean_gen = re.sub(r'["\']', '', clean_gen)
+                # Hapus markdown symbols (bintang, underscore, dll)
                 clean_gen = re.sub(r'[*_#`~]', '', clean_gen)
+                # Ganti standalone hyphens dengan koma (misal: kata - kata)
+                clean_gen = re.sub(r'\s+[-—]\s+', ', ', clean_gen)
+                
+                # Hapus hyphen untuk suffix Indonesia (misal: coding-an -> codingan, update-nya -> updatenya)
+                clean_gen = re.sub(r'(?<=[a-zA-Z])[-—](an|nya|ku|mu|lah|pun|kah)\b', r'\1', clean_gen, flags=re.IGNORECASE)
+                # Sisa hyphen di dalam kata diganti spasi (untuk kata ulang, misal: kerjaan-kerjaan -> kerjaan kerjaan)
+                clean_gen = re.sub(r'(?<=[a-zA-Z])[-—](?=[a-zA-Z])', ' ', clean_gen)
+                
+                # Sisa hyphen lainnya dibuang saja
+                clean_gen = re.sub(r'[-—]', ' ', clean_gen)
                 # Ganti tanda kurung dengan koma → natural pause
                 clean_gen = re.sub(r'[(\[{]', ', ', clean_gen)
                 clean_gen = re.sub(r'[)\]}]', ', ', clean_gen)
@@ -337,8 +359,13 @@ async def text_to_speech(
                 clean_gen = re.sub(r':', '.', clean_gen)
                 # Ganti & → dan
                 clean_gen = re.sub(r'&', ' dan ', clean_gen)
+                # Hapus list format angka (misal "1. ") di awal kalimat agar tidak kaku
+                clean_gen = re.sub(r'(?m)^\s*\d+\.\s+', '', clean_gen)
                 
-                # BACA ANGKA: F5-TTS tidak bisa baca digit (tidak ada di vocab)
+                # BACA ANGKA: 
+                # Hapus titik pemisah ribuan agar 1.000.000 dibaca satu juta bukan satu titik
+                clean_gen = re.sub(r'(?<=\d)\.(?=\d)', '', clean_gen)
+                # F5-TTS tidak bisa baca digit (tidak ada di vocab)
                 # Jadi semua angka harus diexpand jadi teks ("1" -> "satu")
                 clean_gen = expand_numbers_id(clean_gen)
 
@@ -347,18 +374,30 @@ async def text_to_speech(
                 clean_gen = re.sub(r'!{2,}', '!', clean_gen)
                 # Bersihkan koma berurutan & spasi ganda
                 clean_gen = re.sub(r',\s*,+', ',', clean_gen)
+                
+                # Hapus koma sebelum kata sapaan/partikel informal biar intonasinya nyambung (gak patah)
+                clean_gen = re.sub(r',\s+(cuy|cui|bro|ya|dong|deh|nih|tuh|sih|yuk|kok)\b', r' \1', clean_gen, flags=re.IGNORECASE)
+
+                # Sederhanakan elipsis (...) jadi satu titik dengan jeda
                 clean_gen = re.sub(r'\.\s*\.+', '.', clean_gen)
                 clean_gen = re.sub(r'\s{2,}', ' ', clean_gen).strip()
+                
+                # Mencegah terpotong di akhir dengan menambahkan titik secara eksplisit
+                # Cek apakah kalimat sudah diakhiri dengan tanda baca pemutus (. ? !)
+                if not re.search(r'[.?!]$', clean_gen):
+                    clean_gen += '.'
 
                 logger.debug(f"[VOICE] clean_gen: {clean_gen[:80]}...")
 
-                # Preprocess ref audio (convert ke mono 24kHz temp WAV)
-                ref_audio_proc, ref_text_proc = preprocess_ref_audio_text(
-                    ref_audio_orig=ref_file,
-                    ref_text=ref_text,
-                )
+                # Gunakan cache untuk reference audio (menghemat ~1 detik TTFT)
+                if ref_file not in _ref_audio_cache:
+                    _ref_audio_cache[ref_file] = preprocess_ref_audio_text(
+                        ref_audio_orig=ref_file,
+                        ref_text=ref_text,
+                    )
+                ref_audio_proc, ref_text_proc = _ref_audio_cache[ref_file]
 
-                # Inference — identik dengan test_tts.py
+                # Inference — nfe_step=16 is kept as requested by user for quality
                 wav, sr, _ = infer_process(
                     ref_audio=ref_audio_proc,
                     ref_text=ref_text_proc,
@@ -374,9 +413,9 @@ async def text_to_speech(
 
                 logger.info(f"[VOICE] F5-TTS generated {len(wav)/sr:.1f}s audio (sr={sr})")
 
-                # Tambah trailing silence 0.8 detik — cegah cutoff di akhir kalimat
+                # Tambah trailing silence 1.2 detik (dinaikkan dari 0.8) — cegah cutoff di akhir kalimat
                 import numpy as np
-                silence = np.zeros(int(0.8 * sr), dtype=wav.dtype)
+                silence = np.zeros(int(1.2 * sr), dtype=wav.dtype)
                 wav = np.concatenate([wav, silence])
 
                 # Write ke in-memory WAV buffer

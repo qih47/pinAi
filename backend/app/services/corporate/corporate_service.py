@@ -7,7 +7,8 @@ from backend.app.services.pipeline.prompts.core_prompts import (
     build_smart_mail_draft_prompt,
     build_smart_mail_triage_prompt,
     build_nota_dinas_prompt,
-    build_threat_analysis_prompt
+    build_threat_analysis_prompt,
+    build_vendor_analyzer_prompt
 )
 
 logger = logging.getLogger("CAKRA_CORPORATE_SERVICE")
@@ -129,7 +130,27 @@ async def generate_nota_dinas(instruction: str) -> str:
 
 
 async def analyze_vendors(vendors_data: str) -> Dict[str, Any]:
-    """Analyze vendors and return structured JSON (simulated with AI text for now)."""
-    # For now, return the dummy since vendor analysis needs complex JSON parsing and structured input.
-    # The user specifically mentioned Point 1 and 2. 
-    pass
+    """Analyze vendors and return structured JSON using AI."""
+    import json
+    prompt = build_vendor_analyzer_prompt(vendors_data)
+    
+    # Use low temperature for structured factual extraction
+    response_text = await generate_text_response(settings.MODEL_PERSONA, prompt, temperature=0.1)
+    
+    # Try to parse the JSON
+    try:
+        data = json.loads(response_text)
+        return {
+            "status": "success",
+            "data": data
+        }
+    except json.JSONDecodeError:
+        logger.error(f"[CORPORATE] Failed to parse vendor analysis JSON. Raw output: {response_text}")
+        # Fallback if AI didn't return valid JSON
+        return {
+            "status": "success",
+            "data": {
+                "summary": "Analisis gagal diformat ke dalam bentuk JSON oleh AI. Berikut adalah output mentah:\n" + response_text,
+                "matrix": []
+            }
+        }

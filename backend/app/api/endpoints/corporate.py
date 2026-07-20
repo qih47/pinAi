@@ -152,21 +152,13 @@ async def api_generate_surat_dinas(payload: Dict[str, Any]):
         }
     }
 
-# 3. Vendor Analyzer Skeleton
+# 3. Vendor Analyzer
 @router.post("/vendor/analyze")
-async def analyze_vendors(payload: Dict[str, Any]):
-    """Simulates analyzing multiple vendor documents."""
-    await asyncio.sleep(3) # Simulate heavy AI processing
-    
-    return {
-        "status": "success",
-        "data": {
-            "summary": "Vendor A menawarkan harga terendah, namun Vendor B memiliki SLA yang lebih sesuai dengan standar Pindad.",
-            "matrix": [
-                {"kriteria": "Harga", "vendor_a": "Rp 500.000.000", "vendor_b": "Rp 550.000.000", "pemenang": "Vendor A"},
-                {"kriteria": "Garansi", "vendor_a": "1 Tahun", "vendor_b": "3 Tahun", "pemenang": "Vendor B"},
-                {"kriteria": "Waktu Pengerjaan", "vendor_a": "45 Hari", "vendor_b": "30 Hari", "pemenang": "Vendor B"},
-                {"kriteria": "SLA Support", "vendor_a": "8x5", "vendor_b": "24x7", "pemenang": "Vendor B"}
-            ]
-        }
-    }
+async def api_analyze_vendors(payload: Dict[str, Any]):
+    """Analyzes vendor documents using AI."""
+    vendors_data = payload.get("vendors_data")
+    if not vendors_data:
+        raise HTTPException(status_code=400, detail="Data vendor tidak boleh kosong.")
+        
+    result = await analyze_vendors(vendors_data)
+    return result

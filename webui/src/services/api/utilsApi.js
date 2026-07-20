@@ -15,15 +15,27 @@ export const getApiBase = () => {
  */
 export function getUploadUrl(filePath) {
   if (!filePath) return '';
+  
+  let npp = '';
+  try {
+    const authStorage = localStorage.getItem('auth-storage');
+    if (authStorage) {
+      const parsed = JSON.parse(authStorage);
+      npp = parsed?.state?.authUser?.npp || '';
+    }
+  } catch(e) {}
+  
+  const tokenQuery = npp ? `?npp=${encodeURIComponent(npp)}` : '';
+  
   if (filePath.startsWith('accounts/')) {
-    return `${getApiBase()}/${filePath}`;
+    return `${getApiBase()}/${filePath}${tokenQuery}`;
   }
   if (filePath.includes('file_peraturan/')) {
     const filename = filePath.split('file_peraturan/').pop();
-    return `${getApiBase()}/file_peraturan/${filename}`;
+    return `${getApiBase()}/file_peraturan/${filename}${tokenQuery}`;
   }
   const filename = filePath.includes('/') ? filePath.split('/').pop() : filePath;
-  return `${getApiBase()}/uploads/${filename}`;
+  return `${getApiBase()}/uploads/${filename}${tokenQuery}`;
 }
 
 /**
