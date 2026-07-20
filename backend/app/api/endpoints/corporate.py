@@ -4,21 +4,46 @@ import asyncio
 from backend.app.services.corporate.corporate_service import generate_email_draft, generate_email_triage, generate_nota_dinas, analyze_email_threat
 from backend.app.services.corporate.zimbra_service import fetch_unread_emails, send_email_reply
 from backend.app.core.config import settings
+from backend.app.api.endpoints.auth import verify_session
+from backend.app.core.database import get_db
 
 router = APIRouter()
+
+async def get_mail_credentials(token: str):
+    """Ambil kredensial Mail Pindad dari database berdasarkan token sesi."""
+    if not token:
+        return None
+        
+    try:
+        user_data = await verify_session(token=token)
+        if not user_data or not hasattr(user_data, 'data'):
+            return None
+        npp = user_data.data["npp"]
+    except Exception:
+        return None
+        
+    async with get_db() as conn:
+        row = await conn.fetchrow("SELECT mail_username, mail_password FROM user_integrations WHERE npp = $1", npp)
+        if not row or not row["mail_username"] or not row["mail_password"]:
+            return None
+        
+        return {"username": row["mail_username"], "password": row["mail_password"]}
 
 # 1. Email Triage Skeleton
 @router.post("/emails/fetch")
 async def fetch_real_emails(payload: Dict[str, Any] = Body(...)):
     """Returns a list of real emails from Zimbra."""
-    email_address = payload.get("email")
-    password = payload.get("password")
+    token = payload.get("token")
+    auth = await get_mail_credentials(token)
     
-    if not email_address or not password:
+    if not auth:
         return {
             "status": "error",
-            "message": "Email dan Password Zimbra wajib diisi."
+            "message": "NOT_CONNECTED"
         }
+        
+    email_address = auth["username"]
+    password = auth["password"]
         
     try:
         emails = await asyncio.to_thread(fetch_unread_emails, email_address, password, 30)
@@ -87,15 +112,22 @@ async def api_analyze_threat(payload: Dict[str, Any] = Body(...)):
 @router.post("/emails/reply")
 async def send_zimbra_reply(payload: Dict[str, Any] = Body(...)):
     """Send an email reply via Zimbra."""
-    email_address = payload.get("email")
-    password = payload.get("password")
+    token = payload.get("token")
+    auth = await get_mail_credentials(token)
+    
+    if not auth:
+        raise HTTPException(status_code=401, detail="NOT_CONNECTED")
+        
+    email_address = auth["username"]
+    password = auth["password"]
+    
     to_address = payload.get("to")
     cc_address = payload.get("cc")
     subject = payload.get("subject")
     body = payload.get("body")
     
-    if not all([email_address, password, to_address, subject, body]):
-        raise HTTPException(status_code=400, detail="Semua field (email, password, to, subject, body) wajib diisi.")
+    if not all([to_address, subject, body]):
+        raise HTTPException(status_code=400, detail="Semua field (to, subject, body) wajib diisi.")
         
     try:
         success = await asyncio.to_thread(send_email_reply, email_address, password, to_address, subject, body, cc_address)

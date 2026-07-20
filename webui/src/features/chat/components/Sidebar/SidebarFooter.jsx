@@ -102,7 +102,7 @@ export default function SidebarFooter({
         <div className="w-8 h-8 rounded-full overflow-hidden flex-shrink-0 border border-gray-700 bg-gray-800 flex items-center justify-center shadow-inner">
           {userData?.profile_photo_url ? (
             <img
-              src={`http://192.168.11.80:8000${userData.profile_photo_url}`}
+              src={`http://192.168.11.80:5000${userData.profile_photo_url}`}
               alt="Profile"
               className="w-full h-full object-cover"
               onError={(e) => {

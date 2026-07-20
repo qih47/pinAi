@@ -310,12 +310,12 @@ export function useChatLogic({ isGuest,
 
   const currentIsLoggedIn =
     propsIsLoggedIn !== undefined ? propsIsLoggedIn : isAuthenticated;
-  const currentUserData = propsUserData || {
-    name: authUser?.name || "Pegawai Pindad",
-    npp: authUser?.npp || "NPP ------",
-    divisi: authUser?.divisi || "Pegawai Resmi",
-    role: authUser?.role || "user",
-    email: authUser?.email || null,
+  const currentUserData = propsUserData || authUser || {
+    name: "Pegawai Pindad",
+    npp: "NPP ------",
+    divisi: "Pegawai Resmi",
+    role: "user",
+    email: null,
   };
 
   const activeSessionId = sessionId && sessionId !== "new" ? sessionId : null;

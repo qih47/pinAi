@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
 import { translations } from "../../../utils/translations";
-import { useChatStore } from "../../../stores/chatStore";
+import { useChatStore, API_BASE } from "../../../stores/chatStore";
 import apiClient from "../../../services/apiClient";
 
 export default function SettingsModal({
@@ -40,6 +40,71 @@ export default function SettingsModal({
   const [editFullname, setEditFullname] = useState("");
   const [editPreferredName, setEditPreferredName] = useState("");
   const [isSubmittingProfile, setIsSubmittingProfile] = useState(false);
+
+  // Integrations State
+  const [integrations, setIntegrations] = useState({ mail_connected: false, cloud_connected: false });
+  const [connectingType, setConnectingType] = useState(null); // 'mail' | 'cloud' | null
+  const [integrationUser, setIntegrationUser] = useState("");
+  const [integrationPass, setIntegrationPass] = useState("");
+  const [isConnecting, setIsConnecting] = useState(false);
+
+  const fetchIntegrations = async () => {
+    try {
+      const token = localStorage.getItem('cakra_token') || '';
+      if (!token) return;
+      const response = await apiClient.get(`/user/integrations?token=${token}`);
+      if (response.data?.status === 'success') {
+        setIntegrations(response.data.data);
+      }
+    } catch (err) {
+      console.error("Failed to fetch integrations", err);
+    }
+  };
+
+  useEffect(() => {
+    if (isOpen && activeTab === 'account') {
+      fetchIntegrations();
+    }
+  }, [isOpen, activeTab]);
+
+  const handleConnectSubmit = async (e) => {
+    e.preventDefault();
+    setIsConnecting(true);
+    try {
+      const endpoint = connectingType === 'mail' ? '/user/integrations/mail' : '/user/integrations/cloud';
+      await apiClient.post(endpoint, {
+        token: localStorage.getItem('cakra_token') || '',
+        username: integrationUser.trim(),
+        password: integrationPass.trim()
+      });
+      await fetchIntegrations();
+      setConnectingType(null);
+      setIntegrationUser("");
+      setIntegrationPass("");
+    } catch (err) {
+      alert(err.response?.data?.detail || "Gagal menyambungkan " + connectingType);
+    } finally {
+      setIsConnecting(false);
+    }
+  };
+
+  const handleDisconnect = async (type) => {
+    try {
+      const endpoint = type === 'mail' ? '/user/integrations/mail' : '/user/integrations/cloud';
+      await apiClient.delete(`${endpoint}?token=${localStorage.getItem('cakra_token') || ''}`);
+      await fetchIntegrations();
+    } catch (err) {
+      console.error("Failed to disconnect", err);
+    }
+  };
+
+  useEffect(() => {
+    if (userData) {
+      setEditFullname(userData.fullname || "");
+      setEditPreferredName(userData.preferred_name || "");
+      setEditEmail(userData.email || "");
+    }
+  }, [userData]);
 
   // Change Password State
   const [isChangingPassword, setIsChangingPassword] = useState(false);
@@ -92,7 +157,11 @@ export default function SettingsModal({
     if (editPhoto) formData.append('photo', editPhoto);
 
     try {
-      const response = await apiClient.put('/user/profile', formData);
+      const response = await apiClient.put('/user/profile', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data'
+        }
+      });
       if (response.data?.status === 'success') {
         setIsEditingAccount(false);
         window.location.reload();
@@ -168,27 +237,47 @@ export default function SettingsModal({
     if (isPlayingTest) return;
     setIsPlayingTest(true);
 
-    // Sample text for the test
-    const sampleText = ttsVoice.startsWith('id')
-      ? "Halo, ini adalah contoh suara saya menggunakan teknologi kecerdasan buatan."
-      : "Hello, this is a sample of my voice using artificial intelligence technology.";
-
     try {
-      const response = await apiClient.post('/voice/tts', {
-        text: sampleText,
-        voice: ttsVoice,
-        speed: ttsSpeed
-      }, { responseType: 'blob', timeout: 120000 });
+      if (ttsVoice.startsWith('id-ID-')) {
+        // Gunakan file statis untuk suara Indonesia agar tidak perlu generate
+        const response = await apiClient.get(`/voice/test/${ttsVoice}`, {
+          responseType: 'blob'
+        });
+        
+        const url = URL.createObjectURL(response.data);
+        
+        if (audioRef.current) {
+          audioRef.current.src = url;
+          audioRef.current.play();
+          audioRef.current.onended = () => {
+            setIsPlayingTest(false);
+            URL.revokeObjectURL(url);
+          };
+          audioRef.current.onerror = (e) => {
+            console.error("Gagal memutar contoh suara statis:", e);
+            setIsPlayingTest(false);
+            URL.revokeObjectURL(url);
+          };
+        }
+      } else {
+        // Fallback generate TTS untuk suara bahasa Inggris
+        const sampleText = "Hello, this is a sample of my voice using artificial intelligence technology.";
+        const response = await apiClient.post('/voice/tts', {
+          text: sampleText,
+          voice: ttsVoice,
+          speed: ttsSpeed
+        }, { responseType: 'blob', timeout: 120000 });
 
-      const url = URL.createObjectURL(response.data);
+        const url = URL.createObjectURL(response.data);
 
-      if (audioRef.current) {
-        audioRef.current.src = url;
-        audioRef.current.play();
-        audioRef.current.onended = () => {
-          setIsPlayingTest(false);
-          URL.revokeObjectURL(url);
-        };
+        if (audioRef.current) {
+          audioRef.current.src = url;
+          audioRef.current.play();
+          audioRef.current.onended = () => {
+            setIsPlayingTest(false);
+            URL.revokeObjectURL(url);
+          };
+        }
       }
     } catch (err) {
       console.error("Failed to test voice:", err);
@@ -415,7 +504,7 @@ export default function SettingsModal({
                   <div className="w-20 h-20 rounded-full overflow-hidden flex-shrink-0 border border-gray-700 bg-gray-800 flex items-center justify-center mb-3">
                     {editPhotoPreview || userData?.profile_photo_url ? (
                       <img
-                        src={editPhotoPreview || (userData?.profile_photo_url ? `http://192.168.11.80:8000${userData.profile_photo_url}` : '')}
+                        src={editPhotoPreview || (userData?.profile_photo_url ? `http://192.168.11.80:5000${userData.profile_photo_url}` : '')}
                         alt="Profile"
                         className="w-full h-full object-cover"
                         onError={(e) => { e.currentTarget.style.display = "none"; }}
@@ -565,7 +654,7 @@ export default function SettingsModal({
                 <div className="w-12 h-12 rounded-full overflow-hidden flex-shrink-0 border border-gray-700 bg-gray-800 flex items-center justify-center">
                   {userData?.profile_photo_url ? (
                     <img
-                      src={`http://192.168.11.80:8000${userData.profile_photo_url}`}
+                      src={`http://192.168.11.80:5000${userData.profile_photo_url}`}
                       alt="Profile"
                       className="w-full h-full object-cover"
                       onError={(e) => { e.currentTarget.style.display = "none"; }}
@@ -594,6 +683,77 @@ export default function SettingsModal({
               >
                 {t.editAccount}
               </button>
+            </div>
+
+            <div className={`py-6 border-b ${darkMode ? 'border-gray-700/50' : 'border-gray-200'}`}>
+              <h3 className="font-bold text-[16px] mb-4">{t.linkedAccounts}</h3>
+              <div className="space-y-4">
+                {/* Mail Pindad */}
+                <div className="flex flex-col space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="font-medium text-[14px]">{t.mailPindad}</h4>
+                      <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Smart Mail (Zimbra)</p>
+                    </div>
+                    {integrations.mail_connected ? (
+                      <div className="flex items-center space-x-3">
+                        <span className="text-xs font-medium text-green-500 flex items-center"><span className="w-2 h-2 rounded-full bg-green-500 mr-1.5"></span>{t.connected}</span>
+                        <button onClick={() => handleDisconnect('mail')} className={`px-3 py-1 text-xs font-medium rounded-full border ${darkMode ? 'border-gray-600 hover:bg-gray-700' : 'border-gray-300 hover:bg-gray-100'}`}>{t.disconnect}</button>
+                      </div>
+                    ) : connectingType === 'mail' ? (
+                       null
+                    ) : (
+                      <button onClick={() => {
+                        setConnectingType('mail');
+                        setIntegrationUser(userData?.email || (userData?.npp ? `${userData.npp}@pindad.com` : ""));
+                      }} className={`px-4 py-1.5 text-sm font-medium rounded-full transition-colors ${darkMode ? 'bg-blue-600 hover:bg-blue-700 text-white' : 'bg-blue-600 hover:bg-blue-700 text-white'}`}>{t.connect}</button>
+                    )}
+                  </div>
+                  {connectingType === 'mail' && (
+                    <form onSubmit={handleConnectSubmit} className={`p-3 rounded-lg border ${darkMode ? 'bg-gray-800/50 border-gray-700' : 'bg-gray-50 border-gray-200'} space-y-3`}>
+                      <input type="text" placeholder="Username" value={integrationUser} onChange={e => setIntegrationUser(e.target.value)} required className={`w-full px-3 py-2 text-sm rounded border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'} outline-none`} />
+                      <input type="password" placeholder="Password" value={integrationPass} onChange={e => setIntegrationPass(e.target.value)} required className={`w-full px-3 py-2 text-sm rounded border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'} outline-none`} />
+                      <div className="flex space-x-2">
+                        <button type="button" onClick={() => setConnectingType(null)} className={`flex-1 py-1.5 text-xs font-medium rounded transition-colors ${darkMode ? 'bg-gray-700 hover:bg-gray-600 text-white' : 'bg-gray-200 hover:bg-gray-300 text-black'}`}>Batal</button>
+                        <button type="submit" disabled={isConnecting} className="flex-1 py-1.5 text-xs font-medium rounded bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-50">{isConnecting ? "Memverifikasi..." : t.connect}</button>
+                      </div>
+                    </form>
+                  )}
+                </div>
+
+                {/* Cloud Pindad */}
+                <div className={`flex flex-col space-y-2 pt-4 border-t ${darkMode ? 'border-gray-700/50' : 'border-gray-200'}`}>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="font-medium text-[14px]">{t.cloudPindad}</h4>
+                      <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Nextcloud WebDAV</p>
+                    </div>
+                    {integrations.cloud_connected ? (
+                      <div className="flex items-center space-x-3">
+                        <span className="text-xs font-medium text-green-500 flex items-center"><span className="w-2 h-2 rounded-full bg-green-500 mr-1.5"></span>{t.connected}</span>
+                        <button onClick={() => handleDisconnect('cloud')} className={`px-3 py-1 text-xs font-medium rounded-full border ${darkMode ? 'border-gray-600 hover:bg-gray-700' : 'border-gray-300 hover:bg-gray-100'}`}>{t.disconnect}</button>
+                      </div>
+                    ) : connectingType === 'cloud' ? (
+                       null
+                    ) : (
+                      <button onClick={() => {
+                        setConnectingType('cloud');
+                        setIntegrationUser(userData?.email || (userData?.npp ? `${userData.npp}@pindad.com` : ""));
+                      }} className={`px-4 py-1.5 text-sm font-medium rounded-full transition-colors ${darkMode ? 'bg-blue-600 hover:bg-blue-700 text-white' : 'bg-blue-600 hover:bg-blue-700 text-white'}`}>{t.connect}</button>
+                    )}
+                  </div>
+                  {connectingType === 'cloud' && (
+                    <form onSubmit={handleConnectSubmit} className={`p-3 rounded-lg border ${darkMode ? 'bg-gray-800/50 border-gray-700' : 'bg-gray-50 border-gray-200'} space-y-3`}>
+                      <input type="text" placeholder="Username" value={integrationUser} onChange={e => setIntegrationUser(e.target.value)} required className={`w-full px-3 py-2 text-sm rounded border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'} outline-none`} />
+                      <input type="password" placeholder="Password" value={integrationPass} onChange={e => setIntegrationPass(e.target.value)} required className={`w-full px-3 py-2 text-sm rounded border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'} outline-none`} />
+                      <div className="flex space-x-2">
+                        <button type="button" onClick={() => setConnectingType(null)} className={`flex-1 py-1.5 text-xs font-medium rounded transition-colors ${darkMode ? 'bg-gray-700 hover:bg-gray-600 text-white' : 'bg-gray-200 hover:bg-gray-300 text-black'}`}>Batal</button>
+                        <button type="submit" disabled={isConnecting} className="flex-1 py-1.5 text-xs font-medium rounded bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-50">{isConnecting ? "Memverifikasi..." : t.connect}</button>
+                      </div>
+                    </form>
+                  )}
+                </div>
+              </div>
             </div>
 
             <div className={`flex items-center justify-between py-4 border-b ${darkMode ? 'border-gray-700/50' : 'border-gray-200'}`}>

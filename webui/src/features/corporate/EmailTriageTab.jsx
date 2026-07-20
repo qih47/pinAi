@@ -20,7 +20,6 @@ export default function EmailTriageTab({ theme, darkMode, userData, language }) 
   const [isLoadingEmails, setIsLoadingEmails] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
 
-  const [zimbraPassword, setZimbraPassword] = useState(() => sessionStorage.getItem('cakra_zimbra_pw') || "");
   const [isZimbraAuthenticated, setIsZimbraAuthenticated] = useState(false);
 
   const [draftContent, setDraftContent] = useState("");
@@ -72,17 +71,15 @@ export default function EmailTriageTab({ theme, darkMode, userData, language }) 
   }, [isResizing]);
 
   useEffect(() => {
-    if (zimbraPassword) {
-      if (zimbraEmails.length === 0) {
-        fetchEmails(zimbraPassword);
-      } else {
-        setIsZimbraAuthenticated(true);
-        if (!selectedEmail && zimbraEmails.length > 0) {
-           setSelectedEmail(zimbraEmails[0]);
-        }
+    if (zimbraEmails.length === 0) {
+      fetchEmails();
+    } else {
+      setIsZimbraAuthenticated(true);
+      if (!selectedEmail && zimbraEmails.length > 0) {
+         setSelectedEmail(zimbraEmails[0]);
       }
     }
-  }, [zimbraPassword]);
+  }, []);
 
   // Fetch Threat Analysis for Spam Emails
   useEffect(() => {
@@ -164,17 +161,13 @@ export default function EmailTriageTab({ theme, darkMode, userData, language }) 
     }
   };
 
-  const fetchEmails = async (passwordOverride = null, isRefresh = false) => {
-    const passwordToUse = passwordOverride || zimbraPassword;
-    if (!passwordToUse) return;
-
+  const fetchEmails = async (isRefresh = false) => {
     setIsLoadingEmails(true);
     setErrorMsg("");
     
     try {
       const response = await apiClient.post('/corporate/emails/fetch', {
-        email: userEmail,
-        password: passwordToUse
+        token: localStorage.getItem('cakra_token') || ''
       });
       if (response.data.status === 'success') {
         const fetchedEmails = response.data.data;
@@ -193,34 +186,16 @@ export default function EmailTriageTab({ theme, darkMode, userData, language }) 
           setSelectedEmail(fetchedEmails[0]);
         }
         setIsZimbraAuthenticated(true);
-        sessionStorage.setItem('cakra_zimbra_pw', passwordToUse);
       } else {
         setErrorMsg(response.data.message || "Gagal autentikasi ke Zimbra.");
         setIsZimbraAuthenticated(false);
-        sessionStorage.removeItem('cakra_zimbra_pw');
       }
     } catch (error) {
       console.error("Gagal mengambil email dari Zimbra:", error);
       setErrorMsg("Koneksi ke mail.pindad.com gagal atau kredensial salah.");
       setIsZimbraAuthenticated(false);
-      sessionStorage.removeItem('cakra_zimbra_pw');
     } finally {
       setIsLoadingEmails(false);
-    }
-  };
-
-  const handleLogoutZimbra = () => {
-    sessionStorage.removeItem('cakra_zimbra_pw');
-    setZimbraPassword("");
-    setIsZimbraAuthenticated(false);
-    clearZimbraEmails();
-    setSelectedEmail(null);
-  };
-
-  const handleLoginZimbra = (e) => {
-    e.preventDefault();
-    if (zimbraPassword.trim()) {
-      fetchEmails(zimbraPassword);
     }
   };
 
@@ -247,7 +222,7 @@ export default function EmailTriageTab({ theme, darkMode, userData, language }) 
   };
 
   const handleSendEmail = async () => {
-    if (!selectedEmail || !draftContent || !zimbraPassword) return;
+    if (!selectedEmail || !draftContent) return;
     setIsSending(true);
     setSendSuccess(false);
     
@@ -279,8 +254,7 @@ export default function EmailTriageTab({ theme, darkMode, userData, language }) 
     
     try {
       const response = await apiClient.post('/corporate/emails/reply', {
-        email: userEmail,
-        password: zimbraPassword,
+        token: localStorage.getItem('cakra_token') || '',
         to: finalTo,
         cc: finalCc,
         subject: finalSubject,
@@ -344,46 +318,37 @@ export default function EmailTriageTab({ theme, darkMode, userData, language }) 
           
           {!isZimbraAuthenticated ? (
             <div style={{ display: 'flex', flexDirection: 'column', height: '100%', justifyContent: 'center' }}>
-              <div style={{ textAlign: 'center', marginBottom: '20px' }}>
-                <Lock size={40} style={{ margin: '0 auto', color: theme.secondaryText }} />
-                <h3 style={{ fontSize: '1.2rem', fontWeight: 'bold', marginTop: '12px', marginBottom: '8px' }}>{tz.title}</h3>
-                <p style={{ fontSize: '12px', color: theme.secondaryText }}>{tz.description}</p>
-                <div style={{ fontSize: '12px', background: darkMode ? '#2A2A2D' : '#e5e7eb', padding: '4px 8px', borderRadius: '4px', marginTop: '8px', display: 'inline-block' }}>{userEmail}</div>
-              </div>
+
               
-              <form onSubmit={handleLoginZimbra} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                <input 
-                  type="password" 
-                  placeholder={tz.placeholder}
-                  value={zimbraPassword}
-                  onChange={(e) => setZimbraPassword(e.target.value)}
-                  style={{
-                    padding: '10px 12px',
-                    borderRadius: '8px',
-                    border: `1px solid ${theme.borderColor}`,
-                    background: darkMode ? '#2A2A2D' : 'white',
-                    color: theme.textColor,
-                    outline: 'none'
-                  }}
-                  required
-                />
+              <div style={{ marginTop: '20px', display: 'flex', flexDirection: 'column', gap: '12px', alignItems: 'center' }}>
+                <p style={{ fontSize: '14px', textAlign: 'center', color: theme.textColor, fontWeight: 'bold' }}>
+                  Koneksi Smart Mail Terputus atau Gagal
+                </p>
+                <p style={{ fontSize: '12px', textAlign: 'center', color: theme.secondaryText }}>
+                  Silakan buka menu <strong>Pengaturan &gt; Akun</strong> untuk menyambungkan ulang atau memperbarui kredensial Anda. 
+                </p>
                 <button 
-                  type="submit" 
+                  onClick={() => fetchEmails()} 
                   disabled={isLoadingEmails}
                   style={{ 
                     background: '#3B82F6', 
                     color: 'white', 
-                    padding: '10px', 
+                    padding: '8px 16px', 
                     borderRadius: '8px', 
                     fontWeight: 'bold', 
                     border: 'none', 
                     cursor: isLoadingEmails ? 'not-allowed' : 'pointer',
-                    opacity: isLoadingEmails ? 0.7 : 1
+                    opacity: isLoadingEmails ? 0.7 : 1,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    marginTop: '12px'
                   }}
                 >
-                  {isLoadingEmails ? tz.loggingIn : tz.loginBtn}
+                  <RefreshCw size={16} className={isLoadingEmails ? "animate-spin" : ""} />
+                  Coba Lagi
                 </button>
-              </form>
+              </div>
 
               {errorMsg && (
                 <div style={{ padding: '10px', background: darkMode ? '#3f1a1a' : '#fee2e2', color: '#ef4444', borderRadius: '8px', fontSize: '12px', marginTop: '16px', textAlign: 'center' }}>
@@ -396,11 +361,8 @@ export default function EmailTriageTab({ theme, darkMode, userData, language }) 
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
                 <h3 style={{ fontSize: '1rem', fontWeight: '600' }}>Inbox (Zimbra)</h3>
                 <div style={{ display: 'flex', gap: '8px' }}>
-                  <button onClick={() => fetchEmails(null, true)} disabled={isLoadingEmails} title="Refresh Email" style={{ background: 'transparent', border: 'none', cursor: isLoadingEmails ? 'not-allowed' : 'pointer', opacity: isLoadingEmails ? 0.5 : 1, display: 'flex', alignItems: 'center', color: theme.textColor }}>
+                  <button onClick={() => fetchEmails(true)} disabled={isLoadingEmails} title="Refresh Email" style={{ background: 'transparent', border: 'none', cursor: isLoadingEmails ? 'not-allowed' : 'pointer', opacity: isLoadingEmails ? 0.5 : 1, display: 'flex', alignItems: 'center', color: theme.textColor }}>
                     <RefreshCw size={18} />
-                  </button>
-                  <button onClick={handleLogoutZimbra} title="Logout Zimbra" style={{ background: 'transparent', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', color: '#ef4444' }}>
-                    <LogOut size={18} />
                   </button>
                 </div>
               </div>

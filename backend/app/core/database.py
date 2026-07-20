@@ -66,6 +66,7 @@ async def init_db_pool():
                 await _create_api_keys_table(conn)
                 await _create_training_jobs_table(conn)
                 await _create_user_settings_table(conn)
+                await _create_user_integrations_table(conn)
             except asyncpg.exceptions.InsufficientPrivilegeError as e:
                 logger.warning(f"⚠️ [DB_MIGRATION] Izin ditolak untuk memodifikasi schema public. Minta admin untuk jalankan DDL secara manual: {e}")
             except Exception as e:
@@ -301,6 +302,21 @@ async def _create_user_settings_table(conn):
         CREATE TABLE IF NOT EXISTS user_settings (
             npp VARCHAR(50) PRIMARY KEY REFERENCES users(npp) ON DELETE CASCADE,
             settings JSONB NOT NULL DEFAULT '{}'::jsonb,
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        );
+    """)
+
+async def _create_user_integrations_table(conn):
+    """
+    Create table for storing user integrations (Smart Mail & Nextcloud credentials).
+    """
+    await conn.execute("""
+        CREATE TABLE IF NOT EXISTS user_integrations (
+            npp VARCHAR(50) PRIMARY KEY REFERENCES users(npp) ON DELETE CASCADE,
+            mail_username VARCHAR(255),
+            mail_password VARCHAR(255),
+            cloud_username VARCHAR(255),
+            cloud_password VARCHAR(255),
             updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
         );
     """)

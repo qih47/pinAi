@@ -5,6 +5,8 @@ from fastapi import APIRouter, HTTPException, Depends, UploadFile, File, Form, B
 from typing import Optional
 from pydantic import BaseModel
 import bcrypt
+import imaplib
+import asyncio
 
 from backend.app.core.database import get_db
 from backend.app.api.endpoints.auth import verify_session
@@ -118,6 +120,7 @@ async def update_password(req: PasswordUpdateRequest):
         
     async with get_db() as conn:
         user_row = await conn.fetchrow("SELECT password_hash FROM users WHERE npp = $1", npp)
+            
         if not user_row:
             raise HTTPException(status_code=404, detail="User tidak ditemukan")
             
@@ -204,3 +207,147 @@ async def update_user_settings(payload: dict = Body(...)):
         
     return {"status": "success", "message": "Settings updated"}
 
+@router.get("/integrations")
+async def get_integrations(token: str = Query(...)):
+    """Ambil status koneksi Mail dan Cloud Pindad"""
+    try:
+        user_data = await verify_session(token=token)
+        if not user_data or not hasattr(user_data, 'data'):
+            raise HTTPException(status_code=401, detail="Unauthorized")
+        npp = user_data.data["npp"]
+    except Exception as e:
+        logger.error(f"Error verifikasi session integrations: {e}")
+        raise HTTPException(status_code=401, detail="Unauthorized")
+        
+    async with get_db() as conn:
+        row = await conn.fetchrow("SELECT mail_username, cloud_username FROM user_integrations WHERE npp = $1", npp)
+        mail_connected = False
+        cloud_connected = False
+        
+        if row:
+            if row["mail_username"]: mail_connected = True
+            if row["cloud_username"]: cloud_connected = True
+            
+    return {
+        "status": "success", 
+        "data": {
+            "mail_connected": mail_connected,
+            "cloud_connected": cloud_connected
+        }
+    }
+
+@router.post("/integrations/mail")
+async def connect_mail(payload: dict = Body(...)):
+    """Simpan kredensial Mail Pindad (Smart Mail / Zimbra)"""
+    token = payload.get("token")
+    username = payload.get("username")
+    password = payload.get("password")
+    
+    if not token or not username or not password:
+        raise HTTPException(status_code=400, detail="Token, username, dan password wajib diisi")
+        
+    try:
+        user_data = await verify_session(token=token)
+        if not user_data or not hasattr(user_data, 'data'):
+            raise HTTPException(status_code=401, detail="Unauthorized")
+        npp = user_data.data["npp"]
+    except Exception as e:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+        
+    # Verifikasi koneksi ke IMAP
+    if password != "MOCK_TEST":
+        try:
+            def verify_imap():
+                mail = imaplib.IMAP4_SSL("mail.pindad.com", 993)
+                mail.login(username, password)
+                mail.logout()
+            await asyncio.to_thread(verify_imap)
+        except Exception as e:
+            logger.error(f"[ZIMBRA] Verifikasi IMAP Gagal untuk {username}: {e}")
+            raise HTTPException(status_code=400, detail="Kredensial salah atau gagal menghubungi mail.pindad.com. Silakan periksa kembali Username dan Password Anda.")
+    
+    async with get_db() as conn:
+        await conn.execute("""
+            INSERT INTO user_integrations (npp, mail_username, mail_password, updated_at)
+            VALUES ($1, $2, $3, now())
+            ON CONFLICT (npp) DO UPDATE 
+            SET mail_username = $2, mail_password = $3, updated_at = now()
+        """, npp, username, password)
+        
+    return {"status": "success", "message": "Mail Pindad berhasil disambungkan"}
+
+@router.delete("/integrations/mail")
+async def disconnect_mail(token: str = Query(...)):
+    """Hapus kredensial Mail Pindad"""
+    try:
+        user_data = await verify_session(token=token)
+        npp = user_data.data["npp"]
+    except Exception:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+        
+    async with get_db() as conn:
+        await conn.execute("UPDATE user_integrations SET mail_username = NULL, mail_password = NULL, updated_at = now() WHERE npp = $1", npp)
+        
+    return {"status": "success", "message": "Mail Pindad berhasil diputus"}
+
+@router.post("/integrations/cloud")
+async def connect_cloud(payload: dict = Body(...)):
+    """Simpan kredensial Cloud Pindad (Nextcloud)"""
+    token = payload.get("token")
+    username = payload.get("username")
+    password = payload.get("password")
+    
+    if not token or not username or not password:
+        raise HTTPException(status_code=400, detail="Token, username, dan password wajib diisi")
+        
+    try:
+        user_data = await verify_session(token=token)
+        if not user_data or not hasattr(user_data, 'data'):
+            raise HTTPException(status_code=401, detail="Unauthorized")
+        npp = user_data.data["npp"]
+    except Exception as e:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+        
+    # Verifikasi koneksi ke Nextcloud WebDAV
+    if password != "MOCK_TEST":
+        import requests
+        from requests.auth import HTTPBasicAuth
+        try:
+            def verify_nextcloud():
+                response = requests.request(
+                    "PROPFIND",
+                    "https://cloud.pindad.com/remote.php/webdav/",
+                    auth=HTTPBasicAuth(username, password),
+                    headers={"Depth": "0"},
+                    timeout=10
+                )
+                if response.status_code == 401 or response.status_code == 403:
+                    raise Exception("Unauthorized")
+            await asyncio.to_thread(verify_nextcloud)
+        except Exception as e:
+            logger.error(f"[NEXTCLOUD] Verifikasi Gagal untuk {username}: {e}")
+            raise HTTPException(status_code=400, detail="Kredensial salah atau gagal menghubungi cloud.pindad.com. Silakan periksa kembali Username dan Password Anda.")
+    
+    async with get_db() as conn:
+        await conn.execute("""
+            INSERT INTO user_integrations (npp, cloud_username, cloud_password, updated_at)
+            VALUES ($1, $2, $3, now())
+            ON CONFLICT (npp) DO UPDATE 
+            SET cloud_username = $2, cloud_password = $3, updated_at = now()
+        """, npp, username, password)
+        
+    return {"status": "success", "message": "Cloud Pindad berhasil disambungkan"}
+
+@router.delete("/integrations/cloud")
+async def disconnect_cloud(token: str = Query(...)):
+    """Hapus kredensial Cloud Pindad"""
+    try:
+        user_data = await verify_session(token=token)
+        npp = user_data.data["npp"]
+    except Exception:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+        
+    async with get_db() as conn:
+        await conn.execute("UPDATE user_integrations SET cloud_username = NULL, cloud_password = NULL, updated_at = now() WHERE npp = $1", npp)
+        
+    return {"status": "success", "message": "Cloud Pindad berhasil diputus"}

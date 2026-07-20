@@ -51,37 +51,14 @@ export default function SmartMailChatWidget({ initialData, darkMode, theme, lang
     });
     const [errorMsg, setErrorMsg] = useState("");
     
-    // Asumsikan kita butuh email & password dari sessionStorage
-    const zimbraEmail = sessionStorage.getItem('cakra_zimbra_email') || "";
-    const zimbraPassword = sessionStorage.getItem('cakra_zimbra_pw') || "";
-    
-    // Jika tidak ada password atau email, tampilkan prompt
-    const [showAuthPrompt, setShowAuthPrompt] = useState(!zimbraPassword || !zimbraEmail);
-    const [tempEmail, setTempEmail] = useState(zimbraEmail || "");
-    const [tempPassword, setTempPassword] = useState("");
-
     const handleSend = async () => {
-        if (showAuthPrompt) {
-            if (!tempEmail || !tempPassword) {
-                setErrorMsg("Email dan Password Zimbra wajib diisi.");
-                return;
-            }
-            sessionStorage.setItem('cakra_zimbra_email', tempEmail);
-            sessionStorage.setItem('cakra_zimbra_pw', tempPassword);
-            setShowAuthPrompt(false);
-        }
-
-        const currentEmail = sessionStorage.getItem('cakra_zimbra_email');
-        const currentPassword = sessionStorage.getItem('cakra_zimbra_pw');
-        if (!currentPassword || !currentEmail) return;
 
         setIsSending(true);
         setErrorMsg("");
         
         try {
             const response = await apiClient.post('/corporate/emails/reply', {
-                email: currentEmail,
-                password: currentPassword,
+                token: localStorage.getItem('cakra_token') || '',
                 to: draftData.to,
                 cc: draftData.cc || "",
                 subject: draftData.subject,
@@ -210,37 +187,11 @@ export default function SmartMailChatWidget({ initialData, darkMode, theme, lang
 
             {/* Footer Actions */}
             <div className={`px-4 py-3 flex items-center justify-between border-t ${darkMode ? 'bg-[#252529] border-slate-700' : 'bg-slate-50 border-slate-200'}`}>
-                {showAuthPrompt ? (
-                    <div className="flex items-center gap-2 flex-1 mr-4">
-                        <UserCircle2 className={`w-4 h-4 flex-shrink-0 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`} />
-                        <input 
-                            type="text"
-                            placeholder={tGlobal.smartMail.webmailPlaceholder}
-                            value={tempEmail}
-                            onChange={(e) => setTempEmail(e.target.value)}
-                            className={`w-1/3 px-3 py-1.5 rounded-md text-xs border focus:outline-none ${darkMode ? 'bg-[#1E1E22] border-slate-600 text-white' : 'bg-white border-slate-300'}`}
-                        />
-                        <input 
-                            type="password"
-                            placeholder={tGlobal.smartMail.passwordPlaceholder}
-                            value={tempPassword}
-                            onChange={(e) => setTempPassword(e.target.value)}
-                            className={`w-1/3 px-3 py-1.5 rounded-md text-xs border focus:outline-none ${darkMode ? 'bg-[#1E1E22] border-slate-600 text-white' : 'bg-white border-slate-300'}`}
-                        />
+                <div className="flex items-center gap-3">
+                    <div className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
+                        Dikirim via Integrasi Smart Mail
                     </div>
-                ) : (
-                    <div className="flex items-center gap-3">
-                        <div className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
-                            {tGlobal.smartMail.sentAs} <span className="font-semibold">{sessionStorage.getItem('cakra_zimbra_email')}</span>
-                        </div>
-                        <button 
-                            onClick={() => setShowAuthPrompt(true)}
-                            className={`text-[10px] underline ${darkMode ? 'text-blue-400' : 'text-blue-600'}`}
-                        >
-                            {tGlobal.smartMail.switchAccount}
-                        </button>
-                    </div>
-                )}
+                </div>
 
                 <button 
                     onClick={handleSend}

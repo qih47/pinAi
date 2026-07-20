@@ -4,7 +4,7 @@ import tempfile
 import logging
 from typing import Optional
 from fastapi import APIRouter, Depends, File, UploadFile, HTTPException, Body
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, FileResponse
 import edge_tts
 import re
 import asyncio
@@ -76,6 +76,7 @@ PHONETIC_ROOTS = {
     'rp': 'rupiah',
     'jgn': 'jangan',
     'bgt': 'banget',
+    'cuy': 'cui',
 }
 
 def phonetic_correction(text: str) -> str:
@@ -211,9 +212,11 @@ def get_f5_tts():
         )
 
         logger.info("[VOICE] Loading F5-TTS vocoder (vocos)...")
+        vocos_local_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))), "assets", "weights", "vocos")
         _f5_vocoder = load_vocoder(
             vocoder_name="vocos",
-            is_local=False,
+            is_local=True,
+            local_path=vocos_local_path,
             device="cuda",
         )
         logger.info("[VOICE] F5-TTS Model loaded successfully.")
@@ -291,24 +294,24 @@ async def text_to_speech(
         if is_indo_voice:
             ema_model, vocoder = await asyncio.to_thread(get_f5_tts)
 
-        if is_indo_voice and ema_model is not None:
+        if is_indo_voice and ema_model is not None and vocoder is not None:
             logger.info(f"[VOICE] Routing to F5-TTS for voice: {voice}")
 
             if voice == "id-ID-Pria1":
                 ref_file = "/home/qisthi/pinAi/backend/assets/voice_refs/male 1.mp3"
-                ref_text = "Halo Qisthi! Ada yang bisa saya bantu hari ini? Silakan sampaikan apa pun yang ingin kamu diskusikan atau tanyakan. Saya siap membantu.."
+                ref_text = "Halo! Ada yang bisa saya bantu hari ini? Silakan sampaikan apa pun yang ingin kamu diskusikan atau tanyakan. Saya siap membantu.."
             elif voice == "id-ID-Pria2":
                 ref_file = "/home/qisthi/pinAi/backend/assets/voice_refs/male 2.mp3"
-                ref_text = "Halo Qisthi! Ada yang bisa saya bantu hari ini? Silakan sampaikan apa pun yang ingin kamu diskusikan atau tanyakan. Saya siap membantu.."
+                ref_text = "Halo! Ada yang bisa saya bantu hari ini? Silakan sampaikan apa pun yang ingin kamu diskusikan atau tanyakan. Saya siap membantu.."
             elif voice == "id-ID-Wanita1":
                 ref_file = "/home/qisthi/pinAi/backend/assets/voice_refs/female 1.mp3"
-                ref_text = "Halo Qisthi! Ada yang bisa saya bantu hari ini? Silakan sampaikan apa pun yang ingin kamu diskusikan atau tanyakan. Saya siap membantu.."
+                ref_text = "Halo! Ada yang bisa saya bantu hari ini? Silakan sampaikan apa pun yang ingin kamu diskusikan atau tanyakan. Saya siap membantu.."
             elif voice == "id-ID-Wanita2":
                 ref_file = "/home/qisthi/pinAi/backend/assets/voice_refs/female 2.mp3"
-                ref_text = "Halo Qisthi! Ada yang bisa saya bantu hari ini? Silakan sampaikan apa pun yang ingin kamu diskusikan atau tanyakan. Saya siap membantu.."
+                ref_text = "Halo! Ada yang bisa saya bantu hari ini? Silakan sampaikan apa pun yang ingin kamu diskusikan atau tanyakan. Saya siap membantu.."
             else:
                 ref_file = "/home/qisthi/pinAi/backend/assets/voice_refs/male 1.mp3"
-                ref_text = "Halo Qisthi! Ada yang bisa saya bantu hari ini? Silakan sampaikan apa pun yang ingin kamu diskusikan atau tanyakan. Saya siap membantu.."
+                ref_text = "Halo! Ada yang bisa saya bantu hari ini? Silakan sampaikan apa pun yang ingin kamu diskusikan atau tanyakan. Saya siap membantu.."
 
             def _run_f5():
                 import torch
@@ -339,17 +342,13 @@ async def text_to_speech(
                 # Jadi semua angka harus diexpand jadi teks ("1" -> "satu")
                 clean_gen = expand_numbers_id(clean_gen)
 
-                # Ganti tanda tanya & seru ganda menjadi tunggal
-                clean_gen = re.sub(r'[?!]{2,}', '.', clean_gen)
+                # Ganti tanda tanya & seru ganda menjadi tunggal (jangan diubah jadi titik)
+                clean_gen = re.sub(r'\?{2,}', '?', clean_gen)
+                clean_gen = re.sub(r'!{2,}', '!', clean_gen)
                 # Bersihkan koma berurutan & spasi ganda
                 clean_gen = re.sub(r',\s*,+', ',', clean_gen)
                 clean_gen = re.sub(r'\.\s*\.+', '.', clean_gen)
                 clean_gen = re.sub(r'\s{2,}', ' ', clean_gen).strip()
-
-                # KRITIS: Pastikan teks diakhiri tanda baca agar F5-TTS
-                # "nutup" fonem terakhir dengan sempurna (cegah cutoff "kerj")
-                if clean_gen and clean_gen[-1] not in '.?!,':
-                    clean_gen += '.'
 
                 logger.debug(f"[VOICE] clean_gen: {clean_gen[:80]}...")
 
@@ -368,7 +367,7 @@ async def text_to_speech(
                     vocoder=vocoder,
                     mel_spec_type="vocos",
                     cfg_strength=2.0,
-                    nfe_step=8,
+                    nfe_step=16,
                     device="cuda",
                     show_info=logger.info,
                 )
@@ -418,3 +417,33 @@ async def text_to_speech(
         logger.error(f"[VOICE] TTS failed: {e}")
         logger.error(traceback.format_exc())
         raise HTTPException(status_code=500, detail=f"TTS failed: {str(e)}")
+
+@router.get("/test/{voice_id}")
+async def get_test_voice(voice_id: str):
+    """
+    Mengambil file contoh suara statis untuk menghindari generate berulang.
+    Hanya untuk suara Indonesia.
+    """
+    from fastapi.responses import FileResponse
+    # Map voice ID to file name
+    voice_map = {
+        "id-ID-Pria1": "male 1.mp3",
+        "id-ID-Pria2": "male 2.mp3",
+        "id-ID-Wanita1": "female 1.mp3",
+        "id-ID-Wanita2": "female 2.mp3"
+    }
+    
+    if voice_id not in voice_map:
+        raise HTTPException(status_code=404, detail="File suara contoh tidak tersedia untuk voice ini")
+        
+    filename = voice_map[voice_id]
+    
+    # Path is relative to the backend root directory (assets/voice_refs)
+    base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+    filepath = os.path.join(base_dir, "assets", "voice_refs", filename)
+    
+    if not os.path.exists(filepath):
+        logger.error(f"Test voice file not found: {filepath}")
+        raise HTTPException(status_code=404, detail="File suara contoh tidak ditemukan di server")
+        
+    return FileResponse(filepath, media_type="audio/mpeg")

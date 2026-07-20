@@ -1,9 +1,11 @@
 import logging
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, Body, Response
+from fastapi import APIRouter, Depends, HTTPException, Body, Response, Query
 from pydantic import BaseModel
 import requests
 from requests.auth import HTTPBasicAuth
+from backend.app.core.database import get_db
+from backend.app.api.endpoints.auth import verify_session
 
 logger = logging.getLogger("CAKRA_NEXTCLOUD")
 router = APIRouter()
@@ -13,25 +15,47 @@ NEXTCLOUD_BASE_URL = "https://cloud.pindad.com/remote.php/webdav"
 class NextcloudAuth(BaseModel):
     username: str
     password: str
-    
+
+async def get_nextcloud_credentials(token: str):
+    """Ambil kredensial Nextcloud dari database berdasarkan token sesi."""
+    if not token:
+        raise HTTPException(status_code=401, detail="Token sesi tidak ditemukan")
+        
+    try:
+        user_data = await verify_session(token=token)
+        if not user_data or not hasattr(user_data, 'data'):
+            raise HTTPException(status_code=401, detail="Sesi tidak valid")
+        npp = user_data.data["npp"]
+    except Exception:
+        raise HTTPException(status_code=401, detail="Sesi tidak valid")
+        
+    async with get_db() as conn:
+        row = await conn.fetchrow("SELECT cloud_username, cloud_password FROM user_integrations WHERE npp = $1", npp)
+        if not row or not row["cloud_username"] or not row["cloud_password"]:
+            raise HTTPException(status_code=403, detail="NOT_CONNECTED")
+        
+        return NextcloudAuth(username=row["cloud_username"], password=row["cloud_password"])
+
 class UploadFileRequest(BaseModel):
-    auth: NextcloudAuth
+    token: str
     path: str
     content: str
     filename: str
 
 class DownloadFileRequest(BaseModel):
-    auth: NextcloudAuth
+    token: str
     path: str
 
 @router.post("/list")
 async def list_files(
-    auth: NextcloudAuth = Body(...),
+    token: str = Body(...),
     path: str = Body("/")
 ):
     """
     List files in a specific Nextcloud directory using WebDAV PROPFIND.
     """
+    auth = await get_nextcloud_credentials(token)
+    
     url = f"{NEXTCLOUD_BASE_URL}{path}"
     headers = {"Depth": "1"}
     # Simplified XML for PROPFIND
@@ -56,9 +80,6 @@ async def list_files(
             timeout=10
         )
         if response.status_code in [207, 200]:
-            # For simplicity, returning raw XML string to be parsed or just status success
-            # In a full implementation, we'd parse the XML. 
-            # For this MVP, we return a success status to verify auth.
             return {"status": "success", "message": "Successfully connected", "raw_xml": response.text}
         else:
             raise HTTPException(status_code=response.status_code, detail=f"Nextcloud error: {response.text}")
@@ -73,6 +94,8 @@ async def upload_file(
     """
     Upload a file to Nextcloud using WebDAV PUT.
     """
+    auth = await get_nextcloud_credentials(req.token)
+    
     # Ensure path ends with /
     folder_path = req.path if req.path.endswith("/") else f"{req.path}/"
     url = f"{NEXTCLOUD_BASE_URL}{folder_path}{req.filename}"
@@ -80,7 +103,7 @@ async def upload_file(
     try:
         response = requests.put(
             url,
-            auth=HTTPBasicAuth(req.auth.username, req.auth.password),
+            auth=HTTPBasicAuth(auth.username, auth.password),
             data=req.content.encode('utf-8'),
             timeout=15
         )
@@ -99,11 +122,12 @@ async def download_file(
     """
     Download a file from Nextcloud using WebDAV GET.
     """
+    auth = await get_nextcloud_credentials(req.token)
     url = f"{NEXTCLOUD_BASE_URL}{req.path}"
     try:
         response = requests.get(
             url,
-            auth=HTTPBasicAuth(req.auth.username, req.auth.password),
+            auth=HTTPBasicAuth(auth.username, auth.password),
             timeout=15
         )
         if response.status_code == 200:

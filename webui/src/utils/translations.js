@@ -66,10 +66,16 @@ export const translations = {
       fullNameLabel: "Full name",
       fullNamePlaceholder: "Nama Lengkap",
       preferredNameLabel: "What should CAKRA call you?",
-      preferredNamePlaceholder: "Sapaan (misal: Bos, Qisthi)",
+      preferredNamePlaceholder: "Sapaan (misal: Bos, nama panggilan, dll)",
       emailLabel: "Email",
       emailPlaceholder: "nama@pindad.co.id",
-      profile: "Profile"
+      profile: "Profile",
+      linkedAccounts: "Akun Tertaut",
+      connected: "Tersambung",
+      connect: "Sambungkan",
+      disconnect: "Putuskan",
+      mailPindad: "Smart Mail Pindad",
+      cloudPindad: "Cloud Pindad (Nextcloud)"
     },
     chat: {
       readAloud: "Baca Keras",
@@ -367,10 +373,16 @@ export const translations = {
       fullNameLabel: "Full name",
       fullNamePlaceholder: "Full Name",
       preferredNameLabel: "What should CAKRA call you?",
-      preferredNamePlaceholder: "Nickname (e.g. Boss, Qisthi)",
+      preferredNamePlaceholder: "Nickname (e.g. Boss, Your name, Your nickname, etc.)",
       emailLabel: "Email",
       emailPlaceholder: "name@pindad.co.id",
-      profile: "Profile"
+      profile: "Profile",
+      linkedAccounts: "Linked Accounts",
+      connected: "Connected",
+      connect: "Connect",
+      disconnect: "Disconnect",
+      mailPindad: "Smart Mail Pindad",
+      cloudPindad: "Cloud Pindad (Nextcloud)"
     },
     chat: {
       readAloud: "Read Aloud",

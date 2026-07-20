@@ -7,10 +7,9 @@ const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://192.168.11.80:5000
 
 export default function NextcloudModal({ darkMode, onFileSelect, language = 'id' }) {
   const tGlobal = translations[language] || translations.id;
-  const { isModalOpen, closeModal, isLoggedIn, credentials, setCredentials, clearCredentials } = useNextcloudStore();
+  const { isModalOpen, closeModal } = useNextcloudStore();
 
-  const [username, setUsernameInput] = useState('');
-  const [password, setPasswordInput] = useState('');
+  const [isConnected, setIsConnected] = useState(true);
 
   const [currentPath, setCurrentPath] = useState('/');
   const [files, setFiles] = useState([]);
@@ -18,37 +17,11 @@ export default function NextcloudModal({ darkMode, onFileSelect, language = 'id'
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    if (isModalOpen && isLoggedIn) {
+    if (isModalOpen) {
+      setIsConnected(true);
       fetchFiles(currentPath);
     }
-  }, [isModalOpen, isLoggedIn, currentPath]);
-
-  const handleLogin = async (e) => {
-    e.preventDefault();
-    setLoading(true);
-    setError(null);
-    try {
-      // Test auth by fetching root
-      const response = await fetch(`${API_BASE}/api/nextcloud/list`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          auth: { username, password },
-          path: '/'
-        })
-      });
-
-      if (!response.ok) {
-        throw new Error(tGlobal.nextcloud.loginError);
-      }
-
-      setCredentials(username, password);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
+  }, [isModalOpen, currentPath]);
 
   const fetchFiles = async (path) => {
     setLoading(true);
@@ -58,15 +31,15 @@ export default function NextcloudModal({ darkMode, onFileSelect, language = 'id'
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          auth: credentials,
+          token: localStorage.getItem('cakra_token') || '',
           path: path
         })
       });
 
       if (!response.ok) {
-        if (response.status === 401) {
-          clearCredentials();
-          throw new Error('Sesi berakhir. Silakan login kembali.');
+        if (response.status === 401 || response.status === 403) {
+          setIsConnected(false);
+          throw new Error('Sesi berakhir atau Cloud belum terhubung. Silakan sambungkan di menu Pengaturan.');
         }
         throw new Error(tGlobal.nextcloud.fetchError);
       }
@@ -124,7 +97,7 @@ export default function NextcloudModal({ darkMode, onFileSelect, language = 'id'
         const res = await fetch(`${API_BASE}/api/nextcloud/download`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ auth: credentials, path: file.path })
+          body: JSON.stringify({ token: localStorage.getItem('cakra_token') || '', path: file.path })
         });
 
         if (!res.ok) throw new Error(tGlobal.nextcloud.downloadError);
@@ -172,46 +145,12 @@ export default function NextcloudModal({ darkMode, onFileSelect, language = 'id'
 
         {/* Body */}
         <div className="p-4 flex-1 overflow-y-auto">
-          {!isLoggedIn ? (
-            <form onSubmit={handleLogin} className="space-y-4">
-              <div className="text-center mb-6">
-                <CloudIcon className="w-16 h-16 mx-auto text-blue-500 mb-2" />
-                <p className="text-sm text-gray-500 dark:text-gray-400">Masuk menggunakan Email / Username Pindad Anda untuk mengakses cloud.pindad.com</p>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold mb-1">Nama atau Email</label>
-                <input
-                  type="text"
-                  value={username}
-                  onChange={e => setUsernameInput(e.target.value)}
-                  className={`w-full p-2.5 rounded-lg border text-sm ${darkMode ? 'bg-gray-700 border-gray-600 focus:border-blue-500' : 'bg-white border-gray-300 focus:border-blue-500'} outline-none`}
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold mb-1">{tGlobal.nextcloud.passwordLabel}</label>
-                <input
-                  type="password"
-                  value={password}
-                  onChange={e => setPasswordInput(e.target.value)}
-                  className={`w-full p-2.5 rounded-lg border text-sm ${darkMode ? 'bg-gray-700 border-gray-600 focus:border-blue-500' : 'bg-white border-gray-300 focus:border-blue-500'} outline-none`}
-                  required
-                />
-              </div>
-
-              {error && <div className="text-xs text-red-500 p-2 bg-red-50 dark:bg-red-900/30 rounded">{error}</div>}
-
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full bg-blue-600 hover:bg-blue-700 text-white p-2.5 rounded-lg font-bold text-sm flex items-center justify-center gap-2 transition-colors disabled:opacity-50"
-              >
-                {loading ? <RefreshCw className="animate-spin" size={16} /> : <LogIn size={16} />}
-                {tGlobal.nextcloud.connectAccount}
-              </button>
-            </form>
+          {!isConnected ? (
+            <div className="text-center py-10 flex flex-col items-center justify-center">
+              <CloudIcon className="w-16 h-16 mx-auto text-blue-500 mb-4 opacity-50" />
+              <p className="text-sm font-semibold mb-2">Cloud Pindad Belum Tersambung</p>
+              <p className="text-xs text-gray-500 max-w-[250px]">Silakan buka menu Pengaturan &gt; Akun untuk menautkan akun Nextcloud Anda.</p>
+            </div>
           ) : (
             <div className="flex flex-col h-full">
               {/* Toolbar Path */}
@@ -261,10 +200,7 @@ export default function NextcloudModal({ darkMode, onFileSelect, language = 'id'
               </div>
 
               <div className="mt-4 pt-4 border-t border-dashed border-gray-300 dark:border-gray-700 flex justify-between items-center">
-                <span className="text-xs text-gray-500">Koneksi: {credentials?.username}</span>
-                <button onClick={clearCredentials} className="text-xs text-red-500 hover:underline">
-                  Logout
-                </button>
+                <span className="text-xs text-gray-500">Tersambung via Integrasi Akun</span>
               </div>
             </div>
           )}
