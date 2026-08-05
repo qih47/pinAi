@@ -52,11 +52,16 @@ class ModeFlash:
             is_thinking=is_thinking
         )
 
-        # Fetch Community Knowledge untuk User Resmi (is_guest=False)
+        # Fetch Community Knowledge untuk User Resmi (is_guest=False), SKIP jika pesan sangat pendek / sapaan sederhana
         from backend.app.services.pipeline.community_knowledge import search_community_knowledge
-        community_context = await search_community_knowledge(user_message, is_guest=False)
-        if community_context:
-            system_prompt += community_context
+        clean_msg = user_message.strip().lower()
+        simple_greetings = {"hai", "halo", "hallo", "helo", "pagi", "siang", "sore", "malam", "selamat pagi", "selamat siang", "selamat sore", "selamat malam", "terima kasih", "makasih", "ok", "oke", "siap", "baik", "test", "tes"}
+        if len(clean_msg) >= 10 and clean_msg not in simple_greetings:
+            community_context = await search_community_knowledge(user_message, is_guest=False)
+            if community_context:
+                system_prompt += community_context
+        else:
+            logger.info("[MODE_FLASH] Skipping community knowledge search for short/greeting message.")
 
         # Inject Long-Term Memory (ai_document_chunks)
         session_chunks = routing_data.get("_session_chunks_text", "")

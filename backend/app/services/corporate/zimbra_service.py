@@ -113,33 +113,6 @@ def fetch_unread_emails(email_address: str, password: str, limit: int = 10) -> L
     """
     Koneksi ke IMAP mail.pindad.com dan tarik email terbaru.
     """
-    if password == "MOCK_TEST":
-        import datetime
-        logger.info(f"[ZIMBRA] Returning MOCK emails for {email_address}...")
-        now_str = datetime.datetime.now().strftime("%a, %d %b %Y %H:%M:%S +0700")
-        return [
-            {
-                "id": "mock-1",
-                "sender": "John Doe <johndoe@pindad.com>",
-                "cc": "",
-                "subject": "Penawaran Vendor A",
-                "content": "Halo, ini adalah penawaran vendor A dengan harga Rp 500.000.000. Mohon segera di-review.",
-                "content_html": "<p>Halo, ini adalah penawaran vendor A dengan harga Rp 500.000.000. Mohon segera di-review.</p>",
-                "received_at": now_str,
-                "priority": "🔴 Unread"
-            },
-            {
-                "id": "mock-2",
-                "sender": "Spammer <spam@scam.com>",
-                "cc": "",
-                "subject": "YOU WON $1,000,000",
-                "content": "Click here to claim your prize! Please send your password and credit card number to receive your funds immediately.",
-                "content_html": "<p>Click here to claim your prize! Please send your password and credit card number to receive your funds immediately.</p>",
-                "received_at": now_str,
-                "priority": "🔴 Unread"
-            }
-        ]
-
     imap_host = "mail.pindad.com"
     imap_port = 993
     
@@ -206,10 +179,6 @@ def fetch_unread_emails(email_address: str, password: str, limit: int = 10) -> L
 
 def send_email_reply(email_address: str, password: str, to_address: str, subject: str, body: str, cc_address: str = None) -> bool:
     """Mengirim balasan email menggunakan SMTP Zimbra."""
-    if password == "MOCK_TEST":
-        logger.info(f"[ZIMBRA] MOCK: Email sent successfully to {to_address}")
-        return True
-
     smtp_host = "mail.pindad.com"
     
     msg = MIMEMultipart()

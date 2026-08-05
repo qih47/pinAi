@@ -13,6 +13,10 @@ const LazyMermaidViewer = lazy(() => import('./MermaidViewer'));
 const LazySmartMailWidget = lazy(() => import('./SmartMailChatWidget'));
 const LazyGanttViewer = lazy(() => import('./GanttViewer'));
 const LazyTimelineInfographic = lazy(() => import('./TimelineInfographic'));
+const LazyChartViewer = lazy(() => import('./ChartViewer'));
+const LazyReactFlowViewer = lazy(() => import('./ReactFlowViewer'));
+const LazyDataGridViewer = lazy(() => import('./DataGridViewer'));
+const LazyMapViewer = lazy(() => import('./MapViewer'));
 
 const highlightText = (text, query) => {
     if (!query || typeof text !== 'string') return text;
@@ -285,6 +289,38 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
                 return (
                     <Suspense fallback={<div className="animate-pulse p-8 border border-dashed rounded-xl text-sm text-center font-medium my-4">Memuat editor email...</div>}>
                         <LazySmartMailWidget initialData={cleanCode} darkMode={darkMode} theme={theme} language={language} />
+                    </Suspense>
+                );
+            }
+
+            if (!inline && match && match[1] === 'chart') {
+                return (
+                    <Suspense fallback={<div className="animate-pulse p-8 border border-dashed rounded-xl text-sm text-center font-medium my-4">Memuat Engine Grafik...</div>}>
+                        <LazyChartViewer chartCode={cleanCode} darkMode={darkMode} isStreaming={isStreaming} language={language} />
+                    </Suspense>
+                );
+            }
+
+            if (!inline && match && match[1] === 'flowchart') {
+                return (
+                    <Suspense fallback={<div className="animate-pulse p-8 border border-dashed rounded-xl text-sm text-center font-medium my-4">Memuat Interactive Diagram...</div>}>
+                        <LazyReactFlowViewer chartCode={cleanCode} darkMode={darkMode} isStreaming={isStreaming} language={language} />
+                    </Suspense>
+                );
+            }
+
+            if (!inline && match && (match[1] === 'datagrid' || match[1] === 'tablejson')) {
+                return (
+                    <Suspense fallback={<div className="animate-pulse p-8 border border-dashed rounded-xl text-sm text-center font-medium my-4">Memuat Interactive Data Grid...</div>}>
+                        <LazyDataGridViewer chartCode={cleanCode} darkMode={darkMode} isStreaming={isStreaming} language={language} />
+                    </Suspense>
+                );
+            }
+
+            if (!inline && match && (match[1] === 'map' || match[1] === 'mapjson')) {
+                return (
+                    <Suspense fallback={<div className="animate-pulse p-8 border border-dashed rounded-xl text-sm text-center font-medium my-4">Memuat Interactive Maps...</div>}>
+                        <LazyMapViewer chartCode={cleanCode} darkMode={darkMode} isStreaming={isStreaming} language={language} />
                     </Suspense>
                 );
             }

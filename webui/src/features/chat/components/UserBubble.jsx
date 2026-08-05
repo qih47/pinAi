@@ -353,6 +353,41 @@ const UserBubble = memo(function UserBubble({
               </svg>
             </button>
           )}
+          {!isStreaming && (
+            <button
+              type="button"
+              onClick={() => {
+                const editAndRegenerate = useChatStore.getState().editAndRegenerate;
+                editAndRegenerate(idx, msg.content);
+              }}
+              title={tGlobal.chat.retryResponse || 'Ulangi Respons'}
+              style={bubbleStyles.hoverActionBtn}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.color = darkMode ? '#10b981' : '#059669';
+                e.currentTarget.style.background = darkMode
+                  ? 'rgba(16,185,129,0.1)'
+                  : 'rgba(5,150,105,0.05)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.color = '#9ca3af';
+                e.currentTarget.style.background = 'transparent';
+              }}
+            >
+              <svg
+                width="13"
+                height="13"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+                <path d="M3 3v5h5" />
+              </svg>
+            </button>
+          )}
         </div>
       )}
       {showToast && <div style={bubbleStyles.toast}>{toastMsg}</div>}

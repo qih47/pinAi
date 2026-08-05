@@ -1,6 +1,7 @@
 import logging
 import json
 import asyncio
+import os
 from typing import AsyncGenerator, List, Dict, Any, Optional
 
 from fastapi import Request
@@ -10,6 +11,7 @@ from backend.app.services.pipeline.sse_validation import format_sse, SSEEventTyp
 from backend.app.core.llm_client import stream_ollama_chat
 from backend.app.core.config import settings
 from backend.app.services.pipeline.modes.mode_utils import select_call2_module, get_module_config, build_call2_system_prompt
+from backend.app.core.paths import FILE_PERATURAN_DIR
 
 logger = logging.getLogger("MODE_DOCUMENTS")
 
@@ -50,57 +52,66 @@ class ModeDocuments:
         rag_sources = None
 
         # ── Step 2: Parallel Data Fetching ────────────────────────────────────────
-        # 2A: Setup Background Tasks
-        from backend.app.services.pipeline.community_knowledge import search_community_knowledge
-        from backend.app.services.peraturan_service import search_and_ocr_by_judul, search_and_ocr_by_synthetic_qa, hybrid_document_search
-        
-        task_community = asyncio.create_task(search_community_knowledge(user_message, is_guest=(current_user_npp == "GUEST")))
-        query_judul_list = routing_data.get("query_judul") or []
-        query_judul_str = " ".join(query_judul_list) if isinstance(query_judul_list, list) else str(query_judul_list)
-        
-        # FASE 3: HYBRID LATE FUSION RERANKING
-        logger.info(f"[MODE_DOCUMENTS] Sending query_judul_list to Hybrid FTS: {query_judul_list}")
-        task_peraturan = asyncio.create_task(hybrid_document_search(user_message, query_judul_list))
+        should_run_rag = routing_data.get("need_rag", True)
+        is_chitchat_msg = routing_data.get("is_chitchat", False) or routing_data.get("is_greeting", False)
 
-        # 2B: Stream RAG progress while tasks run in background
-        if rag_queries:
-            logger.info(f"[MODE_DOCUMENTS] RAG triggered via Sub-Queries | queries={rag_queries}")
-            yield format_sse(status="🔍 Mencari dokumen regulasi terkait", event_type=SSEEventType.STATUS)
+        if is_chitchat_msg or not should_run_rag:
+            logger.info("[MODE_DOCUMENTS] 💬 Sapaan ringan / chitchat terdeteksi di mode documents -> Lewati pencarian RAG & FTS!")
+            rag_context, rag_sources, judul_context, ocr_attachments, judul_sources = None, [], "", [], []
+            community_context = ""
+            query_judul_str = ""
+        else:
+            # 2A: Setup Background Tasks
+            from backend.app.services.pipeline.community_knowledge import search_community_knowledge
+            from backend.app.services.peraturan_service import search_and_ocr_by_judul, search_and_ocr_by_synthetic_qa, hybrid_document_search
             
-            from backend.app.services.rag.rag_pipeline import run_rag_pipeline
+            task_community = asyncio.create_task(search_community_knowledge(user_message, is_guest=(current_user_npp == "GUEST")))
+            query_judul_list = routing_data.get("query_judul") or []
+            query_judul_str = " ".join(query_judul_list) if isinstance(query_judul_list, list) else str(query_judul_list)
+            
+            # FASE 3: HYBRID LATE FUSION RERANKING
+            logger.info(f"[MODE_DOCUMENTS] Sending query_judul_list to Hybrid FTS: {query_judul_list}")
+            task_peraturan = asyncio.create_task(hybrid_document_search(user_message, query_judul_list))
 
-            async for sse in run_rag_pipeline(
-                rewritten_queries=rag_queries,
-                limit_per_query=3,
-                npp=current_user_npp,
-                use_cache=False, # SPRINT 5: Nonaktifkan semantic cache di mode documents
-            ):
-                raw = sse.strip()
-                if not raw:
-                    continue
-                try:
-                    data = json.loads(raw)
-                    event_type = data.get("event_type")
+            # 2B: Stream RAG progress while tasks run in background
+            if rag_queries:
+                logger.info(f"[MODE_DOCUMENTS] RAG triggered via Sub-Queries | queries={rag_queries}")
+                yield format_sse(status="🔍 Mencari dokumen regulasi terkait", event_type=SSEEventType.STATUS)
+                
+                from backend.app.services.rag.rag_pipeline import run_rag_pipeline
 
-                    if event_type == SSEEventType.PIPELINE_DATA:
-                        rag_context = data["payload"].get("context")
-                        rag_sources = data["payload"].get("sources")
-                        logger.info(f"[MODE_DOCUMENTS] RAG done | {len(rag_context or '')} chars | {len(rag_sources or [])} sources")
+                async for sse in run_rag_pipeline(
+                    rewritten_queries=rag_queries,
+                    limit_per_query=3,
+                    npp=current_user_npp,
+                    use_cache=False, # SPRINT 5: Nonaktifkan semantic cache di mode documents
+                ):
+                    raw = sse.strip()
+                    if not raw:
+                        continue
+                    try:
+                        data = json.loads(raw)
+                        event_type = data.get("event_type")
 
-                    if event_type in (SSEEventType.SOURCES, SSEEventType.THINKING, SSEEventType.STATUS):
-                        if event_type == SSEEventType.SOURCES:
-                            continue # Intercept and delay rendering sources to FE until we filter it
+                        if event_type == SSEEventType.PIPELINE_DATA:
+                            rag_context = data["payload"].get("context")
+                            rag_sources = data["payload"].get("sources")
+                            logger.info(f"[MODE_DOCUMENTS] RAG done | {len(rag_context or '')} chars | {len(rag_sources or [])} sources")
+
+                        if event_type in (SSEEventType.SOURCES, SSEEventType.THINKING, SSEEventType.STATUS):
+                            if event_type == SSEEventType.SOURCES:
+                                continue # Intercept and delay rendering sources to FE until we filter it
+                            yield sse
+                            await asyncio.sleep(0.005)
+
+                    except (json.JSONDecodeError, AttributeError):
                         yield sse
-                        await asyncio.sleep(0.005)
+                        await asyncio.sleep(0.01)
 
-                except (json.JSONDecodeError, AttributeError):
-                    yield sse
-                    await asyncio.sleep(0.01)
-
-        # 2C: Tunggu proses paralel selesai
-        yield format_sse(status="⏳ Memproses riwayat percakapan & scan file...", event_type=SSEEventType.STATUS)
-        community_context = await task_community
-        judul_context, ocr_attachments, judul_sources = await task_peraturan
+            # 2C: Tunggu proses paralel selesai
+            yield format_sse(status="⏳ Memproses riwayat percakapan & scan file...", event_type=SSEEventType.STATUS)
+            community_context = await task_community
+            judul_context, ocr_attachments, judul_sources = await task_peraturan
 
         # ── 2D: EVALUASI DAN LOG HASIL PENCARIAN KE TERMINAL ──
         has_title = False
@@ -201,9 +212,9 @@ class ModeDocuments:
         # ── Smart Context Truncation (Max ~42,000 chars / ~12k tokens total) ──
         # Tujuannya agar tersisa 4000 token untuk generasi jawaban.
         
-        # Alokasikan budget karakter
-        rag_budget = 25000 if not judul_context else 15000
-        judul_budget = 25000 if not rag_context else 15000
+        # Alokasikan budget karakter (SPRINT 5 OPTIMIZED: 12000 char agar 5 dokumen juara BGE masuk utuh tanpa prefill TTFT lambat)
+        rag_budget = 12000 if not judul_context else 8000
+        judul_budget = 12000 if not rag_context else 8000
         community_budget = 3000
         
         # Gabungkan dokumen fisik ke dalam satu block context
@@ -252,10 +263,11 @@ class ModeDocuments:
         # Mengambil 5 history + 1 current message = 6
         trimmed_messages = messages_dict[-6:] if len(messages_dict) > 6 else messages_dict
         
-        # Inject OCR Images to the last user message
-        if ocr_attachments:
-            images = [att["base64"] for att in ocr_attachments if att.get("type") == "image"]
+        # Inject OCR Images to the last user message (dibatasi max 2 gambar dan skip jika teks RAG sudah sangat lengkap)
+        if ocr_attachments and len(rag_context or "") <= 20000:
+            images = [att["base64"] for att in ocr_attachments if att.get("type") == "image"][:2]
             if images:
+                logger.info(f"[MODE_DOCUMENTS] 🖼️ Menginjeksikan {len(images)} gambar (dibatasi max 2 agar tidak memboroskan KV cache LLM)")
                 trimmed_messages[-1]["images"] = images
                 
         stream_messages = [
@@ -385,8 +397,6 @@ class ModeDocuments:
                                                 
                                         if missing_docs:
                                             from backend.app.core.database import get_peraturan_db
-                                            import os
-                                            PERATURAN_DIR = "/home/qisthi/pinAi/file_peraturan"
                                             async with get_peraturan_db() as conn_my:
                                                 async with conn_my.cursor() as cur:
                                                     for mdoc in missing_docs:
@@ -493,6 +503,37 @@ class ModeDocuments:
                                     final_sources = filtered_sources
                                 else:
                                     final_sources = []
+
+                                # ── Enrich final_sources dengan total_pages ────────────────
+                                # Hitung HANYA untuk dokumen yang benar-benar digunakan Gemma
+                                # (bukan semua kandidat RAG). Jalankan paralel via executor.
+                                if final_sources:
+                                    def _count_pages_sync(abs_path: str) -> int:
+                                        try:
+                                            import fitz
+                                            doc = fitz.open(abs_path)
+                                            n = len(doc)
+                                            doc.close()
+                                            return n
+                                        except Exception:
+                                            return 0
+
+                                    _loop = asyncio.get_running_loop()
+                                    _tasks = []
+                                    for _src in final_sources:
+                                        _filename = os.path.basename(_src.get("file_path", "") or "")
+                                        _abs = os.path.join(FILE_PERATURAN_DIR, _filename) if _filename else ""
+                                        if _abs and os.path.exists(_abs):
+                                            _tasks.append(_loop.run_in_executor(None, _count_pages_sync, _abs))
+                                        else:
+                                            async def _zero(): return 0
+                                            _tasks.append(_zero())
+
+                                    _page_results = await asyncio.gather(*_tasks, return_exceptions=True)
+                                    for _src, _n in zip(final_sources, _page_results):
+                                        n_pages = _n if isinstance(_n, int) else 0
+                                        _src["total_pages"] = str(n_pages) if n_pages > 0 else ""
+                                    logger.info(f"[MODE_DOCUMENTS] ✅ total_pages dihitung untuk {len(final_sources)} dokumen terpilih Gemma")
                                 
                                 yield format_sse("", "", False, sources=final_sources, event_type=SSEEventType.SOURCES)
                                 

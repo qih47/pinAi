@@ -1,5 +1,6 @@
 import React from "react";
 import SessionExpiryStatus from "../../../../components/SessionExpiryStatus";
+import { Plus, Search } from "lucide-react";
 import { translations } from "../../../../utils/translations";
 
 export default function SidebarHeader({
@@ -92,22 +93,11 @@ export default function SidebarHeader({
           }}
           title={t.newChat}
         >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            className="h-5 w-5 group-hover:text-blue-500 flex-shrink-0"
-            style={{ color: theme?.iconColor }}
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <line x1="12" y1="5" x2="12" y2="19"></line>
-            <line x1="5" y1="12" x2="19" y2="12"></line>
-          </svg>
+          <span className="h-5 w-5 flex items-center justify-center flex-shrink-0">
+            <Plus size={18} strokeWidth={2.5} className="group-hover:text-blue-500 transition-colors" style={{ color: theme?.iconColor || "currentColor" }} />
+          </span>
           <span
-            className={`font-medium whitespace-nowrap transition-opacity duration-300 ${!isOpen ? "hidden" : "opacity-100"
+            className={`font-semibold whitespace-nowrap transition-opacity duration-300 ${!isOpen ? "hidden" : "opacity-100"
               }`}
             style={{ color: theme?.textColor }}
           >
@@ -127,23 +117,10 @@ export default function SidebarHeader({
           title={t.searchChat}
         >
           <span className="h-5 w-5 flex items-center justify-center flex-shrink-0">
-            <svg
-              width="18"
-              height="18"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke={theme?.iconColor || "currentColor"}
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className="group-hover:text-blue-500 transition-colors"
-            >
-              <circle cx="11" cy="11" r="8"></circle>
-              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-            </svg>
+            <Search size={16} strokeWidth={2.5} className="group-hover:text-blue-500 transition-colors" style={{ color: theme?.iconColor || "currentColor" }} />
           </span>
           <span
-            className={`font-medium whitespace-nowrap transition-opacity duration-300 flex-1 text-left ${!isOpen ? "hidden" : "opacity-100"
+            className={`font-semibold whitespace-nowrap transition-opacity duration-300 flex-1 text-left ${!isOpen ? "hidden" : "opacity-100"
               }`}
             style={{ color: theme?.textColor }}
           >

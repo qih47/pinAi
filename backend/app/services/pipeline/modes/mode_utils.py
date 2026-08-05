@@ -2,7 +2,7 @@ import logging
 from typing import List, Dict, Any, Optional
 
 _CODING_KEYWORDS = ["import ", "export ", "const ", "async ", "await ", "function", "def ", "return ", "class ", "select ", "docker", "sql ", "query", "react", "python", "javascript", "coding", "usecontext", "usememo", "typescript", "golang", "kotlin", "flutter", "dart"]
-_GREETING_KEYWORDS = ["hai", "halo", "hello", "hi ", "apa kabar", "selamat pagi", "selamat siang", "selamat sore", "selamat malam", "assalamualaikum", "pagi", "siang", "malam"]
+_GREETING_KEYWORDS = ["hai", "halo", "hello", "hi ", "apa kabar", "selamat pagi", "selamat siang", "selamat sore", "selamat malam", "assalamualaikum", "pagi", "siang", "malam", "thanks", "thank you", "terima kasih", "makasih", "ok", "oke", "siap", "tq", "nuhun", "suwun", "mantap", "sip"]
 _DOC_KEYWORDS = ["ketentuan", "peraturan", "skep", "sk direksi", "surat edaran", "regulasi", "kebijakan", "prosedur", "sop", "seragam", "cuti", "gaji", "tunjangan", "rekrutmen", "rekrut", "pegawai", "pindad", "aturan", "pasal", "syarat", "lembur", "pensiun", "promosi", "jabatan", "seleksi", "penerimaan"]
 
 def detect_precheck(user_message: str, chat_mode: str, has_attachment: bool) -> Dict[str, Any]:
@@ -35,15 +35,29 @@ def detect_precheck(user_message: str, chat_mode: str, has_attachment: bool) -> 
     if word_count > 8:
         is_greeting = False
         
-    is_chitchat = is_greeting or (word_count <= 5 and not is_coding and not is_doc_query and not has_attachment)
+    _INSTRUCTION_VERBS = [
+        "buat", "buatkan", "buatin", "bikin", "bikinin", "analisa", "analisis", 
+        "jelaskan", "jelasin", "tabel", "timeline", "jadwal", "lanjut", "lanjutkan", 
+        "coba", "gas", "tolong", "perbaiki", "fix", "ubah", "ganti", "edit", 
+        "tampilkan", "ringkas", "rangkum"
+    ]
+    has_instruction = any(iv in msg_lower for iv in _INSTRUCTION_VERBS)
 
-    if chat_mode == "documents" or has_attachment:
+    if has_instruction:
+        is_greeting = False
+        is_chitchat = False
+    else:
+        is_chitchat = is_greeting or (word_count <= 4 and not is_coding and not is_doc_query and not has_attachment)
+
+    # SPRINT 5: Proteksi sapaan & ucapan terima kasih/apresiasi di mode apapun!
+    # Jangan paksakan need_rag_hint=True jika user sekadar sapaan ringan / makasih di mode "documents"
+    if is_chitchat and not is_doc_query and not has_instruction:
+        need_rag_hint = False
+    elif chat_mode == "documents" or has_attachment or is_doc_query:
         need_rag_hint = True
         is_chitchat = False
-    elif is_coding or is_chitchat:
+    elif is_coding:
         need_rag_hint = False
-    elif is_doc_query:
-        need_rag_hint = True
     else:
         need_rag_hint = None
         
@@ -88,20 +102,34 @@ def build_rule_based_queries(user_message: str) -> List[str]:
         if any(kw in msg_lower for kw in keywords):
             return prefixes[:3]
 
-    trash_words = [
-        "apakah", "ada", "yang", "lebih", "detail", "lagi", "seperti", 
-        "kalau", "gimana", "bagaimana", "sih", "cuy", "thanks", "ya", 
-        "mohon", "info", "tentang", "atau", "dan", "di", "ke", "dari", "untuk",
-        "buat", "dong", "sih?", "dong?", "ya?", "ketentuan", "ketentuannya", "ketentuannya?",
-        "aturan", "aturannya", "aturannya?", "regulasi", "regulasinya", "regulasinya?",
-        "kebijakan", "kebijakannya", "kebijakannya?", "apa", "aja", "saja",
+    trash_words = {
+        "apakah", "ada", "yang", "lebih", "detail", "lagi", "seperti", "kalau", "kalo",
+        "gimana", "bagaimana", "sih", "cuy", "thanks", "ya", "mohon", "info", "tentang",
+        "atau", "dan", "di", "ke", "dari", "untuk", "buat", "dong", "apa", "aja", "saja",
         "jelaskan", "tolong", "kasih", "tau", "beritahu", "beri", "tahu", "jelasin",
-        "bisa", "gak", "nggak", "engga", "ngga", "tidak", "dong,"
-    ]
-    words = [w for w in msg_lower.split() if w not in trash_words and len(w) > 2]
+        "bisa", "gak", "nggak", "engga", "ngga", "tidak", "dalam", "membahas", "bahas",
+        "coba", "mengenai", "terkait", "soal", "itu", "ini", "pada", "oleh", "dengan",
+        "kepada", "adalah", "merupakan", "yaitu", "dong", "sih?", "dong?", "ya?",
+        "ketentuan", "ketentuannya", "aturan", "aturannya", "regulasi", "regulasinya",
+        "kebijakan", "kebijakannya", "prosedur", "pasal", "ayat", "bab", "coba", "hal"
+    }
+    words = [w for w in msg_lower.split() if w.strip("?,.!") not in trash_words and len(w) > 2]
     if words:
-        core = " ".join(words[:3])
-        return [core, f"ketentuan {core}", f"regulasi {core}"]
+        full_core = " ".join(words)
+        queries = [full_core]
+        if len(words) >= 2:
+            # Subjek tanpa kata pertama (jika kata pertama adalah nama dokumen seperti pud, skep, pkb)
+            subjek_only = " ".join(words[1:]) if len(words) > 1 else full_core
+            queries.append(subjek_only)
+            # Kombinasi dokumen dan kata akhir
+            if len(words) >= 3:
+                queries.append(f"{words[0]} {words[-1]}")
+            queries.append(f"ketentuan {full_core}")
+        else:
+            queries.extend([f"ketentuan {full_core}", f"regulasi {full_core}"])
+        # Hapus duplikat sambil menjaga urutan
+        seen = set()
+        return [q for q in queries if not (q in seen or seen.add(q))][:4]
 
     short = " ".join(msg.split()[:3])
     return [short, f"ketentuan {short}", f"regulasi {short}"]
@@ -180,6 +208,6 @@ def get_module_config(module_name: str) -> Dict[str, Any]:
         "analytic": {"num_ctx": 16384, "temperature": 1.0},
         "self_correction": {"num_ctx": 16384, "temperature": 1.0},
         "ambiguous": {"num_ctx": 16384, "temperature": 1.0},
-        "general_expert": {"num_ctx": 16384, "temperature": 1.0},
+        "general_expert": {"num_ctx": 8192, "temperature": 1.0},
     }
     return configs.get(module_name, {"num_ctx": 16384, "temperature": 1.0})

@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from "react";
 import { translations } from "../../../utils/translations";
 import { useChatStore, API_BASE } from "../../../stores/chatStore";
 import apiClient from "../../../services/apiClient";
+import { Mail, Cloud, Lock, LogOut, CheckCircle2, User, KeyRound, ArrowRight } from "lucide-react";
 
 export default function SettingsModal({
   isOpen,
@@ -394,6 +395,7 @@ export default function SettingsModal({
                       {ttsVoice === 'id-ID-Pria2' && `CAKRA (ID) - ${t.male} 2`}
                       {ttsVoice === 'id-ID-Wanita1' && `CAKRA (ID) - ${t.female} 1`}
                       {ttsVoice === 'id-ID-Wanita2' && `CAKRA (ID) - ${t.female} 2`}
+
                       {ttsVoice === 'en-US-ChristopherNeural' && `Christopher (${t.male})`}
                       {ttsVoice === 'en-US-AriaNeural' && `Aria (${t.female})`}
                     </span>
@@ -406,7 +408,7 @@ export default function SettingsModal({
                     <div className={`absolute right-0 mt-2 w-[220px] rounded-xl shadow-xl border overflow-hidden z-50 animate-in fade-in zoom-in-95 duration-200 ${darkMode ? 'bg-[#18181b] border-gray-700 shadow-black/50' : 'bg-white border-gray-200 shadow-gray-200/50'}`}>
                       <div className="py-2">
                         <div className={`px-3 py-1.5 text-xs font-semibold ${darkMode ? 'text-gray-400 bg-gray-800/50' : 'text-gray-500 bg-gray-100'} uppercase tracking-wider`}>
-                          Bahasa Indonesia
+                          Bahasa Indonesia (CAKRA F5)
                         </div>
                         <button
                           onClick={() => { setTtsVoice('id-ID-Pria1'); setIsVoiceDropdownOpen(false); }}
@@ -646,142 +648,190 @@ export default function SettingsModal({
         }
 
         return (
-          <div className="space-y-8 max-w-2xl">
-            <h2 className="text-xl font-bold mb-6">{t.account}</h2>
-
-            <div className={`flex items-center justify-between py-4 border-b ${darkMode ? 'border-gray-700/50' : 'border-gray-200'}`}>
-              <div className="flex items-center space-x-4">
-                <div className="w-12 h-12 rounded-full overflow-hidden flex-shrink-0 border border-gray-700 bg-gray-800 flex items-center justify-center">
-                  {userData?.profile_photo_url ? (
-                    <img
-                      src={`http://192.168.11.80:5000${userData.profile_photo_url}`}
-                      alt="Profile"
-                      className="w-full h-full object-cover"
-                      onError={(e) => { e.currentTarget.style.display = "none"; }}
-                    />
-                  ) : userData?.npp ? (
-                    <img
-                      src={`https://hris.pindad.co.id/assets/image/foto_pegawai_bumn/${userData.npp}.jpg`}
-                      alt="Profile"
-                      className="w-full h-full object-cover"
-                      onError={(e) => {
-                        e.currentTarget.style.display = "none";
-                      }}
-                    />
-                  ) : (
-                    <span className={`font-bold ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>AI</span>
-                  )}
-                </div>
-                <div>
-                  <h3 className="font-medium text-[15px]">{userData?.name || userData?.nama || "User"}</h3>
-                  <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{userData?.email || `${userData?.npp || 'user'}@pindad.co.id`}</p>
-                </div>
-              </div>
-              <button
-                onClick={() => setIsEditingAccount(true)}
-                className={`px-4 py-1.5 text-sm font-medium rounded-full transition-colors ${darkMode ? 'bg-gray-800 hover:bg-gray-700 text-white' : 'bg-gray-200 hover:bg-gray-300 text-black'}`}
-              >
-                {t.editAccount}
-              </button>
-            </div>
-
-            <div className={`py-6 border-b ${darkMode ? 'border-gray-700/50' : 'border-gray-200'}`}>
-              <h3 className="font-bold text-[16px] mb-4">{t.linkedAccounts}</h3>
-              <div className="space-y-4">
-                {/* Mail Pindad */}
-                <div className="flex flex-col space-y-2">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h4 className="font-medium text-[14px]">{t.mailPindad}</h4>
-                      <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Smart Mail (Zimbra)</p>
-                    </div>
-                    {integrations.mail_connected ? (
-                      <div className="flex items-center space-x-3">
-                        <span className="text-xs font-medium text-green-500 flex items-center"><span className="w-2 h-2 rounded-full bg-green-500 mr-1.5"></span>{t.connected}</span>
-                        <button onClick={() => handleDisconnect('mail')} className={`px-3 py-1 text-xs font-medium rounded-full border ${darkMode ? 'border-gray-600 hover:bg-gray-700' : 'border-gray-300 hover:bg-gray-100'}`}>{t.disconnect}</button>
-                      </div>
-                    ) : connectingType === 'mail' ? (
-                       null
+          <div className="space-y-6 max-w-3xl">
+            {/* Header Hero Section */}
+            <div className="relative py-2 mb-2">
+              <div className="relative flex items-center justify-between z-10">
+                <div className="flex items-center space-x-5">
+                  <div className={`w-16 h-16 rounded-full overflow-hidden flex-shrink-0 ${darkMode ? 'bg-gray-800' : 'bg-gray-200'} shadow-sm flex items-center justify-center`}>
+                    {userData?.profile_photo_url ? (
+                      <img
+                        src={`http://192.168.11.80:5000${userData.profile_photo_url}`}
+                        alt="Profile"
+                        className="w-full h-full object-cover"
+                        onError={(e) => { e.currentTarget.style.display = "none"; }}
+                      />
+                    ) : userData?.npp ? (
+                      <img
+                        src={`https://hris.pindad.co.id/assets/image/foto_pegawai_bumn/${userData.npp}.jpg`}
+                        alt="Profile"
+                        className="w-full h-full object-cover"
+                        onError={(e) => { e.currentTarget.style.display = "none"; }}
+                      />
                     ) : (
-                      <button onClick={() => {
-                        setConnectingType('mail');
-                        setIntegrationUser(userData?.email || (userData?.npp ? `${userData.npp}@pindad.com` : ""));
-                      }} className={`px-4 py-1.5 text-sm font-medium rounded-full transition-colors ${darkMode ? 'bg-blue-600 hover:bg-blue-700 text-white' : 'bg-blue-600 hover:bg-blue-700 text-white'}`}>{t.connect}</button>
+                      <User size={28} className={darkMode ? 'text-gray-500' : 'text-gray-400'} />
                     )}
                   </div>
-                  {connectingType === 'mail' && (
-                    <form onSubmit={handleConnectSubmit} className={`p-3 rounded-lg border ${darkMode ? 'bg-gray-800/50 border-gray-700' : 'bg-gray-50 border-gray-200'} space-y-3`}>
-                      <input type="text" placeholder="Username" value={integrationUser} onChange={e => setIntegrationUser(e.target.value)} required className={`w-full px-3 py-2 text-sm rounded border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'} outline-none`} />
-                      <input type="password" placeholder="Password" value={integrationPass} onChange={e => setIntegrationPass(e.target.value)} required className={`w-full px-3 py-2 text-sm rounded border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'} outline-none`} />
-                      <div className="flex space-x-2">
-                        <button type="button" onClick={() => setConnectingType(null)} className={`flex-1 py-1.5 text-xs font-medium rounded transition-colors ${darkMode ? 'bg-gray-700 hover:bg-gray-600 text-white' : 'bg-gray-200 hover:bg-gray-300 text-black'}`}>Batal</button>
-                        <button type="submit" disabled={isConnecting} className="flex-1 py-1.5 text-xs font-medium rounded bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-50">{isConnecting ? "Memverifikasi..." : t.connect}</button>
-                      </div>
-                    </form>
-                  )}
-                </div>
-
-                {/* Cloud Pindad */}
-                <div className={`flex flex-col space-y-2 pt-4 border-t ${darkMode ? 'border-gray-700/50' : 'border-gray-200'}`}>
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h4 className="font-medium text-[14px]">{t.cloudPindad}</h4>
-                      <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Nextcloud WebDAV</p>
+                  <div>
+                    <h3 className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{userData?.name || userData?.nama || "User"}</h3>
+                    <p className={`text-sm mt-0.5 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{userData?.email || `${userData?.npp || 'user'}@pindad.co.id`}</p>
+                    <div className="flex items-center mt-2 space-x-2">
+                      <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-500/10 text-green-500 border border-green-500/20">
+                        <span className="w-1.5 h-1.5 rounded-full bg-green-500 mr-1.5"></span>
+                        Active
+                      </span>
+                      {userData?.divisi && (
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${darkMode ? 'bg-gray-700/50 text-gray-300' : 'bg-gray-100 text-gray-600'}`}>
+                          {userData.divisi}
+                        </span>
+                      )}
                     </div>
-                    {integrations.cloud_connected ? (
-                      <div className="flex items-center space-x-3">
-                        <span className="text-xs font-medium text-green-500 flex items-center"><span className="w-2 h-2 rounded-full bg-green-500 mr-1.5"></span>{t.connected}</span>
-                        <button onClick={() => handleDisconnect('cloud')} className={`px-3 py-1 text-xs font-medium rounded-full border ${darkMode ? 'border-gray-600 hover:bg-gray-700' : 'border-gray-300 hover:bg-gray-100'}`}>{t.disconnect}</button>
-                      </div>
-                    ) : connectingType === 'cloud' ? (
-                       null
-                    ) : (
-                      <button onClick={() => {
-                        setConnectingType('cloud');
-                        setIntegrationUser(userData?.email || (userData?.npp ? `${userData.npp}@pindad.com` : ""));
-                      }} className={`px-4 py-1.5 text-sm font-medium rounded-full transition-colors ${darkMode ? 'bg-blue-600 hover:bg-blue-700 text-white' : 'bg-blue-600 hover:bg-blue-700 text-white'}`}>{t.connect}</button>
-                    )}
                   </div>
-                  {connectingType === 'cloud' && (
-                    <form onSubmit={handleConnectSubmit} className={`p-3 rounded-lg border ${darkMode ? 'bg-gray-800/50 border-gray-700' : 'bg-gray-50 border-gray-200'} space-y-3`}>
-                      <input type="text" placeholder="Username" value={integrationUser} onChange={e => setIntegrationUser(e.target.value)} required className={`w-full px-3 py-2 text-sm rounded border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'} outline-none`} />
-                      <input type="password" placeholder="Password" value={integrationPass} onChange={e => setIntegrationPass(e.target.value)} required className={`w-full px-3 py-2 text-sm rounded border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'} outline-none`} />
-                      <div className="flex space-x-2">
-                        <button type="button" onClick={() => setConnectingType(null)} className={`flex-1 py-1.5 text-xs font-medium rounded transition-colors ${darkMode ? 'bg-gray-700 hover:bg-gray-600 text-white' : 'bg-gray-200 hover:bg-gray-300 text-black'}`}>Batal</button>
-                        <button type="submit" disabled={isConnecting} className="flex-1 py-1.5 text-xs font-medium rounded bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-50">{isConnecting ? "Memverifikasi..." : t.connect}</button>
+                </div>
+                <button
+                  onClick={() => setIsEditingAccount(true)}
+                  className={`px-4 py-2 text-sm font-medium rounded-full transition-colors ${darkMode ? 'bg-gray-800 hover:bg-gray-700 text-white' : 'bg-gray-200 hover:bg-gray-300 text-gray-900'}`}
+                >
+                  {t.editAccount}
+                </button>
+              </div>
+            </div>
+
+            {/* Linked Accounts */}
+            <div>
+              <h3 className={`font-semibold text-sm mb-4 px-1 uppercase tracking-wider ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{t.linkedAccounts}</h3>
+              <div className="space-y-2">
+                
+                {/* Zimbra Mail List Row */}
+                <div className="flex flex-col transition-all duration-300">
+                  <div className="flex items-center justify-between py-3">
+                    <div className="flex items-center space-x-4">
+                      <div className={`p-2.5 rounded-xl ${darkMode ? 'bg-blue-500/10 text-blue-400' : 'bg-blue-50 text-blue-600'}`}>
+                        <Mail size={20} strokeWidth={1.5} />
+                      </div>
+                      <div>
+                        <div className="flex items-center space-x-2">
+                          <h4 className={`font-medium text-[15px] ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>{t.mailPindad}</h4>
+                          {integrations.mail_connected && <CheckCircle2 size={16} className="text-green-500" />}
+                        </div>
+                        <p className={`text-xs mt-0.5 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Smart Mail (Zimbra)</p>
+                      </div>
+                    </div>
+                    <div>
+                      {integrations.mail_connected ? (
+                        <button onClick={() => handleDisconnect('mail')} className={`px-4 py-1.5 text-sm font-medium rounded-full transition-colors ${darkMode ? 'bg-gray-800 hover:bg-gray-700 text-gray-300' : 'bg-gray-200 hover:bg-gray-300 text-gray-700'}`}>{t.disconnect}</button>
+                      ) : connectingType === 'mail' ? (
+                         null
+                      ) : (
+                        <button onClick={() => { setConnectingType('mail'); setIntegrationUser(userData?.email || (userData?.npp ? `${userData.npp}@pindad.com` : "")); }} className={`px-4 py-1.5 flex items-center justify-center space-x-2 text-sm font-medium rounded-full transition-colors ${darkMode ? 'bg-blue-500/10 text-blue-400 hover:bg-blue-500/20' : 'bg-blue-50 text-blue-600 hover:bg-blue-100'}`}>
+                          <span>{t.connect}</span>
+                          <ArrowRight size={14} />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  {/* Expandable Form */}
+                  <div className={`overflow-hidden transition-all duration-300 ${connectingType === 'mail' ? 'max-h-64 mt-2 mb-2 opacity-100 pl-[3.25rem]' : 'max-h-0 opacity-0'}`}>
+                    <form onSubmit={handleConnectSubmit} className="space-y-3 max-w-sm">
+                      <input type="text" placeholder="Username" value={integrationUser} onChange={e => setIntegrationUser(e.target.value)} required className={`w-full px-3 py-2 text-sm rounded-xl border ${darkMode ? 'bg-gray-900/50 border-gray-700 text-white focus:border-blue-500' : 'bg-white border-gray-200 text-black focus:border-blue-500'} outline-none transition-all`} />
+                      <input type="password" placeholder="Password" value={integrationPass} onChange={e => setIntegrationPass(e.target.value)} required className={`w-full px-3 py-2 text-sm rounded-xl border ${darkMode ? 'bg-gray-900/50 border-gray-700 text-white focus:border-blue-500' : 'bg-white border-gray-200 text-black focus:border-blue-500'} outline-none transition-all`} />
+                      <div className="flex space-x-2 pt-1">
+                        <button type="button" onClick={() => setConnectingType(null)} className={`flex-1 py-1.5 text-sm font-medium rounded-xl transition-colors ${darkMode ? 'bg-gray-700 hover:bg-gray-600 text-white' : 'bg-gray-100 hover:bg-gray-200 text-gray-700'}`}>Batal</button>
+                        <button type="submit" disabled={isConnecting} className="flex-1 py-1.5 text-sm font-medium rounded-xl bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-50 transition-colors shadow-sm">{isConnecting ? "Verifying..." : t.connect}</button>
                       </div>
                     </form>
-                  )}
+                  </div>
+                </div>
+
+                {/* Nextcloud List Row */}
+                <div className="flex flex-col transition-all duration-300">
+                  <div className="flex items-center justify-between py-3">
+                    <div className="flex items-center space-x-4">
+                      <div className={`p-2.5 rounded-xl ${darkMode ? 'bg-indigo-500/10 text-indigo-400' : 'bg-indigo-50 text-indigo-600'}`}>
+                        <Cloud size={20} strokeWidth={1.5} />
+                      </div>
+                      <div>
+                        <div className="flex items-center space-x-2">
+                          <h4 className={`font-medium text-[15px] ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>{t.cloudPindad}</h4>
+                          {integrations.cloud_connected && <CheckCircle2 size={16} className="text-green-500" />}
+                        </div>
+                        <p className={`text-xs mt-0.5 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Nextcloud WebDAV</p>
+                      </div>
+                    </div>
+                    <div>
+                      {integrations.cloud_connected ? (
+                        <button onClick={() => handleDisconnect('cloud')} className={`px-4 py-1.5 text-sm font-medium rounded-full transition-colors ${darkMode ? 'bg-gray-800 hover:bg-gray-700 text-gray-300' : 'bg-gray-200 hover:bg-gray-300 text-gray-700'}`}>{t.disconnect}</button>
+                      ) : connectingType === 'cloud' ? (
+                         null
+                      ) : (
+                        <button onClick={() => { setConnectingType('cloud'); setIntegrationUser(userData?.email || (userData?.npp ? `${userData.npp}@pindad.com` : "")); }} className={`px-4 py-1.5 flex items-center justify-center space-x-2 text-sm font-medium rounded-full transition-colors ${darkMode ? 'bg-indigo-500/10 text-indigo-400 hover:bg-indigo-500/20' : 'bg-indigo-50 text-indigo-600 hover:bg-indigo-100'}`}>
+                          <span>{t.connect}</span>
+                          <ArrowRight size={14} />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  {/* Expandable Form */}
+                  <div className={`overflow-hidden transition-all duration-300 ${connectingType === 'cloud' ? 'max-h-64 mt-2 mb-2 opacity-100 pl-[3.25rem]' : 'max-h-0 opacity-0'}`}>
+                    <form onSubmit={handleConnectSubmit} className="space-y-3 max-w-sm">
+                      <input type="text" placeholder="Username" value={integrationUser} onChange={e => setIntegrationUser(e.target.value)} required className={`w-full px-3 py-2 text-sm rounded-xl border ${darkMode ? 'bg-gray-900/50 border-gray-700 text-white focus:border-indigo-500' : 'bg-white border-gray-200 text-black focus:border-indigo-500'} outline-none transition-all`} />
+                      <input type="password" placeholder="Password" value={integrationPass} onChange={e => setIntegrationPass(e.target.value)} required className={`w-full px-3 py-2 text-sm rounded-xl border ${darkMode ? 'bg-gray-900/50 border-gray-700 text-white focus:border-indigo-500' : 'bg-white border-gray-200 text-black focus:border-indigo-500'} outline-none transition-all`} />
+                      <div className="flex space-x-2 pt-1">
+                        <button type="button" onClick={() => setConnectingType(null)} className={`flex-1 py-1.5 text-sm font-medium rounded-xl transition-colors ${darkMode ? 'bg-gray-700 hover:bg-gray-600 text-white' : 'bg-gray-100 hover:bg-gray-200 text-gray-700'}`}>Batal</button>
+                        <button type="submit" disabled={isConnecting} className="flex-1 py-1.5 text-sm font-medium rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white disabled:opacity-50 transition-colors shadow-sm">{isConnecting ? "Verifying..." : t.connect}</button>
+                      </div>
+                    </form>
+                  </div>
                 </div>
               </div>
             </div>
 
-            <div className={`flex items-center justify-between py-4 border-b ${darkMode ? 'border-gray-700/50' : 'border-gray-200'}`}>
-              <div>
-                <h3 className="font-medium text-[14px]">{t.passwordManagement}</h3>
+            {/* Security & Danger Zone */}
+            <div className="mt-8">
+              <h3 className={`font-semibold text-sm mb-4 px-1 uppercase tracking-wider ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Security & Access</h3>
+              <div className="space-y-2">
+                {/* Ubah Password */}
+                <div className={`flex items-center justify-between py-3 transition-colors`}>
+                  <div className="flex items-center space-x-4">
+                    <div className={`p-2.5 rounded-xl ${darkMode ? 'bg-gray-700/50 text-gray-300' : 'bg-gray-100 text-gray-600'}`}>
+                      <KeyRound size={20} strokeWidth={1.5} />
+                    </div>
+                    <div>
+                      <h4 className={`font-medium text-[15px] ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>{t.passwordManagement}</h4>
+                      <p className={`text-xs mt-0.5 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Perbarui kata sandi akun Cakra Anda</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setIsChangingPassword(true)}
+                    className={`px-4 py-2 text-sm font-medium rounded-xl transition-all duration-200 ${darkMode ? 'bg-gray-700 hover:bg-gray-600 text-white' : 'bg-gray-100 hover:bg-gray-200 text-gray-800'}`}
+                  >
+                    {t.changePassword}
+                  </button>
+                </div>
+                
+                {/* Logout */}
+                <div className={`flex items-center justify-between py-3 transition-colors group`}>
+                  <div className="flex items-center space-x-4">
+                    <div className={`p-2.5 rounded-xl ${darkMode ? 'bg-red-500/10 text-red-400 group-hover:bg-red-500/20 group-hover:text-red-500' : 'bg-red-50 text-red-500 group-hover:bg-red-100'} transition-colors`}>
+                      <LogOut size={20} strokeWidth={1.5} />
+                    </div>
+                    <div>
+                      <h4 className={`font-medium text-[15px] ${darkMode ? 'text-red-400' : 'text-red-600'}`}>{t.accountManagement}</h4>
+                      <p className={`text-xs mt-0.5 ${darkMode ? 'text-gray-400 group-hover:text-red-400/70' : 'text-gray-500 group-hover:text-red-500/70'}`}>Keluar dari perangkat ini</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => {
+                      onClose();
+                      if (triggerLogout) triggerLogout();
+                      else window.location.href = '/login';
+                    }}
+                    className={`px-4 py-2 text-sm font-medium rounded-full transition-colors ${darkMode ? 'bg-red-500/10 text-red-400 hover:bg-red-500/20' : 'bg-red-50 text-red-600 hover:bg-red-100'}`}
+                  >
+                    {t.logoutAccount}
+                  </button>
+                </div>
               </div>
-              <button
-                onClick={() => setIsChangingPassword(true)}
-                className={`px-4 py-1.5 text-sm font-medium rounded-full transition-colors ${darkMode ? 'bg-gray-800 hover:bg-gray-700 text-white' : 'bg-gray-200 hover:bg-gray-300 text-black'}`}
-              >
-                {t.changePassword}
-              </button>
-            </div>
-
-            <div className={`flex items-center justify-between py-4 border-b ${darkMode ? 'border-gray-700/50' : 'border-gray-200'}`}>
-              <div>
-                <h3 className="font-medium text-[14px]">{t.accountManagement}</h3>
-              </div>
-              <button
-                onClick={() => {
-                  onClose();
-                  if (triggerLogout) triggerLogout();
-                  else window.location.href = '/login';
-                }}
-                className="px-4 py-1.5 text-sm font-medium rounded-full border border-red-900/50 text-red-500 hover:bg-red-500/10 transition-colors"
-              >
-                {t.logoutAccount}
-              </button>
             </div>
           </div>
         );

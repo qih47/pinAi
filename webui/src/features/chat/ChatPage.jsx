@@ -58,6 +58,13 @@ export default function ChatPage({ isGuest,
     }
   }, [corporateMode, setShowRightSidebar]);
 
+  React.useEffect(() => {
+    // Tutup sidebar kanan secara otomatis setiap kali pindah sesi chat
+    setShowRightSidebar(false);
+    // Timeout untuk memberi waktu animasi close selesai sebelum menghapus kontennya
+    setTimeout(() => setPreviewArtifact(null), 300);
+  }, [activeSessionId, setShowRightSidebar, setPreviewArtifact]);
+
   return (
     <div style={{ ...styles.root, background: theme.rootBg }}>
       {/* ── BACKDROP MOBILE ── */}
@@ -433,6 +440,7 @@ export default function ChatPage({ isGuest,
               setDarkMode={setDarkMode}
               theme={theme}
               language={language}
+              setLanguage={setLanguage}
             />
           </div>
         </header>
@@ -869,6 +877,8 @@ export default function ChatPage({ isGuest,
         handleDownloadAllArtifacts={handleDownloadAllArtifacts}
         setPreviewImage={setPreviewImage}
         setShowRightSidebar={setShowRightSidebar}
+        setRightSidebarWidth={setRightSidebarWidth}
+        sidebarOpen={sidebarOpen}
         language={language}
       />
 

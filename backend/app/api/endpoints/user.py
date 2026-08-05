@@ -254,17 +254,25 @@ async def connect_mail(payload: dict = Body(...)):
     except Exception as e:
         raise HTTPException(status_code=401, detail="Unauthorized")
         
-    # Verifikasi koneksi ke IMAP
-    if password != "MOCK_TEST":
-        try:
-            def verify_imap():
-                mail = imaplib.IMAP4_SSL("mail.pindad.com", 993)
-                mail.login(username, password)
-                mail.logout()
-            await asyncio.to_thread(verify_imap)
-        except Exception as e:
-            logger.error(f"[ZIMBRA] Verifikasi IMAP Gagal untuk {username}: {e}")
-            raise HTTPException(status_code=400, detail="Kredensial salah atau gagal menghubungi mail.pindad.com. Silakan periksa kembali Username dan Password Anda.")
+    # Verifikasi koneksi ke IMAP mail.pindad.com
+    try:
+        def verify_imap():
+            mail = imaplib.IMAP4_SSL("mail.pindad.com", 993)
+            mail.login(username, password)
+            mail.logout()
+        await asyncio.to_thread(verify_imap)
+    except imaplib.IMAP4.error as e:
+        logger.error(f"[ZIMBRA] Verifikasi Login IMAP Gagal untuk {username}: {e}")
+        raise HTTPException(
+            status_code=400,
+            detail="Verifikasi Gagal: Username atau Password Zimbra salah. Mohon periksa kembali kredensial akun mail.pindad.com Anda."
+        )
+    except Exception as e:
+        logger.error(f"[ZIMBRA] Verifikasi IMAP Gagal untuk {username}: {e}")
+        raise HTTPException(
+            status_code=400,
+            detail="Gagal menghubungi server mail.pindad.com. Silakan periksa koneksi atau kredensial akun Anda."
+        )
     
     async with get_db() as conn:
         await conn.execute("""
@@ -309,21 +317,24 @@ async def connect_cloud(payload: dict = Body(...)):
         raise HTTPException(status_code=401, detail="Unauthorized")
         
     # Verifikasi koneksi ke Nextcloud WebDAV
-    if password != "MOCK_TEST":
-        import httpx
-        try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                response = await client.request(
-                    "PROPFIND",
-                    "https://cloud.pindad.com/remote.php/webdav/",
-                    auth=(username, password),
-                    headers={"Depth": "0"}
-                )
-                if response.status_code == 401 or response.status_code == 403:
-                    raise Exception("Unauthorized")
-        except Exception as e:
-            logger.error(f"[NEXTCLOUD] Verifikasi Gagal untuk {username}: {e}")
-            raise HTTPException(status_code=400, detail="Kredensial salah atau gagal menghubungi cloud.pindad.com. Silakan periksa kembali Username dan Password Anda.")
+    import httpx
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.request(
+                "PROPFIND",
+                "https://cloud.pindad.com/remote.php/webdav/",
+                auth=(username, password),
+                headers={"Depth": "0"}
+            )
+            if response.status_code == 401 or response.status_code == 403:
+                raise HTTPException(status_code=400, detail="Verifikasi Gagal: Username atau Password Cloud salah. Mohon periksa kembali kredensial akun cloud.pindad.com Anda.")
+            if response.status_code >= 400 and response.status_code != 404:
+                raise HTTPException(status_code=400, detail=f"Server cloud.pindad.com mengembalikan error HTTP {response.status_code}.")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[NEXTCLOUD] Verifikasi Gagal untuk {username}: {e}")
+        raise HTTPException(status_code=400, detail="Gagal menghubungi cloud.pindad.com. Silakan periksa kembali Username dan Password Anda.")
     
     async with get_db() as conn:
         await conn.execute("""

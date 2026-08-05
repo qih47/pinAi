@@ -1,18 +1,7 @@
 import React, { useState, useEffect } from "react";
 import cakraLogo from '../../assets/cakra.png';
 
-const GREETING_TEMPLATES = [
-  "Tugas apa yang mau dikerjakan hari ini",
-  "Ada yang bisa saya bantu hari ini",
-  "Mari selesaikan tugas anda hari ini",
-  "Fokus mengerjakan apa hari ini",
-  "Siap membantu menyelesaikan target anda",
-  "Apa prioritas utama anda saat ini",
-  "Mari kita buat hari ini lebih produktif",
-  "Butuh bantuan menganalisis sesuatu hari ini",
-  "Siap mengeksekusi tugas terbaru anda",
-  "Target apa yang ingin diselesaikan sekarang"
-];
+// GREETING_TEMPLATES removed, using translations.js arrays instead
 
 import { translations } from '../../utils/translations';
 
@@ -28,11 +17,18 @@ export default function GuestWelcome({
   const [randomGreeting, setRandomGreeting] = useState("");
 
   useEffect(() => {
+    // Memastikan selalu array
+    const greetingArray = Array.isArray(t.greeting) ? t.greeting : [t.greeting];
+    const guestArray = Array.isArray(t.guest) ? t.guest : [t.guest];
+
     if (isLoggedIn) {
-      const randomIndex = Math.floor(Math.random() * GREETING_TEMPLATES.length);
-      setRandomGreeting(GREETING_TEMPLATES[randomIndex]);
+      const randomIndex = Math.floor(Math.random() * greetingArray.length);
+      setRandomGreeting(greetingArray[randomIndex]);
+    } else {
+      const randomIndex = Math.floor(Math.random() * guestArray.length);
+      setRandomGreeting(guestArray[randomIndex]);
     }
-  }, [isLoggedIn]);
+  }, [isLoggedIn, t.greeting, t.guest]);
 
   const rawFirstName = userData?.preferred_name || userData?.fullname?.split(" ")[0] || "Guest";
   const firstName = rawFirstName.charAt(0).toUpperCase() + rawFirstName.slice(1).toLowerCase();
@@ -97,8 +93,8 @@ export default function GuestWelcome({
           color: 'transparent'
         }}>
           {isLoggedIn
-            ? `${t.greeting}, ${firstName}?`
-            : t.guest}
+            ? `${randomGreeting || (Array.isArray(t.greeting) ? t.greeting[0] : t.greeting)}, ${firstName}?`
+            : (randomGreeting || (Array.isArray(t.guest) ? t.guest[0] : t.guest))}
         </h2>
       </div>
 
@@ -114,7 +110,7 @@ export default function GuestWelcome({
           textAlign: 'center',
           lineHeight: '1.5'
         }}>
-          Mau cari informasi apa hari ini?
+          {t.guestSubtitle || "Mau cari informasi apa hari ini?"}
         </p>
       )}
     </div>

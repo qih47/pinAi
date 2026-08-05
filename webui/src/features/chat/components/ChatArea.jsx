@@ -4,6 +4,7 @@ import ChatBubble from './ChatBubble';
 import cakraLogo from '../../../assets/cakra.png';
 import { styles } from '../chatPage.styles';
 import { translations } from '../../../utils/translations';
+import { useChatStore } from '../../../stores/chatStore';
 
 const SkeletonChat = () => (
   <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', width: '100%', padding: '12px 0' }}>
@@ -54,26 +55,28 @@ export default function ChatArea({
     if (messagesContainerRef?.current && !scrollParent) {
       setScrollParent(messagesContainerRef.current);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // AUTO SCROLL SAAT STREAMING SELESAI
   const prevIsStreamingRef = useRef(isStreaming);
   useEffect(() => {
     if (prevIsStreamingRef.current === true && isStreaming === false) {
-      if (messagesContainerRef?.current) {
-        setTimeout(() => {
-          if (messagesContainerRef.current) {
-            messagesContainerRef.current.scrollTo({
-              top: messagesContainerRef.current.scrollHeight,
-              behavior: 'smooth',
-            });
+      const isEditRegenerating = useChatStore.getState().isEditRegenerating;
+      if (!isEditRegenerating && virtuosoRef.current && messages.length > 0) {
+        const forceScroll = (behavior) => {
+          if (virtuosoRef.current) {
+            virtuosoRef.current.scrollTo({ top: 9999999, behavior });
           }
-        }, 150);
+        };
+        // Scroll pertama (animasi)
+        setTimeout(() => forceScroll('smooth'), 150);
+        // Scroll kedua (sapu bersih jika ada layout shift dari markdown)
+        setTimeout(() => forceScroll('auto'), 500);
       }
     }
     prevIsStreamingRef.current = isStreaming;
-  }, [isStreaming, messagesContainerRef]);
+  }, [isStreaming, messages.length]);
 
   // SCROLL TO BOTTOM SAAT SESSION DI-LOAD
   // Sama seperti ScrollBottomButton: scrollTo({ top: 9999999 }).
@@ -86,12 +89,16 @@ export default function ChatArea({
 
     if ((wasLoading && !isLoading && messages.length > 0) || appeared) {
       const scrollToBottom = () => {
-        if (messagesContainerRef?.current) {
-          messagesContainerRef.current.scrollTo({ top: 9999999, behavior: 'instant' });
+        if (virtuosoRef.current) {
+          virtuosoRef.current.scrollTo({
+            top: 9999999,
+            behavior: 'auto'
+          });
         }
       };
       requestAnimationFrame(scrollToBottom);
       setTimeout(scrollToBottom, 200);
+      setTimeout(scrollToBottom, 500); // Safeguard buat nunggu gambar/markdown
     }
 
     prevIsLoadingRef.current = isLoading;
@@ -142,7 +149,8 @@ export default function ChatArea({
           </div>
         </div>
       )}
-      <div style={{ height: '60px', width: '100%', flexShrink: 0 }} />
+      {/* Spacer bawah yang sudah di-adjust (tidak terlalu tinggi, tidak terlalu mepet) */}
+      <div style={{ height: '90px', width: '100%', flexShrink: 0 }} />
     </>
   ), [isStreaming, lastAssistantIndex, currentThinking, theme.mainBg, theme.secondaryText]);
 
@@ -184,8 +192,10 @@ export default function ChatArea({
               atBottomStateChange={(atBottom) => {
                 if (onAtBottomChange) onAtBottomChange(atBottom);
               }}
+              alignToBottom={true}
               followOutput={(isAtBottom) => {
-                if (isAtBottom) return isStreamingText ? 'auto' : 'smooth';
+                if (isStreamingText) return 'auto';
+                if (isAtBottom) return 'auto';
                 return false;
               }}
               increaseViewportBy={{ top: 800, bottom: 800 }}

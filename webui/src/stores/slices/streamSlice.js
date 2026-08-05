@@ -178,6 +178,7 @@ export const createStreamSlice = (set, get) => ({
             messages: currentMessages,
             isStreaming: true,
             isThinking: true,
+            isEditRegenerating: true,
             abortController: controller,
             currentThinking: get().isThinkingMode ? 'Sedang berpikir...' : ''
         });
@@ -192,11 +193,25 @@ export const createStreamSlice = (set, get) => ({
             .map((file) => file.file_path)
             .filter(Boolean);
 
-        // 4. Panggil stream dengan target parameter (index + 1) dan editIndex = index
+        // 4. Tentukan mode chat berdasarkan mode asli pesan yang sedang diregenerate (jika ada)
         const currentIsolatedDocId = get().activeIsolatedDocId;
         const currentChatMode = get().chatMode || 'auto';
         let effectiveChatMode = currentChatMode;
-        if (currentIsolatedDocId) {
+
+        // Cek mode asli dari pesan yang diedit atau respons setelahnya
+        const editedMsg = currentMessages[index];
+        const prevAssistantMsg = currentMessages[index + 1];
+        let detectedMode = editedMsg?.metadata?.mode || editedMsg?.mode;
+        if (!detectedMode && prevAssistantMsg?.thought) {
+            const match = prevAssistantMsg.thought.match(/Mode:\s*([a-zA-Z]+)/i);
+            if (match && match[1]) {
+                detectedMode = match[1].toLowerCase();
+            }
+        }
+
+        if (detectedMode && ['auto', 'focus', 'documents', 'compliance'].includes(detectedMode)) {
+            effectiveChatMode = detectedMode; // Gunakan mode asli pesan tersebut
+        } else if (currentIsolatedDocId) {
             effectiveChatMode = currentChatMode === 'compliance' ? 'compliance' : 'focus';
         }
         

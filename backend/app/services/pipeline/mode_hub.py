@@ -1,6 +1,7 @@
 import logging
 import json
 import asyncio
+from datetime import datetime
 from typing import AsyncGenerator, List, Dict, Any, Optional
 from fastapi import Request
 
@@ -116,13 +117,13 @@ class ModeHub:
                 from backend.app.services.chat.chat_history_service import chat_history_service
                 radar_scores = {"dokumen": 10, "coding": 10, "chitchat": 10, "analitik": 100, "ambigu": 10}
                 obs_dict = {"msg": "Bypassing Call 1 -> INSIGHT", "radar": radar_scores}
-                await chat_history_service.save_agent_step(
+                asyncio.create_task(chat_history_service.save_agent_step(
                     session_id=session_uuid,
                     step_number=1,
                     tool_called="ROUTER_ENGINE",
                     tool_input="Direct Insight Request",
                     observation=json.dumps(obs_dict)
-                )
+                ))
             handler = self.mode_handlers["insight"]
             async for chunk in handler.execute(
                 user_message=user_message,
@@ -145,13 +146,13 @@ class ModeHub:
                 from backend.app.services.chat.chat_history_service import chat_history_service
                 radar_scores = {"dokumen": 100, "coding": 10, "chitchat": 10, "analitik": 10, "ambigu": 10}
                 obs_dict = {"msg": "Bypassing Call 1 -> FOCUS", "radar": radar_scores}
-                await chat_history_service.save_agent_step(
+                asyncio.create_task(chat_history_service.save_agent_step(
                     session_id=session_uuid,
                     step_number=1,
                     tool_called="ROUTER_ENGINE",
                     tool_input="Context Isolation Active",
                     observation=json.dumps(obs_dict)
-                )
+                ))
             from backend.app.services.pipeline.modes.mode_focus import ModeFocus
             if "focus" not in self.mode_handlers:
                 self.mode_handlers["focus"] = ModeFocus()
@@ -178,13 +179,13 @@ class ModeHub:
                 from backend.app.services.chat.chat_history_service import chat_history_service
                 radar_scores = {"dokumen": 100, "coding": 10, "chitchat": 10, "analitik": 100, "ambigu": 10}
                 obs_dict = {"msg": "Bypassing Call 1 -> ATTACHMENT", "radar": radar_scores}
-                await chat_history_service.save_agent_step(
+                asyncio.create_task(chat_history_service.save_agent_step(
                     session_id=session_uuid,
                     step_number=1,
                     tool_called="ROUTER_ENGINE",
                     tool_input="File Attachment Found",
                     observation=json.dumps(obs_dict)
-                )
+                ))
             handler = self.mode_handlers["attachment"]
             async for chunk in handler.execute(
                 user_message=user_message,
@@ -226,35 +227,30 @@ class ModeHub:
         is_guest = (current_user_npp == "GUEST")
         is_first_chat = len(chat_history) <= 1
 
-        # Jangan bypass Call 1 jika ini adalah first chat, agar Gemma bisa merumuskan session_title!
-        if not is_first_chat and (precheck.get("is_chitchat") or precheck.get("is_greeting")):
-            from backend.app.services.pipeline.call1_router import _build_fallback_routing
-            logger.info("[MODE_HUB] Bypassing Call 1 for simple chitchat/greeting")
-            routing_data = _build_fallback_routing(precheck)
-        else:
-            routing_data = await execute_call1_routing(
-                request=request,
-                user_message=user_message,
-                context_history_str=context_history_str,
-                precheck=precheck,
-                ocr_text=None,
-                is_guest=is_guest,
-                is_first_chat=is_first_chat,
-            )
+        call1_start_t = datetime.now()
+        routing_data = await execute_call1_routing(
+            request=request,
+            user_message=user_message,
+            context_history_str=context_history_str,
+            precheck=precheck,
+            ocr_text=None,
+            is_guest=is_guest,
+            is_first_chat=is_first_chat,
+        )
+        call1_ms = (datetime.now() - call1_start_t).total_seconds() * 1000
+        logger.info(f"⚡ [TIMING_BENCHMARK] Call 1 Router selesai dalam {call1_ms:.1f}ms ({call1_ms/1000:.2f}s)")
 
         logger.info(
             f"[MODE_HUB] Call 1 complete | need_rag={routing_data.get('need_rag')} | "
             f"is_coding={routing_data.get('is_coding')} | queries={routing_data.get('queries')}"
         )
         
-        # ── Update Session Title (Gemma 4 Native) ──────────────────────────────────
-        if is_first_chat and routing_data.get("session_title") and session_uuid:
+        # ── Update Session Title (Gemma 4 Native / Fallback) ────────────────────────
+        if routing_data.get("session_title") and session_uuid:
             try:
                 new_title = routing_data["session_title"].strip().strip('"').strip("'").strip(".").title()
                 from backend.app.services.chat.chat_history_service import chat_history_service
-                asyncio.create_task(
-                    chat_history_service.update_title_direct(session_uuid, new_title)
-                )
+                await chat_history_service.update_title_direct(session_uuid, new_title)
             except Exception as e:
                 logger.error(f"[MODE_HUB] Failed to update session title direct: {e}")
         
@@ -343,19 +339,44 @@ class ModeHub:
                 "msg": f"Decided to use: {'RAG' if routing_data.get('need_rag') else 'Flash'} Mode. Queries: {queries}",
                 "radar": radar_scores
             }
-            await chat_history_service.save_agent_step(
+            asyncio.create_task(chat_history_service.save_agent_step(
                 session_id=session_uuid,
                 step_number=1,
                 tool_called="ROUTER_ENGINE",
                 tool_input=user_message[:200],
                 observation=json.dumps(obs_dict)
-            )
+            ))
 
         if current_user_npp == "GUEST":
             routing_data["need_rag"] = False
             logger.info("[MODE_HUB] GUEST User detected — RAG forcefully disabled.")
 
         precheck.update(routing_data)
+
+        # ── 🌍 Geocoding Tool Calling (Nominatim) ──────────────────────────────────
+        if routing_data.get("is_map_query"):
+            yield format_sse(status="🌍 Mencari koordinat peta (Nominatim)", event_type=SSEEventType.STATUS)
+            from backend.app.services.tools.geocoding import geocode_osm
+            
+            # Ambil keyword lokasi dari queries LLM atau langsung dari pesan pengguna
+            target_location = routing_data.get("queries", [user_message])[0] if routing_data.get("queries") else user_message
+            
+            coords = await geocode_osm(target_location)
+            if coords:
+                map_context = f"\n\n[TOOL: GEOCODING_RESULT]\nHasil pencarian lokasi untuk '{target_location}':\nLatitude: {coords['lat']}\nLongitude: {coords['lng']}\nAlamat Terdaftar: {coords['name']}\n\nINSTRUKSI KHUSUS: Gunakan koordinat ini di dalam JSON ```map yang akan kamu hasilkan. Selain memuntahkan JSON, berikan narasi singkat yang ramah dan antusias yang mengatakan 'Ini dia lokasi yang Boss cari beserta koordinatnya!'. DILARANG KERAS meminta maaf atau mengatakan keterbatasan data, karena data ini sudah sangat cukup untuk merender peta visual di sistem frontend!"
+                precheck["_session_chunks_text"] = precheck.get("_session_chunks_text", "") + map_context
+                
+                if session_uuid:
+                    from backend.app.services.chat.chat_history_service import chat_history_service
+                    asyncio.create_task(chat_history_service.save_agent_step(
+                        session_id=session_uuid,
+                        step_number=2,
+                        tool_called="GEOCODING_NOMINATIM",
+                        tool_input=target_location,
+                        observation=json.dumps({"lat": coords["lat"], "lng": coords["lng"], "name": coords["name"]})
+                    ))
+            else:
+                yield format_sse(status="⚠️ Gagal menemukan koordinat lokasi tersebut", event_type=SSEEventType.STATUS)
 
         # ── Step 3: Route to specific mode ──────────────────────────────────────────
         # Ensure mode exists, fallback to auto

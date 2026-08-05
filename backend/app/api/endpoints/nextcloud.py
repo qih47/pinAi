@@ -99,14 +99,40 @@ async def upload_file(
     folder_path = req.path if req.path.endswith("/") else f"{req.path}/"
     url = f"{NEXTCLOUD_BASE_URL}{folder_path}{req.filename}"
     
+    # Deteksi Base64 Data URL
+    put_content = req.content
+    if put_content.startswith("data:") and ";base64," in put_content:
+        import base64
+        header, encoded = put_content.split(";base64,", 1)
+        put_content = base64.b64decode(encoded)
+    else:
+        put_content = put_content.encode('utf-8')
+    
     try:
         async with httpx.AsyncClient(timeout=TIMEOUT_SECS) as client:
             response = await client.put(
                 url,
                 auth=(auth.username, auth.password),
-                content=req.content.encode('utf-8')
+                content=put_content
             )
             
+            # Jika 409 Conflict, kemungkinan folder belum ada
+            if response.status_code == 409 and folder_path != "/":
+                folder_url = f"{NEXTCLOUD_BASE_URL}{folder_path}"
+                # Hapus trailing slash untuk MKCOL jika ada (meskipun WebDAV kadang toleran)
+                if folder_url.endswith("/"):
+                    folder_url = folder_url[:-1]
+                
+                # Coba buat foldernya (MKCOL)
+                await client.request("MKCOL", folder_url, auth=(auth.username, auth.password))
+                
+                # Coba PUT kembali
+                response = await client.put(
+                    url,
+                    auth=(auth.username, auth.password),
+                    content=put_content
+                )
+
             if response.status_code in [200, 201, 204]:
                 return {"status": "success", "message": f"File {req.filename} uploaded successfully"}
             else:

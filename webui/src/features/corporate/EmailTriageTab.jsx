@@ -319,36 +319,43 @@ export default function EmailTriageTab({ theme, darkMode, userData, language }) 
           {!isZimbraAuthenticated ? (
             <div style={{ display: 'flex', flexDirection: 'column', height: '100%', justifyContent: 'center' }}>
 
-              
-              <div style={{ marginTop: '20px', display: 'flex', flexDirection: 'column', gap: '12px', alignItems: 'center' }}>
-                <p style={{ fontSize: '14px', textAlign: 'center', color: theme.textColor, fontWeight: 'bold' }}>
-                  Koneksi Smart Mail Terputus atau Gagal
-                </p>
-                <p style={{ fontSize: '12px', textAlign: 'center', color: theme.secondaryText }}>
-                  Silakan buka menu <strong>Pengaturan &gt; Akun</strong> untuk menyambungkan ulang atau memperbarui kredensial Anda. 
-                </p>
-                <button 
-                  onClick={() => fetchEmails()} 
-                  disabled={isLoadingEmails}
-                  style={{ 
-                    background: '#3B82F6', 
-                    color: 'white', 
-                    padding: '8px 16px', 
-                    borderRadius: '8px', 
-                    fontWeight: 'bold', 
-                    border: 'none', 
-                    cursor: isLoadingEmails ? 'not-allowed' : 'pointer',
-                    opacity: isLoadingEmails ? 0.7 : 1,
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px',
-                    marginTop: '12px'
-                  }}
-                >
-                  <RefreshCw size={16} className={isLoadingEmails ? "animate-spin" : ""} />
-                  Coba Lagi
-                </button>
-              </div>
+              {isLoadingEmails ? (
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '16px' }}>
+                  <div className="spinner" style={{ width: '32px', height: '32px', border: `3px solid ${darkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'}`, borderTopColor: '#3B82F6', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+                  <p style={{ color: theme.secondaryText, fontSize: '14px', fontWeight: 500 }}>Menyambungkan...</p>
+                  <style>{`@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`}</style>
+                </div>
+              ) : (
+                <div style={{ marginTop: '20px', display: 'flex', flexDirection: 'column', gap: '12px', alignItems: 'center' }}>
+                  <p style={{ fontSize: '14px', textAlign: 'center', color: theme.textColor, fontWeight: 'bold' }}>
+                    Koneksi Smart Mail Terputus atau Gagal
+                  </p>
+                  <p style={{ fontSize: '12px', textAlign: 'center', color: theme.secondaryText }}>
+                    Silakan buka menu <strong>Pengaturan &gt; Akun</strong> untuk menyambungkan ulang atau memperbarui kredensial Anda. 
+                  </p>
+                  <button 
+                    onClick={() => fetchEmails()} 
+                    disabled={isLoadingEmails}
+                    style={{ 
+                      background: '#3B82F6', 
+                      color: 'white', 
+                      padding: '8px 16px', 
+                      borderRadius: '8px', 
+                      fontWeight: 'bold', 
+                      border: 'none', 
+                      cursor: isLoadingEmails ? 'not-allowed' : 'pointer',
+                      opacity: isLoadingEmails ? 0.7 : 1,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      marginTop: '12px'
+                    }}
+                  >
+                    <RefreshCw size={16} className={isLoadingEmails ? "spin" : ""} />
+                    Coba Lagi
+                  </button>
+                </div>
+              )}
 
               {errorMsg && (
                 <div style={{ padding: '10px', background: darkMode ? '#3f1a1a' : '#fee2e2', color: '#ef4444', borderRadius: '8px', fontSize: '12px', marginTop: '16px', textAlign: 'center' }}>

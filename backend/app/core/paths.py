@@ -15,8 +15,9 @@ UPLOAD_DIR = get_abs_path("uploads")
 NOSQL_DATA_DIR = get_abs_path("data/nosql")
 LOGS_DIR = get_abs_path("logs")
 
-# Direktori Accounts
+# Direktori Accounts dan File Peraturan
 ACCOUNTS_DIR = get_abs_path("accounts")
+FILE_PERATURAN_DIR = get_abs_path("file_peraturan")
 
 def get_account_dir(npp: str, category: str) -> Path:
     """Mendapatkan path untuk penyimpanan berbasis akun (NPP) berdasarkan kategori (images, artifacts, documents, cache)"""
@@ -43,5 +44,5 @@ def get_account_session_dir(npp: str, session_id: str, category: str) -> Path:
     return account_session_path
 
 # Pastikan folder exist
-for directory in [DOCUMENTS_DIR, UPLOAD_DIR, NOSQL_DATA_DIR, LOGS_DIR, ACCOUNTS_DIR]:
+for directory in [DOCUMENTS_DIR, UPLOAD_DIR, NOSQL_DATA_DIR, LOGS_DIR, ACCOUNTS_DIR, FILE_PERATURAN_DIR]:
     os.makedirs(directory, exist_ok=True)

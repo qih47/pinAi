@@ -7,18 +7,18 @@ import { translations } from '../../../utils/translations';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://192.168.11.80:5000';
 
+import ViewerHeader from './ViewerHeader';
+import { GitMerge } from 'lucide-react';
+
 const MermaidViewer = ({ chartCode, darkMode, isStreaming, language = 'id' }) => {
   const tGlobal = translations[language] || translations.id;
   const containerRef = useRef(null);
   const [svgContent, setSvgContent] = useState('');
   const [error, setError] = useState(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [isDownloading, setIsDownloading] = useState(false);
-  const [isExporting, setIsExporting] = useState(false);
-  const [isDownloadMenuOpen, setIsDownloadMenuOpen] = useState(false);
   const printRef = useRef(null);
 
-  const activeDarkMode = isExporting ? false : darkMode;
+  const activeDarkMode = darkMode;
 
   useEffect(() => {
     mermaid.initialize({
@@ -33,9 +33,16 @@ const MermaidViewer = ({ chartCode, darkMode, isStreaming, language = 'id' }) =>
 
     const renderChart = async () => {
       try {
-        // Cek dulu apakah sintaksnya udah valid (berguna pas LLM lagi streaming)
+        let cleanCode = chartCode;
+        if (cleanCode) {
+          cleanCode = cleanCode
+            .replace(/\brect_[a-zA-Z0-9_-]+\b/g, 'rect rgb(70, 130, 180)')
+            .replace(/^\s*rect\s+([a-zA-Z]+)\s*$/gm, 'rect rgb(70, 130, 180)')
+            .replace(/^\s*rect\s*$/gm, 'rect rgb(70, 130, 180)');
+        }
+
         try {
-          await mermaid.parse(chartCode);
+          await mermaid.parse(cleanCode);
         } catch (parseError) {
           if (isStreaming) {
             console.warn('Mermaid syntax is not complete yet (streaming)');
@@ -46,11 +53,10 @@ const MermaidViewer = ({ chartCode, darkMode, isStreaming, language = 'id' }) =>
 
         setError(null);
         const id = `mermaid-${Math.random().toString(36).substr(2, 9)}`;
-        const { svg } = await mermaid.render(id, chartCode);
+        const { svg } = await mermaid.render(id, cleanCode);
         setSvgContent(svg);
       } catch (err) {
         if (isStreaming) {
-          // Abaikan error saat sedang streaming (kode belum lengkap)
           console.warn('Mermaid partial render error (ignored during stream)');
         } else {
           setError(err.message || tGlobal.render.mermaidRenderFail);
@@ -59,180 +65,35 @@ const MermaidViewer = ({ chartCode, darkMode, isStreaming, language = 'id' }) =>
     };
 
     if (chartCode) {
-      // Debounce 500ms agar tidak me-render setiap huruf saat AI streaming
-      // Tapi kalau lagi nge-export (isExporting), kita langsung cepet aja render-nya
       const timeoutId = setTimeout(() => {
         renderChart();
-      }, isExporting ? 50 : 500);
+      }, 500);
 
       return () => clearTimeout(timeoutId);
     }
-  }, [chartCode, activeDarkMode, isExporting]);
+  }, [chartCode, activeDarkMode]);
 
   const toggleFullscreen = () => {
     setIsFullscreen(!isFullscreen);
   };
 
-  const executeDownload = async (format) => {
-    if (format === 'svg' && svgContent) {
-      const encodedSvg = encodeURIComponent(svgContent);
-      const dataUrl = `data:image/svg+xml;charset=utf-8,${encodedSvg}`;
-
-      const form = document.createElement('form');
-      form.method = 'POST';
-      form.action = `${API_BASE}/api/chat/artifacts/download_b64`;
-
-      const b64Input = document.createElement('input');
-      b64Input.type = 'hidden';
-      b64Input.name = 'base64_data';
-      b64Input.value = dataUrl;
-      form.appendChild(b64Input);
-
-      const filenameInput = document.createElement('input');
-      filenameInput.type = 'hidden';
-      filenameInput.name = 'filename';
-      filenameInput.value = `cakra-diagram-${new Date().getTime()}.svg`;
-      form.appendChild(filenameInput);
-
-      const mimeInput = document.createElement('input');
-      mimeInput.type = 'hidden';
-      mimeInput.name = 'mime_type';
-      mimeInput.value = 'image/svg+xml';
-      form.appendChild(mimeInput);
-
-      document.body.appendChild(form);
-      form.submit();
-      setTimeout(() => document.body.removeChild(form), 1000);
-
-    } else if (format === 'png' && printRef.current) {
-      try {
-        const targetWidth = printRef.current.scrollWidth;
-        const targetHeight = printRef.current.scrollHeight;
-
-        const config = {
-          quality: 1,
-          pixelRatio: 2,
-          backgroundColor: '#ffffff', // Force white background
-          width: targetWidth,
-          height: targetHeight,
-          style: {
-            transform: 'scale(1)',
-            transformOrigin: 'top left',
-            width: `${targetWidth}px`,
-            height: `${targetHeight}px`
-          },
-          skipFonts: true,
-          fontEmbedCSS: '',
-        };
-        const dataUrl = await toPng(printRef.current, config);
-
-        const form = document.createElement('form');
-        form.method = 'POST';
-        form.action = `${API_BASE}/api/chat/artifacts/download_b64`;
-
-        const b64Input = document.createElement('input');
-        b64Input.type = 'hidden';
-        b64Input.name = 'base64_data';
-        b64Input.value = dataUrl;
-        form.appendChild(b64Input);
-
-        const filenameInput = document.createElement('input');
-        filenameInput.type = 'hidden';
-        filenameInput.name = 'filename';
-        filenameInput.value = `cakra-diagram-${new Date().getTime()}.png`;
-        form.appendChild(filenameInput);
-
-        const mimeInput = document.createElement('input');
-        mimeInput.type = 'hidden';
-        mimeInput.name = 'mime_type';
-        mimeInput.value = 'image/png';
-        form.appendChild(mimeInput);
-
-        document.body.appendChild(form);
-        form.submit();
-        setTimeout(() => document.body.removeChild(form), 1000);
-
-      } catch (err) {
-        alert(tGlobal.render.downloadFail);
-      }
-    }
-  };
-
-  const handleDownload = (format) => {
-    if (!svgContent) return;
-    setIsDownloading(true);
-    setIsDownloadMenuOpen(false);
-
-    if (darkMode) {
-      setIsExporting(true);
-      // Tunggu mermaid re-render ke light mode
-      setTimeout(() => {
-        executeDownload(format).finally(() => {
-          setIsExporting(false);
-          setIsDownloading(false);
-        });
-      }, 500); // 500ms cukup karena isExporting debounce-nya 50ms
-    } else {
-      executeDownload(format).finally(() => {
-        setIsDownloading(false);
-      });
-    }
-  };
-
   const viewerContent = (
     <div
       ref={containerRef}
-      className={`group rounded-xl border flex flex-col transition-all duration-300 ${activeDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'
-        } ${isFullscreen ? 'w-full h-full shadow-2xl overflow-auto' : 'relative w-full my-4 overflow-hidden'}`}
-      style={isFullscreen ? { minHeight: 0 } : {}}
+      className={
+        isFullscreen 
+          ? `fixed inset-0 z-[9999] p-4 md:p-10 flex flex-col ${activeDarkMode ? 'bg-[#121212]/95 backdrop-blur-sm' : 'bg-gray-100/95 backdrop-blur-sm'}`
+          : `my-4 w-full rounded-xl border flex flex-col shadow-sm transition-all duration-300 ${activeDarkMode ? 'bg-[#1a1f2e] border-gray-700/60' : 'bg-white border-gray-200'}`
+      }
     >
-      {/* Toolbar */}
-      <div className={`flex justify-end items-center gap-2 px-3 py-2 border-b ${activeDarkMode ? 'border-gray-700 bg-gray-900/50' : 'border-gray-200 bg-gray-50'
-        }`}>
-        <span className={`text-xs font-semibold mr-auto ${activeDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-          Cakra Diagram
-        </span>
-        {/* Download Dropdown */}
-        <div className="relative">
-          <button
-            onClick={() => setIsDownloadMenuOpen(!isDownloadMenuOpen)}
-            disabled={isDownloading}
-            className={`p-1.5 rounded-md transition-colors flex items-center gap-1 ${activeDarkMode ? 'hover:bg-gray-700 text-gray-400' : 'hover:bg-gray-200 text-gray-600'
-              } disabled:opacity-50`}
-            title="Download Diagram"
-          >
-            <Download size={14} />
-          </button>
-
-          {isDownloadMenuOpen && (
-            <div className={`absolute right-0 top-full mt-1 w-32 rounded-lg shadow-xl overflow-hidden z-50 border ${activeDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'
-              }`}>
-              <button
-                onClick={() => handleDownload('png')}
-                className={`w-full text-left px-4 py-2 text-xs font-semibold transition-colors ${activeDarkMode ? 'text-gray-200 hover:bg-gray-700' : 'text-gray-700 hover:bg-gray-100'
-                  }`}
-              >
-                {tGlobal.render.downloadPng}
-              </button>
-              <button
-                onClick={() => handleDownload('svg')}
-                className={`w-full text-left px-4 py-2 text-xs font-semibold transition-colors border-t ${activeDarkMode ? 'text-gray-200 hover:bg-gray-700 border-gray-700' : 'text-gray-700 hover:bg-gray-100 border-gray-100'
-                  }`}
-              >
-                {tGlobal.render.downloadSvg}
-              </button>
-            </div>
-          )}
-        </div>
-        <button
-          onClick={toggleFullscreen}
-          title={isFullscreen ? tGlobal.render.exitFullscreen : tGlobal.render.fullscreen}
-          className={`p-1.5 rounded-md transition-colors ${activeDarkMode ? 'hover:bg-gray-700 text-gray-400' : 'hover:bg-gray-200 text-gray-600'
-            }`}
-        >
-          {isFullscreen ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
-        </button>
-      </div>
+      <ViewerHeader 
+        title="Cakra Diagram" 
+        icon={<GitMerge size={15} />} 
+        onExpand={toggleFullscreen} 
+        isExpanded={isFullscreen} 
+        exportTargetRef={printRef} 
+        darkMode={activeDarkMode} 
+      />
 
       {/* Scrollable Wrapper */}
       <div

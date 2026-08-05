@@ -63,10 +63,10 @@ def _process_pdf_sync(abs_path: str) -> Tuple[str, List[Dict[str, Any]], int]:
     try:
         doc = fitz.open(restored_pdf)
         total_pages = len(doc)
-        for page_num in range(len(doc)):
+        # Batasi maksimal 3 halaman pertama dengan DPI 150 agar tidak memboroskan token visual dan KV cache LLM
+        for page_num in range(min(len(doc), 3)):
             page = doc.load_page(page_num)
-            # Tingkatkan DPI ke 300 agar model Vision bisa membaca garis form/tabel dengan presisi tinggi
-            pix = page.get_pixmap(dpi=300)
+            pix = page.get_pixmap(dpi=150)
             img_data = pix.tobytes("png")
             encoded = base64.b64encode(img_data).decode("utf-8")
             formatted_attachments.append({"base64": encoded, "type": "image"})
@@ -74,6 +74,28 @@ def _process_pdf_sync(abs_path: str) -> Tuple[str, List[Dict[str, Any]], int]:
         logger.error(f"[PERATURAN_SERVICE] Failed to convert PDF to image: {e}")
         
     return "", formatted_attachments, total_pages
+
+
+def _find_valid_pdf_file(gambar: Any, gambar2: Any, gambar3: Any) -> Optional[str]:
+    """Mencari file PDF yang valid dari kolom attachment peraturan."""
+    for file_name in [gambar, gambar2, gambar3]:
+        if file_name and isinstance(file_name, str) and file_name.lower().endswith(".pdf"):
+            abs_path = os.path.join(PERATURAN_DIR, file_name)
+            if os.path.exists(abs_path):
+                return abs_path
+    return None
+
+
+def _resolve_status_berlaku(id_berita: int, stataktif: str, dicabut_oleh: Dict[int, Any]) -> str:
+    """Menentukan status berlaku regulasi berdasarkan tabel silsilah dan stataktif."""
+    if id_berita in dicabut_oleh:
+        pengganti_judul = dicabut_oleh[id_berita][1]
+        return f"Tidak Berlaku (Digantikan oleh: {pengganti_judul})"
+    if stataktif == "batal":
+        return "Dicabut"
+    elif stataktif == "obsolete":
+        return "Tidak Berlaku"
+    return "Berlaku"
 
 
 async def search_and_ocr_by_judul(query_judul: Any) -> Tuple[str, List[Dict[str, Any]], List[Dict[str, Any]]]:
@@ -201,28 +223,12 @@ async def search_and_ocr_by_judul(query_judul: Any) -> Tuple[str, List[Dict[str,
                     logger.info(f"[PERATURAN_SERVICE] Found match: '{judul}' (FTS Score/Ranked: {score})")
                     
                     # Coba cari file yang valid dari ketiga kolom
-                    valid_file = None
-                    for file_name in [gambar, gambar2, gambar3]:
-                        if file_name and isinstance(file_name, str) and file_name.lower().endswith(".pdf"):
-                            abs_path = os.path.join(PERATURAN_DIR, file_name)
-                            if os.path.exists(abs_path):
-                                valid_file = abs_path
-                                break
-                                
+                    valid_file = _find_valid_pdf_file(gambar, gambar2, gambar3)
                     if not valid_file:
                         logger.warning(f"[PERATURAN_SERVICE] Match found but PDF file not exist in {PERATURAN_DIR}")
                         continue
                     
-                    # ── TENTUKAN STATUS BERLAKU LEBIH DULU (SILSILAH) ──
-                    if id_berita in dicabut_oleh:
-                        pengganti_judul = dicabut_oleh[id_berita][1]
-                        status_berlaku_str = f"Tidak Berlaku (Digantikan oleh: {pengganti_judul})"
-                    else:
-                        status_berlaku_str = "Berlaku"
-                        if stataktif == "batal":
-                            status_berlaku_str = "Dicabut"
-                        elif stataktif == "obsolete":
-                            status_berlaku_str = "Tidak Berlaku"
+                    status_berlaku_str = _resolve_status_berlaku(id_berita, stataktif, dicabut_oleh)
 
                     meta_str = f"ID Dokumen: {id_berita}\nStatus Berlaku: {status_berlaku_str}\nTanggal Terbit: {tanggal}\nNomor Regulasi: {noper}\nMencabut: {mencabut_str if mencabut_str else '-'}\n"
                     
@@ -406,33 +412,14 @@ async def search_and_ocr_by_synthetic_qa(user_message: str) -> Tuple[str, List[D
                     id_berita, noper, judul, gambar, gambar2, gambar3, nama_kategori, tanggal, stataktif, mencabut_str, linkper_str, score, _tag_val, _isi_val = row
                     logger.info(f"[PERATURAN_SERVICE_SYNTHETIC] Found match: '{judul}' (Score: {score:.4f})")
                     
-                    valid_file = None
-                    for file_name in [gambar, gambar2, gambar3]:
-                        if file_name and isinstance(file_name, str) and file_name.lower().endswith(".pdf"):
-                            abs_path = os.path.join(PERATURAN_DIR, file_name)
-                            if os.path.exists(abs_path):
-                                valid_file = abs_path
-                                break
-                                
+                    valid_file = _find_valid_pdf_file(gambar, gambar2, gambar3)
                     if not valid_file:
                         continue
                         
-                    import fitz
-                    try:
-                        with fitz.open(valid_file) as pdf_doc:
-                            total_pages = pdf_doc.page_count
-                    except Exception:
-                        total_pages = 0
+                    # total_pages hanya untuk metadata display — tidak perlu buka file (blocking)
+                    total_pages = 0
                     
-                    if id_berita in dicabut_oleh:
-                        pengganti_judul = dicabut_oleh[id_berita][1]
-                        status_berlaku_str = f"Tidak Berlaku (Digantikan oleh: {pengganti_judul})"
-                    else:
-                        status_berlaku_str = "Berlaku"
-                        if stataktif == "batal":
-                            status_berlaku_str = "Dicabut"
-                        elif stataktif == "obsolete":
-                            status_berlaku_str = "Tidak Berlaku"
+                    status_berlaku_str = _resolve_status_berlaku(id_berita, stataktif, dicabut_oleh)
 
                     meta_str = f"ID Dokumen: {id_berita}\nStatus Berlaku: {status_berlaku_str}\nTanggal Terbit: {tanggal}\nNomor Regulasi: {noper}\nMencabut: {mencabut_str if mencabut_str else '-'}\n"
                     
@@ -631,34 +618,15 @@ async def hybrid_document_search(user_message: str, query_judul_list: List[str])
             id_berita, noper, judul, gambar, gambar2, gambar3, nama_kategori, tanggal, stataktif, mencabut_str, linkper_str, score, _tag_val, _isi_val = row
             logger.info(f"[PERATURAN_SERVICE_HYBRID] Selected Top Match: '{judul}' (BGE Score: {score:.4f})")
             
-            valid_file = None
-            for file_name in [gambar, gambar2, gambar3]:
-                if file_name and isinstance(file_name, str) and file_name.lower().endswith(".pdf"):
-                    abs_path = os.path.join(PERATURAN_DIR, file_name)
-                    if os.path.exists(abs_path):
-                        valid_file = abs_path
-                        break
-                        
+            valid_file = _find_valid_pdf_file(gambar, gambar2, gambar3)
             if not valid_file:
                 logger.warning(f"[PERATURAN_SERVICE_HYBRID] PDF not exist in {PERATURAN_DIR}")
                 continue
                 
-            import fitz
-            try:
-                with fitz.open(valid_file) as pdf_doc:
-                    total_pages = pdf_doc.page_count
-            except Exception:
-                total_pages = 0
-            
-            if id_berita in dicabut_oleh:
-                pengganti_judul = dicabut_oleh[id_berita][1]
-                status_berlaku_str = f"Tidak Berlaku (Digantikan oleh: {pengganti_judul})"
-            else:
-                status_berlaku_str = "Berlaku"
-                if stataktif == "batal":
-                    status_berlaku_str = "Dicabut"
-                elif stataktif == "obsolete":
-                    status_berlaku_str = "Tidak Berlaku"
+            # total_pages hanya untuk metadata display — tidak perlu buka file (blocking)
+            total_pages = 0
+
+            status_berlaku_str = _resolve_status_berlaku(id_berita, stataktif, dicabut_oleh)
 
             meta_str = f"ID Dokumen: {id_berita}\nStatus Berlaku: {status_berlaku_str}\nTanggal Terbit: {tanggal}\nNomor Regulasi: {noper}\nMencabut: {mencabut_str if mencabut_str else '-'}\n"
             

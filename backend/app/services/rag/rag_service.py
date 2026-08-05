@@ -34,8 +34,8 @@ _STOPWORDS_ID = {
 # Dokumen dianggap relevan hanya jika BGE cukup yakin: >= 0.51
 HARD_FLOOR = 0.45
 
-# Cap maksimum dokumen yang dikirim ke LLM — lebih sedikit = lebih fokus
-MAX_DOCS_TO_LLM = 15
+# Cap maksimum dokumen yang dikirim ke LLM — 10 optimal untuk akurasi dan performa TTFT
+MAX_DOCS_TO_LLM = 10
 
 
 def _get_score_label(score: float) -> str:
@@ -272,12 +272,9 @@ class RagService:
                                             abs_path = os.path.join(PERATURAN_DIR, file_name)
                                             if os.path.exists(abs_path):
                                                 valid_file = file_name
-                                                try:
-                                                    import fitz
-                                                    with fitz.open(abs_path) as pdf_doc:
-                                                        total_pages = pdf_doc.page_count
-                                                except Exception:
-                                                    pass
+                                                # NOTE: fitz.open() dihapus dari sini karena membuka PDF secara sinkron
+                                                # untuk menghitung jumlah halaman di dalam loop pencarian RAG sangat lambat
+                                                # dan memblokir event loop.
                                                 break
                                                 
                                     if noper:

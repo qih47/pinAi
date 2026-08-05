@@ -7,9 +7,11 @@ import { Maximize2, Minimize2, Calendar, ZoomIn, ZoomOut } from 'lucide-react';
 import '../../../../node_modules/frappe-gantt/dist/frappe-gantt.css';
 
 import { parsePartialJSON } from '../../../utils/jsonHelper';
+import ViewerHeader from './ViewerHeader';
 
 const GanttViewer = ({ chartCode, darkMode, isStreaming }) => {
   const containerRef = useRef(null);
+  const scrollRef = useRef(null);
   const svgRef = useRef(null);
   const [data, setData] = useState([]);
   const [error, setError] = useState(null);
@@ -67,11 +69,32 @@ const GanttViewer = ({ chartCode, darkMode, isStreaming }) => {
             `;
           }
         });
+
+        // Cegah frappe-gantt melakukan mouse wheel hijacking yang bisa menggeser tanggal ke area kosong
+        const handleWheel = (e) => {
+          e.stopPropagation();
+        };
+        svgRef.current.addEventListener('wheel', handleWheel, { capture: true });
+
+        // Auto-scroll ke posisi tugas pertama agar user langsung melihat batang tugas
+        setTimeout(() => {
+          if (scrollRef.current && svgRef.current) {
+            const firstBar = svgRef.current.querySelector('.bar-wrapper, .bar-group, .bar');
+            if (firstBar && typeof firstBar.getBBox === 'function') {
+              try {
+                const bbox = firstBar.getBBox();
+                if (bbox && bbox.x > 80) {
+                  scrollRef.current.scrollLeft = bbox.x - 60;
+                }
+              } catch (e) {}
+            }
+          }
+        }, 150);
       } catch (err) {
         console.error("Failed to initialize Frappe Gantt", err);
       }
     }
-  }, [data, viewMode]);
+  }, [data, viewMode, isFullscreen]);
 
   // CSS overrides for Dark Mode specifically for Frappe Gantt
   useEffect(() => {
@@ -103,15 +126,15 @@ const GanttViewer = ({ chartCode, darkMode, isStreaming }) => {
 
   const viewerContent = (
     <div ref={containerRef} className={`group rounded-xl border flex flex-col transition-all duration-300 ${
-        darkMode ? 'bg-gray-800 border-gray-700 cakra-gantt-dark' : 'bg-white border-gray-200 cakra-gantt-light'
-      } ${isFullscreen ? 'w-full h-full shadow-2xl overflow-hidden' : 'relative w-full my-4 overflow-hidden'}`}>
+        darkMode ? 'bg-[#111827] border-gray-700 cakra-gantt-dark text-white' : 'bg-white border-gray-200 cakra-gantt-light text-gray-900'
+      } ${isFullscreen ? 'fixed inset-0 z-[9999] p-4 md:p-10 shadow-2xl' : 'relative w-full my-4 min-h-[280px] md:min-h-[340px]'}`}>
       
       {/* Custom Global CSS to fix dark mode visibility issues with Frappe Gantt */}
       <style>{`
         .cakra-gantt-dark {
           --g-arrow-color: #9ca3af;
-          --g-bar-color: #101878; /* Pindad Blue */
-          --g-bar-border: #1a237e;
+          --g-bar-color: #3b82f6; /* Blue Cerah untuk Dark Mode */
+          --g-bar-border: #60a5fa;
           --g-tick-color-thick: #374151;
           --g-tick-color: #1f2937;
           --g-actions-background: #1f2937;
@@ -132,8 +155,29 @@ const GanttViewer = ({ chartCode, darkMode, isStreaming }) => {
         }
 
         .cakra-gantt-light {
-          --g-bar-color: #101878; /* Pindad Blue */
+          --g-bar-color: #101878; /* Pindad Blue untuk Light Mode */
           --g-progress-color: #E3B432; /* Pindad Yellow */
+          --g-text-dark: #1f2937;
+          --g-text-light: #ffffff;
+          --g-row-color: #ffffff;
+        }
+
+        /* Perkencang kejelasan teks tanggal & task di kedua mode */
+        .gantt .grid-header {
+          fill: ${darkMode ? '#111827' : '#f9fafb'} !important;
+        }
+        .gantt .grid-row {
+          fill: ${darkMode ? '#1f2937' : '#ffffff'} !important;
+        }
+        .gantt .row-line {
+          stroke: ${darkMode ? '#374151' : '#e5e7eb'} !important;
+        }
+        .gantt .tick {
+          stroke: ${darkMode ? '#374151' : '#e5e7eb'} !important;
+        }
+        .gantt text {
+          fill: ${darkMode ? '#f3f4f6' : '#1f2937'} !important;
+          font-weight: 600 !important;
         }
         
         /* Fix text contrast in popup */
@@ -150,28 +194,43 @@ const GanttViewer = ({ chartCode, darkMode, isStreaming }) => {
         /* Ensure the container takes full height in fullscreen */
         ${isFullscreen ? `
           .gantt-container {
-            height: calc(100vh - 120px) !important;
+            height: calc(90vh - 80px) !important;
           }
-        ` : ''}
+        ` : `
+          .gantt-container {
+            min-height: 250px !important;
+          }
+        `}
+        
+        /* Cegah pemotongan SVG dari batas viewport */
+        .gantt-container, svg.gantt {
+          overflow: visible !important;
+        }
       `}</style>
 
-      {/* Toolbar */}
+      {/* Viewer Header Universal */}
+      <ViewerHeader 
+        title="Cakra Project Planner (Gantt)" 
+        icon={<Calendar size={15} />} 
+        onExpand={toggleFullscreen} 
+        isExpanded={isFullscreen} 
+        exportTargetRef={containerRef} 
+        darkMode={darkMode} 
+      />
+
+      {/* Sub-Toolbar Kustom Gantt */}
       <div className={`flex justify-end items-center gap-2 px-3 py-2 border-b ${
-        darkMode ? 'border-gray-700 bg-gray-900/50' : 'border-gray-200 bg-gray-50'
+        darkMode ? 'border-gray-700 bg-gray-900/80 text-gray-200' : 'border-gray-200 bg-gray-50 text-gray-700'
       }`}>
-        <span className={`text-xs font-semibold mr-auto ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-          Cakra Project Planner (Gantt)
-        </span>
-        
         {/* View Mode Selectors */}
-        <div className="flex bg-gray-100 dark:bg-gray-700 rounded-md p-0.5 text-xs mr-2">
+        <div className="flex bg-gray-100 dark:bg-gray-700 rounded-md p-0.5 text-xs mr-auto">
           {['Day', 'Week', 'Month'].map(mode => (
             <button
               key={mode}
               onClick={() => setViewMode(mode)}
               className={`px-2 py-1 rounded transition-colors ${
                 viewMode === mode 
-                  ? (darkMode ? 'bg-gray-600 text-white shadow-sm' : 'bg-white text-gray-800 shadow-sm')
+                  ? (darkMode ? 'bg-gray-600 text-white shadow-sm' : 'bg-white text-gray-800 shadow-sm font-semibold')
                   : (darkMode ? 'text-gray-400 hover:text-gray-200' : 'text-gray-500 hover:text-gray-700')
               }`}
             >
@@ -180,38 +239,37 @@ const GanttViewer = ({ chartCode, darkMode, isStreaming }) => {
           ))}
         </div>
 
-        <button onClick={toggleFullscreen} className={`p-1.5 rounded-md transition-colors ${
-            darkMode ? 'hover:bg-gray-700 text-gray-400' : 'hover:bg-gray-200 text-gray-600'
-        }`}>
-          {isFullscreen ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
+        <button
+          onClick={() => {
+            if (scrollRef.current && svgRef.current) {
+              const firstBar = svgRef.current.querySelector('.bar-wrapper, .bar-group, .bar');
+              if (firstBar && typeof firstBar.getBBox === 'function') {
+                try {
+                  const bbox = firstBar.getBBox();
+                  if (bbox && bbox.x > 80) {
+                    scrollRef.current.scrollLeft = bbox.x - 60;
+                  }
+                } catch (e) {}
+              }
+            }
+          }}
+          className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-colors mr-1 border ${
+            darkMode ? 'border-gray-600 hover:bg-gray-700 text-gray-200' : 'border-gray-300 hover:bg-gray-200 text-gray-700'
+          }`}
+          title="Scroll ke awal tugas"
+        >
+          Today
         </button>
       </div>
 
       {/* Main Gantt Content */}
-      <div className="flex-1 overflow-auto bg-transparent relative">
-        <svg ref={svgRef} className="w-full"></svg>
+      <div ref={scrollRef} className={`flex-1 overflow-auto bg-transparent relative min-w-0 ${isFullscreen ? 'rounded-b-xl' : ''}`}>
+        <div className="inline-block min-w-full">
+          <svg ref={svgRef} className="block min-w-full"></svg>
+        </div>
       </div>
     </div>
   );
-
-  if (isFullscreen) {
-    return (
-      <>
-        {/* Placeholder in the chat bubble so it doesn't collapse entirely */}
-        <div className="w-full my-4 p-8 border border-dashed rounded-xl text-center text-sm font-medium text-gray-500">
-          Mode Layar Penuh Aktif
-        </div>
-        {createPortal(
-          <div className="fixed inset-0 z-[99999] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 md:p-8 animate-in fade-in duration-200">
-            {viewerContent}
-          </div>,
-          document.body
-        )}
-      </>
-    );
-  }
-
-  return viewerContent;
 };
 
 export default GanttViewer;

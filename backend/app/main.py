@@ -27,7 +27,7 @@ from backend.app.core.logging_setup import setup_root_logger
 from backend.app.api.router import api_router
 from backend.app.core.llm_client import warm_up_model
 from backend.app.core.hardware import check_gpu_status
-from backend.app.core.paths import DOCUMENTS_DIR, UPLOAD_DIR, ACCOUNTS_DIR
+from backend.app.core.paths import DOCUMENTS_DIR, UPLOAD_DIR, ACCOUNTS_DIR, FILE_PERATURAN_DIR
 from backend.app.services.system.background_tasks import start_background_scheduler, stop_background_scheduler
 from backend.app.utils.request_logging import RequestIDLoggingMiddleware, setup_request_id_logging
 from backend.app.utils.token_expiry import setup_token_expiry_migration
@@ -191,9 +191,10 @@ app = FastAPI(
 # Request ID logging
 app.add_middleware(RequestIDLoggingMiddleware)
 
-# GPU semaphore — 4 slots: Concurrent Processing
-app.state.gpu_limit = asyncio.Semaphore(4)
-logger.info("🔒 [HARDWARE] GPU Concurrency Semaphore: 4 slots (Concurrent Processing).")
+# GPU semaphore — 4 slots: Concurrent Processing via Singleton
+from backend.app.core.llm_client import get_gpu_semaphore
+app.state.gpu_limit = get_gpu_semaphore(4)
+logger.info("🔒 [HARDWARE] GPU Concurrency Semaphore: 4 slots (Concurrent Processing via Singleton).")
 
 # ==============================================================================
 # SECURE STATIC FILES ROUTES (Replaces app.mount to enforce security firewall)

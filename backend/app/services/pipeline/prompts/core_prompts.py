@@ -47,17 +47,39 @@ SCHEMA JSON:
   "detected_language": "id|en|mixed",
   "requires_visual": true/false,
   "is_generate_email": true/false,
+  "is_chitchat": true/false,
+  "is_map_query": true/false,
 {% if is_first_chat %}
-  "session_title": "string (wajib diisi, buat 1 judul topik 2-4 kata)"
+  "session_title": "string (wajib diisi, buat 1 judul empatik 2-5 kata sesuai konteks, emosi & tone user)"
 {% else %}
   "session_title": null
 {% endif %}
 }
 
-PANDUAN PARAMETER `queries`:
-- Jika `need_rag` true: WAJIB isi dengan maksimal 5 (lima) query semantik berbeda yang merupakan reformulasi dari pertanyaan user.
-- Setiap query harus menggunakan sudut pandang berbeda agar RAG bisa menemukan lebih banyak chunk relevan.
-- Contoh: user tanya "ketentuan seragam dinas" → queries: ["ketentuan pakaian seragam dinas PNS", "aturan penggunaan seragam pegawai Pindad", "peraturan atribut seragam kerja"]
+PANDUAN PARAMETER `is_chitchat`:
+- Isi `true` **HANYA JIKA** pesan pengguna adalah murni sapaan (halo, pagi), ucapan terima kasih (makasih ya), ungkapan santai/basa-basi, atau curhatan/cerita ringan yang TIDAK ADA hubungannya sama sekali dengan pekerjaan, dokumen Pindad, atau instruksi koding.
+- Isi `false` jika pesan pengguna adalah pertanyaan teknis, konsultasi, permintaan tugas, analisa, atau berkaitan dengan informasi spesifik yang memerlukan penalaran pakar (termasuk keluhan kesehatan atau pertanyaan umum yang butuh jawaban informatif/nasehat detail).
+- **PERHATIAN KHUSUS MODE DOKUMEN / FOCUS:** Walaupun pengguna dalam mode Dokumen, jika ia hanya menyapa (halo/makasih), `is_chitchat` WAJIB `true` (dan `need_rag=false`).
+- Jika `is_chitchat` true, maka parameter kompleks (is_coding, need_rag, dll) harus false.
+
+PANDUAN PARAMETER `is_map_query`:
+- `is_map_query: true` JIKA pengguna secara eksplisit menanyakan lokasi, titik koordinat, alamat ("dimana markas", "lokasi pabrik", "peta Jakarta"). Ini akan mengaktifkan sistem Geocoding otomatis.
+
+PANDUAN PARAMETER `need_rag` (KONTINUITAS KONTEKS - SANGAT PENTING!):
+- `need_rag: true` HANYA JIKA pengguna secara eksplisit menanyakan atau membahas topik yang memerlukan rujukan ke dokumen resmi, kebijakan, peraturan (SKEP/SE/PKB), prosedur, spesifikasi teknis, atau data internal PT Pindad.
+- `need_rag: false` JIKA:
+  1. Pengguna sedang membahas topik umum (chitchat, saran manajemen/sekolah/pendidikan umum, pemrograman umum, konsultasi pribadi, mengajar siswa).
+  2. PERHATIKAN RIWAYAT PERCAKAPAN (`context_history_str`): Jika percakapan sebelumnya adalah obrolan umum di luar konteks regulasi Pindad, JANGAN PERNAH mengubah `need_rag` menjadi `true` pada pesan lanjutan (meskipun ada kata umum seperti 'kelompok', 'sekolah', 'tugas'), KECUALI pengguna secara jelas beralih meminta dokumen/aturan resmi perusahaan.
+
+PANDUAN PARAMETER `queries` (WAJIB EKSTRAKSI DOKUMEN TARGET + SUBJEK INTI):
+- Jika `need_rag` true: Anda WAJIB menganalisa dan membedah kalimat user menjadi gabungan (1) NAMA DOKUMEN/REGULASI TARGET dan (2) SUBJEK/KONTEKS UTAMA YANG DITANYAKAN.
+- BUANG SEMUA KATA BASA-BASI/INSTRUKSI ("kalau dalam... ada membahas tentang... coba jelasin cuy").
+- CONTOH PENTING: Jika user tanya "kalau dalam PUD ada membahas tentang pengaturan gerbang coba jelasin cuy":
+  1. Dokumen Target: "PUD" (Peraturan Umum Dinas)
+  2. Subjek Inti: "pengaturan gerbang", "gerbang", "pengaturan"
+  3. MAKA BUAT `queries` YANG TAJAM & RELEVAN:
+     - ["PUD pengaturan gerbang", "pengaturan gerbang PUD", "peraturan umum dinas gerbang", "gerbang"]
+- JANGAN PERNAH membuat query dari potongan kata awal kalimat seperti ["dalam pud membahas"]! Query harus fokus pada SUBJEK/KONTEKS dan NAMA DOKUMEN target!
 - Jika `need_rag` false: isi `queries` dengan array kosong [].
 
 PANDUAN PARAMETER KATA KUNCI DAN TAG:
@@ -91,8 +113,11 @@ PANDUAN PARAMETER `requires_visual`:
 - Isi `false` jika user hanya bertanya teks biasa.
 
 {% if is_first_chat %}
-PANDUAN PARAMETER `session_title`:
-- Karena ini adalah PESAN PERTAMA, Anda WAJIB membuat 1 judul topik percakapan yang ringkas (2-4 kata saja) berdasarkan konteks pertanyaan.
+PANDUAN PARAMETER `session_title` (WAJIB SESUAI KONTEKS, EMOSI & EMPATI USER):
+- Karena ini adalah PESAN PERTAMA, Anda WAJIB membuat 1 judul topik percakapan (2-5 kata) yang MENCERMINKAN KONTEKS, EMOSI, TONE, DAN EMPATI dari pesan user.
+- Jika user menyapa ramah/santai ("hai cakra apa kabar?"), buat judul yang hangat & empatik (contoh: "Sapaan Hangat Cakra 😄", "Obrolan Santai & Kabar").
+- Jika user bertanya serius/teknis ("jelasin detail project..."), buat judul yang antusias & profesional (contoh: "Bedah Detail Arsitektur Project", "Diskusi Mendalam Sistem Pindad").
+- JANGAN PERNAH mengembalikan "Obrolan Baru", null, atau string kosong!
 {% else %}
 PANDUAN PARAMETER `session_title`:
 - WAJIB diisi dengan `null` karena ini bukan obrolan pertama.
@@ -180,11 +205,27 @@ Walaupun kamu sedang membalas dengan gaya santai, slang, atau humor, KONTEN FAKT
 
 [VISUALIZATION CAPABILITIES]
 Kamu MEMILIKI kemampuan merender grafik interaktif langsung di chat. 
-⚠️ PROACTIVE TRIGGER: Jika user meminta "jadwal", "timeline", "rencana waktu", "jadwal proyek", atau "chart" secara umum (walaupun tidak menyebut spesifik Gantt/Infografis), kamu WAJIB BERINISIATIF menggunakan salah satu dari format visual di bawah ini. JANGAN PERNAH menggunakan tabel markdown biasa untuk jadwal/waktu!
+⚠️ PROACTIVE TRIGGER: Jika user meminta "jadwal", "timeline", "rencana waktu", "jadwal proyek", "grafik", "chart", atau "visualisasi data" secara umum (walaupun tidak menyebut spesifik Gantt/Infografis/Chart), kamu WAJIB BERINISIATIF menggunakan salah satu dari format visual di bawah ini. JANGAN PERNAH menggunakan tabel markdown biasa untuk jadwal/waktu/grafik data!
 
 Pilih salah satu format markdown code block khusus berikut (berisi array JSON murni):
 
-1. GANTT CHART (```gantt):
+1. GRAFIK DATA / CHART (```chart):
+Gunakan untuk visualisasi data numerik (perbandingan, tren, komposisi). Contoh format:
+```chart
+{
+  "type": "bar", // bisa: bar, line, area, pie
+  "title": "Judul Grafik",
+  "data": [
+    { "name": "Jan", "value": 100 },
+    { "name": "Feb", "value": 200 }
+  ],
+  "xAxisKey": "name",
+  "dataKeys": ["value"],
+  "colors": ["#10b981", "#3b82f6"]
+}
+```
+
+2. GANTT CHART (```gantt):
 Gunakan untuk jadwal proyek teknis/detail. Contoh format:
 ```gantt
 [
@@ -193,7 +234,7 @@ Gunakan untuk jadwal proyek teknis/detail. Contoh format:
 ]
 ```
 
-2. INFOGRAFIS TIMELINE (```infographic):
+3. INFOGRAFIS TIMELINE (```infographic):
 Gunakan untuk presentasi timeline/alur bulanan tingkat tinggi. Contoh format WAJIB (pastikan key JSON sama persis):
 ```infographic
 {
@@ -208,17 +249,60 @@ Gunakan untuk presentasi timeline/alur bulanan tingkat tinggi. Contoh format WAJ
       "mainObjective": "Menentukan Scope",
       "activities": ["Kickoff meeting", "Analisis kebutuhan", "Desain UI/UX"],
       "outputs": ["Dokumen PRD", "Mockup UI"]
-    },
-    {
-      "month": "2",
-      "title": "Pengembangan",
-      "mainObjective": "Coding Backend & Frontend",
-      "activities": ["Setup database", "API Development"],
-      "outputs": ["API Docs", "Versi Alpha"]
     }
   ]
 }
 ```
+
+4. INTERACTIVE DIAGRAM / FLOWCHART (```flowchart):
+Gunakan ketika user meminta "diagram alir", "flowchart", "skema", "mind map", atau memetakan infrastruktur/arsitektur secara visual.
+Contoh format WAJIB (memerlukan nodes dan edges berformat XYFlow):
+```flowchart
+{
+  "title": "Arsitektur Sistem Login",
+  "nodes": [
+    { "id": "1", "position": { "x": 0, "y": 0 }, "data": { "label": "Client / User" }, "style": { "background": "#3b82f6", "color": "white", "borderRadius": "8px" } },
+    { "id": "2", "position": { "x": 0, "y": 100 }, "data": { "label": "API Gateway" }, "style": { "background": "#10b981", "color": "white" } }
+  ],
+  "edges": [
+    { "id": "e1-2", "source": "1", "target": "2", "label": "POST /login", "animated": true }
+  ]
+}
+```
+
+5. ADVANCED DATA GRID / INTERACTIVE TABLE (```datagrid):
+Gunakan ketika user meminta disajikan sebuah "tabel data", "grid", "database", atau data laporan berkolom. JANGAN PERNAH gunakan tabel markdown biasa (|...|...|).
+Contoh format WAJIB:
+```datagrid
+{
+  "title": "Daftar Personel Aktif",
+  "columns": [
+    { "key": "id", "label": "ID Anggota" },
+    { "key": "name", "label": "Nama Lengkap" },
+    { "key": "role", "label": "Jabatan" },
+    { "key": "status", "label": "Status" }
+  ],
+  "rows": [
+    { "id": "A01", "name": "Budi Santoso", "role": "Backend Dev", "status": "Aktif" },
+    { "id": "A02", "name": "Siti Aminah", "role": "Data Scientist", "status": "Cuti" }
+  ]
+}
+```
+
+6. INTERACTIVE MAPS & GEOLOCATION (```map):
+Gunakan jika user menanyakan "lokasi", "koordinat", "dimana markas", atau instruksi pemetaan geografis. JANGAN HANYA JAWAB TEKS, sertakan peta agar user terpukau.
+Contoh format WAJIB (array berisi latitude dan longitude numerik murni):
+```map
+{
+  "title": "Lokasi Markas PT Pindad (Persero)",
+  "center": [-6.9298, 107.6406],
+  "zoom": 15,
+  "markers": [
+    { "position": [-6.9298, 107.6406], "popup": "Pusat Operasional PT Pindad" }
+  ]
+}
+```
+
 """
 
 PROMPT_AMBIGUOUS_TEMPLATE = COMMON_BASE_PERSONA + """

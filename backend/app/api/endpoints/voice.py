@@ -65,6 +65,8 @@ PHONETIC_ROOTS = {
     'tbk': 'te be ka',
     'bumn': 'be u em en',
     'pic': 'pi ai si',
+    'PKB': 'pe ka be',
+
     
     # Indonesian specific quirks
     'sip': 'siip',
@@ -275,10 +277,8 @@ async def text_to_speech(
     Endpoint for Text-to-Speech using edge-tts or F5-TTS.
     Accepts text and returns a streaming audio response.
     """
-    if not current_user_npp:
-        raise HTTPException(status_code=401, detail="Unauthorized")
-        
-    logger.info(f"[VOICE] TTS requested by {current_user_npp} with voice: {voice}")
+    current_npp = current_user_npp or "GUEST"
+    logger.info(f"[VOICE] TTS requested by {current_npp} with voice: {voice}")
     
     if not text.strip():
         raise HTTPException(status_code=400, detail="Text cannot be empty.")

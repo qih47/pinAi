@@ -20,6 +20,7 @@ export const translations = {
       expand: "Tampilkan Menu",
       searchChat: "Cari Percakapan",
       documents: "Dokumen",
+      regulation: "Regulasi",
       corporateTools: "Alat Perusahaan",
       smartMail: "Smart Mail",
       notaDinasGen: "Generator Nota Dinas",
@@ -86,6 +87,7 @@ export const translations = {
       copyMessage: "Salin Pesan",
       editCommand: "Edit Perintah",
       copyResponse: "Salin Respons",
+      retryResponse: "Ulangi Respons",
       goodResponse: "Respons Bagus",
       badResponse: "Respons Buruk",
       attachFilePrompt: "Lampirkan Berkas (PDF / Gambar) atau Paste (Ctrl+V) atau Drag-Drop",
@@ -106,11 +108,24 @@ export const translations = {
       light: "Terang",
       dark: "Gelap",
       exportMd: "Simpan sebagai Markdown",
-      printPdf: "Cetak / PDF"
+      printPdf: "Cetak / PDF",
+      language: "Bahasa",
+      languageId: "Indonesian",
+      languageEn: "English"
     },
     welcome: {
-      greeting: "Apa fokus utama Anda hari ini",
-      guest: "Halo, saya CAKRA"
+      greeting: [
+        "Apa fokus utama Anda hari ini",
+        "Ada yang bisa saya bantu hari ini",
+        "Tugas apa yang mau dikerjakan hari ini",
+        "Mari selesaikan target Anda hari ini"
+      ],
+      guest: [
+        "Halo, saya CAKRA",
+        "Selamat datang di CAKRA",
+        "Hai, saya asisten CAKRA"
+      ],
+      guestSubtitle: "Mau cari informasi apa hari ini?"
     },
     documentGen: {
       title: "CAKRA Nota Dinas Generator",
@@ -327,6 +342,7 @@ export const translations = {
       expand: "Expand",
       searchChat: "Search Chat",
       documents: "Documents",
+      regulation: "Regulatory",
       corporateTools: "Corporate Tools",
       smartMail: "Smart Mail",
       notaDinasGen: "Memo Gen",
@@ -393,6 +409,7 @@ export const translations = {
       copyMessage: "Copy Message",
       editCommand: "Edit Command",
       copyResponse: "Copy Response",
+      retryResponse: "Regenerate Response",
       goodResponse: "Good Response",
       badResponse: "Bad Response",
       attachFilePrompt: "Attach File (PDF / Image) or Paste (Ctrl+V) or Drag-Drop",
@@ -413,11 +430,24 @@ export const translations = {
       light: "Light",
       dark: "Dark",
       exportMd: "Export Markdown",
-      printPdf: "Print / PDF"
+      printPdf: "Print / PDF",
+      language: "Language",
+      languageId: "Indonesian",
+      languageEn: "English"
     },
     welcome: {
-      greeting: "What are we focusing on today",
-      guest: "Hello, I am CAKRA"
+      greeting: [
+        "What are we focusing on today",
+        "How can I assist you today",
+        "What tasks are we tackling today",
+        "Let's accomplish your goals today"
+      ],
+      guest: [
+        "Hello, I am CAKRA",
+        "Welcome to CAKRA",
+        "Hi, I'm CAKRA assistant"
+      ],
+      guestSubtitle: "What information are you looking for today?"
     },
     documentGen: {
       title: "CAKRA Official Memo Generator",

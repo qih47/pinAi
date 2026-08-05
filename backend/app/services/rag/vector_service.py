@@ -2,6 +2,7 @@ import httpx
 import logging
 from typing import List
 from backend.app.core.config import settings
+from backend.app.core.llm_client import get_shared_client
 
 logger = logging.getLogger("CAKRA_VECTOR")
 
@@ -27,39 +28,39 @@ class VectorService:
             "prompt": prompt,
         }
 
-        async with httpx.AsyncClient(timeout=90.0) as client:
-            try:
-                response = await client.post(url, json=payload)
+        client = get_shared_client()
+        try:
+            response = await client.post(url, json=payload, timeout=90.0)
 
-                if response.status_code != 200:
-                    logger.error(
-                        f"[VECTOR_OLLAMA_ERROR] Ollama error {response.status_code}: {response.text}"
-                    )
-                    return []
-
-                response_json = response.json()
-                embedding = response_json.get("embedding")
-
-                if not embedding:
-                    logger.warning("[VECTOR_OLLAMA_EMPTY] Empty embedding returned from Ollama")
-                    return []
-
-                # Validasi dimensi — mxbai harus 1024
-                if len(embedding) != 1024:
-                    logger.error(
-                        f"[VECTOR_DIMENSION_ERROR] Dimension error! Expected 1024, got {len(embedding)}. "
-                        f"Pastikan MODEL_EMBEDDING=mxbai-embed-large di .env"
-                    )
-                    return []
-
-                return embedding
-
-            except httpx.TimeoutException:
-                logger.error("[VECTOR_TIMEOUT] Timeout generating embedding mxbai.")
+            if response.status_code != 200:
+                logger.error(
+                    f"[VECTOR_OLLAMA_ERROR] Ollama error {response.status_code}: {response.text}"
+                )
                 return []
-            except Exception as e:
-                logger.error(f"[VECTOR_CRITICAL_ERROR] Error: {str(e)}")
+
+            response_json = response.json()
+            embedding = response_json.get("embedding")
+
+            if not embedding:
+                logger.warning("[VECTOR_OLLAMA_EMPTY] Empty embedding returned from Ollama")
                 return []
+
+            # Validasi dimensi — mxbai harus 1024
+            if len(embedding) != 1024:
+                logger.error(
+                    f"[VECTOR_DIMENSION_ERROR] Dimension error! Expected 1024, got {len(embedding)}. "
+                    f"Pastikan MODEL_EMBEDDING=mxbai-embed-large di .env"
+                )
+                return []
+
+            return embedding
+
+        except httpx.TimeoutException:
+            logger.error("[VECTOR_TIMEOUT] Timeout generating embedding mxbai.")
+            return []
+        except Exception as e:
+            logger.error(f"[VECTOR_CRITICAL_ERROR] Error: {str(e)}")
+            return []
 
     async def get_text_embedding(self, text: str) -> List[float]:
         """

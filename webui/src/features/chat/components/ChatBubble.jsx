@@ -72,6 +72,23 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
     const [showToast, setShowToast] = useState(false);
     const [toastMsg, setToastMsg] = useState('');
     const ttsSpeed = useChatStore(state => state.ttsSpeed);
+    const editAndRegenerate = useChatStore(state => state.editAndRegenerate);
+
+    const handleInstantRetry = useCallback(() => {
+        const storeMessages = useChatStore.getState().messages;
+        const targetIdx = idx - 1;
+        if (targetIdx >= 0 && storeMessages[targetIdx]) {
+            const userText = storeMessages[targetIdx].content;
+            editAndRegenerate(targetIdx, userText);
+        } else {
+            for (let i = idx - 1; i >= 0; i--) {
+                if (storeMessages[i]?.role === 'user') {
+                    editAndRegenerate(i, storeMessages[i].content);
+                    break;
+                }
+            }
+        }
+    }, [idx, editAndRegenerate]);
 
     // TTS Audio State
     const [isAudioLoading, setIsAudioLoading] = useState(false);
@@ -195,10 +212,28 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
 
         const textToRead = ttsQueueRef.current.textChunks.shift();
 
+        const detectLanguage = (text) => {
+            const enWords = ['the', 'is', 'are', 'and', 'of', 'to', 'in', 'that', 'it', 'for', 'on', 'with', 'as', 'this', 'but'];
+            const idWords = ['yang', 'di', 'ke', 'dari', 'dan', 'ini', 'itu', 'untuk', 'dengan', 'dalam', 'pada', 'adalah', 'akan', 'bisa', 'saya'];
+            const words = text.toLowerCase().split(/\s+/);
+            let enCount = 0, idCount = 0;
+            words.forEach(w => {
+                if (enWords.includes(w)) enCount++;
+                if (idWords.includes(w)) idCount++;
+            });
+            return enCount > idCount ? 'en' : 'id';
+        };
+
         try {
+            let finalVoice = ttsVoice;
+            if (!finalVoice) {
+                const lang = detectLanguage(textToRead);
+                finalVoice = lang === 'en' ? 'en-US-GuyNeural' : 'id-ID-ArdiNeural';
+            }
+
             const res = await apiClient.post('/voice/tts', { 
                 text: textToRead, 
-                voice: ttsVoice || 'id-ID-ArdiNeural',
+                voice: finalVoice,
                 speed: ttsSpeed || 'normal'
             }, { responseType: 'blob', timeout: 120000 });
             if (ttsQueueRef.current.isStopped) return;
@@ -919,6 +954,41 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
                                     </svg>
                                 )}
                             </button>
+
+                            {/* 🔄 TOMBOL INSTANT RETRY / REGENERATE */}
+                            <button
+                                type="button"
+                                onClick={handleInstantRetry}
+                                style={{
+                                    background: 'transparent',
+                                    border: 'none',
+                                    cursor: 'pointer',
+                                    padding: '6px',
+                                    borderRadius: '6px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    transition: 'all 0.2s ease',
+                                    opacity: 0.5,
+                                    color: darkMode ? '#94a3b8' : '#64748b'
+                                }}
+                                title={tGlobal.chat.retryResponse || 'Ulangi Respons'}
+                                onMouseEnter={(e) => {
+                                    e.currentTarget.style.opacity = '1';
+                                    e.currentTarget.style.color = darkMode ? '#10b981' : '#059669';
+                                    e.currentTarget.style.background = darkMode ? 'rgba(16,185,129,0.1)' : 'rgba(5,150,105,0.05)';
+                                }}
+                                onMouseLeave={(e) => {
+                                    e.currentTarget.style.opacity = '0.5';
+                                    e.currentTarget.style.color = darkMode ? '#94a3b8' : '#64748b';
+                                    e.currentTarget.style.background = 'transparent';
+                                }}
+                            >
+                                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                                    <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path>
+                                    <path d="M3 3v5h5"></path>
+                                </svg>
+                            </button>
                         </div>
                     )}
 
@@ -928,6 +998,10 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
         </div>
     );
 }, (prevProps, nextProps) => {
+    // Jika bukan pesan terakhir dan objek msg sama persis, abaikan perubahan status streaming global
+    if (!prevProps.isLastMessage && !nextProps.isLastMessage && prevProps.msg === nextProps.msg && prevProps.darkMode === nextProps.darkMode) {
+        return true;
+    }
     return (
         prevProps.msg.content === nextProps.msg.content &&
         prevProps.msg.thinking === nextProps.msg.thinking &&
@@ -941,8 +1015,8 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
         prevProps.idx === nextProps.idx &&
         prevProps.searchQuery === nextProps.searchQuery &&
         prevProps.msg.totalMessages === nextProps.msg.totalMessages &&
-        JSON.stringify(prevProps.msg.attachments) === JSON.stringify(nextProps.msg.attachments) &&
-        JSON.stringify(prevProps.msg.fileGenerations) === JSON.stringify(nextProps.msg.fileGenerations)
+        prevProps.msg.attachments === nextProps.msg.attachments &&
+        prevProps.msg.fileGenerations === nextProps.msg.fileGenerations
     );
 });
 

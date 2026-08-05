@@ -43,7 +43,10 @@ export default function LoginPage() {
     }
 
     const guestSessionId = useChatStore.getState().sessionUuid;
-    await login(identifier, password, guestSessionId);
+    const result = await login(identifier, password, guestSessionId);
+    if (result && result.success) {
+      await useChatStore.getState().fetchSettings();
+    }
   };
 
   return (

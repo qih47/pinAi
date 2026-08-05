@@ -14,7 +14,18 @@ const ThoughtAccordion = ({ thought, darkMode, theme, statusMessage, isStreaming
     .replace(/<\/think>/g, '')
     .trim();
 
-  if (!cleanThought || cleanThought.includes("Gemma Agentic")) return null;
+  if (
+    !cleanThought ||
+    cleanThought.length < 5 ||
+    cleanThought.includes("Gemma Agentic") ||
+    cleanThought.includes("Mode:") ||
+    cleanThought === "Sedang memproses..." ||
+    cleanThought === "Thinking" ||
+    cleanThought === "Thinking..." ||
+    cleanThought === "Thinking Done"
+  ) {
+    return null;
+  }
 
   const accordionStyle = {
     marginBottom: '14px',

@@ -377,7 +377,7 @@ export default function ChatInputArea({
                       onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
                     >
                       <Paperclip size={18} color={darkMode ? '#c4c7c5' : '#64748b'} />
-                      Upload file
+                      {t.uploadFile}
                     </button>
                     {!isGuest && currentIsLoggedIn && (
                       <button
@@ -396,7 +396,7 @@ export default function ChatInputArea({
                         onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
                       >
                         <Cloud size={18} color={darkMode ? '#c4c7c5' : '#64748b'} />
-                        Upload dari PinCloud
+                        {t.uploadCloud}
                       </button>
                     )}
                   </div>
@@ -424,6 +424,9 @@ export default function ChatInputArea({
                     onChange={handleChatModeChange}
                     disabled={false}
                     darkMode={darkMode}
+                    thinking={isThinkingMode}
+                    onThinkingChange={handleThinkingModeChange}
+                    language={language}
                   />
                 )}
 

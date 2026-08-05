@@ -2,9 +2,11 @@ import React, { useState, useRef, useEffect } from 'react';
 import { getHeaderDropdownMenuStyles } from '../chatPage.styles';
 import { useChatStore } from '../../../stores/chatStore';
 import { translations } from '../../../utils/translations';
+import { LogIn, Sun, Moon, Globe, FileDown, Printer, ChevronDown, ChevronUp } from 'lucide-react';
 
-export default function HeaderDropdownMenu({ isGuest, onLogin, darkMode, setDarkMode, theme, language }) {
+export default function HeaderDropdownMenu({ isGuest, onLogin, darkMode, setDarkMode, theme, language, setLanguage }) {
   const [isOpen, setIsOpen] = useState(false);
+  const [showLangPicker, setShowLangPicker] = useState(false);
   const menuRef = useRef(null);
   
   const t = translations[language]?.dropdown || translations.id.dropdown;
@@ -205,7 +207,7 @@ export default function HeaderDropdownMenu({ isGuest, onLogin, darkMode, setDark
                 e.currentTarget.style.background = 'transparent';
               }}
             >
-              <span>🔑</span> {t.login}
+              <LogIn size={15} strokeWidth={2.5} className="opacity-70" /> <span>{t.login}</span>
             </button>
           )}
 
@@ -228,10 +230,71 @@ export default function HeaderDropdownMenu({ isGuest, onLogin, darkMode, setDark
             }}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span>{darkMode ? '☀️' : '🌙'}</span>
+              {darkMode ? <Sun size={15} strokeWidth={2.5} className="opacity-70" /> : <Moon size={15} strokeWidth={2.5} className="opacity-70" />}
               <span>{darkMode ? t.light : t.dark}</span>
             </div>
           </button>
+
+          {/* 🌐 LANGUAGE PICKER - tampil selalu (guest & logged in jika ada setLanguage) */}
+          {setLanguage && (
+            <>
+              <div style={menuStyles.divider} />
+              <div
+                style={{ ...menuStyles.themeItem, cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+                onClick={() => setShowLangPicker(!showLangPicker)}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = darkMode ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'transparent';
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Globe size={15} strokeWidth={2.5} className="opacity-70" />
+                  <span>{t.language}</span>
+                </div>
+                {showLangPicker ? <ChevronUp size={14} className="opacity-50" /> : <ChevronDown size={14} className="opacity-50" />}
+              </div>
+              {showLangPicker && (
+                <div style={{ paddingLeft: '8px', paddingRight: '8px', paddingBottom: '4px' }}>
+                  {['id', 'en'].map((lang) => (
+                    <button
+                      key={lang}
+                      type="button"
+                      onClick={() => {
+                        setLanguage(lang);
+                        setShowLangPicker(false);
+                        setIsOpen(false);
+                      }}
+                      style={{
+                        ...menuStyles.themeItem,
+                        width: '100%',
+                        borderRadius: '8px',
+                        marginBottom: '2px',
+                        background: language === lang
+                          ? (darkMode ? 'rgba(99,102,241,0.2)' : 'rgba(99,102,241,0.1)')
+                          : 'transparent',
+                        border: language === lang
+                          ? `1px solid ${darkMode ? 'rgba(99,102,241,0.4)' : 'rgba(99,102,241,0.3)'}`
+                          : '1px solid transparent',
+                        color: language === lang ? '#818cf8' : (darkMode ? '#e2e8f0' : '#1f2937'),
+                        fontWeight: language === lang ? 600 : 400,
+                        fontSize: '13px',
+                      }}
+                      onMouseEnter={(e) => {
+                        if (language !== lang) e.currentTarget.style.background = darkMode ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)';
+                      }}
+                      onMouseLeave={(e) => {
+                        if (language !== lang) e.currentTarget.style.background = 'transparent';
+                      }}
+                    >
+                      {lang === 'id' ? t.languageId : t.languageEn}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
 
           {messages.filter(m => m.role === 'user').length > 0 && (
             <>
@@ -250,7 +313,7 @@ export default function HeaderDropdownMenu({ isGuest, onLogin, darkMode, setDark
                 }}
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <span>📝</span>
+                  <FileDown size={15} strokeWidth={2.5} className="opacity-70" />
                   <span>{t.exportMd}</span>
                 </div>
               </button>
@@ -269,7 +332,7 @@ export default function HeaderDropdownMenu({ isGuest, onLogin, darkMode, setDark
                 }}
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <span>🖨️</span>
+                  <Printer size={15} strokeWidth={2.5} className="opacity-70" />
                   <span>{t.printPdf}</span>
                 </div>
               </button>

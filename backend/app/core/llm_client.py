@@ -7,6 +7,7 @@ no external thinking API params needed.
 """
 
 import re
+import asyncio
 import httpx
 import json
 import logging
@@ -123,6 +124,16 @@ def get_shared_client() -> httpx.AsyncClient:
     return _shared_client
 
 
+_gpu_semaphore: Optional[asyncio.Semaphore] = None
+
+def get_gpu_semaphore(max_slots: int = 4) -> asyncio.Semaphore:
+    """Mengembalikan singleton asyncio.Semaphore untuk proteksi antrean GPU/Ollama."""
+    global _gpu_semaphore
+    if _gpu_semaphore is None:
+        _gpu_semaphore = asyncio.Semaphore(max_slots)
+    return _gpu_semaphore
+
+
 
 GLOBAL_SECURITY_GUARDRAIL = """
 === CAKRA AI SYSTEM GUARDRAIL (CRITICAL) ===
@@ -167,7 +178,9 @@ async def stream_ollama_chat(
     Mengalirkan string chunk mentah langsung dari Ollama menuju Layer 2 Executor.
     Gemma 4 thinking dialirkan via field `thought` per chunk.
     """
-    gpu_semaphore = request.app.state.gpu_limit
+    gpu_semaphore = getattr(request.app.state, "gpu_limit", None) if (request and hasattr(request, "app")) else None
+    if gpu_semaphore is None:
+        gpu_semaphore = get_gpu_semaphore()
     url = f"{settings.OLLAMA_BASE_URL}/api/chat"
     
     # Inject Privacy & Security Guardrail
@@ -178,10 +191,11 @@ async def stream_ollama_chat(
 
     async with gpu_semaphore:
         queue_wait_time = (datetime.now() - queue_start_time).total_seconds()
+        queue_ms = queue_wait_time * 1000
         if queue_wait_time > 0.05:
-            logger.info(f"🔓 [HARDWARE GPU] Slot didapatkan setelah antre {queue_wait_time:.2f}s! Mulai inferensi model '{model_name}'...")
+            logger.info(f"🔓 [HARDWARE GPU] Slot didapatkan setelah antre {queue_ms:.1f}ms ({queue_wait_time:.2f}s)! Mulai inferensi model '{model_name}'...")
         else:
-            logger.info(f"🔓 [HARDWARE GPU] Slot didapatkan langsung (tanpa antre)! Mulai inferensi model '{model_name}'...")
+            logger.info(f"🔓 [HARDWARE GPU] Slot didapatkan langsung (tanpa antre - {queue_ms:.1f}ms)! Mulai inferensi model '{model_name}'...")
 
         inference_start_time = datetime.now()
 
@@ -240,8 +254,13 @@ async def stream_ollama_chat(
 
                     if content or thought:
                         if first_token:
-                            ttft = (datetime.now() - inference_start_time).total_seconds()
-                            logger.info(f"⚡ [LLM_CLIENT] First token received! TTFT: {ttft:.2f}s")
+                            ttft_ms = (datetime.now() - inference_start_time).total_seconds() * 1000
+                            queue_ms_log = queue_wait_time * 1000
+                            logger.info(
+                                f"⚡ [TIMING_BENCHMARK] First Token Received! "
+                                f"Ollama Prefill TTFT: {ttft_ms:.1f}ms ({ttft_ms/1000:.2f}s) | "
+                                f"GPU Queue Wait: {queue_ms_log:.1f}ms"
+                            )
                             first_token = False
 
                         if thought:
@@ -294,13 +313,13 @@ async def stream_ollama_chat(
                                             "tps": tps
                                         }
                                     }
-                                    await chat_history_service.save_agent_step(
+                                    asyncio.create_task(chat_history_service.save_agent_step(
                                         session_id=session_uuid,
                                         step_number=4,
                                         tool_called="INFERENCE_STATS",
                                         tool_input=f"Model: {model_name}",
                                         observation=json.dumps(obs_dict)
-                                    )
+                                    ))
                             except Exception as stat_err:
                                 logger.warning(f"[LLM_CLIENT] Failed to save inference stats: {str(stat_err)}")
 
@@ -310,21 +329,21 @@ async def stream_ollama_chat(
                                     (m["content"] for m in reversed(messages) if m["role"] == "user"),
                                     "Kueri tidak terdeteksi",
                                 )
-                                await chat_history_service.save_chat_message(
+                                asyncio.create_task(chat_history_service.save_chat_message(
                                     session_id=session_uuid,
                                     role="assistant",
                                     text=full_response,
                                     thought=accumulated_thinking or "Processed via Layer 2 [Core Engine]",
-                                )
-                                await chat_history_service.save_dialogue_corpus(
+                                ))
+                                asyncio.create_task(chat_history_service.save_dialogue_corpus(
                                     session_uuid=session_uuid,
                                     user_text=user_query,
                                     assistant_text=full_response,
                                     metadata={"mode": "global_inference", "thought": accumulated_thinking.strip() if accumulated_thinking else None}
-                                )
-                                logger.info(f"[LLM_CLIENT] Dialog history saved for session {session_uuid[:8]}")
+                                ))
+                                logger.info(f"[LLM_CLIENT] Dialog history save tasks dispatched for session {session_uuid[:8]}")
                             except Exception as save_err:
-                                logger.warning(f"[LLM_CLIENT] Failed to save dialog history: {str(save_err)}")
+                                logger.warning(f"[LLM_CLIENT] Failed to dispatch dialog history save tasks: {str(save_err)}")
 
         except httpx.TimeoutException:
             logger.error("[LLM_CLIENT] Timeout - cluster engine took too long")
@@ -395,9 +414,15 @@ async def generate_json_response(
 
     start_time = datetime.now()
     client = get_shared_client()
+    gpu_semaphore = get_gpu_semaphore()
 
     try:
-        response = await client.post(url, json=payload, timeout=httpx.Timeout(timeout, connect=10.0))
+        q_start = datetime.now()
+        async with gpu_semaphore:
+            q_wait_ms = (datetime.now() - q_start).total_seconds() * 1000
+            if q_wait_ms > 50:
+                logger_local.info(f"⏳ [TIMING_BENCHMARK] [JSON_GEN] GPU Semaphore antre {q_wait_ms:.1f}ms")
+            response = await client.post(url, json=payload, timeout=httpx.Timeout(timeout, connect=10.0))
 
         if response.status_code != 200:
             error_text = response.text
@@ -432,9 +457,10 @@ async def generate_json_response(
         parsed_json = _extract_json_from_response(message_content, model_name)
 
         elapsed = (datetime.now() - start_time).total_seconds()
+        elapsed_ms = elapsed * 1000
         logger_local.info(
-            f"[JSON_GEN] Generated in {elapsed:.2f}s | Model: {model_name} | "
-            f"num_predict: {num_predict}"
+            f"⚡ [TIMING_BENCHMARK] [JSON_GEN] Selesai dalam {elapsed_ms:.1f}ms ({elapsed:.2f}s) | "
+            f"Model: {model_name} | num_predict: {num_predict}"
         )
         return parsed_json
 

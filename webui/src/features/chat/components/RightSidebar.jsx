@@ -28,6 +28,8 @@ export default function RightSidebar({
   handleDownloadAllArtifacts,
   setPreviewImage,
   setShowRightSidebar,
+  setRightSidebarWidth,
+  sidebarOpen,
   language
 }) {
   const toast = useToast();
@@ -46,7 +48,7 @@ export default function RightSidebar({
         right: 0,
         top: isPreviewMode ? 0 : "56px",
         bottom: 0,
-        width: isMobile ? "100%" : (isPreviewMode ? `${rightSidebarWidth}px` : "325px"),
+        width: isMobile ? "100%" : (isPreviewMode ? (rightSidebarWidth === 9999 ? `calc(100vw - ${sidebarOpen ? 256 : 64}px)` : `${rightSidebarWidth}px`) : "325px"),
         maxWidth: "100vw",
         background: baseBgColor,
         borderLeft: `1px solid ${borderStyleColor}`,
@@ -115,6 +117,9 @@ export default function RightSidebar({
           toast={toast}
           containerBgColor={containerBgColor}
           setShowRightSidebar={setShowRightSidebar}
+          rightSidebarWidth={rightSidebarWidth}
+          setRightSidebarWidth={setRightSidebarWidth}
+          isMobile={isMobile}
         />
       ) : (
         // ── MODE 3: WORKSPACE FILE HUB ──

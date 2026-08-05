@@ -93,6 +93,18 @@ async def execute_call1_routing(
     """
     from backend.app.services.pipeline.system_prompts import build_call1_routing_prompt
 
+    # SPRINT 5 FAST-PATH OPTIMIZATION:
+    # Jika di tab "documents" dan pesan user adalah pertanyaan regulasi yang jelas (tanpa coding/email/file generation/ambiguitas),
+    # langsung gunakan fast-path rule-based routing tanpa memanggil LLM Call 1 (hemat 15-17 detik!)
+    is_doc_mode = (precheck.get("chat_mode") == "documents")
+    is_doc_query = precheck.get("is_doc_query", False)
+    is_chitchat_msg = precheck.get("is_chitchat", False) or precheck.get("is_greeting", False)
+    is_complex_task = precheck.get("is_coding", False) or precheck.get("is_generate_email", False) or precheck.get("has_attachment", False)
+
+    if not is_first_chat and (is_doc_mode or is_doc_query or is_chitchat_msg) and not is_complex_task and len(user_message.split()) <= 25:
+        logger.info("[CALL1] ⚡ Smart Fast-Path activated for document/chitchat query -> Bypassing LLM routing (0.001s)")
+        return _build_fallback_routing(precheck)
+
     # Smart Signal Stripping
     stripped_message = extract_routing_signals_for_call1(user_message)
 
@@ -111,8 +123,11 @@ async def execute_call1_routing(
         {"role": "user", "content": stripped_message},
     ]
 
+    # Alokasi num_predict dinamis untuk keluaran JSON routing (hemat waktu generate token)
+    dynamic_predict = 384
+
     logger.info(
-        f"[CALL1] Executing routing | user_msg_len={len(user_message)} | stripped_len={len(stripped_message)}"
+        f"[CALL1] Executing routing | user_msg_len={len(user_message)} | stripped_len={len(stripped_message)} | dynamic_num_predict={dynamic_predict}"
     )
 
     try:
@@ -122,11 +137,19 @@ async def execute_call1_routing(
             request=request,
             temperature=0.0,
             num_ctx=16384,
-            num_predict=1024,
+            num_predict=dynamic_predict,
             timeout=30.0,
         )
 
-        routing = _validate_and_normalize_routing(routing_json, precheck)
+        import json
+        logger.info(f"[CALL1] 📦 Raw JSON Payload dari LLM:\n{json.dumps(routing_json, indent=2)}")
+
+        routing = _validate_and_normalize_routing(
+            routing_json, 
+            precheck,
+            is_first_chat=is_first_chat,
+            user_message=user_message
+        )
 
         logger.info(
             f"[CALL1] Routing complete | need_rag={routing['need_rag']} | "
@@ -143,6 +166,8 @@ async def execute_call1_routing(
 def _validate_and_normalize_routing(
     routing_json: Dict[str, Any],
     precheck: Dict[str, Any],
+    is_first_chat: bool = False,
+    user_message: str = "",
 ) -> Dict[str, Any]:
     """Validasi dan normalize routing JSON dari Call 1."""
     default_routing = {
@@ -165,6 +190,8 @@ def _validate_and_normalize_routing(
         "detected_language": "id",
         "requires_visual": False,
         "session_title": None,
+        "is_chitchat": False,
+        "is_map_query": False,
     }
 
     routing = {**default_routing, **routing_json}
@@ -208,6 +235,7 @@ def _validate_and_normalize_routing(
     routing["is_ambiguous"] = bool(routing_json.get("is_ambiguous", False))
     routing["is_multi_document"] = bool(routing_json.get("is_multi_document", False))
     routing["is_multi_turn_task"] = bool(routing_json.get("is_multi_turn_task", False))
+    routing["is_map_query"] = bool(routing_json.get("is_map_query", False))
 
     task_list = routing_json.get("task_list", [])
     if isinstance(task_list, list):
@@ -233,6 +261,18 @@ def _validate_and_normalize_routing(
     valid_langs = ["id", "en", "mixed"]
     lang = routing_json.get("detected_language", "id")
     routing["detected_language"] = lang if lang in valid_langs else "id"
+
+    # Ekstrak atau buat fallback judul obrolan untuk sidebar kiri (SPRINT 5 OPTIMIZED)
+    session_title = routing_json.get("session_title")
+    if isinstance(session_title, str) and session_title.strip() and session_title.strip().lower() not in ["null", "none", "obrolan baru", ""]:
+        routing["session_title"] = session_title.strip()
+    elif is_first_chat:
+        words = [w for w in user_message.split() if len(w) >= 3 and w.lower() not in ["jadi", "gimana", "nih", "coba", "jelasin", "tolong", "buatkan", "dong"]]
+        auto_title = " ".join(words[:4]).title() if words else "Obrolan Cakra AI"
+        routing["session_title"] = auto_title
+        logger.info(f"[CALL1] Auto-fallback session_title generated: '{auto_title}'")
+    else:
+        routing["session_title"] = None
 
     # Override dengan precheck jika ada hint yang kuat
     if precheck.get("need_rag_hint") is True and not routing["need_rag"]:
@@ -265,6 +305,8 @@ def _validate_and_normalize_routing(
             routing["queries"] = [pure_keyword] + gemma_queries[:2]
             logger.info(f"[CALL1] Queries modified. Query 1 forced to user keyword: {routing['queries']}")
 
+    routing["is_chitchat"] = bool(routing_json.get("is_chitchat", False))
+
     return routing
 
 
@@ -296,6 +338,7 @@ def _build_fallback_routing(precheck: Dict[str, Any]) -> Dict[str, Any]:
             "pronoun": precheck.get("pronoun", "unknown"),
             "tone_hint": "formal",
             "detected_language": "id",
+            "is_chitchat": False,
         }
     else:
         return {
@@ -317,4 +360,5 @@ def _build_fallback_routing(precheck: Dict[str, Any]) -> Dict[str, Any]:
             "pronoun": precheck.get("pronoun", "unknown"),
             "tone_hint": "formal",
             "detected_language": "id",
+            "is_chitchat": precheck.get("is_chitchat", False),
         }

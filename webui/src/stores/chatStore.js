@@ -29,7 +29,6 @@ export const useChatStore = create((set, get) => ({
     isSplitScreen: false,
     activePdfUrl: null,
     showGhostWriter: false,
-    showGhostWriter: false,
     ghostWriterContent: "",
     autoReadAloud: localStorage.getItem('cakra_auto_read_aloud') === 'true',
     setAutoReadAloud: (val) => {

@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { useChatStore } from "@/stores/chatStore";
 import SidebarHeader from "./Sidebar/SidebarHeader";
 import SessionList from "./Sidebar/SessionList";
@@ -32,6 +33,7 @@ const Sidebar = ({
   const menuRef = useRef(null);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [sessionToDelete, setSessionToDelete] = useState(null);
+  const [deleteModalPos, setDeleteModalPos] = useState({ top: 100, left: 268 });
   const [sessionSearchQuery, setSessionSearchQuery] = useState("");
   const sidebarSearchInputRef = useRef(null);
   const [isHovered, setIsHovered] = useState(false);
@@ -71,7 +73,16 @@ const Sidebar = ({
   }, []);
 
   const confirmDelete = (e, sessionUuid) => {
-    e.stopPropagation();
+    if (e && e.stopPropagation) e.stopPropagation();
+    if (typeof window !== "undefined") {
+      const itemEl = document.getElementById(`session-item-${sessionUuid}`);
+      const targetEl = itemEl || (e && e.currentTarget);
+      if (targetEl) {
+        const rect = targetEl.getBoundingClientRect();
+        const topPos = Math.max(16, Math.min(rect.top - 20, window.innerHeight - 220));
+        setDeleteModalPos({ top: topPos, left: 268 });
+      }
+    }
     setSessionToDelete(sessionUuid);
     setShowDeleteModal(true);
     setActiveMenuId(null);
@@ -143,7 +154,7 @@ const Sidebar = ({
   return (
     <>
       <div
-      className={`fixed left-0 top-0 h-[100dvh] flex flex-col transition-all duration-300 z-40 ${isMobile
+      className={`fixed left-0 top-0 h-[100dvh] flex flex-col overflow-hidden transition-all duration-300 z-40 ${isMobile
           ? (isOpen ? "w-64 translate-x-0" : "w-64 -translate-x-full")
           : (isOpen ? "w-64 translate-x-0" : "w-16 translate-x-0")
         }`}
@@ -213,43 +224,58 @@ const Sidebar = ({
         setLanguage={setLanguage}
         openSettingsModal={() => setIsSettingsModalOpen(true)}
       />
+      </div>
 
-      {showDeleteModal && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-white rounded-2xl p-6 w-80 shadow-2xl transform animate-in zoom-in-95 duration-200 dark:bg-gray-800">
+      {/* DELETE CHAT MODAL (PORTAL OUTSIDE SIDEBAR, FLOATING RIGHT OF SELECTED TITLE) */}
+      {showDeleteModal && typeof document !== "undefined" && createPortal(
+        <div 
+          className="fixed inset-0 z-[9999] bg-transparent"
+          onClick={() => {
+            setShowDeleteModal(false);
+            setSessionToDelete(null);
+          }}
+        >
+          <div 
+            style={{ 
+              position: "fixed", 
+              top: `${deleteModalPos.top}px`, 
+              left: `${deleteModalPos.left}px` 
+            }}
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white dark:bg-gray-800 rounded-2xl p-5 w-72 shadow-2xl border border-gray-200 dark:border-gray-700 transform animate-in fade-in zoom-in-95 duration-200"
+          >
             <div className="flex flex-col items-center text-center">
-              <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mb-4 dark:bg-red-900/30">
-                <span className="text-xl">🗑️</span>
+              <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center mb-3 dark:bg-red-900/30">
+                <span className="text-lg">🗑️</span>
               </div>
-              <h3 className="text-lg font-bold text-gray-900 dark:text-white">
+              <h3 className="text-base font-bold text-gray-900 dark:text-white">
                 Hapus Chat?
               </h3>
-              <p className="text-sm text-gray-500 mt-2 mb-6 dark:text-gray-400">
-                Tindakan ini tidak dapat dibatalkan. Riwayat chat ini akan
-                hilang selamanya.
+              <p className="text-xs text-gray-500 mt-1 mb-4 dark:text-gray-400">
+                Tindakan ini tidak dapat dibatalkan. Riwayat chat ini akan hilang selamanya.
               </p>
-              <div className="flex gap-3 w-full">
+              <div className="flex gap-2 w-full">
                 <button
                   onClick={() => {
                     setShowDeleteModal(false);
                     setSessionToDelete(null);
                   }}
-                  className="flex-1 px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-medium transition-colors dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600"
+                  className="flex-1 px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl text-xs font-medium transition-colors dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600"
                 >
                   Batal
                 </button>
                 <button
                   onClick={executeDelete}
-                  className="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl font-medium transition-colors shadow-lg shadow-red-200 dark:shadow-none"
+                  className="flex-1 px-3 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-medium transition-colors shadow-md shadow-red-200 dark:shadow-none"
                 >
                   Ya, Hapus
                 </button>
               </div>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
-      </div>
 
       {/* SEARCH MODAL */}
       <SearchModal

@@ -403,7 +403,7 @@ export async function performStream(set, get, messagesToSend, assistantMessage, 
                 const currentMessages = [...(get().activeStreams[activeSessionUuid]?.messages || get().messages)];
                 const idxToUpdate = targetAssistantIdx !== null ? targetAssistantIdx : currentMessages.length - 1;
                 currentMessages[idxToUpdate] = assistantMessage;
-                updateStreamState({ messages: currentMessages, isThinking: false, currentThinking: '', isStreaming: false, isLoading: false });
+                updateStreamState({ messages: currentMessages, isThinking: false, currentThinking: '', isStreaming: false, isLoading: false, isEditRegenerating: false });
                 break; // Stop retry loop
             }
 
@@ -415,10 +415,10 @@ export async function performStream(set, get, messagesToSend, assistantMessage, 
                 const currentMessages = [...(get().activeStreams[activeSessionUuid]?.messages || get().messages)];
                 const idxToUpdate = targetAssistantIdx !== null ? targetAssistantIdx : currentMessages.length - 1;
                 currentMessages[idxToUpdate] = assistantMessage;
-                updateStreamState({ messages: currentMessages, isThinking: false, currentThinking: '' });
+                updateStreamState({ messages: currentMessages, isThinking: false, currentThinking: '', isEditRegenerating: false });
                 if (toast) toast.error('Koneksi terputus. Gagal memuat balasan.');
             }
         }
     }
-    updateStreamState({ isStreaming: false, isLoading: false, isThinking: false });
+    updateStreamState({ isStreaming: false, isLoading: false, isThinking: false, isEditRegenerating: false });
 }
