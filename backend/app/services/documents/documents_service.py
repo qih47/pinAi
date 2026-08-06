@@ -290,4 +290,42 @@ class DocumentsService:
                 "documents_failed": stats["documents_failed"] or 0,
             }
 
+    async def get_document_insight(self, document_id: int, request: Any) -> str:
+        """
+        Menghasilkan rangkuman cerdas (AI Insight) poin penting dari isi dokumen.
+        Dipindahkan dari router untuk mematuhi prinsip Clean Architecture.
+        """
+        from backend.app.services.pipeline.mode_hub import ModeHub
+        import json
+        import re
+
+        mode_hub = ModeHub()
+        gen = mode_hub.execute(
+            user_message="",
+            chat_history=[],
+            chat_mode="insight",
+            is_thinking=False,
+            context_isolation={"isolated_doc_id": document_id},
+            request=request
+        )
+        
+        full_response = ""
+        async for chunk_str in gen:
+            try:
+                data_json = chunk_str.strip()
+                if data_json:
+                    data = json.loads(data_json)
+                    if data.get("event_type") == "chunk":
+                        chunk_text = data.get("chunk")
+                        if chunk_text:
+                            full_response += chunk_text
+            except Exception as e:
+                logger.error(f"Error parsing insight chunk: {e}")
+
+        # Bersihkan tag internal LLM jika ada (misal <|channel>thought)
+        clean_response = re.sub(r'<\|channel>thought.*?<channel\|>', '', full_response, flags=re.DOTALL)
+        clean_response = clean_response.replace("<|channel>thought", "").replace("<channel|>", "").strip()
+        
+        return clean_response
+
 documents_service = DocumentsService()

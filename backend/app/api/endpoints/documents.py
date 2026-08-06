@@ -41,6 +41,7 @@ from backend.app.utils.upload_validator import (
     validate_uploaded_file,
     UploadValidationError,
 )
+from backend.app.utils.security_firewall import validate_attachment_security
 
 logger = logging.getLogger("CAKRA_DOCUMENTS")
 
@@ -102,38 +103,8 @@ async def get_document_insight(document_id: int, request: Request):
     """
     Menghasilkan rangkuman cerdas (AI Insight) poin penting dari isi dokumen
     """
-    from backend.app.services.pipeline.mode_hub import ModeHub
-    import json
-    import re
-    
     try:
-        mode_hub = ModeHub()
-        gen = mode_hub.execute(
-            user_message="",
-            chat_history=[],
-            chat_mode="insight",
-            is_thinking=False,
-            context_isolation={"isolated_doc_id": document_id},
-            request=request
-        )
-        
-        full_response = ""
-        async for chunk_str in gen:
-            try:
-                data_json = chunk_str.strip()
-                if data_json:
-                    data = json.loads(data_json)
-                    if data.get("event_type") == "chunk":
-                        chunk_text = data.get("chunk")
-                        if chunk_text:
-                            full_response += chunk_text
-            except Exception as e:
-                logger.error(f"Error parsing insight chunk: {e}")
-
-        # Bersihkan tag internal LLM jika ada (misal <|channel>thought)
-        clean_response = re.sub(r'<\|channel>thought.*?<channel\|>', '', full_response, flags=re.DOTALL)
-        clean_response = clean_response.replace("<|channel>thought", "").replace("<channel|>", "").strip()
-        
+        clean_response = await documents_service.get_document_insight(document_id, request)
         return DocumentInsightResponse(insight=clean_response)
     except HTTPException:
         raise
@@ -191,9 +162,10 @@ async def ingest_document(
         raise HTTPException(status_code=403, detail="Guest tidak bisa upload dokumen")
     
     try:
-        # 1. Validate file
+        # 1. Validate file (Security Firewall + Content Validator)
         logger.info(f"📤 [INGEST] Validating file: {file.filename}")
         
+        await validate_attachment_security(file)
         file_content = await file.read()
         await validate_uploaded_file(file_content, file.filename or "")
         

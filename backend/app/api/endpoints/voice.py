@@ -130,6 +130,7 @@ def phonetic_correction(text: str) -> str:
 
 from backend.app.api.dependencies.auth import get_current_user_npp
 from backend.app.services.voice.whisper_service import whisper_service
+from backend.app.utils.security_firewall import validate_attachment_security
 
 logger = logging.getLogger("CAKRA_VOICE_API")
 router = APIRouter()
@@ -147,6 +148,8 @@ async def transcribe_voice(
         raise HTTPException(status_code=401, detail="Unauthorized")
         
     logger.info(f"[VOICE] Received audio file: {audio.filename} from NPP: {current_user_npp}")
+    
+    await validate_attachment_security(audio)
     
     # Save uploaded file to a temporary location
     try:

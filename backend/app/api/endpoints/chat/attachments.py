@@ -95,14 +95,36 @@ async def upload_chat_attachments(
             # Supaya frontend/static files bisa langsung load via: /accounts/{npp}/{session_id}/images/filename
             relative_account_path = f"accounts/{current_user_npp}/{session_uuid}/images/{unique_filename}"
 
-            # ── 5. Save metadata to DB ────────────────────────────────────────
+            # ── 5. Ekstrak konten teks jika file adalah file teks ─────────────
+            TEXT_MIME_PREFIXES = ("text/", "application/json", "application/xml")
+            TEXT_EXTENSIONS_UPLOAD = {
+                "txt", "csv", "md", "py", "js", "jsx", "ts", "tsx", "html", "css",
+                "json", "yaml", "yml", "xml", "php", "java", "cpp", "c", "h",
+                "sh", "bash", "dart", "swift", "go", "rs", "sql", "toml", "ini", "conf"
+            }
+            file_ext = file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else ""
+            is_text_upload = (
+                file_ext in TEXT_EXTENSIONS_UPLOAD or
+                any(file.content_type.startswith(p) for p in TEXT_MIME_PREFIXES if file.content_type)
+            )
+
+            if is_text_upload:
+                try:
+                    raw_extracted = file_bytes.decode("utf-8", errors="replace")
+                    logger.info(f"📄 [UPLOAD] Konten teks diekstrak: {len(raw_extracted)} chars dari '{file.filename}'")
+                except Exception:
+                    raw_extracted = "[Gagal membaca konten teks]"
+            else:
+                raw_extracted = f"[Pending OCR: {file.filename}]"
+
+            # ── 6. Save metadata to DB ────────────────────────────────────────
             inserted_meta = await chat_history_service.save_chat_attachment(
                 session_uuid=session_uuid,
                 original_filename=file.filename,
                 unique_filename=relative_account_path,
                 file_size=file_size,
                 mime_type=file.content_type or "application/octet-stream",
-                extracted_text=f"[Pending OCR: {file.filename}]",
+                extracted_text=raw_extracted,
             )
 
             if inserted_meta:

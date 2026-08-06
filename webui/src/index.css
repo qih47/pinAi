@@ -104,49 +104,56 @@
 }
 
 /* ========================================================================== */
-/* ✨ PREMIUM GLOBAL SCROLLBAR                                                */
+/* ✨ PREMIUM GLOBAL SCROLLBAR - MINIMALIST                                   */
 /* ========================================================================== */
 
 ::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
+    width: 4px;
+    height: 4px;
 }
 
 ::-webkit-scrollbar-track {
     background: transparent;
+    border: none;
 }
 
 ::-webkit-scrollbar-thumb {
-    background-color: rgba(156, 163, 175, 0.3);
-    border-radius: 10px;
+    background-color: rgba(156, 163, 175, 0.25);
+    border-radius: 100px;
+    border: none;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-    background-color: rgba(156, 163, 175, 0.6);
+    background-color: rgba(156, 163, 175, 0.5);
 }
 
-/* Hilangkan panah atas & bawah (Scrollbar Buttons) di seluruh app */
-::-webkit-scrollbar-button {
+/* Hapus tombol panah scrollbar secara total */
+::-webkit-scrollbar-button,
+::-webkit-scrollbar-button:start,
+::-webkit-scrollbar-button:end,
+::-webkit-scrollbar-button:start:decrement,
+::-webkit-scrollbar-button:end:increment,
+::-webkit-scrollbar-button:vertical:start:decrement,
+::-webkit-scrollbar-button:vertical:end:increment,
+::-webkit-scrollbar-button:horizontal:start:decrement,
+::-webkit-scrollbar-button:horizontal:end:increment {
     display: none !important;
     width: 0 !important;
     height: 0 !important;
-    -webkit-appearance: none !important;
-}
-::-webkit-scrollbar-button:hover {
-    display: none !important;
-    width: 0 !important;
-    height: 0 !important;
-    -webkit-appearance: none !important;
-}
-::-webkit-scrollbar-button:active {
-    display: none !important;
-    width: 0 !important;
-    height: 0 !important;
-    -webkit-appearance: none !important;
 }
 
-/* Firefox compatibility */
+/* Firefox */
 * {
     scrollbar-width: thin !important;
-    scrollbar-color: rgba(156, 163, 175, 0.4) transparent !important;
+    scrollbar-color: rgba(156, 163, 175, 0.3) transparent !important;
+}
+
+@keyframes shakeError {
+  0%, 100% { transform: translateX(0); }
+  20%, 60% { transform: translateX(-5px); }
+  40%, 80% { transform: translateX(5px); }
+}
+
+.shake-animation {
+  animation: shakeError 0.4s ease-in-out;
 }

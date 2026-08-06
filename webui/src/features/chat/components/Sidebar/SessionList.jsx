@@ -90,6 +90,7 @@ export default function SessionList({
   );
 
   const togglePinChat = async (e, sessionUuid) => {
+    e.preventDefault();
     e.stopPropagation();
     try {
       const currentChat = chatHistory.find(
@@ -542,6 +543,7 @@ export default function SessionList({
                         activeMenuId === chat.session_uuid) && (
                           <button
                             onClick={(e) => {
+                              e.preventDefault();
                               e.stopPropagation();
                               setActiveMenuId(
                                 activeMenuId === chat.session_uuid
@@ -558,7 +560,7 @@ export default function SessionList({
                       {activeMenuId === chat.session_uuid && (
                         <div
                           ref={menuRef}
-                          onClick={(e) => e.stopPropagation()}
+                          onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
                           className={`absolute right-0 top-7 w-32 rounded-md shadow-lg z-[100] py-1 text-[11px] border`}
                           style={{ backgroundColor: darkMode ? '#1f2937' : '#ffffff', borderColor: darkMode ? '#374151' : '#e5e7eb' }}
                         >
@@ -574,6 +576,7 @@ export default function SessionList({
                           {/* 🔥 DROPDOWN ITEM 2: RENAME (SVG VECTOR) */}
                           <button
                             onClick={(e) => {
+                              e.preventDefault();
                               e.stopPropagation();
                               setEditingSessionId(chat.session_uuid);
                               setTempTitle(chat.judul || "");
@@ -587,7 +590,7 @@ export default function SessionList({
 
                           {/* 🔥 DROPDOWN ITEM 3: HAPUS (SVG VECTOR) */}
                           <button
-                            onClick={(e) => confirmDelete(e, chat.session_uuid)}
+                            onClick={(e) => { e.preventDefault(); confirmDelete(e, chat.session_uuid); }}
                             className={`w-full text-left px-3 py-2 text-red-600 flex justify-between items-center font-semibold ${darkMode ? "hover:bg-red-900/20" : "hover:bg-red-50"}`}
                           >
                             <span>{t.delete}</span>

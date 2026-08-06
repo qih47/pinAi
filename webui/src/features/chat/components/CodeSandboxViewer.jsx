@@ -13,7 +13,11 @@ function preprocessReactCode(rawCode) {
   else if (varMatch && varMatch[1] !== 'function') appName = varMatch[1];
 
   const processed = rawCode
-    // Hapus semua baris import ES Module
+    // Transpiled imports untuk library umum agar tidak ReferenceError
+    .replace(/^import\s*\{\s*([^}]+)\s*\}\s*from\s*['"]lucide-react['"]\s*;?\s*$/gm, (_, p1) => `const { ${p1.replace(/\s+as\s+/g, ': ')} } = window.lucideMock || {};`)
+    .replace(/^import\s*\{\s*([^}]+)\s*\}\s*from\s*['"]react-router-dom['"]\s*;?\s*$/gm, (_, p1) => `const { ${p1.replace(/\s+as\s+/g, ': ')} } = window.ReactRouterDOM || {};`)
+    .replace(/^import\s*\{\s*([^}]+)\s*\}\s*from\s*['"]react['"]\s*;?\s*$/gm, (_, p1) => `const { ${p1.replace(/\s+as\s+/g, ': ')} } = React || {};`)
+    // Hapus semua baris import ES Module sisanya (termasuk file lokal)
     .replace(/^import\s+.*?from\s+['"][^'"]+['"]\s*;?\s*$/gm, '')
     .replace(/^import\s+['"][^'"]+['"]\s*;?\s*$/gm, '')
     // export default function Foo → function Foo
@@ -33,11 +37,12 @@ function preprocessReactCode(rawCode) {
  * TIDAK pakai <script type="text/babel"> yang memicu caching.ts error.
  * TIDAK butuh Sandpack / CodeSandbox cloud.
  */
-export default function CodeSandboxViewer({ code, language, darkMode }) {
+export default function CodeSandboxViewer({ code, relatedCode = '', language, darkMode }) {
   const isReact = language === 'react' || language === 'jsx' || language === 'js';
 
   const srcdoc = useMemo(() => {
     if (!isReact) {
+      // Gabungkan related HTML/CSS/JS script jika diperlukan nanti (untuk saat ini cukup code utama)
       return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -50,10 +55,12 @@ export default function CodeSandboxViewer({ code, language, darkMode }) {
 </html>`;
     }
 
-    const { processed, appName } = preprocessReactCode(code);
+    const { processed: mainProcessed, appName } = preprocessReactCode(code);
+    const relatedProcessed = relatedCode ? preprocessReactCode(relatedCode).processed : '';
+    const finalCode = relatedProcessed + '\n\n' + mainProcessed;
 
     // Escape backtick dan backslash dalam kode agar aman di dalam template literal JS
-    const escapedCode = processed
+    const escapedCode = finalCode
       .replace(/\\/g, '\\\\')
       .replace(/`/g, '\\`')
       .replace(/\${/g, '\\${');
@@ -66,6 +73,9 @@ export default function CodeSandboxViewer({ code, language, darkMode }) {
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/@remix-run/router@1.15.3/dist/router.umd.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-router@6.22.3/dist/umd/react-router.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-router-dom@6.22.3/dist/umd/react-router-dom.production.min.js" crossorigin></script>
   <script src="https://unpkg.com/@babel/standalone@7.23.10/babel.min.js"></script>
   <style>
     * { box-sizing: border-box; }
@@ -90,6 +100,38 @@ export default function CodeSandboxViewer({ code, language, darkMode }) {
     var forwardRef = React.forwardRef;
     var memo = React.memo;
     var Fragment = React.Fragment;
+    
+    // Expose React Router DOM
+    if (window.ReactRouterDOM) {
+      var BrowserRouter = window.ReactRouterDOM.MemoryRouter; // Force MemoryRouter to prevent URL inheritance
+      var MemoryRouter = window.ReactRouterDOM.MemoryRouter;
+      var HashRouter = window.ReactRouterDOM.HashRouter;
+      var Router = window.ReactRouterDOM.MemoryRouter; // Alias for Router
+      var Routes = window.ReactRouterDOM.Routes;
+      var Route = window.ReactRouterDOM.Route;
+      var Link = window.ReactRouterDOM.Link;
+      var NavLink = window.ReactRouterDOM.NavLink;
+      var useNavigate = window.ReactRouterDOM.useNavigate;
+      var useParams = window.ReactRouterDOM.useParams;
+      var useLocation = window.ReactRouterDOM.useLocation;
+      var Outlet = window.ReactRouterDOM.Outlet;
+    }
+    
+    // Mock Lucide React Icons (kembalikan SVG dummy dinamis)
+    window.lucideMock = new Proxy({}, {
+      get: function(target, prop) {
+        if (prop === '__esModule') return false;
+        return function(props) {
+          var size = props.size || 24;
+          var color = props.color || 'currentColor';
+          return React.createElement('svg', 
+            { width: size, height: size, viewBox: '0 0 24 24', fill: 'none', stroke: color, strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round', className: props.className, style: props.style },
+            React.createElement('rect', { x: 3, y: 3, width: 18, height: 18, rx: 4 }),
+            React.createElement('circle', { cx: 12, cy: 12, r: 3 })
+          );
+        };
+      }
+    });
 
     window.addEventListener('load', function() {
       try {
@@ -111,10 +153,22 @@ export default function CodeSandboxViewer({ code, language, darkMode }) {
         }
 
         var root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(React.createElement(App));
+        
+        // Bungkus dengan MemoryRouter agar hooks seperti useNavigate bekerja secara terisolasi 
+        // dan tidak terpengaruh oleh URL dari parent window
+        var AppElement = React.createElement(App);
+        if (window.ReactRouterDOM && window.ReactRouterDOM.MemoryRouter) {
+          AppElement = React.createElement(window.ReactRouterDOM.MemoryRouter, null, AppElement);
+        }
+        
+        root.render(AppElement);
       } catch (err) {
+        let msg = err.message;
+        if (msg.includes("is not defined")) {
+           msg += '\\n\\n(💡 Tips: Code Sandbox hanya mendukung Single-File Component. Jika AI membuat multiple file dan melakukan import file lokal seperti "import Login from \\'./Login\\'", maka komponen tersebut tidak akan ditemukan. Mintalah AI untuk menggabungkan semuanya ke dalam satu file.)';
+        }
         document.getElementById('root').innerHTML =
-          '<div class="err">⚠️ Render Error:\\n\\n' + err.message + '</div>';
+          '<div class="err">⚠️ Render Error:\\n\\n' + msg + '</div>';
       }
     });
   </script>
@@ -127,7 +181,7 @@ export default function CodeSandboxViewer({ code, language, darkMode }) {
       <iframe
         srcDoc={srcdoc}
         title="Live Preview"
-        sandbox="allow-scripts allow-forms"
+        sandbox="allow-scripts allow-forms allow-same-origin"
         style={{
           width: '100%',
           flex: 1,

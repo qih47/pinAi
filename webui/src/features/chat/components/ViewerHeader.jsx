@@ -2,6 +2,8 @@ import React, { useState, useRef, useEffect } from 'react';
 import { toPng, toSvg } from 'html-to-image';
 import { ChevronDown, Download, Maximize2, Minimize2, Image, FileCode2, FileSpreadsheet, CloudUpload } from 'lucide-react';
 import useToast from "../../../hooks/useToast";
+import { useChatStore } from "../../../stores/chatStore";
+import { translations } from "../../../utils/translations";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://192.168.11.80:5000';
 
@@ -19,6 +21,8 @@ export default function ViewerHeader({
   const [isExporting, setIsExporting] = useState(false);
   const dropdownRef = useRef(null);
   const toast = useToast();
+  const language = useChatStore((state) => state.language || 'id');
+  const tToast = translations[language]?.toast || translations.id.toast;
 
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -33,7 +37,7 @@ export default function ViewerHeader({
   const generateCSVDataUrl = () => {
     if (!tableData || !tableData.columns || !tableData.rows) return null;
     const header = tableData.columns.map(c => `"${c.label}"`).join(',');
-    const rows = tableData.rows.map(row => 
+    const rows = tableData.rows.map(row =>
       tableData.columns.map(c => `"${String(row[c.key] || '').replace(/"/g, '""')}"`).join(',')
     );
     const csvContent = [header, ...rows].join('\n');
@@ -45,7 +49,7 @@ export default function ViewerHeader({
       return generateCSVDataUrl();
     }
     if (!exportTargetRef || !exportTargetRef.current) return null;
-    
+
     const bgColor = darkMode ? '#1e1e1e' : '#ffffff';
     if (format === 'png') {
       return await toPng(exportTargetRef.current, { backgroundColor: bgColor });
@@ -68,10 +72,10 @@ export default function ViewerHeader({
       link.href = dataUrl;
       link.click();
 
-      toast.success(`Berhasil menyimpan grafik sebagai ${format.toUpperCase()}`);
+      toast.success(tToast.saveChartSuccess || `Berhasil menyimpan grafik sebagai ${format.toUpperCase()}`);
     } catch (err) {
       console.error("Gagal export", err);
-      toast.error(`Gagal menyimpan ${format.toUpperCase()}`);
+      toast.error(tToast.saveChartFail || `Gagal menyimpan ${format.toUpperCase()}`);
     } finally {
       setIsExporting(false);
     }
@@ -86,7 +90,7 @@ export default function ViewerHeader({
       if (!dataUrl) throw new Error("Data kosong atau target tidak ditemukan");
 
       const filename = `${title.replace(/\s+/g, '_').toLowerCase()}_${new Date().getTime()}.${format}`;
-      
+
       const response = await fetch(`${API_BASE}/api/nextcloud/upload`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -102,10 +106,10 @@ export default function ViewerHeader({
         throw new Error('Gagal upload ke Pincloud');
       }
 
-      toast.success(`Berhasil upload ${format.toUpperCase()} ke Pincloud (Cakra_AI_Exports)`);
+      toast.success(tToast.uploadCloudSuccess || `Berhasil upload ${format.toUpperCase()} ke Pincloud (Cakra_AI_Exports)`);
     } catch (err) {
       console.error("Gagal upload pincloud", err);
-      toast.error(`Gagal upload ke Pincloud`);
+      toast.error(tToast.uploadCloudFail || `Gagal upload ke Pincloud`);
     } finally {
       setIsExporting(false);
     }

@@ -36,6 +36,7 @@ export default function ChatInputArea({
   isMultiLine,
   isStreaming,
   isUploadingFile,
+  inputShake,
   textareaRef,
   input,
   setInput,
@@ -115,6 +116,7 @@ export default function ChatInputArea({
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
+          className={inputShake ? "shake-animation" : ""}
           style={{
             ...styles.inputForm,
             background: darkMode ? "rgba(30, 30, 34, 0.75)" : "rgba(255, 255, 255, 0.75)",

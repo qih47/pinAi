@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useCallback, useState } from 'react';
 import { Virtuoso } from 'react-virtuoso';
 import ChatBubble from './ChatBubble';
+import ChatNavigator from './ChatNavigator';
 import cakraLogo from '../../../assets/cakra.png';
 import { styles } from '../chatPage.styles';
 import { translations } from '../../../utils/translations';
@@ -51,6 +52,8 @@ export default function ChatArea({
   // scrollParent via useState — set saat isLoading=true (Virtuoso belum ada)
   // sehingga ketika isLoading=false, Virtuoso mount langsung dengan scrollParent yang benar.
   const [scrollParent, setScrollParent] = useState(null);
+  const [visibleRange, setVisibleRange] = useState({ startIndex: 0, endIndex: 0 });
+
   useEffect(() => {
     if (messagesContainerRef?.current && !scrollParent) {
       setScrollParent(messagesContainerRef.current);
@@ -155,11 +158,12 @@ export default function ChatArea({
   ), [isStreaming, lastAssistantIndex, currentThinking, theme.mainBg, theme.secondaryText]);
 
   return (
-    <div
-      ref={messagesContainerRef}
-      style={{ ...styles.scrollArea, overflowY: 'auto', position: 'relative' }}
-      className="custom-scroll-gemini"
-    >
+    <div style={{ flex: 1, minHeight: 0, position: 'relative', display: 'flex', flexDirection: 'column', width: '100%' }}>
+      <div
+        ref={messagesContainerRef}
+        style={{ ...styles.scrollArea, overflowY: 'auto', position: 'relative', flex: 1 }}
+        className="custom-scroll-gemini chat-main-scroll"
+      >
       <div style={styles.chatInner}>
         {isLoading ? (
           <div style={{ animation: 'fadeSlideIn 0.2s ease-out' }}>
@@ -188,7 +192,6 @@ export default function ChatArea({
               useWindowScroll={false}
               itemContent={itemContent}
               language={language}
-              initialTopMostItemIndex={messages.length > 0 ? messages.length - 1 : 0}
               atBottomStateChange={(atBottom) => {
                 if (onAtBottomChange) onAtBottomChange(atBottom);
               }}
@@ -198,12 +201,29 @@ export default function ChatArea({
                 if (isAtBottom) return 'auto';
                 return false;
               }}
+              rangeChanged={(range) => {
+                setVisibleRange(range);
+              }}
               increaseViewportBy={{ top: 800, bottom: 800 }}
               components={{ Footer: FooterComponent }}
             />
           </div>
         )}
       </div>
+    </div>
+      
+      {/* Navigasi Mini-Map User Messages - Sekarang absolute terhadap parent yang tidak scroll */}
+      <ChatNavigator 
+        messages={messages} 
+        darkMode={darkMode} 
+        theme={theme}
+        scrollContainerRef={messagesContainerRef}
+        onNavigate={(index) => {
+          if (virtuosoRef.current) {
+            virtuosoRef.current.scrollToIndex({ index, align: 'start', behavior: 'smooth' });
+          }
+        }} 
+      />
     </div>
   );
 }

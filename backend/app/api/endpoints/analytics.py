@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException, Body, UploadFile, File
 from pydantic import BaseModel
 from fastapi.responses import StreamingResponse
+from backend.app.utils.security_firewall import validate_attachment_security
 import logging
 import json
 import os
@@ -199,6 +200,8 @@ async def simulate_ocr(file: UploadFile = File(...)):
     if not file.filename.lower().endswith('.pdf'):
         raise HTTPException(status_code=400, detail="Only PDF files are supported.")
         
+    await validate_attachment_security(file)
+    
     temp_dir = "/tmp/cakra_ocr_sandbox"
     os.makedirs(temp_dir, exist_ok=True)
     # Gunakan basename untuk cegah directory traversal

@@ -83,7 +83,7 @@ const MermaidViewer = ({ chartCode, darkMode, isStreaming, language = 'id' }) =>
       className={
         isFullscreen 
           ? `fixed inset-0 z-[9999] p-4 md:p-10 flex flex-col ${activeDarkMode ? 'bg-[#121212]/95 backdrop-blur-sm' : 'bg-gray-100/95 backdrop-blur-sm'}`
-          : `my-4 w-full rounded-xl border flex flex-col shadow-sm transition-all duration-300 ${activeDarkMode ? 'bg-[#1a1f2e] border-gray-700/60' : 'bg-white border-gray-200'}`
+          : `my-4 w-full rounded-xl border flex flex-col shadow-sm transition-all duration-300 ${activeDarkMode ? 'bg-[#222225] border-gray-700/60' : 'bg-white border-gray-200'}`
       }
     >
       <ViewerHeader 

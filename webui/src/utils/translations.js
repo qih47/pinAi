@@ -282,6 +282,26 @@ export const translations = {
       welcomeTitle: "Halo, saya CAKRA",
       welcomeSubtitle: "Ada yang bisa saya bantu selesaikan hari ini?"
     },
+    toast: {
+      downloadZipSuccess: "Download ZIP berhasil!",
+      downloadZipFail: "Gagal mendownload ZIP",
+      maxFileGuest: "Tamu maksimal 1 file.",
+      maxFileHeavy: "Maksimal 2 file berat (PDF/Gambar) diperbolehkan.",
+      maxFileLines: "Total baris kode melebihi batas (Max 2500 baris).",
+      longTextAsDoc: "Teks panjang disisipkan sebagai dokumen (.txt) 📄",
+      maxAttachment: "Batas attachment telah tercapai",
+      fileTooLarge: "Ukuran file melebihi batas 10 MB.",
+      downloadFileFail: "Gagal mendownload file",
+      copySuccess: "Teks berhasil disalin!",
+      copyFail: "Gagal menyalin teks",
+      sessionExpired: "⏰ Sesi Anda telah berakhir. Silakan masuk kembali.",
+      sessionExtended: "Sesi diperpanjang! Anda login untuk beberapa jam ke depan.",
+      sessionExtendFail: "Gagal memperpanjang sesi",
+      saveChartSuccess: "Berhasil menyimpan grafik",
+      saveChartFail: "Gagal menyimpan grafik",
+      uploadCloudSuccess: "Berhasil upload ke Pincloud",
+      uploadCloudFail: "Gagal upload ke Pincloud"
+    },
     chatInput: {
       askDoc: "Tanyakan sesuatu tentang dokumen ini...",
       askCakra: "Tanya CAKRA...",
@@ -603,6 +623,26 @@ export const translations = {
       thinking: "CAKRA is thinking",
       welcomeTitle: "Hello, I am CAKRA",
       welcomeSubtitle: "How can I help you today?"
+    },
+    toast: {
+      downloadZipSuccess: "ZIP downloaded successfully!",
+      downloadZipFail: "Failed to download ZIP",
+      maxFileGuest: "Guest is limited to 1 file.",
+      maxFileHeavy: "Maximum 2 heavy files (PDF/Image) allowed.",
+      maxFileLines: "Total lines of code exceeded (Max 2500 lines).",
+      longTextAsDoc: "Long text inserted as document (.txt) 📄",
+      maxAttachment: "Attachment limit reached",
+      fileTooLarge: "File size exceeds 10 MB limit.",
+      downloadFileFail: "Failed to download file",
+      copySuccess: "Text copied successfully!",
+      copyFail: "Failed to copy text",
+      sessionExpired: "⏰ Your session has expired. Please log in again.",
+      sessionExtended: "Session extended! You're signed in for a few more hours.",
+      sessionExtendFail: "Failed to extend session",
+      saveChartSuccess: "Chart saved successfully",
+      saveChartFail: "Failed to save chart",
+      uploadCloudSuccess: "Successfully uploaded to Pincloud",
+      uploadCloudFail: "Failed to upload to Pincloud"
     },
     chatInput: {
       askDoc: "Ask about this document...",

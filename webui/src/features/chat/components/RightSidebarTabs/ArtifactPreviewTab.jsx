@@ -3,6 +3,8 @@ import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import CakraResponseRenderer from "../CakraResponseRenderer";
 import { IconChevronLeft, IconCopy, IconClose, getArtifactFileIcon } from "./RightSidebarIcons";
+import { useChatStore } from "../../../../stores/chatStore";
+import { translations } from "../../../../utils/translations";
 
 const CodeSandboxViewer = React.lazy(() => import('../CodeSandboxViewer'));
 
@@ -24,7 +26,45 @@ export default function ArtifactPreviewTab({
   const ext = previewArtifact?.filename?.split('.').pop()?.toLowerCase();
   const isMarkdownOrText = ext === 'md' || ext === 'txt';
   const isUIPreviewable = ext === 'jsx' || ext === 'js' || ext === 'html';
-  const content = artifactContent || previewArtifact.code || '// Void Content';
+  let content = artifactContent || previewArtifact.code || '// Void Content';
+
+  // Handle untuk menampilkan file CSV yang terlanjur terupload dalam format data URI
+  if (ext === 'csv' && content.startsWith('data:text/csv')) {
+    try {
+      if (content.includes(';base64,')) {
+        content = decodeURIComponent(escape(atob(content.split(';base64,')[1])));
+      } else {
+        content = decodeURIComponent(content.split(',')[1] || '');
+      }
+    } catch (e) {
+      console.error("Gagal mendecode CSV data URI", e);
+      // Fallback: hapus awalan URI jika decodeURIComponent error
+      const commaIdx = content.indexOf(',');
+      if (commaIdx !== -1) {
+        content = content.substring(commaIdx + 1);
+      }
+    }
+  }
+
+  const sessionArtifacts = useChatStore(state => state.artifacts || []);
+  const language = useChatStore((state) => state.language || 'id');
+  const tToast = translations[language]?.toast || translations.id.toast;
+  
+  // Ambil semua artifact react dari session untuk disuntikkan sebagai relatedCode 
+  // (agar multi-file component seperti App.jsx merender Login.jsx dapat berjalan)
+  const relatedReactCode = React.useMemo(() => {
+    if (!isUIPreviewable || !sessionArtifacts) return '';
+    const fileMap = {};
+    
+    sessionArtifacts.forEach(art => {
+      const artExt = art.filename?.split('.').pop()?.toLowerCase();
+      if ((artExt === 'jsx' || artExt === 'js' || artExt === 'tsx' || artExt === 'ts') && art.filename !== previewArtifact.filename) {
+        fileMap[art.filename] = art.code || '';
+      }
+    });
+    
+    return Object.values(fileMap).join('\n\n');
+  }, [sessionArtifacts, previewArtifact, isUIPreviewable]);
 
   // Default buka Code. Biarkan user klik View UI (Mata) manual
   const [viewMode, setViewMode] = useState('code');
@@ -58,7 +98,26 @@ export default function ArtifactPreviewTab({
           <button
             onClick={() => {
               const codeToCopy = artifactContent || previewArtifact.code || '';
-              navigator.clipboard.writeText(codeToCopy).then(() => toast.success("Kode disalin!"));
+              if (navigator.clipboard && window.isSecureContext) {
+                navigator.clipboard.writeText(codeToCopy).then(() => toast.success(tToast.copySuccess || "Kode disalin!"));
+              } else {
+                // Fallback untuk HTTP environment
+                const textArea = document.createElement("textarea");
+                textArea.value = codeToCopy;
+                textArea.style.position = "absolute";
+                textArea.style.left = "-999999px";
+                document.body.prepend(textArea);
+                textArea.select();
+                try {
+                  document.execCommand('copy');
+                  toast.success(tToast.copySuccess || "Kode disalin!");
+                } catch (error) {
+                  console.error(error);
+                  toast.error(tToast.copyFail || "Gagal menyalin kode");
+                } finally {
+                  textArea.remove();
+                }
+              }
             }}
             style={{ background: darkMode ? "rgba(255,255,255,0.04)" : "#ffffff", border: `1px solid ${darkMode ? "rgba(255,255,255,0.08)" : "#e2e8f0"}`, color: theme.textColor, padding: "6px 12px", borderRadius: "8px", cursor: "pointer", fontSize: "12px", fontWeight: 500, display: "flex", alignItems: "center", gap: "6px" }}
           >
@@ -168,12 +227,9 @@ export default function ArtifactPreviewTab({
                 <div style={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column', background: viewMode === 'preview' ? (darkMode ? '#1e1e1e' : '#ffffff') : '#1e1e1e' }}>
                   {isUIPreviewable && viewMode === 'preview' ? (
                     /* --- LIVE SANDBOX PREVIEW --- */
-                    <div style={{ flex: 1, width: "100%", height: "100%" }}>
-                      <React.Suspense fallback={<div style={{ padding: "40px", color: "#64748b", textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", gap: "10px" }}>
-                        <div style={{ width: "20px", height: "20px", border: "2px solid rgba(99,102,241,0.2)", borderTopColor: "#6366f1", borderRadius: "50%", animation: "rotate-spin 0.6s linear infinite" }} />
-                        <span>Loading Engine...</span>
-                      </div>}>
-                        <CodeSandboxViewer code={content} language={ext === 'html' ? 'html' : 'react'} darkMode={darkMode} />
+                    <div style={{ flex: 1, position: 'relative' }}>
+                      <React.Suspense fallback={<div style={{ padding: '20px', color: '#64748b' }}>{t.loadingPreview}</div>}>
+                        <CodeSandboxViewer code={content} relatedCode={relatedReactCode} language={ext} darkMode={darkMode} />
                       </React.Suspense>
                     </div>
                   ) : (
@@ -181,8 +237,8 @@ export default function ArtifactPreviewTab({
                     <div style={{ padding: '16px 0', flex: 1 }}>
                       <SyntaxHighlighter
                         language={ext} style={vscDarkPlus}
-                        customStyle={{ margin: 0, padding: '0 16px', background: 'transparent', fontSize: '12px', fontFamily: '"Fira Code", "JetBrains Mono", monospace', lineHeight: '1.6' }}
-                        showLineNumbers={true} wrapLines={false}
+                        customStyle={{ margin: 0, padding: '0 16px', background: 'transparent', fontSize: '12px', fontFamily: '"Fira Code", "JetBrains Mono", monospace', lineHeight: '1.6', wordBreak: 'break-all' }}
+                        showLineNumbers={true} wrapLines={true} wrapLongLines={true}
                       >
                         {content}
                       </SyntaxHighlighter>

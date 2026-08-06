@@ -90,7 +90,7 @@ export default function DataGridViewer({ chartCode, darkMode, isStreaming, langu
     <div className={
       isExpanded 
         ? `fixed inset-0 z-[9999] p-4 md:p-10 flex flex-col ${darkMode ? 'bg-[#121212]/95 backdrop-blur-sm' : 'bg-gray-100/95 backdrop-blur-sm'}`
-        : `my-4 w-full rounded-xl border shadow-sm flex flex-col ${darkMode ? 'bg-[#1a1f2e] border-gray-700/60' : 'bg-white border-gray-200'}`
+        : `my-4 w-full rounded-xl border shadow-sm flex flex-col ${darkMode ? 'bg-[#222225] border-gray-700/60' : 'bg-white border-gray-200'}`
     }>
       <ViewerHeader 
         title={parsedData.title || "Data Table"} 
@@ -105,7 +105,7 @@ export default function DataGridViewer({ chartCode, darkMode, isStreaming, langu
 
       <div 
         ref={exportRef} 
-        className={`flex-1 w-full flex flex-col overflow-hidden ${darkMode ? 'bg-[#1a1f2e]' : 'bg-white'} ${isExpanded ? 'rounded-b-xl shadow-2xl border-x border-b ' + (darkMode ? 'border-gray-800' : 'border-gray-200') : 'rounded-b-xl'}`}
+        className={`flex-1 w-full flex flex-col overflow-hidden ${darkMode ? 'bg-[#222225]' : 'bg-white'} ${isExpanded ? 'rounded-b-xl shadow-2xl border-x border-b ' + (darkMode ? 'border-gray-800' : 'border-gray-200') : 'rounded-b-xl'}`}
       >
         {/* Search Toolbar di dalam container tabel */}
         <div className={`p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${darkMode ? 'border-gray-700/60' : 'border-gray-200'} ${isExpanded && parsedData.title ? 'border-b' : ''}`}>

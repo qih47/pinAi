@@ -72,7 +72,7 @@ export async function performStream(set, get, messagesToSend, assistantMessage, 
     while (attempts < maxAttempts && !success) {
         try {
             if (attempts > 0) {
-                if (toast) toast.info(`Koneksi terputus. Menghubungkan kembali... (${attempts}/3)`);
+                // Silently attempt reconnect
                 const delay = Math.pow(2, attempts - 1) * 1000;
                 await new Promise(resolve => setTimeout(resolve, delay));
             }
@@ -416,7 +416,7 @@ export async function performStream(set, get, messagesToSend, assistantMessage, 
                 const idxToUpdate = targetAssistantIdx !== null ? targetAssistantIdx : currentMessages.length - 1;
                 currentMessages[idxToUpdate] = assistantMessage;
                 updateStreamState({ messages: currentMessages, isThinking: false, currentThinking: '', isEditRegenerating: false });
-                if (toast) toast.error('Koneksi terputus. Gagal memuat balasan.');
+                // Silent failure
             }
         }
     }

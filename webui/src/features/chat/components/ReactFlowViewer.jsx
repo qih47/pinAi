@@ -1,9 +1,40 @@
-import React, { useMemo, useCallback, useState, useRef } from 'react';
-import { ReactFlow, MiniMap, Controls, Background, useNodesState, useEdgesState, addEdge, BaseEdge, EdgeLabelRenderer, getSmoothStepPath, useStore } from '@xyflow/react';
+import React, { useMemo, useCallback, useState, useRef, Component } from 'react';
+import { ReactFlow, MiniMap, Controls, Background, useNodesState, useEdgesState, addEdge, BaseEdge, EdgeLabelRenderer, getSmoothStepPath, useStore, ReactFlowProvider } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { translations } from '../../../utils/translations';
 import ViewerHeader from './ViewerHeader';
 import { Share2 } from 'lucide-react';
+
+class FlowErrorBoundary extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error, errorInfo) {
+    console.error("ReactFlow Error:", error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="w-full h-full flex flex-col items-center justify-center text-red-500 bg-red-50/10 p-4 border border-red-200/20 rounded-xl">
+          <svg className="w-8 h-8 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+          </svg>
+          <div className="font-semibold text-sm">Gagal me-render Diagram</div>
+          <div className="text-xs mt-1 opacity-80 text-center max-w-md">{this.state.error?.message || 'Data diagram tidak valid'}</div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 
 // --- CUSTOM EDGE ---
 // SmartEdge mendeteksi jika ada garis bolak-balik antara 2 node yang sama,
@@ -81,6 +112,8 @@ export default function ReactFlowViewer({ chartCode, darkMode, isStreaming, lang
       if (!chartCode || chartCode.trim() === '') return null;
       // Normalisasi edges agar menggunakan type 'smart'
       const data = JSON.parse(chartCode);
+      if (data && !Array.isArray(data.nodes)) data.nodes = [];
+      if (data && !Array.isArray(data.edges)) data.edges = [];
       if (data && data.edges) {
         data.edges = data.edges.map(e => ({ ...e, type: 'smart', animated: true }));
       }
@@ -109,7 +142,7 @@ export default function ReactFlowViewer({ chartCode, darkMode, isStreaming, lang
     <div className={
       isExpanded 
         ? `fixed inset-0 z-[9999] p-4 md:p-10 flex flex-col ${darkMode ? 'bg-[#121212]/95 backdrop-blur-sm' : 'bg-gray-100/95 backdrop-blur-sm'}`
-        : `my-4 w-full rounded-xl border shadow-sm flex flex-col ${darkMode ? 'bg-[#1a1f2e] border-gray-700/60' : 'bg-white border-gray-200'}`
+        : `my-4 w-full rounded-xl border shadow-sm flex flex-col ${darkMode ? 'bg-[#222225] border-gray-700/60' : 'bg-white border-gray-200'}`
     }>
       <ViewerHeader 
         title={parsedData.title || "Flow Diagram"} 
@@ -122,7 +155,7 @@ export default function ReactFlowViewer({ chartCode, darkMode, isStreaming, lang
 
       <div 
         ref={exportRef} 
-        className={`flex-1 w-full flex flex-col ${darkMode ? 'bg-[#1a1f2e]' : 'bg-white'} ${isExpanded ? 'rounded-b-xl shadow-2xl border-x border-b ' + (darkMode ? 'border-gray-800' : 'border-gray-200') : 'rounded-b-xl p-2'}`}
+        className={`flex-1 w-full flex flex-col ${darkMode ? 'bg-[#222225]' : 'bg-white'} ${isExpanded ? 'rounded-b-xl shadow-2xl border-x border-b ' + (darkMode ? 'border-gray-800' : 'border-gray-200') : 'rounded-b-xl p-2'}`}
       >
         {isExpanded && parsedData.title && (
           <h3 className={`text-lg font-bold my-4 text-center ${darkMode ? 'text-gray-100' : 'text-gray-800'}`}>
@@ -130,7 +163,11 @@ export default function ReactFlowViewer({ chartCode, darkMode, isStreaming, lang
           </h3>
         )}
         <div style={{ width: '100%', height: isExpanded ? '100%' : '400px', flex: isExpanded ? 1 : 'none', borderRadius: '12px', overflow: 'hidden' }}>
-          <FlowComponent initialNodes={parsedData.nodes} initialEdges={parsedData.edges} darkMode={darkMode} />
+          <FlowErrorBoundary>
+            <ReactFlowProvider>
+              <FlowComponent initialNodes={parsedData.nodes} initialEdges={parsedData.edges} darkMode={darkMode} />
+            </ReactFlowProvider>
+          </FlowErrorBoundary>
         </div>
       </div>
     </div>
@@ -138,9 +175,13 @@ export default function ReactFlowViewer({ chartCode, darkMode, isStreaming, lang
 }
 
 // Pisahkan komponen Flow agar hooks useNodesState berfungsi baik
-function FlowComponent({ initialNodes, initialEdges, darkMode }) {
-  const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
-  const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
+function FlowComponent({ initialNodes = [], initialEdges = [], darkMode }) {
+  // Validate that nodes have valid IDs to prevent crashes
+  const safeNodes = (Array.isArray(initialNodes) ? initialNodes : []).filter(n => n && n.id);
+  const safeEdges = (Array.isArray(initialEdges) ? initialEdges : []).filter(e => e && e.id && e.source && e.target);
+
+  const [nodes, setNodes, onNodesChange] = useNodesState(safeNodes);
+  const [edges, setEdges, onEdgesChange] = useEdgesState(safeEdges);
 
   const onConnect = useCallback(
     (params) => setEdges((eds) => addEdge({ ...params, animated: true, type: 'smart' }, eds)),

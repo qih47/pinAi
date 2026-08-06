@@ -128,7 +128,7 @@ export default function MapViewer({ chartCode, darkMode }) {
   // Tampilan Loading
   if (!parsedData || !parsedData.center) {
     return (
-      <div className={`my-4 w-full h-[350px] p-2 rounded-2xl border shadow-sm flex flex-col items-center justify-center animate-pulse ${darkMode ? 'bg-[#1a1f2e] border-gray-700/60' : 'bg-gray-100 border-gray-300'}`}>
+      <div className={`my-4 w-full h-[350px] p-2 rounded-2xl border shadow-sm flex flex-col items-center justify-center animate-pulse ${darkMode ? 'bg-[#222225] border-gray-700/60' : 'bg-gray-100 border-gray-300'}`}>
         <div className="relative w-16 h-16 rounded-full bg-blue-500/20 flex items-center justify-center mb-4">
           <MapPin className="w-8 h-8 text-blue-500 animate-bounce" />
           <div className="absolute w-full h-full rounded-full border-4 border-blue-500/30 animate-ping"></div>
@@ -152,7 +152,7 @@ export default function MapViewer({ chartCode, darkMode }) {
     <div className={
       isExpanded 
         ? `fixed inset-0 z-[9999] p-4 md:p-10 flex flex-col ${darkMode ? 'bg-[#121212]/95 backdrop-blur-sm' : 'bg-gray-100/95 backdrop-blur-sm'}`
-        : `my-4 w-full rounded-xl border shadow-sm flex flex-col ${darkMode ? 'bg-[#1a1f2e] border-gray-700/60' : 'bg-white border-gray-200'}`
+        : `my-4 w-full rounded-xl border shadow-sm flex flex-col ${darkMode ? 'bg-[#222225] border-gray-700/60' : 'bg-white border-gray-200'}`
     }>
       <ViewerHeader 
         title={parsedData?.title || "3D Interactive Map"} 
@@ -165,7 +165,7 @@ export default function MapViewer({ chartCode, darkMode }) {
 
       <div 
         ref={exportRef} 
-        className={`flex-1 w-full flex flex-col ${darkMode ? 'bg-[#1a1f2e]' : 'bg-white'} ${isExpanded ? 'rounded-b-xl shadow-2xl border-x border-b ' + (darkMode ? 'border-gray-800' : 'border-gray-200') : 'rounded-b-xl p-2'}`}
+        className={`flex-1 w-full flex flex-col ${darkMode ? 'bg-[#222225]' : 'bg-white'} ${isExpanded ? 'rounded-b-xl shadow-2xl border-x border-b ' + (darkMode ? 'border-gray-800' : 'border-gray-200') : 'rounded-b-xl p-2'}`}
       >
         {isExpanded && parsedData.title && (
           <h3 className={`text-lg font-bold my-4 text-center ${darkMode ? 'text-gray-100' : 'text-gray-800'}`}>

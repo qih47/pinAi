@@ -270,6 +270,23 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
             }
 
             if (!inline && match && match[1] === 'gantt') {
+                const trimmedCode = cleanCode.trim();
+                const isJson = trimmedCode.startsWith('[');
+                
+                if (!isJson) {
+                    // LLM terkadang salah me-return sintaks Mermaid di blok markdown bernama gantt.
+                    // Alihkan ke MermaidViewer agar tidak rusak/hilang.
+                    let mermaidCode = cleanCode;
+                    if (!/^gantt/i.test(trimmedCode)) {
+                        mermaidCode = "gantt\n" + cleanCode;
+                    }
+                    return (
+                        <Suspense fallback={<div className="animate-pulse p-8 border border-dashed rounded-xl text-sm text-center font-medium my-4">Memuat engine diagram...</div>}>
+                            <LazyMermaidViewer chartCode={mermaidCode} darkMode={darkMode} isStreaming={isStreaming} language={language} />
+                        </Suspense>
+                    );
+                }
+
                 return (
                     <Suspense fallback={<div className="animate-pulse p-8 border border-dashed rounded-xl text-sm text-center font-medium my-4">Memuat Gantt Chart...</div>}>
                         <LazyGanttViewer chartCode={cleanCode} darkMode={darkMode} isStreaming={isStreaming} language={language} />

@@ -264,7 +264,7 @@ class MessageRepository:
                     """
                     INSERT INTO chat_attachments (session_id, file_name, file_path, file_size, mime_type, extracted_text)
                     VALUES ($1, $2, $3, $4, $5, $6)
-                    RETURNING id, file_name, file_path, mime_type, file_size;
+                    RETURNING id, file_name, file_path, mime_type, file_size, extracted_text;
                     """,
                     internal_session_pk,
                     original_filename,
@@ -278,9 +278,11 @@ class MessageRepository:
                     return {
                         "id": inserted_row["id"],
                         "original_filename": inserted_row["file_name"],
+                        "file_name": inserted_row["file_name"],
                         "file_path": inserted_row["file_path"],
                         "mime_type": inserted_row["mime_type"],
                         "file_size": inserted_row["file_size"],
+                        "extracted_text": inserted_row["extracted_text"],
                         "status": "staged",
                     }
                 return None

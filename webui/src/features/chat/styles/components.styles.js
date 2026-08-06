@@ -314,7 +314,7 @@ export const getUserBubbleStyles = (darkMode, isEditing, shouldTruncate, isExpan
     },
     hoverActionsGroup: {
         display: 'flex',
-        gap: '12px',
+        gap: '2px',
         alignItems: 'center',
         marginRight: '12px',
         marginTop: '4px',

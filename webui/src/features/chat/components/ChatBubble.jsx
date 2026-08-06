@@ -766,7 +766,7 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
                         <div style={{
                             display: 'flex',
                             alignItems: 'center',
-                            gap: '6px',
+                            gap: '2px',
                             marginTop: '4px', // Jarak aman mepet di bawah teks respons tanpa garis pembatas
                             width: '100%',
                             justifyContent: 'flex-start'

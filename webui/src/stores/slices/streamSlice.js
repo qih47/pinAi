@@ -25,7 +25,7 @@ export const createStreamSlice = (set, get) => ({
 
         const currentActiveStreams = get().activeStreams || {};
         if (Object.keys(currentActiveStreams).length >= 4) {
-            if (toast) toast.error("Maksimal 4 obrolan bersamaan sedang berjalan. Harap tunggu.");
+            // Silent return, backend or queue handles limit
             return;
         }
         

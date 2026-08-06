@@ -105,6 +105,11 @@ async def upload_file(
         import base64
         header, encoded = put_content.split(";base64,", 1)
         put_content = base64.b64decode(encoded)
+    elif put_content.startswith("data:") and "," in put_content:
+        # URL-encoded data URI (misal: data:text/csv;charset=utf-8,%22ID...)
+        from urllib.parse import unquote
+        raw_encoded = put_content.split(",", 1)[1]
+        put_content = unquote(raw_encoded).encode('utf-8')
     else:
         put_content = put_content.encode('utf-8')
     

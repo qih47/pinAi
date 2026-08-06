@@ -5,6 +5,7 @@ import { useChatAuthStore } from "../../../stores/authStore";
 import { uploadDocuments } from "../../../services/endpoints";
 import useToast from "../../../hooks/useToast";
 import { styles, lightColors, darkColors } from "../chatPage.styles";
+import { translations } from "../../../utils/translations";
 
 export function useChatLogic({ isGuest,
   isLoggedIn: propsIsLoggedIn,
@@ -58,6 +59,7 @@ export function useChatLogic({ isGuest,
 
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [isUploadingFile, setIsUploadingFile] = useState(false);
+  const [inputShake, setInputShake] = useState(false);
   const fileInputRef = useRef(null);
   const [isDragOver, setIsDragOver] = useState(false);
   const [showScrollBottom, setShowScrollBottom] = useState(false);
@@ -72,6 +74,11 @@ export function useChatLogic({ isGuest,
   const [isDocLoading, setIsDocLoading] = useState(false);
   const [artifactContent, setArtifactContent] = useState(""); // konten dari server
   const [isArtifactLoading, setIsArtifactLoading] = useState(false);
+
+  const [language, setLanguage] = useState(() => {
+    return localStorage.getItem("cakra_language") || "id";
+  });
+  const tToast = translations[language]?.toast || translations.id.toast;
 
   // Deteksi bahasa berdasarkan ekstensi file
   const detectLang = (filename) => {
@@ -230,7 +237,7 @@ export function useChatLogic({ isGuest,
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a'); a.href = url; a.download = filename; a.click(); URL.revokeObjectURL(url);
     } catch (err) {
-      toast.error(`Gagal mendownload ${filename}`);
+      toast.error(tToast.downloadFileFail || `Gagal mendownload ${filename}`);
     }
   };
 
@@ -240,7 +247,7 @@ export function useChatLogic({ isGuest,
       artifactsToDownload.forEach((art, idx) => {
         setTimeout(() => handleDownloadArtifact(art.filename, art.file_path, art.code), idx * 400);
       });
-      toast.success(`Mendownload ${artifactsToDownload.length} file...`);
+      toast.success(tToast.downloadFileSuccess || `Mendownload ${artifactsToDownload.length} file...`);
     } else {
       try {
         const activeSessionId = sessionId && sessionId !== "new" ? sessionId : useChatStore.getState().sessionUuid;
@@ -255,9 +262,9 @@ export function useChatLogic({ isGuest,
         a.download = `artifacts_${activeSessionId.substring(0, 8)}.zip`;
         a.click();
         URL.revokeObjectURL(url);
-        toast.success("Download ZIP berhasil!");
+        toast.success(tToast.downloadZipSuccess || "Download ZIP berhasil!");
       } catch (err) {
-        toast.error("Gagal mendownload ZIP");
+        toast.error(tToast.downloadZipFail || "Gagal mendownload ZIP");
       }
     }
   };
@@ -370,7 +377,7 @@ export function useChatLogic({ isGuest,
     }
     const maxSize = 10 * 1024 * 1024; // 10MB
     if (file.size > maxSize) {
-      toast.error(`Ukuran file "${file.name}" melebihi batas 10 MB.`);
+      toast.error(tToast.fileTooLarge);
       return false;
     }
     return true;
@@ -383,8 +390,12 @@ export function useChatLogic({ isGuest,
       const isCodeOrText = /\.(js|jsx|ts|tsx|py|php|html|css|json|cpp|c|h|sh|bash|txt|md|csv)$/i.test(fileName);
       if (isCodeOrText && file.size < 5 * 1024 * 1024) {
         try {
-          const text = await file.text();
-          file._lines = text.split('\n').length;
+          // OPTIMASI: Jangan baca seluruh file jika besar, maksimal 512KB untuk hitung baris
+          const chunk = file.size > 512 * 1024 ? file.slice(0, 512 * 1024) : file;
+          const text = await chunk.text();
+          // OPTIMASI: Jangan gunakan .split('\\n') karena membebani main thread, gunakan regex
+          const lineCount = (text.match(/\n/g) || []).length + 1;
+          file._lines = file.size > 512 * 1024 ? Math.max(lineCount, 2500) : lineCount;
         } catch (e) {
           console.error("Error reading lines", e);
         }
@@ -411,7 +422,7 @@ export function useChatLogic({ isGuest,
           allowed.push(file);
           heavyCount++;
         } else {
-          warningMsg = "Maksimal 2 file berat (PDF/Gambar) diperbolehkan.";
+          warningMsg = tToast?.maxFileHeavy || "Maksimal 2 file berat (PDF/Gambar) diperbolehkan.";
         }
       } else {
         const lines = file._lines || 0;
@@ -419,7 +430,7 @@ export function useChatLogic({ isGuest,
           allowed.push(file);
           totalLines += lines;
         } else {
-          warningMsg = `Total baris kode melebihi batas (Max 2500 baris). File ${file.name} dilewati.`;
+          warningMsg = tToast?.maxFileLines || `Total baris kode melebihi batas (Max 2500 baris). File ${file.name} dilewati.`;
         }
       }
     }
@@ -454,10 +465,47 @@ export function useChatLogic({ isGuest,
     if (allowed.length > 0) setSelectedFiles((prev) => [...prev, ...allowed]);
   };
 
-  // 2. TEMPEL GAMBAR (PASTE): Masuk ke state lokal untuk pratinjau, bukan ke port API langsung
+  // 2. TEMPEL (PASTE): Menangani teks yang sangat panjang dan gambar
   const handlePaste = async (e) => {
+    // A. Tangani Paste Teks Panjang
+    const pastedText = e.clipboardData?.getData("text/plain");
+    if (pastedText && pastedText.length > 4000) {
+      e.preventDefault();
+      
+      if (isGuest || !currentIsLoggedIn) {
+        if (selectedFiles.length >= 1) {
+          toast.warning(tToast?.maxAttachment || "Batas attachment telah tercapai");
+          return;
+        }
+      }
+
+      const textFile = new File(
+        [pastedText],
+        `pasted-text-${Date.now()}.txt`,
+        { type: "text/plain" }
+      );
+      
+      const newFiles = [textFile];
+      if (isGuest || !currentIsLoggedIn) {
+        const processed = await processFilesForLines([newFiles[0]]);
+        setSelectedFiles((prev) => [...prev, processed[0]]);
+        toast.info("Teks panjang disisipkan sebagai dokumen (.txt) 📄");
+        return;
+      }
+
+      const { allowed, warningMsg } = await filterFilesBySmartLimits(newFiles, selectedFiles);
+      if (warningMsg) toast.warning(warningMsg);
+      if (allowed.length > 0) {
+        setSelectedFiles((prev) => [...prev, ...allowed]);
+        toast.info(tToast?.longTextAsDoc || "Teks panjang disisipkan sebagai dokumen (.txt) 📄");
+      }
+      return;
+    }
+
+    // B. Tangani Paste Gambar
     const items = e.clipboardData?.items;
     if (!items) return;
+    
     const imageItems = Array.from(items).filter((item) =>
       item.type.startsWith("image/"),
     );
@@ -536,9 +584,7 @@ export function useChatLogic({ isGuest,
     if (allowed.length > 0) setSelectedFiles((prev) => [...prev, ...allowed]);
   };
 
-  const [language, setLanguage] = useState(() => {
-    return localStorage.getItem("cakra_language") || "id";
-  });
+
 
   useEffect(() => {
     localStorage.setItem("cakra_language", language);
@@ -647,6 +693,10 @@ export function useChatLogic({ isGuest,
       // Update state dengan _titleUpdated = true agar komponen TypewriterTitle terpicu
       setChatHistory(prev => prev.map(session => {
         if (session.session_uuid === sessionUuid) {
+          // Hanya update jika judul benar-benar baru
+          if (session.judul === title || session.title === title) {
+            return session;
+          }
           return { ...session, judul: title, _titleUpdated: true };
         }
         return session;
@@ -914,22 +964,19 @@ export function useChatLogic({ isGuest,
       if (uploadSessionUuid) formData.append("session_uuid", uploadSessionUuid);
 
       try {
-        toast.info("Mengunggah berkas...");
         const result = await uploadDocuments(formData);
 
         if (result.status === "success") {
           finalStagedData = result.data;
           setStagedAttachments(result.data); // Tetap simpan ke store untuk backup state
-          toast.success("Berkas berhasil diunggah!");
         } else {
           throw new Error("Gagal mengunggah berkas");
         }
       } catch (err) {
         console.error(err);
-        toast.error(
-          "Gagal memproses pengiriman karena terjadi kesalahan saat mengunggah berkas.",
-        );
         setIsUploadingFile(false);
+        setInputShake(true); // Aktifkan animasi getar untuk memberi isyarat ke user
+        setTimeout(() => setInputShake(false), 500);
         return; // Hentikan pipeline agar chat tidak terkirim pincang tanpa file
       } finally {
         setIsUploadingFile(false);
@@ -1000,9 +1047,16 @@ export function useChatLogic({ isGuest,
     ? "0"
     : (hasSidebar ? (sidebarOpen ? "16rem" : "4rem") : "0");
 
+  const isPreviewMode = !!(previewDoc || previewArtifact);
   const mainMarginRight = isMobile
     ? "0"
-    : (showRightSidebar ? (previewDoc ? "45vw" : "320px") : "0");
+    : !showRightSidebar
+      ? "0"
+      : isPreviewMode
+        ? (rightSidebarWidth === 9999
+            ? `calc(100vw - ${sidebarOpen ? 256 : 64}px)`
+            : `${rightSidebarWidth}px`)
+        : "325px";
 
 
   return {
@@ -1126,7 +1180,8 @@ export function useChatLogic({ isGuest,
     toggleRightSidebar,
     triggerLogout,
     validateFile,
-    wasLeftSidebarOpenRef
+    wasLeftSidebarOpenRef,
+    inputShake // Export state animasi getar
   };
 
 }

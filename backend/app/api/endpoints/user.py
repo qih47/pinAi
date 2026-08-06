@@ -11,6 +11,7 @@ import asyncio
 from backend.app.core.database import get_db
 from backend.app.api.endpoints.auth import verify_session
 from backend.app.core.database import get_hris_db
+from backend.app.utils.security_firewall import validate_attachment_security
 
 router = APIRouter()
 logger = logging.getLogger("CAKRA_USER")
@@ -46,6 +47,7 @@ async def update_profile(
 
     profile_photo_url = None
     if photo:
+        await validate_attachment_security(photo)
         file_ext = photo.filename.split('.')[-1]
         filename = f"{npp}.{file_ext}"
         filepath = os.path.join(UPLOAD_DIR, filename)

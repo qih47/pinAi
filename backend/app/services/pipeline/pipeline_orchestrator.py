@@ -162,7 +162,8 @@ async def _sequential_pipeline_generator(
     
     # Append extracted texts to user message so LLM sees it directly
     if extracted_file_texts:
-        truncated_texts = [txt[:15000] + "...[TRUNCATED]" if len(txt) > 15000 else txt for txt in extracted_file_texts]
+        # Tingkatkan limit karakter menjadi 250000 (sekitar 60K-80K tokens) agar Gemma 12b bisa membaca penuh file teks.
+        truncated_texts = [txt[:250000] + "\n\n...[TEKS DIPOTONG KARENA TERLALU PANJANG]" if len(txt) > 250000 else txt for txt in extracted_file_texts]
         user_message += "\n\n[DOKUMEN LAMPIRAN BARU]\n" + "\n\n".join(truncated_texts)
         if payload.messages:
             payload.messages[-1].content = user_message

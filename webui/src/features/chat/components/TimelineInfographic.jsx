@@ -17,6 +17,9 @@ const TimelineInfographic = ({ chartCode, darkMode, isStreaming, language = 'id'
   const [isExporting, setIsExporting] = useState(false);
   const [isDownloadMenuOpen, setIsDownloadMenuOpen] = useState(false);
   const printRef = useRef(null);
+  const outerRef = useRef(null); // Tambahan untuk referensi container luar
+  const [scale, setScale] = useState(1); // State untuk auto-scaling
+  const [scaledHeight, setScaledHeight] = useState('auto'); // State untuk tinggi setelah di-scale
 
   const activeDarkMode = isExporting ? false : darkMode;
 
@@ -38,6 +41,45 @@ const TimelineInfographic = ({ chartCode, darkMode, isStreaming, language = 'id'
     setData(parsed);
     setError(null);
   }, [chartCode, isStreaming]);
+
+  // Effect untuk mengkalkulasi scale otomatis berdasarkan lebar container
+  useEffect(() => {
+    if (isFullscreen) {
+      setScale(1);
+      setScaledHeight('auto');
+      return;
+    }
+
+    const updateScale = () => {
+      if (outerRef.current && printRef.current) {
+        const outerWidth = outerRef.current.clientWidth;
+        
+        // Ukur lebar dan tinggi asli konten (sebelum di-scale)
+        const contentWidth = printRef.current.scrollWidth;
+        const contentHeight = printRef.current.scrollHeight;
+        
+        if (contentWidth > outerWidth && outerWidth > 0) {
+          const newScale = outerWidth / contentWidth;
+          setScale(newScale);
+          setScaledHeight(contentHeight * newScale);
+        } else {
+          setScale(1);
+          setScaledHeight('auto');
+        }
+      }
+    };
+
+    const resizeObserver = new ResizeObserver(() => {
+      window.requestAnimationFrame(updateScale);
+    });
+
+    if (outerRef.current) {
+      resizeObserver.observe(outerRef.current);
+    }
+
+    setTimeout(updateScale, 50);
+    return () => resizeObserver.disconnect();
+  }, [data, isFullscreen]);
 
   const toggleFullscreen = () => {
     setIsFullscreen(!isFullscreen);
@@ -158,7 +200,7 @@ const TimelineInfographic = ({ chartCode, darkMode, isStreaming, language = 'id'
   }
 
   const viewerContent = (
-    <div className={`group rounded-xl border flex flex-col transition-all duration-300 ${activeDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'
+    <div className={`group rounded-xl border flex flex-col transition-all duration-300 ${activeDarkMode ? 'bg-[#222225] border-gray-700' : 'bg-white border-gray-200'
       } ${isFullscreen ? 'w-full h-full shadow-2xl overflow-auto' : 'relative w-full my-4 overflow-hidden'}`}>
 
       {/* Toolbar */}
@@ -181,7 +223,7 @@ const TimelineInfographic = ({ chartCode, darkMode, isStreaming, language = 'id'
           </button>
 
           {isDownloadMenuOpen && (
-            <div className={`absolute right-0 top-full mt-1 w-32 rounded-lg shadow-xl overflow-hidden z-50 border ${activeDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'
+            <div className={`absolute right-0 top-full mt-1 w-32 rounded-lg shadow-xl overflow-hidden z-50 border ${activeDarkMode ? 'bg-[#222225] border-gray-700' : 'bg-white border-gray-200'
               }`}>
               <button
                 onClick={() => handleDownload('png')}
@@ -207,10 +249,22 @@ const TimelineInfographic = ({ chartCode, darkMode, isStreaming, language = 'id'
         </button>
       </div>
 
-      {/* Scrollable Wrapper */}
-      <div className="w-full overflow-x-auto rounded-b-xl custom-scrollbar">
-        {/* Main Infographic Content */}
-        <div ref={printRef} className={`p-6 md:p-8 ${activeDarkMode ? 'text-gray-100 bg-gray-800' : 'text-gray-800 bg-white'}`} style={{ width: 'max-content', minWidth: 'max(100%, 800px)' }}>
+      {/* Scrollable Container (Outer Ref) */}
+      <div 
+        className="w-full overflow-hidden rounded-b-xl custom-scrollbar" 
+        ref={outerRef}
+        style={{ height: isFullscreen ? 'auto' : scaledHeight }}
+      >
+        
+        {/* Scale Wrapper: Hanya aktif jika tidak fullscreen */}
+        <div style={{ 
+          transform: isFullscreen ? 'none' : `scale(${scale})`, 
+          transformOrigin: 'top left',
+          width: isFullscreen ? '100%' : `${(1 / scale) * 100}%`
+        }}>
+          
+          {/* Main Infographic Content (Print Ref) */}
+          <div ref={printRef} className={`p-6 md:p-8 ${activeDarkMode ? 'text-gray-100 bg-[#222225]' : 'text-gray-800 bg-white'}`} style={{ width: 'max-content', minWidth: 'max(100%, 800px)' }}>
 
           {/* Header */}
           <div className="text-center mb-10">
@@ -262,7 +316,7 @@ const TimelineInfographic = ({ chartCode, darkMode, isStreaming, language = 'id'
                   </div>
 
                   {/* Card Body Container */}
-                  <div className={`flex flex-col rounded-b-xl border border-t-0 shadow-sm transition-all duration-300 group-hover:shadow-lg group-hover:-translate-y-1 ${activeDarkMode ? 'border-gray-700 bg-gray-800/40' : 'border-gray-200 bg-white'}`}>
+                  <div className={`flex flex-col rounded-b-xl border border-t-0 shadow-sm transition-all duration-300 group-hover:shadow-lg group-hover:-translate-y-1 ${activeDarkMode ? 'border-gray-700 bg-[#222225]/40' : 'border-gray-200 bg-white'}`}>
                     {/* Main Objective */}
                     <div className="p-4 text-xs text-center font-medium min-h-[80px] flex items-center justify-center border-b border-dashed border-gray-200 dark:border-gray-700">
                       {month.mainObjective}
@@ -281,7 +335,7 @@ const TimelineInfographic = ({ chartCode, darkMode, isStreaming, language = 'id'
                     </div>
 
                     {/* Outputs List */}
-                    <div className={`p-4 text-[11px] h-36 overflow-y-auto ${activeDarkMode ? 'bg-gray-800/60' : 'bg-gray-50'} rounded-b-xl`}>
+                    <div className={`p-4 text-[11px] h-36 overflow-y-auto ${activeDarkMode ? 'bg-[#222225]/60' : 'bg-gray-50'} rounded-b-xl`}>
                       <ul className="space-y-2.5">
                         {month.outputs?.map((out, i) => (
                           <li key={i} className="flex items-start gap-2">
@@ -302,7 +356,7 @@ const TimelineInfographic = ({ chartCode, darkMode, isStreaming, language = 'id'
 
           {/* Footer Summary */}
           <div className="flex flex-row flex-wrap gap-4 mt-8">
-            <div className={`flex items-center gap-3 p-4 rounded-xl border flex-1 ${activeDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-blue-50/50 border-blue-100'}`}>
+            <div className={`flex items-center gap-3 p-4 rounded-xl border flex-1 ${activeDarkMode ? 'bg-[#222225] border-gray-700' : 'bg-blue-50/50 border-blue-100'}`}>
               <Calendar size={24} className="text-[#101878] dark:text-[#E3B432]" />
               <div>
                 <div className="text-[10px] font-bold uppercase text-gray-500">Durasi Total</div>
@@ -310,7 +364,7 @@ const TimelineInfographic = ({ chartCode, darkMode, isStreaming, language = 'id'
               </div>
             </div>
 
-            <div className={`flex items-center gap-3 p-4 rounded-xl border flex-[2] ${activeDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-purple-50/50 border-purple-100'}`}>
+            <div className={`flex items-center gap-3 p-4 rounded-xl border flex-[2] ${activeDarkMode ? 'bg-[#222225] border-gray-700' : 'bg-purple-50/50 border-purple-100'}`}>
               <CheckCircle size={24} className="text-purple-600 dark:text-purple-400" />
               <div>
                 <div className="text-[10px] font-bold uppercase text-gray-500">Catatan</div>
@@ -318,7 +372,7 @@ const TimelineInfographic = ({ chartCode, darkMode, isStreaming, language = 'id'
               </div>
             </div>
 
-            <div className={`flex items-center gap-3 p-4 rounded-xl border flex-[2] ${activeDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-yellow-50/50 border-yellow-100'}`}>
+            <div className={`flex items-center gap-3 p-4 rounded-xl border flex-[2] ${activeDarkMode ? 'bg-[#222225] border-gray-700' : 'bg-yellow-50/50 border-yellow-100'}`}>
               <Trophy size={24} className="text-[#E3B432]" />
               <div>
                 <div className="text-[10px] font-bold uppercase text-gray-500">Hasil Akhir</div>
@@ -328,8 +382,13 @@ const TimelineInfographic = ({ chartCode, darkMode, isStreaming, language = 'id'
           </div>
 
         </div>
+        {/* End of Print Ref Content */}
+        
+        </div>
+        {/* End of Scale Wrapper */}
 
       </div>
+      {/* End of Outer Ref Scrollable Wrapper */}
     </div>
   );
 

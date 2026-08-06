@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useChatAuthStore } from '../stores/authStore';
 import * as endpoints from '../services/endpoints';
 import useToast from './useToast';
+import { translations } from '../utils/translations';
 
 /**
  * Hook: Session Expiry Countdown Manager (W11)
@@ -20,6 +21,9 @@ export const useSessionExpiry = () => {
 
   const { user, token } = useChatAuthStore();
   const toast = useToast();
+  
+  const language = localStorage.getItem("cakra_language") || "id";
+  const tToast = translations[language]?.toast || translations.id.toast;
 
   /**
    * Format milliseconds to human readable string (e.g., "7h 45m" or "23m 30s")
@@ -53,12 +57,12 @@ export const useSessionExpiry = () => {
           expiresAt: new Date(result.expires_at)
         });
         
-        toast.success(`✅ Session extended! You're signed in for another ${hoursToAdd} hours.`);
+        toast.success(tToast.sessionExtended || `✅ Session extended! You're signed in for another ${hoursToAdd} hours.`);
         setWarningShown(false); // Reset warning
         return true;
       }
     } catch (error) {
-      toast.error(`❌ Failed to extend session: ${error.message}`);
+      toast.error(tToast.sessionExtendFail || `❌ Failed to extend session: ${error.message}`);
       return false;
     }
   };
@@ -66,11 +70,11 @@ export const useSessionExpiry = () => {
   /**
    * Manual logout function
    */
-  const handleExpiredLogout = async () => {
+  const handleExpiredLogout = useCallback(async () => {
     const { logout } = useChatAuthStore.getState();
     await logout();
-    toast.warning('⏰ Your session has expired. Please log in again.');
-  };
+    toast.warning(tToast.sessionExpired || '⏰ Your session has expired. Please log in again.');
+  }, [toast, tToast]);
 
   // Main countdown effect
   useEffect(() => {
