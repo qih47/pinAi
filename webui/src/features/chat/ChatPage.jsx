@@ -131,13 +131,6 @@ export default function ChatPage({ isGuest,
           -webkit-appearance: none !important;
         }
         * { box-sizing: border-box; }
-        .custom-scroll-gemini::-webkit-scrollbar { width: 8px; background-color: transparent; }
-        .custom-scroll-gemini::-webkit-scrollbar-thumb {
-          background-color: ${darkMode ? "rgba(255, 255, 255, 0.15)" : "rgba(0, 0, 0, 0.15)"};
-          border-radius: 20px;
-        }
-        .custom-scroll-gemini::-webkit-scrollbar-button { display: none !important; width: 0 !important; height: 0 !important; -webkit-appearance: none !important; }
-        .custom-scroll-gemini::-webkit-scrollbar-corner { background: transparent; }
 
         /* ── ANIMASI SHIMMER & BOUNCE ── */
         @keyframes skeletonShimmer {
@@ -738,7 +731,7 @@ export default function ChatPage({ isGuest,
                   gap: "8px",
                   marginTop: "4px",
                 }}
-                className="custom-scroll-gemini"
+                className="custom-scrollbar"
               >
                 {isLoadingDocuments ? (
                   <div

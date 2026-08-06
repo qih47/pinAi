@@ -162,7 +162,7 @@ export default function ChatArea({
       <div
         ref={messagesContainerRef}
         style={{ ...styles.scrollArea, overflowY: 'auto', position: 'relative', flex: 1 }}
-        className="custom-scroll-gemini chat-main-scroll"
+        className="custom-scrollbar chat-main-scroll"
       >
       <div style={styles.chatInner}>
         {isLoading ? (

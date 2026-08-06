@@ -94,7 +94,7 @@ export default function ChatNavigator({ messages, onNavigate, darkMode, theme, s
       }}
     >
       <div 
-        className="premium-scroll custom-scroll-gemini"
+        className="premium-scroll custom-scrollbar"
         style={{
           background: isHovered ? (darkMode ? '#2d2d2d' : '#ffffff') : 'transparent',
           boxShadow: isHovered ? (darkMode ? '0 8px 30px rgba(0,0,0,0.5)' : '0 8px 30px rgba(0,0,0,0.15)') : 'none',

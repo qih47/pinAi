@@ -200,7 +200,7 @@ const TimelineInfographic = ({ chartCode, darkMode, isStreaming, language = 'id'
   }
 
   const viewerContent = (
-    <div className={`group rounded-xl border flex flex-col transition-all duration-300 ${activeDarkMode ? 'bg-[#222225] border-gray-700' : 'bg-white border-gray-200'
+    <div className={`group rounded-xl border flex flex-col transition-all duration-300 custom-scrollbar ${activeDarkMode ? 'bg-[#222225] border-gray-700' : 'bg-white border-gray-200'
       } ${isFullscreen ? 'w-full h-full shadow-2xl overflow-auto' : 'relative w-full my-4 overflow-hidden'}`}>
 
       {/* Toolbar */}
@@ -323,7 +323,7 @@ const TimelineInfographic = ({ chartCode, darkMode, isStreaming, language = 'id'
                     </div>
 
                     {/* Activities List */}
-                    <div className="p-4 text-[11px] h-48 overflow-y-auto border-b border-dashed border-gray-200 dark:border-gray-700">
+                    <div className="p-4 text-[11px] h-48 overflow-y-auto custom-scrollbar border-b border-dashed border-gray-200 dark:border-gray-700">
                       <ul className="space-y-2.5">
                         {month.activities?.map((act, i) => (
                           <li key={i} className="flex items-start gap-2">
@@ -335,7 +335,7 @@ const TimelineInfographic = ({ chartCode, darkMode, isStreaming, language = 'id'
                     </div>
 
                     {/* Outputs List */}
-                    <div className={`p-4 text-[11px] h-36 overflow-y-auto ${activeDarkMode ? 'bg-[#222225]/60' : 'bg-gray-50'} rounded-b-xl`}>
+                    <div className={`p-4 text-[11px] h-36 overflow-y-auto custom-scrollbar ${activeDarkMode ? 'bg-[#222225]/60' : 'bg-gray-50'} rounded-b-xl`}>
                       <ul className="space-y-2.5">
                         {month.outputs?.map((out, i) => (
                           <li key={i} className="flex items-start gap-2">

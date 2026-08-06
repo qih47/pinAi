@@ -150,7 +150,7 @@ export default function ContextIsolationModal({
               position: "relative",
               minHeight: documents && documents.length > 0 ? "400px" : "auto",
             }}
-            className="custom-scroll-gemini"
+            className="custom-scrollbar"
           >
             {isLoadingDocuments && (
               <div
