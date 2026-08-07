@@ -426,8 +426,23 @@ async def text_to_speech(
                 sf.write(buf, wav, sr, format='WAV', subtype='PCM_16')
                 return buf.getvalue()
 
-            audio_bytes = await asyncio.to_thread(_run_f5)
-            
+            try:
+                audio_bytes = await asyncio.to_thread(_run_f5)
+            except RuntimeError as e:
+                if "CUDA" in str(e) or "out of memory" in str(e).lower():
+                    logger.error(f"[VOICE] CUDA OOM error: {e}")
+                    import torch
+                    import gc
+                    torch.cuda.empty_cache()
+                    gc.collect()
+                    raise HTTPException(status_code=503, detail="Kapasitas GPU penuh. Gagal memproses suara, silakan coba lagi nanti.")
+                else:
+                    logger.error(f"[VOICE] RuntimeError: {e}")
+                    raise HTTPException(status_code=500, detail=str(e))
+            except Exception as e:
+                logger.error(f"[VOICE] TTS Unexpected error: {e}")
+                raise HTTPException(status_code=500, detail=str(e))
+
             # Use standard Response so FastAPI sends the Content-Length header.
             # Chrome fails to play WAV files without Content-Length.
             from fastapi import Response

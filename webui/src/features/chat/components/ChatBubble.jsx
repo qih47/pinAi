@@ -94,6 +94,8 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
     const [isAudioLoading, setIsAudioLoading] = useState(false);
     const [isAudioPlaying, setIsAudioPlaying] = useState(false);
     const [ttsActive, setTtsActive] = useState(false);
+    const [feedbackState, setFeedbackState] = useState(msg.feedback?.rating || null);
+    const [isCopied, setIsCopied] = useState(false);
 
     const ttsQueueRef = useRef({
         textChunks: [],
@@ -244,6 +246,10 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
             playNextAudio();
         } catch (err) {
             console.error("TTS Error:", err);
+            const detail = err.response?.data?.detail;
+            setToastMsg(typeof detail === 'string' ? detail : tTTS.failedPlay || "Gagal memutar suara.");
+            setShowToast(true);
+            setTimeout(() => setShowToast(false), 3500);
         } finally {
             ttsQueueRef.current.isFetching = false;
             setIsAudioLoading(false);
@@ -447,7 +453,11 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
             }
             setToastMsg('Teks berhasil disalin! 📋');
             setShowToast(true);
-            setTimeout(() => setShowToast(false), 2000);
+            setIsCopied(true);
+            setTimeout(() => {
+                setShowToast(false);
+                setIsCopied(false);
+            }, 2000);
         } catch (err) {
             console.error(err);
         }
@@ -775,10 +785,12 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
                             <button
                                 type="button"
                                 onClick={() => {
+                                    if (feedbackState === 'good') return;
                                     apiClient.patch(`/chat/sessions/${useChatStore.getState().sessionUuid}/messages/feedback`, {
                                         message_index: idx,
                                         feedback: { rating: 'good' }
                                     }).then(() => {
+                                        setFeedbackState('good');
                                         setToastMsg('Feedback Good terkirim! 👍');
                                         setShowToast(true);
                                         setTimeout(() => setShowToast(false), 2000);
@@ -790,31 +802,33 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
                                     });
                                 }}
                                 style={{
-                                    background: 'transparent',
+                                    background: feedbackState === 'good' ? (darkMode ? 'rgba(16,185,129,0.15)' : 'rgba(16,185,129,0.1)') : 'transparent',
                                     border: 'none',
-                                    cursor: 'pointer',
+                                    cursor: feedbackState === 'good' ? 'default' : 'pointer',
                                     padding: '6px',
                                     borderRadius: '6px',
                                     display: 'flex',
                                     alignItems: 'center',
                                     justifyContent: 'center',
                                     transition: 'all 0.2s ease',
-                                    opacity: 0.5,
-                                    color: darkMode ? '#94a3b8' : '#64748b' // Warna default abu-abu elegan monokrom
+                                    opacity: feedbackState === 'good' ? 1 : 0.5,
+                                    color: feedbackState === 'good' ? '#10b981' : (darkMode ? '#94a3b8' : '#64748b')
                                 }}
                                 title={tGlobal.chat.goodResponse}
                                 onMouseEnter={(e) => {
+                                    if (feedbackState === 'good') return;
                                     e.currentTarget.style.opacity = '1';
                                     e.currentTarget.style.color = '#10b981'; // Glow Hijau pas di-hover
                                     e.currentTarget.style.background = darkMode ? 'rgba(16,185,129,0.1)' : 'rgba(16,185,129,0.05)';
                                 }}
                                 onMouseLeave={(e) => {
+                                    if (feedbackState === 'good') return;
                                     e.currentTarget.style.opacity = '0.5';
                                     e.currentTarget.style.color = darkMode ? '#94a3b8' : '#64748b';
                                     e.currentTarget.style.background = 'transparent';
                                 }}
                             >
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill={feedbackState === 'good' ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                     <path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"></path>
                                 </svg>
                             </button>
@@ -823,10 +837,12 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
                             <button
                                 type="button"
                                 onClick={() => {
+                                    if (feedbackState === 'bad') return;
                                     apiClient.patch(`/chat/sessions/${useChatStore.getState().sessionUuid}/messages/feedback`, {
                                         message_index: idx,
                                         feedback: { rating: 'bad' }
                                     }).then(() => {
+                                        setFeedbackState('bad');
                                         setToastMsg('Feedback Bad terkirim! 👎');
                                         setShowToast(true);
                                         setTimeout(() => setShowToast(false), 2000);
@@ -838,31 +854,33 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
                                     });
                                 }}
                                 style={{
-                                    background: 'transparent',
+                                    background: feedbackState === 'bad' ? (darkMode ? 'rgba(239,68,68,0.15)' : 'rgba(239,68,68,0.1)') : 'transparent',
                                     border: 'none',
-                                    cursor: 'pointer',
+                                    cursor: feedbackState === 'bad' ? 'default' : 'pointer',
                                     padding: '6px',
                                     borderRadius: '6px',
                                     display: 'flex',
                                     alignItems: 'center',
                                     justifyContent: 'center',
                                     transition: 'all 0.2s ease',
-                                    opacity: 0.5,
-                                    color: darkMode ? '#94a3b8' : '#64748b'
+                                    opacity: feedbackState === 'bad' ? 1 : 0.5,
+                                    color: feedbackState === 'bad' ? '#ef4444' : (darkMode ? '#94a3b8' : '#64748b')
                                 }}
                                 title={tGlobal.chat.badResponse}
                                 onMouseEnter={(e) => {
+                                    if (feedbackState === 'bad') return;
                                     e.currentTarget.style.opacity = '1';
                                     e.currentTarget.style.color = '#ef4444'; // Glow Merah pas di-hover
                                     e.currentTarget.style.background = darkMode ? 'rgba(239,68,68,0.1)' : 'rgba(239,68,68,0.05)';
                                 }}
                                 onMouseLeave={(e) => {
+                                    if (feedbackState === 'bad') return;
                                     e.currentTarget.style.opacity = '0.5';
                                     e.currentTarget.style.color = darkMode ? '#94a3b8' : '#64748b';
                                     e.currentTarget.style.background = 'transparent';
                                 }}
                             >
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill={feedbackState === 'bad' ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                     <path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3zm7-13h3a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-3"></path>
                                 </svg>
                             </button>
@@ -872,7 +890,7 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
                                 type="button"
                                 onClick={() => executeTextCopy(msg.content)}
                                 style={{
-                                    background: 'transparent',
+                                    background: isCopied ? (darkMode ? 'rgba(16,185,129,0.15)' : 'rgba(16,185,129,0.1)') : 'transparent',
                                     border: 'none',
                                     cursor: 'pointer',
                                     padding: '6px',
@@ -881,25 +899,33 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
                                     alignItems: 'center',
                                     justifyContent: 'center',
                                     transition: 'all 0.2s ease',
-                                    opacity: 0.5,
-                                    color: darkMode ? '#94a3b8' : '#64748b'
+                                    opacity: isCopied ? 1 : 0.5,
+                                    color: isCopied ? '#10b981' : (darkMode ? '#94a3b8' : '#64748b')
                                 }}
                                 title={tGlobal.chat.copyResponse}
                                 onMouseEnter={(e) => {
+                                    if (isCopied) return;
                                     e.currentTarget.style.opacity = '1';
                                     e.currentTarget.style.color = darkMode ? '#6366f1' : '#2563eb'; // Glow Tema Utama Indigo/Blue
                                     e.currentTarget.style.background = darkMode ? 'rgba(99,102,241,0.1)' : 'rgba(37,99,235,0.05)';
                                 }}
                                 onMouseLeave={(e) => {
+                                    if (isCopied) return;
                                     e.currentTarget.style.opacity = '0.5';
                                     e.currentTarget.style.color = darkMode ? '#94a3b8' : '#64748b';
                                     e.currentTarget.style.background = 'transparent';
                                 }}
                             >
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-                                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-                                </svg>
+                                {isCopied ? (
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                        <polyline points="20 6 9 17 4 12"></polyline>
+                                    </svg>
+                                ) : (
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                                    </svg>
+                                )}
                             </button>
 
                             {/* 🔊 TOMBOL READ ALOUD (SPEAKER) */}

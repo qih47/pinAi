@@ -107,8 +107,11 @@ const PdfInterrogator = ({ darkMode, language = 'id' }) => {
                                     style={{ height: '100%', width: '100%' }}
                                     totalCount={numPages}
                                     itemContent={(index) => (
-                                        <div className="flex justify-center mb-6">
-                                            <div className="relative shadow-2xl bg-white">
+                                        // Memberikan estimasi minHeight (ukuran kertas A4 ~ 842px pada scale 1) 
+                                        // agar saat Virtuoso me-mount elemen saat scroll ke atas, tingginya tidak 0 
+                                        // yang menyebabkan lompatan scroll (jumping) secara tiba-tiba.
+                                        <div className="flex justify-center mb-6" style={{ minHeight: `${842 * scale}px` }}>
+                                            <div className="relative shadow-2xl bg-white flex items-center justify-center min-w-[200px]">
                                                 <Page
                                                     pageNumber={index + 1}
                                                     scale={scale}
