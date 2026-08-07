@@ -33,6 +33,7 @@ export default function SettingsModal({
   const [isPlayingTest, setIsPlayingTest] = useState(false);
   const [isVoiceDropdownOpen, setIsVoiceDropdownOpen] = useState(false);
   const [isLanguageDropdownOpen, setIsLanguageDropdownOpen] = useState(false);
+  const [showSuggestionForm, setShowSuggestionForm] = useState(false);
   const voiceDropdownRef = useRef(null);
   const languageDropdownRef = useRef(null);
 
@@ -842,7 +843,7 @@ export default function SettingsModal({
         return (
           <div className="space-y-6 max-w-2xl">
             <h2 className="text-xl font-bold mb-6">{t.about}</h2>
-            <div className={`prose max-w-none text-sm leading-relaxed ${darkMode ? 'prose-invert text-gray-300' : 'text-gray-600'}`}>
+            <div className={`prose max-w-none text-sm leading-relaxed text-justify ${darkMode ? 'prose-invert text-gray-300' : 'text-gray-600'}`}>
               <p>
                 <strong>CAKRA AI</strong> {t.aboutText1.replace("CAKRA AI ", "")}
               </p>
@@ -851,16 +852,101 @@ export default function SettingsModal({
               </p>
               <br />
               <h3 className={`text-[15px] font-semibold mt-4 mb-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>{t.feedbackEmail}</h3>
-              <p className={`cursor-pointer hover:underline ${darkMode ? 'text-blue-400' : 'text-blue-600'}`}>support@cakra.ai</p>
+              <a href="mailto:qisthih@pindad.com" className={`cursor-pointer hover:underline ${darkMode ? 'text-blue-400' : 'text-blue-600'}`}>qisthih@pindad.com</a>
             </div>
 
+            {/* Tombol Saran */}
             <div className={`flex items-center justify-between py-4 mt-8 border-t ${darkMode ? 'border-gray-700/50' : 'border-gray-200'}`}>
               <h3 className="font-medium text-[14px]">{t.suggestions}</h3>
-              <button className={`px-4 py-1.5 text-sm font-medium rounded-full transition-colors flex items-center space-x-2 ${darkMode ? 'bg-white text-black hover:bg-gray-200' : 'bg-black text-white hover:bg-gray-800'}`}>
+              <button 
+                onClick={() => setShowSuggestionForm(true)}
+                className={`px-4 py-1.5 text-sm font-medium rounded-full transition-colors flex items-center space-x-2 ${darkMode ? 'bg-white text-black hover:bg-gray-200' : 'bg-black text-white hover:bg-gray-800'}`}
+              >
                 <span>📝</span>
                 <span>{t.suggestions}</span>
               </button>
             </div>
+
+            {/* Popup Form Saran */}
+            {showSuggestionForm && (
+              <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm" style={{ padding: '20px' }}>
+                <div className={`w-full max-w-md p-6 rounded-2xl shadow-2xl ${darkMode ? 'bg-[#1e1e22] text-white border border-gray-800' : 'bg-white text-gray-900 border border-gray-200'}`}>
+                  <div className="flex justify-between items-center mb-6">
+                    <h2 className="text-lg font-bold">{t.sendSuggestion}</h2>
+                    <button 
+                      onClick={() => setShowSuggestionForm(false)}
+                      className={`p-2 rounded-full transition-colors ${darkMode ? 'hover:bg-white/10' : 'hover:bg-black/5'}`}
+                    >
+                      ✕
+                    </button>
+                  </div>
+                  <form 
+                    onSubmit={async (e) => {
+                      e.preventDefault();
+                      
+                      if (!integrations.mail_connected) {
+                        alert(language === 'id' ? "Silakan hubungkan akun Zimbra Anda terlebih dahulu di menu Umum (Integrasi)." : "Please connect your Zimbra account in the General menu first.");
+                        setShowSuggestionForm(false);
+                        setActiveTab("general");
+                        return;
+                      }
+
+                      const subject = e.target.subject.value;
+                      const message = e.target.message.value;
+                      
+                      try {
+                        const token = localStorage.getItem('cakra_token') || '';
+                        const res = await apiClient.post('/corporate/emails/reply', {
+                          token: token,
+                          to: "qisthih@pindad.com",
+                          subject: subject,
+                          body: message
+                        });
+                        
+                        if (res.data?.status === 'success') {
+                          alert(language === 'id' ? "Saran berhasil dikirim via Zimbra!" : "Suggestion sent successfully via Zimbra!");
+                        } else {
+                          alert((language === 'id' ? "Gagal mengirim saran: " : "Failed to send: ") + res.data?.detail);
+                        }
+                      } catch (error) {
+                        alert((language === 'id' ? "Gagal mengirim saran: " : "Failed to send: ") + error.message);
+                      }
+                      
+                      setShowSuggestionForm(false);
+                    }}
+                    className="space-y-4"
+                  >
+                    <div>
+                      <input 
+                        type="text" 
+                        name="subject"
+                        required
+                        placeholder={t.suggestionSubjectPlaceholder}
+                        className={`w-full px-4 py-3 text-sm rounded-xl border ${darkMode ? 'bg-[#18181b] border-gray-700/50 text-white focus:border-blue-500' : 'bg-gray-50 border-gray-200 focus:border-blue-500'} focus:outline-none focus:ring-1 focus:ring-blue-500/50 transition-colors`}
+                      />
+                    </div>
+                    <div>
+                      <textarea 
+                        name="message"
+                        required
+                        rows="4"
+                        placeholder={t.suggestionMessagePlaceholder}
+                        className={`w-full px-4 py-3 text-sm rounded-xl border resize-none ${darkMode ? 'bg-[#18181b] border-gray-700/50 text-white focus:border-blue-500' : 'bg-gray-50 border-gray-200 focus:border-blue-500'} focus:outline-none focus:ring-1 focus:ring-blue-500/50 transition-colors`}
+                      ></textarea>
+                    </div>
+                    <div className="flex justify-end pt-2">
+                      <button 
+                        type="submit"
+                        className={`w-full py-3 text-sm font-semibold rounded-xl transition-colors flex justify-center items-center space-x-2 ${darkMode ? 'bg-white text-black hover:bg-gray-200' : 'bg-black text-white hover:bg-gray-800'}`}
+                      >
+                        <span>✉️</span>
+                        <span>{t.openEmailAndSend}</span>
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            )}
           </div>
         );
       default:

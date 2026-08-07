@@ -18,7 +18,7 @@ export default function LoginPage() {
   useEffect(() => {
     if (isAuthenticated) {
       if (user?.npp === '06652') {
-        navigate('/analytics');
+        window.location.href = import.meta.env.VITE_ANALYTICS_URL || `${window.location.protocol}//${window.location.hostname}:5174/analytics`;
         return;
       }
       const storeSessionId = useChatStore.getState().sessionUuid;
