@@ -79,6 +79,8 @@ export async function performStream(set, get, messagesToSend, assistantMessage, 
 
             let accumulatedReply = '';
             let renderTimeout = null;
+            let renderThinkingTimeout = null;
+            let renderStatusTimeout = null;
             let accumulatedThinking = '';
             let backendBatchIndex = 0;
 
@@ -131,19 +133,24 @@ export async function performStream(set, get, messagesToSend, assistantMessage, 
                             content: accumulatedReply // Preserve actual content independently
                         };
 
-                        updateStreamState(state => {
-                            const newMessages = [...state.messages];
-                            const idx = targetAssistantIdx !== null ? targetAssistantIdx : newMessages.length - 1;
-                            if (newMessages[idx]) {
-                                // Kita paksa update statusMessage di sini
-                                newMessages[idx] = updatedAssistantMsg;
-                            }
-                            return {
-                                messages: newMessages,
-                                currentThinking: cleanThinking
-                            };
-                        });
                         assistantMessage = updatedAssistantMsg;
+
+                        if (!renderThinkingTimeout) {
+                            renderThinkingTimeout = requestAnimationFrame(() => {
+                                updateStreamState(state => {
+                                    const newMessages = [...state.messages];
+                                    const idx = targetAssistantIdx !== null ? targetAssistantIdx : newMessages.length - 1;
+                                    if (newMessages[idx]) {
+                                        newMessages[idx] = assistantMessage;
+                                    }
+                                    return {
+                                        messages: newMessages,
+                                        currentThinking: cleanThinking
+                                    };
+                                });
+                                renderThinkingTimeout = null;
+                            });
+                        }
                     },
                     onStatus: (statusStr) => {
                         // Dipanggil oleh RAG / pipeline statis
@@ -153,17 +160,22 @@ export async function performStream(set, get, messagesToSend, assistantMessage, 
                         };
                         assistantMessage = updatedAssistantMsg;
 
-                        updateStreamState(state => {
-                            const newMessages = [...state.messages];
-                            const idx = targetAssistantIdx !== null ? targetAssistantIdx : newMessages.length - 1;
-                            if (newMessages[idx]) {
-                                newMessages[idx] = updatedAssistantMsg;
-                            }
-                            return {
-                                messages: newMessages,
-                                currentThinking: statusStr
-                            };
-                        });
+                        if (!renderStatusTimeout) {
+                            renderStatusTimeout = requestAnimationFrame(() => {
+                                updateStreamState(state => {
+                                    const newMessages = [...state.messages];
+                                    const idx = targetAssistantIdx !== null ? targetAssistantIdx : newMessages.length - 1;
+                                    if (newMessages[idx]) {
+                                        newMessages[idx] = assistantMessage;
+                                    }
+                                    return {
+                                        messages: newMessages,
+                                        currentThinking: statusStr
+                                    };
+                                });
+                                renderStatusTimeout = null;
+                            });
+                        }
                     },
                     onSources: (sources) => {
                         console.log('📚 [SSE] Received sources:', sources);
@@ -181,66 +193,69 @@ export async function performStream(set, get, messagesToSend, assistantMessage, 
                     },
                     onChunk: (chunk) => {
                         accumulatedReply += chunk;
-                        let cleanReply = accumulatedReply.replace(/<\|channel>thought/g, '').replace(/<channel\|>/g, '');
+                        let cleanReply = accumulatedReply;
+                        
+                        if (cleanReply.includes('<|channel>thought')) {
+                            cleanReply = cleanReply.replace(/<\|channel>thought/g, '').replace(/<channel\|>/g, '');
+                        }
 
                         // 🔥 HANDLE <thinking> LEAKAGE 🔥
-                        // Tangkap jika model membocorkan pemikiran ke tag <thinking> di main stream
                         let leakedThinking = "";
-                        cleanReply = cleanReply.replace(/<thinking>([\s\S]*?)(?:<\/thinking>|$)/gi, (match, p1) => {
-                            leakedThinking += p1;
-                            return ""; // Hapus dari output chat utama
-                        });
+                        if (cleanReply.includes('<thinking>')) {
+                            cleanReply = cleanReply.replace(/<thinking>([\s\S]*?)(?:<\/thinking>|$)/gi, (match, p1) => {
+                                leakedThinking += p1;
+                                return ""; // Hapus dari output chat utama
+                            });
+                        }
 
                         // 🔥 DYNAMIC FRONTEND PARSER 🔥
-                        const openTagRegex = /<(create_file|edit_file)\s+filename=["']([^"'>\s]+)["']\s*>/gi;
-                        const closeTagRegex = /<\/(create_file|edit_file)\s*>/gi;
-
-                        let textDisplay = "";
-                        let lastIdx = 0;
-                        let currentBatchIndex = 0;
-                        let hasInjectedFirst = false;
+                        let textDisplay = cleanReply;
                         
-                        let match;
-                        while ((match = openTagRegex.exec(cleanReply)) !== null) {
-                            const precedingText = cleanReply.substring(lastIdx, match.index);
+                        if (cleanReply.includes('<create_file') || cleanReply.includes('<edit_file')) {
+                            const openTagRegex = /<(create_file|edit_file)\s+filename=["']([^"'>\s]+)["']\s*>/gi;
+                            const closeTagRegex = /<\/(create_file|edit_file)\s*>/gi;
+
+                            textDisplay = "";
+                            let lastIdx = 0;
+                            let currentBatchIndex = 0;
+                            let hasInjectedFirst = false;
                             
-                            if (!hasInjectedFirst) {
-                                textDisplay += precedingText;
-                                textDisplay += `\n\n[[CAKRA_FILE_PROCESS_LOG_${currentBatchIndex}]]\n\n`;
-                                hasInjectedFirst = true;
-                            } else if (precedingText.trim().length > 0) {
-                                currentBatchIndex++;
-                                textDisplay += precedingText;
-                                textDisplay += `\n\n[[CAKRA_FILE_PROCESS_LOG_${currentBatchIndex}]]\n\n`;
-                            } else {
-                                textDisplay += precedingText; // Just whitespace
+                            let match;
+                            while ((match = openTagRegex.exec(cleanReply)) !== null) {
+                                const precedingText = cleanReply.substring(lastIdx, match.index);
+                                
+                                if (!hasInjectedFirst) {
+                                    textDisplay += precedingText;
+                                    textDisplay += `\n\n[[CAKRA_FILE_PROCESS_LOG_${currentBatchIndex}]]\n\n`;
+                                    hasInjectedFirst = true;
+                                } else if (precedingText.trim().length > 0) {
+                                    currentBatchIndex++;
+                                    textDisplay += precedingText;
+                                    textDisplay += `\n\n[[CAKRA_FILE_PROCESS_LOG_${currentBatchIndex}]]\n\n`;
+                                } else {
+                                    textDisplay += precedingText; // Just whitespace
+                                }
+
+                                const contentStart = openTagRegex.lastIndex;
+
+                                closeTagRegex.lastIndex = contentStart;
+                                const nextClose = closeTagRegex.exec(cleanReply);
+
+                                const nextOpenRegex = /<(create_file|edit_file)\s+filename=/gi;
+                                nextOpenRegex.lastIndex = contentStart;
+                                const nextOpen = nextOpenRegex.exec(cleanReply);
+
+                                if (nextClose && (!nextOpen || nextClose.index < nextOpen.index)) {
+                                    lastIdx = closeTagRegex.lastIndex;
+                                } else if (nextOpen && (!nextClose || nextOpen.index < nextClose.index)) {
+                                    lastIdx = nextOpen.index; 
+                                    openTagRegex.lastIndex = lastIdx; 
+                                } else {
+                                    lastIdx = cleanReply.length;
+                                }
                             }
-
-                            const filename = match[2];
-                            const contentStart = openTagRegex.lastIndex;
-
-                            closeTagRegex.lastIndex = contentStart;
-                            const nextClose = closeTagRegex.exec(cleanReply);
-
-                            const nextOpenRegex = /<(create_file|edit_file)\s+filename=/gi;
-                            nextOpenRegex.lastIndex = contentStart;
-                            const nextOpen = nextOpenRegex.exec(cleanReply);
-
-                            let contentEnd = cleanReply.length;
-
-                            if (nextClose && (!nextOpen || nextClose.index < nextOpen.index)) {
-                                contentEnd = nextClose.index;
-                                lastIdx = closeTagRegex.lastIndex;
-                            } else if (nextOpen && (!nextClose || nextOpen.index < nextClose.index)) {
-                                contentEnd = nextOpen.index;
-                                lastIdx = nextOpen.index; 
-                                openTagRegex.lastIndex = lastIdx; 
-                            } else {
-                                contentEnd = cleanReply.length;
-                                lastIdx = cleanReply.length;
-                            }
+                            textDisplay += cleanReply.substring(lastIdx);
                         }
-                        textDisplay += cleanReply.substring(lastIdx);
 
                         const existingGens = [...(assistantMessage.fileGenerations || [])];
 
@@ -301,21 +316,26 @@ export async function performStream(set, get, messagesToSend, assistantMessage, 
                             
                             // ── Merekam ke Sidebar (Artifacts) ──
                             if (fileStatus.file_path) {
-                                updateStreamState(state => {
-                                    const currentArtifacts = [...state.artifacts];
-                                    const exArtIdx = currentArtifacts.findIndex(a => a.filename === filename);
-                                    const newArt = {
-                                        filename,
-                                        file_path: fileStatus.file_path,
-                                        lines_count: fileStatus.lines_count || 1,
-                                    };
-                                    if (exArtIdx !== -1) {
-                                        currentArtifacts[exArtIdx] = newArt;
-                                    } else {
-                                        currentArtifacts.push(newArt);
-                                    }
-                                    return { artifacts: currentArtifacts };
-                                });
+                                // Update global state directly to ensure UI reactivity
+                                const currentState = get();
+                                const currentArtifacts = [...(currentState.artifacts || [])];
+                                const exArtIdx = currentArtifacts.findIndex(a => a.filename === filename);
+                                const newArt = {
+                                    filename,
+                                    file_path: fileStatus.file_path,
+                                    lines_count: fileStatus.lines_count || 1,
+                                };
+                                if (exArtIdx !== -1) {
+                                    currentArtifacts[exArtIdx] = newArt;
+                                } else {
+                                    currentArtifacts.push(newArt);
+                                }
+                                
+                                console.log('[STREAM_HELPER] Menambahkan artifact baru:', newArt);
+                                set({ artifacts: currentArtifacts });
+                                
+                                // Juga update stream state untuk konsistensi internal
+                                updateStreamState({ artifacts: currentArtifacts });
                             }
                         } else if (stage === 'creating') {
                             if (existingIdx === -1) {
@@ -368,6 +388,14 @@ export async function performStream(set, get, messagesToSend, assistantMessage, 
                     },
                     onDone: (data) => {
                         assistantMessage = { ...assistantMessage, isStreaming: false, isThinking: false };
+                        
+                        // --- INTERCEPT SHORT/TRUNCATED RESPONSE ---
+                        const cleanContent = (assistantMessage.content || '').trim();
+                        const hasFiles = assistantMessage.fileGenerations && assistantMessage.fileGenerations.length > 0;
+                        if (!hasFiles && cleanContent.length < 12) {
+                            assistantMessage.content = "Mohon maaf, saya tidak dapat memproses pesan Anda dengan baik. Silakan coba beberapa saat lagi atau perjelas pertanyaan Anda.";
+                            console.warn("[FE STREAM] Respons terlalu pendek, menggunakan fallback.");
+                        }
                         if (data && data.eval_count && data.eval_duration) {
                             assistantMessage.eval_count = data.eval_count;
                             assistantMessage.eval_duration = data.eval_duration;

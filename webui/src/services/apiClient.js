@@ -5,8 +5,9 @@ const generateRequestId = () => Math.random().toString(36).substring(2, 10).toUp
 
 const DEFAULT_API_BASE = import.meta.env.VITE_API_BASE_URL || '';
 const apiClient = axios.create({
-  // 🔥 KUNCI DI SINI: Gunakan env var jika tersedia, jika tidak fallback ke port 5000 di host saat ini.
-  baseURL: DEFAULT_API_BASE || (typeof window !== 'undefined' ? `${window.location.protocol}//${window.location.hostname}:5000/api` : '/api'),
+  // Gateway sebagai single entry point. VITE_API_BASE_URL harus selalu diset ke port 8000 (Gateway).
+  // Fallback ke port 8000 jika env var tidak tersedia (bukan 5000 yang merupakan monolith lama).
+  baseURL: DEFAULT_API_BASE || (typeof window !== 'undefined' ? `${window.location.protocol}//${window.location.hostname}:8000/api` : '/api'),
   timeout: 30000,
   headers: {
     'Content-Type': 'application/json',

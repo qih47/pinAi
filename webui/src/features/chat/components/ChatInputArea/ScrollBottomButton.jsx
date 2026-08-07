@@ -25,7 +25,7 @@ export default function ScrollBottomButton({
       style={{
         position: "absolute",
         top: "-46px",
-        left: "46%",
+        left: "50%",
         transform: "translateX(-50%)",
         display: "flex",
         alignItems: "center",
@@ -42,7 +42,7 @@ export default function ScrollBottomButton({
           ? "0 4px 12px rgba(0,0,0,0.5), 0 2px 4px rgba(0,0,0,0.2)"
           : "0 4px 12px rgba(0,0,0,0.08), 0 2px 4px rgba(0,0,0,0.04)",
         cursor: "pointer",
-        zIndex: 999,
+        zIndex: 40,
         transition: "all 0.2s ease-in-out",
         animation: "fadeSlideIn 0.25s ease-out forwards",
         outline: "none",

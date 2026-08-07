@@ -1,3 +1,4 @@
+import { getApiBase } from '@/services/endpoints';
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { toPng, toSvg } from 'html-to-image';
@@ -6,7 +7,7 @@ import { Target, ClipboardList, Gift, Calendar, CheckCircle, Trophy, Maximize2, 
 import { parsePartialJSON } from '../../../utils/jsonHelper';
 import { translations } from '../../../utils/translations';
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://192.168.11.80:5000';
+const API_BASE = getApiBase();
 
 const TimelineInfographic = ({ chartCode, darkMode, isStreaming, language = 'id' }) => {
   const tGlobal = translations[language] || translations.id;

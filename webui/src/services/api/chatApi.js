@@ -84,6 +84,7 @@ export async function streamChat(
     const token = localStorage.getItem('cakra_token');
     const headers = {
       'Content-Type': 'application/json',
+      'Accept': 'text/event-stream',
     };
     
     if (token) {

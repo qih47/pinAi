@@ -125,6 +125,14 @@ export default function MapViewer({ chartCode, darkMode }) {
     };
   }, [parsedData, mapStyleObj]);
 
+  // Auto resize map ketika mode fullscreen toggle
+  useEffect(() => {
+    if (mapInstance.current) {
+      setTimeout(() => mapInstance.current.resize(), 100);
+      setTimeout(() => mapInstance.current.resize(), 300);
+    }
+  }, [isExpanded]);
+
   // Tampilan Loading
   if (!parsedData || !parsedData.center) {
     return (
@@ -140,13 +148,6 @@ export default function MapViewer({ chartCode, darkMode }) {
     );
   }
 
-  // Auto resize map ketika mode fullscreen toggle
-  useEffect(() => {
-    if (mapInstance.current) {
-      setTimeout(() => mapInstance.current.resize(), 100);
-      setTimeout(() => mapInstance.current.resize(), 300);
-    }
-  }, [isExpanded]);
 
   return (
     <div className={

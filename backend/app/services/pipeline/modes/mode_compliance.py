@@ -127,7 +127,7 @@ class ModeCompliance:
             
             if is_scanned:
                 # Dokumen Scan -> Convert ke Image
-                yield format_sse(status=f"👁️ Membaca visual (scan) halaman {start_page + 1} - {end_page}...", event_type=SSEEventType.STATUS)
+                yield format_sse(status=f"👁️ Membaca halaman {start_page + 1} - {end_page}...", event_type=SSEEventType.STATUS)
                 await asyncio.sleep(0.01)
                 for page_num in range(start_page, end_page):
                     page = doc.load_page(page_num)

@@ -3,6 +3,7 @@ import json
 import os
 import asyncio
 import base64
+import datetime
 from typing import AsyncGenerator, List, Dict, Any, Optional
 from fastapi import Request
 
@@ -42,7 +43,7 @@ class ModeFocus:
         isolated_doc_id = context_isolation.get("isolated_doc_id") if context_isolation else None
         
         yield format_sse(status="🎯 Menginisialisasi Mode Fokus...", event_type=SSEEventType.STATUS)
-        await asyncio.sleep(0.01)
+        await asyncio.sleep(0.1)
 
         # 1. Fetch Filename from Database
         filename = None
@@ -97,7 +98,7 @@ class ModeFocus:
 
         # 3. Read PDF (Using PyMuPDF)
         yield format_sse(status=f"📂 Membaca dokumen {filename}...", event_type=SSEEventType.STATUS)
-        await asyncio.sleep(0.01)
+        await asyncio.sleep(0.1)
 
         try:
             import fitz
@@ -109,170 +110,208 @@ class ModeFocus:
                 yield chunk
             return
 
-        # 4. Deteksi Tipe PDF (Text vs Scan) & Set Chunk Size
-        sample_text = ""
-        for i in range(min(3, total_pages)):
-            sample_text += doc.load_page(i).get_text("text").strip()
-            
-        is_document_scanned = len(sample_text.strip()) < 50
+        session_uuid_to_use = session_uuid or (routing_data.get("_session_uuid") if routing_data else None)
         
-        # Jika text PDF, LLM bisa menampung banyak halaman sekaligus (128k context)
-        # Jika scanned (gambar), kita harus melimit batch agar tidak OOM
-        chunk_size = 15 if is_document_scanned else 200
-
-        start_page = 0
-        answer_found = False
-
-        # Persiapkan Chat History context
-        messages_dict = [{"role": m.role, "content": m.content} for m in chat_history]
+        from backend.app.utils.focus_cache import get_focus_cache, set_focus_cache
+        from backend.app.services.rag.reranker_service import reranker_service
         
-        while start_page < total_pages and not answer_found:
-            end_page = min(start_page + chunk_size, total_pages)
-            yield format_sse(status=f"🔍 Menganalisis halaman {start_page + 1} - {end_page}...", event_type=SSEEventType.STATUS)
-            await asyncio.sleep(0.01)
-
-            extracted_text = ""
-            base64_images = []
+        cached_data = get_focus_cache(session_uuid_to_use)
+        
+        if cached_data:
+            logger.info(f"[MODE_FOCUS] 🚀 Memakai data cache (Bypass rendering & ekstraksi)")
+            yield format_sse(status="🚀 Membaca data dokumen dari cache...", event_type=SSEEventType.STATUS)
+            await asyncio.sleep(0.1)
+            text_map = cached_data["text_map"]
+            all_base64_images = cached_data["images"]
+        else:
+            yield format_sse(status=f"⚙️ Memproses & Mengekstrak teks dari {total_pages} halaman...", event_type=SSEEventType.STATUS)
+            await asyncio.sleep(0.1)
             
-            # Coba ekstrak teks dulu
-            for page_num in range(start_page, end_page):
-                page = doc.load_page(page_num)
-                text = page.get_text("text").strip()
-                if text:
-                    extracted_text += f"\n--- HALAMAN {page_num + 1} ---\n{text}\n"
-
-            is_scanned = len(extracted_text.strip()) < 50 or is_document_scanned
+            logger.info(f"[MODE_FOCUS] 👁️ Mengekstrak teks & merender PDF ke gambar untuk {total_pages} halaman...")
             
-            if is_scanned:
-                # Dokumen Scan -> Convert ke Image
-                yield format_sse(status=f"👁️ Membaca visual (scan) halaman {start_page + 1} - {end_page}...", event_type=SSEEventType.STATUS)
-                await asyncio.sleep(0.01)
-                for page_num in range(start_page, end_page):
+            def extract_and_render():
+                t_map = []
+                imgs = []
+                for page_num in range(total_pages):
                     page = doc.load_page(page_num)
+                    
+                    # 1. Extract Text
+                    text = page.get_text("text").strip()
+                    t_map.append({
+                        "page_num": page_num,
+                        "text": text
+                    })
+                    
+                    # 2. Render Image
                     pix = page.get_pixmap(dpi=150)
                     img_data = pix.tobytes("png")
                     encoded = base64.b64encode(img_data).decode("utf-8")
-                    base64_images.append(encoded)
-
-            precheck = detect_precheck(user_message, "focus", False)
-            # Siapkan system prompt
-            system_prompt = build_response_prompt_focus(
-                employee_name=employee_name,
-                precheck=precheck,
-                is_thinking=is_thinking,
-                start_page=start_page,
-                end_page=end_page,
-                filename=filename,
-                extracted_text=extracted_text,
-                is_scanned=is_scanned
-            )
+                    imgs.append(encoded)
+                return t_map, imgs
             
-            if precheck and precheck.get("requires_visual"):
-                from backend.app.services.pipeline.prompts.visual_prompts import VISUAL_SYSTEM_PROMPT
-                system_prompt += "\n\n" + VISUAL_SYSTEM_PROMPT + "\n\n"
-
-            # Buat message payload
-            user_payload = {"role": "user", "content": user_message}
-            if base64_images:
-                user_payload["images"] = base64_images
-                
-            current_messages = [{"role": "system", "content": system_prompt}] + messages_dict + [user_payload]
-
-            is_empty_flag = False
-            buffer = ""
-            started_streaming = False
+            render_start = datetime.datetime.now()
+            text_map, all_base64_images = await asyncio.to_thread(extract_and_render)
+            render_duration = (datetime.datetime.now() - render_start).total_seconds()
+            logger.info(f"[MODE_FOCUS] ✅ Selesai proses {total_pages} halaman dalam {render_duration:.2f} detik.")
             
-            # Hitung estimasi token (1 token ~ 4 karakter)
-            sys_tokens = len(system_prompt) // 4
-            hist_tokens = sum(len(m.get("content", "")) for m in messages_dict) // 4
-            rag_tokens = 0 # Focus mode uses web/search context inside system prompt mostly, so we can treat it as sys_tokens
-            total_used = sys_tokens + hist_tokens + rag_tokens
-            num_ctx = 256000
+            set_focus_cache(session_uuid_to_use, text_map, all_base64_images)
 
-            session_uuid_to_use = session_uuid or (routing_data.get("_session_uuid") if routing_data else None)
-            if session_uuid_to_use:
-                from backend.app.services.chat.chat_history_service import chat_history_service
-                obs_dict = {
-                    "msg": "Generating deep focus response",
-                    "memory": {
-                        "system_tokens": sys_tokens,
-                        "history_tokens": hist_tokens,
-                        "rag_tokens": rag_tokens,
-                        "total_used": total_used,
-                        "max_ctx": num_ctx
-                    }
+        # 4. Filter & Rerank
+        yield format_sse(status="🔍 Mencari halaman yang paling relevan (Reranker)...", event_type=SSEEventType.STATUS)
+        await asyncio.sleep(0.1)
+        
+        corpus_texts = [item["text"] if item["text"] else "[FULL IMAGE SCAN]" for item in text_map]
+        
+        # BGE Reranker
+        scores = await reranker_service.compute_scores(user_message, corpus_texts)
+        
+        page_scores = []
+        for idx, score in enumerate(scores):
+            page_scores.append({
+                "page_num": text_map[idx]["page_num"],
+                "text": text_map[idx]["text"],
+                "score": score
+            })
+            
+        # Urutkan berdasarkan skor tertinggi
+        page_scores.sort(key=lambda x: x["score"], reverse=True)
+        
+        # Ambil Top 5 halaman yang ada teksnya
+        top_text_pages = [p["page_num"] for p in page_scores if len(p["text"]) >= 50][:5]
+        
+        # Halaman Full Scan (tanpa teks) akan dimasukkan semua ke Gemma 
+        # sesuai instruksi user (karena Pindad kebanyakan teks native).
+        full_scan_pages = [p["page_num"] for p in page_scores if len(p["text"]) < 50]
+        
+        # Gabungkan dan urutkan
+        selected_pages = list(set(top_text_pages + full_scan_pages))
+        selected_pages.sort()
+        
+        # Jika tidak ada yang terpilih (aneh), fallback ambil 5 halaman pertama
+        if not selected_pages:
+            selected_pages = list(range(min(5, total_pages)))
+            
+        logger.info(f"[MODE_FOCUS] Halaman terpilih (Top K + Scans): {selected_pages}")
+        
+        # Ambil base64 images HANYA untuk halaman terpilih
+        final_base64_images = [all_base64_images[p] for p in selected_pages]
+        
+        # Sampaikan status ke frontend
+        halaman_str = ", ".join([str(p+1) for p in selected_pages])
+        if len(halaman_str) > 50:
+             halaman_str = halaman_str[:50] + "..."
+             
+        yield format_sse(status=f"🎯 Membaca halaman {halaman_str}", event_type=SSEEventType.STATUS)
+        await asyncio.sleep(0.1)
+
+        # Persiapkan Chat History context
+        messages_dict = [{"role": m.role, "content": m.content} for m in chat_history]
+
+        precheck = detect_precheck(user_message, "focus", False)
+        extracted_texts_list = []
+        for p in selected_pages:
+            t = text_map[p]["text"]
+            if t.strip():
+                extracted_texts_list.append(f"--- TEKS HALAMAN {p+1} ---\n{t}\n")
+        
+        final_extracted_text = "\n".join(extracted_texts_list)
+        is_scanned_flag = len(final_extracted_text.strip()) < 50
+
+        # Siapkan system prompt
+        system_prompt = build_response_prompt_focus(
+            employee_name=employee_name,
+            precheck=precheck,
+            is_thinking=is_thinking,
+            selected_pages=selected_pages,
+            filename=filename,
+            extracted_text=final_extracted_text, 
+            is_scanned=is_scanned_flag
+        )
+        
+        if precheck and precheck.get("requires_visual"):
+            from backend.app.services.pipeline.prompts.visual_prompts import VISUAL_SYSTEM_PROMPT
+            system_prompt += "\n\n" + VISUAL_SYSTEM_PROMPT + "\n\n"
+
+        # Buat message payload
+        user_payload = {"role": "user", "content": user_message}
+        if final_base64_images:
+            user_payload["images"] = final_base64_images
+            
+        current_messages = [{"role": "system", "content": system_prompt}] + messages_dict + [user_payload]
+
+        buffer = ""
+        started_streaming = False
+        
+        # Hitung estimasi token (1 token ~ 4 karakter)
+        sys_tokens = len(system_prompt) // 4
+        hist_tokens = sum(len(m.get("content", "")) for m in messages_dict) // 4
+        rag_tokens = 0 
+        total_used = sys_tokens + hist_tokens + rag_tokens
+        num_ctx = 256000
+
+        if session_uuid_to_use:
+            from backend.app.services.chat.chat_history_service import chat_history_service
+            obs_dict = {
+                "msg": "Generating deep focus response",
+                "memory": {
+                    "system_tokens": sys_tokens,
+                    "history_tokens": hist_tokens,
+                    "rag_tokens": rag_tokens,
+                    "total_used": total_used,
+                    "max_ctx": num_ctx
                 }
-                await chat_history_service.save_agent_step(
-                    session_id=session_uuid_to_use,
-                    step_number=3,
-                    tool_called="CALL_2_FOCUS",
-                    tool_input=f"Prompt chars: {len(system_prompt)}",
-                    observation=json.dumps(obs_dict)
-                )
+            }
+            await chat_history_service.save_agent_step(
+                session_id=session_uuid_to_use,
+                step_number=3,
+                tool_called="CALL_2_FOCUS",
+                tool_input=f"Prompt chars: {len(system_prompt)}",
+                observation=json.dumps(obs_dict)
+            )
 
-            async for chunk_line in stream_ollama_chat(
-                messages=current_messages,
-                model_name=settings.MODEL_PERSONA, # TETAP PAKAI TEXT LLM
-                is_thinking=is_thinking,
-                temperature=0.1,
-                num_ctx=256000,
-                num_predict=8192,
-                request=request
-            ):
+        async for chunk_line in stream_ollama_chat(
+            messages=current_messages,
+            model_name=settings.MODEL_PERSONA,
+            is_thinking=is_thinking,
+            temperature=0.1,
+            num_ctx=256000,
+            num_predict=8192,
+            request=request
+        ):
+            try:
+                chunk = json.loads(chunk_line.strip())
+            except json.JSONDecodeError:
+                continue
 
-                try:
-                    chunk = json.loads(chunk_line.strip())
-                except json.JSONDecodeError:
-                    continue
-
-                event_type = chunk.get("event_type", "chunk")
-                is_done = chunk.get("done", False)
+            event_type = chunk.get("event_type", "chunk")
+            
+            if event_type == "chunk":
+                char = chunk.get("chunk", "")
+                thought = chunk.get("thinking", "")
                 
-                if event_type == "chunk":
-                    char = chunk.get("chunk", "")
-                    thought = chunk.get("thinking", "")
-                    
-                    if not started_streaming:
-                        if thought:
-                            yield format_sse(thinking=thought, event_type=SSEEventType.THINKING)
-                            
-                        if char:
-                            buffer += char
+                if not started_streaming:
+                    if thought:
+                        yield format_sse(thinking=thought, event_type=SSEEventType.THINKING)
                         
-                        # Buffer hingga 30 karakter untuk mendeteksi kata KOSONG dengan aman
-                        if len(buffer) >= 30 or is_done:
-                            if "KOSONG" in buffer.upper():
-                                is_empty_flag = True
-                                break # Stop LLM stream, langsung lanjut iterasi berikutnya
-                            elif buffer.strip():
-                                started_streaming = True
-                                yield format_sse(status="✨ Menemukan jawaban!", event_type=SSEEventType.STATUS)
-                                yield format_sse(chunk=buffer, event_type=SSEEventType.CHUNK)
-                    else:
-                        if thought:
-                            yield format_sse(thinking=thought, event_type=SSEEventType.THINKING)
-                        if char:
-                            yield format_sse(chunk=char, event_type=SSEEventType.CHUNK)
+                    if char:
+                        buffer += char
+                    
+                    if len(buffer) >= 5:
+                        started_streaming = True
+                        yield format_sse(status="✨ Menemukan jawaban!", event_type=SSEEventType.STATUS)
+                        yield format_sse(chunk=buffer, event_type=SSEEventType.CHUNK)
+                else:
+                    if thought:
+                        yield format_sse(thinking=thought, event_type=SSEEventType.THINKING)
+                    if char:
+                        yield format_sse(chunk=char, event_type=SSEEventType.CHUNK)
 
-            if not is_empty_flag and started_streaming:
-                answer_found = True
-                yield format_sse("", "", True, event_type=SSEEventType.DONE)
-                return
-            elif not started_streaming and "KOSONG" not in buffer.upper():
-                # Kasus jika jawaban LLM sangat pendek (di bawah 30 karakter) tapi bukan KOSONG
-                answer_found = True
-                yield format_sse(status="✨ Menemukan jawaban!", event_type=SSEEventType.STATUS)
+        if started_streaming:
+            yield format_sse("", "", True, event_type=SSEEventType.DONE)
+        else:
+            # Jika LLM sama sekali tidak menjawab karakter apa pun
+            if buffer:
                 yield format_sse(buffer, "", False, event_type=SSEEventType.CHUNK)
-                yield format_sse("", "", True, event_type=SSEEventType.DONE)
-                return
-
-            # Jika KOSONG, lanjut iterasi
-            logger.info(f"[MODE_FOCUS] Jawaban tidak ditemukan di hal {start_page + 1}-{end_page}")
-            start_page += chunk_size
-            if start_page < total_pages:
-                yield format_sse(status=f"⏳ Menelusuri halaman {start_page + 1} - {min(start_page + chunk_size, total_pages)}...", event_type=SSEEventType.STATUS)
-                await asyncio.sleep(0.01)
-
-        if not answer_found:
-            yield format_sse("Maaf, informasi yang Anda cari tidak ditemukan di seluruh isi dokumen ini.", "", False, event_type=SSEEventType.CHUNK)
+            else:
+                yield format_sse("Maaf, informasi yang Anda cari tidak ditemukan atau gagal diproses.", "", False, event_type=SSEEventType.CHUNK)
             yield format_sse("", "", True, event_type=SSEEventType.DONE)

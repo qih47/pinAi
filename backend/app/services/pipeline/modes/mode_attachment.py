@@ -170,7 +170,7 @@ class ModeAttachment:
         if is_from_pdf:
             num_ctx = 32000
             token_budget = 1120
-            num_predict_output = 4096
+            num_predict_output = -1
         elif has_large_text:
             # File teks/kode: butuh context BESAR untuk baca file panjang + ruang output lega
             # Estimasi kode boros token (1 token ~ 2.5 char untuk kode)
@@ -180,7 +180,7 @@ class ModeAttachment:
             # JANGAN batasi output dengan token_budget untuk mode teks/kode!
             # LLM harus bebas menulis penjelasan sepanjang yang diperlukan.
             token_budget = None
-            num_predict_output = 16384  # Cukup untuk penjelasan kode yang sangat panjang
+            num_predict_output = -1  # Cukup untuk penjelasan kode yang sangat panjang
             logger.info(
                 f"[MODE_ATTACHMENT] Text file mode | "
                 f"estimated_tokens={estimated_text_tokens} | "
@@ -190,7 +190,7 @@ class ModeAttachment:
             # Gambar biasa atau teks pendek
             num_ctx = 16384
             token_budget = 280
-            num_predict_output = 2048
+            num_predict_output = -1
 
         temperature = 1.0  # Standard best practice Gemma 4
         target_model = getattr(settings, "MODEL_PERSONA", "gemma4:12b")

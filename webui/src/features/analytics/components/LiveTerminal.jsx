@@ -12,6 +12,7 @@ export const LiveTerminal = () => {
 
   useEffect(() => {
     const apiBase = getApiBase();
+    // getApiBase() sudah strip '/api' suffix dari baseURL, jadi kita append langsung path lengkapnya
     const eventSource = new EventSource(`${apiBase}/api/analytics/logs/stream`);
     
     eventSource.onopen = () => setIsConnected(true);

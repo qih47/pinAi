@@ -341,7 +341,7 @@ class ModeGenerateFile:
                 temperature=0.4, # Diturunkan ke 0.4 agar model lebih patuh instruksi XML
                 keep_alive=-1,
                 num_ctx=16384,   
-                num_predict=4096, # Dikebiri ke 4k agar respons padat murni hanya berisi file
+                num_predict=8192, # Dikebiri ke 4k agar respons padat murni hanya berisi file
                 is_thinking=False,  
             ):
 
@@ -496,7 +496,7 @@ class ModeGenerateFile:
                 temperature=0.6,
                 keep_alive=-1,
                 num_ctx=16384,
-                num_predict=4096,
+                num_predict=8192,
                 is_thinking=is_thinking,
             ):
                 try:

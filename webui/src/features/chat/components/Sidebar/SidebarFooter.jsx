@@ -1,5 +1,6 @@
 import React from "react";
 import { translations } from "../../../../utils/translations";
+import { getApiBase } from "../../../../services/endpoints";
 import { useChatStore } from "../../../../stores/chatStore";
 
 export default function SidebarFooter({
@@ -101,15 +102,24 @@ export default function SidebarFooter({
       >
         <div className="w-8 h-8 rounded-full overflow-hidden flex-shrink-0 border border-gray-700 bg-gray-800 flex items-center justify-center shadow-inner">
           {userData?.profile_photo_url ? (
-            <img
-              src={`http://192.168.11.80:5000${userData.profile_photo_url}`}
-              alt="Profile"
-              className="w-full h-full object-cover"
-              onError={(e) => {
-                e.currentTarget.style.display = "none";
-                e.currentTarget.nextSibling.style.display = "flex";
-              }}
-            />
+            <>
+              <img
+                src={`${getApiBase()}${userData.profile_photo_url}`}
+                alt="Profile"
+                className="w-full h-full object-cover"
+                onError={(e) => {
+                  e.currentTarget.style.display = "none";
+                  if (e.currentTarget.nextSibling) {
+                    e.currentTarget.nextSibling.style.display = "flex";
+                  }
+                }}
+              />
+              <div className="hidden w-full h-full bg-gradient-to-tr from-blue-600 to-purple-600 items-center justify-center text-xs font-bold text-white">
+                {profileName && profileName !== "Pegawai Pindad"
+                  ? profileName.substring(0, 2).toUpperCase()
+                  : "AI"}
+              </div>
+            </>
           ) : userData?.npp ? (
             <>
               <img
@@ -118,7 +128,9 @@ export default function SidebarFooter({
                 className="w-full h-full object-cover"
                 onError={(e) => {
                   e.currentTarget.style.display = "none";
-                  e.currentTarget.nextSibling.style.display = "flex";
+                  if (e.currentTarget.nextSibling) {
+                    e.currentTarget.nextSibling.style.display = "flex";
+                  }
                 }}
               />
               <div className="hidden w-full h-full bg-gradient-to-tr from-blue-600 to-purple-600 items-center justify-center text-xs font-bold text-white">

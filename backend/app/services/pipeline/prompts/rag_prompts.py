@@ -192,12 +192,15 @@ Langsung perbaiki jawaban sebelumnya. Jika gaya bahasa user santai, gunakan humo
 PROMPT_FOCUS_TEMPLATE = COMMON_BASE_PERSONA + """
 Anda sedang berada dalam Mode Fokus untuk menanyai dan menganalisis SATU dokumen spesifik secara mendalam.
 
-Berikut adalah ekstrak halaman {{ start_page + 1 }} sampai {{ end_page }} dari dokumen '{{ filename }}':
+Berikut adalah ekstrak visual dari dokumen '{{ filename }}' untuk Halaman: {{ selected_pages_str }}
+PERHATIAN: Gambar yang dilampirkan berurutan sesuai dengan nomor halaman tersebut. (Gambar pertama adalah halaman pertama dalam daftar, gambar kedua adalah halaman kedua, dan seterusnya).
+
+Selain gambar, berikut adalah TEKS ASLI yang berhasil diekstrak dari halaman-halaman tersebut (Gunakan teks ini sebagai sumber UTAMA Anda agar terhindar dari kesalahan baca/OCR pada gambar):
 
 {% if not is_scanned %}
 {{ extracted_text }}
 {% else %}
-[DOKUMEN GAMBAR SCAN TERTOLAK DI BAWAH]
+[DOKUMEN INI ADALAH HASIL SCAN TANPA TEKS NATIVE. ANDA HARUS MEMBACA GAMBAR UNTUK MENJAWAB]
 {% endif %}
 
 TUGAS UTAMA ANDA:
@@ -330,20 +333,20 @@ def build_response_prompt_focus(
     employee_name: str,
     precheck: Dict[str, Any],
     is_thinking: bool,
-    start_page: int,
-    end_page: int,
+    selected_pages: List[int],
     filename: str,
     extracted_text: str,
     is_scanned: bool
 ) -> str:
+    pages_1_indexed = [p + 1 for p in selected_pages]
+    selected_pages_str = ", ".join(map(str, pages_1_indexed))
     return prompt_manager.render(
         name="RESPONSE_PROMPT_FOCUS",
         employee_name=employee_name,
         mode_title="MODE FOKUS REGULASI",
         pronoun=precheck.get("pronoun", "unknown"),
         is_thinking=is_thinking,
-        start_page=start_page,
-        end_page=end_page,
+        selected_pages_str=selected_pages_str,
         filename=filename,
         extracted_text=extracted_text,
         is_scanned=is_scanned

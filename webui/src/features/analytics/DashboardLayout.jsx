@@ -33,6 +33,7 @@ export const DashboardLayout = () => {
   const [activeTab, setActiveTab] = useState('overview');
   const [isSidebarExpanded, setIsSidebarExpanded] = useState(true);
   const [overviewTab, setOverviewTab] = useState('main');
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   const handleLogout = () => {
     logout();
@@ -42,13 +43,21 @@ export const DashboardLayout = () => {
   return (
     <div className="flex h-screen w-full bg-[#05070A] text-gray-200 overflow-hidden font-sans">
       
+      {/* Mobile Overlay */}
+      {isMobileMenuOpen && (
+        <div 
+          className="fixed inset-0 bg-black/50 z-40 md:hidden" 
+          onClick={() => setIsMobileMenuOpen(false)}
+        />
+      )}
+
       {/* Sidebar - Sleek & Premium */}
-      <aside className={`${isSidebarExpanded ? 'w-64' : 'w-20'} relative border-r border-gray-800 bg-[#0B0F19] flex flex-col ${isSidebarExpanded ? 'items-stretch' : 'items-center'} py-6 transition-all duration-300 shrink-0`}>
+      <aside className={`absolute md:relative z-50 h-full transform ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'} ${isSidebarExpanded ? 'w-64' : 'w-20'} border-r border-gray-800 bg-[#0B0F19] flex flex-col ${isSidebarExpanded ? 'items-stretch' : 'items-center'} py-6 transition-all duration-300 shrink-0`}>
         
         {/* Toggle Button */}
         <button 
           onClick={() => setIsSidebarExpanded(!isSidebarExpanded)}
-          className="absolute -right-3 top-8 bg-gray-900 text-gray-400 hover:text-cyan-400 p-1 rounded-full border border-gray-700 z-50 transition-colors"
+          className="hidden md:flex absolute -right-3 top-8 bg-gray-900 text-gray-400 hover:text-cyan-400 p-1 rounded-full border border-gray-700 z-50 transition-colors"
         >
           {isSidebarExpanded ? <ChevronLeft size={16} /> : <ChevronRight size={16} />}
         </button>
@@ -61,7 +70,7 @@ export const DashboardLayout = () => {
           </div>
         </div>
 
-        <nav className={`flex-1 w-full ${isSidebarExpanded ? 'px-4' : 'px-3'} space-y-2`}>
+        <nav className={`flex-1 w-full ${isSidebarExpanded ? 'px-4' : 'px-3'} space-y-2 overflow-y-auto custom-scrollbar`}>
           <NavItem icon={<Activity />} label="Overview" active={activeTab === 'overview'} onClick={() => setActiveTab('overview')} isExpanded={isSidebarExpanded} />
           <NavItem icon={<Database />} label="Knowledge Base" active={activeTab === 'knowledge'} onClick={() => setActiveTab('knowledge')} isExpanded={isSidebarExpanded} />
           <NavItem icon={<Brain />} label="Deep Learning" active={activeTab === 'training'} onClick={() => setActiveTab('training')} isExpanded={isSidebarExpanded} />
@@ -80,7 +89,7 @@ export const DashboardLayout = () => {
           <button 
             onClick={() => {
               useChatStore.getState().clearChat();
-              navigate('/chat/new');
+              window.location.href = import.meta.env.VITE_CHAT_URL || `${window.location.protocol}//${window.location.hostname}:5173/chat/new`;
             }}
             className={`w-full flex items-center ${isSidebarExpanded ? 'justify-start' : 'justify-center'} gap-3 p-3 rounded-lg text-gray-500 hover:bg-gray-800/50 hover:text-gray-300 transition-colors`}
           >
@@ -102,12 +111,20 @@ export const DashboardLayout = () => {
       <main className="flex-1 flex flex-col min-w-0 p-6 lg:p-8 overflow-y-auto">
         {/* Topbar */}
         <header className="flex justify-between items-center mb-8">
-          <div>
-            <h2 className="text-2xl font-bold tracking-wide text-gray-100 flex items-center gap-3">
-              OPERATIONAL INTELLIGENCE
-              <span className="bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 text-xs px-2 py-1 rounded tracking-widest uppercase">Live</span>
-            </h2>
-            <p className="text-sm text-gray-500 mt-1">Real-time system health and bottleneck monitoring.</p>
+          <div className="flex items-center gap-3">
+            <button 
+              className="md:hidden p-2 bg-gray-800 rounded text-gray-300 hover:text-cyan-400 transition-colors" 
+              onClick={() => setIsMobileMenuOpen(true)}
+            >
+               <ChevronRight size={20} />
+            </button>
+            <div>
+              <h2 className="text-2xl font-bold tracking-wide text-gray-100 flex items-center gap-3">
+                OPERATIONAL INTELLIGENCE
+                <span className="bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 text-xs px-2 py-1 rounded tracking-widest uppercase">Live</span>
+              </h2>
+              <p className="text-sm text-gray-500 mt-1">Real-time system health and bottleneck monitoring.</p>
+            </div>
           </div>
           
           <div className="flex gap-4">

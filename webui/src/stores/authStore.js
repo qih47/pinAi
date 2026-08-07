@@ -22,7 +22,8 @@ export const useChatAuthStore = create((set) => ({
 
       // Di dalam fungsi login & checkSession pada authStore.js lo, simpan objeknya utuh:
       const { token, npp, fullname, preferred_name, profile_photo_url, divisi, role, email, expires_at } = response.data.data;
-      const userData = { npp, fullname, name: fullname, preferred_name, profile_photo_url, username: npp, divisi, role, email }; // 👈 Mengikuti struktur row data DB FastAPI lo
+      const bustedPhotoUrl = profile_photo_url ? `${profile_photo_url.split('?')[0]}?t=${Date.now()}` : null;
+      const userData = { npp, fullname, name: fullname, preferred_name, profile_photo_url: bustedPhotoUrl, username: npp, divisi, role, email }; // 👈 Mengikuti struktur row data DB FastAPI lo
       
       // Parse expires_at timestamp (B10 Token Expiry Sync)
       const expiresAt = expires_at ? new Date(expires_at) : new Date(Date.now() + 8 * 60 * 60 * 1000);
@@ -49,8 +50,10 @@ export const useChatAuthStore = create((set) => ({
     }
 
     try {
-      const response = await apiClient.get(`/auth/verify-session?token=${currentToken}`);
+      const response = await apiClient.get(`/auth/verify-session?token=${currentToken}&_t=${Date.now()}`);
       const { npp, fullname, preferred_name, profile_photo_url, divisi, role, email, expires_at } = response.data.data;
+
+      const bustedPhotoUrl = profile_photo_url ? `${profile_photo_url.split('?')[0]}?t=${Date.now()}` : null;
 
       const userData = {
         npp,
@@ -58,7 +61,7 @@ export const useChatAuthStore = create((set) => ({
         name: fullname,
         fullname,
         preferred_name,
-        profile_photo_url,
+        profile_photo_url: bustedPhotoUrl,
         divisi,
         role,
         email

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { translations } from "../../../../utils/translations";
+import { getApiBase } from "../../../../services/endpoints";
 
 export default function ContextIsolationModal({
   showModal,
@@ -277,11 +278,11 @@ export default function ContextIsolationModal({
                             <button
                               onClick={async (e) => {
                                 e.stopPropagation();
-                                setPreviewPdfUrl(`${import.meta.env.VITE_API_BASE_URL || "http://192.168.11.80:5000"}/api/documents/preview/${doc.filename}`);
+                                setPreviewPdfUrl(`${getApiBase()}/api/documents/preview/${doc.filename}`);
                                 setIsLoadingPdf(true);
                                 try {
                                   const encodedFilename = btoa(doc.filename);
-                                  const res = await fetch(`${import.meta.env.VITE_API_BASE_URL || "http://192.168.11.80:5000"}/api/documents/preview_b64/${encodedFilename}`);
+                                  const res = await fetch(`${getApiBase()}/api/documents/preview_b64/${encodedFilename}`);
                                   const rawBlob = await res.blob();
                                   const pdfBlob = new Blob([rawBlob], { type: "application/pdf" });
                                   setPreviewPdfBlobUrl(URL.createObjectURL(pdfBlob));
@@ -310,7 +311,7 @@ export default function ContextIsolationModal({
                               onClick={(e) => {
                                 e.stopPropagation();
                                 const link = document.createElement("a");
-                                link.href = `${import.meta.env.VITE_API_BASE_URL || "http://192.168.11.80:5000"}/file_peraturan/${doc.filename}`;
+                                link.href = `${getApiBase()}/file_peraturan/${doc.filename}`;
                                 link.download = doc.filename;
                                 link.target = "_blank";
                                 document.body.appendChild(link);
@@ -348,7 +349,7 @@ export default function ContextIsolationModal({
                                 setIsLoadingLineage(true);
                                 setLineageData(null);
                                 try {
-                                  const res = await fetch(`${import.meta.env.VITE_API_BASE_URL || "http://192.168.11.80:5000"}/api/documents/${doc.id}/lineage`);
+                                  const res = await fetch(`${getApiBase()}/api/documents/${doc.id}/lineage`);
                                   if (res.ok) {
                                     const data = await res.json();
                                     setLineageData(data);
@@ -394,7 +395,7 @@ export default function ContextIsolationModal({
                                 setIsLoadingInsight(true);
                                 setInsightData(null);
                                 try {
-                                  const res = await fetch(`${import.meta.env.VITE_API_BASE_URL || "http://192.168.11.80:5000"}/api/documents/${doc.id}/insight`);
+                                  const res = await fetch(`${getApiBase()}/api/documents/${doc.id}/insight`);
                                   if (res.ok) {
                                     const data = await res.json();
                                     setInsightData(data.insight);

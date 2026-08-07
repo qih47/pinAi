@@ -325,8 +325,16 @@ async def _sequential_pipeline_generator(
     # ── Save assistant response & finalize ────────────────────────────────────
 
     async def _save_to_db():
+        nonlocal full_response_text
         try:
             if payload.session_uuid:
+                # --- INTERCEPT SHORT/TRUNCATED RESPONSE ---
+                clean_content = full_response_text.strip()
+                has_files = len(generated_artifacts) > 0
+                if not has_files and len(clean_content) < 12 and "Respons dihentikan" not in full_response_text:
+                    logger.warning(f"[AGENTIC] Respons terlalu pendek ({len(clean_content)} chars). Menggunakan fallback.")
+                    full_response_text = "Mohon maaf, saya tidak dapat memproses pesan Anda dengan baik. Silakan coba beberapa saat lagi atau perjelas pertanyaan Anda."
+
                 ast_thought = full_thinking_text.strip() if full_thinking_text else f"Gemma Agentic | Mode: {chat_mode}"
                 
                 if payload.edit_index is not None:

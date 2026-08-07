@@ -1,3 +1,4 @@
+import { getApiBase } from '@/services/endpoints';
 /**
  * FileGenerationCard.jsx
  * ─────────────────────────────────────────────────────────────────────────────
@@ -10,7 +11,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import useNextcloudStore from '../../../stores/nextcloudStore';
 import { translations } from '../../../utils/translations';
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://192.168.11.80:5000';
+const API_BASE = getApiBase();
 
 // ─── Sleek Loader UI ─────────────────────────────────────────────────────────
 const PulseLoader = () => (

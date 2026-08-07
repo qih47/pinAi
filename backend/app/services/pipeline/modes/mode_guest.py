@@ -108,7 +108,7 @@ class ModeGuest:
                 temperature=temperature,
                 keep_alive=-1,
                 num_ctx=num_ctx,
-                num_predict=4096,
+                num_predict=8192,
                 is_thinking=is_thinking,
             ):
                 try:

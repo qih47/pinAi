@@ -1,7 +1,9 @@
 import React, { useState, useRef, useEffect } from "react";
 import { translations } from "../../../utils/translations";
 import { useChatStore, API_BASE } from "../../../stores/chatStore";
+import { getApiBase } from "../../../services/endpoints";
 import apiClient from "../../../services/apiClient";
+import { useChatAuthStore } from "../../../stores/authStore";
 import { Mail, Cloud, Lock, LogOut, CheckCircle2, User, KeyRound, ArrowRight } from "lucide-react";
 
 export default function SettingsModal({
@@ -18,6 +20,7 @@ export default function SettingsModal({
 }) {
   const [activeTab, setActiveTab] = useState("general");
   const store = useChatStore();
+  const checkSession = useChatAuthStore((state) => state.checkSession);
   const t = translations[language]?.settings || translations.id.settings;
   const ttsVoice = store.ttsVoice;
   const setTtsVoice = store.setTtsVoice;
@@ -165,7 +168,7 @@ export default function SettingsModal({
       });
       if (response.data?.status === 'success') {
         setIsEditingAccount(false);
-        window.location.reload();
+        await checkSession();
       }
     } catch (err) {
       console.error("Gagal update profil", err);
@@ -506,7 +509,7 @@ export default function SettingsModal({
                   <div className="w-20 h-20 rounded-full overflow-hidden flex-shrink-0 border border-gray-700 bg-gray-800 flex items-center justify-center mb-3">
                     {editPhotoPreview || userData?.profile_photo_url ? (
                       <img
-                        src={editPhotoPreview || (userData?.profile_photo_url ? `http://192.168.11.80:5000${userData.profile_photo_url}` : '')}
+                        src={editPhotoPreview || (userData?.profile_photo_url ? `${getApiBase()}${userData.profile_photo_url}` : '')}
                         alt="Profile"
                         className="w-full h-full object-cover"
                         onError={(e) => { e.currentTarget.style.display = "none"; }}
@@ -656,7 +659,7 @@ export default function SettingsModal({
                   <div className={`w-16 h-16 rounded-full overflow-hidden flex-shrink-0 ${darkMode ? 'bg-gray-800' : 'bg-gray-200'} shadow-sm flex items-center justify-center`}>
                     {userData?.profile_photo_url ? (
                       <img
-                        src={`http://192.168.11.80:5000${userData.profile_photo_url}`}
+                        src={`${getApiBase()}${userData.profile_photo_url}`}
                         alt="Profile"
                         className="w-full h-full object-cover"
                         onError={(e) => { e.currentTarget.style.display = "none"; }}

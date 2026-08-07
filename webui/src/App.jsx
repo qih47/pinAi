@@ -9,7 +9,6 @@ import {
 import ChatPage from "@/features/chat/ChatPage";
 import LoginPage from "@/features/auth/LoginPage"; // 👈 IMPORT LOGIN ENGINE
 import CacheStatsPage from "@/features/admin/CacheStatsPage"; // 👈 W13 & W15: Cache & Search Stats Dashboard
-import { DashboardLayout } from "@/features/analytics/DashboardLayout"; // 👈 New Analytics Dashboard
 import { useChatAuthStore } from "@/stores/authStore"; // 👈 IMPORT AUTH STORE
 import { useChatStore } from "@/stores/chatStore";
 import Loading from "./components/Loading";
@@ -101,9 +100,6 @@ function AppContent() {
 
       {/* ⚡ W13 & W15: Admin Cache & Performance Dashboard */}
       <Route path="/admin/cache-stats" element={<CacheStatsPage />} />
-      
-      {/* 📊 Premium Analytics Dashboard */}
-      <Route path="/analytics" element={<DashboardLayout />} />
       
       <Route path="/test-think" element={<OllamaThinkTest />} />
       <Route path="/" element={<Navigate to="/chat/guest" replace />} />

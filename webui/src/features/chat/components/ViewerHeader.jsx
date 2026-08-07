@@ -1,3 +1,4 @@
+import { getApiBase } from '@/services/endpoints';
 import React, { useState, useRef, useEffect } from 'react';
 import { toPng, toSvg } from 'html-to-image';
 import { ChevronDown, Download, Maximize2, Minimize2, Image, FileCode2, FileSpreadsheet, CloudUpload } from 'lucide-react';
@@ -5,7 +6,7 @@ import useToast from "../../../hooks/useToast";
 import { useChatStore } from "../../../stores/chatStore";
 import { translations } from "../../../utils/translations";
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://192.168.11.80:5000';
+const API_BASE = getApiBase();
 
 export default function ViewerHeader({
   title,

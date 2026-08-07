@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { getApiBase } from "../../../services/endpoints";
 
 export default function OllamaThinkTest() {
   const [inputMsg, setInputMsg] = useState('Tolong carikan data detail untuk karyawan dengan NPP 06652 sekarang.');
@@ -42,9 +43,7 @@ export default function OllamaThinkTest() {
     };
 
     try {
-      const protocol = typeof window !== 'undefined' ? window.location.protocol : 'http:';
-      const hostname = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
-      const targetUrl = `${protocol}//${hostname}:5000/api/chat/stream`;
+      const targetUrl = `${getApiBase()}/api/chat/stream`;
 
       const response = await fetch(targetUrl, {
         method: 'POST',

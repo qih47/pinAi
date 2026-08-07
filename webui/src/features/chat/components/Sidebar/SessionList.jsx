@@ -257,8 +257,8 @@ export default function SessionList({
 
         {/* ── TOMBOL: ANALYTICS (HANYA UNTUK 06652) ── */}
         {userData?.npp === '06652' && (
-          <Link
-            to="/analytics"
+          <a
+            href={import.meta.env.VITE_ANALYTICS_URL || `${window.location.protocol}//${window.location.hostname}:5174/analytics`}
             onClick={() => setActiveMenuId?.(null)}
             className={`flex items-center transition-all group overflow-hidden text-[14px] ${location.pathname === '/analytics'
               ? "bg-blue-500/10 text-blue-500 font-semibold border-l-2 border-blue-500 rounded-r-full"
@@ -281,7 +281,7 @@ export default function SessionList({
             >
               {t.analytics}
             </span>
-          </Link>
+          </a>
         )}
 
         {/* ── TOMBOL: AUDIT LOGS (DULU EMOJI 🛡️, SEKARANG SVG) ── */}

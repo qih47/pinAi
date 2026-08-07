@@ -47,6 +47,9 @@ async def chat_stream_endpoint(
     current_user_npp: Optional[str] = Depends(get_current_user_npp),
 ):
     async def wrapped_generator():
+        # Yield initial status to flush HTTP headers immediately and prevent frontend hanging
+        # Tambahkan spasi kosong padding untuk bypass proxy/browser buffers yang terlalu besar
+        yield format_sse(status="Menghubungkan ke Agent...", event_type=SSEEventType.STATUS).replace("\n", " " * 1024 + "\n")
         try:
             async for chunk in _sequential_pipeline_generator(request, payload, current_user_npp):
                 yield chunk

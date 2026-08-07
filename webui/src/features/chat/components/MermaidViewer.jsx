@@ -1,3 +1,4 @@
+import { getApiBase } from '@/services/endpoints';
 import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import mermaid from 'mermaid';
@@ -5,7 +6,7 @@ import { toPng } from 'html-to-image';
 import { Maximize2, Minimize2, Download } from 'lucide-react';
 import { translations } from '../../../utils/translations';
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://192.168.11.80:5000';
+const API_BASE = getApiBase();
 
 import ViewerHeader from './ViewerHeader';
 import { GitMerge } from 'lucide-react';

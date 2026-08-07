@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <link rel="icon" type="image/svg+xml" href="/src/assets/cakra.png" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CAKRA Analytics</title>
+  
+  <!-- Add Inter font -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+          },
+          fontSize: {
+            'xs': '0.7rem',
+            'sm': '0.8rem',
+            'base': '0.9rem',
+            'lg': '1rem',
+            'xl': '1.125rem',
+            '2xl': '1.25rem',
+            '3xl': '1.5rem',
+          }
+        }
+      }
+    }
+  </script>
+</head>
+
+<body style="margin: 0; background-color: #ffffff; color: #333333; font-family: 'Inter', sans-serif; font-size: 0.9rem; -webkit-font-smoothing: antialiased;">
+  <!-- Wadah utama tempat React menyuntikkan komponen Analytics -->
+  <div id="root"></div>
+
+  <!-- Kabel penghubung ke file analytics-main.jsx -->
+  <script type="module" src="/src/analytics-main.jsx"></script>
+</body>
+
+</html>
