@@ -96,6 +96,7 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
     const [ttsActive, setTtsActive] = useState(false);
     const [feedbackState, setFeedbackState] = useState(msg.feedback?.rating || null);
     const [isCopied, setIsCopied] = useState(false);
+    const [isAvatarHovered, setIsAvatarHovered] = useState(false);
 
     const ttsQueueRef = useRef({
         textChunks: [],
@@ -179,8 +180,8 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
                 playNextAudio();
 
                 // If everything is done
-                if (ttsQueueRef.current.textChunks.length === 0 && 
-                    ttsQueueRef.current.audioUrls.length === 0 && 
+                if (ttsQueueRef.current.textChunks.length === 0 &&
+                    ttsQueueRef.current.audioUrls.length === 0 &&
                     !isThisMessageStreamingRef.current &&
                     !ttsQueueRef.current.isFetching) {
                     setIsAudioPlaying(false);
@@ -233,8 +234,8 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
                 finalVoice = lang === 'en' ? 'en-US-GuyNeural' : 'id-ID-ArdiNeural';
             }
 
-            const res = await apiClient.post('/voice/tts', { 
-                text: textToRead, 
+            const res = await apiClient.post('/voice/tts', {
+                text: textToRead,
                 voice: finalVoice,
                 speed: ttsSpeed || 'normal'
             }, { responseType: 'blob', timeout: 120000 });
@@ -362,7 +363,7 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
             if (cleaned) {
                 if (!ttsQueueRef.current.chunkBuffer) ttsQueueRef.current.chunkBuffer = "";
                 ttsQueueRef.current.chunkBuffer += cleaned + " ";
-                
+
                 if (ttsQueueRef.current.chunkBuffer.length > 50 || match[0].includes('\n')) {
                     ttsQueueRef.current.textChunks.push(ttsQueueRef.current.chunkBuffer.trim());
                     ttsQueueRef.current.chunkBuffer = "";
@@ -410,13 +411,13 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
 
     // Safety effect to reset TTS state if it gets stuck at the end
     useEffect(() => {
-        if (ttsActive && 
-            !isThisMessageStreaming && 
-            ttsQueueRef.current.textChunks.length === 0 && 
-            ttsQueueRef.current.audioUrls.length === 0 && 
-            !ttsQueueRef.current.isFetching && 
+        if (ttsActive &&
+            !isThisMessageStreaming &&
+            ttsQueueRef.current.textChunks.length === 0 &&
+            ttsQueueRef.current.audioUrls.length === 0 &&
+            !ttsQueueRef.current.isFetching &&
             !ttsQueueRef.current.isPlaying) {
-            
+
             setIsAudioPlaying(false);
             setTtsActive(false);
         }
@@ -522,8 +523,12 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
     return (
         <div style={{ ...styles.assistantRow, animation: 'fadeInUp 0.4s ease-out forwards' }}>
             <div style={styles.assistantMessageWrapper}>
-                <div style={styles.assistantHeader}>
-                    <div style={styles.avatarWrap}>
+                <div style={{ ...styles.assistantHeader, display: 'flex', alignItems: 'center' }}>
+                    <div 
+                        style={{ ...styles.avatarWrap, position: 'relative' }}
+                        onMouseEnter={() => setIsAvatarHovered(true)}
+                        onMouseLeave={() => setIsAvatarHovered(false)}
+                    >
                         <img
                             src={cakraLogo}
                             alt="CAKRA"
@@ -534,7 +539,6 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
                                 objectFit: 'cover',
                                 background: 'transparent',
                                 animation: isActive ? 'cakraSpin 1.2s linear infinite' : 'none',
-                                transition: 'transform 0.3s ease',
                                 transform: isActive ? undefined : 'rotate(0deg)',
                             }}
                         />
@@ -571,9 +575,25 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
                             </span>
                         </span>
                     ) : (
-                        <span style={{ ...styles.avatarLabel, color: theme.textColor, marginLeft: 8, transition: 'opacity 0.3s' }}>
-                            CAKRA
-                        </span>
+                        <div style={{ marginLeft: 8, display: 'flex', alignItems: 'center', height: '24px', overflow: 'hidden' }}>
+                            {isAvatarHovered ? (
+                                <div style={{
+                                    display: 'inline-block',
+                                    overflow: 'hidden',
+                                    whiteSpace: 'nowrap',
+                                    animation: 'typing 0.2s steps(40, end)',
+                                    color: theme.textColor,
+                                    fontSize: 12,
+                                    fontWeight: 500
+                                }}>
+                                    Hi, I'm CAKRA. How can I help you today?
+                                </div>
+                            ) : (
+                                <span style={{ ...styles.avatarLabel, color: theme.textColor, transition: 'opacity 0.3s' }}>
+                                    CAKRA
+                                </span>
+                            )}
+                        </div>
                     )}
                 </div>
 
