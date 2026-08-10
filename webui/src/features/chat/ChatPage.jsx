@@ -636,6 +636,7 @@ export default function ChatPage({ isGuest,
         isLoadingDocuments={isLoadingDocuments}
         activeIsolatedDocId={activeIsolatedDocId}
         onSelectDocument={setContextIsolation}
+        handleChatModeChange={handleChatModeChange}
         theme={theme}
         darkMode={darkMode}
         language={language}

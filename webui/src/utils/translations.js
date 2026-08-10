@@ -101,7 +101,8 @@ export const translations = {
       scrollToBottom: "Lihat pesan baru di bawah",
       ghostwriterPrompt: "Mulai menulis atau biarkan AI membuat draft...",
       unsupportedInteractiveFormat: "Format file ini belum mendukung tampilan interaktif di sini.",
-      aiSmartInsight: "AI Smart Insight"
+      aiSmartInsight: "AI Smart Insight",
+      cakraGreeting: "Hai, saya CAKRA. Ada yang bisa dibantu?"
     },
     searchModal: {
       placeholder: "Ketik untuk mencari...",
@@ -447,7 +448,8 @@ export const translations = {
       scrollToBottom: "View new messages below",
       ghostwriterPrompt: "Start writing or let AI create a draft...",
       unsupportedInteractiveFormat: "This file format does not support interactive view here.",
-      aiSmartInsight: "AI Smart Insight"
+      aiSmartInsight: "AI Smart Insight",
+      cakraGreeting: "Hi, I'm CAKRA. How can I help you today?"
     },
     searchModal: {
       placeholder: "Search chats",

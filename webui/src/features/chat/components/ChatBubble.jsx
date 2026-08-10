@@ -586,7 +586,7 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
                                     fontSize: 12,
                                     fontWeight: 500
                                 }}>
-                                    Hi, I'm CAKRA. How can I help you today?
+                                    {tGlobal.chat.cakraGreeting}
                                 </div>
                             ) : (
                                 <span style={{ ...styles.avatarLabel, color: theme.textColor, transition: 'opacity 0.3s' }}>

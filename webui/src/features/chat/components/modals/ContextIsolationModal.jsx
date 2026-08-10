@@ -13,6 +13,7 @@ export default function ContextIsolationModal({
   isLoadingDocuments,
   activeIsolatedDocId,
   onSelectDocument,
+  handleChatModeChange,
   theme,
   darkMode,
   language
@@ -33,6 +34,9 @@ export default function ContextIsolationModal({
   const [expandedInsightDocId, setExpandedInsightDocId] = useState(null);
   const [insightData, setInsightData] = useState(null);
   const [isLoadingInsight, setIsLoadingInsight] = useState(false);
+
+  const [expandedActions, setExpandedActions] = useState({});
+
 
   const limit = 15;
 
@@ -208,7 +212,7 @@ export default function ContextIsolationModal({
                     }}
                   >
                     <div
-                      style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px" }}
+                      style={{ display: "flex", flexDirection: "column", gap: "12px" }}
                     >
                       <div style={{ minWidth: 0, flex: 1, textAlign: "left" }}>
                         <div
@@ -248,212 +252,320 @@ export default function ContextIsolationModal({
                             dangerouslySetInnerHTML={{ __html: doc.snippet }}
                           />
                         )}
-                        <div
-                          style={{
-                            display: "inline-block",
-                            marginTop: "6px",
-                            padding: "2px 8px",
-                            borderRadius: "12px",
-                            fontSize: "10px",
-                            fontWeight: 600,
-                            backgroundColor:
-                              doc.stataktif === "batal" ? "rgba(239, 68, 68, 0.15)" :
-                                doc.stataktif === "obsolete" ? "rgba(245, 158, 11, 0.15)" :
-                                  "rgba(10, 185, 129, 0.15)",
-                            color:
-                              doc.stataktif === "batal" ? "#ef4444" :
-                                doc.stataktif === "obsolete" ? "#f59e0b" :
-                                  "#10b981",
-                          }}
-                        >
-                          {doc.stataktif === "batal" ? t.revokedStatus :
-                            doc.stataktif === "obsolete" ? t.obsoleteStatus :
-                              t.validStatus}
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: "12px" }}>
+                          <div
+                            style={{
+                              display: "inline-block",
+                              padding: "2px 8px",
+                              borderRadius: "12px",
+                              fontSize: "10px",
+                              fontWeight: 600,
+                              backgroundColor:
+                                doc.stataktif === "batal" ? "rgba(239, 68, 68, 0.15)" :
+                                  doc.stataktif === "obsolete" ? "rgba(245, 158, 11, 0.15)" :
+                                    "rgba(10, 185, 129, 0.15)",
+                              color:
+                                doc.stataktif === "batal" ? "#ef4444" :
+                                  doc.stataktif === "obsolete" ? "#f59e0b" :
+                                    "#10b981",
+                            }}
+                          >
+                            {doc.stataktif === "batal" ? t.revokedStatus :
+                              doc.stataktif === "obsolete" ? t.obsoleteStatus :
+                                t.validStatus}
+                          </div>
+
+                          <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                            {doc.filename && !isIsolated && expandedActions[doc.id] && (
+                              <>
+                                <button
+                                  onClick={async (e) => {
+                                    e.stopPropagation();
+                                    setPreviewPdfUrl(`${getApiBase()}/api/documents/preview/${doc.filename}`);
+                                    setIsLoadingPdf(true);
+                                    try {
+                                      const encodedFilename = btoa(doc.filename);
+                                      const res = await fetch(`${getApiBase()}/api/documents/preview_b64/${encodedFilename}`);
+                                      const rawBlob = await res.blob();
+                                      const pdfBlob = new Blob([rawBlob], { type: "application/pdf" });
+                                      setPreviewPdfBlobUrl(URL.createObjectURL(pdfBlob));
+                                    } catch (err) {
+                                      console.error("Error loading PDF", err);
+                                    } finally {
+                                      setIsLoadingPdf(false);
+                                    }
+                                  }}
+                                  title={t.viewDoc}
+                                  style={{
+                                    background: "transparent",
+                                    border: "none",
+                                    color: theme.textColor,
+                                    cursor: "pointer",
+                                    padding: "4px",
+                                  }}
+                                >
+                                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                                    <circle cx="12" cy="12" r="3"></circle>
+                                  </svg>
+                                </button>
+
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    const link = document.createElement("a");
+                                    link.href = `${getApiBase()}/file_peraturan/${doc.filename}`;
+                                    link.download = doc.filename;
+                                    link.target = "_blank";
+                                    document.body.appendChild(link);
+                                    link.click();
+                                    document.body.removeChild(link);
+                                  }}
+                                  title={t.downloadDoc}
+                                  style={{
+                                    padding: "4px",
+                                    background: "transparent",
+                                    border: "none",
+                                    color: theme.textColor,
+                                    cursor: "pointer",
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                  }}
+                                >
+                                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                                    <polyline points="7 10 12 15 17 10"></polyline>
+                                    <line x1="12" y1="15" x2="12" y2="3"></line>
+                                  </svg>
+                                </button>
+
+                                <button
+                                  onClick={async (e) => {
+                                    e.stopPropagation();
+                                    if (expandedLineageDocId === doc.id) {
+                                      setExpandedLineageDocId(null);
+                                      setLineageData(null);
+                                      return;
+                                    }
+                                    setExpandedLineageDocId(doc.id);
+                                    setIsLoadingLineage(true);
+                                    setLineageData(null);
+                                    try {
+                                      const res = await fetch(`${getApiBase()}/api/documents/${doc.id}/lineage`);
+                                      if (res.ok) {
+                                        const data = await res.json();
+                                        setLineageData(data);
+                                      }
+                                    } catch (err) {
+                                      console.error("Error loading lineage", err);
+                                    } finally {
+                                      setIsLoadingLineage(false);
+                                    }
+                                  }}
+                                  title={t.lineageDoc}
+                                  style={{
+                                    background: expandedLineageDocId === doc.id ? "rgba(99, 102, 241, 0.15)" : "transparent",
+                                    border: "none",
+                                    color: expandedLineageDocId === doc.id ? "#6366f1" : theme.textColor,
+                                    cursor: "pointer",
+                                    padding: "4px 8px",
+                                    borderRadius: "6px",
+                                    display: "flex",
+                                    alignItems: "center",
+                                    gap: "4px",
+                                    fontSize: "11px",
+                                    fontWeight: 600,
+                                    transition: "all 0.2s ease",
+                                  }}
+                                >
+                                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                    <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
+                                    <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
+                                  </svg>
+                                  {t.lineageBtn}
+                                </button>
+
+                                <button
+                                  onClick={async (e) => {
+                                    e.stopPropagation();
+                                    if (expandedInsightDocId === doc.id) {
+                                      setExpandedInsightDocId(null);
+                                      setInsightData(null);
+                                      return;
+                                    }
+                                    setExpandedInsightDocId(doc.id);
+                                    setIsLoadingInsight(true);
+                                    setInsightData(null);
+                                    try {
+                                      const res = await fetch(`${getApiBase()}/api/documents/${doc.id}/insight`);
+                                      if (res.ok) {
+                                        const data = await res.json();
+                                        setInsightData(data.insight);
+                                      }
+                                    } catch (err) {
+                                      console.error("Error loading insight", err);
+                                    } finally {
+                                      setIsLoadingInsight(false);
+                                    }
+                                  }}
+                                  title="AI Smart Insight"
+                                  style={{
+                                    background: expandedInsightDocId === doc.id ? "rgba(245, 158, 11, 0.15)" : "transparent",
+                                    border: "none",
+                                    color: expandedInsightDocId === doc.id ? "#f59e0b" : theme.textColor,
+                                    cursor: "pointer",
+                                    padding: "4px 8px",
+                                    borderRadius: "6px",
+                                    display: "flex",
+                                    alignItems: "center",
+                                    gap: "4px",
+                                    fontSize: "11px",
+                                    fontWeight: 600,
+                                    transition: "all 0.2s ease",
+                                  }}
+                                >
+                                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                    <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+                                  </svg>
+                                  {t.insightBtn}
+                                </button>
+                              </>
+                            )}
+
+                            {doc.filename && !isIsolated && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setExpandedActions(prev => ({ ...prev, [doc.id]: !prev[doc.id] }));
+                                }}
+                                title={expandedActions[doc.id] ? "Sembunyikan aksi" : "Tampilkan aksi lainnya"}
+                                style={{
+                                  padding: "4px 8px",
+                                  background: "transparent",
+                                  border: "none",
+                                  color: theme.textColor,
+                                  cursor: "pointer",
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                  borderRadius: "6px",
+                                  transition: "all 0.2s ease"
+                                }}
+                              >
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ transform: expandedActions[doc.id] ? 'rotate(0deg)' : 'rotate(180deg)', transition: 'transform 0.2s' }}>
+                                  <polyline points="9 18 15 12 9 6"></polyline>
+                                </svg>
+                              </button>
+                            )}
+
+                            {isIsolated ? (
+                              <button
+                                onClick={() => {
+                                  onSelectDocument(null, "");
+                                  if (handleChatModeChange) handleChatModeChange('auto');
+                                  onClose();
+                                }}
+                                style={{
+                                  padding: "4px 10px",
+                                  borderRadius: "20px",
+                                  border: "none",
+                                  background: "#ef4444",
+                                  color: "#ffffff",
+                                  fontSize: "11px",
+                                  fontWeight: 600,
+                                  cursor: "pointer",
+                                  transition: "all 0.15s ease",
+                                  flexShrink: 0,
+                                }}
+                              >
+                                {t.unfocus}
+                              </button>
+                            ) : (
+                              <>
+                                <button
+                                  onClick={() => {
+                                    onSelectDocument(doc.id, doc.title);
+                                    if (handleChatModeChange) handleChatModeChange('focus');
+                                    onClose();
+                                  }}
+                                  style={{
+                                    padding: "4px 10px",
+                                    borderRadius: "20px",
+                                    border: "none",
+                                    background: "#6366f1",
+                                    color: "#ffffff",
+                                    fontSize: "11px",
+                                    fontWeight: 600,
+                                    cursor: "pointer",
+                                    transition: "all 0.15s ease",
+                                    flexShrink: 0,
+                                    display: "flex",
+                                    alignItems: "center",
+                                    gap: "4px"
+                                  }}
+                                >
+                                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                    <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path>
+                                  </svg>
+                                  Tanya
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    onSelectDocument(doc.id, doc.title);
+                                    if (handleChatModeChange) handleChatModeChange('compliance');
+                                    onClose();
+                                  }}
+                                  style={{
+                                    padding: "4px 10px",
+                                    borderRadius: "20px",
+                                    border: "1px solid rgba(239, 68, 68, 0.3)",
+                                    background: "rgba(239, 68, 68, 0.1)",
+                                    color: "#ef4444",
+                                    fontSize: "11px",
+                                    fontWeight: 600,
+                                    cursor: "pointer",
+                                    transition: "all 0.15s ease",
+                                    flexShrink: 0,
+                                    display: "flex",
+                                    alignItems: "center",
+                                    gap: "4px"
+                                  }}
+                                  onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(239, 68, 68, 0.2)" }}
+                                  onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(239, 68, 68, 0.1)" }}
+                                >
+                                  <span style={{ fontSize: "10px" }}>⚖️</span> Kepatuhan
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    onSelectDocument(doc.id, doc.title);
+                                    if (handleChatModeChange) handleChatModeChange('redteam');
+                                    onClose();
+                                  }}
+                                  style={{
+                                    padding: "4px 10px",
+                                    borderRadius: "20px",
+                                    border: "1px solid rgba(217, 119, 6, 0.3)",
+                                    background: "rgba(217, 119, 6, 0.1)",
+                                    color: "#d97706",
+                                    fontSize: "11px",
+                                    fontWeight: 600,
+                                    cursor: "pointer",
+                                    transition: "all 0.15s ease",
+                                    flexShrink: 0,
+                                    display: "flex",
+                                    alignItems: "center",
+                                    gap: "4px"
+                                  }}
+                                  onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(217, 119, 6, 0.2)" }}
+                                  onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(217, 119, 6, 0.1)" }}
+                                >
+                                  <span style={{ fontSize: "10px" }}>🕵️</span> Bedah
+                                </button>
+                              </>
+                            )}
+                          </div>
                         </div>
-                      </div>
-
-                      <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-                        {doc.filename && (
-                          <>
-                            <button
-                              onClick={async (e) => {
-                                e.stopPropagation();
-                                setPreviewPdfUrl(`${getApiBase()}/api/documents/preview/${doc.filename}`);
-                                setIsLoadingPdf(true);
-                                try {
-                                  const encodedFilename = btoa(doc.filename);
-                                  const res = await fetch(`${getApiBase()}/api/documents/preview_b64/${encodedFilename}`);
-                                  const rawBlob = await res.blob();
-                                  const pdfBlob = new Blob([rawBlob], { type: "application/pdf" });
-                                  setPreviewPdfBlobUrl(URL.createObjectURL(pdfBlob));
-                                } catch (err) {
-                                  console.error("Error loading PDF", err);
-                                } finally {
-                                  setIsLoadingPdf(false);
-                                }
-                              }}
-                              title={t.viewDoc}
-                              style={{
-                                background: "transparent",
-                                border: "none",
-                                color: theme.textColor,
-                                cursor: "pointer",
-                                padding: "4px",
-                              }}
-                            >
-                              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
-                                <circle cx="12" cy="12" r="3"></circle>
-                              </svg>
-                            </button>
-
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                const link = document.createElement("a");
-                                link.href = `${getApiBase()}/file_peraturan/${doc.filename}`;
-                                link.download = doc.filename;
-                                link.target = "_blank";
-                                document.body.appendChild(link);
-                                link.click();
-                                document.body.removeChild(link);
-                              }}
-                              title={t.downloadDoc}
-                              style={{
-                                padding: "4px",
-                                background: "transparent",
-                                border: "none",
-                                color: theme.textColor,
-                                cursor: "pointer",
-                                display: "flex",
-                                alignItems: "center",
-                                justifyContent: "center",
-                              }}
-                            >
-                              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                                <polyline points="7 10 12 15 17 10"></polyline>
-                                <line x1="12" y1="15" x2="12" y2="3"></line>
-                              </svg>
-                            </button>
-
-                            <button
-                              onClick={async (e) => {
-                                e.stopPropagation();
-                                if (expandedLineageDocId === doc.id) {
-                                  setExpandedLineageDocId(null);
-                                  setLineageData(null);
-                                  return;
-                                }
-                                setExpandedLineageDocId(doc.id);
-                                setIsLoadingLineage(true);
-                                setLineageData(null);
-                                try {
-                                  const res = await fetch(`${getApiBase()}/api/documents/${doc.id}/lineage`);
-                                  if (res.ok) {
-                                    const data = await res.json();
-                                    setLineageData(data);
-                                  }
-                                } catch (err) {
-                                  console.error("Error loading lineage", err);
-                                } finally {
-                                  setIsLoadingLineage(false);
-                                }
-                              }}
-                              title={t.lineageDoc}
-                              style={{
-                                background: expandedLineageDocId === doc.id ? "rgba(99, 102, 241, 0.15)" : "transparent",
-                                border: "none",
-                                color: expandedLineageDocId === doc.id ? "#6366f1" : theme.textColor,
-                                cursor: "pointer",
-                                padding: "4px 8px",
-                                borderRadius: "6px",
-                                display: "flex",
-                                alignItems: "center",
-                                gap: "4px",
-                                fontSize: "11px",
-                                fontWeight: 600,
-                                transition: "all 0.2s ease",
-                              }}
-                            >
-                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
-                                <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
-                              </svg>
-                              {t.lineageBtn}
-                            </button>
-
-                            <button
-                              onClick={async (e) => {
-                                e.stopPropagation();
-                                if (expandedInsightDocId === doc.id) {
-                                  setExpandedInsightDocId(null);
-                                  setInsightData(null);
-                                  return;
-                                }
-                                setExpandedInsightDocId(doc.id);
-                                setIsLoadingInsight(true);
-                                setInsightData(null);
-                                try {
-                                  const res = await fetch(`${getApiBase()}/api/documents/${doc.id}/insight`);
-                                  if (res.ok) {
-                                    const data = await res.json();
-                                    setInsightData(data.insight);
-                                  }
-                                } catch (err) {
-                                  console.error("Error loading insight", err);
-                                } finally {
-                                  setIsLoadingInsight(false);
-                                }
-                              }}
-                              title="AI Smart Insight"
-                              style={{
-                                background: expandedInsightDocId === doc.id ? "rgba(245, 158, 11, 0.15)" : "transparent",
-                                border: "none",
-                                color: expandedInsightDocId === doc.id ? "#f59e0b" : theme.textColor,
-                                cursor: "pointer",
-                                padding: "4px 8px",
-                                borderRadius: "6px",
-                                display: "flex",
-                                alignItems: "center",
-                                gap: "4px",
-                                fontSize: "11px",
-                                fontWeight: 600,
-                                transition: "all 0.2s ease",
-                              }}
-                            >
-                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
-                              </svg>
-                              {t.insightBtn}
-                            </button>
-
-                          </>
-                        )}
-                        <button
-                          onClick={() => {
-                            if (isIsolated) {
-                              onSelectDocument(null, "");
-                            } else {
-                              onSelectDocument(doc.id, doc.title);
-                            }
-                            onClose();
-                          }}
-                          style={{
-                            padding: "6px 12px",
-                            borderRadius: "20px",
-                            border: "none",
-                            background: isIsolated ? "#ef4444" : "#6366f1",
-                            color: "#ffffff",
-                            fontSize: "12px",
-                            fontWeight: 600,
-                            cursor: "pointer",
-                            transition: "all 0.15s ease",
-                            flexShrink: 0,
-                          }}
-                        >
-                          {isIsolated ? t.unfocus : t.focus}
-                        </button>
                       </div>
                     </div>
 
