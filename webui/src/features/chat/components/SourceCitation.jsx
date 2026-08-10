@@ -3,10 +3,12 @@ import React, { useState } from 'react';
 
 import { useChatStore } from '../../../stores/chatStore';
 import { getUploadUrl } from '../../../services/endpoints';
+import { translations } from '../../../utils/translations';
 
-const SourceCitation = ({ sources, darkMode, theme, onPreview, onActivateIsolation, activeIsolatedDocId }) => {
+const SourceCitation = ({ sources, darkMode, theme, language = 'id', onPreview, onActivateIsolation, activeIsolatedDocId }) => {
   const [hoveredIndex, setHoveredIndex] = useState(null);
   const setSplitScreen = useChatStore(state => state.setSplitScreen);
+  const t = translations[language]?.chat || translations.id.chat;
 
   if (!sources || sources.length === 0) return null;
 
@@ -194,7 +196,7 @@ const SourceCitation = ({ sources, darkMode, theme, onPreview, onActivateIsolati
                   }}>
                     {src.jenis || 'Regulasi'}
                   </span>
-                  <span>{regNomor} {src.total_pages ? `• ${src.total_pages} Halaman` : (page ? `• Hal. ${page}` : '')}</span>
+                  <span>{regNomor} {src.total_pages ? `• ${src.total_pages} ${t.pages}` : (page ? `• ${t.pageAbbrev} ${page}` : '')}</span>
                 </span>
 
                 {/* Tampilkan Daftar BAB/Pasal jika ada */}
@@ -243,7 +245,7 @@ const SourceCitation = ({ sources, darkMode, theme, onPreview, onActivateIsolati
                 onClick={(e) => handleChatIsolation(e, src)}
                 style={btnStyle(true, isHovered)}
               >
-                {isCurrentlyIsolated && useChatStore.getState().chatMode !== 'compliance' ? '🔒 Fokus' : '💬 Tanya'}
+                {isCurrentlyIsolated && useChatStore.getState().chatMode !== 'compliance' ? '🔒 Fokus' : `💬 ${t.tanyaBtn}`}
               </button>
               <button
                 type="button"
@@ -255,7 +257,7 @@ const SourceCitation = ({ sources, darkMode, theme, onPreview, onActivateIsolati
                   border: `1px solid ${isCurrentlyIsolated && useChatStore.getState().chatMode === 'compliance' ? '#ef4444' : (darkMode ? 'rgba(239, 68, 68, 0.3)' : 'rgba(239, 68, 68, 0.2)')}`,
                 }}
               >
-                {isCurrentlyIsolated && useChatStore.getState().chatMode === 'compliance' ? '🔒 Kepatuhan' : '⚖️ Kepatuhan'}
+                {isCurrentlyIsolated && useChatStore.getState().chatMode === 'compliance' ? `🔒 ${t.kepatuhanBtn}` : `⚖️ ${t.kepatuhanBtn}`}
               </button>
               <button
                 type="button"
@@ -267,7 +269,7 @@ const SourceCitation = ({ sources, darkMode, theme, onPreview, onActivateIsolati
                   border: `1px solid ${isCurrentlyIsolated && useChatStore.getState().chatMode === 'redteam' ? '#f97316' : (darkMode ? 'rgba(249, 115, 22, 0.3)' : 'rgba(249, 115, 22, 0.2)')}`,
                 }}
               >
-                {isCurrentlyIsolated && useChatStore.getState().chatMode === 'redteam' ? '🔒 Red-Team' : '🕵️ Bedah'}
+                {isCurrentlyIsolated && useChatStore.getState().chatMode === 'redteam' ? '🔒 Red-Team' : `🕵️ ${t.bedahBtn}`}
               </button>
             </div>
           </div>

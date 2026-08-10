@@ -102,7 +102,15 @@ export const translations = {
       ghostwriterPrompt: "Mulai menulis atau biarkan AI membuat draft...",
       unsupportedInteractiveFormat: "Format file ini belum mendukung tampilan interaktif di sini.",
       aiSmartInsight: "AI Smart Insight",
-      cakraGreeting: "Hai, saya CAKRA. Ada yang bisa dibantu?"
+      cakraGreeting: "Hai, saya CAKRA. Ada yang bisa dibantu?",
+      tanyaBtn: "Tanya",
+      kepatuhanBtn: "Kepatuhan",
+      bedahBtn: "Bedah",
+      foundIn: "Ditemukan dalam",
+      selectedRefs: "Rujukan Terpilih",
+      pages: "Halaman",
+      pageAbbrev: "Hal.",
+      liveOllamaEmbed: "Live Ollama Embed"
     },
     searchModal: {
       placeholder: "Ketik untuk mencari...",
@@ -449,7 +457,15 @@ export const translations = {
       ghostwriterPrompt: "Start writing or let AI create a draft...",
       unsupportedInteractiveFormat: "This file format does not support interactive view here.",
       aiSmartInsight: "AI Smart Insight",
-      cakraGreeting: "Hi, I'm CAKRA. How can I help you today?"
+      cakraGreeting: "Hi, I'm CAKRA. How can I help you today?",
+      tanyaBtn: "Ask",
+      kepatuhanBtn: "Compliance",
+      bedahBtn: "Red Team",
+      foundIn: "Found in",
+      selectedRefs: "Selected References",
+      pages: "Pages",
+      pageAbbrev: "Pg.",
+      liveOllamaEmbed: "Live Ollama Embed"
     },
     searchModal: {
       placeholder: "Search chats",

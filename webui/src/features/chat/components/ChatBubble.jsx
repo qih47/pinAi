@@ -769,6 +769,7 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
                                     eval_duration={msg.eval_duration}
                                     darkMode={darkMode}
                                     theme={theme}
+                                    language={language}
                                 />
                             )}
                             {(msg.citations || msg.sources) && (
@@ -776,6 +777,7 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
                                     sources={msg.citations || msg.sources}
                                     darkMode={darkMode}
                                     theme={theme}
+                                    language={language}
                                     activeIsolatedDocId={activeIsolatedDocId}
                                     onActivateIsolation={(source) => {
                                         const docId = source.id || source.dokumen_id;

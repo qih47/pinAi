@@ -1,10 +1,12 @@
 import React from 'react';
+import { translations } from '../../../utils/translations';
 
 /**
  * W15 — RAG Metrics Component
  * Displays search execution duration, embedding cache status (hit/miss), and citation counts.
  */
-const RAGMetrics = ({ sources, eval_count, eval_duration, darkMode, theme }) => {
+const RAGMetrics = ({ sources, eval_count, eval_duration, darkMode, theme, language = 'id' }) => {
+  const t = translations[language]?.chat || translations.id.chat;
   const hasSources = sources && sources.length > 0;
   const hasMetrics = eval_count > 0 && eval_duration > 0;
   
@@ -44,18 +46,18 @@ const RAGMetrics = ({ sources, eval_count, eval_duration, darkMode, theme }) => 
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
       {hasSources && searchTimeMs !== undefined && (
         <div style={badgeStyle} title="Lama waktu pencarian regulasi internal di database">
-          <span>⏱️ Found in {searchTimeMs}ms</span>
+          <span>⏱️ {t.foundIn} {searchTimeMs}ms</span>
         </div>
       )}
       {hasSources && (
         <div style={badgeStyle} title={isCacheHit ? "Embedding diambil dari LRU Cache (instan)" : "Embedding dihitung via Ollama Model"}>
           <span style={statusDotStyle(isCacheHit)} />
-          <span>{isCacheHit ? '🧠 Cache Hit' : '🌐 Live Ollama Embed'}</span>
+          <span>{isCacheHit ? '🧠 Cache Hit' : `🌐 ${t.liveOllamaEmbed}`}</span>
         </div>
       )}
       {hasSources && (
         <div style={badgeStyle}>
-          <span>📄 {sources.length} Rujukan Terpilih</span>
+          <span>📄 {sources.length} {t.selectedRefs}</span>
         </div>
       )}
       {hasMetrics && (
