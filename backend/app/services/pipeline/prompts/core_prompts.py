@@ -41,6 +41,7 @@ SCHEMA JSON:
   "is_ambiguous": true/false,
   "is_multi_document": true/false,
   "is_multi_turn_task": true/false,
+  "is_web_search": true/false,
   "task_list": [],
   "pronoun": "informal_gue_lo|formal_saya_anda|familiar_aku_kamu|unknown",
   "tone_hint": "casual|formal|empathetic",
@@ -61,6 +62,11 @@ PANDUAN PARAMETER `is_chitchat`:
 - Isi `false` jika pesan pengguna adalah pertanyaan teknis, konsultasi, permintaan tugas, analisa, atau berkaitan dengan informasi spesifik yang memerlukan penalaran pakar (termasuk keluhan kesehatan atau pertanyaan umum yang butuh jawaban informatif/nasehat detail).
 - **PERHATIAN KHUSUS MODE DOKUMEN / FOCUS:** Walaupun pengguna dalam mode Dokumen, jika ia hanya menyapa (halo/makasih), `is_chitchat` WAJIB `true` (dan `need_rag=false`).
 - Jika `is_chitchat` true, maka parameter kompleks (is_coding, need_rag, dll) harus false.
+
+PANDUAN PARAMETER `is_web_search`:
+- Isi `true` JIKA pengguna bertanya tentang informasi yang **SANGAT TERKINI**, berita terbaru (contoh: "berita hari ini", "siapa juara euro"), cuaca, harga saham, tokoh publik, atau sesuatu yang butuh dicarikan di Google/Internet.
+- Isi `false` jika pertanyaan bersifat pengetahuan umum yang sudah baku, atau bertanya tentang konteks internal / dokumen perusahaan.
+- **PENTING (MUTUALLY EXCLUSIVE)**: `is_web_search` dan `need_rag` TIDAK BOLEH sama-sama `true`. Jika pengguna SECARA EKSPLISIT meminta dicarikan di internet/web/url, maka `is_web_search` WAJIB `true` dan `need_rag` WAJIB `false`!
 
 PANDUAN PARAMETER `is_map_query`:
 - `is_map_query: true` JIKA pengguna secara eksplisit menanyakan lokasi, titik koordinat, alamat ("dimana markas", "lokasi pabrik", "peta Jakarta"). Ini akan mengaktifkan sistem Geocoding otomatis.
@@ -99,10 +105,9 @@ PANDUAN PARAMETER `pronoun` (PENTING!):
 - Jika netral akrab ("aku", "kamu") -> isi `familiar_aku_kamu`.
 
 PANDUAN PARAMETER `is_generate_file`:
-- Isi `true` HANYA jika user secara eksplisit meminta DIBUATKAN / GENERATE / DIEDIT / DIUBAH / DIPERBAIKI sebuah file fisik
-  (contoh: "buatkan file jsx", "generate script python", "coba edit filenya", "ubah login.jsx").
-- Isi `false` jika user hanya menanyakan cara koding, mendiskusikan kode, atau minta
-  penjelasan kode (tanpa meminta file dihasilkan atau diubah secara fisik).
+- Isi `true` jika user secara eksplisit meminta DIBUATKAN / GENERATE / DIEDIT / DIUBAH / DIPERBAIKI sebuah file fisik.
+- Isi `true` JUGA jika user SECARA IMPLISIT memberikan instruksi untuk melanjutkan koding/implementasi ke bagian lain atau menerapkan hasil diskusi (contoh: "oke sekarang ke frontendnya cuy", "lanjut ke backend", "terapkan yang barusan", "lanjut", "gas koding", dsb).
+- Isi `false` HANYA jika user murni hanya bertanya teori, meminta penjelasan, atau sekadar berdiskusi tanpa ada niat mengimplementasikannya ke dalam file.
 
 PANDUAN PARAMETER `is_generate_email`:
 - Isi `true` jika user secara eksplisit meminta dibuatkan draf email, mengirim email, atau membalas email (contoh: "tolong draft balasan email", "buatkan email ke pak direktur", "kirim email ke xyz@pindad.com").
@@ -199,6 +204,7 @@ Jika ada memori tentang "Karakter Komunikasi" user di sistem, kamu WAJIB mematuh
 Walaupun kamu sedang membalas dengan gaya santai, slang, atau humor, KONTEN FAKTA dari dokumen (pasal, hukuman, aturan legal, RAG) TIDAK BOLEH diubah maknanya, disederhanakan secara asal, atau diplesetkan. Kamu harus mengutip substansi aslinya secara akurat, lalu gunakan gaya bahasamu HANYA sebagai pengantar atau penutup kalimat.
 
 • STRUCTURE RULE: JANGAN menulis paragraf panjang. Pecah menjadi poin-poin yang enak dibaca.
+• NO-LATEX RULE: DILARANG KERAS menggunakan notasi LaTeX matematika ($\rightarrow$, $\times$, $\alpha$, dll). Gunakan karakter Unicode langsung: → ← ↔ × ÷ ± ≥ ≤ ≠ ≈ ∞ α β γ δ. Jika ingin menunjukkan arah/urutan, cukup gunakan → atau ➔ secara langsung tanpa tanda $.
 • LIST FORMAT RULE: Jika membuat penomoran (1., 2.) dan ada teks penjelasan panjang, GABUNGKAN penjelasan tersebut di baris yang sama atau gunakan spasi indentasi. JANGAN memutus poin dengan 'Enter/Baris Baru' ganda karena akan merusak layout list.
 • ICON/CALLOUT RULE: Jika memberi catatan khusus atau rekomendasi menggunakan icon (contoh: 💡, 📌, ⚠️), WAJIB gunakan format Blockquote Markdown (awali baris dengan tanda > ) agar teks penjelasan di bawahnya rapi menjorok ke dalam menyatu dengan icon.
 • SMART FORM RECONSTRUCTOR: Jika mendeteksi ada struktur formulir kosong, kuesioner, lampiran form, atau tabel data, WAJIB konversikan ke dalam format Markdown Tables / Checkboxes ( [ ] / [x] ) yang rapi dan interaktif.
@@ -614,4 +620,42 @@ def build_vendor_analyzer_prompt(vendors_data: str) -> str:
     return prompt_manager.render(
         name="CORPORATE_VENDOR_ANALYZER",
         vendors_data=vendors_data
+    )
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# WEB SEARCH PROMPT
+# ═══════════════════════════════════════════════════════════════════════════════
+WEB_SEARCH_PROMPT_TEMPLATE = COMMON_BASE_PERSONA + """
+Berikut adalah konteks pencarian web terbaru untuk membantu kamu menjawab:
+
+{{ web_context }}
+
+Tugasmu:
+1. Jawab pertanyaan pengguna berdasarkan konteks pencarian di atas secara akurat dan relevan.
+2. **Kendalikan Kedalaman Jawaban Secara Dinamis:**
+   - Perhatikan instruksi atau gaya pertanyaan pengguna:
+     - Jika pengguna meminta jawaban yang **detail, mendalam, atau langkah-demi-langkah**, berikan penjelasan komprehensif dan lengkap.
+     - Jika pengguna meminta jawaban yang **ringkas, singkat, atau to the point**, berikan jawaban langsung tanpa berbelit-belit.
+     - Jika pengguna **tidak menentukan**, sesuaikan panjang jawaban secara proporsional dengan kompleksitas pertanyaan (tidak terlalu pendek hingga kehilangan konteks penting, dan tidak terlalu panjang/bertele-tele).
+3. Sertakan referensi sumber atau URL yang relevan secara rapi di dalam teks jika diperlukan.
+4. JANGAN ulangi menampilkan data mentah URL/JSON dari hasil pencarian.
+""" + COMMON_TONE_GUIDANCE
+
+prompt_manager.register_default(
+    name="WEB_SEARCH_PROMPT",
+    template_str=WEB_SEARCH_PROMPT_TEMPLATE,
+    description="Sistem merespons pesan user berdasarkan hasil pencarian web terbaru."
+)
+
+def build_web_search_prompt(
+    employee_name: str,
+    web_context: str,
+    precheck: Dict[str, Any],
+) -> str:
+    return prompt_manager.render(
+        name="WEB_SEARCH_PROMPT",
+        employee_name=employee_name,
+        mode_title="WEB SEARCH MODE",
+        web_context=web_context,
+        pronoun=precheck.get("pronoun", "unknown")
     )

@@ -2,8 +2,25 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import path from 'path'; // 🔥 Tarik utilitas path bawaan Node
 
+// Plugin: Blokir semua akses /analytics di port 5173 → redirect ke 5174
+const blockAnalyticsPlugin = () => ({
+  name: 'block-analytics-route',
+  configureServer(server) {
+    server.middlewares.use((req, res, next) => {
+      if (req.url === '/analytics' || req.url.startsWith('/analytics/') || req.url.startsWith('/analytics?')) {
+        const host = req.headers['host']?.split(':')[0] || 'localhost';
+        const redirectUrl = `http://${host}:5174/analytics`;
+        res.writeHead(302, { Location: redirectUrl });
+        res.end();
+        return;
+      }
+      next();
+    });
+  }
+});
+
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), blockAnalyticsPlugin()],
   resolve: {
     alias: {
       // 🔥 Ajari Vite kalau '@' itu adalah folder 'src' secara absolut
@@ -70,6 +87,13 @@ export default defineConfig({
     },
   },
   optimizeDeps: {
-    include: ['react', 'react-dom', 'lucide-react'],
+    include: [
+      'react',
+      'react-dom',
+      'lucide-react',
+      'react-syntax-highlighter',
+      'react-syntax-highlighter/dist/esm/styles/prism',
+      'react-syntax-highlighter/dist/esm/styles/hljs',
+    ],
   },
 });

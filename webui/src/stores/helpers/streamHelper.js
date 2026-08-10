@@ -5,11 +5,11 @@ export function normalizeAttachments(files) {
     return files.map((f) => {
         let newPath = f.file_path || f.unique_filename;
         if (newPath) {
-            newPath = newPath.startsWith('accounts/') 
-                ? newPath 
+            newPath = newPath.startsWith('accounts/')
+                ? newPath
                 : (newPath.includes('/') ? newPath.split('/').pop() : newPath);
         }
-        
+
         return {
             id: f.id,
             file_name: f.original_filename || f.file_name || 'lampiran',
@@ -31,29 +31,29 @@ export async function performStream(set, get, messagesToSend, assistantMessage, 
         set(state => {
             let newState = {};
             const activeStreams = { ...state.activeStreams };
-            
+
             // Inisialisasi stream jika belum ada
             if (!activeStreams[activeSessionUuid]) {
-                activeStreams[activeSessionUuid] = { 
-                    messages: state.messages || [], 
-                    isStreaming: true, 
+                activeStreams[activeSessionUuid] = {
+                    messages: state.messages || [],
+                    isStreaming: true,
                     isThinking: true,
                     currentThinking: state.currentThinking || ''
                 };
             }
-            
+
             const currentStream = { ...activeStreams[activeSessionUuid] };
             const currentMessages = [...currentStream.messages];
-            
+
             // Panggil fungsi atau object updater (kompatibel dengan setState bawaan Zustand)
             let changes = typeof updater === 'function' ? updater({ ...state, messages: currentMessages }) : updater;
-            
+
             if (changes.messages) currentStream.messages = changes.messages;
             if (changes.currentThinking !== undefined) currentStream.currentThinking = changes.currentThinking;
             if (changes.isThinking !== undefined) currentStream.isThinking = changes.isThinking;
             if (changes.isStreaming !== undefined) currentStream.isStreaming = changes.isStreaming;
             if (changes.isLoading !== undefined) currentStream.isLoading = changes.isLoading;
-            
+
             activeStreams[activeSessionUuid] = currentStream;
             newState.activeStreams = activeStreams;
 
@@ -106,14 +106,14 @@ export async function performStream(set, get, messagesToSend, assistantMessage, 
                             .replace(/<\|channel>thought/g, '')
                             .replace(/<channel\|>/g, '')
                             .replace(/\[GEMMA_THINK\]/g, '');
-                            
+
                         accumulatedThinking += cleanThinking;
 
                         // 🔥 TRULY DYNAMIC STATUS: Mengekstrak topik yang sedang dipikirkan secara native!
                         // Tidak lagi kaku 3 langkah, melainkan membaca apapun yang ditulis AI sebelum titik dua (:)
                         let currentStatus = 'Sedang memproses...';
                         const lines = accumulatedThinking.split('\n');
-                        
+
                         for (const line of lines) {
                             // Cari pola bullet point dengan header. Contoh: "*   Context:", "*   *Step 1 - Selection:*", "    * Analysis:"
                             // Regex ini menangkap teks di dalam bullet sebelum tanda titik dua (:), maksimal 35 karakter.
@@ -194,7 +194,7 @@ export async function performStream(set, get, messagesToSend, assistantMessage, 
                     onChunk: (chunk) => {
                         accumulatedReply += chunk;
                         let cleanReply = accumulatedReply;
-                        
+
                         if (cleanReply.includes('<|channel>thought')) {
                             cleanReply = cleanReply.replace(/<\|channel>thought/g, '').replace(/<channel\|>/g, '');
                         }
@@ -210,7 +210,7 @@ export async function performStream(set, get, messagesToSend, assistantMessage, 
 
                         // 🔥 DYNAMIC FRONTEND PARSER 🔥
                         let textDisplay = cleanReply;
-                        
+
                         if (cleanReply.includes('<create_file') || cleanReply.includes('<edit_file')) {
                             const openTagRegex = /<(create_file|edit_file)\s+filename=["']([^"'>\s]+)["']\s*>/gi;
                             const closeTagRegex = /<\/(create_file|edit_file)\s*>/gi;
@@ -219,11 +219,11 @@ export async function performStream(set, get, messagesToSend, assistantMessage, 
                             let lastIdx = 0;
                             let currentBatchIndex = 0;
                             let hasInjectedFirst = false;
-                            
+
                             let match;
                             while ((match = openTagRegex.exec(cleanReply)) !== null) {
                                 const precedingText = cleanReply.substring(lastIdx, match.index);
-                                
+
                                 if (!hasInjectedFirst) {
                                     textDisplay += precedingText;
                                     textDisplay += `\n\n[[CAKRA_FILE_PROCESS_LOG_${currentBatchIndex}]]\n\n`;
@@ -248,8 +248,8 @@ export async function performStream(set, get, messagesToSend, assistantMessage, 
                                 if (nextClose && (!nextOpen || nextClose.index < nextOpen.index)) {
                                     lastIdx = closeTagRegex.lastIndex;
                                 } else if (nextOpen && (!nextClose || nextOpen.index < nextClose.index)) {
-                                    lastIdx = nextOpen.index; 
-                                    openTagRegex.lastIndex = lastIdx; 
+                                    lastIdx = nextOpen.index;
+                                    openTagRegex.lastIndex = lastIdx;
                                 } else {
                                     lastIdx = cleanReply.length;
                                 }
@@ -259,12 +259,12 @@ export async function performStream(set, get, messagesToSend, assistantMessage, 
 
                         const existingGens = [...(assistantMessage.fileGenerations || [])];
 
-                        assistantMessage = { 
-                            ...assistantMessage, 
+                        assistantMessage = {
+                            ...assistantMessage,
                             content: textDisplay,
-                            fileGenerations: existingGens 
+                            fileGenerations: existingGens
                         };
-                        
+
                         // Gabungkan hasil pemikiran yang bocor jika ada
                         if (leakedThinking) {
                             assistantMessage.thinking = accumulatedThinking + "\n" + leakedThinking.trim();
@@ -287,33 +287,33 @@ export async function performStream(set, get, messagesToSend, assistantMessage, 
                     },
                     onFileStatus: (fileStatus) => {
                         const { stage, filename, tag_type } = fileStatus;
-                        
+
                         if (stage === 'batch_break') {
                             backendBatchIndex++;
                             return; // No need to update fileGenerations for batch_break
                         }
-                        
+
                         const fileGens = [...(assistantMessage.fileGenerations || [])];
                         const existingIdx = fileGens.findIndex(fg => fg.filename === filename);
-                        
+
                         if (stage === 'done') {
                             if (existingIdx !== -1) {
-                                fileGens[existingIdx] = { 
-                                    ...fileGens[existingIdx], 
+                                fileGens[existingIdx] = {
+                                    ...fileGens[existingIdx],
                                     stage: 'done',
                                     file_path: fileStatus.file_path || null,
                                 };
                             } else {
-                                fileGens.push({ 
-                                    filename, 
-                                    stage: 'done', 
-                                    liveCode: '', 
+                                fileGens.push({
+                                    filename,
+                                    stage: 'done',
+                                    liveCode: '',
                                     file_path: fileStatus.file_path || null,
                                     tag_type,
                                     batchIndex: backendBatchIndex
                                 });
                             }
-                            
+
                             // ── Merekam ke Sidebar (Artifacts) ──
                             if (fileStatus.file_path) {
                                 // Update global state directly to ensure UI reactivity
@@ -330,10 +330,10 @@ export async function performStream(set, get, messagesToSend, assistantMessage, 
                                 } else {
                                     currentArtifacts.push(newArt);
                                 }
-                                
+
                                 console.log('[STREAM_HELPER] Menambahkan artifact baru:', newArt);
                                 set({ artifacts: currentArtifacts });
-                                
+
                                 // Juga update stream state untuk konsistensi internal
                                 updateStreamState({ artifacts: currentArtifacts });
                             }
@@ -349,14 +349,14 @@ export async function performStream(set, get, messagesToSend, assistantMessage, 
                                 });
                             } else {
                                 fileGens[existingIdx].stage = 'creating';
-                                if(tag_type) fileGens[existingIdx].tag_type = tag_type;
+                                if (tag_type) fileGens[existingIdx].tag_type = tag_type;
                                 fileGens[existingIdx].batchIndex = backendBatchIndex;
                             }
                         } else if (stage === 'code_chunk') {
                             if (existingIdx !== -1) {
                                 fileGens[existingIdx].stage = 'streaming';
                                 fileGens[existingIdx].liveCode = (fileGens[existingIdx].liveCode || '') + (fileStatus.code_chunk || '');
-                                if(tag_type) fileGens[existingIdx].tag_type = tag_type;
+                                if (tag_type) fileGens[existingIdx].tag_type = tag_type;
                             } else {
                                 fileGens.push({
                                     filename,
@@ -372,7 +372,7 @@ export async function performStream(set, get, messagesToSend, assistantMessage, 
                                 fileGens[existingIdx] = { ...fileGens[existingIdx], stage: 'error' };
                             }
                         }
-                        
+
                         // Mutate local variable to ensure the NEXT onChunk/onFileStatus reads this updated state
                         assistantMessage = { ...assistantMessage, fileGenerations: fileGens };
 
@@ -388,7 +388,7 @@ export async function performStream(set, get, messagesToSend, assistantMessage, 
                     },
                     onDone: (data) => {
                         assistantMessage = { ...assistantMessage, isStreaming: false, isThinking: false };
-                        
+
                         // --- INTERCEPT SHORT/TRUNCATED RESPONSE ---
                         const cleanContent = (assistantMessage.content || '').trim();
                         const hasFiles = assistantMessage.fileGenerations && assistantMessage.fileGenerations.length > 0;
@@ -400,18 +400,18 @@ export async function performStream(set, get, messagesToSend, assistantMessage, 
                             assistantMessage.eval_count = data.eval_count;
                             assistantMessage.eval_duration = data.eval_duration;
                         }
-                        
+
                         if (data && data.title) {
-                            window.dispatchEvent(new CustomEvent("cakra_title_update", { 
-                                detail: { sessionUuid: get().sessionUuid, title: data.title } 
+                            window.dispatchEvent(new CustomEvent("cakra_title_update", {
+                                detail: { sessionUuid: get().sessionUuid, title: data.title }
                             }));
                         }
-                        
+
                         const currentMessages = [...(get().activeStreams[activeSessionUuid]?.messages || get().messages)];
                         const idxToUpdate = targetAssistantIdx !== null ? targetAssistantIdx : currentMessages.length - 1;
                         currentMessages[idxToUpdate] = assistantMessage;
                         updateStreamState({ messages: currentMessages });
-                        
+
                         updateStreamState({
                             isThinking: false,
                             isStreaming: false,

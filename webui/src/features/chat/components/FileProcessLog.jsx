@@ -49,21 +49,21 @@ const ErrorIcon = ({ color }) => (
 );
 
 const ChevronRight = ({ expanded, color }) => (
-  <svg 
-    width="14" 
-    height="14" 
-    viewBox="0 0 24 24" 
-    fill="none" 
-    stroke={color} 
-    strokeWidth="2" 
-    strokeLinecap="round" 
+  <svg
+    width="14"
+    height="14"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke={color}
+    strokeWidth="2"
+    strokeLinecap="round"
     strokeLinejoin="round"
-    style={{ 
-        transform: expanded ? 'rotate(90deg)' : 'rotate(0deg)',
-        transition: 'transform 0.2s ease',
-        cursor: 'pointer',
-        display: 'inline-block',
-        verticalAlign: 'middle'
+    style={{
+      transform: expanded ? 'rotate(90deg)' : 'rotate(0deg)',
+      transition: 'transform 0.2s ease',
+      cursor: 'pointer',
+      display: 'inline-block',
+      verticalAlign: 'middle'
     }}
   >
     <polyline points="9 18 15 12 9 6"></polyline>
@@ -123,9 +123,9 @@ export default function FileProcessLog({ fileGenerations, darkMode, batchIndex =
           to { opacity: 1; transform: translateY(0); }
         }
       `}</style>
-      
+
       {/* Header Log - Minimalist without border/card */}
-      <div 
+      <div
         onClick={() => setExpanded(!expanded)}
         style={{
           display: 'flex',
@@ -151,7 +151,7 @@ export default function FileProcessLog({ fileGenerations, darkMode, batchIndex =
             const isError = fg.stage === 'error';
             const isInProgress = fg.stage === 'streaming' || fg.stage === 'creating';
             const isStepExpanded = expandedSteps[idx] || false;
-            
+
             let statusIcon;
             if (isError) statusIcon = <ErrorIcon color="#ef4444" />;
             else if (!isInProgress) statusIcon = <CheckIcon color="#10b981" />;
@@ -181,37 +181,37 @@ export default function FileProcessLog({ fileGenerations, darkMode, batchIndex =
                 )}
 
                 <div style={{
-                    width: '14px', 
-                    height: '14px', 
-                    display: 'flex', 
-                    alignItems: 'center', 
-                    justifyContent: 'center',
-                    marginTop: '2px',
-                    zIndex: 1,
-                    background: darkMode ? '#18181b' : '#ffffff' // Supaya garis tertutup icon
+                  width: '14px',
+                  height: '14px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  marginTop: '2px',
+                  zIndex: 1,
+                  background: darkMode ? '#18181b' : '#ffffff' // Supaya garis tertutup icon
                 }}>
                   {statusIcon}
                 </div>
-                
+
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', width: '100%' }}>
-                  <span 
-                    style={{ 
-                        fontSize: '13px', 
-                        color: textColor, 
-                        fontWeight: 500, 
-                        display: 'inline-block' 
+                  <span
+                    style={{
+                      fontSize: '13px',
+                      color: textColor,
+                      fontWeight: 500,
+                      display: 'inline-block'
                     }}
                   >
                     {isInProgress ? (fg.tag_type === 'edit_file' ? `Mengedit ${fg.filename}...` : `Membuat ${fg.filename}...`) : (isError ? `Gagal menulis ${fg.filename}` : `Selesai ${fg.filename}`)}
                   </span>
-                  
-                  <div 
+
+                  <div
                     onClick={() => toggleStep(idx)}
-                    style={{ 
-                      display: 'flex', 
-                      alignItems: 'center', 
-                      gap: '4px', 
-                      fontSize: '11px', 
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      fontSize: '11px',
                       color: mutedText,
                       cursor: 'pointer',
                       width: 'fit-content'
@@ -226,45 +226,45 @@ export default function FileProcessLog({ fileGenerations, darkMode, batchIndex =
                   {/* Expanded Code Block (Terminal-like) */}
                   {isStepExpanded && (
                     <div style={{
-                        marginTop: '8px',
-                        background: '#1e1e1e', // Dark terminal background
-                        border: '1px solid rgba(255, 255, 255, 0.1)',
-                        borderRadius: '6px',
-                        padding: '12px',
-                        overflowX: 'auto',
-                        maxWidth: 'calc(100vw - 120px)'
+                      marginTop: '8px',
+                      background: '#1e1e1e', // Dark terminal background
+                      border: '1px solid rgba(255, 255, 255, 0.1)',
+                      borderRadius: '6px',
+                      padding: '12px',
+                      overflowX: 'auto',
+                      maxWidth: 'calc(100vw - 120px)'
                     }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px', color: '#a1a1aa', fontSize: '12px', fontFamily: 'monospace' }}>
-                            <span style={{ color: '#818cf8' }}>&gt;</span>
-                            <span>{`cat > ${fg.filename} << 'EOF'`}</span>
-                        </div>
-                        {isInProgress ? (
-                            <pre style={{
-                                margin: 0,
-                                padding: 0,
-                                background: 'transparent',
-                                fontSize: '12px',
-                                fontFamily: 'monospace',
-                                color: '#d4d4d8',
-                                whiteSpace: 'pre-wrap',
-                                wordBreak: 'break-all'
-                            }}>
-                                {fg.liveCode || '// Sedang menginisialisasi...'}
-                            </pre>
-                        ) : (
-                            <SyntaxHighlighter
-                                language={fg.filename.split('.').pop() || "javascript"}
-                                style={vscDarkPlus}
-                                customStyle={{
-                                    margin: 0,
-                                    padding: 0,
-                                    background: 'transparent',
-                                    fontSize: '12px'
-                                }}
-                            >
-                                {fg.liveCode || '// Selesai.'}
-                            </SyntaxHighlighter>
-                        )}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px', color: '#a1a1aa', fontSize: '12px', fontFamily: 'monospace' }}>
+                        <span style={{ color: '#818cf8' }}>&gt;</span>
+                        <span>{`cat > ${fg.filename} << 'EOF'`}</span>
+                      </div>
+                      {isInProgress ? (
+                        <pre style={{
+                          margin: 0,
+                          padding: 0,
+                          background: 'transparent',
+                          fontSize: '12px',
+                          fontFamily: 'monospace',
+                          color: '#d4d4d8',
+                          whiteSpace: 'pre-wrap',
+                          wordBreak: 'break-all'
+                        }}>
+                          {fg.liveCode || '// Sedang menginisialisasi...'}
+                        </pre>
+                      ) : (
+                        <SyntaxHighlighter
+                          language={fg.filename.split('.').pop() || "javascript"}
+                          style={vscDarkPlus}
+                          customStyle={{
+                            margin: 0,
+                            padding: 0,
+                            background: 'transparent',
+                            fontSize: '12px'
+                          }}
+                        >
+                          {fg.liveCode || '// Selesai.'}
+                        </SyntaxHighlighter>
+                      )}
                     </div>
                   )}
                 </div>
@@ -275,73 +275,73 @@ export default function FileProcessLog({ fileGenerations, darkMode, batchIndex =
           {/* FINAL DONE ROW */}
           {isFinalBatch && batchGens.length > 0 && fileGenerations.every(g => g.stage === 'done' || g.stage === 'error') && (
             <>
-                {/* Presented Files Step */}
+              {/* Presented Files Step */}
+              <div style={{
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: '12px',
+                padding: '6px 0',
+                position: 'relative',
+                marginTop: '6px',
+                animation: 'cakraFadeInSlide 0.3s ease-out forwards'
+              }}>
                 <div style={{
-                    display: 'flex',
-                    alignItems: 'flex-start',
-                    gap: '12px',
-                    padding: '6px 0',
-                    position: 'relative',
-                    marginTop: '6px',
-                    animation: 'cakraFadeInSlide 0.3s ease-out forwards'
+                  position: 'absolute',
+                  left: '6px',
+                  top: '24px',
+                  bottom: '-12px',
+                  width: '1px',
+                  background: borderColor
+                }} />
+                <div style={{
+                  width: '14px',
+                  height: '14px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  marginTop: '2px',
+                  zIndex: 1,
+                  background: darkMode ? '#18181b' : '#ffffff'
                 }}>
-                    <div style={{
-                        position: 'absolute',
-                        left: '6px',
-                        top: '24px',
-                        bottom: '-12px',
-                        width: '1px',
-                        background: borderColor
-                    }} />
-                    <div style={{
-                        width: '14px', 
-                        height: '14px', 
-                        display: 'flex', 
-                        alignItems: 'center', 
-                        justifyContent: 'center',
-                        marginTop: '2px',
-                        zIndex: 1,
-                        background: darkMode ? '#18181b' : '#ffffff'
-                    }}>
-                      <FileIcon color={mutedText} />
-                    </div>
-                    
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', width: '100%' }}>
-                      <span style={{ fontSize: '13px', color: mutedText, fontWeight: 500 }}>
-                        Presented {fileGenerations.length} files
-                      </span>
-                    </div>
+                  <FileIcon color={mutedText} />
                 </div>
 
-                {/* Final Done Step */}
-                <div style={{
-                    display: 'flex',
-                    alignItems: 'flex-start',
-                    gap: '12px',
-                    padding: '6px 0',
-                    position: 'relative',
-                    marginTop: '6px',
-                    animation: 'cakraFadeInSlide 0.4s ease-out forwards'
-                }}>
-                    <div style={{
-                        width: '14px', 
-                        height: '14px', 
-                        display: 'flex', 
-                        alignItems: 'center', 
-                        justifyContent: 'center',
-                        marginTop: '2px',
-                        zIndex: 1,
-                        background: darkMode ? '#18181b' : '#ffffff'
-                    }}>
-                      <CheckCircleIcon color={mutedText} />
-                    </div>
-                    
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', width: '100%' }}>
-                      <span style={{ fontSize: '13px', color: mutedText, fontWeight: 500 }}>
-                        Done
-                      </span>
-                    </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', width: '100%' }}>
+                  <span style={{ fontSize: '13px', color: mutedText, fontWeight: 500 }}>
+                    Presented {fileGenerations.length} files
+                  </span>
                 </div>
+              </div>
+
+              {/* Final Done Step */}
+              <div style={{
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: '12px',
+                padding: '6px 0',
+                position: 'relative',
+                marginTop: '6px',
+                animation: 'cakraFadeInSlide 0.4s ease-out forwards'
+              }}>
+                <div style={{
+                  width: '14px',
+                  height: '14px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  marginTop: '2px',
+                  zIndex: 1,
+                  background: darkMode ? '#18181b' : '#ffffff'
+                }}>
+                  <CheckCircleIcon color={mutedText} />
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', width: '100%' }}>
+                  <span style={{ fontSize: '13px', color: mutedText, fontWeight: 500 }}>
+                    Done
+                  </span>
+                </div>
+              </div>
             </>
           )}
         </div>

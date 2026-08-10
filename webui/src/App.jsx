@@ -16,6 +16,16 @@ import Layout from "./components/Layout";
 import ToastProvider from "./components/ui/ToastProvider";
 import { useTokenRefresh } from "./hooks/useTokenRefresh"; // 👈 W18: Token auto-refresh
 import OllamaThinkTest from '@/features/chat/components/OllamaThinkTest';
+
+// Komponen redirect: jika analytics dibuka di port 5173, arahkan ke port 5174
+function AnalyticsRedirect() {
+  React.useEffect(() => {
+    const analyticsUrl = `${window.location.protocol}//${window.location.hostname}:5174/analytics`;
+    window.location.replace(analyticsUrl);
+  }, []);
+  return null;
+}
+
 function SessionRouteWrapper({ isGuest, corporateMode = null }) {
   const { sessionId } = useParams();
   const isAuthenticated = useChatAuthStore((state) => state.isAuthenticated);
@@ -103,6 +113,20 @@ function AppContent() {
       
       <Route path="/test-think" element={<OllamaThinkTest />} />
       <Route path="/" element={<Navigate to="/chat/guest" replace />} />
+
+      {/* 🔒 /analytics di port ini tidak valid — redirect ke port 5174 */}
+      <Route
+        path="/analytics"
+        element={
+          <AnalyticsRedirect />
+        }
+      />
+      <Route
+        path="/analytics/*"
+        element={
+          <AnalyticsRedirect />
+        }
+      />
 
       <Route element={<Layout />}>
         <Route

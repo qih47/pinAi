@@ -9,8 +9,13 @@ const rewriteToAnalyticsPlugin = () => {
     name: 'rewrite-to-analytics',
     configureServer(server) {
       server.middlewares.use((req, res, next) => {
-        // Jika request bukan untuk file statis atau assets
-        if (!req.url.includes('.') || req.url.includes('/analytics')) {
+        // HANYA rewrite jika ini adalah navigasi browser (Accept: text/html)
+        // dan BUKAN request file statis (punya ekstensi file)
+        const hasFileExtension = /\.[a-zA-Z0-9]+$/.test(req.url.split('?')[0]);
+        const isViteInternal = req.url.startsWith('/@') || req.url.startsWith('/__');
+        const isBrowserNav = req.headers['accept']?.includes('text/html') && !hasFileExtension && !isViteInternal;
+        
+        if (isBrowserNav) {
           req.url = '/analytics.html';
         }
         next();

@@ -10,21 +10,6 @@ export default function DataGridViewer({ chartCode, darkMode, isStreaming, langu
   const [isExpanded, setIsExpanded] = useState(false);
   const exportRef = useRef(null);
 
-  // 1. Loading State
-  if (isStreaming) {
-    return (
-      <div className={`w-full h-64 flex items-center justify-center rounded-xl border border-dashed ${darkMode ? 'border-gray-700 bg-gray-800/30 text-gray-400' : 'border-gray-300 bg-gray-50 text-gray-500'}`}>
-        <div className="flex flex-col items-center gap-2">
-          <svg className="animate-spin h-6 w-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-          </svg>
-          <span className="text-sm font-medium">Menyusun Data Tabel...</span>
-        </div>
-      </div>
-    );
-  }
-
   // 2. Parsing JSON
   const parsedData = useMemo(() => {
     try {
@@ -35,22 +20,10 @@ export default function DataGridViewer({ chartCode, darkMode, isStreaming, langu
     }
   }, [chartCode]);
 
-  // 3. Error Handling
-  if (parsedData?.error || !parsedData?.columns || !parsedData?.rows) {
-    return (
-      <div className={`w-full p-4 text-sm rounded-lg border ${darkMode ? 'bg-red-900/10 border-red-900/50 text-red-400' : 'bg-red-50 border-red-200 text-red-600'}`}>
-        <div className="flex items-center gap-2 font-semibold mb-1">
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-          </svg>
-          Gagal Membaca Format Tabel Data
-        </div>
-      </div>
-    );
-  }
-
   // 4. Data Processing (Search & Sort)
   const filteredAndSortedRows = useMemo(() => {
+    if (!parsedData || parsedData.error || !parsedData.rows) return [];
+    
     let result = [...parsedData.rows];
 
     // Filter by search
@@ -76,7 +49,7 @@ export default function DataGridViewer({ chartCode, darkMode, isStreaming, langu
     }
 
     return result;
-  }, [parsedData.rows, searchQuery, sortConfig]);
+  }, [parsedData, searchQuery, sortConfig]);
 
   const handleSort = (key) => {
     let direction = 'asc';
@@ -85,6 +58,35 @@ export default function DataGridViewer({ chartCode, darkMode, isStreaming, langu
     }
     setSortConfig({ key, direction });
   };
+
+  // 1. Loading State
+  if (isStreaming) {
+    return (
+      <div className={`w-full h-64 flex items-center justify-center rounded-xl border border-dashed ${darkMode ? 'border-gray-700 bg-gray-800/30 text-gray-400' : 'border-gray-300 bg-gray-50 text-gray-500'}`}>
+        <div className="flex flex-col items-center gap-2">
+          <svg className="animate-spin h-6 w-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+          </svg>
+          <span className="text-sm font-medium">Menyusun Data Tabel...</span>
+        </div>
+      </div>
+    );
+  }
+
+  // 3. Error Handling
+  if (parsedData?.error || !parsedData?.columns || !parsedData?.rows) {
+    return (
+      <div className={`w-full p-4 text-sm rounded-lg border ${darkMode ? 'bg-red-900/10 border-red-900/50 text-red-400' : 'bg-red-50 border-red-200 text-red-600'}`}>
+        <div className="flex items-center gap-2 font-semibold mb-1">
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+          </svg>
+          Gagal Membaca Format Tabel Data
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className={

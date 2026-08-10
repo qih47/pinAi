@@ -77,6 +77,19 @@ class ModeHub:
         precheck["_session_chunks_text"] = session_chunks_text
         precheck["_session_uuid"] = session_uuid
 
+        # ── Step 1.5: Intercept URLs (Web Reader) — deteksi dulu, fetch nanti paralel ─────
+        urls_in_text = []
+        try:
+            from backend.app.services.web_tools.url_reader import extract_urls_from_text
+            urls_in_text = extract_urls_from_text(user_message)
+            if urls_in_text:
+                logger.info(f"[MODE_HUB] Detected {len(urls_in_text)} URLs in user message. Will fetch in parallel with Call1.")
+                precheck["has_url_context"] = True  # tandai dulu agar routing tahu
+        except ImportError:
+            pass
+
+
+
         if chat_mode == "redteam":
             logger.info("[MODE_HUB] Routing to Red-Team Mode.")
             handler = self.mode_handlers["redteam"]
@@ -228,17 +241,48 @@ class ModeHub:
         is_first_chat = len(chat_history) <= 1
 
         call1_start_t = datetime.now()
-        routing_data = await execute_call1_routing(
-            request=request,
-            user_message=user_message,
-            context_history_str=context_history_str,
-            precheck=precheck,
-            ocr_text=None,
-            is_guest=is_guest,
-            is_first_chat=is_first_chat,
-        )
+
+        # ── ⚡ PARALLEL OPTIMIZATION: Call1 + URL Fetch berjalan bersamaan ─────────
+        # Keduanya adalah I/O network murni — tidak perlu menunggu satu sama lain.
+        async def _do_call1():
+            return await execute_call1_routing(
+                request=request,
+                user_message=user_message,
+                context_history_str=context_history_str,
+                precheck=precheck,
+                ocr_text=None,
+                is_guest=is_guest,
+                is_first_chat=is_first_chat,
+            )
+
+        # Siapkan url_fetch coroutine (kosong jika tidak ada URL)
+        async def _do_url_fetch_safe():
+            if not urls_in_text:
+                return ""
+            try:
+                from backend.app.services.web_tools.url_reader import fetch_multiple_urls
+                return await fetch_multiple_urls(urls_in_text)
+            except Exception as e:
+                logger.warning(f"[MODE_HUB] URL fetch failed: {e}")
+                return ""
+
+        # Jalankan keduanya bersamaan
+        call1_task = asyncio.create_task(_do_call1())
+        url_fetch_task = asyncio.create_task(_do_url_fetch_safe())
+
+        if urls_in_text:
+            yield format_sse(status=f"🌐 Membaca konten dari {len(urls_in_text)} tautan web...", event_type=SSEEventType.STATUS)
+
+        routing_data, url_contexts = await asyncio.gather(call1_task, url_fetch_task)
+
+        # Setelah paralel selesai, masukkan konten URL ke precheck
+        if url_contexts and urls_in_text:
+            precheck["_session_chunks_text"] = precheck.get("_session_chunks_text", "") + f"\n\n[KONTEN WEB DARI URL DI CHAT]\n{url_contexts}"
+            logger.info(f"[MODE_HUB] URL context injected ({len(url_contexts)} chars) — fetched in parallel with Call1")
+
         call1_ms = (datetime.now() - call1_start_t).total_seconds() * 1000
-        logger.info(f"⚡ [TIMING_BENCHMARK] Call 1 Router selesai dalam {call1_ms:.1f}ms ({call1_ms/1000:.2f}s)")
+        logger.info(f"⚡ [TIMING_BENCHMARK] Call1 + URL Fetch (parallel) selesai dalam {call1_ms:.1f}ms ({call1_ms/1000:.2f}s)")
+
 
         logger.info(
             f"[MODE_HUB] Call 1 complete | need_rag={routing_data.get('need_rag')} | "
@@ -353,6 +397,16 @@ class ModeHub:
 
         precheck.update(routing_data)
 
+        # ── Override Router if URL Context Exists ─────────────────────────────────
+        if precheck.get("has_url_context"):
+            precheck["is_chitchat"] = False
+            # FORCE WEB SEARCH: Jika ada URL/domain terdeteksi di pesan user,
+            # PAKSA routing ke Web Search dan matikan RAG secara absolut
+            # agar tidak bentrok antara data internal vs data web
+            precheck["is_web_search"] = True
+            precheck["need_rag"] = False
+            logger.info("[MODE_HUB] URL context detected → forcing is_web_search=True, need_rag=False")
+
         # ── 🌍 Geocoding Tool Calling (Nominatim) ──────────────────────────────────
         if routing_data.get("is_map_query"):
             yield format_sse(status="🌍 Mencari koordinat peta (Nominatim)", event_type=SSEEventType.STATUS)
@@ -378,13 +432,38 @@ class ModeHub:
             else:
                 yield format_sse(status="⚠️ Gagal menemukan koordinat lokasi tersebut", event_type=SSEEventType.STATUS)
 
+        # ── Web Search Mode Routing ─────────────────────────────────────
+        if precheck.get("is_web_search", False):
+            logger.info("[MODE_HUB] Routing to Web Search Mode.")
+            from backend.app.services.pipeline.modes.mode_web_search import handle_web_search
+            # Convert ChatMessageSchema to dict
+            history_dicts = [m.model_dump() for m in chat_history]
+            # Ensure the current user_message (potentially with URL contents appended) is at the end
+            if not history_dicts or history_dicts[-1]["content"] != user_message:
+                # Replace the last user message with the appended one, or just add if empty
+                if history_dicts and history_dicts[-1]["role"] == "user":
+                    history_dicts[-1]["content"] = user_message
+                else:
+                    history_dicts.append({"role": "user", "content": user_message})
+
+            async for chunk in handle_web_search(
+                query=user_message,
+                messages=history_dicts,
+                request=request,
+                employee_name=employee_name,
+                precheck=precheck,
+                is_thinking=is_thinking
+            ):
+                yield chunk
+            return
+
         # ── Step 3: Route to specific mode ──────────────────────────────────────────
         # Ensure mode exists, fallback to auto
         mode = chat_mode if chat_mode in self.mode_handlers else "auto"
 
-        # ── Priority 1: is_generate_file intent (Interceptor-Analyst Pipeline) ──────
-        if routing_data.get("is_generate_file") and not is_guest:
-            logger.info("[MODE_HUB] is_generate_file=True detected → routing to GENERATE_FILE mode")
+        # ── Priority 1: is_generate_file / is_coding intent (Interceptor-Analyst Pipeline) ──────
+        if (routing_data.get("is_generate_file") or routing_data.get("is_coding")) and not is_guest:
+            logger.info("[MODE_HUB] Coding intent detected → routing to GENERATE_FILE mode")
             mode = "generate_file"
         elif routing_data.get("is_generate_email") and not is_guest:
             logger.info("[MODE_HUB] is_generate_email=True detected → routing to EMAIL mode")

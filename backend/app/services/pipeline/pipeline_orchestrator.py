@@ -249,7 +249,8 @@ async def _sequential_pipeline_generator(
         cleaned_history = []
         for msg in payload.messages:
             if hasattr(msg, "role") and msg.role == "assistant" and msg.content:
-                new_content = re.sub(r'<\|channel>thought.*?<channel\|>', '', msg.content, flags=re.DOTALL).strip()
+                new_content = re.sub(r'<\|channel>thought.*?<channel\|>', '', msg.content, flags=re.DOTALL)
+                new_content = re.sub(r'```websearch.*?```', '', new_content, flags=re.DOTALL).strip()
                 try:
                     cleaned_msg = msg.model_copy(update={'content': new_content})
                 except AttributeError:

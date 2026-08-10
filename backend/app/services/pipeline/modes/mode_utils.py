@@ -1,7 +1,7 @@
 import logging
 from typing import List, Dict, Any, Optional
 
-_CODING_KEYWORDS = ["import ", "export ", "const ", "async ", "await ", "function", "def ", "return ", "class ", "select ", "docker", "sql ", "query", "react", "python", "javascript", "coding", "usecontext", "usememo", "typescript", "golang", "kotlin", "flutter", "dart"]
+_CODING_KEYWORDS = ["import ", "export ", "const ", "async ", "await ", "function", "def ", "return ", "class ", "select ", "docker", "sql ", "query", "react", "python", "javascript", "coding", "koding", "usecontext", "usememo", "typescript", "golang", "kotlin", "flutter", "dart", "frontend", "backend", "jsx", "html", "css", "tailwind"]
 _GREETING_KEYWORDS = ["hai", "halo", "hello", "hi ", "apa kabar", "selamat pagi", "selamat siang", "selamat sore", "selamat malam", "assalamualaikum", "pagi", "siang", "malam", "thanks", "thank you", "terima kasih", "makasih", "ok", "oke", "siap", "tq", "nuhun", "suwun", "mantap", "sip"]
 _DOC_KEYWORDS = ["ketentuan", "peraturan", "skep", "sk direksi", "surat edaran", "regulasi", "kebijakan", "prosedur", "sop", "seragam", "cuti", "gaji", "tunjangan", "rekrutmen", "rekrut", "pegawai", "pindad", "aturan", "pasal", "syarat", "lembur", "pensiun", "promosi", "jabatan", "seleksi", "penerimaan"]
 
@@ -39,7 +39,7 @@ def detect_precheck(user_message: str, chat_mode: str, has_attachment: bool) -> 
         "buat", "buatkan", "buatin", "bikin", "bikinin", "analisa", "analisis", 
         "jelaskan", "jelasin", "tabel", "timeline", "jadwal", "lanjut", "lanjutkan", 
         "coba", "gas", "tolong", "perbaiki", "fix", "ubah", "ganti", "edit", 
-        "tampilkan", "ringkas", "rangkum"
+        "tampilkan", "ringkas", "rangkum", "terapkan"
     ]
     has_instruction = any(iv in msg_lower for iv in _INSTRUCTION_VERBS)
 
@@ -133,6 +133,71 @@ def build_rule_based_queries(user_message: str) -> List[str]:
 
     short = " ".join(msg.split()[:3])
     return [short, f"ketentuan {short}", f"regulasi {short}"]
+
+def build_clean_web_search_query(user_message: str) -> str:
+    """
+    Membersihkan pesan user dari kata-kata instruksi/basa-basi sebelum dikirim ke mesin pencarian.
+    Contoh: "coba carikan di pindad.com susunan direksinya yang terbaru"
+            → "pindad.com susunan direksi terbaru"
+    """
+    import re
+
+    msg = user_message.strip()
+
+    # Hapus frasa instruksi di awal kalimat (greedy dari kiri)
+    instruction_prefixes = [
+        r"^coba\s+carikan\s+",
+        r"^carikan\s+",
+        r"^tolong\s+cari(kan)?\s+",
+        r"^coba\s+cari(kan)?\s+",
+        r"^cari(kan)?\s+",
+        r"^coba\s+lihat\s+",
+        r"^coba\s+cek\s+",
+        r"^cek\s+",
+        r"^lihat(in)?\s+",
+        r"^tampil(kan)?\s+",
+        r"^tunjukkan\s+",
+        r"^beri\s+tahu\s+(aku|gue|saya)?\s*",
+        r"^beritahu\s+(aku|gue|saya)?\s*",
+        r"^kasih\s+tau\s+(aku|gue|saya)?\s*",
+    ]
+    for pattern in instruction_prefixes:
+        msg = re.sub(pattern, "", msg, flags=re.IGNORECASE).strip()
+
+    # Hapus frasa preposisi yang tidak bermakna di awal ("di", "dari", "ke", "di dalam", "di situs")
+    preposition_prefixes = [
+        r"^di\s+dalam\s+",
+        r"^di\s+situs\s+",
+        r"^di\s+website\s+",
+        r"^di\s+laman\s+",
+        r"^di\s+web\s+",
+        r"^di\s+halaman\s+",
+        r"^di\s+(?=\S)",   # "di pindad.com" → hapus "di "
+    ]
+    for pattern in preposition_prefixes:
+        msg = re.sub(pattern, "", msg, flags=re.IGNORECASE).strip()
+
+    # Hapus kata instruksi/basa-basi umum yang biasa muncul di tengah/akhir
+    filler_words = [
+        r"\btolong\b", r"\bmohon\b", r"\bya\b", r"\bdong\b", r"\bsih\b",
+        r"\bcuy\b", r"\bbro\b", r"\bgan\b", r"\bmin\b", r"\bboss\b",
+        r"\bboleh\s+tahu\b", r"\bboleh\b", r"\bsekarang\b",
+        r"\bmengenai\b", r"\bterkait\b", r"\btentang\b", r"\bsoal\b",
+        r"\byang\s+ada\s+di\b", r"\bada\s+di\b",
+        r"\binfomasi\b", r"\binformasi\b",
+    ]
+    for pattern in filler_words:
+        msg = re.sub(pattern, "", msg, flags=re.IGNORECASE).strip()
+
+    # Hapus spasi ganda yang tersisa
+    msg = re.sub(r"\s{2,}", " ", msg).strip()
+
+    # Jika setelah dibersihkan hasilnya kosong, kembalikan pesan asli
+    if not msg:
+        return user_message.strip()
+
+    return msg
+
 
 def select_call2_module(routing: Dict[str, Any], has_rag_context: bool) -> str:
     if has_rag_context:

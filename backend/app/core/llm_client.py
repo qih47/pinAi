@@ -99,7 +99,7 @@ async def warm_up_model(model_name: str, prompt: str = "keep alive") -> bool:
         "model": model_name,
         "messages": [{"role": "user", "content": prompt}],
         "stream": False,
-        "keep_alive": -1,
+        "keep_alive": 600,  # 10 menit
         "options": {"temperature": 0.1},
     }
     async with httpx.AsyncClient(timeout=httpx.Timeout(120.0, connect=10.0)) as client:
@@ -109,6 +109,41 @@ async def warm_up_model(model_name: str, prompt: str = "keep alive") -> bool:
         except Exception as e:
             logger.warning(f"⚠️ [LLM CLIENT] Warm up model {model_name} failed: {e}")
             return False
+
+
+async def _flush_kv_cache(model_name: str) -> None:
+    """
+    Flush KV Cache Ollama setelah inference selesai.
+    
+    Cara kerja: Mengirim request minimal ke Ollama dengan keep_alive refresh.
+    Ini memaksa Ollama untuk mereset context window dan membebaskan VRAM
+    yang dipakai KV cache dari prompt panjang (RAG, web context, dll)
+    tanpa harus unload model sepenuhnya.
+    """
+    try:
+        url = f"{settings.OLLAMA_BASE_URL}/api/chat"
+        # Kirim prompt minimal — Ollama akan reset KV cache dan start fresh
+        flush_payload = {
+            "model": model_name,
+            "messages": [{"role": "user", "content": " "}],
+            "stream": False,
+            "keep_alive": 600,  # Perpanjang keep-alive 10 menit dari sekarang
+            "options": {
+                "temperature": 0.1,
+                "num_predict": 1,   # Hanya generate 1 token — minimal
+                "num_ctx": 512,     # Context kecil untuk flush
+            },
+        }
+        async with httpx.AsyncClient(timeout=httpx.Timeout(30.0, connect=5.0)) as client:
+            resp = await client.post(url, json=flush_payload)
+            if resp.status_code == 200:
+                logger.info(f"♻️ [KV_CACHE] Flush berhasil untuk model '{model_name}' — VRAM context dibebaskan.")
+            else:
+                logger.warning(f"⚠️ [KV_CACHE] Flush response {resp.status_code} untuk model '{model_name}'")
+    except Exception as e:
+        # Jangan crash jika flush gagal — ini hanya optimasi
+        logger.warning(f"⚠️ [KV_CACHE] Flush gagal untuk model '{model_name}': {e}")
+
 
 
 _shared_client: Optional[httpx.AsyncClient] = None
@@ -168,7 +203,7 @@ async def stream_ollama_chat(
     request: Request,
     temperature: float = 1.0,
     session_uuid: Optional[str] = None,
-    keep_alive: int = -1,
+    keep_alive: int = 600,  # 10 menit — model tetap di VRAM tapi KV cache di-free setelah idle
     num_ctx: int = 4096,
     is_thinking: bool = False,
     **kwargs,
@@ -289,12 +324,19 @@ async def stream_ollama_chat(
                             ensure_ascii=False,
                         ) + "\n"
 
-                    if done:
-                        print("\n", flush=True)
-                        elapsed_time = (datetime.now() - inference_start_time).total_seconds()
-                        logger.debug(f"[LLM_CLIENT] Thoughts: {accumulated_thinking.strip() or 'None'}")
-                        logger.debug(f"[LLM_CLIENT] Response: {full_response.strip()}")
-                        logger.info(f"[LLM_CLIENT] Inference completed in {elapsed_time:.2f}s")
+                        if done:
+                            print("\n", flush=True)
+                            elapsed_time = (datetime.now() - inference_start_time).total_seconds()
+                            logger.debug(f"[LLM_CLIENT] Thoughts: {accumulated_thinking.strip() or 'None'}")
+                            logger.debug(f"[LLM_CLIENT] Response: {full_response.strip()}")
+                            logger.info(f"[LLM_CLIENT] Inference completed in {elapsed_time:.2f}s")
+
+                            # ── KV Cache Flush ────────────────────────────────────────────────
+                            # Setelah stream selesai, release KV cache besar dari VRAM
+                            # dengan mengirim request kosong ke Ollama.
+                            # Model tetap loaded (keep_alive masih aktif), tapi
+                            # context/KV cache dari prompt panjang ini di-free.
+                            asyncio.create_task(_flush_kv_cache(model_name))
 
                         if session_uuid and session_uuid != "GLOBAL_SESSION":
                             try:
@@ -357,7 +399,7 @@ async def generate_json_response(
     messages: List[Dict[str, str]],
     request: Optional[Request] = None,
     temperature: float = 0.3,
-    keep_alive: int = -1,
+    keep_alive: int = 600,  # 10 menit idle
     timeout: float = 60.0,
     num_ctx: int = 2048,
     num_predict: int = 2048,

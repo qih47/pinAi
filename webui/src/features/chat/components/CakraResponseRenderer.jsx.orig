@@ -17,9 +17,6 @@ const LazyChartViewer = lazy(() => import('./ChartViewer'));
 const LazyReactFlowViewer = lazy(() => import('./ReactFlowViewer'));
 const LazyDataGridViewer = lazy(() => import('./DataGridViewer'));
 const LazyMapViewer = lazy(() => import('./MapViewer'));
-const LazyWebSearchWidget = lazy(() => import('./WebSearchWidget'));
-
-const remarkPluginsList = [remarkGfm];
 
 const highlightText = (text, query) => {
     if (!query || typeof text !== 'string') return text;
@@ -53,8 +50,6 @@ const MarkdownTable = ({ children, darkMode, theme, searchQuery, language = 'id'
     const tableRef = React.useRef(null);
     const [copied, setCopied] = React.useState(false);
     const tGlobal = translations[language] || translations.id;
-    const latestProps = React.useRef({ darkMode, theme, searchQuery, isStreaming, language });
-    latestProps.current = { darkMode, theme, searchQuery, isStreaming, language };
 
     const handleCopy = () => {
         if (!tableRef.current) return;
@@ -67,14 +62,14 @@ const MarkdownTable = ({ children, darkMode, theme, searchQuery, language = 'id'
             window.getSelection().removeAllRanges();
             setCopied(true);
             setTimeout(() => setCopied(false), 2000);
-        } catch (err) {
+        } catch(err) {
             console.error("Gagal menyalin tabel:", err);
         }
     };
 
     return (
         <div className="relative group my-4 rounded-lg overflow-hidden border" style={{ borderColor: theme?.borderColor || '#e5e7eb' }}>
-            <button
+            <button 
                 onClick={handleCopy}
                 title={tGlobal.render.copyTable}
                 className={`absolute right-2 top-2 z-10 px-2.5 py-1.5 flex items-center gap-1.5 rounded-lg text-xs font-semibold backdrop-blur-sm transition-all opacity-0 group-hover:opacity-100 ${darkMode ? 'bg-slate-800/90 text-slate-200 hover:bg-slate-700 hover:text-white border border-slate-600 shadow-md' : 'bg-white/90 text-slate-600 hover:bg-slate-50 hover:text-slate-900 shadow-[0_2px_8px_rgba(0,0,0,0.08)] border border-slate-200'}`}
@@ -105,8 +100,6 @@ const MarkdownTable = ({ children, darkMode, theme, searchQuery, language = 'id'
 // =========================================================================
 const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkMode, theme, searchQuery = '', statusMessage, middleContent, language = 'id' }) => {
     const tGlobal = translations[language] || translations.id;
-    const latestProps = React.useRef({ darkMode, theme, searchQuery, isStreaming, language, rawContent });
-    latestProps.current = { darkMode, theme, searchQuery, isStreaming, language, rawContent };
     const thinkStartTag = "<think>";
     const thinkEndTag = "</think>";
 
@@ -121,91 +114,44 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
         final = final.replace(/\bmermaid\b/gi, (match, offset, string) => {
             const prevChars = string.slice(Math.max(0, offset - 3), offset);
             if (prevChars === '```') {
-                return match;
+                return match; 
             }
             return match[0] === 'M' ? 'Cakra AI Diagram' : 'cakra ai diagram';
-        });
-
-        // 🔧 Konversi simbol LaTeX inline ($\symbol$) ke karakter Unicode
-        // agar tidak tampil sebagai teks mentah di chat
-        const latexSymbolMap = {
-            '\\rightarrow': '→',
-            '\\leftarrow': '←',
-            '\\Rightarrow': '⇒',
-            '\\Leftarrow': '⇐',
-            '\\leftrightarrow': '↔',
-            '\\Leftrightarrow': '⇔',
-            '\\uparrow': '↑',
-            '\\downarrow': '↓',
-            '\\times': '×',
-            '\\div': '÷',
-            '\\pm': '±',
-            '\\geq': '≥',
-            '\\leq': '≤',
-            '\\neq': '≠',
-            '\\approx': '≈',
-            '\\infty': '∞',
-            '\\alpha': 'α',
-            '\\beta': 'β',
-            '\\gamma': 'γ',
-            '\\delta': 'δ',
-            '\\sum': '∑',
-            '\\prod': '∏',
-            '\\sqrt': '√',
-            '\\cdot': '·',
-        };
-        // Ganti $\symbol$ atau \symbol (tanpa dollar sign juga)
-        final = final.replace(/\$\\([a-zA-Z]+)\$/g, (_, sym) => {
-            return latexSymbolMap[`\\${sym}`] || `\\${sym}`;
-        });
-        // Ganti $\symbol$ dengan spasi (misal "$\rightarrow$ teks")
-        final = final.replace(/\$\\([a-zA-Z]+)\$\s*/g, (_, sym) => {
-            const unicode = latexSymbolMap[`\\${sym}`];
-            return unicode ? `${unicode} ` : `\\${sym} `;
         });
 
         return { thinkingBlock: thinking, finalResponseBlock: final };
     }, [rawContent, thinkingContent]);
 
-
     const markdownComponents = useMemo(() => ({
         // 1. PARAGRAF (Spasi yang proporsional)
         p({ children, ...props }) {
-            const { darkMode, theme, searchQuery, isStreaming, language } = latestProps.current;
             return <p style={{ marginTop: 0, marginBottom: '14px', fontSize: '15px', lineHeight: '1.75', whiteSpace: 'normal', color: darkMode ? '#f1f5f9' : '#334155' }} {...props}>{recursiveHighlight(children, searchQuery)}</p>;
         },
 
         // 2. HEADINGS (Mengembalikan ukuran judul yang ke-reset oleh Tailwind!)
         h1({ children, ...props }) {
-            const { darkMode, theme, searchQuery, isStreaming, language } = latestProps.current;
             return <h1 style={{ fontSize: '1.5rem', fontWeight: 700, marginTop: '24px', marginBottom: '12px', lineHeight: '1.3', color: darkMode ? '#f8fafc' : '#0f172a' }} {...props}>{recursiveHighlight(children, searchQuery)}</h1>;
         },
         h2({ children, ...props }) {
-            const { darkMode, theme, searchQuery, isStreaming, language } = latestProps.current;
             return <h2 style={{ fontSize: '1.25rem', fontWeight: 700, marginTop: '24px', marginBottom: '12px', lineHeight: '1.3', color: darkMode ? '#f8fafc' : '#0f172a' }} {...props}>{recursiveHighlight(children, searchQuery)}</h2>;
         },
         h3({ children, ...props }) {
-            const { darkMode, theme, searchQuery, isStreaming, language } = latestProps.current;
             return <h3 style={{ fontSize: '1.125rem', fontWeight: 600, marginTop: '20px', marginBottom: '8px', lineHeight: '1.4', color: darkMode ? '#f8fafc' : '#0f172a' }} {...props}>{recursiveHighlight(children, searchQuery)}</h3>;
         },
         h4({ children, ...props }) {
-            const { darkMode, theme, searchQuery, isStreaming, language } = latestProps.current;
             return <h4 style={{ fontSize: '1rem', fontWeight: 600, marginTop: '16px', marginBottom: '8px', lineHeight: '1.4', color: darkMode ? '#f8fafc' : '#0f172a' }} {...props}>{recursiveHighlight(children, searchQuery)}</h4>;
         },
 
         // 3. LISTS (Indentasi & Jarak Presisi)
         ol({ children, ...props }) {
-            const { darkMode, theme, searchQuery, isStreaming, language } = latestProps.current;
             // marginLeft menggeser seluruh blok angka agak ke kanan
             // paddingLeft memberi ruang aman biar angkanya gak kepotong
             return <ol style={{ marginLeft: '18px', paddingLeft: '12px', listStyleType: 'decimal', marginTop: '8px', marginBottom: '16px' }} {...props}>{recursiveHighlight(children, searchQuery)}</ol>;
         },
         ul({ children, ...props }) {
-            const { darkMode, theme, searchQuery, isStreaming, language } = latestProps.current;
             return <ul style={{ marginLeft: '18px', paddingLeft: '12px', listStyleType: 'disc', marginTop: '8px', marginBottom: '16px' }} {...props}>{recursiveHighlight(children, searchQuery)}</ul>;
         },
         li({ children, className, ...props }) {
-            const { darkMode, theme, searchQuery, isStreaming, language } = latestProps.current;
             // Deteksi jika ini adalah task list item (checklist) dari remark-gfm
             if (className === 'task-list-item') {
                 return (
@@ -220,26 +166,25 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
             return <li style={{ marginBottom: '12px', fontSize: '15px', lineHeight: '1.75', paddingLeft: '8px', color: darkMode ? '#f1f5f9' : '#334155' }} {...props}>{recursiveHighlight(children, searchQuery)}</li>;
         },
         input({ type, checked, disabled, ...props }) {
-            const { darkMode, theme, searchQuery, isStreaming, language } = latestProps.current;
             if (type === 'checkbox') {
                 return (
-                    <input
-                        type="checkbox"
+                    <input 
+                        type="checkbox" 
                         defaultChecked={checked}
                         className="w-[18px] h-[18px] text-indigo-600 bg-white border-gray-300 rounded cursor-pointer mr-3 align-middle focus:ring-indigo-500 transition-all dark:bg-gray-800 dark:border-gray-600 shadow-sm"
                         style={{ cursor: 'pointer' }}
                         onChange={(e) => {
-                            const el = e.target;
-                            const parentLi = el.closest('li');
-                            if (parentLi) {
-                                if (el.checked) {
-                                    parentLi.style.opacity = "0.6";
-                                    parentLi.style.textDecoration = "line-through";
-                                } else {
-                                    parentLi.style.opacity = "1";
-                                    parentLi.style.textDecoration = "none";
-                                }
-                            }
+                             const el = e.target;
+                             const parentLi = el.closest('li');
+                             if (parentLi) {
+                                 if (el.checked) {
+                                     parentLi.style.opacity = "0.6";
+                                     parentLi.style.textDecoration = "line-through";
+                                 } else {
+                                     parentLi.style.opacity = "1";
+                                     parentLi.style.textDecoration = "none";
+                                 }
+                             }
                         }}
                     />
                 );
@@ -249,11 +194,9 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
 
         // 4. TEKS BOLD & KUTIPAN (BLOCKQUOTE)
         strong({ children, ...props }) {
-            const { darkMode, theme, searchQuery, isStreaming, language } = latestProps.current;
             return <strong style={{ fontWeight: 700, color: darkMode ? '#f8fafc' : '#0f172a' }} {...props}>{recursiveHighlight(children, searchQuery)}</strong>;
         },
         blockquote({ children, node, ...props }) {
-            const { darkMode, theme, searchQuery, isStreaming, language } = latestProps.current;
             // Helper untuk nge-ekstrak raw text dari AST node buat ngecek tag konflik
             const getText = (n) => {
                 if (n.type === 'text') return n.value || '';
@@ -293,46 +236,19 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
 
         // 5. TABEL (Dengan Header Background & Copy to Clipboard)
         table({ children, ...props }) {
-            const { darkMode, theme, searchQuery, isStreaming, language } = latestProps.current;
             return <MarkdownTable children={children} darkMode={darkMode} theme={theme} searchQuery={searchQuery} language={language} {...props} />;
         },
         thead({ children, ...props }) {
-            const { darkMode, searchQuery } = latestProps.current;
             return <thead style={{ background: darkMode ? '#334155' : '#f8fafc' }} {...props}>{recursiveHighlight(children, searchQuery)}</thead>;
         },
         th({ children, ...props }) {
-            const { darkMode, theme, searchQuery, isStreaming, language } = latestProps.current;
             return <th style={{ padding: '10px 14px', border: `1px solid ${theme?.borderColor || '#e5e7eb'}`, textAlign: 'left', fontWeight: 600, color: darkMode ? '#f8fafc' : '#0f172a' }} {...props}>{recursiveHighlight(children, searchQuery)}</th>;
         },
         td({ children, ...props }) {
-            const { darkMode, theme, searchQuery, isStreaming, language } = latestProps.current;
             return <td style={{ padding: '10px 14px', border: `1px solid ${theme?.borderColor || '#e5e7eb'}` }} {...props}>{recursiveHighlight(children, searchQuery)}</td>;
         },
         span({ children, ...props }) {
-            const { searchQuery } = latestProps.current;
             return <span {...props}>{recursiveHighlight(children, searchQuery)}</span>;
-        },
-
-        // 5.5. TAUTAN / LINKS (Elegan & Buka di tab baru)
-        a({ children, href, ...props }) {
-            const { darkMode, searchQuery } = latestProps.current;
-            return (
-                <a
-                    href={href}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className={`inline-flex items-center gap-1 font-medium transition-all duration-200 
-                ${darkMode
-                            ? 'text-indigo-300 hover:text-indigo-200 bg-indigo-500/10 hover:bg-indigo-500/20 px-1 rounded-sm'
-                            : 'text-indigo-600 hover:text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-1 rounded-sm'}`}
-                    {...props}
-                >
-                    {recursiveHighlight(children, searchQuery)}
-                    <svg className="w-3 h-3 opacity-70" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                    </svg>
-                </a>
-            );
         },
 
         // Override pre supaya komponen custom (SyntaxHighlighter & MermaidViewer) nggak dibungkus tag <pre> bawaan yang merusak flexbox layout
@@ -342,7 +258,6 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
 
         // 6. BLOK KODE (Tetap seperti milik lu aslinya, super aman)
         code({ node, inline, className, children, ...props }) {
-            const { darkMode, theme, searchQuery, isStreaming, language } = latestProps.current;
             const match = /language-(\w+)/.exec(className || '');
             const cleanCode = String(children).replace(/\n$/, '');
 
@@ -357,7 +272,7 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
             if (!inline && match && match[1] === 'gantt') {
                 const trimmedCode = cleanCode.trim();
                 const isJson = trimmedCode.startsWith('[');
-
+                
                 if (!isJson) {
                     // LLM terkadang salah me-return sintaks Mermaid di blok markdown bernama gantt.
                     // Alihkan ke MermaidViewer agar tidak rusak/hilang.
@@ -374,25 +289,7 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
 
                 return (
                     <Suspense fallback={<div className="animate-pulse p-8 border border-dashed rounded-xl text-sm text-center font-medium my-4">Memuat Gantt Chart...</div>}>
-                        <LazyGanttViewer dataStr={cleanCode} darkMode={darkMode} language={language} />
-                    </Suspense>
-                );
-            }
-
-            if (!inline && match && match[1] === 'websearch') {
-                let searchData = [];
-                try {
-                    searchData = JSON.parse(cleanCode);
-                } catch (e) {
-                    searchData = [];
-                }
-                const { rawContent, isStreaming } = latestProps.current;
-                const afterSearchBlock = rawContent ? rawContent.split('```websearch')[1]?.split('```')[1] : null;
-                const hasStartedResponding = afterSearchBlock ? afterSearchBlock.trim().length > 0 : false;
-
-                return (
-                    <Suspense fallback={<div className="animate-pulse p-4 border border-[#2d2d2d] bg-[#1e1e1e] rounded-lg text-sm text-gray-400 font-medium my-3">Memuat hasil pencarian...</div>}>
-                        <LazyWebSearchWidget searchData={searchData} isStreaming={isStreaming} hasStartedResponding={hasStartedResponding} />
+                        <LazyGanttViewer chartCode={cleanCode} darkMode={darkMode} isStreaming={isStreaming} language={language} />
                     </Suspense>
                 );
             }
@@ -470,7 +367,7 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
                 </code>
             );
         }
-    }), []);
+    }), [darkMode, theme, searchQuery, isStreaming]);
 
     // 🛠️ FIX AMAN: guard render kosong dipindah ke bawah useMemo agar
     // hooks tidak dipanggil secara kondisional (Rules of Hooks)
@@ -507,7 +404,7 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
                         <ReactMarkdown
                             children={sanitizedResponseBlock}
                             components={markdownComponents}
-                            remarkPlugins={remarkPluginsList}
+                            remarkPlugins={[remarkGfm]}
                         />
                         <ChatActionWidgets rawContent={finalResponseBlock} />
                     </div>

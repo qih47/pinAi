@@ -5,7 +5,7 @@ Call 1 Router — Intent Classifier & Query Generator
 Deterministic JSON routing dengan 12 parameter kontrol.
 Karakteristik: temp=0.0, num_predict=200, num_ctx=4096, is_thinking=False
 
-Model: gemma4:12B
+Model: gemma4:31b (Single Model Architecture)
 """
 
 import re
@@ -138,7 +138,7 @@ async def execute_call1_routing(
             temperature=0.0,
             num_ctx=16384,
             num_predict=dynamic_predict,
-            timeout=30.0,
+            timeout=120.0,
         )
 
         import json
@@ -286,6 +286,11 @@ def _validate_and_normalize_routing(
     if precheck.get("is_generate_email") and not routing["is_generate_email"]:
         logger.warning("[CALL1] Precheck override: is_generate_email forced to True")
         routing["is_generate_email"] = True
+
+    if precheck.get("has_url_context"):
+        logger.warning("[CALL1] Precheck override: URL detected, forcing is_web_search to True and need_rag to False")
+        routing["is_web_search"] = True
+        routing["need_rag"] = False
 
     if routing["need_rag"]:
         from backend.app.services.pipeline.modes.mode_utils import build_rule_based_queries

@@ -524,7 +524,7 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
         <div style={{ ...styles.assistantRow, animation: 'fadeInUp 0.4s ease-out forwards' }}>
             <div style={styles.assistantMessageWrapper}>
                 <div style={{ ...styles.assistantHeader, display: 'flex', alignItems: 'center' }}>
-                    <div 
+                    <div
                         style={{ ...styles.avatarWrap, position: 'relative' }}
                         onMouseEnter={() => setIsAvatarHovered(true)}
                         onMouseLeave={() => setIsAvatarHovered(false)}

@@ -197,8 +197,8 @@ export default function ChatArea({
               }}
               alignToBottom={true}
               followOutput={(isAtBottom) => {
-                if (isStreamingText && isAtBottom) return 'auto';
-                return isAtBottom;
+                if (isStreamingText && isAtBottom) return 'smooth';
+                return isAtBottom ? 'smooth' : false;
               }}
               rangeChanged={(range) => {
                 setVisibleRange(range);
