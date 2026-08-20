@@ -3,6 +3,7 @@ import {
   BarChart, Bar, LineChart, Line, PieChart, Pie, AreaChart, Area,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell
 } from 'recharts';
+import { createPortal } from 'react-dom';
 import { translations } from '../../../utils/translations';
 
 const DEFAULT_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316'];
@@ -137,7 +138,7 @@ export default function ChartViewer({ chartCode, darkMode, isStreaming, language
     }
   };
 
-  return (
+  const content = (
     <div className={
       isExpanded 
         ? `fixed inset-0 z-[9999] p-4 md:p-10 flex flex-col ${darkMode ? 'bg-[#121212]/95 backdrop-blur-sm' : 'bg-gray-100/95 backdrop-blur-sm'}`
@@ -169,4 +170,6 @@ export default function ChartViewer({ chartCode, darkMode, isStreaming, language
       </div>
     </div>
   );
+
+  return isExpanded ? createPortal(content, document.body) : content;
 }

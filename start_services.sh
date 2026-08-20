@@ -3,17 +3,19 @@
 # CAKRA AI - Service Launcher (Microservices Mode)
 # ============================================================
 # Usage:
-#   ./start_services.sh           → start all services
-#   ./start_services.sh gateway   → start only gateway
-#   ./start_services.sh chat      → start only chat service
-#   ./start_services.sh analytics → start only analytics service
-#   ./start_services.sh auth      → start only auth service
-#   ./start_services.sh stop      → kill all services
+#   ./start_services.sh              → start all services + frontend
+#   ./start_services.sh gateway      → start only gateway
+#   ./start_services.sh chat         → start only chat service
+#   ./start_services.sh analytics    → start only analytics service
+#   ./start_services.sh auth         → start only auth service
+#   ./start_services.sh frontend     → start only frontend (chat + analytics)
+#   ./start_services.sh stop         → kill all services + frontend
 # ============================================================
 
 VENV_PYTHON="${VENV_PYTHON:-$(dirname "$0")/rag_env/bin/python}"
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 LOG_DIR="$ROOT/logs/services"
+FRONTEND_DIR="$ROOT/webui"
 mkdir -p "$LOG_DIR"
 
 start_service() {
@@ -26,6 +28,14 @@ start_service() {
     echo "   PID: $(cat "$LOG_DIR/${name}.pid") | Log: $log"
 }
 
+start_frontend() {
+    local log="$LOG_DIR/frontend.log"
+    echo "🚀 Starting Frontend (Chat + Analytics)..."
+    nohup bash "$FRONTEND_DIR/start_frontends.sh" > "$log" 2>&1 &
+    echo $! > "$LOG_DIR/frontend.pid"
+    echo "   PID: $(cat "$LOG_DIR/frontend.pid") | Log: $log"
+}
+
 stop_services() {
     echo "🛑 Stopping all CAKRA services..."
     for pidfile in "$LOG_DIR"/*.pid; do
@@ -33,7 +43,7 @@ stop_services() {
             pid=$(cat "$pidfile")
             name=$(basename "$pidfile" .pid)
             if kill -0 "$pid" 2>/dev/null; then
-                kill "$pid"
+                kill -9 "$pid" 2>/dev/null
                 echo "   ✅ Stopped $name (PID $pid)"
             else
                 echo "   ⚠️  $name (PID $pid) was not running"
@@ -41,6 +51,13 @@ stop_services() {
             rm -f "$pidfile"
         fi
     done
+
+    # Fallback agresif: pastikan tidak ada proses zombie yang masih nyangkut di port
+    echo "🧹 Membersihkan port backend (8000-8003) & frontend (5173-5176)..."
+    fuser -k -9 8000/tcp 8001/tcp 8002/tcp 8003/tcp 2>/dev/null || true
+    fuser -k -9 5173/tcp 5174/tcp 5175/tcp 5176/tcp 2>/dev/null || true
+    pkill -9 -f "vite" 2>/dev/null || true
+    sleep 1
 }
 
 case "${1:-all}" in
@@ -59,6 +76,9 @@ case "${1:-all}" in
     auth)
         start_service "auth_service" "run_auth_service.py"
         ;;
+    frontend)
+        start_frontend
+        ;;
     all)
         echo "============================================================"
         echo "  CAKRA AI - Starting all microservices"
@@ -70,20 +90,22 @@ case "${1:-all}" in
         start_service "chat_service"      "run_chat_service.py"
         sleep 3
         start_service "gateway"           "run_gateway.py"
+        sleep 2
+        start_frontend
         echo ""
         echo "============================================================"
-        echo "  ✅ All services launched!"
+        echo "  ✅ All services + frontend launched!"
         echo "  API Gateway     → http://localhost:8000"
         echo "  Chat Service    → http://localhost:8001"
         echo "  Analytics Svc   → http://localhost:8002"
         echo "  Auth Service    → http://localhost:8003"
-        echo "  FE Chat         → http://localhost:5173  (npm run dev:chat)"
-        echo "  FE Analytics    → http://localhost:5174  (npm run dev:analytics)"
+        echo "  FE Chat         → http://localhost:5173"
+        echo "  FE Analytics    → http://localhost:5174"
         echo "============================================================"
         ;;
     *)
         echo "Unknown command: $1"
-        echo "Usage: $0 [all|stop|gateway|chat|analytics|auth]"
+        echo "Usage: $0 [all|stop|gateway|chat|analytics|auth|frontend]"
         exit 1
         ;;
 esac

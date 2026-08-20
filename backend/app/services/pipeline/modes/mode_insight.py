@@ -122,7 +122,7 @@ class ModeInsight:
             messages=messages,
             request=request,
             temperature=0.3,
-            num_predict=8192
+            num_predict=-1
         ):
             try:
                 data = json.loads(chunk_str)

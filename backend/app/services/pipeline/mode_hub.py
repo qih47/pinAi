@@ -69,22 +69,44 @@ class ModeHub:
 
         # ── Fetch Long-Term Memory (ai_document_chunks) ────────────────────────
         session_chunks_text = ""
+        visited_urls = []
         if session_uuid:
             from backend.app.services.chat.chat_history_service import chat_history_service
-            chunks = await chat_history_service.get_session_document_chunks(session_uuid)
-            if chunks:
-                session_chunks_text = "\n\n[KNOWLEDGE DARI FILE SEBELUMNYA DI SESI INI]\n" + "\n---\n".join(chunks)
+            chunks_with_meta = await chat_history_service.get_session_document_chunks_with_meta(session_uuid)
+            if chunks_with_meta:
+                text_chunks = [c["content"] for c in chunks_with_meta]
+                session_chunks_text = "\n\n[KNOWLEDGE DARI FILE SEBELUMNYA DI SESI INI]\n" + "\n---\n".join(text_chunks)
+                # Ekstrak domain URL yang pernah dikunjungi untuk multi-turn URL awareness
+                for c in chunks_with_meta:
+                    meta = c.get("metadata", {})
+                    if meta.get("source") == "url_read":
+                        visited_urls.extend(meta.get("urls", []))
+                if visited_urls:
+                    visited_urls = list(set(visited_urls))  # deduplicate
+                    logger.info(f"[MODE_HUB] Loaded {len(visited_urls)} previously visited URL(s) from session memory")
         precheck["_session_chunks_text"] = session_chunks_text
         precheck["_session_uuid"] = session_uuid
+        precheck["_visited_urls"] = visited_urls
 
         # ── Step 1.5: Intercept URLs (Web Reader) — deteksi dulu, fetch nanti paralel ─────
         urls_in_text = []
         try:
             from backend.app.services.web_tools.url_reader import extract_urls_from_text
-            urls_in_text = extract_urls_from_text(user_message)
-            if urls_in_text:
-                logger.info(f"[MODE_HUB] Detected {len(urls_in_text)} URLs in user message. Will fetch in parallel with Call1.")
-                precheck["has_url_context"] = True  # tandai dulu agar routing tahu
+            detected_urls = extract_urls_from_text(user_message)
+            if detected_urls:
+                # Skip URL yang domain-nya sudah ada di session memory agar tidak double-inject context
+                already_visited = set(visited_urls)
+                urls_in_text = [u for u in detected_urls if u not in already_visited]
+                skipped = [u for u in detected_urls if u in already_visited]
+                if skipped:
+                    logger.info(f"[MODE_HUB] Skipping {len(skipped)} already-visited URL(s): {skipped}")
+                if urls_in_text:
+                    logger.info(f"[MODE_HUB] Detected {len(urls_in_text)} new URL(s). Will fetch in parallel with Call1.")
+                    precheck["has_url_context"] = True  # tandai dulu agar routing tahu
+                elif skipped:
+                    # URL sudah pernah dikunjungi dan kontennya ada di session memory
+                    precheck["has_url_context"] = True  # masih tandai agar routing paham ada URL context
+                    logger.info("[MODE_HUB] All URLs already in session memory — using cached content, no re-fetch needed.")
         except ImportError:
             pass
 
@@ -199,6 +221,10 @@ class ModeHub:
                     tool_input="File Attachment Found",
                     observation=json.dumps(obs_dict)
                 ))
+            if is_first_chat:
+                title = f"Analisis {attachments[0].get('file_name', 'Lampiran')[:20]}" if attachments else "Analisis Dokumen"
+                yield format_sse(session_title=title, event_type=SSEEventType.TITLE_UPDATE)
+
             handler = self.mode_handlers["attachment"]
             async for chunk in handler.execute(
                 user_message=user_message,
@@ -279,6 +305,21 @@ class ModeHub:
         if url_contexts and urls_in_text:
             precheck["_session_chunks_text"] = precheck.get("_session_chunks_text", "") + f"\n\n[KONTEN WEB DARI URL DI CHAT]\n{url_contexts}"
             logger.info(f"[MODE_HUB] URL context injected ({len(url_contexts)} chars) — fetched in parallel with Call1")
+            # Simpan konten URL ke session memory (ai_document_chunks) agar tersedia di turn berikutnya
+            if session_uuid and current_user_npp:
+                from backend.app.services.chat.chat_history_service import chat_history_service
+                asyncio.create_task(chat_history_service.save_document_chunk(
+                    session_uuid=session_uuid,
+                    npp=current_user_npp,
+                    content=url_contexts[:30000],
+                    file_id=None,
+                    chunk_metadata={
+                        "source": "url_read",
+                        "urls": urls_in_text,
+                        "fetched_at": datetime.now().isoformat()
+                    }
+                ))
+                logger.info(f"[MODE_HUB] URL content scheduled for save to session memory (urls: {urls_in_text})")
 
         call1_ms = (datetime.now() - call1_start_t).total_seconds() * 1000
         logger.info(f"⚡ [TIMING_BENCHMARK] Call1 + URL Fetch (parallel) selesai dalam {call1_ms:.1f}ms ({call1_ms/1000:.2f}s)")
@@ -400,12 +441,16 @@ class ModeHub:
         # ── Override Router if URL Context Exists ─────────────────────────────────
         if precheck.get("has_url_context"):
             precheck["is_chitchat"] = False
-            # FORCE WEB SEARCH: Jika ada URL/domain terdeteksi di pesan user,
-            # PAKSA routing ke Web Search dan matikan RAG secara absolut
-            # agar tidak bentrok antara data internal vs data web
-            precheck["is_web_search"] = True
             precheck["need_rag"] = False
-            logger.info("[MODE_HUB] URL context detected → forcing is_web_search=True, need_rag=False")
+            # Jika URL berhasil di-fetch (url_contexts ada isinya), TIDAK perlu web search lagi
+            # — konten sudah diinject ke _session_chunks_text dan akan tersedia untuk LLM
+            # Hanya fallback ke web search jika URL fetch gagal/kosong
+            if url_contexts and url_contexts.strip():
+                precheck["is_web_search"] = False
+                logger.info("[MODE_HUB] URL content fetched successfully → skipping web search, using URL content directly")
+            else:
+                precheck["is_web_search"] = True
+                logger.info("[MODE_HUB] URL fetch failed/empty → falling back to web search")
 
         # ── 🌍 Geocoding Tool Calling (Nominatim) ──────────────────────────────────
         if routing_data.get("is_map_query"):
@@ -446,8 +491,14 @@ class ModeHub:
                 else:
                     history_dicts.append({"role": "user", "content": user_message})
 
+            # Gunakan query bersih dari Call 1 (queries[0]) alih-alih user_message mentah
+            # Ini menghindari query kotor seperti "saya informasi crypto..." dikirim ke Google
+            web_search_queries = precheck.get("queries", [])
+            web_search_query = web_search_queries[0] if web_search_queries else user_message
+            logger.info(f"[MODE_HUB] Web search query: '{web_search_query}' (from {'Call1 queries' if web_search_queries else 'user_message fallback'})")
+
             async for chunk in handle_web_search(
-                query=user_message,
+                query=web_search_query,
                 messages=history_dicts,
                 request=request,
                 employee_name=employee_name,
@@ -469,7 +520,9 @@ class ModeHub:
             logger.info("[MODE_HUB] is_generate_email=True detected → routing to EMAIL mode")
             mode = "email"
         elif mode == "auto":
-            need_rag = routing_data.get("need_rag", False)
+            # Gunakan precheck (bukan routing_data) agar override URL context (need_rag=False)
+            # tidak tertimpa oleh nilai raw dari routing_data
+            need_rag = precheck.get("need_rag", False)
             if need_rag:
                 mode = "documents"
             else:

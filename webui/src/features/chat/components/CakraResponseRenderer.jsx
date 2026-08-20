@@ -53,8 +53,6 @@ const MarkdownTable = ({ children, darkMode, theme, searchQuery, language = 'id'
     const tableRef = React.useRef(null);
     const [copied, setCopied] = React.useState(false);
     const tGlobal = translations[language] || translations.id;
-    const latestProps = React.useRef({ darkMode, theme, searchQuery, isStreaming, language });
-    latestProps.current = { darkMode, theme, searchQuery, isStreaming, language };
 
     const handleCopy = () => {
         if (!tableRef.current) return;
@@ -163,6 +161,13 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
             const unicode = latexSymbolMap[`\\${sym}`];
             return unicode ? `${unicode} ` : `\\${sym} `;
         });
+        // 🔧 Bersihkan block math LaTeX $$ ... $$ yang tidak ter-render dengan baik
+        final = final.replace(/\$\$([\s\S]*?)\$\$/g, (_, content) => {
+            return content.trim();
+        });
+
+        // 🔧 Bersihkan \text{...} dari LaTeX
+        final = final.replace(/\\text\{([^}]+)\}/g, '$1');
 
         return { thinkingBlock: thinking, finalResponseBlock: final };
     }, [rawContent, thinkingContent]);
@@ -374,7 +379,7 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
 
                 return (
                     <Suspense fallback={<div className="animate-pulse p-8 border border-dashed rounded-xl text-sm text-center font-medium my-4">Memuat Gantt Chart...</div>}>
-                        <LazyGanttViewer dataStr={cleanCode} darkMode={darkMode} language={language} />
+                        <LazyGanttViewer chartCode={cleanCode} darkMode={darkMode} isStreaming={isStreaming} />
                     </Suspense>
                 );
             }

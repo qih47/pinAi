@@ -24,9 +24,11 @@ def _build_ollama_request_payload(
         "temperature": temperature,
         "top_p": 0.95,
         "top_k": 64,
-        "num_predict": num_predict,
         "num_ctx": num_ctx,
     }
+    # Jika num_predict > 0, set limit. Jika -1 (unlimited), biarkan Ollama menentukan secara default (tanpa limit)
+    if num_predict > 0:
+        options["num_predict"] = num_predict
     if stop_sequences:
         options["stop"] = stop_sequences
 

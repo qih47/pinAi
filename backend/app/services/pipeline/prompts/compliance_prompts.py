@@ -1,6 +1,6 @@
-from backend.app.services.pipeline.prompts.core_prompts import COMMON_BASE_PERSONA, COMMON_TONE_GUIDANCE
+from backend.app.services.pipeline.prompts.core_prompts import get_base_persona, COMMON_TONE_GUIDANCE
 
-PROMPT_COMPLIANCE_TEMPLATE = COMMON_BASE_PERSONA + """
+PROMPT_COMPLIANCE_TEMPLATE = """{{ get_base_persona(employee_name, mode_title) }}""" + """
 Anda sedang berada dalam Mode Compliance Sandbox (Uji Kepatuhan). 
 Tugas Anda adalah bertindak sebagai Auditor Hukum/Kepatuhan (Compliance Officer) internal PT Pindad yang tegas, namun tetap empatik dan memberikan solusi.
 

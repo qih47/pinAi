@@ -65,7 +65,8 @@ async def _warmup_and_pin_models():
     import httpx
 
     models_to_pin = [
-        (settings.MODEL_PERSONA, "Gemma4 Agentic Engine"),
+        (settings.MODEL_PERSONA, "Gemma4 Agentic Engine (Call 2)"),
+        (getattr(settings, "MODEL_ROUTER", settings.MODEL_PERSONA), "Router (Call 1)"),
         (settings.MODEL_EMBEDDING, "Embedding"),
     ]
 

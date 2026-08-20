@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import * as maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { MapPin, Globe } from 'lucide-react';
@@ -123,7 +124,7 @@ export default function MapViewer({ chartCode, darkMode }) {
     return () => {
       map.remove();
     };
-  }, [parsedData, mapStyleObj]);
+  }, [parsedData, mapStyleObj, isExpanded]);
 
   // Auto resize map ketika mode fullscreen toggle
   useEffect(() => {
@@ -149,7 +150,7 @@ export default function MapViewer({ chartCode, darkMode }) {
   }
 
 
-  return (
+  const content = (
     <div className={
       isExpanded 
         ? `fixed inset-0 z-[9999] p-4 md:p-10 flex flex-col ${darkMode ? 'bg-[#121212]/95 backdrop-blur-sm' : 'bg-gray-100/95 backdrop-blur-sm'}`
@@ -185,4 +186,6 @@ export default function MapViewer({ chartCode, darkMode }) {
       </div>
     </div>
   );
+
+  return isExpanded ? createPortal(content, document.body) : content;
 }

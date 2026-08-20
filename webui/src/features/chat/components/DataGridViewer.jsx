@@ -1,4 +1,5 @@
 import React, { useMemo, useState, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { translations } from '../../../utils/translations';
 import ViewerHeader from './ViewerHeader';
 import { TableProperties } from 'lucide-react';
@@ -88,7 +89,7 @@ export default function DataGridViewer({ chartCode, darkMode, isStreaming, langu
     );
   }
 
-  return (
+  const content = (
     <div className={
       isExpanded 
         ? `fixed inset-0 z-[9999] p-4 md:p-10 flex flex-col ${darkMode ? 'bg-[#121212]/95 backdrop-blur-sm' : 'bg-gray-100/95 backdrop-blur-sm'}`

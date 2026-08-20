@@ -5,10 +5,10 @@ logger = logging.getLogger("CAKRA_PROMPTS")
 
 _RAG_CONTEXT_MAX_CHARS = 60_000
 
-from .core_prompts import COMMON_BASE_PERSONA, COMMON_TONE_GUIDANCE
+from .core_prompts import get_base_persona, COMMON_TONE_GUIDANCE
 from backend.app.services.pipeline.prompt_manager import prompt_manager
 
-PROMPT_RAG_TEMPLATE = COMMON_BASE_PERSONA + """
+PROMPT_RAG_TEMPLATE = """{{ get_base_persona(employee_name, mode_title) }}""" + """
 {% if is_thinking %}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 🚨 CRITICAL SYSTEM ENFORCEMENT: CRITICAL THINKING LANGUAGE
@@ -133,7 +133,7 @@ ATURAN MUTLAK PENEMPATAN JSON:
 4. Tuliskan jawaban aslimu HANYA SETELAH tag penutup `</sources_json>`.
 """
 
-PROMPT_ANALYTIC_TEMPLATE = COMMON_BASE_PERSONA + """
+PROMPT_ANALYTIC_TEMPLATE = """{{ get_base_persona(employee_name, mode_title) }}""" + """
 {% if is_thinking %}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 🧠 SYSTEM ENFORCEMENT: MANDATORY REASONING (THINKING MODE: ON)
@@ -173,7 +173,7 @@ TUGAS UTAMA:
 • ICON/CALLOUT RULE: Jika memberi catatan khusus menggunakan icon (contoh: 💡, 📌, ⚠️), WAJIB gunakan format Blockquote Markdown (awali baris dengan tanda > ).
 """
 
-PROMPT_SELF_CORRECTION_TEMPLATE = COMMON_BASE_PERSONA + """
+PROMPT_SELF_CORRECTION_TEMPLATE = """{{ get_base_persona(employee_name, mode_title) }}""" + """
 {% if is_thinking %}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 🧠 SYSTEM ENFORCEMENT: MANDATORY REASONING (THINKING MODE: ON)
@@ -189,7 +189,7 @@ Langsung perbaiki jawaban sebelumnya. Jika gaya bahasa user santai, gunakan humo
 {% endif %}
 """ + COMMON_TONE_GUIDANCE
 
-PROMPT_FOCUS_TEMPLATE = COMMON_BASE_PERSONA + """
+PROMPT_FOCUS_TEMPLATE = """{{ get_base_persona(employee_name, mode_title) }}""" + """
 Anda sedang berada dalam Mode Fokus untuk menanyai dan menganalisis SATU dokumen spesifik secara mendalam.
 
 Berikut adalah ekstrak visual dari dokumen '{{ filename }}' untuk Halaman: {{ selected_pages_str }}

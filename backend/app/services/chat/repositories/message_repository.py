@@ -345,6 +345,35 @@ class MessageRepository:
                 logger.error(f"[CHAT_HISTORY_ERROR] Failed to get session chunks: {str(e)}")
                 return []
 
+    async def get_session_document_chunks_with_meta(self, session_uuid: str) -> List[dict]:
+        """Mengambil semua chunk beserta metadata-nya. Digunakan untuk ekstrak visited_urls."""
+        async with get_db() as conn:
+            try:
+                session_pk = await self._resolve_session_pk(conn, session_uuid)
+                if session_pk is None:
+                    return []
+                rows = await conn.fetch(
+                    """
+                    SELECT content, metadata FROM ai_document_chunks
+                    WHERE session_id = $1
+                    ORDER BY created_at ASC;
+                    """,
+                    session_pk
+                )
+                result = []
+                for row in rows:
+                    meta = {}
+                    if row["metadata"]:
+                        try:
+                            meta = json.loads(row["metadata"])
+                        except Exception:
+                            pass
+                    result.append({"content": row["content"], "metadata": meta})
+                return result
+            except Exception as e:
+                logger.error(f"[CHAT_HISTORY_ERROR] Failed to get session chunks with meta: {str(e)}")
+                return []
+
     
     async def save_dialogue_corpus(
         self,

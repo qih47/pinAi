@@ -37,7 +37,8 @@ class Settings(BaseSettings):
     ZIMBRA_EMAIL: Optional[str] = None
     ZIMBRA_PASSWORD: Optional[str] = None
 
-    MODEL_PERSONA: str = "gemma4:31b"       # Satu-satunya LLM — Gemma4 Agentic Engine
+    MODEL_PERSONA: str = "gemma4:31b"       # Gemma4 Agentic Engine
+    MODEL_ROUTER: str = "gemma4:e4b"       # Gemma4 Agentic Engine
     MODEL_VISION: str = "minicpm-v:latest"   # Vision/OCR untuk attachment PDF & image
     MODEL_EMBEDDING: str = "mxbai-embed-large:latest"  # Embedding untuk RAG
 
@@ -90,10 +91,10 @@ else:
 
 print("------------------------------------------------------------------", flush=True)
 print("📊 [ACTIVE RUNTIME OLLAMA MODELS]:", flush=True)
-print(f"   • GEMMA4 AGENTIC  : {settings.MODEL_PERSONA}", flush=True)
-print(f"   • VISION (MiniCPM): {settings.MODEL_VISION}", flush=True)
-print(f"   • EMBEDDING       : {settings.MODEL_EMBEDDING}", flush=True)
-print("   (Layer 0 Gateway & Layer 1 Router deprecated — unified Gemma4 engine)", flush=True)
+print(f"   • GEMMA4 PERSONA (Call 2): {settings.MODEL_PERSONA}", flush=True)
+print(f"   • ROUTER (Call 1)        : {getattr(settings, 'MODEL_ROUTER', settings.MODEL_PERSONA)}", flush=True)
+print(f"   • VISION (MiniCPM)       : {settings.MODEL_VISION}", flush=True)
+print(f"   • EMBEDDING              : {settings.MODEL_EMBEDDING}", flush=True)
 print("------------------------------------------------------------------", flush=True)
 print(f"🔌 [CONFIG] Database User: {settings.DB_USER} | Target Database: {settings.DB_DATABASE}", flush=True)
 print("==================================================================", flush=True)

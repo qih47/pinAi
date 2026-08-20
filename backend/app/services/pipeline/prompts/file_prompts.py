@@ -5,7 +5,7 @@ logger = logging.getLogger("CAKRA_PROMPTS")
 
 _RAG_CONTEXT_MAX_CHARS = 60_000
 
-from .core_prompts import COMMON_BASE_PERSONA, COMMON_TONE_GUIDANCE
+from .core_prompts import get_base_persona, COMMON_TONE_GUIDANCE
 from backend.app.services.pipeline.prompt_manager import prompt_manager
 
 PROMPT_FILE_GENERATE_CALL1_TEMPLATE = """Kamu adalah CAKRA AI, asisten internal PT Pindad dalam mode pembuatan file.

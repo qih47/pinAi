@@ -1,6 +1,7 @@
 import React, { useMemo, useCallback, useState, useRef, Component } from 'react';
 import { ReactFlow, MiniMap, Controls, Background, useNodesState, useEdgesState, addEdge, BaseEdge, EdgeLabelRenderer, getSmoothStepPath, useStore, ReactFlowProvider } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
+import { createPortal } from 'react-dom';
 import { translations } from '../../../utils/translations';
 import ViewerHeader from './ViewerHeader';
 import { Share2 } from 'lucide-react';
@@ -141,7 +142,7 @@ export default function ReactFlowViewer({ chartCode, darkMode, isStreaming, lang
   }
 
 
-  return (
+  const content = (
     <div className={
       isExpanded 
         ? `fixed inset-0 z-[9999] p-4 md:p-10 flex flex-col ${darkMode ? 'bg-[#121212]/95 backdrop-blur-sm' : 'bg-gray-100/95 backdrop-blur-sm'}`
@@ -175,6 +176,8 @@ export default function ReactFlowViewer({ chartCode, darkMode, isStreaming, lang
       </div>
     </div>
   );
+
+  return isExpanded ? createPortal(content, document.body) : content;
 }
 
 // Pisahkan komponen Flow agar hooks useNodesState berfungsi baik

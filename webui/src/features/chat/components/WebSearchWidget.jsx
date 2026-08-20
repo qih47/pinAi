@@ -22,25 +22,9 @@ const WebSearchWidget = ({ searchData, isStreaming, hasStartedResponding }) => {
         ? searchData.query 
         : (results[0]?.title || "Penelusuran Web");
         
-    let displayQuery = originalQuery;
-    if (displayQuery && displayQuery !== "Penelusuran Web") {
-        // Hapus sapaan di awal
-        displayQuery = displayQuery.replace(/^(cuy|bro|bang|min|bos|boss|ngab|kak|halo|hai|oy|oi|eh|tolong)\b\s*[,.]?\s*/i, '');
-        // Hapus kata perintah
-        displayQuery = displayQuery.replace(/^(coba )?(tolong )?(cari tahu|carikan|cari)( tentang| terkait| info| informasi| siapa| apa| di mana| dimana| kapan| bagaimana| berapa)?\s+/i, '');
-        // Hapus sapaan setelah kata perintah (misal: "cari tahu cuy")
-        displayQuery = displayQuery.replace(/^(cuy|bro|bang|min|bos|boss|ngab|kak)\b\s*[,.]?\s*/i, '');
-        // Hapus kata tanya
-        displayQuery = displayQuery.replace(/^(siapa|apa|bagaimana|dimana|di mana|kapan|berapa)(kah)?\s+/i, '');
-        // Bersihkan karakter non-alfanumerik di awal dan tanda tanya/titik di akhir
-        displayQuery = displayQuery.replace(/^[^a-zA-Z0-9]+/g, '').replace(/[\?.]+$/g, '').trim();
-        
-        if (displayQuery) {
-            displayQuery = `mencari referensi terkait ${displayQuery.toLowerCase()}`;
-        } else {
-            displayQuery = `mencari referensi web`;
-        }
-    }
+    let displayQuery = originalQuery
+        ? `mencari referensi terkait ${originalQuery.toLowerCase()}`
+        : "mencari referensi web";
     
     return (
         <div className="my-4 w-full max-w-3xl font-sans">

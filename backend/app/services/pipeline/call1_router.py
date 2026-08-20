@@ -71,6 +71,34 @@ def extract_routing_signals_for_call1(user_content: str) -> str:
     return final_text
 
 
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# WEB QUERY SANITIZER
+# ═══════════════════════════════════════════════════════════════════════════════
+
+_WEB_QUERY_FILLER_PREFIXES = re.compile(
+    r"^(mencari(\s+referensi)?(\s+terkait)?|carikan(\s+(saya|aku|gue|gw))?(\s+informasi)?|"
+    r"cari(\s+(informasi|info|tahu|tahu))?|tolong(\s+carikan)?|informasi(\s+tentang)?|"
+    r"info(\s+tentang)?|data(\s+tentang)?|terkait|mengenai|tentang|referensi(\s+terkait)?|"
+    r"analisa(\s+tentang)?|jelaskan(\s+tentang)?)\s+",
+    re.IGNORECASE
+)
+
+def _sanitize_web_query(query: str) -> str:
+    """
+    Bersihkan prefix filler kata bahasa Indonesia dari web search query.
+    Contoh: "mencari referensi terkait jadwal film spiderman" → "jadwal film spiderman"
+    """
+    cleaned = query.strip()
+    # Ulangi hingga semua prefix filler terkikis (bisa berlapis)
+    for _ in range(5):
+        new_cleaned = _WEB_QUERY_FILLER_PREFIXES.sub("", cleaned).strip()
+        if new_cleaned == cleaned:
+            break
+        cleaned = new_cleaned
+    return cleaned or query.strip()
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # CALL 1 EXECUTION
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -101,7 +129,12 @@ async def execute_call1_routing(
     is_chitchat_msg = precheck.get("is_chitchat", False) or precheck.get("is_greeting", False)
     is_complex_task = precheck.get("is_coding", False) or precheck.get("is_generate_email", False) or precheck.get("has_attachment", False)
 
-    if not is_first_chat and (is_doc_mode or is_doc_query or is_chitchat_msg) and not is_complex_task and len(user_message.split()) <= 25:
+    # JANGAN bypass jika ada URL BARU yang sedang di-fetch di turn ini
+    # (ditandai oleh precheck["has_url_context"] = True dari URL detection step)
+    # _visited_urls dari turn SEBELUMNYA TIDAK memblokir fast-path — chitchat tetap boleh bypass!
+    has_new_url_context = precheck.get("has_url_context", False)
+
+    if not is_first_chat and (is_doc_mode or is_doc_query or is_chitchat_msg) and not is_complex_task and not has_new_url_context and len(user_message.split()) <= 25:
         logger.info("[CALL1] ⚡ Smart Fast-Path activated for document/chitchat query -> Bypassing LLM routing (0.001s)")
         return _build_fallback_routing(precheck)
 
@@ -123,23 +156,33 @@ async def execute_call1_routing(
         {"role": "user", "content": stripped_message},
     ]
 
-    # Alokasi num_predict dinamis untuk keluaran JSON routing (hemat waktu generate token)
-    dynamic_predict = 384
+    # Alokasi num_predict dinamis:
+    # - is_first_chat=True: perlu generate session_title (string ~10-30 token) → butuh 250 token
+    # - is_first_chat=False: hanya boolean fields → 150 token cukup
+    dynamic_predict = 250 if is_first_chat else 160
+
+    # Hitung num_ctx dinamis berbasis panjang prompt aktual (1 token ≈ 4 karakter)
+    # Memberi 512 token buffer untuk ruang generasi JSON.
+    # Cap MAKSIMAL 4096 agar tidak overflow GGML_SCHED_MAX_SPLIT_INPUTS pada model router ringan (e4b/9b)
+    prompt_chars = len(system_prompt) + len(stripped_message)
+    dynamic_ctx = min(4096, max(2048, (prompt_chars // 4) + 512))
 
     logger.info(
-        f"[CALL1] Executing routing | user_msg_len={len(user_message)} | stripped_len={len(stripped_message)} | dynamic_num_predict={dynamic_predict}"
+        f"[CALL1] Executing routing | user_msg_len={len(user_message)} | stripped_len={len(stripped_message)} | "
+        f"dynamic_num_predict={dynamic_predict} | prompt_chars={prompt_chars} | dynamic_ctx={dynamic_ctx}"
     )
 
     try:
         routing_json = await generate_json_response(
-            model_name=getattr(settings, "MODEL_PERSONA", "gemma4:12b"),
+            model_name=getattr(settings, "MODEL_ROUTER", "gemma4:12b"),
             messages=messages,
             request=request,
             temperature=0.0,
-            num_ctx=16384,
+            num_ctx=dynamic_ctx,
             num_predict=dynamic_predict,
             timeout=120.0,
         )
+
 
         import json
         logger.info(f"[CALL1] 📦 Raw JSON Payload dari LLM:\n{json.dumps(routing_json, indent=2)}")
@@ -199,10 +242,15 @@ def _validate_and_normalize_routing(
     routing["need_rag"] = bool(routing_json.get("need_rag", False))
 
     queries = routing_json.get("queries", [])
+    is_web_search = bool(routing_json.get("is_web_search", False))
     if isinstance(queries, list):
-        routing["queries"] = [
+        cleaned_queries = [
             str(q).strip() for q in queries if isinstance(q, str) and q.strip()
         ][:5]
+        # Sanitize filler kata di web search queries
+        if is_web_search:
+            cleaned_queries = [_sanitize_web_query(q) for q in cleaned_queries]
+        routing["queries"] = cleaned_queries
     else:
         routing["queries"] = []
 
@@ -283,6 +331,7 @@ def _validate_and_normalize_routing(
         logger.warning("[CALL1] Precheck override: is_coding forced to True")
         routing["is_coding"] = True
         
+
     if precheck.get("is_generate_email") and not routing["is_generate_email"]:
         logger.warning("[CALL1] Precheck override: is_generate_email forced to True")
         routing["is_generate_email"] = True

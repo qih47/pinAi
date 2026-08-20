@@ -275,7 +275,7 @@ class ModeFocus:
             is_thinking=is_thinking,
             temperature=0.1,
             num_ctx=256000,
-            num_predict=8192,
+            num_predict=-1,
             request=request
         ):
             try:

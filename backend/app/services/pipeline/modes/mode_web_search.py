@@ -12,14 +12,6 @@ from backend.app.services.pipeline.prompts.core_prompts import build_web_search_
 logger = logging.getLogger("cakra.pipeline.mode_web_search")
 
 
-def _clean_query(query: str) -> str:
-    """Wrapper ringan yang memanggil mode_utils.build_clean_web_search_query."""
-    try:
-        from backend.app.services.pipeline.modes.mode_utils import build_clean_web_search_query
-        return build_clean_web_search_query(query)
-    except Exception:
-        return query
-
 async def handle_web_search(
     query: str,
     messages: List[Dict[str, str]],
@@ -35,9 +27,9 @@ async def handle_web_search(
     if precheck is None:
         precheck = {}
     
-    # Bersihkan query dari kata instruksi / basa-basi sebelum ke Google
-    clean_query = _clean_query(query)
-    logger.info(f"Entered Web Search Mode for query: {query} → cleaned: {clean_query}")
+    # Query sudah bersih dari Call 1 (routing_data["queries"][0]) — tidak perlu di-clean lagi
+    clean_query = query
+    logger.info(f"[Web Search] query: '{clean_query}'")
     yield format_sse(status="🌐 Melakukan penelusuran web...", event_type=SSEEventType.STATUS)
     await asyncio.sleep(0.01)
     
@@ -65,16 +57,37 @@ async def handle_web_search(
                 pass
         logger.info(f"[Web Search] Injecting {len(pre_fetched_url_entries)} pre-fetched URL(s) into widget: {detected_urls}")
 
-    # 2. Lakukan pencarian web menggunakan clean_query (limit ditambah menjadi 10)
-    search_results = await perform_web_search(clean_query, num_results=10)
+    # 2. Lakukan pencarian web menggunakan clean_query (ambil lebih banyak kandidat untuk reranking)
+    search_results = await perform_web_search(clean_query, num_results=15)
     
+    # 2.1 Rerank hasil search berdasarkan relevansi query
+    if search_results:
+        try:
+            from backend.app.services.rag.reranker_service import reranker_service
+            corpus_texts = [
+                f"{r.get('title', '')} {r.get('content', '')}".strip()
+                for r in search_results
+            ]
+            scores = await reranker_service.compute_scores(clean_query, corpus_texts)
+            
+            # Urutkan search_results berdasarkan skor reranker
+            ranked = sorted(
+                zip(scores, search_results),
+                key=lambda x: x[0],
+                reverse=True
+            )
+            search_results = [r for _, r in ranked]
+            logger.info(f"[Web Search] Reranked {len(search_results)} search results. Top: '{search_results[0]['title']}'")
+        except Exception as e:
+            logger.warning(f"[Web Search] Reranker gagal (skip): {e}")
+
     # 3. Gabungkan: URL yg sudah di-read masuk sebagai result PERTAMA di widget
     combined_results = pre_fetched_url_entries + search_results
     
     # 4. Kirim Markdown blok custom untuk dirender widget web search di Frontend
     search_payload = {
         "query": clean_query,
-        "results": combined_results[:12]  # cap 12 hasil di UI
+        "results": combined_results[:10]  # cap 10 hasil teratas (sudah di-rerank) di UI
     }
     search_json = json.dumps(search_payload)
     widget_markdown = f"```websearch\n{search_json}\n```\n\n"
@@ -82,7 +95,7 @@ async def handle_web_search(
     await asyncio.sleep(0.01)
     
     # 5. Format hasil pencarian untuk dimasukkan ke konteks LLM
-    web_context = format_search_results_for_llm(search_results)
+    web_context = format_search_results_for_llm(search_results[:10])
     
     # 5.1. Tambahkan konten URL yang sudah di-fetch sebelumnya ke konteks LLM
     if pre_fetched_content and "[KONTEN WEB DARI URL DI CHAT]" in pre_fetched_content:
@@ -111,17 +124,53 @@ async def handle_web_search(
         # Semua URL di-crawl secara paralel
         scrape_results = await asyncio.gather(*[_scrape_one(url) for url in top_urls])
         
-        combined_deep = "\n\n---\n\n".join(
-            f"[Sumber: {url}]\n{content[:8000]}"
-            for url, content in zip(top_urls, scrape_results)
-            if content.strip()
-        )
-        if combined_deep:
-            if len(combined_deep) > 16000:
-                combined_deep = combined_deep[:16000] + "\n\n...[TRUNCATED UNTUK MENGHEMAT TOKENS]..."
-            web_context += "\n\n=== KONTEN MENDALAM DARI TAUTAN TERATAS ===\n"
-            web_context += combined_deep
+        # CHUNKING & RERANKING
+        from backend.app.services.rag.reranker_service import reranker_service
+        
+        def chunk_text(text: str, source: str, chunk_size: int = 1500, overlap: int = 200) -> List[Dict[str, str]]:
+            chunks = []
+            start = 0
+            while start < len(text):
+                end = start + chunk_size
+                chunks.append({
+                    "text": text[start:end],
+                    "source": source
+                })
+                start += chunk_size - overlap
+            return chunks
 
+        all_chunks = []
+        for url, content in zip(top_urls, scrape_results):
+            if content.strip():
+                all_chunks.extend(chunk_text(content.strip(), url))
+                
+        if all_chunks:
+            yield format_sse(status=f"🎯 Menyaring {len(all_chunks)} potongan informasi dari web...", event_type=SSEEventType.STATUS)
+            await asyncio.sleep(0.01)
+            
+            chunk_texts = [c["text"] for c in all_chunks]
+            scores = await reranker_service.compute_scores(clean_query, chunk_texts)
+            
+            scored_chunks = []
+            for i, score in enumerate(scores):
+                scored_chunks.append({
+                    "text": chunk_texts[i],
+                    "source": all_chunks[i]["source"],
+                    "score": score
+                })
+                
+            # Ambil Top 15 potongan terbaik
+            scored_chunks.sort(key=lambda x: x["score"], reverse=True)
+            top_chunks = scored_chunks[:15]
+            
+            combined_deep = "\n\n---\n\n".join(
+                f"[Sumber: {c['source']}]\n{c['text']}"
+                for c in top_chunks
+            )
+            
+            web_context += "\n\n=== KONTEN MENDALAM DARI TAUTAN TERATAS (FILTERED & RERANKED) ===\n"
+            web_context += combined_deep
+            logger.info(f"[Web Search] Reranking complete. Selected {len(top_chunks)} chunks from {len(all_chunks)}.")
 
     
     # 4. Bangun system prompt
@@ -143,7 +192,8 @@ async def handle_web_search(
         model_name=getattr(settings, "MODEL_PERSONA", "gemma4:12b"),
         is_thinking=is_thinking,
         temperature=0.4,
-        num_ctx=16384,
+        num_ctx=262144,
+        num_predict=-1,
         request=request
     )
     
