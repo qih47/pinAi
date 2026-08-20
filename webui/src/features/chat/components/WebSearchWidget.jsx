@@ -99,7 +99,7 @@ const WebSearchWidget = ({ searchData, isStreaming, hasStartedResponding }) => {
                                                 <div className="flex items-center gap-3 overflow-hidden flex-1 pr-4">
                                                      <div className="w-[18px] h-[18px] flex-shrink-0 flex items-center justify-center bg-transparent">
                                                         <img 
-                                                            src={`https://icons.duckduckgo.com/ip3/${hostname}.ico`}
+                                                            src={`https://www.google.com/s2/favicons?domain=${hostname}&sz=32`}
                                                             className="w-full h-full object-contain opacity-80 group-hover/item:opacity-100 transition-opacity"
                                                             alt=""
                                                             onError={(e) => { 

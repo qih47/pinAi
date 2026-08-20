@@ -26,6 +26,7 @@ export default defineConfig({
       // 🔥 Ajari Vite kalau '@' itu adalah folder 'src' secara absolut
       '@': path.resolve(__dirname, './src'),
     },
+    dedupe: ['react', 'react-dom'],
   },
   server: {
     port: 5173,
@@ -47,6 +48,7 @@ export default defineConfig({
             id.includes('/node_modules/react-dom/') ||
             id.includes('/node_modules/react-router/') ||
             id.includes('/node_modules/react-router-dom/') ||
+            id.includes('/node_modules/@xyflow/') ||
             id.includes('/node_modules/scheduler/')
           ) {
             return 'vendor-react';
@@ -90,6 +92,7 @@ export default defineConfig({
     include: [
       'react',
       'react-dom',
+      '@xyflow/react',
       'lucide-react',
       'react-syntax-highlighter',
       'react-syntax-highlighter/dist/esm/styles/prism',
