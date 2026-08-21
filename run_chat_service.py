@@ -40,15 +40,16 @@ logger = logging.getLogger("CAKRA_CHAT_SERVICE")
 
 
 async def _warmup_and_pin_models():
-    """Warmup dan pin model ke VRAM saat startup."""
+    """Warmup dan pin model LLM dan Embedding ke VRAM saat startup."""
     import httpx
-    models_to_pin = [
-        (settings.MODEL_PERSONA, "Gemma4 Agentic Engine"),
-        (settings.MODEL_EMBEDDING, "Embedding"),
+    # 1. Pin LLM Models via /api/chat
+    llm_models = [
+        (settings.MODEL_ROUTER, "Gemma4 Router Engine", 4096),
+        (settings.MODEL_PERSONA, "Gemma4 Agentic Engine", 16384),
     ]
-    url = f"{settings.OLLAMA_BASE_URL}/api/chat"
-    for model_name, label in models_to_pin:
-        logger.info(f"⏳ [WARMUP] Pinning {label} ({model_name}) ke VRAM...")
+    chat_url = f"{settings.OLLAMA_BASE_URL}/api/chat"
+    for model_name, label, ctx_len in llm_models:
+        logger.info(f"⏳ [WARMUP] Pinning {label} ({model_name}, ctx={ctx_len}) ke VRAM...")
         try:
             async with httpx.AsyncClient(timeout=httpx.Timeout(120.0, connect=10.0)) as client:
                 payload = {
@@ -56,15 +57,35 @@ async def _warmup_and_pin_models():
                     "messages": [{"role": "user", "content": "hi"}],
                     "stream": False,
                     "keep_alive": -1,
-                    "options": {"temperature": 0.1, "num_predict": 1, "num_ctx": 16384},
+                    "options": {"temperature": 0.1, "num_predict": 1, "num_ctx": ctx_len},
                 }
-                resp = await client.post(url, json=payload)
+                resp = await client.post(chat_url, json=payload)
                 if resp.status_code == 200:
                     logger.info(f"✅ [WARMUP] {label} pinned successfully.")
                 else:
                     logger.warning(f"⚠️ [WARMUP] {label} warmup returned {resp.status_code}")
         except Exception as e:
             logger.warning(f"⚠️ [WARMUP] {label} warmup failed: {e}")
+
+    # 2. Pin Embedding Model via /api/embed
+    if getattr(settings, "MODEL_EMBEDDING", None):
+        embed_model = settings.MODEL_EMBEDDING
+        logger.info(f"⏳ [WARMUP] Pinning Embedding Model ({embed_model}) ke VRAM...")
+        try:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(120.0, connect=10.0)) as client:
+                embed_url = f"{settings.OLLAMA_BASE_URL}/api/embed"
+                payload = {
+                    "model": embed_model,
+                    "input": "pindad",
+                    "keep_alive": -1
+                }
+                resp = await client.post(embed_url, json=payload)
+                if resp.status_code == 200:
+                    logger.info(f"✅ [WARMUP] Embedding Model ({embed_model}) pinned successfully.")
+                else:
+                    logger.warning(f"⚠️ [WARMUP] Embedding warmup returned {resp.status_code}")
+        except Exception as e:
+            logger.warning(f"⚠️ [WARMUP] Embedding warmup failed: {e}")
 
 
 @asynccontextmanager

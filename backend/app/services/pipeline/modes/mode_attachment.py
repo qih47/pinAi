@@ -175,8 +175,7 @@ class ModeAttachment:
             # File teks/kode: butuh context BESAR untuk baca file panjang + ruang output lega
             # Estimasi kode boros token (1 token ~ 2.5 char untuk kode)
             estimated_text_tokens = len(actual_user_msg) // 2
-            # num_ctx = input tokens + 32K margin output  
-            num_ctx = min(262144, max(65536, estimated_text_tokens + 32768))
+            num_ctx = min(32768, max(16384, estimated_text_tokens + 8192))
             # JANGAN batasi output dengan token_budget untuk mode teks/kode!
             # LLM harus bebas menulis penjelasan sepanjang yang diperlukan.
             token_budget = None

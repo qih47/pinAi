@@ -57,23 +57,21 @@ async def _warmup_and_pin_models():
     Dijalankan sekuensial agar tidak berebut slot semaphore.
 
     Model yang dipin:
-      - Gemma4 (MODEL_PERSONA): satu-satunya LLM — handles semua chat intent
-      - Embedding (MODEL_EMBEDDING): untuk RAG vector search
-
-    Vision (MiniCPM) tidak dipin di startup — di-load on-demand saat ada attachment.
+      - Router (MODEL_ROUTER, ctx=4096): Call 1 JSON routing
+      - Gemma4 (MODEL_PERSONA, ctx=16384): Call 2 Persona & Generator
+      - Embedding (MODEL_EMBEDDING, ctx=512): RAG vector search
     """
     import httpx
 
-    models_to_pin = [
-        (settings.MODEL_PERSONA, "Gemma4 Agentic Engine (Call 2)"),
-        (getattr(settings, "MODEL_ROUTER", settings.MODEL_PERSONA), "Router (Call 1)"),
-        (settings.MODEL_EMBEDDING, "Embedding"),
+    llm_models = [
+        (getattr(settings, "MODEL_ROUTER", "gemma4:e4b"), "Router (Call 1)", 4096),
+        (settings.MODEL_PERSONA, "Gemma4 Agentic Engine (Call 2)", 16384),
     ]
 
-    url = f"{settings.OLLAMA_BASE_URL}/api/chat"
+    chat_url = f"{settings.OLLAMA_BASE_URL}/api/chat"
 
-    for model_name, label in models_to_pin:
-        logger.info(f"⏳ [WARMUP] Pinning {label} ({model_name}) ke VRAM...")
+    for model_name, label, ctx_len in llm_models:
+        logger.info(f"⏳ [WARMUP] Pinning {label} ({model_name}, ctx={ctx_len}) ke VRAM...")
         try:
             async with httpx.AsyncClient(timeout=httpx.Timeout(120.0, connect=10.0)) as client:
                 payload = {
@@ -81,9 +79,9 @@ async def _warmup_and_pin_models():
                     "messages": [{"role": "user", "content": "hi"}],
                     "stream": False,
                     "keep_alive": -1,   # permanent — tidak di-evict sampai service restart
-                    "options": {"temperature": 0.1, "num_predict": 1, "num_ctx": 16384},
+                    "options": {"temperature": 0.1, "num_predict": 1, "num_ctx": ctx_len},
                 }
-                resp = await client.post(url, json=payload)
+                resp = await client.post(chat_url, json=payload)
                 if resp.status_code == 200:
                     logger.info(f"✅ [WARMUP] {label} ({model_name}) pinned successfully.")
                 else:
@@ -91,19 +89,20 @@ async def _warmup_and_pin_models():
         except Exception as e:
             logger.warning(f"⚠️ [WARMUP] {label} ({model_name}) warmup failed: {e}")
 
-    # Khusus embedding — pakai endpoint /api/embeddings bukan /api/chat
-    try:
-        embed_url = f"{settings.OLLAMA_BASE_URL}/api/embeddings"
-        async with httpx.AsyncClient(timeout=httpx.Timeout(60.0, connect=10.0)) as client:
-            resp = await client.post(embed_url, json={
-                "model": settings.MODEL_EMBEDDING,
-                "prompt": "warmup",
-                "keep_alive": -1,
-            })
-            if resp.status_code == 200:
-                logger.info(f"✅ [WARMUP] Embedding ({settings.MODEL_EMBEDDING}) endpoint pinned.")
-    except Exception as e:
-        logger.warning(f"⚠️ [WARMUP] Embedding endpoint warmup failed: {e}")
+    # Khusus embedding — pakai endpoint /api/embed bukan /api/chat
+    if getattr(settings, "MODEL_EMBEDDING", None):
+        try:
+            embed_url = f"{settings.OLLAMA_BASE_URL}/api/embed"
+            async with httpx.AsyncClient(timeout=httpx.Timeout(60.0, connect=10.0)) as client:
+                resp = await client.post(embed_url, json={
+                    "model": settings.MODEL_EMBEDDING,
+                    "input": "pindad",
+                    "keep_alive": -1,
+                })
+                if resp.status_code == 200:
+                    logger.info(f"✅ [WARMUP] Embedding ({settings.MODEL_EMBEDDING}) endpoint pinned.")
+        except Exception as e:
+            logger.warning(f"⚠️ [WARMUP] Embedding endpoint warmup failed: {e}")
 
     logger.info("🔒 [WARMUP] Semua model aktif sudah dipinned ke VRAM.")
 

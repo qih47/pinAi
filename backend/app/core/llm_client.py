@@ -48,48 +48,59 @@ def _extract_json_from_response(raw: str, model_name: str) -> Dict[str, Any]:
         )
         raise ValueError(f"[JSON_GEN] Model {model_name} output contains no JSON object")
 
-    # Step 4: Cari } terakhir — kalau tidak ada, coba repair JSON terpotong
+    # Step 4: Cari } terakhir
     end_idx = cleaned.rfind("}")
-    if end_idx == -1 or end_idx <= start_idx:
-        logger_local.warning(
-            f"[JSON_GEN] JSON terpotong (num_predict limit?). "
-            f"Model: {model_name} | Mencoba repair..."
-        )
-        partial = cleaned[start_idx:]
-        open_braces = partial.count("{") - partial.count("}")
-        open_brackets = partial.count("[") - partial.count("]")
-
-        repaired = partial.rstrip().rstrip(",")
-        if open_brackets > 0:
-            repaired += "]" * open_brackets
-        if open_braces > 0:
-            repaired += "}" * open_braces
-
+    if end_idx != -1 and end_idx > start_idx:
+        json_str = cleaned[start_idx:end_idx + 1]
         try:
-            result = json.loads(repaired)
-            logger_local.warning(
-                f"[JSON_GEN] Partial JSON berhasil di-repair | Model: {model_name}"
-            )
-            return result
-        except json.JSONDecodeError as je:
-            logger_local.error(
-                f"[JSON_GEN] Repair gagal. Model: {model_name} | "
-                f"Error: {je.msg} | Repaired (200c): {repaired[:200]}"
-            )
-            raise ValueError(
-                f"[JSON_GEN] Model {model_name} output truncated and repair failed: {je.msg}"
-            )
+            return json.loads(json_str)
+        except json.JSONDecodeError:
+            pass  # Fall through to robust repair
 
-    json_str = cleaned[start_idx:end_idx + 1]
+    # Robust JSON Repair for Truncated Responses (num_predict limit)
+    logger_local.warning(
+        f"[JSON_GEN] JSON terpotong / decode awal gagal. "
+        f"Model: {model_name} | Mencoba robust repair..."
+    )
+    partial = cleaned[start_idx:]
+
+    # 1. Bersihkan string yang terbuka tanpa penutup (odd unescaped quotes)
+    quotes = len(re.findall(r'(?<!\\)"', partial))
+    if quotes % 2 != 0:
+        # Cari koma terakhir sebelum string yang rusak
+        last_comma_idx = partial.rfind(',')
+        if last_comma_idx > 0:
+            partial = partial[:last_comma_idx]
+        else:
+            # Fallback: tutup quote
+            partial = partial + '"'
+
+    # 2. Bersihkan trailing separator / colon
+    repaired = partial.rstrip().rstrip(",").rstrip(":").rstrip(",")
+
+    # 3. Seimbangkan kurung siku dan kurawal
+    open_brackets = repaired.count("[") - repaired.count("]")
+    if open_brackets > 0:
+        repaired += "]" * open_brackets
+
+    open_braces = repaired.count("{") - repaired.count("}")
+    if open_braces > 0:
+        repaired += "}" * open_braces
 
     try:
-        return json.loads(json_str)
+        result = json.loads(repaired)
+        logger_local.warning(
+            f"[JSON_GEN] Robust partial JSON repair BERHASIL | Model: {model_name}"
+        )
+        return result
     except json.JSONDecodeError as je:
         logger_local.error(
-            f"[JSON_GEN] JSON decode failed. Model: {model_name} | "
-            f"Error: {je.msg} | Extracted (200c): {json_str[:200]}"
+            f"[JSON_GEN] Robust repair gagal. Model: {model_name} | "
+            f"Error: {je.msg} | Repaired: {repaired}"
         )
-        raise ValueError(f"[JSON_GEN] Model {model_name} output failed to decode: {je.msg}")
+        raise ValueError(
+            f"[JSON_GEN] Model {model_name} output truncated and repair failed: {je.msg}"
+        )
 
 
 async def warm_up_model(model_name: str, prompt: str = "keep alive") -> bool:
@@ -203,7 +214,7 @@ async def stream_ollama_chat(
     request: Request,
     temperature: float = 1.0,
     session_uuid: Optional[str] = None,
-    keep_alive: int = 600,  # 10 menit — model tetap di VRAM tapi KV cache di-free setelah idle
+    keep_alive: int = -1,  # Forever — model tetap di VRAM
     num_ctx: int = 4096,
     is_thinking: bool = False,
     **kwargs,
@@ -331,13 +342,6 @@ async def stream_ollama_chat(
                             logger.debug(f"[LLM_CLIENT] Response: {full_response.strip()}")
                             logger.info(f"[LLM_CLIENT] Inference completed in {elapsed_time:.2f}s")
 
-                            # ── KV Cache Flush ────────────────────────────────────────────────
-                            # Setelah stream selesai, release KV cache besar dari VRAM
-                            # dengan mengirim request kosong ke Ollama.
-                            # Model tetap loaded (keep_alive masih aktif), tapi
-                            # context/KV cache dari prompt panjang ini di-free.
-                            asyncio.create_task(_flush_kv_cache(model_name))
-
                         if session_uuid and session_uuid != "GLOBAL_SESSION":
                             try:
                                 from backend.app.services.chat.chat_history_service import chat_history_service
@@ -399,7 +403,7 @@ async def generate_json_response(
     messages: List[Dict[str, str]],
     request: Optional[Request] = None,
     temperature: float = 0.3,
-    keep_alive: int = 600,  # 10 menit idle
+    keep_alive: int = -1,  # Forever di VRAM
     timeout: float = 60.0,
     num_ctx: int = 2048,
     num_predict: int = 2048,

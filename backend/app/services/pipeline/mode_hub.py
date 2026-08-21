@@ -66,6 +66,9 @@ class ModeHub:
         has_attachment = bool(attachments) or has_new_document
         precheck = detect_precheck(user_message, chat_mode, has_attachment)
         precheck["_user_message"] = user_message
+        
+        is_guest = (current_user_npp == "GUEST")
+        is_first_chat = len(chat_history) <= 1
 
         # ── Fetch Long-Term Memory (ai_document_chunks) ────────────────────────
         session_chunks_text = ""
@@ -221,9 +224,16 @@ class ModeHub:
                     tool_input="File Attachment Found",
                     observation=json.dumps(obs_dict)
                 ))
-            if is_first_chat:
-                title = f"Analisis {attachments[0].get('file_name', 'Lampiran')[:20]}" if attachments else "Analisis Dokumen"
-                yield format_sse(session_title=title, event_type=SSEEventType.TITLE_UPDATE)
+            if is_first_chat and session_uuid:
+                try:
+                    from backend.app.services.chat.chat_history_service import chat_history_service
+                    file_name = attachments[0].get('file_name', 'Lampiran') if attachments else 'Lampiran'
+                    base_name = file_name.rsplit('.', 1)[0].replace('_', ' ').replace('-', ' ').title()
+                    title = f"Analisis {base_name[:25]}"
+                    asyncio.create_task(chat_history_service.update_session_title(session_uuid, title))
+                    logger.info(f"[MODE_HUB] Attachment First-Chat Title updated -> '{title}'")
+                except Exception as e:
+                    logger.warning(f"[MODE_HUB] Gagal update attachment title: {e}")
 
             handler = self.mode_handlers["attachment"]
             async for chunk in handler.execute(
@@ -263,9 +273,6 @@ class ModeHub:
                 context_history_str = f"{last_ai_msg['role'].upper()} (Last Words): ...{trimmed_text}"
 
         # ── Fast-path Bypass untuk Sapaan Ringan ──────────────────────────────────
-        is_guest = (current_user_npp == "GUEST")
-        is_first_chat = len(chat_history) <= 1
-
         call1_start_t = datetime.now()
 
         # ── ⚡ PARALLEL OPTIMIZATION: Call1 + URL Fetch berjalan bersamaan ─────────

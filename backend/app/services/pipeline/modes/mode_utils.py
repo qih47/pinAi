@@ -273,6 +273,6 @@ def get_module_config(module_name: str) -> Dict[str, Any]:
         "analytic": {"num_ctx": 16384, "temperature": 1.0},
         "self_correction": {"num_ctx": 16384, "temperature": 1.0},
         "ambiguous": {"num_ctx": 16384, "temperature": 1.0},
-        "general_expert": {"num_ctx": 32768, "temperature": 1.0},
+        "general_expert": {"num_ctx": 16384, "temperature": 1.0},
     }
     return configs.get(module_name, {"num_ctx": 16384, "temperature": 1.0})

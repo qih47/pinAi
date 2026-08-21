@@ -18,11 +18,11 @@ rm -rf node_modules/.vite
 sleep 1
 
 echo "🚀 Starting Chat Frontend (5173)..."
-npm run dev:chat -- --host &
+npm run dev:chat -- --host --force &
 CHAT_PID=$!
 
 echo "🚀 Starting Analytics Frontend (5174)..."
-npm run dev:analytics -- --host &
+npm run dev:analytics -- --host --force &
 ANALYTICS_PID=$!
 
 # Pastikan kedua proses ikut mati kalau script ini di-kill (SIGTERM/SIGINT)

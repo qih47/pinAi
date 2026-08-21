@@ -121,21 +121,10 @@ async def execute_call1_routing(
     """
     from backend.app.services.pipeline.system_prompts import build_call1_routing_prompt
 
-    # SPRINT 5 FAST-PATH OPTIMIZATION:
-    # Jika di tab "documents" dan pesan user adalah pertanyaan regulasi yang jelas (tanpa coding/email/file generation/ambiguitas),
-    # langsung gunakan fast-path rule-based routing tanpa memanggil LLM Call 1 (hemat 15-17 detik!)
-    is_doc_mode = (precheck.get("chat_mode") == "documents")
-    is_doc_query = precheck.get("is_doc_query", False)
-    is_chitchat_msg = precheck.get("is_chitchat", False) or precheck.get("is_greeting", False)
-    is_complex_task = precheck.get("is_coding", False) or precheck.get("is_generate_email", False) or precheck.get("has_attachment", False)
-
-    # JANGAN bypass jika ada URL BARU yang sedang di-fetch di turn ini
-    # (ditandai oleh precheck["has_url_context"] = True dari URL detection step)
-    # _visited_urls dari turn SEBELUMNYA TIDAK memblokir fast-path — chitchat tetap boleh bypass!
-    has_new_url_context = precheck.get("has_url_context", False)
-
-    if not is_first_chat and (is_doc_mode or is_doc_query or is_chitchat_msg) and not is_complex_task and not has_new_url_context and len(user_message.split()) <= 25:
-        logger.info("[CALL1] ⚡ Smart Fast-Path activated for document/chitchat query -> Bypassing LLM routing (0.001s)")
+    # Quick bypass HANYA untuk sapaan murni 1-2 kata (misal: "halo", "pagi", "hai")
+    is_pure_greeting = (precheck.get("is_greeting", False) or precheck.get("is_chitchat", False)) and len(user_message.split()) <= 2 and not is_complex_task
+    if is_pure_greeting and not is_first_chat:
+        logger.info("[CALL1] ⚡ Pure greeting detected -> Quick routing bypass")
         return _build_fallback_routing(precheck)
 
     # Smart Signal Stripping
@@ -157,28 +146,26 @@ async def execute_call1_routing(
     ]
 
     # Alokasi num_predict dinamis:
-    # - is_first_chat=True: perlu generate session_title (string ~10-30 token) → butuh 250 token
-    # - is_first_chat=False: hanya boolean fields → 150 token cukup
-    dynamic_predict = 250 if is_first_chat else 160
+    # - is_first_chat=True: perlu generate session_title (string ~10-30 token) → butuh 350 token
+    # - is_first_chat=False: boolean fields + queries → 250 token aman (tidak terpotong di tengah jalan)
+    dynamic_predict = 350 if is_first_chat else 250
 
-    # Hitung num_ctx dinamis berbasis panjang prompt aktual (1 token ≈ 4 karakter)
-    # Memberi 512 token buffer untuk ruang generasi JSON.
-    # Cap MAKSIMAL 4096 agar tidak overflow GGML_SCHED_MAX_SPLIT_INPUTS pada model router ringan (e4b/9b)
-    prompt_chars = len(system_prompt) + len(stripped_message)
-    dynamic_ctx = min(4096, max(2048, (prompt_chars // 4) + 512))
+    # Kunci num_ctx konstan di 4096 agar sama persis dengan warmup (tidak memicu re-alokasi KV context di Ollama)
+    router_ctx = 4096
 
     logger.info(
         f"[CALL1] Executing routing | user_msg_len={len(user_message)} | stripped_len={len(stripped_message)} | "
-        f"dynamic_num_predict={dynamic_predict} | prompt_chars={prompt_chars} | dynamic_ctx={dynamic_ctx}"
+        f"dynamic_num_predict={dynamic_predict} | prompt_chars={len(system_prompt) + len(stripped_message)} | ctx={router_ctx}"
     )
 
     try:
         routing_json = await generate_json_response(
-            model_name=getattr(settings, "MODEL_ROUTER", "gemma4:12b"),
+            model_name=getattr(settings, "MODEL_ROUTER", "gemma4:e4b"),
             messages=messages,
             request=request,
             temperature=0.0,
-            num_ctx=dynamic_ctx,
+            keep_alive=-1,
+            num_ctx=router_ctx,
             num_predict=dynamic_predict,
             timeout=120.0,
         )

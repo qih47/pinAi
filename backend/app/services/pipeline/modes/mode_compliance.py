@@ -166,7 +166,7 @@ class ModeCompliance:
             hist_tokens = sum(len(m.get("content", "")) for m in messages_dict) // 4
             rag_tokens = 0 # Focus mode uses web/search context inside system prompt mostly, so we can treat it as sys_tokens
             total_used = sys_tokens + hist_tokens + rag_tokens
-            num_ctx = 256000
+            num_ctx = 16384
 
             session_uuid_to_use = session_uuid or (routing_data.get("_session_uuid") if routing_data else None)
             if session_uuid_to_use:
@@ -194,7 +194,7 @@ class ModeCompliance:
                 model_name=settings.MODEL_PERSONA, # TETAP PAKAI TEXT LLM
                 is_thinking=is_thinking,
                 temperature=0.1,
-                num_ctx=256000,
+                num_ctx=16384,
                 num_predict=-1,
                 request=request
             ):

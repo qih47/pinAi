@@ -51,99 +51,159 @@ class ModeDocuments:
         rag_context = None
         rag_sources = None
 
-        # ── Step 2: Parallel Data Fetching ────────────────────────────────────────
+        # ── Step 2: Tiered Cascade Search (Sequential Waterfall) ────────────────────
         should_run_rag = routing_data.get("need_rag", True)
         is_chitchat_msg = routing_data.get("is_chitchat", False) or routing_data.get("is_greeting", False)
 
+        rag_context = None
+        rag_sources = []
+        judul_context = ""
+        ocr_attachments = []
+        judul_sources = []
+        community_context = ""
+        query_judul_str = ""
+
         if is_chitchat_msg or not should_run_rag:
             logger.info("[MODE_DOCUMENTS] 💬 Sapaan ringan / chitchat terdeteksi di mode documents -> Lewati pencarian RAG & FTS!")
-            rag_context, rag_sources, judul_context, ocr_attachments, judul_sources = None, [], "", [], []
-            community_context = ""
-            query_judul_str = ""
         else:
-            # 2A: Setup Background Tasks
-            from backend.app.services.pipeline.community_knowledge import search_community_knowledge
-            from backend.app.services.peraturan_service import search_and_ocr_by_judul, search_and_ocr_by_synthetic_qa, hybrid_document_search
+            from backend.app.services.peraturan_service import hybrid_document_search
             
-            task_community = asyncio.create_task(search_community_knowledge(user_message, is_guest=(current_user_npp == "GUEST")))
             query_judul_list = routing_data.get("query_judul") or []
             query_judul_str = " ".join(query_judul_list) if isinstance(query_judul_list, list) else str(query_judul_list)
             
-            # FASE 3: HYBRID LATE FUSION RERANKING
-            logger.info(f"[MODE_DOCUMENTS] Sending query_judul_list to Hybrid FTS: {query_judul_list}")
-            task_peraturan = asyncio.create_task(hybrid_document_search(user_message, query_judul_list))
-
-            # 2B: Stream RAG progress while tasks run in background
-            if rag_queries:
-                logger.info(f"[MODE_DOCUMENTS] RAG triggered via Sub-Queries | queries={rag_queries}")
-                yield format_sse(status="🔍 Mencari dokumen regulasi terkait", event_type=SSEEventType.STATUS)
+            # ─────────────────────────────────────────────────────────────────
+            # TIER 1: Instant MySQL Search (Judul, Tag, Isi Berita, FTS)
+            # ─────────────────────────────────────────────────────────────────
+            yield format_sse(status="🔍 Memeriksa basis data regulasi Pindad...", event_type=SSEEventType.STATUS)
+            logger.info(f"[MODE_DOCUMENTS] [TIER 1] Executing MySQL search for query_judul: {query_judul_list}")
+            
+            judul_context, ocr_attachments, judul_sources = await hybrid_document_search(user_message, query_judul_list)
+            
+            # Hitung skor tertinggi dari Tier 1
+            max_tier1_score = max([s.get('score', s.get('similarity', 0.0)) for s in judul_sources]) if judul_sources else 0.0
+            
+            # Cek apakah ada keyword relevan yang cocok langsung di judul / tag
+            search_words = [w.lower() for w in query_judul_str.split() if len(w) > 2]
+            has_keyword_match = False
+            for src in judul_sources:
+                j_title = str(src.get("title") or src.get("raw_judul") or "").lower()
+                j_tag = str(src.get("raw_tag") or "").lower()
+                if any(w in j_title or w in j_tag for w in search_words):
+                    has_keyword_match = True
+                    break
+            
+            # Ambang batas keyakinan: Jika ada dokumen resmi dengan skor reranker valid (>= 0.48) atau keyword cocok di Judul/Tag
+            is_tier1_satisfying = bool(judul_sources) and (max_tier1_score >= 0.48 or has_keyword_match)
+            
+            if is_tier1_satisfying:
+                logger.info(f"[MODE_DOCUMENTS] 🎯 [TIER 1 HIT & SATISFYING] Ditemukan {len(judul_sources)} dokumen resmi via MySQL (Max Score: {max_tier1_score:.4f}, Keyword Match: {has_keyword_match})! SKIP Vector RAG & Corpus.")
+                rag_sources = list(judul_sources)
+                yield format_sse(status="📄 Dokumen referensi ditemukan, sedang menganalisis isi pasal...", event_type=SSEEventType.STATUS)
+            else:
+                # ─────────────────────────────────────────────────────────────
+                # TIER 2: Fallback / Expansion Vector RAG & Community Knowledge
+                # ─────────────────────────────────────────────────────────────
+                if judul_sources:
+                    logger.info(f"[MODE_DOCUMENTS] ⚠️ [TIER 1 LOW CONFIDENCE] Hasil MySQL ada tapi skor reranker kurang memuaskan ({max_tier1_score:.4f} < 0.70). Melakukan pencarian tambahan ke Vector Embedding & Corpus...")
+                else:
+                    logger.info("[MODE_DOCUMENTS] ℹ️ [TIER 1 MISS] MySQL nihil (0 hasil). Mengaktifkan Fallback Tier 2 Vector RAG & Community Knowledge...")
                 
+                yield format_sse(status="🔍 Mencari dokumen terkait via semantic vector & corpus...", event_type=SSEEventType.STATUS)
+                
+                from backend.app.services.pipeline.community_knowledge import search_community_knowledge
                 from backend.app.services.rag.rag_pipeline import run_rag_pipeline
+                from backend.app.services.rag.reranker_service import reranker_service
+                
+                task_community = asyncio.create_task(search_community_knowledge(user_message, is_guest=(current_user_npp == "GUEST")))
+                
+                vector_sources = []
+                if rag_queries:
+                    logger.info(f"[MODE_DOCUMENTS] [TIER 2] RAG triggered via Sub-Queries | queries={rag_queries}")
+                    async for sse in run_rag_pipeline(
+                        rewritten_queries=rag_queries,
+                        limit_per_query=4,
+                        npp=current_user_npp,
+                        use_cache=False,
+                    ):
+                        raw = sse.strip()
+                        if not raw:
+                            continue
+                        try:
+                            data = json.loads(raw)
+                            event_type = data.get("event_type")
 
-                async for sse in run_rag_pipeline(
-                    rewritten_queries=rag_queries,
-                    limit_per_query=3,
-                    npp=current_user_npp,
-                    use_cache=False, # SPRINT 5: Nonaktifkan semantic cache di mode documents
-                ):
-                    raw = sse.strip()
-                    if not raw:
-                        continue
-                    try:
-                        data = json.loads(raw)
-                        event_type = data.get("event_type")
+                            if event_type == SSEEventType.PIPELINE_DATA:
+                                rag_context = data["payload"].get("context")
+                                vector_sources = data["payload"].get("sources") or []
+                                logger.info(f"[MODE_DOCUMENTS] [TIER 2] Vector RAG done | {len(rag_context or '')} chars | {len(vector_sources)} sources")
 
-                        if event_type == SSEEventType.PIPELINE_DATA:
-                            rag_context = data["payload"].get("context")
-                            rag_sources = data["payload"].get("sources")
-                            logger.info(f"[MODE_DOCUMENTS] RAG done | {len(rag_context or '')} chars | {len(rag_sources or [])} sources")
-
-                        if event_type in (SSEEventType.SOURCES, SSEEventType.THINKING, SSEEventType.STATUS):
-                            if event_type == SSEEventType.SOURCES:
-                                continue # Intercept and delay rendering sources to FE until we filter it
+                            if event_type in (SSEEventType.THINKING, SSEEventType.STATUS):
+                                yield sse
+                                await asyncio.sleep(0.005)
+                        except (json.JSONDecodeError, AttributeError):
                             yield sse
-                            await asyncio.sleep(0.005)
+                            await asyncio.sleep(0.01)
 
-                    except (json.JSONDecodeError, AttributeError):
-                        yield sse
-                        await asyncio.sleep(0.01)
-
-            # 2C: Tunggu proses paralel selesai
-            yield format_sse(status="⏳ Memproses riwayat percakapan & scan file...", event_type=SSEEventType.STATUS)
-            community_context = await task_community
-            judul_context, ocr_attachments, judul_sources = await task_peraturan
+                community_context = await task_community
+                
+                # ── GABUNGKAN & RERANK ULANG SEMUA KANDIDAT BERSAMA (TIER 1 + TIER 2) ──
+                all_raw_candidates = []
+                if judul_sources:
+                    all_raw_candidates.extend(judul_sources)
+                if vector_sources:
+                    all_raw_candidates.extend(vector_sources)
+                
+                if all_raw_candidates:
+                    logger.info(f"[MODE_DOCUMENTS] 🔄 Mererank ulang {len(all_raw_candidates)} total kandidat (MySQL + Vector RAG)...")
+                    candidate_texts = []
+                    for c in all_raw_candidates:
+                        txt = c.get("content") or c.get("text") or f"{c.get('title', '')} {c.get('raw_judul', '')}"
+                        candidate_texts.append(txt[:800])
+                    
+                    combined_scores = await reranker_service.compute_scores(user_message, candidate_texts)
+                    
+                    for idx, score_val in enumerate(combined_scores):
+                        all_raw_candidates[idx]["score"] = float(score_val)
+                    
+                    # Sort descending berdasarkan skor reranker baru
+                    all_raw_candidates.sort(key=lambda x: x.get("score", 0.0), reverse=True)
+                    # Filter threshold minimum
+                    rag_sources = [c for c in all_raw_candidates if c.get("score", 0.0) >= 0.40][:10]
+                    
+                    if rag_sources:
+                        yield format_sse(status="📄 Dokumen referensi ditemukan, sedang menganalisis isi pasal...", event_type=SSEEventType.STATUS)
+                else:
+                    rag_sources = []
 
         # ── 2D: EVALUASI DAN LOG HASIL PENCARIAN KE TERMINAL ──
         has_title = False
         has_tag = False
         has_isi = False
-        has_rag = bool(rag_sources)
-
+        has_rag = bool(rag_sources and not judul_sources)
+        has_semantic = bool(judul_sources)
         has_community = bool(community_context and community_context.strip())
 
         search_words = [w.lower() for w in query_judul_str.split() if len(w) > 2]
         
         if judul_sources:
             for src in judul_sources:
-                raw_judul = str(src.pop("raw_judul", "")).lower()
-                raw_tag = str(src.pop("raw_tag", "")).lower()
-                raw_isi = str(src.pop("raw_isi", "")).lower()
+                raw_judul = str(src.get("raw_judul", "")).lower()
+                raw_tag = str(src.get("raw_tag", "")).lower()
+                raw_isi = str(src.get("raw_isi", "")).lower()
                 
                 for word in search_words:
                     if word in raw_judul: has_title = True
                     if word in raw_tag: has_tag = True
                     if word in raw_isi: has_isi = True
 
-        has_semantic = bool(judul_sources)
-        
         logger.info("\n" + "="*40 + "\n" +
-                    "🔍 LOG STATUS PENCARIAN DOKUMEN\n" +
-                    f"SEARCH_TITLE               : {'ADA' if has_title else 'TIDAK ADA'}\n" +
-                    f"SEARCH_TAG                 : {'ADA' if has_tag else 'TIDAK ADA'}\n" +
-                    f"SEARCH_ISI_BERITA          : {'ADA' if has_isi else 'TIDAK ADA'}\n" +
-                    f"SEARCH_SEMANTIC            : {'ADA' if has_semantic else 'TIDAK ADA'}\n" +
-                    f"SEARCH_RAG                 : {'ADA' if has_rag else 'TIDAK ADA'}\n" +
-                    f"SEARCH_AI_DIALOGUE_CORPUS  : {'ADA' if has_community else 'TIDAK ADA'}\n" +
+                    "🔍 LOG STATUS PENCARIAN DOKUMEN (CASCADE)\n" +
+                    f"TIER 1 - SEARCH_TITLE       : {'ADA' if has_title else 'TIDAK ADA'}\n" +
+                    f"TIER 1 - SEARCH_TAG         : {'ADA' if has_tag else 'TIDAK ADA'}\n" +
+                    f"TIER 1 - SEARCH_ISI_BERITA  : {'ADA' if has_isi else 'TIDAK ADA'}\n" +
+                    f"TIER 1 - SEARCH_SEMANTIC    : {'ADA' if has_semantic else 'TIDAK ADA'}\n" +
+                    f"TIER 2 - SEARCH_RAG         : {'ADA' if has_rag else 'TIDAK ADA'}\n" +
+                    f"TIER 2 - AI_DIALOGUE_CORPUS : {'ADA' if has_community else 'TIDAK ADA'}\n" +
                     "="*40)
 
         # ── Step 3: LLM Execution (Call 2) ────────────────────────────────────────
@@ -153,16 +213,17 @@ class ModeDocuments:
         yield format_sse(status="✍️ Menyusun jawaban", event_type=SSEEventType.STATUS)
         await asyncio.sleep(0.01)
 
-        # Jika dapet file spesifik dari MySQL (Peraturan Service), paksa gabungin ke RAG Sources!
-        if judul_sources:
-            if not rag_sources:
-                rag_sources = []
-            for src in reversed(judul_sources):
-                rag_sources.insert(0, src) # Taruh di urutan pertama (paling relevan)
-
         if rag_sources:
+            # Deduplikasi dokumen agar tidak ganda kartu di UI
+            seen_ids = set()
+            unique_rag_sources = []
+            for s in rag_sources:
+                s_key = str(s.get("id") or s.get("filename") or s.get("title") or "")
+                if s_key and s_key not in seen_ids:
+                    seen_ids.add(s_key)
+                    unique_rag_sources.append(s)
             # Sort by similarity/score and take up to 15 documents to preserve genealogy/silsilah history.
-            rag_sources = sorted(rag_sources, key=lambda x: x.get('score', x.get('similarity', 0)), reverse=True)[:15]
+            rag_sources = sorted(unique_rag_sources, key=lambda x: x.get('score', x.get('similarity', 0)), reverse=True)[:15]
             # SPRINT 5: Kita TUNDA pengiriman event SOURCES ke frontend di sini!
             # Event SOURCES baru akan dikirim nanti setelah di-filter lewat interceptor <sources_json>
             # yield format_sse("", "", False, sources=rag_sources, event_type=SSEEventType.SOURCES)
@@ -253,6 +314,18 @@ class ModeDocuments:
             community_str += community_context[:community_budget]
             # Karena system_prompt sudah jadi, lebih aman kita taruh community di paling awal agar tidak merusak instruksi JSON di akhir
             system_prompt = community_str + "\n\n" + system_prompt
+
+        # Tier 3: Anti-Halusinasi Guard jika pencarian regulasi 100% NIHIL
+        if not judul_sources and not rag_sources and not is_chitchat_msg and should_run_rag:
+            anti_hallucination_guard = (
+                "\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                "🚨 ATURAN KETAT: DOKUMEN / REGULASI TIDAK DITEMUKAN (100% NIHIL)\n"
+                "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                "Topik, nomor regulasi, atau aturan yang ditanyakan user TIDAK DITEMUKAN di seluruh basis data internal PT Pindad.\n"
+                "KAMU DILARANG KERAS mengarang isi pasal, berhalusinasi, atau mengasumsikan aturan dari instansi lain/perusahaan luar.\n"
+                "Jawablah dengan jujur, ramah, dan profesional kepada user bahwa aturan/dokumen mengenai topik tersebut belum tercatat atau tidak ditemukan di database regulasi internal PT Pindad.\n"
+            )
+            system_prompt = anti_hallucination_guard + "\n\n" + system_prompt
 
         # Inject Long-Term Memory (ai_document_chunks)
         session_chunks = routing_data.get("_session_chunks_text", "")
@@ -500,7 +573,14 @@ class ModeDocuments:
                                     logger.warning(f"[MODE_DOCUMENTS] Gagal parse sources_json: {e}. Raw: {json_str}")
                                 
                                 if parsing_success:
-                                    final_sources = filtered_sources
+                                    seen_final = set()
+                                    unique_final = []
+                                    for f_src in filtered_sources:
+                                        f_key = str(f_src.get("id") or f_src.get("filename") or f_src.get("title") or "")
+                                        if f_key and f_key not in seen_final:
+                                            seen_final.add(f_key)
+                                            unique_final.append(f_src)
+                                    final_sources = unique_final
                                 else:
                                     final_sources = []
 
@@ -542,9 +622,9 @@ class ModeDocuments:
                                     yield format_sse(remainder, "", False, event_type=SSEEventType.CHUNK)
                                 intercept_buffer = ""
                         else:
+                            # Jika tidak ada tag <sources_json> di awal, jangan dump raw rag_sources ke FE
                             if len(intercept_buffer) > 25 and "<sources_json>" not in intercept_buffer:
                                 json_intercepted = True
-                                yield format_sse("", "", False, sources=rag_sources[:10] if rag_sources else [], event_type=SSEEventType.SOURCES)
                                 yield format_sse(intercept_buffer, "", False, event_type=SSEEventType.CHUNK)
                                 intercept_buffer = ""
                     else:
@@ -556,8 +636,6 @@ class ModeDocuments:
             logger.error(f"[MODE_DOCUMENTS] Stream error: {e}")
             yield format_sse(f"Maaf, terjadi kendala teknis: {str(e)}", "", False, event_type=SSEEventType.CHUNK)
             
-        # Ensure we flush if stream ends before interceptor finishes
-        if not json_intercepted:
-            yield format_sse("", "", False, sources=rag_sources[:10] if rag_sources else [], event_type=SSEEventType.SOURCES)
-            if intercept_buffer:
-                yield format_sse(intercept_buffer, "", False, event_type=SSEEventType.CHUNK)
+        # Flush buffer sisa jika stream selesai
+        if intercept_buffer:
+            yield format_sse(intercept_buffer, "", False, event_type=SSEEventType.CHUNK)

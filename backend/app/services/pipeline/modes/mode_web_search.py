@@ -192,7 +192,7 @@ async def handle_web_search(
         model_name=getattr(settings, "MODEL_PERSONA", "gemma4:12b"),
         is_thinking=is_thinking,
         temperature=0.4,
-        num_ctx=262144,
+        num_ctx=16384,
         num_predict=-1,
         request=request
     )
