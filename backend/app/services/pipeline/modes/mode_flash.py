@@ -112,45 +112,19 @@ class ModeFlash:
             )
 
         try:
-            async for chunk_line in stream_ollama_chat(
+            from backend.app.services.pipeline.agentic_interceptor import agentic_stream_wrapper
+            async for chunk in agentic_stream_wrapper(
                 model_name=getattr(settings, "MODEL_PERSONA", "gemma4:12b"),
                 messages=stream_messages,
                 request=request,
                 temperature=temperature,
-                keep_alive=-1,
                 num_ctx=num_ctx,
-                num_predict=-1,
                 is_thinking=is_thinking,
+                employee_name=employee_name,
+                session_uuid=session_uuid_to_use,
+                max_tool_loops=1
             ):
-                try:
-                    chunk_data = json.loads(chunk_line.strip())
-                    chunk_text = chunk_data.get("chunk", "")
-                    native_thought = chunk_data.get("thinking", "")
-                    
-                    eval_count = chunk_data.get("eval_count", 0)
-                    eval_duration = chunk_data.get("eval_duration", 0)
-                    
-                    # # 🔴 === TAMBAHAN DEBUG LOG CCTV === 🔴
-                    # # Log kalau emang beneran masuk ke key 'thought'
-                    # if native_thought:
-                    #     logger.info(f"[CCTV THINK] {native_thought.strip()}")
-                        
-                    # # Log kalau ternyata tag <think> nyampur di teks biasa
-                    # if "<think>" in chunk_text or "</think>" in chunk_text:
-                    #     logger.warning(f"[CCTV ALERT] Tag Think nyampur di chunk_text: {chunk_text}")
-                    # # 🔴 ================================== 🔴
-
-                except (json.JSONDecodeError, AttributeError):
-                    chunk_text = chunk_line if isinstance(chunk_line, str) else ""
-                    native_thought = ""
-                    eval_count = 0
-                    eval_duration = 0
-
-                # If UI requested NO THINKING, we suppress the thought
-                if native_thought and is_thinking:
-                    yield format_sse("", native_thought, False, event_type=SSEEventType.THINKING)
-                elif chunk_text or (eval_count > 0):
-                    yield format_sse(chunk_text, "", False, event_type=SSEEventType.CHUNK, eval_count=eval_count, eval_duration=eval_duration)
+                yield chunk
         except Exception as e:
             logger.error(f"[MODE_FLASH] Stream error: {e}")
             yield format_sse(f"Maaf, terjadi kendala teknis: {str(e)}", "", False, event_type=SSEEventType.CHUNK)

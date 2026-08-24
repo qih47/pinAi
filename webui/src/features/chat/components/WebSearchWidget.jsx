@@ -1,24 +1,37 @@
 import React, { useState, useEffect } from 'react';
 import { Globe, ChevronDown, ChevronUp, Clock, CheckCircle2 } from 'lucide-react';
 
-const WebSearchWidget = ({ searchData, isStreaming, hasStartedResponding }) => {
+const WebSearchWidget = ({ searchData, isStreaming, hasStartedResponding, darkMode = true }) => {
     // Open by default if streaming and hasn't started responding.
     const [isOpen, setIsOpen] = useState(true);
+    const [elapsedSec, setElapsedSec] = useState(0);
+
+    const results = Array.isArray(searchData) ? searchData : (searchData?.results || []);
+    const isLoading = isStreaming && results.length === 0;
 
     useEffect(() => {
-        if (hasStartedResponding || (!isStreaming && hasStartedResponding)) {
+        let timer;
+        if (isLoading) {
+            timer = setInterval(() => {
+                setElapsedSec(prev => +(prev + 0.1).toFixed(1));
+            }, 100);
+        }
+        return () => {
+            if (timer) clearInterval(timer);
+        };
+    }, [isLoading]);
+
+    useEffect(() => {
+        if (hasStartedResponding || !isStreaming) {
             setIsOpen(false);
         } else {
             setIsOpen(true);
         }
     }, [hasStartedResponding, isStreaming]);
 
-    if (!searchData) return null;
+    if (!searchData && !isStreaming) return null;
     
-    const results = Array.isArray(searchData) ? searchData : (searchData.results || []);
-    if (results.length === 0) return null;
-
-    let originalQuery = !Array.isArray(searchData) && searchData.query 
+    let originalQuery = !Array.isArray(searchData) && searchData?.query 
         ? searchData.query 
         : (results[0]?.title || "Penelusuran Web");
         
@@ -33,8 +46,17 @@ const WebSearchWidget = ({ searchData, isStreaming, hasStartedResponding }) => {
                 onClick={() => setIsOpen(!isOpen)}
                 className="flex items-center gap-2 mb-3 cursor-pointer select-none group w-fit"
             >
-                <span className="text-[14px] font-medium text-[#9e9e9e] transition-colors line-clamp-1 group-hover:text-[#c4c4c4]">
-                    {hasStartedResponding ? "Hasil penelusuran informasi dari web" : "Menelusuri informasi dari web"}
+                <span className="text-[14px] font-medium text-[#9e9e9e] transition-colors line-clamp-1 group-hover:text-[#c4c4c4] flex items-center gap-2">
+                    {isLoading ? (
+                        <>
+                            <span className="inline-block w-2 h-2 rounded-full bg-indigo-500 animate-ping" />
+                            <span>Menelusuri informasi dari web ({elapsedSec}s)</span>
+                        </>
+                    ) : hasStartedResponding ? (
+                        "Hasil penelusuran informasi dari web"
+                    ) : (
+                        "Menelusuri informasi dari web"
+                    )}
                 </span>
                 <span className="text-[#888888] flex items-center justify-center">
                     {isOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
@@ -79,45 +101,52 @@ const WebSearchWidget = ({ searchData, isStreaming, hasStartedResponding }) => {
                                         .custom-scrollbar::-webkit-scrollbar-thumb { background-color: #444; border-radius: 10px; }
                                     `}} />
                                     
-                                    {results.map((item, idx) => {
-                                        let hostname = '';
-                                        try {
-                                            hostname = new URL(item.url).hostname;
-                                            hostname = hostname.replace(/^www\./, '');
-                                        } catch(e) {
-                                            hostname = item.url || '';
-                                        }
-                                        
-                                        return (
-                                            <a 
-                                                key={idx} 
-                                                href={item.url}
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                className="flex items-center justify-between p-2.5 rounded-lg hover:bg-[#252525] transition-all group/item cursor-pointer"
-                                            >
-                                                <div className="flex items-center gap-3 overflow-hidden flex-1 pr-4">
-                                                     <div className="w-[18px] h-[18px] flex-shrink-0 flex items-center justify-center bg-transparent">
-                                                        <img 
-                                                            src={`https://www.google.com/s2/favicons?domain=${hostname}&sz=32`}
-                                                            className="w-full h-full object-contain opacity-80 group-hover/item:opacity-100 transition-opacity"
-                                                            alt=""
-                                                            onError={(e) => { 
-                                                                e.target.onerror = null; 
-                                                                e.target.src = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="%23666" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>';
-                                                            }}
-                                                        />
+                                    {isLoading ? (
+                                        <div className="p-3 text-xs text-gray-400 flex items-center gap-2">
+                                            <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-ping" />
+                                            <span>Mencari informasi di web...</span>
+                                        </div>
+                                    ) : (
+                                        results.map((item, idx) => {
+                                            let hostname = '';
+                                            try {
+                                                hostname = new URL(item.url).hostname;
+                                                hostname = hostname.replace(/^www\./, '');
+                                            } catch(e) {
+                                                hostname = item.url || '';
+                                            }
+                                            
+                                            return (
+                                                <a 
+                                                    key={idx} 
+                                                    href={item.url}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="flex items-center justify-between p-2.5 rounded-lg hover:bg-[#252525] transition-all group/item cursor-pointer"
+                                                >
+                                                    <div className="flex items-center gap-3 overflow-hidden flex-1 pr-4">
+                                                         <div className="w-[18px] h-[18px] flex-shrink-0 flex items-center justify-center bg-transparent">
+                                                            <img 
+                                                                src={`https://www.google.com/s2/favicons?domain=${hostname}&sz=32`}
+                                                                className="w-full h-full object-contain opacity-80 group-hover/item:opacity-100 transition-opacity"
+                                                                alt=""
+                                                                onError={(e) => { 
+                                                                    e.target.onerror = null; 
+                                                                    e.target.src = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="%23666" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>';
+                                                                }}
+                                                            />
+                                                        </div>
+                                                        <span className="text-[13.5px] font-medium text-[#d4d4d4] group-hover/item:text-white truncate transition-colors">
+                                                            {item.title}
+                                                        </span>
                                                     </div>
-                                                    <span className="text-[13.5px] font-medium text-[#d4d4d4] group-hover/item:text-white truncate transition-colors">
-                                                        {item.title}
-                                                    </span>
-                                                </div>
-                                                <div className="flex items-center gap-3 flex-shrink-0">
-                                                    <span className="text-[12px] text-[#666666]">{hostname}</span>
-                                                </div>
-                                            </a>
-                                        );
-                                    })}
+                                                    <div className="flex items-center gap-3 flex-shrink-0">
+                                                        <span className="text-[12px] text-[#666666]">{hostname}</span>
+                                                    </div>
+                                                </a>
+                                            );
+                                        })
+                                    )}
                                 </div>
                             </div>
                         </div>

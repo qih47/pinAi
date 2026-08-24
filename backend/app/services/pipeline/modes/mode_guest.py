@@ -101,27 +101,19 @@ class ModeGuest:
             )
 
         try:
-            async for chunk_line in stream_ollama_chat(
+            from backend.app.services.pipeline.agentic_interceptor import agentic_stream_wrapper
+            async for chunk in agentic_stream_wrapper(
                 model_name=getattr(settings, "MODEL_PERSONA", "gemma4:12b"),
                 messages=stream_messages,
                 request=request,
                 temperature=temperature,
-                keep_alive=-1,
                 num_ctx=num_ctx,
-                num_predict=-1,
-                is_thinking=is_thinking,
+                is_thinking=False,
+                employee_name=employee_name,
+                session_uuid=session_uuid_to_use,
+                max_tool_loops=1
             ):
-                try:
-                    chunk_data = json.loads(chunk_line.strip())
-                    chunk_text = chunk_data.get("chunk", "")
-                    
-                    if chunk_text:
-                        yield format_sse(chunk_text, "", False, event_type=SSEEventType.CHUNK)
-                        
-                except (json.JSONDecodeError, AttributeError):
-                    chunk_text = chunk_line if isinstance(chunk_line, str) else ""
-                    if chunk_text:
-                        yield format_sse(chunk_text, "", False, event_type=SSEEventType.CHUNK)
+                yield chunk
 
         except Exception as e:
             logger.error(f"[MODE_GUEST] Streaming error: {str(e)}", exc_info=True)

@@ -449,8 +449,16 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
                     }
                 }
                 const { rawContent, isStreaming, darkMode } = latestProps.current;
-                const afterSearchBlock = rawContent ? rawContent.split('```websearch')[1]?.split('```')[1] : null;
-                const hasStartedResponding = afterSearchBlock ? afterSearchBlock.trim().length > 0 : false;
+                let hasStartedResponding = false;
+                if (rawContent && rawContent.includes('```websearch')) {
+                    const wsIdx = rawContent.indexOf('```websearch');
+                    const afterOpen = rawContent.substring(wsIdx + 12);
+                    const closeFenceIdx = afterOpen.indexOf('```');
+                    if (closeFenceIdx !== -1) {
+                        const afterClose = afterOpen.substring(closeFenceIdx + 3).trim();
+                        hasStartedResponding = afterClose.length > 0;
+                    }
+                }
 
                 return (
                     <Suspense fallback={<div className="animate-pulse p-3 border border-[#2d2d2d] bg-[#1e1e1e] rounded-xl text-xs text-gray-400 font-medium my-2">Memuat hasil pencarian...</div>}>

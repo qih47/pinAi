@@ -371,14 +371,47 @@ Gunakan untuk jadwal proyek teknis/detail. Contoh format:
 ]
 ```
 
-3. INFOGRAFIS TIMELINE (```infographic):
-Gunakan untuk presentasi timeline/alur bulanan tingkat tinggi. Contoh format WAJIB (pastikan key JSON sama persis):
+3. DYNAMIC INFOGRAPHIC (```infographic):
+Gunakan untuk menyajikan infografis visual tingkat tinggi. Sistem mendukung 4 layout dinamis:
+
+A. Layout Cuaca (Prakiraan Cuaca Harian/Mingguan):
 ```infographic
 {
+  "layout": "weather",
+  "title": "Prakiraan Cuaca Mingguan",
+  "location": "Bandung & Jakarta",
+  "days": [
+    {
+      "day": "Senin, 24 Ags",
+      "condition": "Cerah Berawan",
+      "temp_max": "32°C",
+      "temp_min": "21°C",
+      "humidity": "65%",
+      "wind": "12 km/h",
+      "advice": "Gunakan pakaian katun & sunscreen"
+    },
+    {
+      "day": "Selasa, 25 Ags",
+      "condition": "Hujan Ringan",
+      "temp_max": "29°C",
+      "temp_min": "20°C",
+      "humidity": "80%",
+      "wind": "15 km/h",
+      "advice": "Sedia payung di sore hari"
+    }
+  ],
+  "recommendation": "Cuaca relatif stabil dengan potensi hujan lokal di pertengahan minggu."
+}
+```
+
+B. Layout Roadmap Proyek (Timeline Bulanan):
+```infographic
+{
+  "layout": "timeline",
   "title": "Timeline Proyek Kasir",
-  "totalDuration": 3,
+  "duration": "3 BULAN",
   "note": "Catatan tambahan proyek",
-  "finalOutcome": "Aplikasi siap di-deploy",
+  "result": "Aplikasi siap di-deploy",
   "months": [
     {
       "month": "1",
@@ -387,6 +420,19 @@ Gunakan untuk presentasi timeline/alur bulanan tingkat tinggi. Contoh format WAJ
       "activities": ["Kickoff meeting", "Analisis kebutuhan", "Desain UI/UX"],
       "outputs": ["Dokumen PRD", "Mockup UI"]
     }
+  ]
+}
+```
+
+C. Layout Prosedur / SOP (Step-by-Step Flow):
+```infographic
+{
+  "layout": "steps",
+  "title": "SOP Pengajuan Cuti Tahunan",
+  "subtitle": "Panduan Pegawai",
+  "steps": [
+    { "step": "Tahap 1", "title": "Pengajuan di Portal HRIS", "desc": "Isi form cuti dan tanggal pelaksanaan", "pic": "Pegawai" },
+    { "step": "Tahap 2", "title": "Persetujuan Atasan", "desc": "Verifikasi kuota cuti oleh Manajer Divisi", "pic": "Manajer" }
   ]
 }
 ```
