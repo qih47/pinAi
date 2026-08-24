@@ -5,6 +5,8 @@ import logging
 import asyncio
 from typing import Tuple, List, Dict, Any, Optional
 
+import fitz
+
 from backend.app.core.database import get_peraturan_db
 
 logger = logging.getLogger("CAKRA_PERATURAN")
@@ -63,8 +65,8 @@ def _process_pdf_sync(abs_path: str) -> Tuple[str, List[Dict[str, Any]], int]:
     try:
         doc = fitz.open(restored_pdf)
         total_pages = len(doc)
-        # Batasi maksimal 3 halaman pertama dengan DPI 150 agar tidak memboroskan token visual dan KV cache LLM
-        for page_num in range(min(len(doc), 3)):
+        # Batasi halaman scan dengan DPI 150 untuk ketajaman visual maksimal
+        for page_num in range(min(len(doc), 2)):
             page = doc.load_page(page_num)
             pix = page.get_pixmap(dpi=150)
             img_data = pix.tobytes("png")
@@ -74,6 +76,36 @@ def _process_pdf_sync(abs_path: str) -> Tuple[str, List[Dict[str, Any]], int]:
         logger.error(f"[PERATURAN_SERVICE] Failed to convert PDF to image: {e}")
         
     return "", formatted_attachments, total_pages
+
+
+def extract_pdf_pages_sync(abs_path: str, max_pages: int = 100) -> List[Dict[str, Any]]:
+    """
+    Ekstrak teks halaman per halaman secara cepat untuk Page-Level Cross-Document Reranking.
+    Returns list of dict: {page_num, text, is_scan, total_pages}
+    """
+    results = []
+    if not abs_path or not os.path.exists(abs_path):
+        return results
+        
+    try:
+        doc = fitz.open(abs_path)
+        total = min(len(doc), max_pages)
+        for page_idx in range(total):
+            page = doc.load_page(page_idx)
+            text = page.get_text("text").strip()
+            clean_text = " ".join(text.split())
+            is_scan = len(clean_text) < 40
+            
+            results.append({
+                "page_num": page_idx + 1,
+                "text": clean_text,
+                "is_scan": is_scan,
+                "total_pages": len(doc)
+            })
+    except Exception as e:
+        logger.error(f"[PERATURAN_SERVICE] Error extracting pages from {abs_path}: {e}")
+        
+    return results
 
 
 def _find_valid_pdf_file(gambar: Any, gambar2: Any, gambar3: Any) -> Optional[str]:
@@ -466,6 +498,177 @@ async def search_and_ocr_by_synthetic_qa(user_message: str) -> Tuple[str, List[D
         logger.error(f"[PERATURAN_SERVICE_SYNTHETIC] Error during Synthetic QA search: {e}")
         return "", [], []
 
+async def get_candidate_documents_metadata(user_message: str, query_judul_list: List[str]) -> List[Dict[str, Any]]:
+    """
+    Mengambil daftar dokumen kandidat terbaik dari MySQL & pgvector yang lolos scoring BGE.
+    Mengembalikan metadata lengkap dan path valid_file untuk diproses secara progresif.
+    """
+    if not user_message or not user_message.strip():
+        return []
+        
+    try:
+        from backend.app.services.rag.vector_service import vector_service
+        from backend.app.core.database import get_db
+        from backend.app.services.rag.reranker_service import reranker_service
+        
+        candidate_ids = set()
+        
+        # 1. Fetch from pgvector Semantic QA
+        query_embedding = await vector_service.get_query_embedding(user_message)
+        if query_embedding:
+            embedding_str = str(query_embedding)
+            async with get_db() as conn_pg:
+                pg_sql = """
+                    SELECT source_id, 1 - (embedding <=> $1::vector) as similarity
+                    FROM rag_document_questions
+                    ORDER BY embedding <=> $1::vector
+                    LIMIT 20
+                """
+                records = await conn_pg.fetch(pg_sql, embedding_str)
+                for r in records:
+                    candidate_ids.add(r["source_id"])
+                    
+        # 2. Fetch from MySQL FTS
+        if query_judul_list:
+            async with get_peraturan_db() as conn_my:
+                async with conn_my.cursor() as cur:
+                    for query_judul in query_judul_list:
+                        safe_judul = "".join([c for c in query_judul[:200] if c.isalnum() or c.isspace()]).strip()
+                        words = [w for w in safe_judul.split() if len(w) > 2]
+                        if not words: continue
+                        
+                        match_str = " ".join(words)
+                        sql_fts = f"""
+                            SELECT id_berita
+                            FROM berita 
+                            WHERE MATCH(judul, tag, isi_berita) AGAINST (%s IN NATURAL LANGUAGE MODE)
+                            ORDER BY MATCH(judul, tag, isi_berita) AGAINST (%s IN NATURAL LANGUAGE MODE) DESC
+                            LIMIT 10
+                        """
+                        await cur.execute(sql_fts, (match_str, match_str))
+                        rows = await cur.fetchall()
+                        for row in rows:
+                            candidate_ids.add(row[0])
+                            
+                        if len(words) == 1 and len(words[0]) <= 5:
+                            like_str = f"%{words[0]}%"
+                            sql_like = """
+                                SELECT id_berita
+                                FROM berita
+                                WHERE judul LIKE %s OR tag LIKE %s
+                                LIMIT 10
+                            """
+                            await cur.execute(sql_like, (like_str, like_str))
+                            rows_like = await cur.fetchall()
+                            for row in rows_like:
+                                candidate_ids.add(row[0])
+                                
+        if not candidate_ids:
+            return []
+            
+        async with get_peraturan_db() as conn_my:
+            async with conn_my.cursor() as cur:
+                format_strings = ','.join(['%s'] * len(candidate_ids))
+                sql = f"""
+                    SELECT b.id_berita, b.noper, b.judul, b.gambar, b.gambar2, b.gambar3, k.nama_kategori, b.tanggal, b.stataktif, b.mencabut, b.linkper,
+                           1.0 as dummy_score,
+                           b.tag,
+                           SUBSTRING(b.isi_berita, 1, 5000) as isi_snippet
+                    FROM berita b
+                    LEFT JOIN kategori k ON b.id_kategori = k.id_kategori
+                    WHERE b.id_berita IN ({format_strings})
+                """
+                await cur.execute(sql, tuple(candidate_ids))
+                raw_rows = await cur.fetchall()
+                
+        if not raw_rows:
+            return []
+            
+        rows = [list(r) for r in raw_rows]
+        corpus_texts = [f"{r[2]} - Tag: {r[12]}" for r in rows]
+        scores = await reranker_service.compute_scores(user_message, corpus_texts)
+        
+        # Target Document Match Boost: Prioritaskan dokumen yang diminta secara spesifik (misal: PKB, SOP, dll)
+        target_tokens = set()
+        for q in (query_judul_list or []):
+            if q and len(q.strip()) >= 3:
+                target_tokens.add(q.strip().lower())
+        
+        user_lower = user_message.lower()
+        for kw in ["pkb", "perjanjian kerja bersama", "sop", "skep", "surat edaran", "instruksi kerja"]:
+            if kw in user_lower:
+                target_tokens.add(kw)
+
+        scored_rows = []
+        for i, r in enumerate(rows):
+            doc_title_lower = str(r[2] or "").lower()
+            doc_noper_lower = str(r[1] or "").lower()
+            doc_tag_lower = str(r[12] or "").lower()
+            
+            base_score = float(scores[i])
+            has_target_match = any(t in doc_title_lower or t in doc_noper_lower or t in doc_tag_lower for t in target_tokens)
+            
+            final_score = base_score + (0.30 if has_target_match else 0.0)
+            r[11] = final_score
+            scored_rows.append(r)
+            
+        scored_rows.sort(key=lambda x: x[11], reverse=True)
+        scored_rows = [x for x in scored_rows if x[11] > 0.45]
+        
+        if not scored_rows:
+            return []
+            
+        found_ids = {row[0] for row in scored_rows}
+        dicabut_oleh = {}
+        for row in scored_rows:
+            curr_id = row[0]
+            curr_judul = row[2]
+            mencabut_str = row[9] or ""
+            linkper_str = row[10] or ""
+            all_replaced = []
+            if mencabut_str:
+                all_replaced.extend([x.strip() for x in mencabut_str.split('|') if x.strip()])
+            if linkper_str:
+                all_replaced.extend([x.strip() for x in linkper_str.split('|') if x.strip()])
+            for rep_id_str in all_replaced:
+                if rep_id_str.isdigit():
+                    rep_id = int(rep_id_str)
+                    if rep_id in found_ids:
+                        dicabut_oleh[rep_id] = (curr_id, curr_judul)
+                        
+        candidate_docs = []
+        for row in scored_rows:
+            id_berita, noper, judul, gambar, gambar2, gambar3, nama_kategori, tanggal, stataktif, mencabut_str, linkper_str, score, _tag_val, _isi_val = row
+            valid_file = _find_valid_pdf_file(gambar, gambar2, gambar3)
+            status_berlaku_str = _resolve_status_berlaku(id_berita, stataktif, dicabut_oleh)
+            
+            candidate_docs.append({
+                "id": id_berita,
+                "id_berita": id_berita,
+                "judul": judul,
+                "title": judul,
+                "document_title": judul,
+                "noper": noper or "N/A",
+                "nomor": noper or "N/A",
+                "tanggal": str(tanggal) if tanggal else "",
+                "stataktif": stataktif,
+                "status_berlaku": status_berlaku_str,
+                "mencabut": mencabut_str or "-",
+                "score": float(score),
+                "jenis": nama_kategori or "Regulasi",
+                "valid_file": valid_file,
+                "filename": os.path.basename(valid_file) if valid_file else None,
+                "file_path": f"file_peraturan/{os.path.basename(valid_file)}" if valid_file else None,
+                "raw_tag": _tag_val,
+                "raw_isi": _isi_val
+            })
+            
+        return candidate_docs
+    except Exception as e:
+        logger.error(f"[PERATURAN_SERVICE_CANDIDATES] Error fetching candidates: {e}")
+        return []
+
+
 async def hybrid_document_search(user_message: str, query_judul_list: List[str]) -> Tuple[str, List[Dict[str, Any]], List[Dict[str, Any]]]:
     """
     Fase 3: Late Fusion Reranking.
@@ -643,9 +846,7 @@ async def hybrid_document_search(user_message: str, query_judul_list: List[str])
                     combined_context_text += f"--- DOKUMEN SPESIFIK (JUDUL: {judul}) ---\n{meta_str}{extracted_text}\n-------------------\n\n"
                 elif formatted_attachments:
                     combined_context_text += f"--- DOKUMEN SPESIFIK (JUDUL: {judul}) ---\n{meta_str}[Dokumen hasil scan telah dilampirkan sebagai gambar untuk dianalisa]\n-------------------\n\n"
-                
-                if formatted_attachments:
-                    all_formatted_attachments.extend(formatted_attachments)
+                    all_formatted_attachments.extend(formatted_attachments[:1])
             else:
                 combined_context_text += f"--- DOKUMEN SPESIFIK (JUDUL: {judul}) ---\n{meta_str}[Teks isi fisik dokumen tidak dimuat untuk menghemat kuota memori LLM. Namun dokumen ini TETAP BERLAKU dan WAJIB direkomendasikan jika berupa Form/Surat Izin/Lampiran!]\n-------------------\n\n"
                 

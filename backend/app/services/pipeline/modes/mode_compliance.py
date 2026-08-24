@@ -41,7 +41,7 @@ class ModeCompliance:
         logger.info("[MODE_COMPLIANCE] Starting Compliance Mode Execution")
         isolated_doc_id = context_isolation.get("isolated_doc_id")
         
-        yield format_sse(status="🎯 Menginisialisasi Mode Uji Kepatuhan...", event_type=SSEEventType.STATUS)
+        yield format_sse(status="🎯 Membuka uji kepatuhan", event_type=SSEEventType.STATUS)
         await asyncio.sleep(0.01)
 
         # 1. Fetch Filename from Database
@@ -78,7 +78,7 @@ class ModeCompliance:
             return
 
         # 3. Read PDF (Using PyMuPDF)
-        yield format_sse(status=f"📂 Membaca dokumen {filename}...", event_type=SSEEventType.STATUS)
+        yield format_sse(status=f"📂 Membaca dokumen {filename}", event_type=SSEEventType.STATUS)
         await asyncio.sleep(0.01)
 
         try:
@@ -98,9 +98,9 @@ class ModeCompliance:
             
         is_document_scanned = len(sample_text.strip()) < 50
         
-        # Jika text PDF, LLM bisa menampung banyak halaman sekaligus (128k context)
-        # Jika scanned (gambar), kita harus melimit batch agar tidak OOM
-        chunk_size = 15 if is_document_scanned else 200
+        # Jika text PDF, LLM bisa menampung banyak halaman sekaligus (teks sangat hemat token)
+        # Jika scanned (gambar), kita batasi 1 halaman per window agar muat dalam 32K context
+        chunk_size = 1 if is_document_scanned else 50
 
         start_page = 0
         answer_found = False
@@ -110,7 +110,7 @@ class ModeCompliance:
         
         while start_page < total_pages and not answer_found:
             end_page = min(start_page + chunk_size, total_pages)
-            yield format_sse(status=f"🔍 Menganalisis halaman {start_page + 1} - {end_page}...", event_type=SSEEventType.STATUS)
+            yield format_sse(status=f"🔍 Menganalisis halaman {start_page + 1} - {end_page}", event_type=SSEEventType.STATUS)
             await asyncio.sleep(0.01)
 
             extracted_text = ""
@@ -127,7 +127,7 @@ class ModeCompliance:
             
             if is_scanned:
                 # Dokumen Scan -> Convert ke Image
-                yield format_sse(status=f"👁️ Membaca halaman {start_page + 1} - {end_page}...", event_type=SSEEventType.STATUS)
+                yield format_sse(status=f"👁️ Memindai halaman {start_page + 1} - {end_page}", event_type=SSEEventType.STATUS)
                 await asyncio.sleep(0.01)
                 for page_num in range(start_page, end_page):
                     page = doc.load_page(page_num)
@@ -166,7 +166,7 @@ class ModeCompliance:
             hist_tokens = sum(len(m.get("content", "")) for m in messages_dict) // 4
             rag_tokens = 0 # Focus mode uses web/search context inside system prompt mostly, so we can treat it as sys_tokens
             total_used = sys_tokens + hist_tokens + rag_tokens
-            num_ctx = 16384
+            num_ctx = 32768
 
             session_uuid_to_use = session_uuid or (routing_data.get("_session_uuid") if routing_data else None)
             if session_uuid_to_use:
@@ -194,7 +194,7 @@ class ModeCompliance:
                 model_name=settings.MODEL_PERSONA, # TETAP PAKAI TEXT LLM
                 is_thinking=is_thinking,
                 temperature=0.1,
-                num_ctx=16384,
+                num_ctx=32768,
                 num_predict=-1,
                 request=request
             ):
@@ -225,7 +225,7 @@ class ModeCompliance:
                                 break # Stop LLM stream, langsung lanjut iterasi berikutnya
                             elif buffer.strip():
                                 started_streaming = True
-                                yield format_sse(status="✨ Menemukan jawaban!", event_type=SSEEventType.STATUS)
+                                yield format_sse(status="✨ Jawaban ditemukan", event_type=SSEEventType.STATUS)
                                 yield format_sse(chunk=buffer, event_type=SSEEventType.CHUNK)
                     else:
                         if thought:
@@ -240,7 +240,7 @@ class ModeCompliance:
             elif not started_streaming and "KOSONG" not in buffer.upper():
                 # Kasus jika jawaban LLM sangat pendek (di bawah 30 karakter) tapi bukan KOSONG
                 answer_found = True
-                yield format_sse(status="✨ Menemukan jawaban!", event_type=SSEEventType.STATUS)
+                yield format_sse(status="✨ Jawaban ditemukan", event_type=SSEEventType.STATUS)
                 yield format_sse(buffer, "", False, event_type=SSEEventType.CHUNK)
                 yield format_sse("", "", True, event_type=SSEEventType.DONE)
                 return
@@ -249,7 +249,7 @@ class ModeCompliance:
             logger.info(f"[MODE_FOCUS] Jawaban tidak ditemukan di hal {start_page + 1}-{end_page}")
             start_page += chunk_size
             if start_page < total_pages:
-                yield format_sse(status=f"⏳ Menelusuri halaman {start_page + 1} - {min(start_page + chunk_size, total_pages)}...", event_type=SSEEventType.STATUS)
+                yield format_sse(status=f"⏳ Menelusuri halaman {start_page + 1} - {min(start_page + chunk_size, total_pages)}", event_type=SSEEventType.STATUS)
                 await asyncio.sleep(0.01)
 
         if not answer_found:

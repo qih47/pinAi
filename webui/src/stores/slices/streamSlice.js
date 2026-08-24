@@ -6,17 +6,39 @@ export const createStreamSlice = (set, get) => ({
         const targetSession = sessionUuid || get().sessionUuid;
         const activeStreams = { ...get().activeStreams };
         
+        let currentMessages = [...get().messages];
+        if (currentMessages.length > 0) {
+            const lastIdx = currentMessages.length - 1;
+            if (currentMessages[lastIdx].role === 'assistant') {
+                const prevContent = currentMessages[lastIdx].content || '';
+                const stopText = prevContent.trim() ? `${prevContent}\n\n*Respons dihentikan*` : '*Respons dihentikan*';
+                currentMessages[lastIdx] = {
+                    ...currentMessages[lastIdx],
+                    content: stopText,
+                    isStreaming: false,
+                    isThinking: false,
+                    statusMessage: ''
+                };
+            }
+        }
+
         if (activeStreams[targetSession] && activeStreams[targetSession].abortController) {
             activeStreams[targetSession].abortController.abort();
             delete activeStreams[targetSession];
-            set({ activeStreams });
         }
         
         if (targetSession === get().sessionUuid) {
             const controller = get().abortController;
             if (controller) controller.abort();
-            set({ isStreaming: false, isThinking: false, abortController: null });
         }
+
+        set({ 
+            activeStreams,
+            messages: currentMessages,
+            isStreaming: false, 
+            isThinking: false, 
+            abortController: null 
+        });
     },
 
     sendMessage: async (content, npp, onSessionCreatedCallback, directUploadedFiles = null, chatMode = 'auto', isThinkingMode = true, toast = null) => {
@@ -137,26 +159,22 @@ export const createStreamSlice = (set, get) => ({
     },
 
     editAndRegenerate: async (index, newContent, toast = null) => {
-        const activeSessionUuid_temp = get().sessionUuid;
-        if (!newContent.trim() || get().activeStreams?.[activeSessionUuid_temp]?.isStreaming) return;
-
-        const currentMessages = [...get().messages];
         const sessionUuid = get().sessionUuid;
+        if (!newContent.trim() || get().activeStreams?.[sessionUuid]?.isStreaming) return;
 
-        // 1. In-Place Update: Ubah isi pesan user pada index tersebut
+        // 1. Pertahankan SELURUH pesan percakapan (JANGAN hapus/potong chat di bawahnya!)
+        const currentMessages = [...get().messages];
         currentMessages[index] = { ...currentMessages[index], content: newContent };
 
-        // 2. In-Place Update: Siapkan asisten message baru di index + 1 (menimpa respons lama)
+        // 2. Siapkan/update asisten message tepat di posisi index + 1
         const assistantMessage = {
             role: 'assistant',
             content: '',
             isThinking: get().isThinkingMode,
             isStreaming: true,
             thinking: '',
-            statusMessage: get().isThinkingMode ? 'Sedang berpikir...' : '' // Gunakan statusMessage alih-alih thinking untuk loading state
+            statusMessage: get().isThinkingMode ? 'Sedang berpikir' : ''
         };
-
-        // Jika kebetulan sebelahnya bukan assistant, kita push/splice (tapi idealnya selalu assistant)
         if (currentMessages[index + 1] && currentMessages[index + 1].role === 'assistant') {
             currentMessages[index + 1] = assistantMessage;
         } else {
@@ -173,12 +191,21 @@ export const createStreamSlice = (set, get) => ({
             currentThinking: get().isThinkingMode ? 'Sedang berpikir...' : ''
         };
 
+        const newWizardAnswers = { ...(get().wizardAnswers || {}) };
+        Object.keys(newWizardAnswers).forEach(k => {
+            if (parseInt(k, 10) >= index) {
+                delete newWizardAnswers[k];
+            }
+        });
+
         set({
             activeStreams,
             messages: currentMessages,
             isStreaming: true,
             isThinking: true,
             isEditRegenerating: true,
+            activeWizard: null,
+            wizardAnswers: newWizardAnswers,
             abortController: controller,
             currentThinking: get().isThinkingMode ? 'Sedang berpikir...' : ''
         });

@@ -60,8 +60,8 @@ export async function updateSessionSettings(sessionUuid, settings) {
  * @param {Object} options - Configuration options (timeoutMs, etc)
  */
 export async function streamChat(
-  { sessionUuid, messages, chatMode, thinking, isolatedDocId, attachmentPaths, npp, editIndex, signal },
-  { onThinking, onStatus, onSources, onChunk, onFileStatus, onDone, onError },
+  { sessionUuid, messages, chatMode, thinking, isolatedDocId, attachmentPaths, npp, editIndex, signal, activeTopic, keySubject },
+  { onThinking, onStatus, onSources, onChunk, onFileStatus, onDone, onError, onTopicUpdate },
   options = {}
 ) {
   const { timeoutMs = 5 * 60 * 1000 } = options;  // 5 minute default timeout
@@ -109,7 +109,9 @@ export async function streamChat(
         temperature: 0.7,
         isolated_doc_id: isolatedDocId,
         attachment_paths: attachmentPaths,
-        edit_index: editIndex
+        edit_index: editIndex,
+        active_topic: activeTopic,
+        key_subject: keySubject
       }),
       signal: controller.signal,  // ✅ ADD: Abort signal for timeout
     });
@@ -195,6 +197,11 @@ export async function streamChat(
           
           if (parsedData.chunk !== undefined && parsedData.chunk && onChunk) {
             onChunk(parsedData.chunk);
+          }
+
+          // Handle topic & key subject update from Call 1 Router
+          if (parsedData.event_type === 'topic_update' && parsedData.topic && onTopicUpdate) {
+            onTopicUpdate(parsedData.topic, parsedData.key_subject);
           }
 
           // Handle file generation lifecycle (Interceptor-Analyst Pipeline)

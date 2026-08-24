@@ -703,9 +703,36 @@ export function useChatLogic({ isGuest,
       }));
     };
 
+    const handleSendPromptEvent = (e) => {
+      const text = e?.detail?.text;
+      if (text && typeof text === 'string') {
+        const currentUserData = authUser || propsUserData;
+        const sendFn = useChatStore.getState().sendMessage;
+        if (typeof sendFn === 'function') {
+          sendFn(
+            text,
+            isGuest ? null : currentUserData?.npp,
+            isGuest ? null : (newSessionObj) => {
+              setChatHistory((prev) => [newSessionObj, ...prev]);
+              lastLoadedSessionRef.current = newSessionObj.session_uuid;
+              navigate(`/chat/${newSessionObj.session_uuid}`, { replace: true });
+            },
+            [],
+            chatModeRef.current,
+            isThinkingModeRef.current,
+            toast
+          );
+        }
+      }
+    };
+
     window.addEventListener("cakra_title_update", handleTitleUpdate);
-    return () => window.removeEventListener("cakra_title_update", handleTitleUpdate);
-  }, []);
+    window.addEventListener("cakra_send_prompt", handleSendPromptEvent);
+    return () => {
+      window.removeEventListener("cakra_title_update", handleTitleUpdate);
+      window.removeEventListener("cakra_send_prompt", handleSendPromptEvent);
+    };
+  }, [authUser, isGuest, navigate, propsUserData, setChatHistory, toast]);
 
   // Load documents when document list is opened
 

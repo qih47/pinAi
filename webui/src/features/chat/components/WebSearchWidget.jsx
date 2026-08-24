@@ -36,7 +36,7 @@ const WebSearchWidget = ({ searchData, isStreaming, hasStartedResponding }) => {
                 <span className="text-[14px] font-medium text-[#9e9e9e] transition-colors line-clamp-1 group-hover:text-[#c4c4c4]">
                     {hasStartedResponding ? "Hasil penelusuran informasi dari web" : "Menelusuri informasi dari web"}
                 </span>
-                <span className="opacity-0 group-hover:opacity-100 transition-opacity text-[#888888] flex items-center justify-center">
+                <span className="text-[#888888] flex items-center justify-center">
                     {isOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                 </span>
             </div>

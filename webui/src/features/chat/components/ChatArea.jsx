@@ -140,7 +140,7 @@ export default function ChatArea({
                 <img
                   src={cakraLogo}
                   alt="CAKRA"
-                  style={{ width: 25, height: 25, borderRadius: 8, objectFit: 'cover', background: 'transparent', animation: 'cakraSpin 1.2s linear infinite' }}
+                  style={{ width: 25, height: 25, borderRadius: 8, objectFit: 'cover', background: 'transparent', animation: 'cakraSpin 0.7s linear infinite' }}
                 />
                 <span style={{ ...styles.statusDot, background: '#ef4444', borderColor: theme.mainBg }} />
               </div>
@@ -152,8 +152,8 @@ export default function ChatArea({
           </div>
         </div>
       )}
-      {/* Spacer bawah yang sudah di-adjust (tidak terlalu tinggi, tidak terlalu mepet) */}
-      <div style={{ height: '90px', width: '100%', flexShrink: 0 }} />
+      {/* Spacer bawah lega (150px) agar batas bawah jelas & tombol aksi tidak pernah nembus/tenggelam di balik kotak input */}
+      <div style={{ height: '150px', width: '100%', flexShrink: 0, overflowAnchor: 'auto' }} />
     </>
   ), [isStreaming, lastAssistantIndex, currentThinking, theme.mainBg, theme.secondaryText]);
 
@@ -161,7 +161,7 @@ export default function ChatArea({
     <div style={{ flex: 1, minHeight: 0, position: 'relative', display: 'flex', flexDirection: 'column', width: '100%' }}>
       <div
         ref={messagesContainerRef}
-        style={{ ...styles.scrollArea, overflowY: 'auto', position: 'relative', flex: 1 }}
+        style={{ ...styles.scrollArea, overflowY: 'auto', position: 'relative', flex: 1, overflowAnchor: 'none' }}
         className="custom-scrollbar chat-main-scroll"
       >
       <div style={styles.chatInner}>
@@ -197,13 +197,12 @@ export default function ChatArea({
               }}
               alignToBottom={true}
               followOutput={(isAtBottom) => {
-                if (isStreamingText && isAtBottom) return 'smooth';
-                return isAtBottom ? 'smooth' : false;
+                return isAtBottom ? 'auto' : false;
               }}
               rangeChanged={(range) => {
                 setVisibleRange(range);
               }}
-              increaseViewportBy={{ top: 800, bottom: 800 }}
+              increaseViewportBy={{ top: 1200, bottom: 1200 }}
               components={{ Footer: FooterComponent }}
             />
           </div>

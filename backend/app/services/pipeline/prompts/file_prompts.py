@@ -49,14 +49,17 @@ JIKA USER MEMINTA MULTIPLE FILE, ulangi Langkah 2 untuk setiap file.
 SANGAT PENTING: Kamu WAJIB menulis 1-2 kalimat transisi (normal text) di antara penutup tag file pertama dan pembuka tag file kedua.
 Contoh kalimat transisi: "Nah, sekarang mari kita lanjutkan dengan membuat file CSS-nya..."
 
-LANGKAH 3 — BERHENTI TOTAL (STOP):
-Setelah kamu menutup tag `</create_file>` terakhir, KAMU WAJIB BERHENTI MENULIS. Jangan berikan kesimpulan, penutup, atau penjelasan apapun. Biarkan analis (Call 2) yang mengambil alih pembicaraan.
+LANGKAH 3 — PENJELASAN ARSITEKTUR & CARA PENGGUNAAN (SETELAH SEMUA FILE SELESAI):
+Setelah kamu menutup tag `</create_file>` atau `</edit_file>` terakhir, lanjutkan LANGSUNG secara mengalir dengan:
+1. Rangkuman singkat arsitektur komponen/script yang telah dibuat.
+2. Panduan instalasi dependensi dan perintah terminal yang diperlukan (contoh: `npm install ...` atau `pip install ...`).
+3. Cara mengintegrasikan atau menjalankan file tersebut.
+4. Tanyakan secara ramah dan proaktif apakah ada bagian yang ingin ditambahkan atau disesuaikan.
 
 LARANGAN KERAS:
-  - JANGAN gunakan ``` atau ```language di dalam tag
+  - JANGAN gunakan ``` atau ```language di dalam tag XML
   - JANGAN tambahkan komentar meta seperti "// ini adalah file..."
   - JANGAN biarkan file terpotong. Outputkan kode LENGKAP.
-  - JANGAN BERIKAN PENJELASAN KODE ATAU KESIMPULAN APAPUN SETELAH FILE TERAKHIR! Tugasmu selesai HANYA sampai tag </create_file> atau </edit_file> yang terakhir. Analisis akan dilakukan di langkah terpisah.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 🎨 GAYA BAHASA
@@ -104,13 +107,12 @@ LANGKAH 2 — TAG XML KODE HASIL EDIT (WAJIB gunakan <edit_file> bukan <create_f
   ...SELURUH kode file versi baru (bukan hanya diff/perubahan)...
   </edit_file>
 
-LANGKAH 3 — BERHENTI TOTAL (STOP):
-Setelah kamu menutup tag `</edit_file>`, KAMU WAJIB BERHENTI MENULIS. Jangan berikan kesimpulan, penutup, atau penjelasan apapun tentang kode yang diedit. Biarkan analis (Call 2) yang mengambil alih pembicaraan.
+LANGKAH 3 — PENJELASAN PERUBAHAN & CARA PAKAI:
+Setelah kamu menutup tag `</edit_file>`, lanjutkan langsung dengan penjelasan poin-poin apa saja yang sudah diperbaiki, cara mengujinya, dan tanyakan apakah ada kebutuhan lainnya.
 
 ATURAN KERAS:
   - Output HARUS berisi SELURUH isi file yang sudah dimodifikasi (bukan hanya bagian yang berubah)
-  - JANGAN gunakan ``` atau ```language di dalam tag
-  - JANGAN tulis apapun setelah tag </edit_file>
+  - JANGAN gunakan ``` atau ```language di dalam tag XML
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 🎨 GAYA BAHASA
@@ -184,12 +186,14 @@ prompt_manager.register_default(
 def build_generate_file_call1_prompt(
     employee_name: str, 
     pronoun: str = "unknown",
+    tone_hint: str = "casual",
     existing_files_text: str = ""
 ) -> str:
     return prompt_manager.render(
         name="FILE_GENERATE_CALL1",
         employee_name=employee_name,
         pronoun=pronoun,
+        tone_hint=tone_hint,
         existing_files_text=existing_files_text
     )
 

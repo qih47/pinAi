@@ -92,8 +92,7 @@ class InterceptorParser:
 
     def process_chunk(self, chunk: str):
         self._buffer += chunk
-        results = []
-
+        results = []        
         if self._state in ("STREAMING_PREAMBLE", "WAITING_FOR_NEXT_FILE"):
             m = _RE_OPEN_TAG.search(self._buffer)
             if m:
@@ -126,18 +125,12 @@ class InterceptorParser:
                     safe_to_stream = self._buffer[:last_lt]
                     self._buffer   = self._buffer[last_lt:]
                     if safe_to_stream:
-                        if self._state == "STREAMING_PREAMBLE":
-                            results.append(("preamble", safe_to_stream))
-                        else:
-                            self._transition_buffer += safe_to_stream
-                elif last_lt == -1 and len(self._buffer) > 80:
+                        results.append(("preamble", safe_to_stream))
+                elif last_lt == -1 and len(self._buffer) > 60:
                     safe_to_stream = self._buffer[:-10]
                     self._buffer   = self._buffer[-10:]
                     if safe_to_stream:
-                        if self._state == "STREAMING_PREAMBLE":
-                            results.append(("preamble", safe_to_stream))
-                        else:
-                            self._transition_buffer += safe_to_stream
+                        results.append(("preamble", safe_to_stream))
 
         elif self._state == "CAPTURING_CODE":
             rest = self._buffer
@@ -168,9 +161,10 @@ class InterceptorParser:
 
             done_filename = self._filename
             done_tag_type = self._tag_type
+            done_code = self.captured_code
             self.reset_for_next_file()
 
-            results.append(("file_ready", { "filename": done_filename, "tag_type": done_tag_type }))
+            results.append(("file_ready", { "filename": done_filename, "tag_type": done_tag_type, "code": done_code }))
             
             # Kembalikan teks mulai dari tag buka baru ke buffer dan proses ulang
             self._buffer = text[open_m.start():]
@@ -196,9 +190,10 @@ class InterceptorParser:
 
             done_filename = self._filename
             done_tag_type = self._tag_type
+            done_code = self.captured_code
             self.reset_for_next_file()
 
-            results.append(("file_ready", { "filename": done_filename, "tag_type": done_tag_type }))
+            results.append(("file_ready", { "filename": done_filename, "tag_type": done_tag_type, "code": done_code }))
 
             rest_after_close = text[m.end():]
             if rest_after_close:
@@ -237,7 +232,6 @@ class InterceptorParser:
         results = []
         if self._state == "CAPTURING_CODE":
             if self._buffer:
-                # Jika LLM terhenti tanpa tag penutup, bersihkan sisa buffernya disini
                 clean_content = _RE_CLOSE_TAGS.sub("", self._buffer)
                 self._code_buffer.append(clean_content)
                 results.append(("code_chunk", clean_content))
@@ -249,10 +243,11 @@ class InterceptorParser:
                 "code": self.captured_code,
             }
             self.completed_files.append(completed)
-            results.append(("file_ready", { "filename": self._filename, "tag_type": self._tag_type }))
+            results.append(("file_ready", { "filename": self._filename, "tag_type": self._tag_type, "code": self.captured_code }))
             self.reset_for_next_file()
-        elif self._state == "STREAMING_PREAMBLE" and self._buffer:
+        elif self._buffer:
             results.append(("preamble", self._buffer))
+            self._buffer = ""
             
         return results
 
@@ -271,51 +266,53 @@ class ModeGenerateFile:
         current_user_npp: Optional[str] = None,
         session_uuid: Optional[str] = None,
     ):
-        logger.info(f"[MODE_GENERATE_FILE] Starting Generation for: {employee_name} (NPP: {current_user_npp})")
+        logger.info(f"[MODE_GENERATE_FILE] Starting Unified Single-Stream Generation for: {employee_name} (NPP: {current_user_npp})")
 
         routing_data = routing_data or {}
         pronoun = routing_data.get("pronoun", "unknown")
+        tone_hint = routing_data.get("tone_hint", "casual")
 
-        # Prepare RAG text
+        # Prepare RAG / existing files text
         existing_artifacts_content = ""
-        if session_uuid:
-            try:
-                from backend.app.core.paths import get_account_session_dir
-                account_artifacts_dir = get_account_session_dir(current_user_npp, session_uuid, "artifacts")
-                if account_artifacts_dir.exists():
-                    artifacts_list = list(account_artifacts_dir.glob("*.*"))
-                    artifacts_list.sort(key=lambda x: x.stat().st_mtime, reverse=True)
-                    for artifact_path in artifacts_list[:5]:
-                        try:
-                            content = artifact_path.read_text(encoding="utf-8")
-                            existing_artifacts_content += f"\n<existing_file filename=\"{artifact_path.name}\">\n{content}\n</existing_file>\n"
-                        except Exception:
-                            pass
-                            
-                # Tambahkan juga user attachments sebagai konteks yang bisa di-edit
-                if attachments:
-                    for att in attachments:
-                        try:
-                            file_path = att.get("file_path")
-                            if file_path:
-                                # attachment path might be absolute or relative to account_dir
-                                from pathlib import Path
-                                att_path = Path(file_path)
-                                if not att_path.is_absolute():
-                                    att_path = account_artifacts_dir.parent / "attachments" / att_path.name
-                                if att_path.exists():
-                                    content = att_path.read_text(encoding="utf-8")
-                                    filename = att.get("file_name", att_path.name)
-                                    existing_artifacts_content += f"\n<existing_file filename=\"{filename}\" type=\"user_attachment\">\n{content}\n</existing_file>\n"
-                        except Exception as e:
-                            logger.warning(f"[MODE_GENERATE_FILE] Gagal membaca attachment {att.get('file_path')}: {e}")
-            except Exception as e:
-                logger.warning(f"[MODE_GENERATE_FILE] Gagal membaca existing artifacts/attachments: {e}")
+        try:
+            from backend.app.core.paths import get_account_session_dir, ACCOUNTS_DIR
+            from pathlib import Path
+            account_artifacts_dir = get_account_session_dir(current_user_npp, session_uuid or "default_session", "artifacts")
+            if account_artifacts_dir.exists():
+                artifact_files = sorted(
+                    [f for f in account_artifacts_dir.glob("*") if f.is_file()],
+                    key=lambda x: x.stat().st_mtime,
+                    reverse=True
+                )[:5]
+                for art_file in artifact_files:
+                    try:
+                        content = art_file.read_text(encoding="utf-8")
+                        existing_artifacts_content += f"\n<existing_file filename=\"{art_file.name}\">\n{content}\n</existing_file>\n"
+                    except Exception as fe:
+                        logger.warning(f"[MODE_GENERATE_FILE] Gagal membaca artifact {art_file.name}: {fe}")
+
+            if attachments:
+                for att in attachments:
+                    try:
+                        file_path = att.get("file_path")
+                        if file_path:
+                            att_path = Path(file_path)
+                            if not att_path.is_absolute():
+                                att_path = account_artifacts_dir.parent / "attachments" / att_path.name
+                            if att_path.exists():
+                                content = att_path.read_text(encoding="utf-8")
+                                filename = att.get("file_name", att_path.name)
+                                existing_artifacts_content += f"\n<existing_file filename=\"{filename}\" type=\"user_attachment\">\n{content}\n</existing_file>\n"
+                    except Exception as e:
+                        logger.warning(f"[MODE_GENERATE_FILE] Gagal membaca attachment {att.get('file_path')}: {e}")
+        except Exception as e:
+            logger.warning(f"[MODE_GENERATE_FILE] Gagal membaca existing artifacts/attachments: {e}")
 
         from backend.app.services.pipeline.system_prompts import build_generate_file_call1_prompt
-        system_prompt_call1 = build_generate_file_call1_prompt(
+        system_prompt = build_generate_file_call1_prompt(
             employee_name=employee_name,
             pronoun=pronoun,
+            tone_hint=tone_hint,
             existing_files_text=existing_artifacts_content,
         )
 
@@ -323,36 +320,41 @@ class ModeGenerateFile:
         trimmed_messages = messages_dict[-6:] if len(messages_dict) > 6 else messages_dict
 
         stream_messages = [
-            {"role": "system", "content": system_prompt_call1},
+            {"role": "system", "content": system_prompt},
             *trimmed_messages,
         ]
 
-        yield format_sse(status="✍️ Sedang membuat file...", event_type=SSEEventType.STATUS)
+        yield format_sse(status="💻 Merancang arsitektur file", event_type=SSEEventType.STATUS)
 
         parser = InterceptorParser()
         current_streaming_filename = None
+        written_files = []
 
-        # ── CALL 1: INTERCEPTOR STREAM ──────────────────────────────────────
+        # ── SINGLE UNIFIED STREAM (gemma4:31b) ──────────────────────────────────────
         try:
             async for chunk_line in stream_ollama_chat(
                 model_name=getattr(settings, "MODEL_PERSONA", "gemma4:12b"),
                 messages=stream_messages,
                 request=request,
-                temperature=0.4, # Diturunkan ke 0.4 agar model lebih patuh instruksi XML
+                temperature=0.6,
                 keep_alive=-1,
-                num_ctx=16384,   
-                num_predict=-1, # Unlimited response
-                is_thinking=False,  
+                num_ctx=32768,
+                num_predict=-1,
+                is_thinking=is_thinking
             ):
-
                 try:
-                    chunk_data  = json.loads(chunk_line.strip())
-                    chunk_text  = chunk_data.get("chunk", "")
-                    eval_count  = chunk_data.get("eval_count", 0)
-                    eval_dur    = chunk_data.get("eval_duration", 0)
+                    chunk_data    = json.loads(chunk_line)
+                    chunk_text    = chunk_data.get("chunk", "")
+                    native_thought = chunk_data.get("thinking", "")
+                    eval_count    = chunk_data.get("eval_count", 0)
+                    eval_dur      = chunk_data.get("eval_duration", 0)
                 except (json.JSONDecodeError, AttributeError):
                     chunk_text = chunk_line if isinstance(chunk_line, str) else ""
+                    native_thought = ""
                     eval_count = eval_dur = 0
+
+                if native_thought and is_thinking:
+                    yield format_sse("", native_thought, False, event_type=SSEEventType.THINKING)
 
                 if not chunk_text:
                     if eval_count > 0:
@@ -373,6 +375,7 @@ class ModeGenerateFile:
                         tag_type = payload.get("tag_type", "create_file")
                         current_streaming_filename = fn
                         logger.info(f"[MODE_GENERATE_FILE] Detected <{tag_type}> for: {fn}")
+                        yield format_sse(status=f"📁 Menyiapkan {fn}", event_type=SSEEventType.STATUS)
                         yield format_sse_file_status(stage="creating", filename=fn, tag_type=tag_type)
 
                     elif action == "code_chunk":
@@ -381,140 +384,52 @@ class ModeGenerateFile:
 
                     elif action == "file_ready":
                         fn = payload["filename"]
+                        code = payload.get("code", "")
                         tag_type = payload.get("tag_type", "create_file")
-                        logger.info(f"[MODE_GENERATE_FILE] </{tag_type}> closed for: {fn}")
+                        logger.info(f"[MODE_GENERATE_FILE] </{tag_type}> completed for: {fn} ({len(code)} chars)")
                         current_streaming_filename = None
-                        yield format_sse_file_status(stage="done", filename=fn, tag_type=tag_type)
+
+                        # Tulis langsung ke disk secara asinkron
+                        try:
+                            file_path = await _write_file_to_disk(filename=fn, content=code, current_user_npp=current_user_npp, session_id=session_uuid or "default_session")
+                            from backend.app.core.paths import get_account_session_dir, ACCOUNTS_DIR
+                            from pathlib import Path
+                            
+                            relative_path = str(file_path.relative_to(Path(ACCOUNTS_DIR).parent)) 
+                            lines_count = len(code.splitlines()) if code else 1
+                            written_files.append({ "filename": fn, "file_path": relative_path, "lines_count": lines_count })
+                            yield format_sse(status=f"✨ Berkas {fn} siap", event_type=SSEEventType.STATUS)
+                            yield format_sse_file_status(stage="done", filename=fn, file_path=relative_path, lines_count=lines_count)
+                        except Exception as write_err:
+                            logger.error(f"[MODE_GENERATE_FILE] File write error for {fn}: {write_err}")
+                            yield format_sse_file_status(stage="error", filename=fn)
 
             # ── FLUSH sisa buffer jika ada yang tertahan ────────────────────
             for action, payload in parser.flush():
-                    if action == "preamble":
-                        yield format_sse(payload, "", False, event_type=SSEEventType.CHUNK)
-                    elif action == "code_chunk":
-                        fn = current_streaming_filename or parser.filename or "unknown"
-                        yield format_sse_file_status(stage="code_chunk", filename=fn, code_chunk=payload, tag_type=parser.tag_type)
-                    elif action == "file_ready":
-                        fn = payload["filename"]
-                        tag_type = payload.get("tag_type", "create_file")
-                        logger.info(f"[MODE_GENERATE_FILE] Flushed file ready target: {fn}")
-                        yield format_sse_file_status(stage="done", filename=fn, tag_type=tag_type)
-
-            if not parser.completed_files:
-                logger.warning("[MODE_GENERATE_FILE] No <create_file>/<edit_file> tag detected. Falling back to plain response.")
-                return
-
-            # ── ASYNC WRITE FILE TO HARDDISK DISK ───────────────────────────
-            written_files: list = []
-            for completed in parser.completed_files:
-                fn = completed["filename"]
-                code = completed["code"]
-                try:
-                    file_path = await _write_file_to_disk(filename=fn, content=code, current_user_npp=current_user_npp, session_id=session_uuid or "default_session")
-                    from backend.app.core.paths import get_account_session_dir, ACCOUNTS_DIR
-                    from pathlib import Path
-                    account_session_dir = get_account_session_dir(current_user_npp, session_uuid or "default_session", "artifacts")
-                    
-                    # Make relative path accounts/NPP/SESSION/artifacts/filename
-                    relative_path = str(file_path.relative_to(Path(ACCOUNTS_DIR).parent)) 
-                    # path returned will look like accounts/{npp}/{session}/artifacts/{fn}
-                    lines_count = len(code.splitlines()) if code else 1
-                    written_files.append({ "filename": fn, "file_path": relative_path, "lines_count": lines_count })
-                    self.written_files = written_files
-                    yield format_sse_file_status(stage="done", filename=fn, file_path=relative_path, lines_count=lines_count)
-                except Exception as write_err:
-                    logger.error(f"[MODE_GENERATE_FILE] File write error for {fn}: {write_err}")
-                    yield format_sse_file_status(stage="error", filename=fn)
+                if action == "preamble":
+                    yield format_sse(payload, "", False, event_type=SSEEventType.CHUNK)
+                elif action == "code_chunk":
+                    fn = current_streaming_filename or parser.filename or "unknown"
+                    yield format_sse_file_status(stage="code_chunk", filename=fn, code_chunk=payload, tag_type=parser.tag_type)
+                elif action == "file_ready":
+                    fn = payload["filename"]
+                    code = payload.get("code", "")
+                    tag_type = payload.get("tag_type", "create_file")
+                    current_streaming_filename = None
+                    try:
+                        file_path = await _write_file_to_disk(filename=fn, content=code, current_user_npp=current_user_npp, session_id=session_uuid or "default_session")
+                        from backend.app.core.paths import get_account_session_dir, ACCOUNTS_DIR
+                        from pathlib import Path
+                        
+                        relative_path = str(file_path.relative_to(Path(ACCOUNTS_DIR).parent)) 
+                        lines_count = len(code.splitlines()) if code else 1
+                        written_files.append({ "filename": fn, "file_path": relative_path, "lines_count": lines_count })
+                        yield format_sse_file_status(stage="done", filename=fn, file_path=relative_path, lines_count=lines_count)
+                    except Exception as write_err:
+                        logger.error(f"[MODE_GENERATE_FILE] Flushed file write error for {fn}: {write_err}")
+                        yield format_sse_file_status(stage="error", filename=fn)
 
         except Exception as e:
-            logger.error(f"[MODE_GENERATE_FILE] Call 1 stream error: {e}")
+            logger.error(f"[MODE_GENERATE_FILE] Single stream error: {e}")
             yield format_sse(f"Maaf, terjadi kendala: {str(e)}", "", False, event_type=SSEEventType.CHUNK)
             return
-
-        # ── CALL 2: THE ANALYST (Mengambil Alih Alur Secara Total) ────────────
-        if not written_files:
-            return
-
-        files_summary_parts = []
-        for f in written_files:
-            code = next((c["code"] for c in parser.completed_files if c["filename"] == f["filename"]), "")
-            truncated = code[:4000] if len(code) > 4000 else code
-            files_summary_parts.append(f"### {f['filename']}\n```\n{truncated}\n```")
-
-        files_summary = "\n\n".join(files_summary_parts)
-        file_names_str = ", ".join(f["filename"] for f in written_files)
-
-        logger.info(f"[MODE_GENERATE_FILE] Starting Call 2 Analyst for: {file_names_str}")
-
-        from backend.app.services.pipeline.system_prompts import build_generate_file_call2_analyst_prompt
-        system_prompt_call2 = build_generate_file_call2_analyst_prompt(
-            employee_name=employee_name,
-            filename=file_names_str,
-            file_content=files_summary,
-            pronoun=pronoun,
-        )
-
-        analyst_messages = [
-            {"role": "system", "content": system_prompt_call2},
-            {"role": "user", "content": f"File {file_names_str} sudah selesai. Berikan analisis dan cara penggunaannya."},
-        ]
-
-        yield format_sse(status="🔍 Menganalisis file yang dibuat...", event_type=SSEEventType.STATUS)
-
-        # Hitung estimasi token (1 token ~ 4 karakter)
-        sys_tokens = len(system_prompt_call2) // 4
-        hist_tokens = sum(len(m.get("content", "")) for m in analyst_messages[1:]) // 4
-        rag_tokens = 0
-        total_used = sys_tokens + hist_tokens + rag_tokens
-        num_ctx = 16384
-
-        session_uuid_to_use = session_uuid or (routing_data.get("_session_uuid") if routing_data else None)
-        if session_uuid_to_use:
-            from backend.app.services.chat.chat_history_service import chat_history_service
-            obs_dict = {
-                "msg": "Generating file analysis response",
-                "memory": {
-                    "system_tokens": sys_tokens,
-                    "history_tokens": hist_tokens,
-                    "rag_tokens": rag_tokens,
-                    "total_used": total_used,
-                    "max_ctx": num_ctx
-                }
-            }
-            await chat_history_service.save_agent_step(
-                session_id=session_uuid_to_use,
-                step_number=3,
-                tool_called="CALL_2_ANALYST",
-                tool_input=f"Prompt chars: {len(system_prompt_call2)}",
-                observation=json.dumps(obs_dict)
-            )
-
-        try:
-            async for chunk_line in stream_ollama_chat(
-                model_name=getattr(settings, "MODEL_PERSONA", "gemma4:12b"),
-                messages=analyst_messages,
-                request=request,
-                temperature=0.6,
-                keep_alive=-1,
-                num_ctx=16384,
-                num_predict=-1,
-                is_thinking=is_thinking,
-            ):
-                try:
-                    chunk_data    = json.loads(chunk_line.strip())
-                    chunk_text    = chunk_data.get("chunk", "")
-                    native_thought = chunk_data.get("thinking", "")
-                    eval_count    = chunk_data.get("eval_count", 0)
-                    eval_dur      = chunk_data.get("eval_duration", 0)
-                except (json.JSONDecodeError, AttributeError):
-                    chunk_text = chunk_line if isinstance(chunk_line, str) else ""
-                    native_thought = ""
-                    eval_count = eval_dur = 0
-
-                if native_thought and is_thinking:
-                    yield format_sse("", native_thought, False, event_type=SSEEventType.THINKING)
-                elif chunk_text or eval_count > 0:
-                    yield format_sse(chunk_text, "", False, event_type=SSEEventType.CHUNK, eval_count=eval_count, eval_duration=eval_dur)
-
-        except Exception as e:
-            logger.error(f"[MODE_GENERATE_FILE] Call 2 Analyst error: {e}")
-            yield format_sse(f"File berhasil dibuat! Namun gagal menganalisis: {str(e)}", "", False, event_type=SSEEventType.CHUNK)

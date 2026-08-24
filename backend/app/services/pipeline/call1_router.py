@@ -78,16 +78,16 @@ def extract_routing_signals_for_call1(user_content: str) -> str:
 
 _WEB_QUERY_FILLER_PREFIXES = re.compile(
     r"^(mencari(\s+referensi)?(\s+terkait)?|carikan(\s+(saya|aku|gue|gw))?(\s+informasi)?|"
-    r"cari(\s+(informasi|info|tahu|tahu))?|tolong(\s+carikan)?|informasi(\s+tentang)?|"
-    r"info(\s+tentang)?|data(\s+tentang)?|terkait|mengenai|tentang|referensi(\s+terkait)?|"
-    r"analisa(\s+tentang)?|jelaskan(\s+tentang)?)\s+",
+    r"cari(\s+(informasi|info|data|tahu|tahu))?|tolong(\s+carikan)?|informasi(\s+tentang|\s+lain)?|"
+    r"info(\s+tentang|\s+lain)?|data(\s+tentang|\s+lain)?|terkait|mengenai|tentang|referensi(\s+terkait)?|"
+    r"analisa(\s+tentang)?|jelaskan(\s+tentang)?|lainnya|lain)\s+",
     re.IGNORECASE
 )
 
 def _sanitize_web_query(query: str) -> str:
     """
     Bersihkan prefix filler kata bahasa Indonesia dari web search query.
-    Contoh: "mencari referensi terkait jadwal film spiderman" → "jadwal film spiderman"
+    Contoh: "data lain qwen3.8" → "qwen3.8"
     """
     cleaned = query.strip()
     # Ulangi hingga semua prefix filler terkikis (bisa berlapis)
@@ -112,6 +112,8 @@ async def execute_call1_routing(
     ocr_text: Optional[str] = None,
     is_guest: bool = False,
     is_first_chat: bool = False,
+    previous_topic: Optional[str] = None,
+    previous_subject: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Execute Call 1: Intent Classification & Routing.
@@ -122,10 +124,27 @@ async def execute_call1_routing(
     from backend.app.services.pipeline.system_prompts import build_call1_routing_prompt
 
     # Quick bypass HANYA untuk sapaan murni 1-2 kata (misal: "halo", "pagi", "hai")
-    is_pure_greeting = (precheck.get("is_greeting", False) or precheck.get("is_chitchat", False)) and len(user_message.split()) <= 2 and not is_complex_task
+    is_complex = precheck.get("is_coding", False) or precheck.get("is_doc_query", False) or precheck.get("is_generate_email", False)
+    is_pure_greeting = (precheck.get("is_greeting", False) or precheck.get("is_chitchat", False)) and len(user_message.split()) <= 2 and not is_complex
     if is_pure_greeting and not is_first_chat:
         logger.info("[CALL1] ⚡ Pure greeting detected -> Quick routing bypass")
         return _build_fallback_routing(precheck)
+
+    # ⚡ FAST PATH: Kelanjutan langsung (lanjut, gas, terapkan) jika riwayat sebelumnya adalah koding/file
+    continuation_keywords = {"lanjut", "gas", "terapkan", "next", "lanjutkan", "gas koding", "oke gas", "oke lanjut", "terapkan ini", "gas lanjut"}
+    clean_msg = user_message.strip().lower()
+    has_prior_coding = "<create_file" in context_history_str or "is_generate_file" in context_history_str or "GENERATE_FILE" in context_history_str
+    if clean_msg in continuation_keywords and has_prior_coding and not is_first_chat:
+        logger.info(f"[CALL1] ⚡ Direct continuation '{clean_msg}' detected -> 0ms Fast-Path to GENERATE_FILE")
+        fast_routing = _build_fallback_routing(precheck)
+        fast_routing["is_generate_file"] = True
+        fast_routing["is_coding"] = True
+        fast_routing["is_ambiguous"] = False
+        fast_routing["need_rag"] = False
+        fast_routing["active_topic"] = previous_topic or "Frontend / Coding Project"
+        fast_routing["key_subject"] = previous_subject or "Kode & Implementasi File"
+        fast_routing["pronoun"] = precheck.get("pronoun", "informal_gue_lo")
+        return fast_routing
 
     # Smart Signal Stripping
     stripped_message = extract_routing_signals_for_call1(user_message)
@@ -138,6 +157,8 @@ async def execute_call1_routing(
         ocr_text=ocr_text,
         is_guest=is_guest,
         is_first_chat=is_first_chat,
+        previous_topic=previous_topic,
+        previous_subject=previous_subject,
     )
 
     messages = [
@@ -145,10 +166,8 @@ async def execute_call1_routing(
         {"role": "user", "content": stripped_message},
     ]
 
-    # Alokasi num_predict dinamis:
-    # - is_first_chat=True: perlu generate session_title (string ~10-30 token) → butuh 350 token
-    # - is_first_chat=False: boolean fields + queries → 250 token aman (tidak terpotong di tengah jalan)
-    dynamic_predict = 350 if is_first_chat else 250
+    # Alokasi num_predict dinamis (Sparse JSON murni, super hemat token & sub-detik)
+    dynamic_predict = 250 if is_first_chat else 160
 
     # Kunci num_ctx konstan di 4096 agar sama persis dengan warmup (tidak memicu re-alokasi KV context di Ollama)
     router_ctx = 4096
@@ -183,7 +202,7 @@ async def execute_call1_routing(
 
         logger.info(
             f"[CALL1] Routing complete | need_rag={routing['need_rag']} | "
-            f"queries={routing['queries']} | is_coding={routing['is_coding']}"
+            f"queries={routing['queries']} | is_coding={routing['is_coding']} | is_ambiguous={routing['is_ambiguous']}"
         )
 
         return routing
@@ -201,6 +220,8 @@ def _validate_and_normalize_routing(
 ) -> Dict[str, Any]:
     """Validasi dan normalize routing JSON dari Call 1."""
     default_routing = {
+        "active_topic": str(routing_json.get("active_topic") or precheck.get("previous_topic") or "Obrolan Umum"),
+        "key_subject": str(routing_json.get("key_subject") or precheck.get("previous_subject") or "").strip(),
         "need_rag": False,
         "queries": [],
         "query_judul": [],
@@ -222,11 +243,75 @@ def _validate_and_normalize_routing(
         "session_title": None,
         "is_chitchat": False,
         "is_map_query": False,
+        "fetch_urls": [],
+        "wizard": None,
     }
 
     routing = {**default_routing, **routing_json}
-
+    routing["active_topic"] = str(routing_json.get("active_topic") or precheck.get("previous_topic") or "Obrolan Umum").strip()
+    routing["key_subject"] = str(routing_json.get("key_subject") or precheck.get("previous_subject") or "").strip()
+    routing["is_ambiguous"] = bool(routing_json.get("is_ambiguous", False))
+    routing["is_generate_file"] = bool(routing_json.get("is_generate_file", False))
+    routing["is_generate_email"] = bool(routing_json.get("is_generate_email", False))
+    routing["is_coding"] = bool(routing_json.get("is_coding", False))
+    routing["is_chitchat"] = bool(routing_json.get("is_chitchat", False))
     routing["need_rag"] = bool(routing_json.get("need_rag", False))
+    routing["need_analytic"] = bool(routing_json.get("need_analytic", False))
+    routing["is_self_correction"] = bool(routing_json.get("is_self_correction", False))
+    routing["is_multi_document"] = bool(routing_json.get("is_multi_document", False))
+    routing["is_multi_turn_task"] = bool(routing_json.get("is_multi_turn_task", False))
+    routing["requires_visual"] = bool(routing_json.get("requires_visual", False))
+    routing["is_map_query"] = bool(routing_json.get("is_map_query", False))
+    routing["is_web_search"] = bool(routing_json.get("is_web_search", False))
+
+    # ── ATURAN STRICT AMBIGUOUS GATE ──────────────────────────────────────────
+    # Jika is_ambiguous True, paksa need_rag = False dan kosongkan search queries/web search
+    # agar sistem tidak buang latency RAG & langsung menanyakan klarifikasi/wizard ke user.
+    if routing["is_ambiguous"]:
+        routing["need_rag"] = False
+        routing["queries"] = []
+        routing["query_judul"] = []
+        routing["search_tags"] = []
+        routing["is_web_search"] = False
+
+    # Tangkap jika model mengembalikan pronoun sebagai boolean flag atau inheritance dari precheck
+    if routing.get("pronoun") not in ["informal_gue_lo", "formal_saya_anda", "familiar_aku_kamu"]:
+        if routing_json.get("informal_gue_lo") in [True, "true", "True", "cuy", "boss", "bro"]:
+            routing["pronoun"] = "informal_gue_lo"
+        elif routing_json.get("formal_saya_anda") in [True, "true", "True"]:
+            routing["pronoun"] = "formal_saya_anda"
+        elif routing_json.get("familiar_aku_kamu") in [True, "true", "True"]:
+            routing["pronoun"] = "familiar_aku_kamu"
+        elif precheck.get("pronoun") in ["informal_gue_lo", "formal_saya_anda", "familiar_aku_kamu"]:
+            routing["pronoun"] = precheck.get("pronoun")
+        else:
+            routing["pronoun"] = "unknown"
+
+    # Tone Hint Normalization & Inheritance
+    valid_tones = ["casual", "formal", "empathetic", "empathetic_supportive", "celebratory", "direct_concise"]
+    current_tone = routing_json.get("tone_hint")
+    if current_tone in valid_tones:
+        routing["tone_hint"] = current_tone
+    elif precheck.get("tone_hint") in valid_tones:
+        routing["tone_hint"] = precheck.get("tone_hint")
+    else:
+        routing["tone_hint"] = "casual"
+
+    fetch_urls = routing_json.get("fetch_urls", [])
+    if isinstance(fetch_urls, list):
+        routing["fetch_urls"] = [
+            str(u).strip() for u in fetch_urls 
+            if isinstance(u, str) and (u.strip().startswith("http://") or u.strip().startswith("https://"))
+        ]
+    elif isinstance(fetch_urls, str) and (fetch_urls.strip().startswith("http://") or fetch_urls.strip().startswith("https://")):
+        routing["fetch_urls"] = [fetch_urls.strip()]
+    else:
+        routing["fetch_urls"] = []
+
+    # Fallback jika model lupa menyertakan fetch_urls tapi ada URL/domain di pesan user
+    if not routing["fetch_urls"] and precheck.get("_detected_urls"):
+        routing["fetch_urls"] = precheck.get("_detected_urls")
+        logger.info(f"[CALL1] Auto-populated fetch_urls from precheck detected URLs: {routing['fetch_urls']}")
 
     queries = routing_json.get("queries", [])
     is_web_search = bool(routing_json.get("is_web_search", False))
@@ -267,7 +352,7 @@ def _validate_and_normalize_routing(
     routing["needs_code_analysis"] = bool(routing_json.get("needs_code_analysis", False))
     routing["need_analytic"] = bool(routing_json.get("need_analytic", False))
     routing["is_self_correction"] = bool(routing_json.get("is_self_correction", False))
-    routing["is_ambiguous"] = bool(routing_json.get("is_ambiguous", False))
+    routing["is_ambiguous"] = bool(routing.get("is_ambiguous") or routing_json.get("is_ambiguous", False))
     routing["is_multi_document"] = bool(routing_json.get("is_multi_document", False))
     routing["is_multi_turn_task"] = bool(routing_json.get("is_multi_turn_task", False))
     routing["is_map_query"] = bool(routing_json.get("is_map_query", False))
@@ -323,10 +408,14 @@ def _validate_and_normalize_routing(
         logger.warning("[CALL1] Precheck override: is_generate_email forced to True")
         routing["is_generate_email"] = True
 
-    if precheck.get("has_url_context"):
-        logger.warning("[CALL1] Precheck override: URL detected, forcing is_web_search to True and need_rag to False")
-        routing["is_web_search"] = True
-        routing["need_rag"] = False
+    # Sanity check: Jika user meminta grafik dummy / visualisasi internal, jangan biarkan web search terpancing
+    if (routing.get("requires_visual") or precheck.get("requires_visual")) and routing.get("is_web_search"):
+        user_msg_lower = precheck.get("_user_message", "").lower()
+        if any(w in user_msg_lower for w in ["dummy", "grafik", "garfik", "chart", "diagram", "flowchart", "perbandingan 2 data", "visualisasi"]):
+            if not any(sw in user_msg_lower for sw in ["cari di web", "google", "berita", "terbaru", "terkini", "internet"]):
+                logger.warning("[CALL1] Sanitizing false positive is_web_search on visual dummy/chart task")
+                routing["is_web_search"] = False
+                routing["queries"] = []
 
     if routing["need_rag"]:
         from backend.app.services.pipeline.modes.mode_utils import build_rule_based_queries

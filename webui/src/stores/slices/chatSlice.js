@@ -3,10 +3,26 @@ import * as endpoints from "../../services/endpoints";
 let _sessionLoadSeq = 0;
 
 export const createChatSlice = (set, get) => ({
+    activeWizard: null, // { messageIndex, data }
+    wizardAnswers: {}, // { [messageIndex]: [ { question: string, answer: string } ] }
+    setActiveWizard: (wizard) => set({ activeWizard: wizard }),
+    dismissActiveWizard: () => set({ activeWizard: null }),
+    saveWizardAnswer: (messageIndex, answersList) => {
+        set((state) => ({
+            wizardAnswers: {
+                ...state.wizardAnswers,
+                [messageIndex]: answersList
+            },
+            activeWizard: null
+        }));
+    },
+
     clearChat: () => {
         set({
             messages: [],
             sessionUuid: null,
+            activeTopic: null,
+            keySubject: null,
             isThinking: false,
             stagedAttachments: [],
             activeIsolatedDocId: null,
@@ -16,7 +32,9 @@ export const createChatSlice = (set, get) => ({
             activePdfUrl: null,
             showGhostWriter: false,
             ghostWriterContent: "",
-            sessionAttachments: []
+            sessionAttachments: [],
+            activeWizard: null,
+            wizardAnswers: {}
         });
     },
 
@@ -52,12 +70,18 @@ export const createChatSlice = (set, get) => ({
     loadChatSession: async (sessionUuid) => {
         if (!sessionUuid || sessionUuid === 'new') return;
 
+        const savedTopicObj = get().sessionTopics?.[sessionUuid];
+        const activeTopic = typeof savedTopicObj === 'object' ? savedTopicObj?.topic : (savedTopicObj || null);
+        const keySubject = typeof savedTopicObj === 'object' ? savedTopicObj?.keySubject : null;
+
         // 🔥 MULTI-SESSION BACKGROUND STREAM RESUMPTION
         const activeStream = get().activeStreams?.[sessionUuid];
         if (activeStream) {
             console.log('📥 [STORE] Resuming background stream session:', sessionUuid);
             set({ 
                 sessionUuid, 
+                activeTopic,
+                keySubject,
                 messages: activeStream.messages, 
                 isStreaming: activeStream.isStreaming, 
                 isThinking: activeStream.isThinking,
@@ -72,7 +96,18 @@ export const createChatSlice = (set, get) => ({
 
         const seq = ++_sessionLoadSeq;
         console.log('📥 [STORE] Loading session:', sessionUuid);
-        set({ sessionUuid, messages: [], isLoading: true, activeIsolatedDocId: null, activeIsolatedTitle: null, artifacts: [], isStreaming: false, isThinking: false });
+        set({ 
+            sessionUuid, 
+            activeTopic,
+            keySubject,
+            messages: [], 
+            isLoading: true, 
+            activeIsolatedDocId: null, 
+            activeIsolatedTitle: null, 
+            artifacts: [], 
+            isStreaming: false, 
+            isThinking: false 
+        });
 
         try {
             const npp = JSON.parse(localStorage.getItem('cakra_user'))?.npp || '';

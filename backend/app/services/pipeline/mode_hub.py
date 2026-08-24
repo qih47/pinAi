@@ -55,7 +55,9 @@ class ModeHub:
         employee_name: str = "Pegawai",
         current_user_npp: Optional[str] = None,
         session_uuid: Optional[str] = None,
-        has_new_document: bool = False
+        has_new_document: bool = False,
+        active_topic: Optional[str] = None,
+        key_subject: Optional[str] = None,
     ) -> AsyncGenerator[str, None]:
         """
         Main entry point for stream.py to route the request to the correct mode handler.
@@ -106,9 +108,11 @@ class ModeHub:
                 if urls_in_text:
                     logger.info(f"[MODE_HUB] Detected {len(urls_in_text)} new URL(s). Will fetch in parallel with Call1.")
                     precheck["has_url_context"] = True  # tandai dulu agar routing tahu
+                    precheck["_detected_urls"] = urls_in_text
                 elif skipped:
                     # URL sudah pernah dikunjungi dan kontennya ada di session memory
                     precheck["has_url_context"] = True  # masih tandai agar routing paham ada URL context
+                    precheck["_detected_urls"] = skipped
                     logger.info("[MODE_HUB] All URLs already in session memory — using cached content, no re-fetch needed.")
         except ImportError:
             pass
@@ -251,86 +255,129 @@ class ModeHub:
             return
 
         # ── Step 2: Call 1 — Intent Classification & Routing ──────────────────────
-        yield format_sse(status="🧠 Menganalisis intent pesan", event_type=SSEEventType.STATUS)
+        yield format_sse(status="🧠 Menganalisis intent", event_type=SSEEventType.STATUS)
         await asyncio.sleep(0.01)
 
         messages_dict = [{"role": m.role, "content": m.content} for m in chat_history]
         
         # Ekstrak 1 history pesan terakhir (pesan AI sebelumnya) untuk Call 1
+        # ── Step 3: Fast-path Bypass atau Call 1 Router ─────────────────────────
         context_history_str = ""
-        if len(messages_dict) >= 2:
-            last_ai_msg = messages_dict[-2]
-            # Pastikan ini benar-benar pesan AI/assistant
-            if last_ai_msg['role'] != 'user':
-                full_text = last_ai_msg['content']
-                trimmed_text = full_text[-500:] if len(full_text) > 500 else full_text
-                context_history_str = f"{last_ai_msg['role'].upper()} (Last Words): ...{trimmed_text}"
-            elif len(messages_dict) >= 3:
-                # Fallback jika yang kedua terakhir adalah user, ambil yang ketiga terakhir
-                last_ai_msg = messages_dict[-3]
-                full_text = last_ai_msg['content']
-                trimmed_text = full_text[-500:] if len(full_text) > 500 else full_text
-                context_history_str = f"{last_ai_msg['role'].upper()} (Last Words): ...{trimmed_text}"
+        if chat_history and len(chat_history) > 0:
+            import re
+            history_lines = []
+            # Ambil hingga 4 pesan percakapan terakhir sebelum user_message saat ini
+            recent_msgs = chat_history[-5:-1] if len(chat_history) > 1 else chat_history[:-1]
+            for m in recent_msgs:
+                role = getattr(m, 'role', None) or (m.get('role') if isinstance(m, dict) else 'user')
+                content = getattr(m, 'content', None) or (m.get('content') if isinstance(m, dict) else '')
+                if content and role:
+                    has_wizard = "```wizard" in content
+                    clean_content = re.sub(r'```(wizard|urlfetch)[\s\S]*?```', '', content).strip()
+                    if clean_content:
+                        short_text = clean_content[:300] + "..." if len(clean_content) > 300 else clean_content
+                        role_label = f"{role.upper()} (Klarifikasi Pilihan)" if (role.lower() == "assistant" and has_wizard) else role.upper()
+                        history_lines.append(f"{role_label}: {short_text}")
+            if history_lines:
+                context_history_str = "\n".join(history_lines)
 
-        # ── Fast-path Bypass untuk Sapaan Ringan ──────────────────────────────────
         call1_start_t = datetime.now()
 
-        # ── ⚡ PARALLEL OPTIMIZATION: Call1 + URL Fetch berjalan bersamaan ─────────
-        # Keduanya adalah I/O network murni — tidak perlu menunggu satu sama lain.
-        async def _do_call1():
-            return await execute_call1_routing(
-                request=request,
-                user_message=user_message,
-                context_history_str=context_history_str,
-                precheck=precheck,
-                ocr_text=None,
-                is_guest=is_guest,
-                is_first_chat=is_first_chat,
-            )
-
-        # Siapkan url_fetch coroutine (kosong jika tidak ada URL)
-        async def _do_url_fetch_safe():
-            if not urls_in_text:
-                return ""
-            try:
-                from backend.app.services.web_tools.url_reader import fetch_multiple_urls
-                return await fetch_multiple_urls(urls_in_text)
-            except Exception as e:
-                logger.warning(f"[MODE_HUB] URL fetch failed: {e}")
-                return ""
-
-        # Jalankan keduanya bersamaan
-        call1_task = asyncio.create_task(_do_call1())
-        url_fetch_task = asyncio.create_task(_do_url_fetch_safe())
-
-        if urls_in_text:
-            yield format_sse(status=f"🌐 Membaca konten dari {len(urls_in_text)} tautan web...", event_type=SSEEventType.STATUS)
-
-        routing_data, url_contexts = await asyncio.gather(call1_task, url_fetch_task)
-
-        # Setelah paralel selesai, masukkan konten URL ke precheck
-        if url_contexts and urls_in_text:
-            precheck["_session_chunks_text"] = precheck.get("_session_chunks_text", "") + f"\n\n[KONTEN WEB DARI URL DI CHAT]\n{url_contexts}"
-            logger.info(f"[MODE_HUB] URL context injected ({len(url_contexts)} chars) — fetched in parallel with Call1")
-            # Simpan konten URL ke session memory (ai_document_chunks) agar tersedia di turn berikutnya
-            if session_uuid and current_user_npp:
-                from backend.app.services.chat.chat_history_service import chat_history_service
-                asyncio.create_task(chat_history_service.save_document_chunk(
-                    session_uuid=session_uuid,
-                    npp=current_user_npp,
-                    content=url_contexts[:30000],
-                    file_id=None,
-                    chunk_metadata={
-                        "source": "url_read",
-                        "urls": urls_in_text,
-                        "fetched_at": datetime.now().isoformat()
-                    }
-                ))
-                logger.info(f"[MODE_HUB] URL content scheduled for save to session memory (urls: {urls_in_text})")
+        # ── Call 1 Router (gemma4:e4b) ──────────────────────────────────────────
+        routing_data = await execute_call1_routing(
+            request=request,
+            user_message=user_message,
+            context_history_str=context_history_str,
+            precheck=precheck,
+            ocr_text=None,
+            is_guest=is_guest,
+            is_first_chat=is_first_chat,
+            previous_topic=active_topic or precheck.get("active_topic"),
+            previous_subject=key_subject or precheck.get("key_subject"),
+        )
 
         call1_ms = (datetime.now() - call1_start_t).total_seconds() * 1000
-        logger.info(f"⚡ [TIMING_BENCHMARK] Call1 + URL Fetch (parallel) selesai dalam {call1_ms:.1f}ms ({call1_ms/1000:.2f}s)")
+        logger.info(f"⚡ [TIMING_BENCHMARK] Call1 Router selesai dalam {call1_ms:.1f}ms ({call1_ms/1000:.2f}s) | Active Topic: {routing_data.get('active_topic')} | Key Subject: {routing_data.get('key_subject')}")
 
+        # ── Step 3.2: Emit Dynamic Topic & Entity Update to Frontend Store ───────
+        current_active_topic = routing_data.get("active_topic")
+        current_key_subject = routing_data.get("key_subject")
+        if current_active_topic:
+            yield json.dumps({
+                "event_type": "topic_update",
+                "topic": current_active_topic,
+                "key_subject": current_key_subject
+            }) + "\n"
+
+        # ── Step 3.5: Progressive URL Fetching Stepper (100% Call 1 Single Source of Truth) ───
+        url_contexts = ""
+        from backend.app.services.web_tools.url_reader import extract_url_display_info, fetch_webpage_content
+        
+        approved_fetch_urls = routing_data.get("fetch_urls", [])
+
+        if approved_fetch_urls:
+            logger.info(f"[MODE_HUB] Call 1 approved {len(approved_fetch_urls)} URL(s) for live progressive fetching: {approved_fetch_urls}")
+            
+            collected_nodes = []
+            for u in approved_fetch_urls:
+                display_info = extract_url_display_info(u)
+                
+                # Emit status Fetching dinamis untuk URL yang sedang diproses (tanpa trailing dots)
+                domain_name = display_info.get("domain") or u
+                yield format_sse(status=f"🌐 Mengunduh {domain_name}", event_type=SSEEventType.STATUS)
+                await asyncio.sleep(0.01)
+                
+                content = await fetch_webpage_content(u)
+                if content:
+                    url_contexts += f"\n\n==== ISI WEB: {u} ====\n\n{content}\n\n========================\n"
+                    
+                collected_nodes.append({
+                    "title": display_info["title"],
+                    "domain": display_info["domain"],
+                    "url": u
+                })
+            
+            # Buat status aktivitas kontekstual di bagian bawah (Clock Icon) dalam Bahasa Indonesia
+            msg_lower = user_message.lower()
+            if any(k in msg_lower for k in ["banding", "compare", "vs", "beda", "pilih", "model", "opsi", "spesifikasi"]):
+                activity_text = "Membandingkan opsi model berdasarkan ukuran, fitur, dan performa"
+            elif any(k in msg_lower for k in ["rangkum", "summary", "ringkas", "baca", "jelaskan", "isi"]):
+                activity_text = "Menganalisis isi konten halaman web"
+            else:
+                activity_text = "Menelaah referensi tautan"
+            
+            final_fetch_payload = {
+                "nodes": collected_nodes,
+                "fetching": None,
+                "activity": activity_text
+            }
+            
+            # Kirim TEPAT 1 blok markdown ```urlfetch agar tidak dobel / bertumpuk di chat
+            yield format_sse(chunk=f"```urlfetch\n{json.dumps(final_fetch_payload)}\n```\n\n", event_type=SSEEventType.CHUNK)
+            await asyncio.sleep(0.01)
+            
+            if url_contexts:
+                yield format_sse(status="📖 Mengekstrak konten web", event_type=SSEEventType.STATUS)
+                await asyncio.sleep(0.01)
+                precheck["_session_chunks_text"] = precheck.get("_session_chunks_text", "") + f"\n\n[KONTEN WEB DARI URL DI CHAT]\n{url_contexts}"
+                precheck["has_url_context"] = True
+                precheck["is_web_search"] = False
+                routing_data["is_web_search"] = False
+                logger.info(f"[MODE_HUB] Injected {len(url_contexts)} chars of URL context into precheck. Overriding is_web_search to False.")
+                
+                if session_uuid and current_user_npp:
+                    from backend.app.services.chat.chat_history_service import chat_history_service
+                    asyncio.create_task(chat_history_service.save_document_chunk(
+                        session_uuid=session_uuid,
+                        npp=current_user_npp,
+                        content=url_contexts[:30000],
+                        file_id=None,
+                        chunk_metadata={
+                            "source": "url_read",
+                            "urls": approved_fetch_urls,
+                            "fetched_at": datetime.now().isoformat()
+                        }
+                    ))
 
         logger.info(
             f"[MODE_HUB] Call 1 complete | need_rag={routing_data.get('need_rag')} | "
@@ -461,7 +508,7 @@ class ModeHub:
 
         # ── 🌍 Geocoding Tool Calling (Nominatim) ──────────────────────────────────
         if routing_data.get("is_map_query"):
-            yield format_sse(status="🌍 Mencari koordinat peta (Nominatim)", event_type=SSEEventType.STATUS)
+            yield format_sse(status="🌍 Mencari koordinat peta", event_type=SSEEventType.STATUS)
             from backend.app.services.tools.geocoding import geocode_osm
             
             # Ambil keyword lokasi dari queries LLM atau langsung dari pesan pengguna
@@ -482,7 +529,7 @@ class ModeHub:
                         observation=json.dumps({"lat": coords["lat"], "lng": coords["lng"], "name": coords["name"]})
                     ))
             else:
-                yield format_sse(status="⚠️ Gagal menemukan koordinat lokasi tersebut", event_type=SSEEventType.STATUS)
+                yield format_sse(status="⚠️ Lokasi tidak ditemukan", event_type=SSEEventType.STATUS)
 
         # ── Web Search Mode Routing ─────────────────────────────────────
         if precheck.get("is_web_search", False):
@@ -499,10 +546,13 @@ class ModeHub:
                     history_dicts.append({"role": "user", "content": user_message})
 
             # Gunakan query bersih dari Call 1 (queries[0]) alih-alih user_message mentah
-            # Ini menghindari query kotor seperti "saya informasi crypto..." dikirim ke Google
+            # Ini menghindari query kotor atau kombinasi kata penghubung '&' yang merusak hasil pencarian Google
             web_search_queries = precheck.get("queries", [])
-            web_search_query = web_search_queries[0] if web_search_queries else user_message
-            logger.info(f"[MODE_HUB] Web search query: '{web_search_query}' (from {'Call1 queries' if web_search_queries else 'user_message fallback'})")
+            if web_search_queries:
+                web_search_query = web_search_queries[0]
+            else:
+                web_search_query = user_message
+            logger.info(f"[MODE_HUB] Web search queries: {web_search_queries} | effective query: '{web_search_query}'")
 
             async for chunk in handle_web_search(
                 query=web_search_query,

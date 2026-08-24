@@ -42,8 +42,8 @@ class ModeFocus:
         logger.info("[MODE_FOCUS] Starting Focus Mode Execution")
         isolated_doc_id = context_isolation.get("isolated_doc_id") if context_isolation else None
         
-        yield format_sse(status="🎯 Menginisialisasi Mode Fokus...", event_type=SSEEventType.STATUS)
-        await asyncio.sleep(0.1)
+        yield format_sse(status="🎯 Membuka dokumen fokus", event_type=SSEEventType.STATUS)
+        await asyncio.sleep(0.05)
 
         # 1. Fetch Filename from Database
         filename = None
@@ -64,7 +64,7 @@ class ModeFocus:
                 
         async def fallback_to_rag(reason: str):
             logger.warning(f"[MODE_FOCUS] Fallback to RAG triggered: {reason}")
-            yield format_sse(status="🔄 File target tidak tersedia, beralih ke pencarian global...", event_type=SSEEventType.STATUS)
+            yield format_sse(status="🔄 Mencari secara global", event_type=SSEEventType.STATUS)
             await asyncio.sleep(0.01)
             from backend.app.services.pipeline.modes.mode_documents import ModeDocuments
             fallback_handler = ModeDocuments()
@@ -97,8 +97,8 @@ class ModeFocus:
             return
 
         # 3. Read PDF (Using PyMuPDF)
-        yield format_sse(status=f"📂 Membaca dokumen {filename}...", event_type=SSEEventType.STATUS)
-        await asyncio.sleep(0.1)
+        yield format_sse(status=f"📂 Membaca dokumen {filename}", event_type=SSEEventType.STATUS)
+        await asyncio.sleep(0.05)
 
         try:
             import fitz
@@ -119,13 +119,13 @@ class ModeFocus:
         
         if cached_data:
             logger.info(f"[MODE_FOCUS] 🚀 Memakai data cache (Bypass rendering & ekstraksi)")
-            yield format_sse(status="🚀 Membaca data dokumen dari cache...", event_type=SSEEventType.STATUS)
-            await asyncio.sleep(0.1)
+            yield format_sse(status="🚀 Memuat cache dokumen", event_type=SSEEventType.STATUS)
+            await asyncio.sleep(0.05)
             text_map = cached_data["text_map"]
             all_base64_images = cached_data["images"]
         else:
-            yield format_sse(status=f"⚙️ Memproses & Mengekstrak teks dari {total_pages} halaman...", event_type=SSEEventType.STATUS)
-            await asyncio.sleep(0.1)
+            yield format_sse(status=f"⚙️ Mengekstrak {total_pages} halaman", event_type=SSEEventType.STATUS)
+            await asyncio.sleep(0.05)
             
             logger.info(f"[MODE_FOCUS] 👁️ Mengekstrak teks & merender PDF ke gambar untuk {total_pages} halaman...")
             
@@ -157,8 +157,8 @@ class ModeFocus:
             set_focus_cache(session_uuid_to_use, text_map, all_base64_images)
 
         # 4. Filter & Rerank
-        yield format_sse(status="🔍 Mencari halaman yang paling relevan (Reranker)...", event_type=SSEEventType.STATUS)
-        await asyncio.sleep(0.1)
+        yield format_sse(status="🔍 Menilai pasal", event_type=SSEEventType.STATUS)
+        await asyncio.sleep(0.05)
         
         corpus_texts = [item["text"] if item["text"] else "[FULL IMAGE SCAN]" for item in text_map]
         
@@ -199,10 +199,10 @@ class ModeFocus:
         # Sampaikan status ke frontend
         halaman_str = ", ".join([str(p+1) for p in selected_pages])
         if len(halaman_str) > 50:
-             halaman_str = halaman_str[:50] + "..."
+             halaman_str = halaman_str[:45]
              
         yield format_sse(status=f"🎯 Membaca halaman {halaman_str}", event_type=SSEEventType.STATUS)
-        await asyncio.sleep(0.1)
+        await asyncio.sleep(0.05)
 
         # Persiapkan Chat History context
         messages_dict = [{"role": m.role, "content": m.content} for m in chat_history]
@@ -232,10 +232,10 @@ class ModeFocus:
             from backend.app.services.pipeline.prompts.visual_prompts import VISUAL_SYSTEM_PROMPT
             system_prompt += "\n\n" + VISUAL_SYSTEM_PROMPT + "\n\n"
 
-        # Buat message payload
+        # Buat message payload: Kirim gambar HANYA jika dokumen murni hasil scan tanpa teks digital
         user_payload = {"role": "user", "content": user_message}
-        if final_base64_images:
-            user_payload["images"] = final_base64_images
+        if final_base64_images and is_scanned_flag:
+            user_payload["images"] = final_base64_images[:1]
             
         current_messages = [{"role": "system", "content": system_prompt}] + messages_dict + [user_payload]
 
@@ -247,7 +247,7 @@ class ModeFocus:
         hist_tokens = sum(len(m.get("content", "")) for m in messages_dict) // 4
         rag_tokens = 0 
         total_used = sys_tokens + hist_tokens + rag_tokens
-        num_ctx = 16384
+        num_ctx = 32768
 
         if session_uuid_to_use:
             from backend.app.services.chat.chat_history_service import chat_history_service
@@ -274,7 +274,7 @@ class ModeFocus:
             model_name=settings.MODEL_PERSONA,
             is_thinking=is_thinking,
             temperature=0.1,
-            num_ctx=16384,
+            num_ctx=32768,
             num_predict=-1,
             request=request
         ):
@@ -298,7 +298,7 @@ class ModeFocus:
                     
                     if len(buffer) >= 5:
                         started_streaming = True
-                        yield format_sse(status="✨ Menemukan jawaban!", event_type=SSEEventType.STATUS)
+                        yield format_sse(status="✨ Jawaban ditemukan", event_type=SSEEventType.STATUS)
                         yield format_sse(chunk=buffer, event_type=SSEEventType.CHUNK)
                 else:
                     if thought:

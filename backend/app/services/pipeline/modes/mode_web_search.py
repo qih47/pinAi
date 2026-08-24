@@ -27,10 +27,27 @@ async def handle_web_search(
     if precheck is None:
         precheck = {}
     
-    # Query sudah bersih dari Call 1 (routing_data["queries"][0]) — tidak perlu di-clean lagi
-    clean_query = query
-    logger.info(f"[Web Search] query: '{clean_query}'")
-    yield format_sse(status="🌐 Melakukan penelusuran web...", event_type=SSEEventType.STATUS)
+    # Ambil semua query dari Call 1 (mendukung multi-query paralel untuk komparasi / multi-topik)
+    queries_from_call1 = precheck.get("queries", [])
+    if isinstance(queries_from_call1, list) and queries_from_call1:
+        target_queries = [q.strip() for q in queries_from_call1 if isinstance(q, str) and q.strip()]
+    else:
+        target_queries = [query.strip()] if query.strip() else []
+
+    if not target_queries:
+        target_queries = [query]
+
+    # Bersihkan duplikat
+    seen_q = set()
+    clean_target_queries = []
+    for q in target_queries:
+        if q.lower() not in seen_q:
+            seen_q.add(q.lower())
+            clean_target_queries.append(q)
+
+    display_query = " & ".join(clean_target_queries)
+    logger.info(f"[Web Search] queries: {clean_target_queries} | display: '{display_query}'")
+    yield format_sse(status="🌐 Mencari di web", event_type=SSEEventType.STATUS)
     await asyncio.sleep(0.01)
     
     # 1. Ambil URL-read content yang sudah di-fetch oleh url_reader di mode_hub (jika ada)
@@ -39,7 +56,7 @@ async def handle_web_search(
     pre_fetched_url_entries = []
     if precheck.get("has_url_context"):
         from backend.app.services.web_tools.url_reader import extract_urls_from_text
-        detected_urls = extract_urls_from_text(query)
+        detected_urls = extract_urls_from_text(display_query)
         for url in detected_urls:
             # Bersihkan spasi dari url (misal "pindad. com")
             url = url.replace(" ", "")
@@ -57,10 +74,22 @@ async def handle_web_search(
                 pass
         logger.info(f"[Web Search] Injecting {len(pre_fetched_url_entries)} pre-fetched URL(s) into widget: {detected_urls}")
 
-    # 2. Lakukan pencarian web menggunakan clean_query (ambil lebih banyak kandidat untuk reranking)
-    search_results = await perform_web_search(clean_query, num_results=15)
+    # 2. ⚡ Lakukan pencarian web paralel untuk SEMUA target queries
+    search_tasks = [perform_web_search(q, num_results=12) for q in clean_target_queries]
+    search_results_lists = await asyncio.gather(*search_tasks)
+
+    # Gabung dan deduplikasi URL
+    seen_urls = set()
+    raw_search_results = []
+    for r_list in search_results_lists:
+        for r in r_list:
+            u = r.get("url")
+            if u and u not in seen_urls:
+                seen_urls.add(u)
+                raw_search_results.append(r)
     
-    # 2.1 Rerank hasil search berdasarkan relevansi query
+    # 2.1 Rerank hasil search berdasarkan relevansi query gabungan
+    search_results = raw_search_results
     if search_results:
         try:
             from backend.app.services.rag.reranker_service import reranker_service
@@ -68,7 +97,8 @@ async def handle_web_search(
                 f"{r.get('title', '')} {r.get('content', '')}".strip()
                 for r in search_results
             ]
-            scores = await reranker_service.compute_scores(clean_query, corpus_texts)
+            rerank_query = " ".join(clean_target_queries)
+            scores = await reranker_service.compute_scores(rerank_query, corpus_texts)
             
             # Urutkan search_results berdasarkan skor reranker
             ranked = sorted(
@@ -76,26 +106,34 @@ async def handle_web_search(
                 key=lambda x: x[0],
                 reverse=True
             )
-            search_results = [r for _, r in ranked]
-            logger.info(f"[Web Search] Reranked {len(search_results)} search results. Top: '{search_results[0]['title']}'")
+            
+            # Dynamic Filter: Ambil hanya yang relevan (skor >= 0.40), batasi dinamis antara 2 sampai 10 hasil
+            relevant_results = [r for s, r in ranked if s >= 0.40]
+            if len(relevant_results) < 2:
+                search_results = [r for _, r in ranked[:2]] # Fallback minimal 2 terbaik
+            else:
+                max_res = 10 if len(clean_target_queries) > 1 else 7
+                search_results = relevant_results[:max_res]
+                
+            logger.info(f"[Web Search] Dynamically filtered {len(search_results)} relevant search results (from {len(ranked)} raw). Top: '{search_results[0]['title']}'")
         except Exception as e:
-            logger.warning(f"[Web Search] Reranker gagal (skip): {e}")
+            logger.warning(f"[Web Search] Reranker gagal (fallback top 5): {e}")
+            search_results = search_results[:5]
 
     # 3. Gabungkan: URL yg sudah di-read masuk sebagai result PERTAMA di widget
     combined_results = pre_fetched_url_entries + search_results
     
     # 4. Kirim Markdown blok custom untuk dirender widget web search di Frontend
     search_payload = {
-        "query": clean_query,
-        "results": combined_results[:10]  # cap 10 hasil teratas (sudah di-rerank) di UI
+        "query": display_query,
+        "results": combined_results  # Dinamis sesuai jumlah hasil relevan
     }
-    search_json = json.dumps(search_payload)
-    widget_markdown = f"```websearch\n{search_json}\n```\n\n"
+    widget_markdown = f"```websearch\n{json.dumps(search_payload)}\n```\n\n"
     yield format_sse(chunk=widget_markdown, event_type=SSEEventType.CHUNK)
     await asyncio.sleep(0.01)
     
     # 5. Format hasil pencarian untuk dimasukkan ke konteks LLM
-    web_context = format_search_results_for_llm(search_results[:10])
+    web_context = format_search_results_for_llm(search_results)
     
     # 5.1. Tambahkan konten URL yang sudah di-fetch sebelumnya ke konteks LLM
     if pre_fetched_content and "[KONTEN WEB DARI URL DI CHAT]" in pre_fetched_content:
@@ -108,7 +146,7 @@ async def handle_web_search(
     # 5.2. ⚡ PARALLEL Deep scraping: semua top URL di-crawl bersamaan
     top_urls = [r["url"] for r in search_results[:3] if r.get("engine") != "url_reader"]
     if top_urls:
-        yield format_sse(status=f"📖 Membaca mendalam dari {len(top_urls)} tautan secara paralel...", event_type=SSEEventType.STATUS)
+        yield format_sse(status=f"📖 Membaca {len(top_urls)} tautan", event_type=SSEEventType.STATUS)
         await asyncio.sleep(0.01)
         
         from backend.app.services.web_tools.url_reader import fetch_webpage_content
@@ -145,11 +183,11 @@ async def handle_web_search(
                 all_chunks.extend(chunk_text(content.strip(), url))
                 
         if all_chunks:
-            yield format_sse(status=f"🎯 Menyaring {len(all_chunks)} potongan informasi dari web...", event_type=SSEEventType.STATUS)
+            yield format_sse(status="🎯 Menyaring fakta penting", event_type=SSEEventType.STATUS)
             await asyncio.sleep(0.01)
             
             chunk_texts = [c["text"] for c in all_chunks]
-            scores = await reranker_service.compute_scores(clean_query, chunk_texts)
+            scores = await reranker_service.compute_scores(display_query, chunk_texts)
             
             scored_chunks = []
             for i, score in enumerate(scores):
@@ -159,7 +197,7 @@ async def handle_web_search(
                     "score": score
                 })
                 
-            # Ambil Top 15 potongan terbaik
+            # Ambil Top potongan terbaik (maksimal 15 chunks, relevan dari hasil BGE)
             scored_chunks.sort(key=lambda x: x["score"], reverse=True)
             top_chunks = scored_chunks[:15]
             
@@ -170,7 +208,7 @@ async def handle_web_search(
             
             web_context += "\n\n=== KONTEN MENDALAM DARI TAUTAN TERATAS (FILTERED & RERANKED) ===\n"
             web_context += combined_deep
-            logger.info(f"[Web Search] Reranking complete. Selected {len(top_chunks)} chunks from {len(all_chunks)}.")
+            logger.info(f"[Web Search] Reranking complete. Selected {len(top_chunks)} top chunks from {len(all_chunks)}.")
 
     
     # 4. Bangun system prompt
@@ -180,19 +218,21 @@ async def handle_web_search(
         precheck=precheck
     )
 
-    modified_messages = [m for m in messages if m["role"] != "system"]
+    # Trim riwayat chat (ambil 10 pesan terakhir) agar context budget tetap optimal
+    trimmed_history = messages[-10:] if len(messages) > 10 else messages
+    modified_messages = [m for m in trimmed_history if m["role"] != "system"]
     modified_messages.insert(0, {"role": "system", "content": system_prompt})
     
-    yield format_sse(status="💡 Menyusun jawaban dari berbagai sumber web...", event_type=SSEEventType.STATUS)
+    yield format_sse(status="💡 Menyusun ringkasan", event_type=SSEEventType.STATUS)
     await asyncio.sleep(0.01)
 
-    # 5. Mulai streaming jawaban dari LLM
+    # 5. Mulai streaming jawaban dari LLM dengan num_ctx=32768 dan num_predict=-1 (tak terbatas)
     response_stream = stream_ollama_chat(
         messages=modified_messages,
         model_name=getattr(settings, "MODEL_PERSONA", "gemma4:12b"),
         is_thinking=is_thinking,
         temperature=0.4,
-        num_ctx=16384,
+        num_ctx=32768,
         num_predict=-1,
         request=request
     )

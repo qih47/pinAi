@@ -18,7 +18,10 @@ def detect_precheck(user_message: str, chat_mode: str, has_attachment: bool) -> 
     _VISUAL_KEYWORDS = ["visual", "diagram", "alur", "flowchart", "grafik", "bagan"]
     requires_visual = any(kw in msg_lower for kw in _VISUAL_KEYWORDS)
 
-    if any(w in msg_lower for w in ["gue", "lo", "gw"]):
+    slang = [s for s in ["bolo", "cuy", "bro", "gan", "sis", "boss", "bos", "bang", "aa", "teteh", "mas", "mba"] if s in msg_lower]
+    profanity = "low_misuh" if any(w in msg_lower for w in ["asu", "jancuk", "anjir", "bangsat"]) else "none"
+
+    if any(w in msg_lower for w in ["gue", "lo", "gw"]) or slang:
         pronoun, mirroring = "informal_gue_lo", "mirror_casual"
     elif any(w in msg_lower for w in ["saya", "anda", "bapak", "ibu"]):
         pronoun, mirroring = "formal_saya_anda", "stay_formal_safe"
@@ -27,8 +30,17 @@ def detect_precheck(user_message: str, chat_mode: str, has_attachment: bool) -> 
     else:
         pronoun, mirroring = "unknown", "stay_formal_safe"
 
-    slang = [s for s in ["bolo", "cuy", "bro", "gan", "sis"] if s in msg_lower]
-    profanity = "low_misuh" if any(w in msg_lower for w in ["asu", "jancuk", "anjir", "bangsat"]) else "none"
+    # Deteksi Nuansa Emosi & Mood User
+    if any(w in msg_lower for w in ["makasih", "terima kasih", "keren", "mantap", "top", "gokil", "thanks", "thank you"]):
+        tone_hint = "celebratory"
+    elif any(w in msg_lower for w in ["pusing", "bingung", "error mulu", "kesel", "susah", "gagal terus", "capek", "frustasi"]):
+        tone_hint = "empathetic_supportive"
+    elif any(w in msg_lower for w in ["cepet", "singkat", "to the point", "buruan", "sekarang", "langsung aja"]):
+        tone_hint = "direct_concise"
+    elif pronoun == "formal_saya_anda":
+        tone_hint = "formal"
+    else:
+        tone_hint = "casual"
 
     word_count = len(user_message.split())
     # Jangan anggap is_greeting jika pesannya terlalu panjang (kemungkinan ada instruksi setelah sapaan)
@@ -47,7 +59,7 @@ def detect_precheck(user_message: str, chat_mode: str, has_attachment: bool) -> 
         is_greeting = False
         is_chitchat = False
     else:
-        is_chitchat = is_greeting or (word_count <= 4 and not is_coding and not is_doc_query and not has_attachment)
+        is_chitchat = is_greeting
 
     # SPRINT 5: Proteksi sapaan & ucapan terima kasih/apresiasi di mode apapun!
     # Jangan paksakan need_rag_hint=True jika user sekadar sapaan ringan / makasih di mode "documents"
@@ -72,6 +84,7 @@ def detect_precheck(user_message: str, chat_mode: str, has_attachment: bool) -> 
         "is_doc_query": is_doc_query,
         "need_rag_hint": need_rag_hint,
         "pronoun": pronoun,
+        "tone_hint": tone_hint,
         "mirroring": mirroring,
         "slang": slang,
         "profanity": profanity,
@@ -259,20 +272,17 @@ def build_call2_system_prompt(
     if precheck and precheck.get("requires_visual") is True:
         prompt += "\n\n" + VISUAL_SYSTEM_PROMPT + "\n\n"
 
-    if is_thinking:
-        prompt = "<|think|>\n" + prompt
-        
     return prompt
 
 def get_module_config(module_name: str) -> Dict[str, Any]:
     configs = {
-        "chitchat": {"num_ctx": 16384, "temperature": 1.0},
-        "coding": {"num_ctx": 16384, "temperature": 1.0},
-        "rag": {"num_ctx": 16384, "temperature": 1.0},
-        "multi_document": {"num_ctx": 16384, "temperature": 1.0},
-        "analytic": {"num_ctx": 16384, "temperature": 1.0},
-        "self_correction": {"num_ctx": 16384, "temperature": 1.0},
-        "ambiguous": {"num_ctx": 16384, "temperature": 1.0},
-        "general_expert": {"num_ctx": 16384, "temperature": 1.0},
+        "chitchat": {"num_ctx": 32768, "temperature": 1.0},
+        "coding": {"num_ctx": 32768, "temperature": 1.0},
+        "rag": {"num_ctx": 32768, "temperature": 1.0},
+        "multi_document": {"num_ctx": 32768, "temperature": 1.0},
+        "analytic": {"num_ctx": 32768, "temperature": 1.0},
+        "self_correction": {"num_ctx": 32768, "temperature": 1.0},
+        "ambiguous": {"num_ctx": 32768, "temperature": 1.0},
+        "general_expert": {"num_ctx": 32768, "temperature": 1.0},
     }
-    return configs.get(module_name, {"num_ctx": 16384, "temperature": 1.0})
+    return configs.get(module_name, {"num_ctx": 32768, "temperature": 1.0})

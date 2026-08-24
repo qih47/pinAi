@@ -93,20 +93,17 @@ export default function ChatPage({ isGuest,
           50% { transform: translateY(-6px) rotate(3deg); }
         }
         @keyframes fadeInUp {
-          from { opacity: 0; transform: translateY(8px); }
+          from { opacity: 0; transform: translateY(4px); }
           to { opacity: 1; transform: translateY(0); }
         }
         @keyframes geminiReveal {
-          from { opacity: 0; transform: translateY(3px); filter: blur(2px); }
-          to { opacity: 1; transform: translateY(0); filter: blur(0); }
+          from { opacity: 0; }
+          to { opacity: 1; }
         }
         /* Kelas pulse/kedut berpikir asisten */
         .thinking-pulse {
-          animation: geminiReveal 0.6s ease-in-out infinite alternate;
+          animation: geminiReveal 0.4s ease-in-out infinite alternate;
           opacity: 0.6;
-        }
-        .assistant-content-container p, .assistant-content-container pre {
-          animation: geminiReveal 0.35s ease-out forwards;
         }
         textarea {
         }

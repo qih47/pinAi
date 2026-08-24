@@ -38,7 +38,7 @@ class ModeRedTeam:
         logger.info(f"[MODE_REDTEAM] Executing Red-Team Mode. Precheck data: {routing_data}")
         start_time = time.time()
         
-        yield format_sse(status="🕵️ Mengisolasi dokumen target...", event_type=SSEEventType.STATUS)
+        yield format_sse(status="🕵️ Mengisolasi dokumen", event_type=SSEEventType.STATUS)
         await asyncio.sleep(0.01)
 
         isolated_doc_id = routing_data.get("isolated_doc_id")
@@ -46,7 +46,7 @@ class ModeRedTeam:
         judul_sources = []
         
         if isolated_doc_id:
-            yield format_sse(status="🔍 Membedah lapisan dokumen secara mendalam...", event_type=SSEEventType.STATUS)
+            yield format_sse(status="🔍 Membedah dokumen", event_type=SSEEventType.STATUS)
             await asyncio.sleep(0.01)
             
             # Ekstrak data dokumen dengan mencari judul
@@ -59,7 +59,7 @@ class ModeRedTeam:
         if not judul_context:
             judul_context, _, judul_sources = await search_and_ocr_by_judul(user_message)
             
-        yield format_sse(status="⚖️ Mengaktifkan Persona Ganda (Manajemen vs Pegawai)...", event_type=SSEEventType.STATUS)
+        yield format_sse(status="⚖️ Menjalankan debat", event_type=SSEEventType.STATUS)
         await asyncio.sleep(0.01)
         
         if judul_sources:
@@ -93,7 +93,7 @@ class ModeRedTeam:
             request=request
         )
         
-        yield format_sse(status="⚔️ Menulis hasil debat argumen...", event_type=SSEEventType.STATUS)
+        yield format_sse(status="⚔️ Menyusun argumen", event_type=SSEEventType.STATUS)
         await asyncio.sleep(0.01)
 
         final_thinking = ""

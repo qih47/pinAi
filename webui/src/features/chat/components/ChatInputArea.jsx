@@ -10,6 +10,7 @@ import useNextcloudStore from "../../../stores/nextcloudStore";
 import { Paperclip, Cloud } from "lucide-react";
 import VoiceButton from "./ChatInputArea/VoiceButton";
 import { translations } from "../../../utils/translations";
+import InteractiveWizardWidget from "./InteractiveWizardWidget";
 
 export default function ChatInputArea({
   theme,
@@ -52,6 +53,7 @@ export default function ChatInputArea({
   const attachmentMenuRef = useRef(null);
   const t = translations[language]?.chatInput || translations.id.chatInput;
   const openNextcloudModal = useNextcloudStore(state => state.openModal);
+  const activeWizard = useChatStore(state => state.activeWizard);
 
   useEffect(() => {
     function handleClickOutside(event) {
@@ -109,6 +111,17 @@ export default function ChatInputArea({
           darkMode={darkMode}
           theme={theme}
         />
+
+        {/* 🪄 WIZARD INTERAKTIF DOCKED DI ATAS TEXT INPUT (Hanya muncul saat stream sudah selesai) */}
+        {activeWizard && !isStreaming && (
+          <div className="w-full mb-3 animate-fadeIn flex justify-center">
+            <InteractiveWizardWidget
+              data={activeWizard.data}
+              messageIndex={activeWizard.messageIndex}
+              darkMode={darkMode}
+            />
+          </div>
+        )}
 
         <form
           onSubmit={handleSubmit}

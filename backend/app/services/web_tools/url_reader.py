@@ -17,17 +17,13 @@ def extract_urls_from_text(text: str) -> List[str]:
     """
     Ekstrak semua URL yang ada di dalam teks, termasuk domain tanpa http:// (misal pindad.com).
     """
-    # Deteksi URL dengan atau tanpa protokol (fokus pada domain umum seperti .com, .co.id, .id, .net, dll)
-    # Mendukung spasi sebelum dot (misal: pindad. com)
     url_pattern = re.compile(r'(?:https?://)?(?:www\.)?[-a-zA-Z0-9@:%_\+~#=]{1,256}\s*\.\s*(?:com|co\.id|id|org|net|gov|edu|mil)\b(?:[-a-zA-Z0-9()@:%_\+.~#?&//=]*)', re.IGNORECASE)
     
     matches = url_pattern.findall(text)
     
     valid_urls = []
     for match in matches:
-        # Hapus spasi jika ada typo (misal: pindad. com -> pindad.com)
         clean_match = match.replace(' ', '')
-        # Jika tidak ada http/https, tambahkan https:// secara default agar crawler tidak error
         if not clean_match.startswith('http://') and not clean_match.startswith('https://'):
             valid_urls.append(f'https://{clean_match}')
         else:
@@ -60,6 +56,56 @@ async def fetch_webpage_content(url: str) -> Optional[str]:
     except Exception as e:
         logger.error(f"[URL Reader] Failed to fetch {url}: {str(e)}")
         return None
+
+from urllib.parse import urlparse
+from typing import List, Optional, Dict, Any, AsyncGenerator
+
+def extract_url_display_info(url: str) -> Dict[str, str]:
+    """
+    Ekstrak metadata tampilan URL untuk widget timeline (domain, title/path, clean url).
+    Contoh: https://ollama.com/library/ornith-1.5 -> title: 'ornith-1.5', domain: 'ollama.com'
+    """
+    try:
+        parsed = urlparse(url)
+        domain = parsed.netloc.replace("www.", "")
+        path_parts = [p for p in parsed.path.strip("/").split("/") if p]
+        
+        if path_parts:
+            # Ambil segmen path terakhir sebagai judul model/halaman
+            raw_title = path_parts[-1]
+            # Bersihkan ekstensi file jika ada (.html, .php)
+            raw_title = re.sub(r'\.(html|php|asp|htm)$', '', raw_title)
+            title = raw_title.replace("-", " ").replace("_", " ")
+        else:
+            title = domain
+            
+        return {
+            "url": url,
+            "title": title,
+            "domain": domain
+        }
+    except Exception:
+        return {
+            "url": url,
+            "title": url,
+            "domain": url
+        }
+
+async def fetch_urls_progressive(urls: List[str]) -> AsyncGenerator[Dict[str, Any], None]:
+    """
+    Generator asinkron yang melakukan fetch URL satu per satu secara berurutan/progresif
+    dan memancarkan event tiap kali satu URL selesai dibaca.
+    """
+    for url in urls:
+        display_info = extract_url_display_info(url)
+        content = await fetch_webpage_content(url)
+        yield {
+            "url": url,
+            "title": display_info["title"],
+            "domain": display_info["domain"],
+            "content": content,
+            "success": bool(content)
+        }
 
 async def fetch_multiple_urls(urls: List[str]) -> str:
     """

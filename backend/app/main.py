@@ -65,7 +65,7 @@ async def _warmup_and_pin_models():
 
     llm_models = [
         (getattr(settings, "MODEL_ROUTER", "gemma4:e4b"), "Router (Call 1)", 4096),
-        (settings.MODEL_PERSONA, "Gemma4 Agentic Engine (Call 2)", 16384),
+        (settings.MODEL_PERSONA, "Gemma4 Agentic Engine (Call 2)", 32768),
     ]
 
     chat_url = f"{settings.OLLAMA_BASE_URL}/api/chat"

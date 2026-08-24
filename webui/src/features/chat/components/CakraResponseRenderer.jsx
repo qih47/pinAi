@@ -8,6 +8,8 @@ import CodeBlockHeader from './CodeBlockHeader';
 import ChatActionWidgets from './ChatActionWidgets';
 import { Suspense, lazy } from 'react';
 import { translations } from '../../../utils/translations';
+import { useChatStore } from '../../../stores/chatStore';
+import { CheckCircle, Layers } from 'lucide-react';
 
 const LazyMermaidViewer = lazy(() => import('./MermaidViewer'));
 const LazySmartMailWidget = lazy(() => import('./SmartMailChatWidget'));
@@ -18,8 +20,30 @@ const LazyReactFlowViewer = lazy(() => import('./ReactFlowViewer'));
 const LazyDataGridViewer = lazy(() => import('./DataGridViewer'));
 const LazyMapViewer = lazy(() => import('./MapViewer'));
 const LazyWebSearchWidget = lazy(() => import('./WebSearchWidget'));
+const LazyUrlFetchTimelineWidget = lazy(() => import('./UrlFetchTimelineWidget'));
+const LazyInteractiveWizardWidget = lazy(() => import('./InteractiveWizardWidget'));
 
 const remarkPluginsList = [remarkGfm];
+
+// 🌐 SMART LINKIFIER: Otomatis ubah domain/URL mentah (seperti jdih.setneg.go.id) menjadi tautan aktif
+const linkifyRawDomains = (text) => {
+    if (!text || typeof text !== 'string') return text;
+    const parts = text.split(/(```[\s\S]*?```|`[^`\n]+`|\[[^\]]+\]\([^\)]+\))/g);
+    return parts.map((part, idx) => {
+        if (idx % 2 === 1) return part; // Jangan ubah kode atau link yang sudah valid
+        return part.replace(
+            /(?<![\w@/])((?:https?:\/\/)?(?:[a-zA-Z0-9-]+\.)+(?:com|org|net|gov|go\.id|co\.id|ac\.id|id|io|edu|ai)(?:\/[^\s\)\],<"']*)?)/gi,
+            (match) => {
+                const cleanMatch = match.replace(/[.,;:]$/, '');
+                const suffix = match.slice(cleanMatch.length);
+                const href = cleanMatch.startsWith('http://') || cleanMatch.startsWith('https://')
+                    ? cleanMatch
+                    : `https://${cleanMatch}`;
+                return `[${cleanMatch}](${href})${suffix}`;
+            }
+        );
+    }).join('');
+};
 
 const highlightText = (text, query) => {
     if (!query || typeof text !== 'string') return text;
@@ -98,19 +122,18 @@ const MarkdownTable = ({ children, darkMode, theme, searchQuery, language = 'id'
     );
 };
 
-// =========================================================================
-// 🔮 MAIN COMPONENT: CAKRA RESPONSE RENDERER
-// =========================================================================
-const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkMode, theme, searchQuery = '', statusMessage, middleContent, language = 'id' }) => {
+const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkMode, theme, searchQuery = '', statusMessage, middleContent, language = 'id', messageIndex = null, isLastMessage = false }) => {
     const tGlobal = translations[language] || translations.id;
     const latestProps = React.useRef({ darkMode, theme, searchQuery, isStreaming, language, rawContent });
     latestProps.current = { darkMode, theme, searchQuery, isStreaming, language, rawContent };
     const thinkStartTag = "<think>";
     const thinkEndTag = "</think>";
 
-    // 🔧 FIX: bungkus parsing index/substring dengan useMemo agar hanya
-    // dihitung ulang saat rawContent benar-benar berubah, bukan setiap render
-    const { thinkingBlock, finalResponseBlock } = useMemo(() => {
+    const wizardAnswers = useChatStore(state => state.wizardAnswers);
+    const setActiveWizard = useChatStore(state => state.setActiveWizard);
+    const activeWizard = useChatStore(state => state.activeWizard);
+
+    const { thinkingBlock, finalResponseBlock, wizardBlock } = useMemo(() => {
         const thinking = thinkingContent || "";
         let final = rawContent || "";
 
@@ -166,10 +189,36 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
             return content.trim();
         });
 
-        // 🔧 Bersihkan \text{...} dari LaTeX
-        final = final.replace(/\\text\{([^}]+)\}/g, '$1');
+        // 🎯 EKSTRAK BLOK WIZARD / INTERACTIVE OPTIONS AGAR SELALU DI-RENDER DI BAWAH TEKS JAWABAN
+        let wizard = null;
+        const wizardMatch = final.match(/```(?:wizard|interactive_options)\s*([\s\S]*?)```/);
+        if (wizardMatch) {
+            wizard = wizardMatch[1]?.trim();
+            final = final.replace(/```(?:wizard|interactive_options)\s*[\s\S]*?```/, '').trim();
+        } else {
+            // Tangani partial streaming wizard yang belum ditutup ```
+            const unclosedMatch = final.match(/```(?:wizard|interactive_options)\s*([\s\S]*)$/);
+            if (unclosedMatch) {
+                const partial = unclosedMatch[1]?.trim() || '';
+                const firstBrace = partial.indexOf('{');
+                const lastBrace = partial.lastIndexOf('}');
+                if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+                    try {
+                        const parsed = JSON.parse(partial.substring(firstBrace, lastBrace + 1));
+                        if (parsed && parsed.questions) {
+                            wizard = partial.substring(firstBrace, lastBrace + 1);
+                        }
+                    } catch (e) {}
+                }
+                // Sembunyikan teks JSON mentah dari atas chat saat sedang streaming
+                final = final.replace(/```(?:wizard|interactive_options)\s*[\s\S]*$/, '').trim();
+            }
+        }
 
-        return { thinkingBlock: thinking, finalResponseBlock: final };
+        // 🌐 Otomatis linkify domain mentah agar selalu bisa diklik sebagai tautan
+        final = linkifyRawDomains(final);
+
+        return { thinkingBlock: thinking, finalResponseBlock: final, wizardBlock: wizard };
     }, [rawContent, thinkingContent]);
 
 
@@ -385,19 +434,58 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
             }
 
             if (!inline && match && match[1] === 'websearch') {
-                let searchData = [];
+                let searchData = null;
                 try {
                     searchData = JSON.parse(cleanCode);
                 } catch (e) {
-                    searchData = [];
+                    try {
+                        const firstBrace = cleanCode.indexOf('{');
+                        const lastBrace = cleanCode.lastIndexOf('}');
+                        if (firstBrace !== -1 && lastBrace !== -1) {
+                            searchData = JSON.parse(cleanCode.substring(firstBrace, lastBrace + 1));
+                        }
+                    } catch (e2) {
+                        searchData = null;
+                    }
                 }
-                const { rawContent, isStreaming } = latestProps.current;
+                const { rawContent, isStreaming, darkMode } = latestProps.current;
                 const afterSearchBlock = rawContent ? rawContent.split('```websearch')[1]?.split('```')[1] : null;
                 const hasStartedResponding = afterSearchBlock ? afterSearchBlock.trim().length > 0 : false;
 
                 return (
-                    <Suspense fallback={<div className="animate-pulse p-4 border border-[#2d2d2d] bg-[#1e1e1e] rounded-lg text-sm text-gray-400 font-medium my-3">Memuat hasil pencarian...</div>}>
-                        <LazyWebSearchWidget searchData={searchData} isStreaming={isStreaming} hasStartedResponding={hasStartedResponding} />
+                    <Suspense fallback={<div className="animate-pulse p-3 border border-[#2d2d2d] bg-[#1e1e1e] rounded-xl text-xs text-gray-400 font-medium my-2">Memuat hasil pencarian...</div>}>
+                        <LazyWebSearchWidget searchData={searchData} isStreaming={isStreaming} hasStartedResponding={hasStartedResponding} darkMode={darkMode} />
+                    </Suspense>
+                );
+            }
+
+            if (!inline && match && match[1] === 'urlfetch') {
+                let fetchPayload = null;
+                try {
+                    fetchPayload = JSON.parse(cleanCode);
+                } catch (e) {
+                    try {
+                        const firstBrace = cleanCode.indexOf('{');
+                        const lastBrace = cleanCode.lastIndexOf('}');
+                        if (firstBrace !== -1 && lastBrace !== -1) {
+                            fetchPayload = JSON.parse(cleanCode.substring(firstBrace, lastBrace + 1));
+                        }
+                    } catch (e2) {
+                        fetchPayload = null;
+                    }
+                }
+                const { isStreaming, darkMode, rawContent } = latestProps.current;
+                const hasTextAfterBlock = rawContent && rawContent.includes('```urlfetch') && rawContent.split('```urlfetch')[1]?.split('```')[1]?.trim().length > 5;
+                const hasStartedResponding = Boolean(hasTextAfterBlock || !isStreaming);
+
+                return (
+                    <Suspense fallback={<div className="animate-pulse p-2 text-xs text-gray-400 font-medium my-2">Membaca tautan web...</div>}>
+                        <LazyUrlFetchTimelineWidget 
+                            data={fetchPayload} 
+                            isStreaming={isStreaming} 
+                            hasStartedResponding={hasStartedResponding} 
+                            darkMode={darkMode} 
+                        />
                     </Suspense>
                 );
             }
@@ -450,6 +538,11 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
                 );
             }
 
+            if (!inline && match && (match[1] === 'wizard' || match[1] === 'interactive_options')) {
+                // 🎯 Jangan render di dalam markdown bubble, karena wizard di-dock mengambang di atas input bar
+                return null;
+            }
+
             return !inline && match ? (
                 <div key={`code-block-${match[1]}`} style={{ borderRadius: '10px', overflow: 'hidden', margin: '12px 0', boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)', border: '1px solid rgba(255, 255, 255, 0.05)' }}>
                     <CodeBlockHeader lang={match[1]} code={cleanCode} language={language} />
@@ -477,9 +570,21 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
         }
     }), []);
 
+    // Sync wizard to dock in ChatInputArea when active
+    React.useEffect(() => {
+        if (wizardBlock && messageIndex !== null && messageIndex !== undefined) {
+            const hasAnswered = Boolean(wizardAnswers[messageIndex]);
+            if (!hasAnswered && (isLastMessage || isStreaming)) {
+                if (activeWizard?.messageIndex !== messageIndex || activeWizard?.data !== wizardBlock) {
+                    setActiveWizard({ messageIndex, data: wizardBlock });
+                }
+            }
+        }
+    }, [wizardBlock, messageIndex, isLastMessage, isStreaming, wizardAnswers, activeWizard?.messageIndex, activeWizard?.data, setActiveWizard]);
+
     // 🛠️ FIX AMAN: guard render kosong dipindah ke bawah useMemo agar
     // hooks tidak dipanggil secara kondisional (Rules of Hooks)
-    if (!thinkingBlock.trim() && !finalResponseBlock.trim() && !middleContent) {
+    if (!thinkingBlock.trim() && !finalResponseBlock.trim() && !wizardBlock && !middleContent) {
         return <div style={{ minHeight: '20px' }} />;
     }
 
@@ -499,21 +604,61 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
             {middleContent}
 
             {/* 📝 2. RENDER UTAMA JAWABAN: Ditampilkan tepat di bawah proses berpikir */}
-            {finalResponseBlock.trim() && (() => {
-                // Hapus sintaks widget agar tidak tampil sebagai teks biasa di chat bubble
+            {(finalResponseBlock.trim() || wizardBlock) && (() => {
+                // Hapus sintaks widget & meta-tag internal LLM agar tidak bocor ke teks UI
                 const sanitizedResponseBlock = finalResponseBlock
                     .replace(/\[ACTION:(.*?)\]/g, '')
                     .replace(/\[GHOSTWRITER\]/ig, '')
                     .replace(/\[LINEAGE\]/ig, '')
+                    .replace(/\[(?:TANYA(?:\s+LAGI)?|FOLLOW_UP|KLARIFIKASI|SUMMARY)\]/ig, '')
                     .trim();
 
+                const answeredList = (messageIndex !== null && messageIndex !== undefined) ? wizardAnswers[messageIndex] : null;
+
                 return (
-                    <div style={{ width: '100%', transition: 'all 0.3s' }}>
-                        <ReactMarkdown
-                            children={sanitizedResponseBlock}
-                            components={markdownComponents}
-                            remarkPlugins={remarkPluginsList}
-                        />
+                    <div style={{ width: '100%' }}>
+                        {sanitizedResponseBlock && (
+                            <ReactMarkdown
+                                children={sanitizedResponseBlock}
+                                components={markdownComponents}
+                                remarkPlugins={remarkPluginsList}
+                            />
+                        )}
+                        
+                        {/* 🎯 REKAM JEJAK PILIHAN USER (SUMMARY BADGES) SETELAH WIZARD DISUBMIT */}
+                        {answeredList && Array.isArray(answeredList) && answeredList.length > 0 && (
+                            <div className={`mt-3 pt-2.5 border-t flex flex-col gap-2 ${darkMode ? 'border-zinc-800/80' : 'border-gray-200'}`}>
+                                <div className="text-[11.5px] font-semibold text-indigo-400 flex items-center gap-1.5">
+                                    <Layers className="w-3.5 h-3.5" />
+                                    <span>Konfirmasi Rujukan Terpilih:</span>
+                                </div>
+                                <div className="flex flex-col gap-1.5">
+                                    {answeredList.map((item, idx) => (
+                                        <div 
+                                            key={idx} 
+                                            className={`flex items-start sm:items-center gap-2 px-3 py-1.5 rounded-lg text-[12px] border ${
+                                                darkMode 
+                                                    ? 'bg-indigo-500/10 border-indigo-500/20 text-indigo-200' 
+                                                    : 'bg-indigo-50 border-indigo-200 text-indigo-900'
+                                            }`}
+                                        >
+                                            <CheckCircle className="w-3.5 h-3.5 text-indigo-400 flex-shrink-0 mt-0.5 sm:mt-0" />
+                                            <div className="flex flex-wrap items-center gap-1 min-w-0">
+                                                {item.question && !item.question.toLowerCase().startsWith('pilih salah') && (
+                                                    <span className={darkMode ? 'text-zinc-400 font-normal' : 'text-gray-600 font-normal'}>
+                                                        {item.question.replace(/[:：\s]+$/, '')}:
+                                                    </span>
+                                                )}
+                                                <span className="font-semibold text-indigo-300">
+                                                    {item.answer}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
                         <ChatActionWidgets rawContent={finalResponseBlock} />
                     </div>
                 );

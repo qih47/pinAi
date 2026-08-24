@@ -97,9 +97,22 @@ export async function performStream(set, get, messagesToSend, assistantMessage, 
                     attachmentPaths,
                     npp,
                     editIndex,
-                    signal: controller.signal
+                    signal: controller.signal,
+                    activeTopic: (typeof get().sessionTopics?.[activeSessionUuid] === 'object' ? get().sessionTopics[activeSessionUuid]?.topic : get().sessionTopics?.[activeSessionUuid]) || get().activeTopic || null,
+                    keySubject: (typeof get().sessionTopics?.[activeSessionUuid] === 'object' ? get().sessionTopics[activeSessionUuid]?.keySubject : null) || get().keySubject || null
                 },
                 {
+                    onTopicUpdate: (topic, keySubject) => {
+                        console.log('🏷️ [TOPIC_UPDATE] Session active topic updated:', topic, '| key subject:', keySubject);
+                        set(state => ({
+                            activeTopic: topic,
+                            keySubject: keySubject || null,
+                            sessionTopics: {
+                                ...(state.sessionTopics || {}),
+                                [activeSessionUuid]: { topic, keySubject: keySubject || null }
+                            }
+                        }));
+                    },
                     onThinking: (thinking) => {
                         // Bersihkan marker <|channel> dan [GEMMA_THINK] dari string thinking
                         let cleanThinking = thinking
@@ -109,21 +122,8 @@ export async function performStream(set, get, messagesToSend, assistantMessage, 
 
                         accumulatedThinking += cleanThinking;
 
-                        // 🔥 TRULY DYNAMIC STATUS: Mengekstrak topik yang sedang dipikirkan secara native!
-                        // Tidak lagi kaku 3 langkah, melainkan membaca apapun yang ditulis AI sebelum titik dua (:)
-                        let currentStatus = 'Sedang memproses...';
-                        const lines = accumulatedThinking.split('\n');
-
-                        for (const line of lines) {
-                            // Cari pola bullet point dengan header. Contoh: "*   Context:", "*   *Step 1 - Selection:*", "    * Analysis:"
-                            // Regex ini menangkap teks di dalam bullet sebelum tanda titik dua (:), maksimal 35 karakter.
-                            const match = line.match(/^\s*[\*-]\s+(?:\*+)?([^:\n\*]{3,35})(?:\*+)?\s*:/);
-                            if (match && match[1]) {
-                                let topic = match[1].trim();
-                                // Percantik output status
-                                currentStatus = topic + '...';
-                            }
-                        }
+                        // Status resmi yang bersih dan elegan (prioritaskan status dari backend jika ada)
+                        let currentStatus = assistantMessage.statusMessage || '🧠 Menganalisis konteks';
 
                         const updatedAssistantMsg = {
                             ...assistantMessage,

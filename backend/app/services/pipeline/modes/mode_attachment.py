@@ -167,27 +167,19 @@ class ModeAttachment:
         # berikan context & budget besar
         has_large_text = estimated_text_tokens > 300 or bool(text_contents)
 
+        num_ctx = 32768
         if is_from_pdf:
-            num_ctx = 32000
             token_budget = 1120
             num_predict_output = -1
         elif has_large_text:
-            # File teks/kode: butuh context BESAR untuk baca file panjang + ruang output lega
-            # Estimasi kode boros token (1 token ~ 2.5 char untuk kode)
-            estimated_text_tokens = len(actual_user_msg) // 2
-            num_ctx = min(32768, max(16384, estimated_text_tokens + 8192))
-            # JANGAN batasi output dengan token_budget untuk mode teks/kode!
-            # LLM harus bebas menulis penjelasan sepanjang yang diperlukan.
             token_budget = None
-            num_predict_output = -1  # Cukup untuk penjelasan kode yang sangat panjang
+            num_predict_output = -1
             logger.info(
                 f"[MODE_ATTACHMENT] Text file mode | "
                 f"estimated_tokens={estimated_text_tokens} | "
                 f"num_ctx={num_ctx} | num_predict={num_predict_output} | token_budget=NONE (unlimited)"
             )
         else:
-            # Gambar biasa atau teks pendek
-            num_ctx = 16384
             token_budget = 280
             num_predict_output = -1
 
@@ -222,7 +214,7 @@ class ModeAttachment:
                 observation=json.dumps(obs_dict)
             )
 
-        yield format_sse(status="👁️ Menganalisis lampiran dokumen/gambar", event_type=SSEEventType.STATUS)
+        yield format_sse(status="👁️ Memindai lampiran", event_type=SSEEventType.STATUS)
 
         try:
             async for chunk_line in stream_ollama_chat(

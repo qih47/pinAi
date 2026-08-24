@@ -21,6 +21,13 @@ const FileIcon = ({ color }) => (
   </svg>
 );
 
+const TerminalIcon = ({ color = "currentColor", size = 14 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="4 17 10 11 4 5"></polyline>
+    <line x1="12" y1="19" x2="20" y2="19"></line>
+  </svg>
+);
+
 const PencilIcon = ({ color }) => (
   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <path d="M12 20h9"></path>
@@ -210,61 +217,108 @@ export default function FileProcessLog({ fileGenerations, darkMode, batchIndex =
                     style={{
                       display: 'flex',
                       alignItems: 'center',
-                      gap: '4px',
+                      gap: '5px',
                       fontSize: '11px',
                       color: mutedText,
                       cursor: 'pointer',
-                      width: 'fit-content'
+                      width: 'fit-content',
+                      marginTop: '2px',
+                      transition: 'color 0.2s'
                     }}
+                    onMouseEnter={(e) => e.currentTarget.style.color = textColor}
+                    onMouseLeave={(e) => e.currentTarget.style.color = mutedText}
                   >
-                    <FileIcon color={mutedText} />
-                    <span style={{ transition: 'color 0.2s' }} onMouseEnter={(e) => e.target.style.color = textColor} onMouseLeave={(e) => e.target.style.color = mutedText}>
+                    <TerminalIcon color={isStepExpanded ? '#818cf8' : mutedText} size={12} />
+                    <span style={{ fontWeight: 500 }}>
                       File System
                     </span>
+                    <ChevronRight expanded={isStepExpanded} color={isStepExpanded ? '#818cf8' : mutedText} />
                   </div>
 
-                  {/* Expanded Code Block (Terminal-like) */}
+                  {/* Expanded Code Block (Clean Developer Terminal Window with Dedicated Header) */}
                   {isStepExpanded && (
                     <div style={{
                       marginTop: '8px',
-                      background: '#1e1e1e', // Dark terminal background
-                      border: '1px solid rgba(255, 255, 255, 0.1)',
-                      borderRadius: '6px',
-                      padding: '12px',
-                      overflowX: 'auto',
+                      background: '#0e1015',
+                      border: '1px solid rgba(255, 255, 255, 0.09)',
+                      borderRadius: '7px',
+                      overflow: 'hidden',
                       maxWidth: 'calc(100vw - 120px)'
                     }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px', color: '#a1a1aa', fontSize: '12px', fontFamily: 'monospace' }}>
-                        <span style={{ color: '#818cf8' }}>&gt;</span>
-                        <span>{`cat > ${fg.filename} << 'EOF'`}</span>
-                      </div>
-                      {isInProgress ? (
-                        <pre style={{
-                          margin: 0,
-                          padding: 0,
-                          background: 'transparent',
-                          fontSize: '12px',
-                          fontFamily: 'monospace',
-                          color: '#d4d4d8',
-                          whiteSpace: 'pre-wrap',
-                          wordBreak: 'break-all'
+                      {/* Terminal Header Bar */}
+                      <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        padding: '7px 12px',
+                        background: '#16181f',
+                        borderBottom: '1px solid rgba(255, 255, 255, 0.07)',
+                        userSelect: 'none'
+                      }}>
+                        <div style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          color: '#a1a1aa',
+                          fontSize: '11px',
+                          fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace'
                         }}>
-                          {fg.liveCode || '// Sedang menginisialisasi...'}
-                        </pre>
-                      ) : (
-                        <SyntaxHighlighter
-                          language={fg.filename.split('.').pop() || "javascript"}
-                          style={vscDarkPlus}
-                          customStyle={{
+                          <TerminalIcon color="#818cf8" size={13} />
+                          <span style={{ color: '#e4e4e7', fontWeight: 500 }}>Terminal</span>
+                        </div>
+                      </div>
+
+                      {/* Scrollable Terminal Content */}
+                      <div style={{
+                        maxHeight: '260px',
+                        overflowY: 'auto',
+                        overflowX: 'auto',
+                        padding: '10px 14px 14px 14px',
+                        scrollbarWidth: 'thin',
+                        scrollbarColor: 'rgba(255, 255, 255, 0.2) transparent'
+                      }}>
+                        {/* Command Line */}
+                        <div style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px',
+                          marginBottom: '8px',
+                          color: '#a1a1aa',
+                          fontSize: '12px',
+                          fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace'
+                        }}>
+                          <span style={{ color: '#818cf8', fontWeight: 600 }}>&gt;</span>
+                          <span style={{ color: '#e4e4e7' }}>{`cat > ${fg.filename} << 'EOF'`}</span>
+                        </div>
+
+                        {isInProgress ? (
+                          <pre style={{
                             margin: 0,
                             padding: 0,
                             background: 'transparent',
-                            fontSize: '12px'
-                          }}
-                        >
-                          {fg.liveCode || '// Selesai.'}
-                        </SyntaxHighlighter>
-                      )}
+                            fontSize: '12px',
+                            fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
+                            color: '#d4d4d8',
+                            whiteSpace: 'pre-wrap',
+                            wordBreak: 'break-all'
+                          }}>
+                            {fg.liveCode || '// Sedang menginisialisasi...'}
+                          </pre>
+                        ) : (
+                          <SyntaxHighlighter
+                            language={fg.filename.split('.').pop() || "javascript"}
+                            style={vscDarkPlus}
+                            customStyle={{
+                              margin: 0,
+                              padding: 0,
+                              background: 'transparent',
+                              fontSize: '12px'
+                            }}
+                          >
+                            {fg.liveCode || '// Selesai.'}
+                          </SyntaxHighlighter>
+                        )}
+                      </div>
                     </div>
                   )}
                 </div>

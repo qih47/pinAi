@@ -35,7 +35,7 @@ class ModeEmail:
         logger.info(f"[MODE_EMAIL] Executing Email Draft Mode. Precheck data: {routing_data}")
         start_time = time.time()
         
-        yield format_sse(status="📧 Menulis draf email...", event_type=SSEEventType.STATUS)
+        yield format_sse(status="📧 Menulis email", event_type=SSEEventType.STATUS)
         await asyncio.sleep(0.01)
 
         system_prompt = build_email_system_prompt(
@@ -102,4 +102,4 @@ class ModeEmail:
 
         duration = time.time() - start_time
         logger.info(f"[MODE_EMAIL] Completed in {duration:.2f}s")
-        yield format_sse(status=f"✨ Draf email siap ({duration:.1f}s)", event_type=SSEEventType.STATUS)
+        yield format_sse(status=f"✨ Email siap ({duration:.1f}s)", event_type=SSEEventType.STATUS)

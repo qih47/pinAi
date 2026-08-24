@@ -64,13 +64,13 @@ class ModeGuest:
             *trimmed_messages,
         ]
 
-        # 3. Parameter khusus Guest (Hemat Resource)
-        num_ctx = 16384
+        # 3. Parameter khusus Guest
+        num_ctx = 32768
         temperature = 0.6
         # Pastikan thinking selalu off
         is_thinking = False
 
-        yield format_sse(status="⚡ Analisa konteks...", event_type=SSEEventType.STATUS)
+        yield format_sse(status="⚡ Menyiapkan respon", event_type=SSEEventType.STATUS)
 
         # Hitung estimasi token (1 token ~ 4 karakter)
         sys_tokens = len(system_prompt) // 4

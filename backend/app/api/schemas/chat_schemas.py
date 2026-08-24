@@ -28,6 +28,8 @@ class ChatStreamRequest(BaseModel):
     isolated_doc_id: Optional[Union[int, str]] = Field(None, description="ID dokumen RAG terisolasi atau nama file PDF")
     attachment_paths: Optional[List[str]] = Field(default=[], description="Daftar path file fisik lampiran chat untuk pemrosesan MiniCPM-V")
     edit_index: Optional[int] = Field(None, description="Indeks array dari chat user yang ingin diedit di DB (In-Place Update)")
+    active_topic: Optional[str] = Field(None, description="Topik percakapan aktif sebelumnya di sesi ini")
+    key_subject: Optional[str] = Field(None, description="Entitas / subjek inti spesifik yang sedang dibahas")
 
     class Config:
         from_attributes = True

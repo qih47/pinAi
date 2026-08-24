@@ -63,22 +63,146 @@ class ModeDocuments:
         community_context = ""
         query_judul_str = ""
 
-        if is_chitchat_msg or not should_run_rag:
-            logger.info("[MODE_DOCUMENTS] 💬 Sapaan ringan / chitchat terdeteksi di mode documents -> Lewati pencarian RAG & FTS!")
+        if not should_run_rag:
+            logger.info("[MODE_DOCUMENTS] 💬 need_rag=False terdeteksi di mode documents -> Lewati pencarian RAG & FTS!")
         else:
-            from backend.app.services.peraturan_service import hybrid_document_search
+            from backend.app.services.peraturan_service import (
+                get_candidate_documents_metadata,
+                extract_pdf_pages_sync,
+            )
+            from backend.app.services.rag.reranker_service import reranker_service
             
             query_judul_list = routing_data.get("query_judul") or []
             query_judul_str = " ".join(query_judul_list) if isinstance(query_judul_list, list) else str(query_judul_list)
             
             # ─────────────────────────────────────────────────────────────────
-            # TIER 1: Instant MySQL Search (Judul, Tag, Isi Berita, FTS)
+            # TIER 1: Progressive Document Stepper & Global Page-Level Reranking
             # ─────────────────────────────────────────────────────────────────
-            yield format_sse(status="🔍 Memeriksa basis data regulasi Pindad...", event_type=SSEEventType.STATUS)
-            logger.info(f"[MODE_DOCUMENTS] [TIER 1] Executing MySQL search for query_judul: {query_judul_list}")
+            yield format_sse(status="🔍 Menelusuri regulasi", event_type=SSEEventType.STATUS)
+            logger.info(f"[MODE_DOCUMENTS] [TIER 1] Fetching candidate documents for query_judul: {query_judul_list}")
             
-            judul_context, ocr_attachments, judul_sources = await hybrid_document_search(user_message, query_judul_list)
+            candidate_docs = await get_candidate_documents_metadata(user_message, query_judul_list)
             
+            if candidate_docs:
+                top_candidates = candidate_docs[:3]
+                doc_count = len(top_candidates)
+                yield format_sse(status=f"📑 Menemukan {doc_count} dokumen", event_type=SSEEventType.STATUS)
+                await asyncio.sleep(0.05)
+                
+                global_page_pool = []
+                all_source_metadata = []
+                loop = asyncio.get_running_loop()
+                
+                # 1. Progressive per-file reading stepper
+                for doc in top_candidates:
+                    valid_file = doc.get("valid_file")
+                    if not valid_file or not os.path.exists(valid_file):
+                        continue
+                        
+                    doc_title_display = doc['judul'][:38].strip()
+                    yield format_sse(status=f"📖 Membaca {doc_title_display}", event_type=SSEEventType.STATUS)
+                    await asyncio.sleep(0.05)
+                    
+                    pages = await loop.run_in_executor(None, extract_pdf_pages_sync, valid_file, 100)
+                    page_count = len(pages)
+                    
+                    for p in pages:
+                        p["doc_id"] = doc["id"]
+                        p["doc_title"] = doc["judul"]
+                        p["doc_noper"] = doc["noper"]
+                        p["doc_status"] = doc["status_berlaku"]
+                        p["doc_tanggal"] = doc["tanggal"]
+                        p["doc_mencabut"] = doc["mencabut"]
+                        p["valid_file"] = valid_file
+                        p["filename"] = doc["filename"]
+                        p["file_path"] = doc["file_path"]
+                        p["jenis"] = doc["jenis"]
+                        global_page_pool.append(p)
+                        
+                    all_source_metadata.append({
+                        "id": doc["id"],
+                        "title": doc["judul"],
+                        "document_title": doc["judul"],
+                        "filename": doc["filename"],
+                        "file_path": doc["file_path"],
+                        "jenis": doc["jenis"],
+                        "nomor": doc["noper"],
+                        "page_number": "1",
+                        "total_pages": str(page_count) if page_count > 0 else "",
+                        "cache_hit": False,
+                        "score_label": "HYBRID_RERANKER",
+                        "score": doc["score"],
+                        "raw_judul": doc["judul"],
+                        "raw_tag": doc.get("raw_tag", ""),
+                        "raw_isi": doc.get("raw_isi", "")
+                    })
+                    
+                # 2. Global Cross-Document Page-Level Reranking
+                if global_page_pool:
+                    total_p_count = len(global_page_pool)
+                    yield format_sse(status="🎯 Menyaring pasal relevan", event_type=SSEEventType.STATUS)
+                    await asyncio.sleep(0.05)
+                    
+                    # Effective query untuk scoring halaman: gabungkan rag_queries dan user_message agar topik spesifik (misal: cuti) selalu terhitung
+                    effective_page_query = " ".join(rag_queries) if rag_queries else user_message
+                    logger.info(f"[MODE_DOCUMENTS] Scoring {len(global_page_pool)} pages using effective query: '{effective_page_query}'")
+                    
+                    # BGE Scoring on all pages
+                    page_corpus = [p["text"] if p["text"] else f"Dokumen {p['doc_title']} halaman {p['page_num']}" for p in global_page_pool]
+                    scores = await reranker_service.compute_scores(effective_page_query, page_corpus)
+                    
+                    for idx, score in enumerate(scores):
+                        global_page_pool[idx]["score"] = float(score)
+                        
+                    # Urutkan berdasarkan skor tertinggi
+                    global_page_pool.sort(key=lambda x: x["score"], reverse=True)
+                    
+                    # Ambil Top 6 Halaman Terbaik Lintas Dokumen
+                    top_pages = [p for p in global_page_pool if p["score"] > 0.40][:6]
+                    if not top_pages:
+                        top_pages = global_page_pool[:3]
+                        
+                    # Grouping summary untuk SSE status
+                    doc_pages_map = {}
+                    for tp in top_pages:
+                        d_title = tp["doc_title"]
+                        p_num = tp["page_num"]
+                        if d_title not in doc_pages_map:
+                            doc_pages_map[d_title] = []
+                        doc_pages_map[d_title].append(str(p_num))
+                        
+                    summary_parts = []
+                    for d_title, p_nums in doc_pages_map.items():
+                        short_t = d_title[:28] + ("..." if len(d_title) > 28 else "")
+                        summary_parts.append(f"{short_t} (Hal {', '.join(sorted(p_nums, key=int))})")
+                        
+                    sse_summary = " & ".join(summary_parts)
+                    yield format_sse(status="📄 Membaca pasal terpilih", event_type=SSEEventType.STATUS)
+                    await asyncio.sleep(0.05)
+                    
+                    # Susun judul_context dari Top Pages
+                    context_blocks = []
+                    for tp in top_pages:
+                        meta_header = (
+                            f"--- DOKUMEN: {tp['doc_title']} (HALAMAN: {tp['page_num']}) ---\n"
+                            f"Status Berlaku: {tp['doc_status']}\n"
+                            f"Tanggal Terbit: {tp['doc_tanggal']}\n"
+                            f"Nomor Regulasi: {tp['doc_noper']}\n"
+                            f"Mencabut: {tp['doc_mencabut']}\n"
+                        )
+                        page_content = tp['text'] if tp['text'] else "[Dokumen hasil scan]"
+                        context_blocks.append(f"{meta_header}Isi Halaman:\n{page_content}\n-------------------")
+                        
+                    judul_context = "\n\n".join(context_blocks)
+                    judul_sources = all_source_metadata
+                    
+                    # Update source metadata page numbers
+                    for src in judul_sources:
+                        s_id = src["id"]
+                        matched_pages = [str(tp["page_num"]) for tp in top_pages if tp["doc_id"] == s_id]
+                        if matched_pages:
+                            src["page_number"] = ", ".join(sorted(matched_pages, key=int))
+                            
             # Hitung skor tertinggi dari Tier 1
             max_tier1_score = max([s.get('score', s.get('similarity', 0.0)) for s in judul_sources]) if judul_sources else 0.0
             
@@ -98,7 +222,6 @@ class ModeDocuments:
             if is_tier1_satisfying:
                 logger.info(f"[MODE_DOCUMENTS] 🎯 [TIER 1 HIT & SATISFYING] Ditemukan {len(judul_sources)} dokumen resmi via MySQL (Max Score: {max_tier1_score:.4f}, Keyword Match: {has_keyword_match})! SKIP Vector RAG & Corpus.")
                 rag_sources = list(judul_sources)
-                yield format_sse(status="📄 Dokumen referensi ditemukan, sedang menganalisis isi pasal...", event_type=SSEEventType.STATUS)
             else:
                 # ─────────────────────────────────────────────────────────────
                 # TIER 2: Fallback / Expansion Vector RAG & Community Knowledge
@@ -108,7 +231,7 @@ class ModeDocuments:
                 else:
                     logger.info("[MODE_DOCUMENTS] ℹ️ [TIER 1 MISS] MySQL nihil (0 hasil). Mengaktifkan Fallback Tier 2 Vector RAG & Community Knowledge...")
                 
-                yield format_sse(status="🔍 Mencari dokumen terkait via semantic vector & corpus...", event_type=SSEEventType.STATUS)
+                yield format_sse(status="🔍 Menelusuri semantik vector", event_type=SSEEventType.STATUS)
                 
                 from backend.app.services.pipeline.community_knowledge import search_community_knowledge
                 from backend.app.services.rag.rag_pipeline import run_rag_pipeline
@@ -171,7 +294,7 @@ class ModeDocuments:
                     rag_sources = [c for c in all_raw_candidates if c.get("score", 0.0) >= 0.40][:10]
                     
                     if rag_sources:
-                        yield format_sse(status="📄 Dokumen referensi ditemukan, sedang menganalisis isi pasal...", event_type=SSEEventType.STATUS)
+                        yield format_sse(status="📄 Menganalisis pasal", event_type=SSEEventType.STATUS)
                 else:
                     rag_sources = []
 
@@ -207,9 +330,6 @@ class ModeDocuments:
                     "="*40)
 
         # ── Step 3: LLM Execution (Call 2) ────────────────────────────────────────
-        module_name = select_call2_module(routing_data, has_rag_context=bool(rag_context))
-        logger.info(f"[MODE_DOCUMENTS] Selected module: {module_name}")
-
         yield format_sse(status="✍️ Menyusun jawaban", event_type=SSEEventType.STATUS)
         await asyncio.sleep(0.01)
 
@@ -224,17 +344,36 @@ class ModeDocuments:
                     unique_rag_sources.append(s)
             # Sort by similarity/score and take up to 15 documents to preserve genealogy/silsilah history.
             rag_sources = sorted(unique_rag_sources, key=lambda x: x.get('score', x.get('similarity', 0)), reverse=True)[:15]
-            # SPRINT 5: Kita TUNDA pengiriman event SOURCES ke frontend di sini!
-            # Event SOURCES baru akan dikirim nanti setelah di-filter lewat interceptor <sources_json>
-            # yield format_sse("", "", False, sources=rag_sources, event_type=SSEEventType.SOURCES)
 
+        # ── Smart Context Truncation (Max ~42,000 chars / ~12k tokens total) ──
+        rag_budget = 12000 if not judul_context else 8000
+        judul_budget = 12000 if not rag_context else 8000
+        community_budget = 3000
+        
+        # Gabungkan dokumen fisik ke dalam satu block context
+        combined_documents = ""
+        if judul_context:
+            combined_documents += judul_context[:judul_budget]
+            if len(judul_context) > judul_budget:
+                combined_documents += "\n...[Teks Terpotong]...\n"
+                
+        if rag_context:
+            if combined_documents:
+                combined_documents += "\n\n"
+            combined_documents += rag_context[:rag_budget]
+            
+        safe_rag_context = combined_documents if combined_documents else None
+
+        # Pilih modul Call 2 dengan konteks RAG yang valid (baik dari MySQL maupun Vector RAG)
+        has_context = bool(safe_rag_context or rag_sources or judul_sources)
+        module_name = select_call2_module(routing_data, has_rag_context=has_context)
+        logger.info(f"[MODE_DOCUMENTS] Selected module: {module_name} (has_context={has_context})")
 
         # ── Log Agent Step for Hybrid RAG Search (Semantic + Title) ──
         session_uuid = routing_data.get("_session_uuid") if routing_data else None
         if session_uuid:
             from backend.app.services.chat.chat_history_service import chat_history_service
             
-            # 1. Format Queries
             formatted_queries = []
             for q in (rag_queries or []):
                 formatted_queries.append({"text": q, "type": "SEMANTIC"})
@@ -246,7 +385,6 @@ class ModeDocuments:
             if community_context and community_context.strip():
                 formatted_queries.append({"text": "Konteks Perusahaan", "type": "COMMUNITY_KNOWLEDGE"})
                 
-            # 2. Format Sources
             sources_data = []
             for s in (rag_sources or []):
                 sources_data.append({
@@ -269,29 +407,6 @@ class ModeDocuments:
                 observation=json.dumps(obs_json)
             )
 
-        # Build prompt dengan parameter is_thinking dari FE
-        # ── Smart Context Truncation (Max ~42,000 chars / ~12k tokens total) ──
-        # Tujuannya agar tersisa 4000 token untuk generasi jawaban.
-        
-        # Alokasikan budget karakter (SPRINT 5 OPTIMIZED: 12000 char agar 5 dokumen juara BGE masuk utuh tanpa prefill TTFT lambat)
-        rag_budget = 12000 if not judul_context else 8000
-        judul_budget = 12000 if not rag_context else 8000
-        community_budget = 3000
-        
-        # Gabungkan dokumen fisik ke dalam satu block context
-        combined_documents = ""
-        if judul_context:
-            combined_documents += judul_context[:judul_budget]
-            if len(judul_context) > judul_budget:
-                combined_documents += "\n...[Teks Terpotong]...\n"
-                
-        if rag_context:
-            if combined_documents:
-                combined_documents += "\n\n"
-            combined_documents += rag_context[:rag_budget]
-            
-        safe_rag_context = combined_documents if combined_documents else None
-        
         system_prompt = build_call2_system_prompt(
             module_name=module_name,
             employee_name=employee_name,
@@ -336,11 +451,11 @@ class ModeDocuments:
         # Mengambil 5 history + 1 current message = 6
         trimmed_messages = messages_dict[-6:] if len(messages_dict) > 6 else messages_dict
         
-        # Inject OCR Images to the last user message (dibatasi max 2 gambar dan skip jika teks RAG sudah sangat lengkap)
-        if ocr_attachments and len(rag_context or "") <= 20000:
-            images = [att["base64"] for att in ocr_attachments if att.get("type") == "image"][:2]
+        # Inject OCR Images ke user message HANYA jika dokumen murni berupa scan (tanpa teks ekstraksi)
+        if ocr_attachments and (not safe_rag_context or len(safe_rag_context) < 300):
+            images = [att["base64"] for att in ocr_attachments if att.get("type") == "image"][:1]
             if images:
-                logger.info(f"[MODE_DOCUMENTS] 🖼️ Menginjeksikan {len(images)} gambar (dibatasi max 2 agar tidak memboroskan KV cache LLM)")
+                logger.info(f"[MODE_DOCUMENTS] 🖼️ Dokumen murni scan terdeteksi tanpa teks. Menginjeksikan 1 gambar ke Call 2")
                 trimmed_messages[-1]["images"] = images
                 
         stream_messages = [
@@ -355,7 +470,7 @@ class ModeDocuments:
         # Hitung estimasi token (1 token ~ 4 karakter)
         sys_tokens = len(system_prompt) // 4
         hist_tokens = sum(len(m.get("content", "")) for m in trimmed_messages) // 4
-        rag_tokens = len(rag_context or "") // 4
+        rag_tokens = len(safe_rag_context or "") // 4
         total_used = sys_tokens + hist_tokens + rag_tokens
         
         # Log Agent Step for Call 2 Synthesis
@@ -376,7 +491,7 @@ class ModeDocuments:
                 session_id=session_uuid,
                 step_number=3,
                 tool_called="CALL_2_SYNTHESIS",
-                tool_input=f"Prompt chars: {len(system_prompt)} | Contexts: {len(rag_context or '')}",
+                tool_input=f"Prompt chars: {len(system_prompt)} | Contexts: {len(safe_rag_context or '')}",
                 observation=json.dumps(obs_dict)
             )
 

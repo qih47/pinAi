@@ -36,21 +36,21 @@ function formatThinkingPhase(thought) {
 
     // Gunakan lastIndexOf agar selalu menangkap fase terakhir (paling baru)
     const phases = [
-        { key: "jalur", label: "🚦 Layer 0: Menganalisis intent & jalur..." },
-        { key: "Gateway", label: "🚦 Layer 0: Menganalisis intent & jalur..." },
-        { key: "dokumen", label: "📚 RAG: Mencari regulasi internal Pindad..." },
-        { key: "RAG", label: "📚 RAG: Mencari regulasi internal Pindad..." },
-        { key: "cepat", label: "✍️ Layer 2: Menyusun formulasi respons..." },
-        { key: "respons", label: "✍️ Layer 2: Menyusun formulasi respons..." },
-        { key: "Gemma", label: "✍️ Layer 2: Menyusun formulasi respons..." },
-        { key: "LANGKAH 1", label: "🔍 Mencari dokumen relevan..." },
-        { key: "SELEKSI DOKUMEN", label: "🔍 Mencari dokumen relevan..." },
-        { key: "LANGKAH 2", label: "🧠 Analisa isi dokumen..." },
-        { key: "ANALISIS ISI", label: "🧠 Analisa isi dokumen..." },
-        { key: "LANGKAH 3", label: "✍️ Membuat Response..." },
-        { key: "RENCANA JAWABAN", label: "✍️ Membuat Response..." },
-        { key: "PDF", label: "📄 Membaca lampiran PDF..." },
-        { key: "visual", label: "🖼️ Menganalisis visual..." }
+        { key: "jalur", label: "🚦 Menganalisis intent" },
+        { key: "Gateway", label: "🚦 Menganalisis intent" },
+        { key: "dokumen", label: "📚 Menelusuri regulasi" },
+        { key: "RAG", label: "📚 Menelusuri regulasi" },
+        { key: "cepat", label: "✍️ Menyusun respon" },
+        { key: "respons", label: "✍️ Menyusun respon" },
+        { key: "Gemma", label: "✍️ Menyusun respon" },
+        { key: "LANGKAH 1", label: "🔍 Mencari dokumen" },
+        { key: "SELEKSI DOKUMEN", label: "🔍 Mencari dokumen" },
+        { key: "LANGKAH 2", label: "🧠 Menganalisis dokumen" },
+        { key: "ANALISIS ISI", label: "🧠 Menganalisis dokumen" },
+        { key: "LANGKAH 3", label: "✍️ Menyusun jawaban" },
+        { key: "RENCANA JAWABAN", label: "✍️ Menyusun jawaban" },
+        { key: "PDF", label: "📄 Membaca lampiran PDF" },
+        { key: "visual", label: "🖼️ Menganalisis visual" }
     ];
 
     let lastIndex = -1;
@@ -512,7 +512,7 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
                 setDisplayThought(nextThought);
                 setIsThoughtVisible(true);
                 thoughtTimerRef.current = null;
-            }, 250);
+            }, 60);
         }
 
         return () => {
@@ -521,7 +521,7 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
     }, [msg.thought, msg.statusMessage, isThinkingMsg, displayThought]);
 
     return (
-        <div style={{ ...styles.assistantRow, animation: 'fadeInUp 0.4s ease-out forwards' }}>
+        <div style={{ ...styles.assistantRow, animation: 'fadeInUp 0.15s ease-out forwards' }}>
             <div style={styles.assistantMessageWrapper}>
                 <div style={{ ...styles.assistantHeader, display: 'flex', alignItems: 'center' }}>
                     <div
@@ -538,7 +538,7 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
                                 borderRadius: 8,
                                 objectFit: 'cover',
                                 background: 'transparent',
-                                animation: isActive ? 'cakraSpin 1.2s linear infinite' : 'none',
+                                animation: isActive ? 'cakraSpin 0.7s linear infinite' : 'none',
                                 transform: isActive ? undefined : 'rotate(0deg)',
                             }}
                         />
@@ -551,7 +551,7 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
                         )}
                     </div>
                     {isThinkingMsg ? (
-                        <span style={{ display: 'flex', alignItems: 'center', marginLeft: 10, overflow: 'hidden', opacity: isThoughtVisible ? 1 : 0, transition: 'opacity 0.2s ease' }}>
+                        <span style={{ display: 'flex', alignItems: 'center', marginLeft: 10, overflow: 'hidden', opacity: isThoughtVisible ? 1 : 0, transition: 'opacity 0.1s ease' }}>
                             <span
                                 style={{
                                     fontSize: 14,
@@ -561,7 +561,7 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
                                     WebkitBackgroundClip: 'text',
                                     WebkitTextFillColor: 'transparent',
                                     backgroundClip: 'text',
-                                    animation: 'shimmerFlow 2.5s linear infinite',
+                                    animation: 'shimmerFlow 1.2s linear infinite',
                                     display: 'inline-block',
                                     whiteSpace: 'nowrap'
                                 }}
@@ -569,9 +569,9 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
                                 {displayThought}
                             </span>
                             <span style={{ display: 'inline-flex', marginLeft: 4, alignItems: 'baseline' }}>
-                                <span style={{ fontSize: 18, color: theme.secondaryText, animation: 'dotBounce 1.4s infinite ease-in-out', display: 'inline-block' }}>.</span>
-                                <span style={{ fontSize: 18, color: theme.secondaryText, animation: 'dotBounce 1.4s infinite ease-in-out 0.2s', display: 'inline-block' }}>.</span>
-                                <span style={{ fontSize: 18, color: theme.secondaryText, animation: 'dotBounce 1.4s infinite ease-in-out 0.4s', display: 'inline-block' }}>.</span>
+                                <span style={{ fontSize: 18, color: theme.secondaryText, animation: 'dotBounce 0.8s infinite ease-in-out', display: 'inline-block' }}>.</span>
+                                <span style={{ fontSize: 18, color: theme.secondaryText, animation: 'dotBounce 0.8s infinite ease-in-out 0.15s', display: 'inline-block' }}>.</span>
+                                <span style={{ fontSize: 18, color: theme.secondaryText, animation: 'dotBounce 0.8s infinite ease-in-out 0.3s', display: 'inline-block' }}>.</span>
                             </span>
                         </span>
                     ) : (
@@ -619,6 +619,8 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
                                         theme={theme}
                                         searchQuery={searchQuery}
                                         statusMessage={msg.statusMessage}
+                                        messageIndex={idx}
+                                        isLastMessage={isLastMessage}
                                         middleContent={fileGens.length > 0 ? (
                                             <FileProcessLog
                                                 fileGenerations={fileGens}
@@ -645,6 +647,8 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
                                     theme={theme}
                                     searchQuery={searchQuery}
                                     statusMessage={msg.statusMessage}
+                                    messageIndex={idx}
+                                    isLastMessage={isLastMessage}
                                     language={language}
                                 />
                             );
@@ -674,6 +678,8 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
                                             theme={theme}
                                             searchQuery={searchQuery}
                                             statusMessage={msg.statusMessage}
+                                            messageIndex={idx}
+                                            isLastMessage={isLastMessage}
                                         />
                                     );
                                 }

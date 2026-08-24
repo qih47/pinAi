@@ -55,6 +55,7 @@ def build_response_prompt_coding(
         employee_name=employee_name,
         mode_title="CODING & TECHNICAL EXPERT",
         pronoun=precheck.get("pronoun", "unknown"),
+        tone_hint=precheck.get("tone_hint", "casual"),
         is_thinking=is_thinking
     )
 
