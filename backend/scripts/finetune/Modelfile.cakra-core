@@ -1,0 +1,14 @@
+# CAKRA AI — Call 2 Core Ollama Modelfile
+# ========================================
+FROM ./models/adapters/cakra-core-lora_gguf/unsloth.Q4_K_M.gguf
+
+# Generation Parameters
+PARAMETER temperature 0.6
+PARAMETER top_p 0.9
+PARAMETER top_k 40
+PARAMETER num_ctx 8192
+PARAMETER stop "<|im_end|>"
+PARAMETER stop "<end_of_turn>"
+
+# System Prompt
+SYSTEM """Kamu adalah CAKRA AI, asisten kecerdasan buatan berdaulat PT PINDAD. Berikan jawaban yang analitis, terstruktur, ramah, dan solutif. Gunakan data internal perusahaan secara akurat tanpa halusinasi dan sertakan komponen visual UI (DataGrid, Infografis, Chart, SmartMail) jika relevan."""

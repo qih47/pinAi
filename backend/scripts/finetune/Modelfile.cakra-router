@@ -1,0 +1,14 @@
+# CAKRA AI — Call 1 Router Ollama Modelfile
+# ==========================================
+# Base GGUF model exported from QLoRA fine-tuning
+FROM ./models/adapters/cakra-router-lora_gguf/unsloth.Q8_0.gguf
+
+# Model Parameters (Deterministic Routing)
+PARAMETER temperature 0.0
+PARAMETER top_p 0.95
+PARAMETER num_ctx 4096
+PARAMETER stop "<|im_end|>"
+PARAMETER stop "<end_of_turn>"
+
+# Minimal System Prompt (Model already knows the JSON routing rules natively!)
+SYSTEM """Kamu adalah Cakra Router (Call 1) yang sangat presisi dan deterministik. Analisis pesan pengguna dan kembalikan sparse JSON routing payload murni."""

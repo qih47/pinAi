@@ -1,6 +1,7 @@
 import React, { useMemo, useState, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { translations } from '../../../utils/translations';
+import { parsePartialJSON } from '../../../utils/jsonHelper';
 import ViewerHeader from './ViewerHeader';
 import { TableProperties } from 'lucide-react';
 
@@ -11,11 +12,22 @@ export default function DataGridViewer({ chartCode, darkMode, isStreaming, langu
   const [isExpanded, setIsExpanded] = useState(false);
   const exportRef = useRef(null);
 
-  // 2. Parsing JSON
+  // 2. Resilient JSON Parsing (Mendukung Full & Streaming Partial JSON)
   const parsedData = useMemo(() => {
+    if (!chartCode || chartCode.trim() === '') return null;
     try {
-      if (!chartCode || chartCode.trim() === '') return null;
-      return JSON.parse(chartCode);
+      const clean = chartCode.trim();
+      const firstBrace = clean.indexOf('{');
+      const lastBrace = clean.lastIndexOf('}');
+      const rawTarget = (firstBrace !== -1 && lastBrace !== -1 && lastBrace >= firstBrace)
+        ? clean.substring(firstBrace, lastBrace + 1)
+        : clean;
+
+      const parsed = parsePartialJSON(rawTarget);
+      if (parsed && typeof parsed === 'object') {
+        return parsed;
+      }
+      return { error: 'Invalid JSON format for datagrid.' };
     } catch (e) {
       return { error: 'Invalid JSON format for datagrid.' };
     }
@@ -23,7 +35,7 @@ export default function DataGridViewer({ chartCode, darkMode, isStreaming, langu
 
   // 4. Data Processing (Search & Sort)
   const filteredAndSortedRows = useMemo(() => {
-    if (!parsedData || parsedData.error || !parsedData.rows) return [];
+    if (!parsedData || parsedData.error || !Array.isArray(parsedData.rows)) return [];
     
     let result = [...parsedData.rows];
 
@@ -31,7 +43,7 @@ export default function DataGridViewer({ chartCode, darkMode, isStreaming, langu
     if (searchQuery.trim() !== '') {
       const lowerQuery = searchQuery.toLowerCase();
       result = result.filter(row => 
-        Object.values(row).some(val => 
+        row && typeof row === 'object' && Object.values(row).some(val => 
           String(val).toLowerCase().includes(lowerQuery)
         )
       );
@@ -40,8 +52,8 @@ export default function DataGridViewer({ chartCode, darkMode, isStreaming, langu
     // Sort
     if (sortConfig.key) {
       result.sort((a, b) => {
-        const aVal = a[sortConfig.key];
-        const bVal = b[sortConfig.key];
+        const aVal = a?.[sortConfig.key];
+        const bVal = b?.[sortConfig.key];
         
         if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1;
         if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
@@ -60,8 +72,16 @@ export default function DataGridViewer({ chartCode, darkMode, isStreaming, langu
     setSortConfig({ key, direction });
   };
 
-  // 1. Loading State (Hanya tampil saat streaming DAN data JSON belum lengkap di-generate)
-  if (isStreaming && (parsedData?.error || !parsedData || !parsedData?.columns || !parsedData?.rows)) {
+  const hasValidStructure = Boolean(
+    parsedData &&
+    !parsedData.error &&
+    Array.isArray(parsedData.columns) &&
+    parsedData.columns.length > 0 &&
+    Array.isArray(parsedData.rows)
+  );
+
+  // 1. Loading State (Hanya tampil saat streaming DAN struktur kolom/baris belum terbentuk)
+  if (isStreaming && !hasValidStructure) {
     return (
       <div className={`w-full py-8 my-3 flex items-center justify-center rounded-xl border border-dashed ${darkMode ? 'border-gray-700 bg-gray-800/30 text-gray-400' : 'border-gray-300 bg-gray-50 text-gray-500'}`}>
         <div className="flex items-center gap-3">
@@ -75,8 +95,8 @@ export default function DataGridViewer({ chartCode, darkMode, isStreaming, langu
     );
   }
 
-  // 3. Error Handling
-  if (parsedData?.error || !parsedData?.columns || !parsedData?.rows) {
+  // 3. Error Handling (Hanya jika streaming selesai dan data benar-benar korup)
+  if (!hasValidStructure) {
     return (
       <div className={`w-full p-4 text-sm rounded-lg border ${darkMode ? 'bg-red-900/10 border-red-900/50 text-red-400' : 'bg-red-50 border-red-200 text-red-600'}`}>
         <div className="flex items-center gap-2 font-semibold mb-1">

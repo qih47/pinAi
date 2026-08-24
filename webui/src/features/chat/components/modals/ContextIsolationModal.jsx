@@ -1,8 +1,106 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { translations } from "../../../../utils/translations";
 import { getApiBase } from "../../../../services/endpoints";
+
+const ModeHintIcon = ({ title, hintText, icon, darkMode }) => {
+  const [show, setShow] = useState(false);
+  const triggerRef = useRef(null);
+  const [coords, setCoords] = useState({ top: 0, left: 0 });
+
+  const handleMouseEnter = (e) => {
+    e.stopPropagation();
+    if (triggerRef.current) {
+      const rect = triggerRef.current.getBoundingClientRect();
+      setCoords({
+        top: rect.top - 6,
+        left: rect.left + rect.width / 2,
+      });
+    }
+    setShow(true);
+  };
+
+  return (
+    <>
+      <span
+        ref={triggerRef}
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={(e) => { e.stopPropagation(); setShow(false); }}
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          position: 'absolute',
+          right: '6px',
+          top: '50%',
+          transform: 'translateY(-50%)',
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          cursor: 'help',
+          flexShrink: 0,
+          opacity: 0.65,
+          transition: 'all 0.15s ease',
+        }}
+        onMouseOver={(e) => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.transform = 'translateY(-50%) scale(1.2)'; }}
+        onMouseOut={(e) => { e.currentTarget.style.opacity = '0.65'; e.currentTarget.style.transform = 'translateY(-50%) scale(1)'; }}
+      >
+        <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="12" cy="12" r="10" />
+          <line x1="12" y1="8" x2="12" y2="12" />
+          <line x1="12" y1="16" x2="12.01" y2="16" />
+        </svg>
+      </span>
+      {show && createPortal(
+        <div
+          style={{
+            position: 'fixed',
+            top: `${coords.top}px`,
+            left: `${coords.left}px`,
+            transform: 'translate(-50%, -100%)',
+            zIndex: 999999,
+            width: '230px',
+            padding: '8px 11px',
+            borderRadius: '8px',
+            fontSize: '11px',
+            lineHeight: '1.45',
+            textAlign: 'left',
+            pointerEvents: 'none',
+            boxShadow: '0 10px 25px -5px rgba(0,0,0,0.4), 0 8px 10px -6px rgba(0,0,0,0.3)',
+            background: darkMode ? '#1e293b' : '#ffffff',
+            color: darkMode ? '#f1f5f9' : '#0f172a',
+            border: `1px solid ${darkMode ? 'rgba(255,255,255,0.18)' : 'rgba(0,0,0,0.12)'}`,
+            backdropFilter: 'blur(10px)',
+          }}
+        >
+          {title && (
+            <div style={{ fontWeight: 700, marginBottom: '3px', display: 'flex', alignItems: 'center', gap: '5px', color: darkMode ? '#93c5fd' : '#2563eb' }}>
+              {icon && <span>{icon}</span>}
+              <span>{title}</span>
+            </div>
+          )}
+          <div style={{ color: darkMode ? '#cbd5e1' : '#475569', fontWeight: 400 }}>
+            {hintText}
+          </div>
+          <div
+            style={{
+              position: 'absolute',
+              top: '100%',
+              left: '50%',
+              transform: 'translateX(-50%)',
+              width: 0,
+              height: 0,
+              borderLeft: '5px solid transparent',
+              borderRight: '5px solid transparent',
+              borderTop: `5px solid ${darkMode ? '#1e293b' : '#ffffff'}`,
+            }}
+          />
+        </div>,
+        document.body
+      )}
+    </>
+  );
+};
 
 export default function ContextIsolationModal({
   showModal,
@@ -491,7 +589,8 @@ export default function ContextIsolationModal({
                                     onClose();
                                   }}
                                   style={{
-                                    padding: "4px 10px",
+                                    position: "relative",
+                                    padding: "4px 22px 4px 10px",
                                     borderRadius: "20px",
                                     border: "none",
                                     background: "#6366f1",
@@ -509,7 +608,13 @@ export default function ContextIsolationModal({
                                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                                     <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path>
                                   </svg>
-                                  {tChat.tanyaBtn}
+                                  <span>{tChat.tanyaBtn}</span>
+                                  <ModeHintIcon 
+                                    title={tChat.tanyaHintTitle} 
+                                    hintText={tChat.tanyaHint} 
+                                    icon="💬" 
+                                    darkMode={darkMode} 
+                                  />
                                 </button>
                                 <button
                                   onClick={() => {
@@ -518,7 +623,8 @@ export default function ContextIsolationModal({
                                     onClose();
                                   }}
                                   style={{
-                                    padding: "4px 10px",
+                                    position: "relative",
+                                    padding: "4px 22px 4px 10px",
                                     borderRadius: "20px",
                                     border: "1px solid rgba(239, 68, 68, 0.3)",
                                     background: "rgba(239, 68, 68, 0.1)",
@@ -535,7 +641,14 @@ export default function ContextIsolationModal({
                                   onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(239, 68, 68, 0.2)" }}
                                   onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(239, 68, 68, 0.1)" }}
                                 >
-                                  <span style={{ fontSize: "10px" }}>⚖️</span> {tChat.kepatuhanBtn}
+                                  <span style={{ fontSize: "10px" }}>⚖️</span> 
+                                  <span>{tChat.kepatuhanBtn}</span>
+                                  <ModeHintIcon 
+                                    title={tChat.kepatuhanHintTitle} 
+                                    hintText={tChat.kepatuhanHint} 
+                                    icon="⚖️" 
+                                    darkMode={darkMode} 
+                                  />
                                 </button>
                                 <button
                                   onClick={() => {
@@ -544,7 +657,8 @@ export default function ContextIsolationModal({
                                     onClose();
                                   }}
                                   style={{
-                                    padding: "4px 10px",
+                                    position: "relative",
+                                    padding: "4px 22px 4px 10px",
                                     borderRadius: "20px",
                                     border: "1px solid rgba(217, 119, 6, 0.3)",
                                     background: "rgba(217, 119, 6, 0.1)",
@@ -561,7 +675,14 @@ export default function ContextIsolationModal({
                                   onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(217, 119, 6, 0.2)" }}
                                   onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(217, 119, 6, 0.1)" }}
                                 >
-                                  <span style={{ fontSize: "10px" }}>🕵️</span> {tChat.bedahBtn}
+                                  <span style={{ fontSize: "10px" }}>🕵️</span> 
+                                  <span>{tChat.bedahBtn}</span>
+                                  <ModeHintIcon 
+                                    title={tChat.bedahHintTitle} 
+                                    hintText={tChat.bedahHint} 
+                                    icon="🕵️" 
+                                    darkMode={darkMode} 
+                                  />
                                 </button>
                               </>
                             )}
