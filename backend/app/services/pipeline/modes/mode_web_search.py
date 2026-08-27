@@ -218,6 +218,14 @@ async def handle_web_search(
         precheck=precheck
     )
 
+    # Inject Employee Long-Term Memory (ai_memory)
+    current_user_npp = getattr(request.state, "user", {}).get("npp") if request and hasattr(request, "state") and hasattr(request.state, "user") else None
+    if current_user_npp and current_user_npp != "GUEST":
+        from backend.app.services.memory.memory_service import memory_service
+        employee_memory = await memory_service.get_employee_long_term_memory(current_user_npp)
+        if employee_memory:
+            system_prompt += employee_memory
+
     # Trim riwayat chat (ambil 10 pesan terakhir) agar context budget tetap optimal
     trimmed_history = messages[-10:] if len(messages) > 10 else messages
     modified_messages = [m for m in trimmed_history if m["role"] != "system"]
@@ -226,13 +234,13 @@ async def handle_web_search(
     yield format_sse(status="💡 Menyusun ringkasan", event_type=SSEEventType.STATUS)
     await asyncio.sleep(0.01)
 
-    # 5. Mulai streaming jawaban dari LLM dengan num_ctx=32768 dan num_predict=-1 (tak terbatas)
+    # 5. Mulai streaming jawaban dari LLM dengan num_ctx=16384 dan num_predict=-1 (tak terbatas)
     response_stream = stream_ollama_chat(
         messages=modified_messages,
         model_name=getattr(settings, "MODEL_PERSONA", "gemma4:12b"),
         is_thinking=is_thinking,
         temperature=0.4,
-        num_ctx=32768,
+        num_ctx=16384,
         num_predict=-1,
         request=request
     )

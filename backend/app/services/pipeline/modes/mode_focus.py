@@ -247,7 +247,7 @@ class ModeFocus:
         hist_tokens = sum(len(m.get("content", "")) for m in messages_dict) // 4
         rag_tokens = 0 
         total_used = sys_tokens + hist_tokens + rag_tokens
-        num_ctx = 32768
+        num_ctx = 16384
 
         if session_uuid_to_use:
             from backend.app.services.chat.chat_history_service import chat_history_service
@@ -274,7 +274,7 @@ class ModeFocus:
             model_name=settings.MODEL_PERSONA,
             is_thinking=is_thinking,
             temperature=0.1,
-            num_ctx=32768,
+            num_ctx=16384,
             num_predict=-1,
             request=request
         ):

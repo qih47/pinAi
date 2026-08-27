@@ -59,11 +59,17 @@ async def search_community_knowledge(query: str, is_guest: bool, limit: int = 3)
                     user_text = r['user_text'] or ""
                     assistant_text = r['assistant_text'] or ""
                     
+                    # 🧹 Sanitasi residu tag <think>...</think> dari riwayat masa lalu
+                    import re
+                    assistant_text = re.sub(r'<think>.*?</think>', '', assistant_text, flags=re.DOTALL).strip()
+                    user_text = re.sub(r'<think>.*?</think>', '', user_text, flags=re.DOTALL).strip()
+
                     # Potong jika hasil masa lalu terlalu panjang
                     if len(assistant_text) > 1000:
                         assistant_text = assistant_text[:1000] + "... [dipotong]"
                         
-                    context_pieces.append(f"Diskusi {idx}:\nUser Sebelumnya: {user_text}\nJawaban AI Sebelumnya: {assistant_text}")
+                    if assistant_text:
+                        context_pieces.append(f"Diskusi {idx}:\nUser Sebelumnya: {user_text}\nJawaban AI Sebelumnya: {assistant_text}")
             
             if not context_pieces:
                 return ""

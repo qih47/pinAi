@@ -65,7 +65,7 @@ async def _warmup_and_pin_models():
 
     llm_models = [
         (getattr(settings, "MODEL_ROUTER", "gemma4:e4b"), "Router (Call 1)", 4096),
-        (settings.MODEL_PERSONA, "Gemma4 Agentic Engine (Call 2)", 32768),
+        (settings.MODEL_PERSONA, "Gemma4 Agentic Engine (Call 2)", 16384),
     ]
 
     chat_url = f"{settings.OLLAMA_BASE_URL}/api/chat"
@@ -191,10 +191,10 @@ app = FastAPI(
 # Request ID logging
 app.add_middleware(RequestIDLoggingMiddleware)
 
-# GPU semaphore — 4 slots: Concurrent Processing via Singleton
+# GPU semaphore — 8 slots: Concurrent Processing via Singleton
 from backend.app.core.llm_client import get_gpu_semaphore
-app.state.gpu_limit = get_gpu_semaphore(4)
-logger.info("🔒 [HARDWARE] GPU Concurrency Semaphore: 4 slots (Concurrent Processing via Singleton).")
+app.state.gpu_limit = get_gpu_semaphore(8)
+logger.info("🔒 [HARDWARE] GPU Concurrency Semaphore: 8 slots (Concurrent Processing via Singleton).")
 
 # ==============================================================================
 # SECURE STATIC FILES ROUTES (Replaces app.mount to enforce security firewall)

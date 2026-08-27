@@ -167,7 +167,7 @@ class ModeAttachment:
         # berikan context & budget besar
         has_large_text = estimated_text_tokens > 300 or bool(text_contents)
 
-        num_ctx = 32768
+        num_ctx = 16384
         if is_from_pdf:
             token_budget = 1120
             num_predict_output = -1

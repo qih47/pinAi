@@ -81,10 +81,10 @@ class ModeDocuments:
             yield format_sse(status="🔍 Menelusuri regulasi", event_type=SSEEventType.STATUS)
             logger.info(f"[MODE_DOCUMENTS] [TIER 1] Fetching candidate documents for query_judul: {query_judul_list}")
             
-            candidate_docs = await get_candidate_documents_metadata(user_message, query_judul_list)
+            candidate_docs = await get_candidate_documents_metadata(user_message, query_judul_list, rag_queries=rag_queries)
             
             if candidate_docs:
-                top_candidates = candidate_docs[:3]
+                top_candidates = candidate_docs[:5]
                 doc_count = len(top_candidates)
                 yield format_sse(status=f"📑 Menemukan {doc_count} dokumen", event_type=SSEEventType.STATUS)
                 await asyncio.sleep(0.05)
@@ -143,8 +143,13 @@ class ModeDocuments:
                     yield format_sse(status="🎯 Menyaring pasal relevan", event_type=SSEEventType.STATUS)
                     await asyncio.sleep(0.05)
                     
-                    # Effective query untuk scoring halaman: gabungkan rag_queries dan user_message agar topik spesifik (misal: cuti) selalu terhitung
-                    effective_page_query = " ".join(rag_queries) if rag_queries else user_message
+                    # Effective query untuk scoring halaman: gabungkan rag_queries dan query_judul agar topik spesifik (misal: cuti PKB) selalu terhitung bersih
+                    query_parts = [q.strip() for q in (rag_queries or []) if q and q.strip()]
+                    if query_judul_list:
+                        for qj in query_judul_list:
+                            if qj and qj.strip() and qj.strip() not in query_parts:
+                                query_parts.append(qj.strip())
+                    effective_page_query = " ".join(query_parts) if query_parts else user_message
                     logger.info(f"[MODE_DOCUMENTS] Scoring {len(global_page_pool)} pages using effective query: '{effective_page_query}'")
                     
                     # BGE Scoring on all pages
@@ -157,10 +162,10 @@ class ModeDocuments:
                     # Urutkan berdasarkan skor tertinggi
                     global_page_pool.sort(key=lambda x: x["score"], reverse=True)
                     
-                    # Ambil Top 6 Halaman Terbaik Lintas Dokumen
-                    top_pages = [p for p in global_page_pool if p["score"] > 0.40][:6]
+                    # Ambil Top 8 Halaman Terbaik Lintas Dokumen
+                    top_pages = [p for p in global_page_pool if p["score"] > 0.35][:8]
                     if not top_pages:
-                        top_pages = global_page_pool[:3]
+                        top_pages = global_page_pool[:4]
                         
                     # Grouping summary untuk SSE status
                     doc_pages_map = {}
@@ -416,6 +421,13 @@ class ModeDocuments:
             rag_sources=rag_sources
         )
 
+        # Inject Employee Long-Term Memory (ai_memory)
+        if current_user_npp and current_user_npp != "GUEST":
+            from backend.app.services.memory.memory_service import memory_service
+            employee_memory = await memory_service.get_employee_long_term_memory(current_user_npp)
+            if employee_memory:
+                system_prompt += employee_memory
+
         # Inject Community Knowledge (Di awal atau sebelum history)
         if community_context:
             community_str = ""
@@ -442,10 +454,19 @@ class ModeDocuments:
             )
             system_prompt = anti_hallucination_guard + "\n\n" + system_prompt
 
-        # Inject Long-Term Memory (ai_document_chunks)
+        # Inject Long-Term Memory (ai_document_chunks) — HANYA dokumen internal, DILARANG memasukkan data scraping web saat RAG
         session_chunks = routing_data.get("_session_chunks_text", "")
         if session_chunks:
-            system_prompt = session_chunks + "\n\n" + system_prompt
+            # Filter keluar konten web agar tidak mencemari konteks regulasi internal
+            clean_chunks = []
+            for block in session_chunks.split("\n---\n"):
+                if "==== ISI WEB:" in block or "[KONTEN WEB DARI URL DI CHAT]" in block or "http://" in block or "https://" in block:
+                    continue
+                clean_chunks.append(block)
+            
+            clean_session_text = "\n---\n".join(clean_chunks).strip()
+            if clean_session_text and clean_session_text != "[KNOWLEDGE DARI FILE SEBELUMNYA DI SESI INI]":
+                system_prompt = clean_session_text + "\n\n" + system_prompt
 
         messages_dict = [{"role": m.role, "content": m.content} for m in chat_history]
         # Mengambil 5 history + 1 current message = 6
@@ -506,11 +527,9 @@ class ModeDocuments:
                 model_name=getattr(settings, "MODEL_PERSONA", "gemma4:12b"),
                 messages=stream_messages,
                 request=request,
-                temperature=temperature,
                 keep_alive=-1,
-                num_ctx=num_ctx,
-                num_predict=-1,
                 is_thinking=is_thinking,
+                **module_config,
             ):
                 try:
                     chunk_data = json.loads(chunk_line.strip())

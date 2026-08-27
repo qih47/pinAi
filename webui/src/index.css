@@ -193,3 +193,29 @@
   from, to { border-color: transparent }
   50% { border-color: currentColor }
 }
+
+
+/* ========================================================================== */
+/* ✨ CLEAN STREAMING TEXT RENDERING — Crisp, no blur smear, zero glitch     */
+/* ========================================================================== */
+
+@keyframes streamBlockIn {
+  0% {
+    opacity: 0.85;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+.cakra-streaming-active > p:last-child,
+.cakra-streaming-active > ul:last-child > li:last-child,
+.cakra-streaming-active > ol:last-child > li:last-child,
+.cakra-streaming-active > h1:last-child,
+.cakra-streaming-active > h2:last-child,
+.cakra-streaming-active > h3:last-child,
+.cakra-streaming-active > h4:last-child,
+.cakra-streaming-active > span:last-child {
+  animation: streamBlockIn 0.15s ease-out both;
+}
+

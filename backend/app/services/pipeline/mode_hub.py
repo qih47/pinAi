@@ -66,8 +66,14 @@ class ModeHub:
         
         # ── Step 1: Pre-check rule-based ──────────────────────────────────────────
         has_attachment = bool(attachments) or has_new_document
-        precheck = detect_precheck(user_message, chat_mode, has_attachment)
+
+        # Ambil preferensi komunikasi default user dari database lintas sesi (cross-session memory)
+        from backend.app.services.memory.memory_service import memory_service
+        user_default_pronoun = await memory_service.get_employee_communication_preference(current_user_npp) if current_user_npp else "formal_saya_anda"
+
+        precheck = detect_precheck(user_message, chat_mode, has_attachment, user_default_pronoun=user_default_pronoun)
         precheck["_user_message"] = user_message
+        precheck["user_default_pronoun"] = user_default_pronoun
         
         is_guest = (current_user_npp == "GUEST")
         is_first_chat = len(chat_history) <= 1
@@ -395,15 +401,13 @@ class ModeHub:
         
         # ── Self-Learning Tone Memory (Background) ────────────────────────────────
         if current_user_npp and current_user_npp != "GUEST":
-            detected_pronoun = routing_data.get("pronoun", "unknown")
-            if detected_pronoun in ["informal_gue_lo", "formal_saya_anda"]:
-                from backend.app.services.memory.memory_service import memory_service
-                asyncio.create_task(
-                    memory_service.update_communication_style_memory(
-                        npp=current_user_npp, 
-                        pronoun=detected_pronoun
-                    )
+            from backend.app.services.memory.memory_service import memory_service
+            asyncio.create_task(
+                memory_service.update_communication_style_memory(
+                    npp=current_user_npp, 
+                    user_message=user_message
                 )
+            )
         
         # Construct Agentic Decision Radar data — Additive Gradual Scoring (0-100)
         user_msg_lower = user_message.lower()
@@ -532,7 +536,8 @@ class ModeHub:
                 yield format_sse(status="⚠️ Lokasi tidak ditemukan", event_type=SSEEventType.STATUS)
 
         # ── Web Search Mode Routing ─────────────────────────────────────
-        if precheck.get("is_web_search", False):
+        # JANGAN izinkan web search jika need_rag bernilai True atau user secara eksplisit di mode Dokumen
+        if precheck.get("is_web_search", False) and not precheck.get("need_rag", False) and chat_mode != "documents":
             logger.info("[MODE_HUB] Routing to Web Search Mode.")
             from backend.app.services.pipeline.modes.mode_web_search import handle_web_search
             # Convert ChatMessageSchema to dict

@@ -86,11 +86,12 @@ async def agentic_stream_wrapper(
     messages: List[Dict[str, str]],
     request: Optional[Request] = None,
     temperature: float = 0.6,
-    num_ctx: int = 32768,
+    num_ctx: int = 16384,
     is_thinking: bool = False,
     employee_name: str = "Pegawai",
     session_uuid: Optional[str] = None,
-    max_tool_loops: int = 1
+    max_tool_loops: int = 1,
+    **kwargs,
 ) -> AsyncGenerator[str, None]:
     """
     Membungkus stream_ollama_chat dengan ReAct interceptor.
@@ -109,8 +110,8 @@ async def agentic_stream_wrapper(
             temperature=temperature,
             keep_alive=-1,
             num_ctx=num_ctx,
-            num_predict=-1,
             is_thinking=is_thinking,
+            **kwargs,
         )
 
         buffer = ""

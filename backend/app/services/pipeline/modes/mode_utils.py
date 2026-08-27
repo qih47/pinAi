@@ -5,7 +5,7 @@ _CODING_KEYWORDS = ["import ", "export ", "const ", "async ", "await ", "functio
 _GREETING_KEYWORDS = ["hai", "halo", "hello", "hi ", "apa kabar", "selamat pagi", "selamat siang", "selamat sore", "selamat malam", "assalamualaikum", "pagi", "siang", "malam", "thanks", "thank you", "terima kasih", "makasih", "ok", "oke", "siap", "tq", "nuhun", "suwun", "mantap", "sip"]
 _DOC_KEYWORDS = ["ketentuan", "peraturan", "skep", "sk direksi", "surat edaran", "regulasi", "kebijakan", "prosedur", "sop", "seragam", "cuti", "gaji", "tunjangan", "rekrutmen", "rekrut", "pegawai", "pindad", "aturan", "pasal", "syarat", "lembur", "pensiun", "promosi", "jabatan", "seleksi", "penerimaan"]
 
-def detect_precheck(user_message: str, chat_mode: str, has_attachment: bool) -> Dict[str, Any]:
+def detect_precheck(user_message: str, chat_mode: str, has_attachment: bool, user_default_pronoun: Optional[str] = None) -> Dict[str, Any]:
     msg_lower = user_message.lower()
 
     is_coding = any(kw in msg_lower for kw in _CODING_KEYWORDS)
@@ -18,17 +18,32 @@ def detect_precheck(user_message: str, chat_mode: str, has_attachment: bool) -> 
     _VISUAL_KEYWORDS = ["visual", "diagram", "alur", "flowchart", "grafik", "bagan"]
     requires_visual = any(kw in msg_lower for kw in _VISUAL_KEYWORDS)
 
-    slang = [s for s in ["bolo", "cuy", "bro", "gan", "sis", "boss", "bos", "bang", "aa", "teteh", "mas", "mba"] if s in msg_lower]
+    import re
+
+    # Strict word-boundary regex untuk deteksi kata ganti eksplisit
+    has_explicit_gue_lo = bool(re.search(r'\b(gue|gw|gua|lo|lu|elu)\b', msg_lower))
+    has_formal_pronoun = bool(re.search(r'\b(saya|anda|bapak|ibu|beliau)\b', msg_lower))
+    has_aku_kamu = bool(re.search(r'\b(aku|kamu|kita|kami)\b', msg_lower))
+
+    slang = [s for s in ["bolo", "cuy", "bro", "gan", "sis", "boss", "bos", "bang", "aa", "teteh", "mas", "mba"] if re.search(r'\b' + re.escape(s) + r'\b', msg_lower)]
     profanity = "low_misuh" if any(w in msg_lower for w in ["asu", "jancuk", "anjir", "bangsat"]) else "none"
 
-    if any(w in msg_lower for w in ["gue", "lo", "gw"]) or slang:
+    if has_explicit_gue_lo:
         pronoun, mirroring = "informal_gue_lo", "mirror_casual"
-    elif any(w in msg_lower for w in ["saya", "anda", "bapak", "ibu"]):
+    elif has_formal_pronoun:
         pronoun, mirroring = "formal_saya_anda", "stay_formal_safe"
-    elif any(w in msg_lower for w in ["aku", "kamu"]):
+    elif has_aku_kamu:
         pronoun, mirroring = "familiar_aku_kamu", "mirror_casual"
+    elif slang:
+        # Jika user menyapa akrab (misal "cuy", "bro", "bos") -> balas santai akrab
+        pronoun, mirroring = "informal_gue_lo", "mirror_casual"
+    elif user_default_pronoun in ["informal_gue_lo", "formal_saya_anda", "familiar_aku_kamu"]:
+        # Fallback ke preferensi profil user dari database lintas sesi (cross-session memory)
+        pronoun = user_default_pronoun
+        mirroring = "mirror_casual" if user_default_pronoun == "informal_gue_lo" else "stay_formal_safe"
     else:
-        pronoun, mirroring = "unknown", "stay_formal_safe"
+        # Default absolut korporat Pindad jika user baru/belum ada riwayat
+        pronoun, mirroring = "formal_saya_anda", "stay_formal_safe"
 
     # Deteksi Nuansa Emosi & Mood User
     if any(w in msg_lower for w in ["makasih", "terima kasih", "keren", "mantap", "top", "gokil", "thanks", "thank you"]):
@@ -37,7 +52,7 @@ def detect_precheck(user_message: str, chat_mode: str, has_attachment: bool) -> 
         tone_hint = "empathetic_supportive"
     elif any(w in msg_lower for w in ["cepet", "singkat", "to the point", "buruan", "sekarang", "langsung aja"]):
         tone_hint = "direct_concise"
-    elif pronoun == "formal_saya_anda":
+    elif has_formal_pronoun or not has_explicit_gue_lo:
         tone_hint = "formal"
     else:
         tone_hint = "casual"
@@ -94,58 +109,103 @@ def detect_precheck(user_message: str, chat_mode: str, has_attachment: bool) -> 
         "_user_message": user_message
     }
 
-def build_rule_based_queries(user_message: str) -> List[str]:
-    msg = user_message.strip()
-    msg_lower = msg.lower()
+def build_rule_based_queries(user_message: str, context_subject: str = "", context_topic: str = "") -> List[str]:
+    """
+    Ekstrak kata kunci pencarian yang presisi dari pesan user dan entitas multi-turn.
+    - Max 2 queries (untuk efisiensi vector search)
+    - Dedup kata sebelum digabung (fix "PKB PKB")
+    - Strip kata instruksi visual/format ("diagram", "flowchart", "grafik", dst.)
+    """
+    import re
+    raw_msg = (user_message or "").strip()
+    # Bersihkan tanda baca
+    clean_msg = re.sub(r"[?!.,;:\'\"()\[\]{}]", " ", raw_msg)
+    clean_msg = re.sub(r"\s{2,}", " ", clean_msg).strip()
+    msg_lower = clean_msg.lower()
 
-    prefix_map = [
-        (["cuti", "izin", "libur"], ["ketentuan cuti pegawai", "hak cuti karyawan", "SKEP cuti"]),
-        (["gaji", "upah", "penghasilan"], ["ketentuan gaji pegawai", "struktur penghasilan", "SK gaji tunjangan"]),
-        (["seragam", "pakaian", "baju", "dinas"], ["ketentuan seragam dinas", "aturan pakaian kerja", "SKEP seragam"]),
-        (["rekrut", "recruitment", "lamaran", "seleksi", "proses", "ipk"], ["proses rekrutmen pindad", "seleksi penerimaan pegawai", "ketentuan rekrutmen"]),
-        (["tunjangan", "fasilitas", "benefit"], ["ketentuan tunjangan pegawai", "fasilitas karyawan", "SK tunjangan"]),
-        (["lembur", "overtime"], ["ketentuan lembur pegawai", "aturan kerja lembur", "SKEP lembur"]),
-        (["promosi", "kenaikan", "jabatan"], ["prosedur kenaikan jabatan", "ketentuan promosi pegawai", "SK kenaikan pangkat"]),
-        (["pensiun", "masa kerja"], ["ketentuan pensiun pegawai", "aturan masa kerja", "SK pensiun"]),
-        (["sop", "prosedur", "standar"], ["SOP prosedur operasional", "standar prosedur kerja", "instruksi kerja"]),
-        (["rab", "pengadaan", "tender", "lelang"], ["ketentuan RAB", "regulasi pengadaan", "prosedur tender"]),
-    ]
-
-    for keywords, prefixes in prefix_map:
-        if any(kw in msg_lower for kw in keywords):
-            return prefixes[:3]
-
-    trash_words = {
+    # Kata pengisi / pertanyaan / konjungsi
+    stop_words = {
         "apakah", "ada", "yang", "lebih", "detail", "lagi", "seperti", "kalau", "kalo",
         "gimana", "bagaimana", "sih", "cuy", "thanks", "ya", "mohon", "info", "tentang",
         "atau", "dan", "di", "ke", "dari", "untuk", "buat", "dong", "apa", "aja", "saja",
         "jelaskan", "tolong", "kasih", "tau", "beritahu", "beri", "tahu", "jelasin",
         "bisa", "gak", "nggak", "engga", "ngga", "tidak", "dalam", "membahas", "bahas",
         "coba", "mengenai", "terkait", "soal", "itu", "ini", "pada", "oleh", "dengan",
-        "kepada", "adalah", "merupakan", "yaitu", "dong", "sih?", "dong?", "ya?",
-        "ketentuan", "ketentuannya", "aturan", "aturannya", "regulasi", "regulasinya",
-        "kebijakan", "kebijakannya", "prosedur", "pasal", "ayat", "bab", "coba", "hal"
+        "kepada", "adalah", "merupakan", "yaitu", "perbedaan", "bandingkan", "dibanding",
+        "menurut", "sesuai", "ga", "kah", "dong?", "ya?"
     }
-    words = [w for w in msg_lower.split() if w.strip("?,.!") not in trash_words and len(w) > 2]
-    if words:
-        full_core = " ".join(words)
-        queries = [full_core]
-        if len(words) >= 2:
-            # Subjek tanpa kata pertama (jika kata pertama adalah nama dokumen seperti pud, skep, pkb)
-            subjek_only = " ".join(words[1:]) if len(words) > 1 else full_core
-            queries.append(subjek_only)
-            # Kombinasi dokumen dan kata akhir
-            if len(words) >= 3:
-                queries.append(f"{words[0]} {words[-1]}")
-            queries.append(f"ketentuan {full_core}")
-        else:
-            queries.extend([f"ketentuan {full_core}", f"regulasi {full_core}"])
-        # Hapus duplikat sambil menjaga urutan
-        seen = set()
-        return [q for q in queries if not (q in seen or seen.add(q))][:4]
 
-    short = " ".join(msg.split()[:3])
-    return [short, f"ketentuan {short}", f"regulasi {short}"]
+    # ✂️ Kata instruksi visual/format yang harus dibuang dari query dokumen
+    visual_instruction_words = {
+        "sekalian", "bikinin", "buatkan", "buat", "bikin", "gambarkan", "tampilkan",
+        "diagram", "flowchart", "alir", "grafik", "chart", "tabel", "visualisasi",
+        "ilustrasi", "gambar", "infografis", "infographic", "mermaid", "plot",
+        "timeline", "skema", "schema", "draw", "render", "generate",
+    }
+
+    words = [
+        w for w in msg_lower.split()
+        if w not in stop_words
+        and w not in visual_instruction_words
+        and len(w) >= 2
+    ]
+
+    subject = (context_subject or "").strip()
+    clean_subject = re.sub(r"[?!.,;:\'\"()\[\]{}]", " ", subject).strip()
+    if clean_subject.lower() in ["obrolan umum", "obrolan cakra ai", "general", "none", "null"]:
+        clean_subject = ""
+
+    def dedup_words(text: str) -> str:
+        """Hapus kata duplikat yang muncul berurutan atau ganda dalam string."""
+        tokens = text.split()
+        seen_t = set()
+        result = []
+        for t in tokens:
+            t_lower = t.lower()
+            if t_lower not in seen_t:
+                seen_t.add(t_lower)
+                result.append(t)
+        return " ".join(result)
+
+    queries = []
+
+    # 1. Multi-Turn Anaphora Context Fusion
+    if clean_subject:
+        subject_words = set(clean_subject.lower().split())
+        user_specific_words = [w for w in words if w not in subject_words]
+        user_specific = " ".join(user_specific_words)
+
+        if user_specific:
+            # Gabung subject + user-specific, dedup kata yang sama
+            q1 = dedup_words(f"{clean_subject} {user_specific}")
+            queries.append(q1)
+        else:
+            queries.append(clean_subject)
+
+    # 2. Ekstraksi langsung dari kata spesifik di user_message (tanpa subject prefix)
+    if words:
+        full_core = dedup_words(" ".join(words[:5]))  # Max 5 kata, deduped
+        if full_core not in queries:
+            queries.append(full_core)
+
+    # 3. Fallback
+    if not queries:
+        if clean_subject:
+            queries.append(clean_subject)
+        elif words:
+            queries.append(dedup_words(" ".join(words[:4])))
+
+    # Bersihkan: hapus generik kosong, whitespace, duplikat query
+    seen = set()
+    cleaned_result = []
+    for q in queries:
+        q_str = dedup_words(q.strip())
+        if q_str and q_str.lower() not in seen and q_str.lower() not in {"ketentuan", "regulasi", "aturan", "sop"}:
+            seen.add(q_str.lower())
+            cleaned_result.append(q_str)
+
+    # ✅ Max 2 queries — efisiensi vector search
+    return cleaned_result[:2]
 
 def build_clean_web_search_query(user_message: str) -> str:
     """
@@ -227,6 +287,9 @@ def select_call2_module(routing: Dict[str, Any], has_rag_context: bool) -> str:
         return "ambiguous"            # dari "ambiguous_handler"
     if routing.get("is_chitchat") or routing.get("is_greeting"):
         return "chitchat"             # sudah benar
+    topic_sub = f"{routing.get('active_topic', '')} {routing.get('key_subject', '')}".lower()
+    if any(kw in topic_sub for kw in ["sapaan", "salam", "chitchat", "greeting", "kabar", "semangat pagi"]):
+        return "chitchat"
     return "general_expert"           # sudah benar
 
 def build_call2_system_prompt(
@@ -269,20 +332,152 @@ def build_call2_system_prompt(
     else:
         prompt = build_response_prompt_chitchat(employee_name, precheck, is_thinking)
 
-    if precheck and precheck.get("requires_visual") is True:
-        prompt += "\n\n" + VISUAL_SYSTEM_PROMPT + "\n\n"
+    if precheck:
+        from backend.app.services.pipeline.prompts.core_prompts import (
+            VISUAL_CAPABILITIES_GUIDANCE,
+            INTERACTIVE_WIZARD_GUIDANCE,
+            TROUBLESHOOTING_GUIDANCE,
+            COMPARATIVE_MATRIX_GUIDANCE,
+            ACTIONABLE_WORKFLOW_GUIDANCE,
+            DEEP_RESEARCH_GUIDANCE,
+            SECURITY_CRITICAL_GUIDANCE,
+        )
+
+        # Injeksi Wizard jika ambigu atau troubleshooting pada modul selain ambiguous
+        if (precheck.get("is_ambiguous") or precheck.get("is_troubleshooting")) and module_name != "ambiguous":
+            if "INTERACTIVE DECISION WIZARD" not in prompt:
+                prompt += "\n\n" + INTERACTIVE_WIZARD_GUIDANCE
+
+        # Injeksi Troubleshooting
+        if precheck.get("is_troubleshooting"):
+            prompt += "\n\n" + TROUBLESHOOTING_GUIDANCE
+
+        # Injeksi Comparative Matrix
+        if precheck.get("is_comparative"):
+            prompt += "\n\n" + COMPARATIVE_MATRIX_GUIDANCE
+
+        # Injeksi Actionable Workflow & SOP
+        if precheck.get("has_actionable_workflow"):
+            prompt += "\n\n" + ACTIONABLE_WORKFLOW_GUIDANCE
+
+        # Injeksi Deep Research
+        if precheck.get("is_deep_research"):
+            prompt += "\n\n" + DEEP_RESEARCH_GUIDANCE
+
+        # Injeksi Security Critical
+        if precheck.get("is_security_critical"):
+            prompt += "\n\n" + SECURITY_CRITICAL_GUIDANCE
+
+        # Injeksi Visual Capabilities
+        if precheck.get("requires_visual") is True and module_name != "chitchat":
+            prompt += "\n\n" + VISUAL_CAPABILITIES_GUIDANCE + "\n\n" + VISUAL_SYSTEM_PROMPT + "\n\n"
 
     return prompt
 
-def get_module_config(module_name: str) -> Dict[str, Any]:
+def get_module_config(module_name: str, precheck: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     configs = {
-        "chitchat": {"num_ctx": 32768, "temperature": 1.0},
-        "coding": {"num_ctx": 32768, "temperature": 1.0},
-        "rag": {"num_ctx": 32768, "temperature": 1.0},
-        "multi_document": {"num_ctx": 32768, "temperature": 1.0},
-        "analytic": {"num_ctx": 32768, "temperature": 1.0},
-        "self_correction": {"num_ctx": 32768, "temperature": 1.0},
-        "ambiguous": {"num_ctx": 32768, "temperature": 1.0},
-        "general_expert": {"num_ctx": 32768, "temperature": 1.0},
+        "chitchat": {
+            "num_ctx": 16384,
+            "temperature": 0.8,
+            "top_p": 0.95,
+            "top_k": 64,
+            "num_predict": 512,
+            "repeat_penalty": 1.1,
+            "repeat_last_n": 128,
+            "num_batch": 512,
+        },
+        "coding": {
+            "num_ctx": 16384,
+            "temperature": 0.2,
+            "top_p": 0.85,
+            "top_k": 40,
+            "num_predict": 8192,
+            "repeat_penalty": 1.05,
+            "repeat_last_n": 128,
+            "num_batch": 512,
+        },
+        "rag": {
+            "num_ctx": 16384,
+            "temperature": 0.1,
+            "top_p": 0.85,
+            "top_k": 40,
+            "num_predict": 8192,
+            "repeat_penalty": 1.1,
+            "repeat_last_n": 128,
+            "num_batch": 1024,
+        },
+        "multi_document": {
+            "num_ctx": 16384,
+            "temperature": 0.1,
+            "top_p": 0.85,
+            "top_k": 40,
+            "num_predict": 8192,
+            "repeat_penalty": 1.1,
+            "repeat_last_n": 128,
+            "num_batch": 1024,
+        },
+        "analytic": {
+            "num_ctx": 16384,
+            "temperature": 0.2,
+            "top_p": 0.85,
+            "top_k": 40,
+            "num_predict": 8192,
+            "repeat_penalty": 1.1,
+            "repeat_last_n": 128,
+            "num_batch": 512,
+        },
+        "self_correction": {
+            "num_ctx": 16384,
+            "temperature": 0.2,
+            "top_p": 0.85,
+            "top_k": 40,
+            "num_predict": 4096,
+            "repeat_penalty": 1.1,
+            "repeat_last_n": 128,
+            "num_batch": 512,
+        },
+        "ambiguous": {
+            "num_ctx": 16384,
+            "temperature": 0.1,
+            "top_p": 0.85,
+            "top_k": 40,
+            "num_predict": 1536,
+            "repeat_penalty": 1.1,
+            "repeat_last_n": 128,
+            "num_batch": 512,
+        },
+        "general_expert": {
+            "num_ctx": 16384,
+            "temperature": 0.6,
+            "top_p": 0.90,
+            "top_k": 50,
+            "num_predict": 4096,
+            "repeat_penalty": 1.1,
+            "repeat_last_n": 128,
+            "num_batch": 512,
+        },
     }
-    return configs.get(module_name, {"num_ctx": 32768, "temperature": 1.0})
+    cfg = dict(
+        configs.get(
+            module_name,
+            {
+                "num_ctx": 16384,
+                "temperature": 0.7,
+                "top_p": 0.90,
+                "top_k": 50,
+                "num_predict": 8192,
+                "repeat_penalty": 1.1,
+                "repeat_last_n": 128,
+                "num_batch": 512,
+            }
+        )
+    )
+
+    if precheck:
+        if precheck.get("is_deep_research"):
+            cfg["num_predict"] = 8192
+            cfg["temperature"] = 0.2
+        elif precheck.get("is_ambiguous") and module_name == "coding":
+            cfg["num_predict"] = 4096
+
+    return cfg

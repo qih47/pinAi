@@ -5,7 +5,12 @@ logger = logging.getLogger("CAKRA_PROMPTS")
 
 _RAG_CONTEXT_MAX_CHARS = 60_000
 
-from .core_prompts import get_base_persona, COMMON_TONE_GUIDANCE
+from .core_prompts import (
+    get_base_persona,
+    COMMON_TONE_GUIDANCE,
+    CORE_TONE_AND_IDENTITY,
+    DATA_TABLES_AND_FORM_GUIDANCE,
+)
 from backend.app.services.pipeline.prompt_manager import prompt_manager
 
 PROMPT_FILE_GENERATE_CALL1_TEMPLATE = """Kamu adalah CAKRA AI, asisten internal PT Pindad dalam mode pembuatan file.
@@ -64,7 +69,7 @@ LARANGAN KERAS:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 🎨 GAYA BAHASA
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-""" + COMMON_TONE_GUIDANCE + """
+""" + CORE_TONE_AND_IDENTITY + "\n" + DATA_TABLES_AND_FORM_GUIDANCE + """
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 📁 [EXISTING FILES & ATTACHMENTS] KONTEKS FILE SAAT INI (BISA DIEDIT)
@@ -117,7 +122,7 @@ ATURAN KERAS:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 🎨 GAYA BAHASA
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-""" + COMMON_TONE_GUIDANCE
+""" + CORE_TONE_AND_IDENTITY + "\n" + DATA_TABLES_AND_FORM_GUIDANCE
 
 PROMPT_FILE_GENERATE_CALL2_TEMPLATE = """Kamu adalah CAKRA AI, asisten internal cerdas terpadu milik PT Pindad.
 Pegawai yang kamu layani saat ini: **{{ employee_name }}**
@@ -156,7 +161,7 @@ LARANGAN KERAS:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 🎨 GAYA BAHASA
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-""" + COMMON_TONE_GUIDANCE + """
+""" + CORE_TONE_AND_IDENTITY + "\n" + DATA_TABLES_AND_FORM_GUIDANCE + """
 Sampaikan hasil pengerjaan file **{{ filename }}** kepada user dengan gaya natural!
 """
 

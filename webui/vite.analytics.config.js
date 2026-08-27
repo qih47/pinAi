@@ -35,13 +35,16 @@ export default defineConfig({
     port: 5174,
     host: true,
   },
-  build: {
-    target: 'esnext',
-    minify: 'esbuild',
-    rollupOptions: {
-      input: {
-        main: path.resolve(__dirname, 'analytics.html'),
-      }
-    }
+  optimizeDeps: {
+    include: [
+      'react',
+      'react-dom',
+      'react-router-dom',
+      'zustand',
+      'lucide-react',
+      'date-fns',
+      'clsx',
+      'tailwind-merge',
+    ],
   },
 });

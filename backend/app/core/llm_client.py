@@ -172,8 +172,8 @@ def get_shared_client() -> httpx.AsyncClient:
 
 _gpu_semaphore: Optional[asyncio.Semaphore] = None
 
-def get_gpu_semaphore(max_slots: int = 4) -> asyncio.Semaphore:
-    """Mengembalikan singleton asyncio.Semaphore untuk proteksi antrean GPU/Ollama."""
+def get_gpu_semaphore(max_slots: int = 8) -> asyncio.Semaphore:
+    """Mengembalikan singleton asyncio.Semaphore untuk proteksi antrean GPU/Ollama (8 slot paralel)."""
     global _gpu_semaphore
     if _gpu_semaphore is None:
         _gpu_semaphore = asyncio.Semaphore(max_slots)
@@ -232,6 +232,45 @@ async def stream_ollama_chat(
     # Inject Privacy & Security Guardrail
     messages = _inject_global_guardrail(messages)
 
+    # ── Call 2 Input Payload Analysis & Breakdown ──────────────────────────────
+    system_content = next((m.get("content", "") for m in messages if m.get("role") == "system"), "")
+    user_messages = [m for m in messages if m.get("role") == "user"]
+    history_messages = [m for m in messages if m.get("role") in ["user", "assistant"]][:-1] if len(messages) > 2 else []
+    current_query = user_messages[-1].get("content", "") if user_messages else ""
+
+    system_chars = len(system_content)
+    history_chars = sum(len(m.get("content", "")) for m in history_messages)
+    query_chars = len(current_query)
+    total_chars = sum(len(m.get("content", "")) for m in messages)
+
+    has_rag = any(kw in system_content for kw in ["[KUTIPAN DOKUMEN INTERNAL", "[KUTIPAN REGULASI", "RAG", "DOKUMEN PENDUKUNG"])
+    has_web = any(kw in system_content for kw in ["=== KONTEN MENDALAM DARI TAUTAN TERATAS", "HASIL PENCARIAN GOOGLE", "Web Search"])
+    has_mem = any(kw in system_content for kw in ["[INGATAN MASA LALU PEGAWAI", "Karakter Komunikasi", "PANDUAN NAMA PANGGILAN"])
+
+    # Extract employee name if present in system prompt
+    import re
+    emp_match = re.search(r'Nama\s*/\s*Panggilan Pilihan Pegawai:\s*\*\*([^\*]+)\*\*', system_content) or re.search(r'Pegawai yang kamu layani:\s*\*\*([^\*]+)\*\*', system_content)
+    emp_name_log = emp_match.group(1).strip() if emp_match else "Pegawai"
+
+    logger.info(
+        f"\n"
+        f"╔═══════════════════════════════════════════════════════════════════════════════╗\n"
+        f"║ 📥 [CALL 2 INPUT MONITORING & PREFILL PAYLOAD]                               ║\n"
+        f"╠═══════════════════════════════════════════════════════════════════════════════╣\n"
+        f"║ 🤖 Model Target     : {model_name:<55} ║\n"
+        f"║ 👤 Employee Sapaan  : {emp_name_log:<55} ║\n"
+        f"║ ⚙️  Konfigurasi      : num_ctx={num_ctx:<6} | num_predict={num_predict if 'num_predict' in locals() else 8192:<6} | temp={temperature:<4} | think={is_thinking} ║\n"
+        f"║ 📊 Total Payload    : {total_chars:,} chars (~{total_chars//4:,} est. tokens) | {len(messages)} messages ║\n"
+        f"║   ├─ System Prompt  : {system_chars:,} chars (~{system_chars//4:,} tokens) [RAG: {'✅' if has_rag else '❌'} | Web: {'✅' if has_web else '❌'} | Mem: {'✅' if has_mem else '❌'}] ║\n"
+        f"║   ├─ History Context: {len(history_messages)} turns ({history_chars:,} chars | ~{history_chars//4:,} tokens) ║\n"
+        f"║   └─ User Prompt    : \"{current_query[:55].strip()}...\" ({query_chars:,} chars) ║\n"
+        f"╠═══════════════════════════════════════════════════════════════════════════════╣\n"
+        f"║ 📜 [RAW SYSTEM PROMPT CONTENT ({system_chars:,} chars)]:                      ║\n"
+        f"╠═══════════════════════════════════════════════════════════════════════════════╣\n"
+        f"{system_content}\n"
+        f"╚═══════════════════════════════════════════════════════════════════════════════╝"
+    )
+
     logger.info("⏳ [LLM CLIENT] Request masuk antrean GPU. Menunggu Slot Semaphore...")
     queue_start_time = datetime.now()
 
@@ -247,20 +286,22 @@ async def stream_ollama_chat(
 
         # Hybrid Token Budget Processing
         token_budget = kwargs.pop("token_budget", None)
-        num_predict = kwargs.pop("num_predict", 8192 if is_thinking else 8192)  # Default 8192 untuk semua mode
+        num_predict = kwargs.pop("num_predict", None)
+        if num_predict is None or num_predict == -1:
+            num_predict = 8192 if is_thinking else 8192
         
         if token_budget:
-            # token_budget hanya dipakai untuk mode PDF/gambar yang perlu dibatasi outputnya
-            # Mode teks/kode mengirim token_budget=None sehingga blok ini di-skip
             logger.info(f"🪙 [TOKEN HYBRID] Menerapkan Token Budget sebesar: {token_budget} (Model: {model_name})")
-            num_predict = min(num_predict, token_budget * 2)  # Mengijinkan sisa margin
+            num_predict = min(num_predict, token_budget * 2)
 
         ollama_options = {
             "temperature": temperature,
-            "top_p": 0.95,
-            "top_k": 64,
+            "top_p": kwargs.pop("top_p", 0.95),
+            "top_k": kwargs.pop("top_k", 64),
             "num_ctx": num_ctx,
             "num_predict": num_predict,
+            "repeat_penalty": kwargs.pop("repeat_penalty", 1.1),
+            "repeat_last_n": kwargs.pop("repeat_last_n", 128),
             **kwargs,
         }
 
@@ -286,6 +327,7 @@ async def stream_ollama_chat(
                 accumulated_thinking = ""
                 first_token = True
                 current_mode = None
+                ttft_ms = 0.0
 
                 async for line in response.aiter_lines():
                     if not line:
@@ -302,9 +344,10 @@ async def stream_ollama_chat(
                             ttft_ms = (datetime.now() - inference_start_time).total_seconds() * 1000
                             queue_ms_log = queue_wait_time * 1000
                             logger.info(
-                                f"⚡ [TIMING_BENCHMARK] First Token Received! "
+                                f"⚡ [TIMING_BENCHMARK] [CALL2_TTFT] First Token Received! "
                                 f"Ollama Prefill TTFT: {ttft_ms:.1f}ms ({ttft_ms/1000:.2f}s) | "
-                                f"GPU Queue Wait: {queue_ms_log:.1f}ms"
+                                f"GPU Queue Wait: {queue_ms_log:.1f}ms | "
+                                f"Input Payload: ~{total_chars//4:,} tokens"
                             )
                             first_token = False
 
@@ -338,9 +381,29 @@ async def stream_ollama_chat(
                         if done:
                             print("\n", flush=True)
                             elapsed_time = (datetime.now() - inference_start_time).total_seconds()
+                            prompt_eval_count = chunk.get("prompt_eval_count", 0)
+                            prompt_eval_duration = chunk.get("prompt_eval_duration", 0)
+                            eval_count = chunk.get("eval_count", 0)
+                            eval_duration = chunk.get("eval_duration", 0)
+
+                            prefill_tps = (prompt_eval_count / (prompt_eval_duration / 1e9)) if (prompt_eval_count and prompt_eval_duration) else 0.0
+                            gen_tps = (eval_count / (eval_duration / 1e9)) if (eval_count and eval_duration) else 0.0
+                            prefill_sec = (prompt_eval_duration / 1e9) if prompt_eval_duration else (ttft_ms / 1000)
+                            gen_sec = (eval_duration / 1e9) if eval_duration else 0.0
+
+                            logger.info(
+                                f"\n"
+                                f"┌───────────────────────────────────────────────────────────────────────────────┐\n"
+                                f"│ 🏁 [CALL 2 INFERENCE COMPLETE & TTFT PERFORMANCE ANALYSIS]                    │\n"
+                                f"├───────────────────────────────────────────────────────────────────────────────┤\n"
+                                f"│ ⏱️  TTFT (First Token)  : {ttft_ms/1000:.2f}s ({ttft_ms:.1f} ms)                                         │\n"
+                                f"│ 🚀 Prefill Speed       : {prompt_eval_count:,} input tokens in {prefill_sec:.2f}s ({prefill_tps:.1f} tok/s)           │\n"
+                                f"│ ⚡ Generation Speed    : {eval_count:,} output tokens in {gen_sec:.2f}s ({gen_tps:.1f} tok/s)             │\n"
+                                f"│ ⌛ Total End-to-End    : {elapsed_time:.2f}s                                                    │\n"
+                                f"└───────────────────────────────────────────────────────────────────────────────┘"
+                            )
                             logger.debug(f"[LLM_CLIENT] Thoughts: {accumulated_thinking.strip() or 'None'}")
                             logger.debug(f"[LLM_CLIENT] Response: {full_response.strip()}")
-                            logger.info(f"[LLM_CLIENT] Inference completed in {elapsed_time:.2f}s")
 
                         if session_uuid and session_uuid != "GLOBAL_SESSION":
                             try:

@@ -1,4 +1,7 @@
-from backend.app.services.pipeline.prompts.rag_prompts import COMMON_TONE_GUIDANCE
+from backend.app.services.pipeline.prompts.core_prompts import (
+    CORE_TONE_AND_IDENTITY,
+    DATA_TABLES_AND_FORM_GUIDANCE,
+)
 
 REDTEAM_SYSTEM_PROMPT = """
 <PERSONA>
@@ -32,7 +35,7 @@ Dokumen yang sedang diisolasi dan dibedah:
 3. **Gaya Bahasa**: Profesional, tajam, analitis, provokatif secara intelektual, dan menggunakan bahasa Indonesia yang baik.
 </INSTRUCTIONS>
 
-""" + COMMON_TONE_GUIDANCE
+""" + CORE_TONE_AND_IDENTITY + "\n" + DATA_TABLES_AND_FORM_GUIDANCE
 
 from backend.app.services.pipeline.prompt_manager import prompt_manager
 

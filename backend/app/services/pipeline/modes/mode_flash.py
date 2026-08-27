@@ -52,18 +52,26 @@ class ModeFlash:
             is_thinking=is_thinking
         )
 
-        # Fetch Community Knowledge untuk User Resmi (is_guest=False), SKIP jika pesan sangat pendek / sapaan sederhana
-        from backend.app.services.pipeline.community_knowledge import search_community_knowledge
-        clean_msg = user_message.strip().lower()
-        simple_greetings = {"hai", "halo", "hallo", "helo", "pagi", "siang", "sore", "malam", "selamat pagi", "selamat siang", "selamat sore", "selamat malam", "terima kasih", "makasih", "ok", "oke", "siap", "baik", "test", "tes"}
-        if len(clean_msg) >= 10 and clean_msg not in simple_greetings:
-            community_context = await search_community_knowledge(user_message, is_guest=False)
-            if community_context:
-                system_prompt += community_context
+        # Fetch Community Knowledge untuk User Resmi (is_guest=False), SKIP jika modul chitchat atau sapaan sederhana
+        if module_name != "chitchat":
+            from backend.app.services.pipeline.community_knowledge import search_community_knowledge
+            clean_msg = user_message.strip().lower()
+            simple_greetings = {"hai", "halo", "hallo", "helo", "pagi", "siang", "sore", "malam", "selamat pagi", "selamat siang", "selamat sore", "selamat malam", "terima kasih", "makasih", "ok", "oke", "siap", "baik", "test", "tes"}
+            if len(clean_msg) >= 10 and clean_msg not in simple_greetings:
+                community_context = await search_community_knowledge(user_message, is_guest=False)
+                if community_context:
+                    system_prompt += community_context
         else:
-            logger.info("[MODE_FLASH] Skipping community knowledge search for short/greeting message.")
+            logger.info("[MODE_FLASH] Skipping community knowledge search for chitchat/greeting module.")
 
-        # Inject Long-Term Memory (ai_document_chunks)
+        # Inject Employee Long-Term Memory (ai_memory) - lewati pada modul sapaan agar respon instan
+        if current_user_npp and current_user_npp != "GUEST" and module_name != "chitchat":
+            from backend.app.services.memory.memory_service import memory_service
+            employee_memory = await memory_service.get_employee_long_term_memory(current_user_npp)
+            if employee_memory:
+                system_prompt += employee_memory
+
+        # Inject Session Context (ai_document_chunks)
         session_chunks = routing_data.get("_session_chunks_text", "")
         if session_chunks:
             system_prompt += session_chunks
@@ -117,12 +125,11 @@ class ModeFlash:
                 model_name=getattr(settings, "MODEL_PERSONA", "gemma4:12b"),
                 messages=stream_messages,
                 request=request,
-                temperature=temperature,
-                num_ctx=num_ctx,
                 is_thinking=is_thinking,
                 employee_name=employee_name,
                 session_uuid=session_uuid_to_use,
-                max_tool_loops=1
+                max_tool_loops=1,
+                **module_config,
             ):
                 yield chunk
         except Exception as e:

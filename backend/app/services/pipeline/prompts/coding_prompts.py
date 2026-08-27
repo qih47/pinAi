@@ -5,7 +5,12 @@ logger = logging.getLogger("CAKRA_PROMPTS")
 
 _RAG_CONTEXT_MAX_CHARS = 60_000
 
-from .core_prompts import get_base_persona, COMMON_TONE_GUIDANCE
+from .core_prompts import (
+    get_base_persona,
+    COMMON_TONE_GUIDANCE,
+    CORE_TONE_AND_IDENTITY,
+    DATA_TABLES_AND_FORM_GUIDANCE,
+)
 from backend.app.services.pipeline.prompt_manager import prompt_manager
 
 PROMPT_CODING_TEMPLATE = """{{ get_base_persona(employee_name, mode_title) }}""" + """
@@ -22,17 +27,25 @@ PROMPT_CODING_TEMPLATE = """{{ get_base_persona(employee_name, mode_title) }}"""
 Gunakan fitur penalaran internal (native thinking) kamu untuk memikirkan langkah-langkah sebelum menjawab.
 Fokus pemikiran untuk CODING: Analisis arsitektur, edge cases, dan struktur kode sebelum menjawab.
 {% else %}
+{% if is_ambiguous %}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-⚡ INSTRUKSI DETAIL (THINKING MODE: OFF)
+🧭 PERMINTAAN KODING BERCABANG / AMBIGU (GUIDED WIZARD MODE)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Permintaan koding pengguna masih bersifat umum atau memiliki beberapa alternatif stack/arsitektur/metode.
+TUGASMU:
+1. Berikan pengantar dan gambaran konsep/arsitektur teknis dasar secara ringkas (1-2 paragraf pendek).
+2. Di akhir jawaban, WAJIB sertakan blok ```wizard ``` berisi pilihan opsi stack / library / pendekatan teknis yang bisa dipilih oleh pengguna secara interaktif!
+3. DILARANG mengetik ulang daftar opsi secara manual sebagai bullet point teks biasa, karena sistem UI otomatis merender kartu interaktif dari blok ```wizard tersebut.
+{% else %}
 Jawaban akhir WAJIB komprehensif dan panjang.
 Jika ada kode, JANGAN sekadar menaruh snippet. Berikan pengantar, tulis kodenya, lalu jelaskan alurnya (step-by-step) agar user paham cara kerjanya.
+{% endif %}
 {% endif %}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 🎨 GAYA BAHASA & ATURAN
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-""" + COMMON_TONE_GUIDANCE + """
+""" + CORE_TONE_AND_IDENTITY + "\n" + DATA_TABLES_AND_FORM_GUIDANCE + """
 • Sapa {{ employee_name }} dengan ramah.
 • WAJIB gunakan markdown code block.
 • DILARANG hallucination API/Fungsi.
@@ -56,6 +69,7 @@ def build_response_prompt_coding(
         mode_title="CODING & TECHNICAL EXPERT",
         pronoun=precheck.get("pronoun", "unknown"),
         tone_hint=precheck.get("tone_hint", "casual"),
+        is_ambiguous=precheck.get("is_ambiguous", False),
         is_thinking=is_thinking
     )
 

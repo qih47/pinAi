@@ -498,9 +498,13 @@ async def search_and_ocr_by_synthetic_qa(user_message: str) -> Tuple[str, List[D
         logger.error(f"[PERATURAN_SERVICE_SYNTHETIC] Error during Synthetic QA search: {e}")
         return "", [], []
 
-async def get_candidate_documents_metadata(user_message: str, query_judul_list: List[str]) -> List[Dict[str, Any]]:
+async def get_candidate_documents_metadata(
+    user_message: str, 
+    query_judul_list: List[str], 
+    rag_queries: Optional[List[str]] = None
+) -> List[Dict[str, Any]]:
     """
-    Mengambil daftar dokumen kandidat terbaik dari MySQL & pgvector yang lolos scoring BGE.
+    Mengambil daftar dokumen kandidat terbaik dari MySQL (Lexical Wadah) & pgvector (Semantic Isi) yang lolos scoring BGE.
     Mengembalikan metadata lengkap dan path valid_file untuk diproses secara progresif.
     """
     if not user_message or not user_message.strip():
@@ -513,8 +517,13 @@ async def get_candidate_documents_metadata(user_message: str, query_judul_list: 
         
         candidate_ids = set()
         
-        # 1. Fetch from pgvector Semantic QA
-        query_embedding = await vector_service.get_query_embedding(user_message)
+        # 0. Tentukan semantic query murni (substansi isi/pertanyaan)
+        # Jika rag_queries tersedia dari Call 1, gunakan rag_queries karena merepresentasikan substansi isi tanpa noise
+        clean_semantic_queries = [q.strip() for q in (rag_queries or []) if q and q.strip()]
+        semantic_search_query = " ".join(clean_semantic_queries) if clean_semantic_queries else user_message
+        
+        # 1. Fetch from pgvector Semantic QA (Menggunakan semantic_search_query murni)
+        query_embedding = await vector_service.get_query_embedding(semantic_search_query)
         if query_embedding:
             embedding_str = str(query_embedding)
             async with get_db() as conn_pg:
@@ -528,7 +537,7 @@ async def get_candidate_documents_metadata(user_message: str, query_judul_list: 
                 for r in records:
                     candidate_ids.add(r["source_id"])
                     
-        # 2. Fetch from MySQL FTS
+        # 2. Fetch from MySQL FTS (Menggunakan query_judul_list untuk filter wadah/judul regulasi)
         if query_judul_list:
             async with get_peraturan_db() as conn_my:
                 async with conn_my.cursor() as cur:
@@ -586,18 +595,24 @@ async def get_candidate_documents_metadata(user_message: str, query_judul_list: 
             
         rows = [list(r) for r in raw_rows]
         corpus_texts = [f"{r[2]} - Tag: {r[12]}" for r in rows]
-        scores = await reranker_service.compute_scores(user_message, corpus_texts)
+        
+        # Scoring awal judul/tag kandidat: gunakan kombinasi query judul dan substansi
+        effective_rerank_query = f"{semantic_search_query} {' '.join(query_judul_list or [])}".strip()
+        scores = await reranker_service.compute_scores(effective_rerank_query, corpus_texts)
         
         # Target Document Match Boost: Prioritaskan dokumen yang diminta secara spesifik (misal: PKB, SOP, dll)
-        target_tokens = set()
+        explicit_primary_types = set()
+        user_lower = user_message.lower()
+        for kw in ["pkb", "perjanjian kerja bersama", "sop", "skep", "surat keputusan", "surat edaran", "instruksi kerja"]:
+            if kw in user_lower or any(kw in str(q).lower() for q in (query_judul_list or [])):
+                explicit_primary_types.add(kw)
+        
+        general_target_tokens = set()
         for q in (query_judul_list or []):
             if q and len(q.strip()) >= 3:
-                target_tokens.add(q.strip().lower())
-        
-        user_lower = user_message.lower()
-        for kw in ["pkb", "perjanjian kerja bersama", "sop", "skep", "surat edaran", "instruksi kerja"]:
-            if kw in user_lower:
-                target_tokens.add(kw)
+                q_clean = q.strip().lower()
+                if q_clean not in explicit_primary_types:
+                    general_target_tokens.add(q_clean)
 
         scored_rows = []
         for i, r in enumerate(rows):
@@ -606,14 +621,22 @@ async def get_candidate_documents_metadata(user_message: str, query_judul_list: 
             doc_tag_lower = str(r[12] or "").lower()
             
             base_score = float(scores[i])
-            has_target_match = any(t in doc_title_lower or t in doc_noper_lower or t in doc_tag_lower for t in target_tokens)
+            has_primary_match = any(t in doc_title_lower or t in doc_noper_lower or t in doc_tag_lower for t in explicit_primary_types)
+            has_general_match = any(t in doc_title_lower or t in doc_noper_lower or t in doc_tag_lower for t in general_target_tokens)
             
-            final_score = base_score + (0.30 if has_target_match else 0.0)
+            # Dokumen induk (PKB/SOP) yang diminta user mendapat prioritas utama (+0.45), dokumen pendukung topik (+0.20)
+            boost = 0.0
+            if has_primary_match:
+                boost += 0.45
+            elif has_general_match:
+                boost += 0.20
+                
+            final_score = base_score + boost
             r[11] = final_score
             scored_rows.append(r)
             
         scored_rows.sort(key=lambda x: x[11], reverse=True)
-        scored_rows = [x for x in scored_rows if x[11] > 0.45]
+        scored_rows = [x for x in scored_rows if x[11] > 0.40]
         
         if not scored_rows:
             return []

@@ -12,17 +12,12 @@ pkill -9 -f "vite" 2>/dev/null || true
 # Bersihkan port yang biasa dipakai frontend (5173-5176)
 fuser -k -9 5173/tcp 5174/tcp 5175/tcp 5176/tcp 2>/dev/null || true
 
-# Hapus cache vite biar nggak stale
-rm -rf node_modules/.vite
-
-sleep 1
-
 echo "🚀 Starting Chat Frontend (5173)..."
-npm run dev:chat -- --host --force &
+npm run dev:chat -- --host &
 CHAT_PID=$!
 
 echo "🚀 Starting Analytics Frontend (5174)..."
-npm run dev:analytics -- --host --force &
+npm run dev:analytics -- --host &
 ANALYTICS_PID=$!
 
 # Pastikan kedua proses ikut mati kalau script ini di-kill (SIGTERM/SIGINT)

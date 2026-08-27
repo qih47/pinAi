@@ -1,4 +1,9 @@
-from backend.app.services.pipeline.prompts.core_prompts import get_base_persona, COMMON_TONE_GUIDANCE
+from backend.app.services.pipeline.prompts.core_prompts import (
+    get_base_persona,
+    COMMON_TONE_GUIDANCE,
+    CORE_TONE_AND_IDENTITY,
+    DATA_TABLES_AND_FORM_GUIDANCE,
+)
 
 PROMPT_COMPLIANCE_TEMPLATE = """{{ get_base_persona(employee_name, mode_title) }}""" + """
 Anda sedang berada dalam Mode Compliance Sandbox (Uji Kepatuhan). 
@@ -41,7 +46,7 @@ LANGKAH 4: Rancang penjelasan dan rekomendasi.
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Langsung berikan analisis kepatuhan Anda dengan jelas dan terstruktur. Awali dengan label STATUS kepatuhan.
 {% endif %}
-""" + COMMON_TONE_GUIDANCE
+""" + CORE_TONE_AND_IDENTITY + "\n" + DATA_TABLES_AND_FORM_GUIDANCE
 
 def build_response_prompt_compliance(
     employee_name: str,

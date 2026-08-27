@@ -5,8 +5,23 @@ logger = logging.getLogger("CAKRA_PROMPTS")
 
 _RAG_CONTEXT_MAX_CHARS = 60_000
 
-from .core_prompts import get_base_persona, COMMON_TONE_GUIDANCE
+from .core_prompts import (
+    get_base_persona,
+    COMMON_TONE_GUIDANCE,
+    CORE_TONE_AND_IDENTITY,
+    DATA_TABLES_AND_FORM_GUIDANCE,
+    INTERACTIVE_WIZARD_GUIDANCE,
+)
 from backend.app.services.pipeline.prompt_manager import prompt_manager
+
+# Guidance Modular RAG (Tanpa template visual statis)
+RAG_MODULAR_GUIDANCE = (
+    CORE_TONE_AND_IDENTITY
+    + "\n"
+    + DATA_TABLES_AND_FORM_GUIDANCE
+    + "\n"
+    + INTERACTIVE_WIZARD_GUIDANCE
+)
 
 PROMPT_RAG_TEMPLATE = """{{ get_base_persona(employee_name, mode_title) }}""" + """
 {% if is_thinking %}
@@ -63,7 +78,7 @@ Tidak ada konteks dokumen yang terambil.
 🎨 GAYA BAHASA & ATURAN PENULISAN JAWABAN
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-""" + COMMON_TONE_GUIDANCE + """
+""" + RAG_MODULAR_GUIDANCE + """
 
 ATURAN SITASI DOKUMEN:
 • Saat menyebut sumber, gunakan nomor SK/SOP/regulasi dan judulnya.
@@ -162,7 +177,7 @@ After menalar, tulis penjelasan akhir yang SANGAT DETAIL:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Jawaban akhir harus menguraikan setiap langkah analitik atau kalkulasi. Jangan sekadar memberikan hasil akhir berupa angka atau klaim. Buktikan proses logikanya kepada user.
 {% endif %}
-""" + COMMON_TONE_GUIDANCE
+""" + RAG_MODULAR_GUIDANCE
 
 PROMPT_ATTACHMENT_TEMPLATE = """Kamu adalah CAKRA AI, asisten internal cerdas terpadu milik PT Pindad.
 Pegawai yang kamu layani saat ini: **{{ employee_name }}**
@@ -208,7 +223,7 @@ Gunakan fitur penalaran internal (native thinking) kamu untuk:
 ⚠️ BAHASA JALUR BERPIKIR (THINKING LANGUAGE):
 Seluruh proses bedah fakta dan rencana respons di dalam jalur penalaran internal (thinking channel) WAJIB ditulis murni menggunakan BAHASA INDONESIA.
 {% endif %}
-""" + COMMON_TONE_GUIDANCE
+""" + RAG_MODULAR_GUIDANCE
 
 PROMPT_FOCUS_TEMPLATE = """{{ get_base_persona(employee_name, mode_title) }}""" + """
 Anda sedang berada dalam Mode Fokus untuk menanyai dan menganalisis SATU dokumen spesifik secara mendalam.
@@ -254,7 +269,7 @@ LANGKAH 3: Jika ada dan lengkap, rancang jawaban yang empatik, logis, interaktif
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Pastikan Anda langsung menjawab dengan penuh empati berdasarkan teks di atas. Jangan kaku. Jika informasi tidak ditemukan secara utuh di halaman ini, ingat Aturan #4: HANYA KETIK 'KOSONG'. Jangan sebutkan bahwa Anda hanya membaca sebagian halaman.
 {% endif %}
-""" + COMMON_TONE_GUIDANCE
+""" + RAG_MODULAR_GUIDANCE
 
 PROMPT_INSIGHT_TEMPLATE = """Anda adalah asisten cerdas PT Pindad. 
 Tugas Anda: Buat rangkuman eksklusif (Smart Insight) untuk dokumen regulasi berikut. Soroti poin-poin penting, tujuan, dan intisari kebijakan. Gunakan format bullet (•) agar mudah dibaca. Gunakan bahasa Indonesia baku dan ringkas.

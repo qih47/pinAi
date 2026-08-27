@@ -338,7 +338,7 @@ class ModeGenerateFile:
                 request=request,
                 temperature=0.6,
                 keep_alive=-1,
-                num_ctx=32768,
+                num_ctx=16384,
                 num_predict=-1,
                 is_thinking=is_thinking
             ):

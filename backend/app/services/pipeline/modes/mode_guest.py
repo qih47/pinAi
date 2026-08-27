@@ -65,7 +65,7 @@ class ModeGuest:
         ]
 
         # 3. Parameter khusus Guest
-        num_ctx = 32768
+        num_ctx = 16384
         temperature = 0.6
         # Pastikan thinking selalu off
         is_thinking = False

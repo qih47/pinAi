@@ -1,68 +1,103 @@
+/**
+ * Resilient Partial JSON Parser
+ * Secara deterministik memperbaiki dan menutup JSON yang belum selesai (streaming)
+ * Menggunakan stack tracking untuk braces {} dan brackets [].
+ */
 export function parsePartialJSON(jsonString) {
-  let str = jsonString;
+  if (!jsonString || typeof jsonString !== 'string') return null;
+  const str = jsonString.trim();
+  if (!str) return null;
+
+  // 1. Coba parse langsung jika JSON sudah utuh
   try {
     return JSON.parse(str);
-  } catch (e) {}
-  
-  // A naive but often effective way to close partial JSON arrays/objects
-  let openBraces = 0;
-  let openBrackets = 0;
-  let inString = false;
-  let escape = false;
+  } catch (_) {}
 
-  for (let i = 0; i < str.length; i++) {
-    const char = str[i];
-    if (escape) {
-      escape = false;
+  // 2. Ambil substring mulai dari kurung buka pertama '{' atau '['
+  const firstBrace = str.indexOf('{');
+  const firstBracket = str.indexOf('[');
+  let startIdx = 0;
+  if (firstBrace !== -1 && firstBracket !== -1) {
+    startIdx = Math.min(firstBrace, firstBracket);
+  } else if (firstBrace !== -1) {
+    startIdx = firstBrace;
+  } else if (firstBracket !== -1) {
+    startIdx = firstBracket;
+  } else {
+    return null;
+  }
+
+  const target = str.substring(startIdx);
+
+  // Coba parse target langsung
+  try {
+    return JSON.parse(target);
+  } catch (_) {}
+
+  // 3. Deterministic Stack-Based Auto-Repair
+  let inString = false;
+  let isEscaped = false;
+  const stack = [];
+
+  for (let i = 0; i < target.length; i++) {
+    const char = target[i];
+
+    if (isEscaped) {
+      isEscaped = false;
       continue;
     }
+
     if (char === '\\') {
-      escape = true;
+      isEscaped = true;
       continue;
     }
+
     if (char === '"') {
       inString = !inString;
       continue;
     }
+
     if (!inString) {
-      if (char === '{') openBraces++;
-      if (char === '}') openBraces--;
-      if (char === '[') openBrackets++;
-      if (char === ']') openBrackets--;
+      if (char === '{') {
+        stack.push('}');
+      } else if (char === '[') {
+        stack.push(']');
+      } else if (char === '}') {
+        if (stack.length > 0 && stack[stack.length - 1] === '}') {
+          stack.pop();
+        }
+      } else if (char === ']') {
+        if (stack.length > 0 && stack[stack.length - 1] === ']') {
+          stack.pop();
+        }
+      }
     }
   }
 
-  if (inString) str += '"';
-  
-  // Close any unclosed objects and arrays
-  // We need to figure out the order, but naively we can just append missing braces
-  // This is a simple approach, a robust one is more complex.
-  // Actually, there's a library for this, or we can just append `]}` until it parses.
-  
-  // Better naive approach:
-  let suffix = '';
-  if (inString) suffix += '"';
-  
-  // Try appending combinations of closing brackets
-  const combinations = [
-    '',
-    '}',
-    ']',
-    '}',
-    ']}',
-    ']} ]',
-    '}]',
-    '"]}',
-    '"}',
-    '"]'
-  ];
-  
-  for (let i = 0; i < 20; i++) {
-     try {
-       return JSON.parse(str + '"'.repeat(i%2) + '}'.repeat(Math.floor(i/2)) + ']'.repeat(i%3));
-     } catch(e) {}
+  // Jika string terpotong di tengah jalan, tutup tanda kutip
+  let repaired = target;
+  if (inString) {
+    repaired += '"';
   }
-  
-  // If we really can't, return null
-  return null;
+
+  // Bersihkan trailing koma atau titik dua yang menggantung sebelum ditutup
+  repaired = repaired.replace(/,\s*$/, '').replace(/:\s*$/, ': null');
+
+  // Tutup semua objek/array sesuai urutan stack terbalik
+  for (let i = stack.length - 1; i >= 0; i--) {
+    repaired += stack[i];
+  }
+
+  try {
+    return JSON.parse(repaired);
+  } catch (_) {
+    // Fallback: jika trailing property key belum selesai, tambahkan value dummy
+    try {
+      const fallback = repaired.replace(/"[^"]*"\s*$/, '""');
+      return JSON.parse(fallback);
+    } catch (_) {
+      return null;
+    }
+  }
 }
+

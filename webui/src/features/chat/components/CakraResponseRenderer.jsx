@@ -17,7 +17,7 @@ const LazyGanttViewer = lazy(() => import('./GanttViewer'));
 const LazyTimelineInfographic = lazy(() => import('./TimelineInfographic'));
 const LazyChartViewer = lazy(() => import('./ChartViewer'));
 const LazyReactFlowViewer = lazy(() => import('./ReactFlowViewer'));
-const LazyDataGridViewer = lazy(() => import('./DataGridViewer'));
+import DataGridViewer from './DataGridViewer';
 const LazyMapViewer = lazy(() => import('./MapViewer'));
 const LazyWebSearchWidget = lazy(() => import('./WebSearchWidget'));
 const LazyUrlFetchTimelineWidget = lazy(() => import('./UrlFetchTimelineWidget'));
@@ -64,6 +64,21 @@ const recursiveHighlight = (children, query) => {
         if (React.isValidElement(child) && child.props.children) {
             return React.cloneElement(child, {
                 children: recursiveHighlight(child.props.children, query)
+            });
+        }
+        return child;
+    });
+};
+
+// 🧹 Bersihkan meta-tag [!CONFLICT_ALERT] dari isi teks anak blok alert bentrok
+const removeConflictAlertPrefix = (children) => {
+    return React.Children.map(children, child => {
+        if (typeof child === 'string') {
+            return child.replace(/\[!CONFLICT_ALERT\]\s*(?:BENTROK ATURAN:?\s*)?/gi, '');
+        }
+        if (React.isValidElement(child) && child.props.children) {
+            return React.cloneElement(child, {
+                children: removeConflictAlertPrefix(child.props.children)
             });
         }
         return child;
@@ -318,10 +333,9 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
 
             // Jika ada tag konflik, render UI peringatan yang mencolok dan bisa di-klik (collapsible)
             if (textContent.includes('[!CONFLICT_ALERT]')) {
-                // Hapus string '[!CONFLICT_ALERT]' dari tampilan
-                const cleanContent = textContent.replace('[!CONFLICT_ALERT]', '').trim();
+                const cleanedChildren = removeConflictAlertPrefix(children);
                 return (
-                    <details className="my-5 border border-red-500/40 bg-red-500/10 rounded-xl overflow-hidden shadow-[0_0_15px_rgba(239,68,68,0.1)] group cursor-pointer transition-all">
+                    <details open className="my-5 border border-red-500/40 bg-red-500/10 rounded-xl overflow-hidden shadow-[0_0_15px_rgba(239,68,68,0.1)] group cursor-pointer transition-all">
                         <summary className="bg-red-500/20 px-4 py-2.5 border-b border-red-500/20 flex items-center gap-2 select-none hover:bg-red-500/30">
                             <svg className="w-5 h-5 text-red-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
@@ -332,7 +346,7 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
                             </svg>
                         </summary>
                         <div className="p-4 text-[13.5px] text-red-400 font-medium leading-relaxed [&>p]:m-0">
-                            {recursiveHighlight(children, searchQuery)}
+                            {recursiveHighlight(cleanedChildren, searchQuery)}
                         </div>
                     </details>
                 );
@@ -365,6 +379,10 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
         span({ children, ...props }) {
             const { searchQuery } = latestProps.current;
             return <span {...props}>{recursiveHighlight(children, searchQuery)}</span>;
+        },
+        hr({ ...props }) {
+            const { darkMode } = latestProps.current;
+            return <hr style={{ border: 'none', borderTop: `1px solid ${darkMode ? 'rgba(148, 163, 184, 0.2)' : 'rgba(203, 213, 225, 0.6)'}`, margin: '16px 0' }} {...props} />;
         },
 
         // 5.5. TAUTAN / LINKS (Elegan & Buka di tab baru)
@@ -532,9 +550,7 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
 
             if (!inline && match && (match[1] === 'datagrid' || match[1] === 'tablejson')) {
                 return (
-                    <Suspense fallback={<div className="animate-pulse p-8 border border-dashed rounded-xl text-sm text-center font-medium my-4">Memuat Interactive Data Grid...</div>}>
-                        <LazyDataGridViewer chartCode={cleanCode} darkMode={darkMode} isStreaming={isStreaming} language={language} />
-                    </Suspense>
+                    <DataGridViewer chartCode={cleanCode} darkMode={darkMode} isStreaming={isStreaming} language={language} />
                 );
             }
 
@@ -619,18 +635,24 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
                     .replace(/\[GHOSTWRITER\]/ig, '')
                     .replace(/\[LINEAGE\]/ig, '')
                     .replace(/\[(?:TANYA(?:\s+LAGI)?|FOLLOW_UP|KLARIFIKASI|SUMMARY)\]/ig, '')
-                    .trim();
+                let displayContent = sanitizedResponseBlock;
+                if (isStreaming && displayContent) {
+                    // Hindari flash horizontal rule saat teks berakhir sementara dengan trailing dashes/setext
+                    displayContent = displayContent.replace(/\n[-_]{2,}\s*$/, '\n');
+                }
 
                 const answeredList = (messageIndex !== null && messageIndex !== undefined) ? wizardAnswers[messageIndex] : null;
 
                 return (
                     <div style={{ width: '100%' }}>
-                        {sanitizedResponseBlock && (
-                            <ReactMarkdown
-                                children={sanitizedResponseBlock}
-                                components={markdownComponents}
-                                remarkPlugins={remarkPluginsList}
-                            />
+                        {displayContent && (
+                            <div className={isStreaming ? 'cakra-streaming-active' : ''}>
+                                <ReactMarkdown
+                                    children={displayContent}
+                                    components={markdownComponents}
+                                    remarkPlugins={remarkPluginsList}
+                                />
+                            </div>
                         )}
                         
                         {/* 🎯 REKAM JEJAK PILIHAN USER (SUMMARY BADGES) SETELAH WIZARD DISUBMIT */}

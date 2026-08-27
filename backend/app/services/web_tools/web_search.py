@@ -91,9 +91,10 @@ def format_search_results_for_llm(results: List[Dict[str, Any]]) -> str:
         
     context = "BERIKUT ADALAH HASIL PENCARIAN WEB TERBARU:\n\n"
     for idx, r in enumerate(results, 1):
-        context += f"[{idx}] {r['title']}\n"
-        context += f"URL: {r['url']}\n"
-        context += f"Isi Ringkasan: {r['content']}\n\n"
+        context += f"[{idx}] Judul Sumber: {r.get('title', 'Sumber Web')}\n"
+        context += f"URL: {r.get('url', '')}\n"
+        context += f"Format Sitasi Markdown Wajib: [{r.get('title', 'Sumber Web')}]({r.get('url', '')})\n"
+        context += f"Isi Ringkasan: {r.get('content', '')}\n\n"
         
-    context += "Gunakan informasi di atas untuk menjawab pertanyaan pengguna secara akurat.\n"
+    context += "PANDUAN SITASI: Setiap menyebutkan fakta dari sumber di atas, WAJIB sertakan format markdown link `[Nama Sumber](URL)` yang sesuai agar pengguna dapat mengkliknya.\n"
     return context

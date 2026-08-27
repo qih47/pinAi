@@ -12,22 +12,71 @@ export default function DataGridViewer({ chartCode, darkMode, isStreaming, langu
   const [isExpanded, setIsExpanded] = useState(false);
   const exportRef = useRef(null);
 
-  // 2. Resilient JSON Parsing (Mendukung Full & Streaming Partial JSON)
+  // 2. Resilient JSON Parsing & Normalization (Mendukung Full & Streaming Partial JSON)
   const parsedData = useMemo(() => {
     if (!chartCode || chartCode.trim() === '') return null;
     try {
       const clean = chartCode.trim();
-      const firstBrace = clean.indexOf('{');
-      const lastBrace = clean.lastIndexOf('}');
-      const rawTarget = (firstBrace !== -1 && lastBrace !== -1 && lastBrace >= firstBrace)
-        ? clean.substring(firstBrace, lastBrace + 1)
-        : clean;
+      let rawObj = null;
 
-      const parsed = parsePartialJSON(rawTarget);
-      if (parsed && typeof parsed === 'object') {
-        return parsed;
+      // Coba direct parse dulu
+      try {
+        rawObj = JSON.parse(clean);
+      } catch (_) {
+        rawObj = parsePartialJSON(clean);
       }
-      return { error: 'Invalid JSON format for datagrid.' };
+
+      if (!rawObj || typeof rawObj !== 'object') {
+        return { error: 'Invalid JSON format for datagrid.' };
+      }
+
+      // Normalisasi columns: dukung array string ["A", "B"] atau array object [{ key: "a", label: "A" }]
+      let normalizedColumns = [];
+      if (Array.isArray(rawObj.columns)) {
+        normalizedColumns = rawObj.columns.map((col, idx) => {
+          if (typeof col === 'string') {
+            return { key: col, label: col };
+          }
+          if (col && typeof col === 'object') {
+            const key = col.key || col.name || col.id || col.field || `col_${idx}`;
+            const label = col.label || col.title || col.header || col.name || key;
+            return { key, label };
+          }
+          return { key: `col_${idx}`, label: `Kolom ${idx + 1}` };
+        });
+      }
+
+      // Normalisasi rows: dukung array object atau array of array
+      let normalizedRows = [];
+      if (Array.isArray(rawObj.rows)) {
+        normalizedRows = rawObj.rows.map((row, rIdx) => {
+          if (Array.isArray(row)) {
+            // Row berbentuk array: ["MoE", "Dense"] -> map ke keys columns
+            const rowObj = {};
+            row.forEach((val, cIdx) => {
+              const colKey = normalizedColumns[cIdx]?.key || `col_${cIdx}`;
+              rowObj[colKey] = val;
+            });
+            return rowObj;
+          }
+          if (row && typeof row === 'object') {
+            return row;
+          }
+          return { value: row };
+        });
+      }
+
+      // Jika columns belum ada tapi rows berbentuk array of objects, buat columns otomatis dari keys row pertama
+      if (normalizedColumns.length === 0 && normalizedRows.length > 0 && typeof normalizedRows[0] === 'object') {
+        normalizedColumns = Object.keys(normalizedRows[0]).map(k => ({ key: k, label: k }));
+      }
+
+      return {
+        ...rawObj,
+        title: rawObj.title || rawObj.caption || rawObj.name || 'Data Table',
+        columns: normalizedColumns,
+        rows: normalizedRows
+      };
     } catch (e) {
       return { error: 'Invalid JSON format for datagrid.' };
     }
@@ -218,4 +267,6 @@ export default function DataGridViewer({ chartCode, darkMode, isStreaming, langu
       </div>
     </div>
   );
+
+  return isExpanded ? createPortal(content, document.body) : content;
 }

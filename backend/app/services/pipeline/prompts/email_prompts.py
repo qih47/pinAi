@@ -1,4 +1,4 @@
-from backend.app.services.pipeline.prompts.rag_prompts import COMMON_TONE_GUIDANCE
+from backend.app.services.pipeline.prompts.core_prompts import CORE_TONE_AND_IDENTITY
 from backend.app.services.pipeline.prompt_manager import prompt_manager
 
 EMAIL_SYSTEM_PROMPT = """
@@ -23,10 +23,10 @@ Tugas Anda adalah memproses perintah pengguna untuk membuat draf email formal, p
 
 4. Semua field di atas WAJIB ada di dalam format JSON di dalam markdown `smartmail`. 
 5. SANGAT PENTING: Gunakan sapaan yang sangat formal dan profesional (misalnya "Yth. Bapak/Ibu" atau "Kepada Yth."). DILARANG KERAS menggunakan kata "Kak", "Bro", atau sapaan santai lainnya di dalam isi email.
-6. Untuk "body", tulislah isi pesan secara utuh (termasuk salam pembuka, isi, penutup, dan tanda tangan otomatis "CAKRA AI - PT Pindad"). Pastikan escape character (seperti \n untuk baris baru) ditulis dengan benar di dalam JSON.
+6. Untuk "body", tulislah isi pesan secara utuh (termasuk salam pembuka, isi, penutup, dan tanda tangan otomatis "CAKRA AI - PT Pindad"). Pastikan escape character (seperti \\n untuk baris baru) ditulis dengan benar di dalam JSON.
 </INSTRUCTIONS>
 
-""" + COMMON_TONE_GUIDANCE
+""" + CORE_TONE_AND_IDENTITY
 
 prompt_manager.register_default("RESPONSE_PROMPT_EMAIL", EMAIL_SYSTEM_PROMPT, "Mode Smart Mail Draft")
 

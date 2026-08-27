@@ -146,6 +146,11 @@ async def execute_call1_routing(
         fast_routing["pronoun"] = precheck.get("pronoun", "informal_gue_lo")
         return fast_routing
 
+    if previous_topic and not precheck.get("previous_topic"):
+        precheck["previous_topic"] = previous_topic
+    if previous_subject and not precheck.get("previous_subject"):
+        precheck["previous_subject"] = previous_subject
+
     # Smart Signal Stripping
     stripped_message = extract_routing_signals_for_call1(user_message)
 
@@ -166,8 +171,8 @@ async def execute_call1_routing(
         {"role": "user", "content": stripped_message},
     ]
 
-    # Alokasi num_predict dinamis (Sparse JSON murni, super hemat token & sub-detik)
-    dynamic_predict = 250 if is_first_chat else 160
+    # Alokasi num_predict dinamis (Sparse JSON murni, aman tanpa clipping)
+    dynamic_predict = 350 if is_first_chat else 250
 
     # Kunci num_ctx konstan di 4096 agar sama persis dengan warmup (tidak memicu re-alokasi KV context di Ollama)
     router_ctx = 4096
@@ -183,6 +188,8 @@ async def execute_call1_routing(
             messages=messages,
             request=request,
             temperature=0.0,
+            top_p=0.1,
+            top_k=1,
             keep_alive=-1,
             num_ctx=router_ctx,
             num_predict=dynamic_predict,
@@ -190,11 +197,16 @@ async def execute_call1_routing(
         )
 
 
+        # Bersihkan setiap field bernilai False, None, atau empty array agar benar-benar sparse
+        clean_sparse_json = {
+            k: v for k, v in routing_json.items() 
+            if v is not False and v is not None and v != [] and v != ""
+        }
         import json
-        logger.info(f"[CALL1] 📦 Raw JSON Payload dari LLM:\n{json.dumps(routing_json, indent=2)}")
+        logger.info(f"[CALL1] 📦 Raw JSON Payload dari LLM:\n{json.dumps(clean_sparse_json, indent=2)}")
 
         routing = _validate_and_normalize_routing(
-            routing_json, 
+            clean_sparse_json, 
             precheck,
             is_first_chat=is_first_chat,
             user_message=user_message
@@ -228,6 +240,11 @@ def _validate_and_normalize_routing(
         "search_tags": [],
         "context_snippets": [],
         "is_coding": False,
+        "is_troubleshooting": False,
+        "is_comparative": False,
+        "has_actionable_workflow": False,
+        "is_deep_research": False,
+        "is_security_critical": False,
         "is_generate_file": False,  # MODE GENERATE FILE: True jika user meminta dibuatkan file
         "is_generate_email": False, # MODE EMAIL: True jika user meminta dibuatkan email
         "need_analytic": False,
@@ -254,7 +271,23 @@ def _validate_and_normalize_routing(
     routing["is_generate_file"] = bool(routing_json.get("is_generate_file", False))
     routing["is_generate_email"] = bool(routing_json.get("is_generate_email", False))
     routing["is_coding"] = bool(routing_json.get("is_coding", False))
+    routing["is_troubleshooting"] = bool(routing_json.get("is_troubleshooting", False))
+    routing["is_comparative"] = bool(routing_json.get("is_comparative", False))
+    routing["has_actionable_workflow"] = bool(routing_json.get("has_actionable_workflow", False))
+    routing["is_deep_research"] = bool(routing_json.get("is_deep_research", False))
+    routing["is_security_critical"] = bool(routing_json.get("is_security_critical", False))
     routing["is_chitchat"] = bool(routing_json.get("is_chitchat", False))
+    # Deteksi cerdas: jika active_topic / key_subject menunjukkan sapaan/salam/cuaca/waktu, tandai is_chitchat = True
+    topic_sub_text = f"{routing['active_topic']} {routing['key_subject']}".lower()
+    user_msg_lower = (user_message or "").lower()
+    if not routing["need_rag"] and not routing["is_coding"] and not routing["is_generate_file"]:
+        if any(kw in topic_sub_text for kw in ["sapaan", "salam", "chitchat", "greeting", "kabar", "energi positif", "semangat pagi", "cuaca", "suhu", "waktu", "jam berapa", "tanggal berapa"]) or precheck.get("is_greeting") or precheck.get("is_chitchat"):
+            routing["is_chitchat"] = True
+
+    # Deteksi cerdas: jika user bertanya cuaca hari ini / cuaca lokal saat ini (BUKAN prakiraan masa depan / 7 hari ke depan):
+    is_future_forecast = any(kw in user_msg_lower for kw in ["7 hari", "minggu depan", "besok", "lusa", "forecast", "prakiraan", "seminggu", "prediksi", "chart", "grafik"])
+    is_current_weather = ("cuaca" in topic_sub_text or "cuaca" in user_msg_lower or "suhu" in user_msg_lower) and not any(city in user_msg_lower for city in ["tokyo", "london", "new york", "paris", "singapore", "amerika", "eropa"]) and not is_future_forecast
+
     routing["need_rag"] = bool(routing_json.get("need_rag", False))
     routing["need_analytic"] = bool(routing_json.get("need_analytic", False))
     routing["is_self_correction"] = bool(routing_json.get("is_self_correction", False))
@@ -262,7 +295,17 @@ def _validate_and_normalize_routing(
     routing["is_multi_turn_task"] = bool(routing_json.get("is_multi_turn_task", False))
     routing["requires_visual"] = bool(routing_json.get("requires_visual", False))
     routing["is_map_query"] = bool(routing_json.get("is_map_query", False))
-    routing["is_web_search"] = bool(routing_json.get("is_web_search", False))
+    
+    # Otomatis aktifkan is_web_search jika ada queries dan bukan dokumen internal / bukan koding / bukan cuaca saat ini
+    if is_current_weather:
+        logger.info("[CALL1] ⛅ Cuaca lokal saat ini terdeteksi. Mematikan is_web_search agar dijawab instan via Ambient Context Persona.")
+        routing["is_web_search"] = False
+        routing["queries"] = []
+        routing["is_chitchat"] = True
+    elif routing_json.get("queries") and not routing["need_rag"] and not routing["is_coding"] and not routing["is_generate_file"]:
+        routing["is_web_search"] = True
+    else:
+        routing["is_web_search"] = bool(routing_json.get("is_web_search", False))
 
     # ── ATURAN STRICT AMBIGUOUS GATE ──────────────────────────────────────────
     # Jika is_ambiguous True, paksa need_rag = False dan kosongkan search queries/web search
@@ -273,6 +316,14 @@ def _validate_and_normalize_routing(
         routing["query_judul"] = []
         routing["search_tags"] = []
         routing["is_web_search"] = False
+
+    # ── ATURAN STRICT MUTUAL EXCLUSION: need_rag VS is_web_search ─────────────
+    # need_rag (dokumen internal Pindad) dan is_web_search (pencarian internet publik)
+    # DILARANG KERAS sama-sama aktif!
+    if routing["need_rag"]:
+        if routing.get("is_web_search"):
+            logger.warning("[CALL1] 🛡️ Strict Mutual Exclusion: need_rag=True, forcing is_web_search=False!")
+            routing["is_web_search"] = False
 
     # Tangkap jika model mengembalikan pronoun sebagai boolean flag atau inheritance dari precheck
     if routing.get("pronoun") not in ["informal_gue_lo", "formal_saya_anda", "familiar_aku_kamu"]:
@@ -314,8 +365,8 @@ def _validate_and_normalize_routing(
         logger.info(f"[CALL1] Auto-populated fetch_urls from precheck detected URLs: {routing['fetch_urls']}")
 
     queries = routing_json.get("queries", [])
-    is_web_search = bool(routing_json.get("is_web_search", False))
-    if isinstance(queries, list):
+    is_web_search = bool(routing.get("is_web_search", False))
+    if isinstance(queries, list) and (routing.get("is_web_search") or routing.get("need_rag") or routing.get("is_self_correction")):
         cleaned_queries = [
             str(q).strip() for q in queries if isinstance(q, str) and q.strip()
         ][:5]
@@ -408,32 +459,55 @@ def _validate_and_normalize_routing(
         logger.warning("[CALL1] Precheck override: is_generate_email forced to True")
         routing["is_generate_email"] = True
 
-    # Sanity check: Jika user meminta grafik dummy / visualisasi internal, jangan biarkan web search terpancing
+    # Sanity check: Hanya sanitize jika user secara eksplisit meminta data murni dummy/tiruan
     if (routing.get("requires_visual") or precheck.get("requires_visual")) and routing.get("is_web_search"):
         user_msg_lower = precheck.get("_user_message", "").lower()
-        if any(w in user_msg_lower for w in ["dummy", "grafik", "garfik", "chart", "diagram", "flowchart", "perbandingan 2 data", "visualisasi"]):
-            if not any(sw in user_msg_lower for sw in ["cari di web", "google", "berita", "terbaru", "terkini", "internet"]):
-                logger.warning("[CALL1] Sanitizing false positive is_web_search on visual dummy/chart task")
+        if any(w in user_msg_lower for w in ["dummy", "data tiruan", "data palsu", "angka sembarang", "simulasi acak"]):
+            if not any(sw in user_msg_lower for sw in ["cari di web", "google", "berita", "terbaru", "terkini", "internet", "cuaca", "saham", "inflasi"]):
+                logger.warning("[CALL1] Sanitizing false positive is_web_search on pure dummy task")
                 routing["is_web_search"] = False
                 routing["queries"] = []
 
+    # Sanity check: Jika user hanya meminta data dummy / perbandingan data di chat TANPA instruksi buat/ekspor file fisik atau coding
+    if (routing.get("is_generate_file") or routing.get("is_coding")) and not precheck.get("is_coding"):
+        user_msg_lower = precheck.get("_user_message", "").lower()
+        file_export_keywords = ["file", "ekspor", "export", "unduh", "download", "excel", "xlsx", "csv", "docx", "word", "pdf", ".md", ".py", ".js", "script", "koding", "coding", "aplikasi", "komponen", "proyek", "project", "repo", "source code", "bikin file", "buat file"]
+        has_file_intent = any(k in user_msg_lower for k in file_export_keywords)
+        is_plain_data_query = any(k in user_msg_lower for k in ["data dummy", "data dumy", "data simulasi", "perbandingan penjualan", "contoh data", "tabel perbandingan", "tabel dummy", "angka dummy"])
+        if is_plain_data_query and not has_file_intent:
+            logger.warning("[CALL1] Sanitizing false positive is_generate_file/is_coding on plain chat data simulation request")
+            routing["is_generate_file"] = False
+            routing["is_coding"] = False
+            routing["requires_visual"] = True
+
     if routing["need_rag"]:
+        # 🚫 Internal Document RAG dilarang keras mengaktifkan is_web_search
+        routing["is_web_search"] = False
         from backend.app.services.pipeline.modes.mode_utils import build_rule_based_queries
 
-        user_message = precheck.get("_user_message", "")
-        rule_based_queries = build_rule_based_queries(user_message)
+        user_msg = (user_message or precheck.get("_user_message", "")).strip()
+        ctx_sub = (routing.get("key_subject") or precheck.get("previous_subject", "")).strip()
+        ctx_top = (routing.get("active_topic") or precheck.get("previous_topic", "")).strip()
+        rule_based_queries = [q.strip() for q in build_rule_based_queries(user_msg, ctx_sub, ctx_top) if q and q.strip()]
         
         # Ambil pure keyword asli dari rule_based_queries index 0
-        pure_keyword = rule_based_queries[0] if rule_based_queries else user_message
+        pure_keyword = rule_based_queries[0] if rule_based_queries else user_msg
 
         if not routing["queries"]:
             routing["queries"] = rule_based_queries
-            logger.info(f"[CALL1] Rule-based queries generated: {routing['queries']}")
+            logger.info(f"[CALL1] Rule-based queries generated from subject/context: {routing['queries']}")
         else:
-            # Amankan query dari gemma, tapi paksa query 1 jadi pure keyword user
-            gemma_queries = [q for q in routing["queries"] if q.lower() != pure_keyword.lower()]
-            routing["queries"] = [pure_keyword] + gemma_queries[:2]
-            logger.info(f"[CALL1] Queries modified. Query 1 forced to user keyword: {routing['queries']}")
+            # Amankan query dari gemma, tapi paksa query 1 jadi pure keyword user jika spesifik
+            gemma_queries = [q.strip() for q in routing["queries"] if q and q.strip() and q.lower() != pure_keyword.lower()]
+            if pure_keyword and pure_keyword.lower() not in ["ketentuan", "regulasi", "aturan"]:
+                routing["queries"] = [pure_keyword] + gemma_queries[:2]
+            else:
+                routing["queries"] = gemma_queries[:3] if gemma_queries else rule_based_queries
+            logger.info(f"[CALL1] Queries finalized: {routing['queries']}")
+
+    # Final cleanup: buang string kosong / spasi dari queries
+    if isinstance(routing.get("queries"), list):
+        routing["queries"] = [q.strip() for q in routing["queries"] if isinstance(q, str) and q.strip()]
 
     routing["is_chitchat"] = bool(routing_json.get("is_chitchat", False))
 
