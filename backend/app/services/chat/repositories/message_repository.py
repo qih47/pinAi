@@ -189,6 +189,7 @@ class MessageRepository:
         """
         query = """
             SELECT 
+                m.id,
                 m.role, 
                 m.message_text, 
                 m.thought,
@@ -227,9 +228,12 @@ class MessageRepository:
             rows = await conn.fetch(query, session_uuid)
             return [
                 {
+                    "id": row["id"],
                     "role": row["role"],
                     "content": row["message_text"],
                     "thought": row["thought"],
+                    "timestamp": row["timestamp"].isoformat() if hasattr(row["timestamp"], "isoformat") else str(row["timestamp"]) if row["timestamp"] else None,
+                    "created_at": row["timestamp"].isoformat() if hasattr(row["timestamp"], "isoformat") else str(row["timestamp"]) if row["timestamp"] else None,
                     "sources": json.loads(row["sources"]) if row["sources"] and isinstance(row["sources"], str) else row.get("sources"),
                     "metadata": json.loads(row["metadata"]) if row["metadata"] and isinstance(row["metadata"], str) else row.get("metadata"),
                     "attachments": json.loads(row["attachments"]) if isinstance(row["attachments"], str) else row["attachments"]

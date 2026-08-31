@@ -2,6 +2,7 @@ import React, { useState, memo } from 'react';
 import { useChatStore, getUploadUrl } from '../../../stores/chatStore';
 import { getUserBubbleStyles } from '../chatPage.styles';
 import { translations } from '../../../utils/translations';
+import MessageTimer from './MessageTimer';
 
 const highlightText = (text, query) => {
   if (!query || typeof text !== 'string') return text;
@@ -291,6 +292,12 @@ const UserBubble = memo(function UserBubble({
       {/* 🛰️ HOVER ACTIONS */}
       {!isEditing && (
         <div style={bubbleStyles.hoverActionsGroup}>
+          <MessageTimer
+            timestamp={msg.created_at || msg.timestamp}
+            language={language}
+            darkMode={darkMode}
+            style={{ marginRight: '2px' }}
+          />
           <button
             type="button"
             onClick={() => executeTextCopy(msg.content)}

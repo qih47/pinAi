@@ -100,10 +100,11 @@ export const createStreamSlice = (set, get) => ({
         const userMessage = {
             role: 'user',
             content: content.trim(),
+            timestamp: new Date().toISOString(),
             ...(attachmentMeta.length > 0 ? { attachments: attachmentMeta } : {}),
         };
         const updatedMessages = [...get().messages, userMessage];
-        const assistantMessage = { role: 'assistant', content: '', isStreaming: true };
+        const assistantMessage = { role: 'assistant', content: '', timestamp: new Date().toISOString(), isStreaming: true };
 
         const currentAttachmentPaths = attachmentMeta
             .map((file) => file.file_path)

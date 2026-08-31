@@ -8,6 +8,7 @@ import cakraLogo from '../../../assets/cakra.png';
 import { styles } from '../chatPage.styles';
 import { useChatStore } from '../../../stores/chatStore';
 import UserBubble from './UserBubble';
+import MessageTimer from './MessageTimer';
 import apiClient from '../../../services/apiClient';
 import { translations } from '../../../utils/translations';
 
@@ -1045,6 +1046,14 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
                                     <path d="M3 3v5h5"></path>
                                 </svg>
                             </button>
+
+                            {/* ⏱️ LABEL TIMER DI SEBELAH KANAN REGENERATE */}
+                            <MessageTimer
+                                timestamp={msg.created_at || msg.timestamp}
+                                language={language}
+                                darkMode={darkMode}
+                                style={{ marginLeft: '4px' }}
+                            />
                         </div>
                     )}
 
