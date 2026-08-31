@@ -93,6 +93,46 @@ def extract_explicit_pages_from_query(query: str, total_pages: int) -> Set[int]:
     return explicit_pages
 
 
+def expand_tri_window_context(seed_pages: List[int], text_map: List[Dict[str, Any]], total_pages: int) -> List[int]:
+    """
+    Ekspansi jendela struktural Tri-Window (kiri dan kanan) untuk menghubungkan pasal yang terpotong.
+    """
+    if not seed_pages or not text_map:
+        return seed_pages or []
+        
+    expanded_cluster = set()
+    for p in seed_pages:
+        if p < 0 or p >= total_pages:
+            continue
+        expanded_cluster.add(p)
+        
+        # Analisis KIRI (Backward / Kepala):
+        if p > 0:
+            prev_p = p - 1
+            text_curr = text_map[p]["text"] if p < len(text_map) else ""
+            text_prev = text_map[prev_p]["text"] if prev_p < len(text_map) else ""
+            
+            is_struct_back = StructuralContinuityDetector.detect_unclosed_list_backward(text_curr, text_prev)
+            is_catchword_prev = StructuralContinuityDetector.detect_catchword(text_prev)
+            if is_struct_back or is_catchword_prev:
+                expanded_cluster.add(prev_p)
+                logger.info(f"[DOC_INTEL] 🔗 Linked LEFT: Page {prev_p+1} (Head of Page {p+1}) | Struct: {is_struct_back}, Catchword: {is_catchword_prev}")
+
+        # Analisis KANAN (Forward / Ekor):
+        if p + 1 < total_pages:
+            next_p = p + 1
+            text_curr = text_map[p]["text"] if p < len(text_map) else ""
+            text_next = text_map[next_p]["text"] if next_p < len(text_map) else ""
+            
+            is_catchword_fwd = StructuralContinuityDetector.detect_catchword(text_curr)
+            is_struct_fwd = StructuralContinuityDetector.detect_unclosed_list_forward(text_curr, text_next)
+            if is_catchword_fwd or is_struct_fwd:
+                expanded_cluster.add(next_p)
+                logger.info(f"[DOC_INTEL] 🔗 Linked RIGHT: Page {next_p+1} (Tail of Page {p+1}) | Struct: {is_struct_fwd}, Catchword: {is_catchword_fwd}")
+                
+    return sorted(list(expanded_cluster))
+
+
 def process_single_page_threadsafe(file_path: str, page_num: int) -> Tuple[Dict[str, Any], str]:
     """Worker thread-safe untuk render gambar resolusi tinggi dan OCR jika diperlukan."""
     import pytesseract

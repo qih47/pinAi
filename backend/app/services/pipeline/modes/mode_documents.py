@@ -73,11 +73,12 @@ class ModeDocuments:
         if not should_run_rag:
             logger.info("[MODE_DOCUMENTS] 💬 need_rag=False terdeteksi di mode documents -> Lewati pencarian RAG & FTS!")
         else:
-            from backend.app.services.peraturan_service import (
-                get_candidate_documents_metadata,
-                extract_pdf_pages_sync,
-            )
+            from backend.app.services.peraturan_service import get_candidate_documents_metadata
             from backend.app.services.rag.reranker_service import reranker_service
+            from backend.app.services.pipeline.document_intelligence import (
+                extract_and_ocr_document_async,
+                expand_tri_window_context
+            )
             
             query_judul_list = routing_data.get("query_judul") or []
             query_judul_str = " ".join(query_judul_list) if isinstance(query_judul_list, list) else str(query_judul_list)
@@ -119,13 +120,13 @@ class ModeDocuments:
                 doc_count = len(full_read_docs)
                 hist_count = len(historical_docs)
                 yield format_sse(status=f"📑 Menemukan {doc_count + hist_count} dokumen", event_type=SSEEventType.STATUS)
-                await asyncio.sleep(0.05)
+                await asyncio.sleep(0.02)
                 
                 global_page_pool = []
                 all_source_metadata = []
-                loop = asyncio.get_running_loop()
+                doc_text_maps = {}  # doc_id -> list of {"page_num": int, "text": str}
                 
-                # 1A. Progressive per-file reading stepper — HANYA untuk full_read_docs (aktif/terbaru)
+                # 1A. Progressive per-file reading stepper (Document Intelligence & In-Memory Cache)
                 for doc in full_read_docs:
                     valid_file = doc.get("valid_file")
                     if not valid_file or not os.path.exists(valid_file):
@@ -133,23 +134,30 @@ class ModeDocuments:
                         
                     doc_title_display = doc['judul'][:38].strip()
                     yield format_sse(status=f"📖 Membaca {doc_title_display}", event_type=SSEEventType.STATUS)
-                    await asyncio.sleep(0.05)
+                    await asyncio.sleep(0.02)
                     
-                    pages = await loop.run_in_executor(None, extract_pdf_pages_sync, valid_file, 100)
-                    page_count = len(pages)
+                    cache_key = f"doc_{doc['id']}"
+                    text_map, _, page_count = await extract_and_ocr_document_async(valid_file, cache_key=cache_key)
+                    doc_text_maps[doc["id"]] = text_map
                     
-                    for p in pages:
-                        p["doc_id"] = doc["id"]
-                        p["doc_title"] = doc["judul"]
-                        p["doc_noper"] = doc["noper"]
-                        p["doc_status"] = doc["status_berlaku"]
-                        p["doc_tanggal"] = doc["tanggal"]
-                        p["doc_mencabut"] = doc["mencabut"]
-                        p["valid_file"] = valid_file
-                        p["filename"] = doc["filename"]
-                        p["file_path"] = doc["file_path"]
-                        p["jenis"] = doc["jenis"]
-                        global_page_pool.append(p)
+                    for item in text_map:
+                        p_num = item["page_num"] + 1  # 1-based page number
+                        p_text = item["text"]
+                        global_page_pool.append({
+                            "page_num": p_num,
+                            "page_index": item["page_num"],
+                            "text": p_text,
+                            "doc_id": doc["id"],
+                            "doc_title": doc["judul"],
+                            "doc_noper": doc["noper"],
+                            "doc_status": doc["status_berlaku"],
+                            "doc_tanggal": doc["tanggal"],
+                            "doc_mencabut": doc["mencabut"],
+                            "valid_file": valid_file,
+                            "filename": doc["filename"],
+                            "file_path": doc["file_path"],
+                            "jenis": doc["jenis"]
+                        })
                         
                     all_source_metadata.append({
                         "id": doc["id"],
@@ -208,15 +216,13 @@ class ModeDocuments:
                     logger.info(f"[MODE_DOCUMENTS] 📋 {len(historical_summary_lines)} historical docs → ringkasan saja (skip PDF read)")
 
                     
-                # 2. Global Cross-Document Page-Level Reranking
+                # 2. Global Cross-Document Page-Level Reranking & Tri-Window Context Expansion
                 if global_page_pool:
                     total_p_count = len(global_page_pool)
                     yield format_sse(status="🎯 Menyaring pasal relevan", event_type=SSEEventType.STATUS)
-                    await asyncio.sleep(0.05)
+                    await asyncio.sleep(0.02)
                     
                     # Effective query untuk BGE page scoring: gunakan rag_queries[0] murni saja.
-                    # query_judul_list sudah dipakai di MySQL candidate fetch — JANGAN digabung lagi
-                    # ke sini karena akan menyebabkan duplikasi kata & noise ke BGE scorer.
                     effective_page_query = rag_queries[0].strip() if rag_queries else user_message
                     logger.info(f"[MODE_DOCUMENTS] Scoring {len(global_page_pool)} pages using effective query: '{effective_page_query}'")
                     
@@ -230,41 +236,64 @@ class ModeDocuments:
                     # Urutkan berdasarkan skor tertinggi
                     global_page_pool.sort(key=lambda x: x["score"], reverse=True)
                     
-                    # Ambil Top 8 Halaman Terbaik Lintas Dokumen
-                    top_pages = [p for p in global_page_pool if p["score"] > 0.35][:8]
-                    if not top_pages:
-                        top_pages = global_page_pool[:4]
+                    # Ambil Top 6 Seed Halaman Terbaik Lintas Dokumen
+                    top_seeds = [p for p in global_page_pool if p["score"] > 0.35][:6]
+                    if not top_seeds:
+                        top_seeds = global_page_pool[:3]
                         
+                    # Kelompokkan seed per dokumen untuk Tri-Window Expansion
+                    seeds_by_doc = {}
+                    for seed in top_seeds:
+                        d_id = seed["doc_id"]
+                        if d_id not in seeds_by_doc:
+                            seeds_by_doc[d_id] = []
+                        seeds_by_doc[d_id].append(seed["page_index"])
+                    
+                    # Terapkan Tri-Window Connected Context per dokumen
+                    connected_pages_per_doc = {}
+                    for d_id, seed_indices in seeds_by_doc.items():
+                        t_map = doc_text_maps.get(d_id, [])
+                        expanded_indices = expand_tri_window_context(seed_indices, t_map, total_pages=len(t_map))
+                        connected_pages_per_doc[d_id] = expanded_indices
+                        logger.info(f"[MODE_DOCUMENTS] Doc {d_id} Expanded Pages: {expanded_indices} (from seeds: {seed_indices})")
+                    
                     # Grouping summary untuk SSE status
-                    doc_pages_map = {}
-                    for tp in top_pages:
-                        d_title = tp["doc_title"]
-                        p_num = tp["page_num"]
-                        if d_title not in doc_pages_map:
-                            doc_pages_map[d_title] = []
-                        doc_pages_map[d_title].append(str(p_num))
-                        
                     summary_parts = []
-                    for d_title, p_nums in doc_pages_map.items():
-                        short_t = d_title[:28] + ("..." if len(d_title) > 28 else "")
-                        summary_parts.append(f"{short_t} (Hal {', '.join(sorted(p_nums, key=int))})")
+                    for doc in full_read_docs:
+                        d_id = doc["id"]
+                        if d_id in connected_pages_per_doc:
+                            p_nums = [str(p + 1) for p in connected_pages_per_doc[d_id]]
+                            short_t = doc["judul"][:28] + ("..." if len(doc["judul"]) > 28 else "")
+                            summary_parts.append(f"{short_t} (Hal {', '.join(p_nums)})")
                         
                     sse_summary = " & ".join(summary_parts)
                     yield format_sse(status="📄 Membaca pasal terpilih", event_type=SSEEventType.STATUS)
-                    await asyncio.sleep(0.05)
+                    await asyncio.sleep(0.02)
                     
-                    # Susun judul_context dari Top Pages
+                    # Susun judul_context dari Connected Pages yang utuh dan tidak terpotong
                     context_blocks = []
-                    for tp in top_pages:
+                    for doc in full_read_docs:
+                        d_id = doc["id"]
+                        if d_id not in connected_pages_per_doc:
+                            continue
+                        
+                        p_indices = connected_pages_per_doc[d_id]
+                        t_map = doc_text_maps.get(d_id, [])
+                        
+                        doc_page_texts = []
+                        for p_idx in p_indices:
+                            page_text = t_map[p_idx]["text"] if p_idx < len(t_map) else ""
+                            doc_page_texts.append(f"[HALAMAN {p_idx + 1}]\n{page_text}")
+                        
                         meta_header = (
-                            f"--- DOKUMEN: {tp['doc_title']} (HALAMAN: {tp['page_num']}) ---\n"
-                            f"Status Berlaku: {tp['doc_status']}\n"
-                            f"Tanggal Terbit: {tp['doc_tanggal']}\n"
-                            f"Nomor Regulasi: {tp['doc_noper']}\n"
-                            f"Mencabut: {tp['doc_mencabut']}\n"
+                            f"--- DOKUMEN: {doc['judul']} (HALAMAN TERHUBUNG: {', '.join(str(p+1) for p in p_indices)}) ---\n"
+                            f"Status Berlaku: {doc['status_berlaku']}\n"
+                            f"Tanggal Terbit: {doc['tanggal']}\n"
+                            f"Nomor Regulasi: {doc['noper']}\n"
+                            f"Mencabut: {doc['mencabut']}\n"
                         )
-                        page_content = tp['text'] if tp['text'] else "[Dokumen hasil scan]"
-                        context_blocks.append(f"{meta_header}Isi Halaman:\n{page_content}\n-------------------")
+                        full_doc_content = "\n\n".join(doc_page_texts)
+                        context_blocks.append(f"{meta_header}Isi Halaman:\n{full_doc_content}\n-------------------")
                         
                     judul_context = "\n\n".join(context_blocks)
                     
@@ -283,12 +312,12 @@ class ModeDocuments:
                     
                     judul_sources = all_source_metadata
                     
-                    # Update source metadata page numbers
+                    # Update source metadata page numbers dengan halaman terhubung yang akurat
                     for src in judul_sources:
                         s_id = src["id"]
-                        matched_pages = [str(tp["page_num"]) for tp in top_pages if tp["doc_id"] == s_id]
-                        if matched_pages:
-                            src["page_number"] = ", ".join(sorted(matched_pages, key=int))
+                        if s_id in connected_pages_per_doc:
+                            p_nums = [str(p + 1) for p in connected_pages_per_doc[s_id]]
+                            src["page_number"] = ", ".join(p_nums)
                             
             # Hitung skor tertinggi dari Tier 1
             max_tier1_score = max([s.get('score', s.get('similarity', 0.0)) for s in judul_sources]) if judul_sources else 0.0

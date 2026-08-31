@@ -189,6 +189,9 @@ class ModeAttachment:
             )
         elif text_contents:
             text_block = "\n\n".join(text_contents)
+            # Smart context budgeting to comfortably fit within 16k context window (max ~42k chars text)
+            if len(text_block) > 42000:
+                text_block = text_block[:42000] + "\n\n...[Teks lampiran panjang diringkas ke batas optimal 16K context]..."
             augmented_user_message = (
                 f"{user_message}\n\n"
                 f"[KONTEN FILE TERLAMPIR]\n{text_block}"
@@ -220,15 +223,10 @@ class ModeAttachment:
         if not replaced:
             stream_messages.append(user_payload)
 
-        # ── 4. Token Budget & Eksekusi Streaming ─────────────────────────────────
-        # Hitung estimasi token dinamis agar muat di context window Gemma 4 (32k / 64k)
-        estimated_prompt_tokens = len(augmented_user_message) // 3.5
-        if all_imgs:
-            estimated_prompt_tokens += len(all_imgs[:4]) * 1024
-        
-        num_ctx = max(16384, int(estimated_prompt_tokens + 8192))
-        num_ctx = min(num_ctx, 65536)
-        logger.info(f"[MODE_ATTACHMENT] Dynamic context size: {num_ctx} (estimated: {int(estimated_prompt_tokens)} tokens)")
+        # ── 4. Fixed 16K Token Budget (Zero VRAM Eviction / Zero Reload) ───────────
+        # Mengunci num_ctx di 16384 persis sama dengan seluruh mode lainnya
+        num_ctx = 16384
+        logger.info(f"[MODE_ATTACHMENT] Fixed 16K context size locked: {num_ctx}")
         target_model = getattr(settings, "MODEL_PERSONA", "gemma4:31b")
 
         yield format_sse(status="", event_type=SSEEventType.STATUS)
