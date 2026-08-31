@@ -18,9 +18,12 @@ ATURAN FORMAT OUTPUT:
 2. JANGAN sertakan penjelasan, komentar, markdown triple backtick, atau teks tambahan apapun.
 3. 🚫 DILARANG KERAS MENULIS KATA `false`, `null`, ATAU ARRAY KOSONG `[]` DI DALAM JSON!
 4. BYPASS THINKING MODE: Jangan hasilkan draf penalaran teks bebas.
+5. 🚨 ATURAN MINIMAL 1 PARAMETER KAPABILITAS AKTIF:
+   Setiap respons JSON WAJIB mengaktifkan MINIMAL 1 parameter kapabilitas dari DAFTAR KAPABILITAS SISTEM di bawah yang paling relevan. DILARANG KERAS menghasilkan JSON tanpa satupun parameter kapabilitas!
 {% if is_guest %}
-5. Tamu (GUEST): Dilarang menyertakan `need_rag`.
+6. Tamu (GUEST): Dilarang menyertakan `need_rag`.
 {% endif %}
+
 
 STRUKTUR METADATA (WAJIB ADA DI SETIAP OUTPUT):
 {
@@ -83,7 +86,8 @@ Kamu bebas dan dianjurkan mengaktifkan SATU ATAU LEBIH PARAMETER SEKALIGUS jika 
   {"active_topic": "Pengembangan Web", "key_subject": "Aplikasi Manajemen Tugas", "is_coding": true, "is_ambiguous": true, "pronoun": "informal_gue_lo", "tone_hint": "casual", "detected_language": "id"}
 
 • Topik Umum / Diskusi Pop Culture / Film / Sains Umum (Tanpa Butuh Dokumen Internal):
-  {"active_topic": "Film & Sinema", "key_subject": "Urutan Film The Conjuring Universe", "pronoun": "informal_gue_lo", "tone_hint": "casual", "detected_language": "id"}
+  {"active_topic": "Film & Sinema", "key_subject": "Urutan Film The Conjuring Universe", "is_chitchat": true, "pronoun": "informal_gue_lo", "tone_hint": "casual", "detected_language": "id"}
+
 
 PANDUAN PENALARAN `active_topic` & `key_subject` (DYNAMIC CONTEXT & ENTITY TRACKING):
 - WAJIB berikan nama topik besar (`active_topic`) dan entitas spesifik yang dibahas (`key_subject`).
@@ -110,17 +114,23 @@ Jika pesan user saat ini adalah pertanyaan atau instruksi lanjutan yang SINGKAT 
      ➔ `query_judul`: ["PKB", "Perjanjian Kerja Bersama", "Cuti"]
      ➔ `need_rag`: true
 
-PANDUAN PENALARAN PARAMETER `is_web_search` & `queries` (ANTI-FILLER):
+PANDUAN PENALARAN PARAMETER `is_web_search` & `queries` (ANTI-FILLER & STRICT QUERY FAITHFULNESS):
 - Aktifkan `"is_web_search": true` JIKA:
   1. Pengguna bertanya tentang berita terbaru, kabar terkini daerah/nasional/global (contoh: "berita terbaru NTT", "kabar gempa hari ini", "siapa juara pilkada").
   2. Pengguna meminta riset harga saham real-time, event live terkini, atau informasi eksternal publik 2024-2026.
   3. Pengguna secara eksplisit meminta dicari di internet ("cari di web", "browsing").
   4. Pengguna meminta prakiraan cuaca masa depan (7 hari ke depan, besok, lusa).
 - 🚫 ATURAN `queries` WEB: Tulis 1-2 kata kunci pencarian yang BERSIH, SPESIFIK, dan PADAT langsung menyebut `key_subject`. DILARANG memakai kata filler ("mencari referensi", "terkait umum").
+- 🚨 ATURAN SEMANTIK KATA "DEMO" & ANTI-OVEREXPANSION:
+  1. Kata "demo" dalam konteks situasi kota/publik/politik (contoh: "ada demo di Jakarta?", "demo hari ini di DPR", "kondisi demo Monas") BERMAKNA **Aksi Demonstrasi / Unjuk Rasa Massa**, BUKAN demonstrasi produk atau pameran teknologi!
+     ➔ ✅ BENAR: `queries`: ["demo demonstrasi unjuk rasa Jakarta hari ini terkini", "update aksi demo Jakarta"]
+     ➔ 🚫 DILARANG KERAS menghasilkan: `["demo produk", "jadwal pameran teknologi"]` jika user tidak meminta produk!
+  2. DILARANG KERAS menambahkan kata spekulatif (seperti "produk", "jadwal expo", "pameran") jika pengguna hanya menanyakan situasi/peristiwa di suatu wilayah.
 - 🚫 JANGAN aktifkan `is_web_search` untuk:
   - Cuaca Lokal / Cuaca Hari Ini & Waktu / Tanggal saat ini (dijawab langsung via data Ambient Persona).
   - Trivia film, pop culture, teori umum yang sudah dipahami model.
   - Dokumen resmi internal PT Pindad (gunakan `need_rag`).
+
 
 PANDUAN PENALARAN PARAMETER `need_rag`, `query_judul` & `search_tags`:
 - Aktifkan `"need_rag": true` HANYA DAN KHUSUS JIKA pengguna menanyakan atau membahas topik yang memerlukan rujukan ke dokumen resmi, kebijakan internal, peraturan (SKEP/SE/PKB), SOP, spesifikasi teknis senjata/alutsista, atau data internal PT Pindad.
@@ -157,6 +167,12 @@ PANDUAN PARAMETER `pronoun`:
 - "unknown": kalimat pendek/netral.
 
 {% if need_rag_hint %}HINT: RAG WAJIB diaktifkan.{% endif %}
+{% if session_manifest_str %}
+{{ session_manifest_str }}
+PANDUAN RUJUKAN DOKUMEN/WEB SESI SEBELUMNYA (`session_chunk_ids`):
+- Jika pengguna bertanya atau merujuk ke salah satu file/web di atas (contoh: "menurut dokumen PKB tadi...", "di laporan keuangan tadi...", "di web pindad tadi..."):
+  Sertakan `"session_chunk_ids": [ID]` sesuai Chunk ID dokumen yang dirujuk pengguna agar sistem mengambil teks aslinya secara on-demand.
+{% endif %}
 {% if is_coding_precheck %}HINT: Pertanyaan coding terdeteksi.{% endif %}
 {% if previous_urls %}
 === URL YANG SUDAH DIBACA DI SESI INI ===
@@ -209,11 +225,13 @@ def build_call1_routing_prompt(
     # Format visited URLs dari sesi sebelumnya untuk disuntikkan ke prompt
     visited_urls_list = precheck.get("_visited_urls", [])
     previous_urls_str = ", ".join(visited_urls_list) if visited_urls_list else ""
+    session_manifest_str = precheck.get("_session_chunks_text", "")
     
     return prompt_manager.render(
         name="CALL1_ROUTING_PROMPT",
         user_message=user_message,
         context_history_str=context_history_str,
+        session_manifest_str=session_manifest_str,
         is_guest=is_guest,
         is_first_chat=is_first_chat,
         need_rag_hint=need_rag_hint is True and not is_guest,
@@ -229,10 +247,10 @@ def build_call1_routing_prompt(
 # CALL 2: 7 MODUL EXPERT PROMPT DENGAN DETAIL AMPLIFIER
 # ═══════════════════════════════════════════════════════════════════════════════
 
-def get_base_persona(employee_name: str, mode_title: str) -> str:
+def get_base_persona(employee_name: str, mode_title: str, client_context: Optional[Dict[str, Any]] = None) -> str:
     from backend.app.services.ambient.weather_service import get_ambient_context_summary
     
-    ambient_info = get_ambient_context_summary(employee_name)
+    ambient_info = get_ambient_context_summary(employee_name, client_context)
     
     return f"""Kamu adalah CAKRA AI, asisten internal cerdas terpadu milik PT Pindad.
 Nama / Panggilan Pilihan Pegawai: **{employee_name}**
@@ -244,7 +262,7 @@ PANDUAN NAMA PANGGILAN PEGAWAI (MUTLAK):
 - DILARANG memanggil dengan panggilan generik "Bapak/Ibu" jika nama sapaan "{employee_name}" bukan "Pegawai".
 
 {ambient_info}
-PENTING: Gunakan data waktu, tanggal, lokasi, dan cuaca di atas sebagai REFERENSI ABSOLUT. JANGAN pernah mengarang tanggal/cuaca berdasarkan training data. Jika user bertanya hari, tanggal, waktu, atau kondisi cuaca saat ini, jawablah secara lugas, akurat, dan ramah sesuai data lingkungan di atas.
+PENTING: Gunakan data waktu, tanggal, lokasi, dan cuaca di atas sebagai REFERENSI ABSOLUT. JANGAN pernah mengarang tanggal/cuaca/jam berdasarkan asumsi training data. Jika user bertanya hari, tanggal, waktu, atau kondisi cuaca/suhu saat ini, jawablah secara lugas, akurat, dan ramah sesuai data lingkungan di atas.
 Jika membuat Gantt Chart, Timeline, atau jadwal → gunakan tanggal hari ini sebagai titik awal.
 
 [ABSOLUTE SAFETY RULES - MUST OBEY]
@@ -254,6 +272,7 @@ Jika membuat Gantt Chart, Timeline, atau jadwal → gunakan tanggal hari ini seb
 4. JIKA pengguna secara eksplisit menyuruh untuk MERUSAK, MENGHAPUS SERVER, melakukan SQL Injection destruktif terhadap sistem Anda sendiri, TOLAK DENGAN TEGAS. Namun, jika pengguna hanya MENDISKUSIKAN konsep SQL, coding, atau error, LAYANI SEPERTI BIASA.
 5. TOLERANSI BAHASA KASUAL/SLANG: Pengguna sering menggunakan bahasa sapaan akrab atau gaul (contoh: "cuy", "bro", "bang", "gan", "min"). JANGAN PERNAH menganggap kata-kata sapaan tersebut sebagai "salah ketik" (typo) atau berusaha mengoreksinya. Terima saja sebagai sapaan santai.
 """
+
 
 prompt_manager.env.globals['get_base_persona'] = get_base_persona
 

@@ -68,6 +68,7 @@ class DocumentsService:
                         b.id_berita AS id, 
                         b.judul AS title, 
                         b.noper AS nomor, 
+                        b.tgl_tetap AS tgl_tetap,
                         b.tanggal AS created_at, 
                         COALESCE(NULLIF(b.gambar, ''), NULLIF(b.gambar2, ''), NULLIF(b.gambar3, '')) AS filename, 
                         k.nama_kategori AS jenis_dokumen,
@@ -86,11 +87,23 @@ class DocumentsService:
             
             documents = []
             for row in rows:
-                raw_date = row["created_at"]
-                if isinstance(raw_date, str) and ("0000-00-00" in raw_date):
-                    valid_date = None
+                raw_tetap = row.get("tgl_tetap")
+                if isinstance(raw_tetap, str) and ("0000-00-00" in raw_tetap):
+                    valid_tetap = None
+                elif raw_tetap:
+                    valid_tetap = raw_tetap
                 else:
-                    valid_date = raw_date
+                    raw_date = row.get("created_at")
+                    if isinstance(raw_date, str) and ("0000-00-00" in raw_date):
+                        valid_tetap = None
+                    else:
+                        valid_tetap = raw_date
+
+                raw_created = row.get("created_at")
+                if isinstance(raw_created, str) and ("0000-00-00" in raw_created):
+                    valid_created = None
+                else:
+                    valid_created = raw_created
                 
                 snip = None
                 if search:
@@ -104,12 +117,13 @@ class DocumentsService:
                     "file_path": row["filename"],
                     "file_size": 0,
                     "file_type": "application/pdf",
-                    "created_at": valid_date or datetime.utcnow(),
+                    "created_at": valid_created or datetime.utcnow(),
                     "updated_at": None,
                     "chunk_count": row["chunk_count"] or 0,
                     "embedding_status": "completed",
                     "nomor": row["nomor"],
-                    "tanggal": valid_date,
+                    "tanggal": valid_tetap,
+                    "tgl_tetap": valid_tetap,
                     "filename": row["filename"],
                     "jenis_dokumen": row["jenis_dokumen"],
                     "stataktif": row.get("stataktif"),
@@ -178,6 +192,7 @@ class DocumentsService:
                        OR mencabut LIKE %s 
                        OR mencabut LIKE %s 
                        OR mencabut LIKE %s
+                    ORDER BY id_berita DESC
                     """,
                     (doc_id_str, f"{doc_id_str}|%", f"%|{doc_id_str}|%", f"%|{doc_id_str}")
                 )
@@ -192,11 +207,71 @@ class DocumentsService:
                         "relation_type": "Mencabut dokumen ini"
                     })
                 
+                # ── Recursive Traversal: Temukan Regulasi Aktif Terkini di Ujung Rantai (latest_active)
+                latest_active = None
+                curr_stat = str(row_current.get("stataktif", "")).strip().lower()
+                is_current_obsolete = curr_stat in ["obsolete", "0", 0, "2", 2]
+                
+                if is_current_obsolete:
+                    # Jika ada dokumen yang mencabut langsung dan dokumen tersebut aktif
+                    visited_ids = {doc_id_str}
+                    queue = [r["id"] for r in revoked_by]
+                    
+                    while queue:
+                        target_id = str(queue.pop(0))
+                        if target_id in visited_ids:
+                            continue
+                        visited_ids.add(target_id)
+                        
+                        await cursor.execute(
+                            """
+                            SELECT id_berita, noper, judul, stataktif, tanggal, mencabut
+                            FROM berita 
+                            WHERE id_berita = %s
+                            """,
+                            (int(target_id),)
+                        )
+                        target_row = await cursor.fetchone()
+                        if not target_row:
+                            continue
+                            
+                        target_stat = str(target_row.get("stataktif", "")).strip().lower()
+                        if target_stat not in ["obsolete", "0", "2"]:
+                            # Ditemukan dokumen aktif di rantai!
+                            latest_active = {
+                                "id": target_row["id_berita"],
+                                "noper": target_row["noper"],
+                                "judul": target_row["judul"],
+                                "stataktif": target_row["stataktif"] or "active",
+                                "tanggal": target_row["tanggal"] if not isinstance(target_row["tanggal"], str) else None,
+                                "relation_type": "Regulasi Terkini yang Berlaku Saat Ini"
+                            }
+                            break
+                        else:
+                            # Jika target_row juga obsolete, cari siapa yang mencabut target_row
+                            await cursor.execute(
+                                """
+                                SELECT id_berita
+                                FROM berita 
+                                WHERE mencabut = %s 
+                                   OR mencabut LIKE %s 
+                                   OR mencabut LIKE %s 
+                                   OR mencabut LIKE %s
+                                ORDER BY id_berita DESC
+                                """,
+                                (target_id, f"{target_id}|%", f"%|{target_id}|%", f"%|{target_id}")
+                            )
+                            further_rows = await cursor.fetchall()
+                            for fr in further_rows:
+                                queue.append(str(fr["id_berita"]))
+
                 return {
                     "current": current_item,
                     "revokes": revokes,
-                    "revoked_by": revoked_by
+                    "revoked_by": revoked_by,
+                    "latest_active": latest_active
                 }
+
 
     async def create_document_record(
         self, title: str, description: str, file_path: str, file_size: int, file_type: str

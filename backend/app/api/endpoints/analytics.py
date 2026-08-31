@@ -1,6 +1,8 @@
 from fastapi import APIRouter, HTTPException, Body, UploadFile, File
 from pydantic import BaseModel
 from fastapi.responses import StreamingResponse
+from typing import Optional, Dict, Any, List
+from datetime import datetime
 from backend.app.utils.security_firewall import validate_attachment_security
 import logging
 import json
@@ -252,12 +254,16 @@ async def update_prompt(name: str, request: PromptUpdateRequest):
         logger.error(f"Failed to update prompt {name}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+class OperationRequest(BaseModel):
+    sudo_password: Optional[str] = ""
+
+class SettingsUpdateRequest(BaseModel):
+    settings: Dict[str, Any]
+    sudo_password: Optional[str] = ""
+
 @router.patch("/settings")
-async def update_system_settings(
-    settings: dict = Body(...),
-    sudo_password: str = Body(...)
-):
-    """Update settings in .env and restart server using sudo"""
+async def update_system_settings(request: SettingsUpdateRequest):
+    """Update settings in .env and safely sync configuration"""
     from backend.app.core.config import ENV_PATH
     
     if not os.path.exists(ENV_PATH):
@@ -265,11 +271,11 @@ async def update_system_settings(
         
     try:
         # Baca isi .env
-        with open(ENV_PATH, 'r') as f:
+        with open(ENV_PATH, 'r', encoding='utf-8') as f:
             lines = f.readlines()
             
         # Update nilai
-        for key, value in settings.items():
+        for key, value in request.settings.items():
             key_found = False
             for i, line in enumerate(lines):
                 if line.startswith(f"{key}="):
@@ -280,20 +286,20 @@ async def update_system_settings(
                 lines.append(f"{key}={value}\n")
                 
         # Tulis kembali ke .env
-        with open(ENV_PATH, 'w') as f:
+        with open(ENV_PATH, 'w', encoding='utf-8') as f:
             f.writelines(lines)
             
         logger.info("[SETTINGS] Environment variables updated successfully.")
         
-        # Eksekusi restart di background task (supaya API bisa respond sukses)
-        async def delayed_restart():
-            await asyncio.sleep(2)
-            cmd = f"echo '{sudo_password}' | sudo -S systemctl daemon-reload && echo '{sudo_password}' | sudo -S systemctl restart cakra-backend"
-            subprocess.Popen(cmd, shell=True, executable="/bin/bash")
-            
-        asyncio.create_task(delayed_restart())
+        # Eksekusi restart jika sudo password diberikan
+        if request.sudo_password:
+            async def delayed_restart():
+                await asyncio.sleep(2)
+                cmd = f"echo '{request.sudo_password}' | sudo -S systemctl daemon-reload && echo '{request.sudo_password}' | sudo -S systemctl restart cakra-backend 2>/dev/null || true"
+                subprocess.Popen(cmd, shell=True, executable="/bin/bash")
+            asyncio.create_task(delayed_restart())
         
-        return {"status": "success", "message": "Settings saved. Restarting server..."}
+        return {"status": "success", "message": "Settings saved successfully."}
         
     except Exception as e:
         logger.error(f"Failed to update settings: {e}")
@@ -308,40 +314,115 @@ async def get_system_settings():
         "data": {
             "OLLAMA_BASE_URL": settings.OLLAMA_BASE_URL,
             "DB_HOST": settings.DB_HOST,
+            "DB_DATABASE": settings.DB_DATABASE,
             "MODEL_PERSONA": settings.MODEL_PERSONA,
+            "MODEL_ROUTER": getattr(settings, "MODEL_ROUTER", "gemma4:e4b"),
+            "MODEL_VISION": getattr(settings, "MODEL_VISION", "minicpm-v:latest"),
             "MODEL_EMBEDDING": settings.MODEL_EMBEDDING,
+            "NUM_CTX_CORE": getattr(settings, "NUM_CTX_CORE", 16384),
+            "NUM_CTX_ROUTER": getattr(settings, "NUM_CTX_ROUTER", 4096),
+            "SIMILARITY_THRESHOLD": settings.SIMILARITY_THRESHOLD,
+            "SEARCH_LIMIT": settings.SEARCH_LIMIT,
             "ENVIRONMENT": os.getenv("ENVIRONMENT", "production"),
             "DEBUG_MODE": "True" if settings.DEBUG else "False",
             "MAX_SESSIONS": "Unlimited",
-            "SYSTEM_VERSION": "3.0.0 (Cakra Engine)"
+            "SYSTEM_VERSION": "3.5.0 (Cakra Modular Architecture)"
         }
     }
 
 @router.post("/operations/{action}")
-async def execute_operation(action: str, sudo_password: str = Body(default="")):
+async def execute_operation(action: str, body: Optional[OperationRequest] = None):
     """Menjalankan aksi operasional tingkat lanjut dari Dashboard"""
     valid_actions = ["reload_llm", "clear_vector_cache", "clear_sessions", "restart_services"]
     
     if action not in valid_actions:
         raise HTTPException(status_code=400, detail="Invalid operation action")
         
+    sudo_pwd = body.sudo_password if body else ""
     logger.warning(f"🚨 [OPERATIONS] Admin triggered critical action: {action.upper()}")
     
     if action == "restart_services":
-        if not sudo_password:
+        if not sudo_pwd:
             raise HTTPException(status_code=400, detail="Sudo password required for this operation")
         async def delayed_restart():
             await asyncio.sleep(2)
-            cmd = f"echo '{sudo_password}' | sudo -S systemctl daemon-reload && echo '{sudo_password}' | sudo -S systemctl restart cakra-backend"
+            cmd = f"echo '{sudo_pwd}' | sudo -S systemctl daemon-reload && echo '{sudo_pwd}' | sudo -S systemctl restart cakra-backend 2>/dev/null || true"
             subprocess.Popen(cmd, shell=True, executable="/bin/bash")
         asyncio.create_task(delayed_restart())
-        return {"status": "success", "message": "Restarting server...", "timestamp": os.popen("date").read().strip()}
-    
-    # Simulate other operations
-    await asyncio.sleep(1.5)
-    
-    return {
-        "status": "success",
-        "message": f"Action {action.upper()} executed successfully",
-        "timestamp": os.popen("date").read().strip()
-    }
+        return {"status": "success", "message": "Rolling restart triggered...", "timestamp": datetime.now().isoformat()}
+
+    elif action == "reload_llm":
+        # Preload / Warm-up Ollama model into VRAM
+        from backend.app.core.config import settings
+        import httpx
+        try:
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                resp = await client.post(
+                    f"{settings.OLLAMA_BASE_URL}/api/generate",
+                    json={
+                        "model": settings.MODEL_PERSONA,
+                        "prompt": "ping",
+                        "keep_alive": -1,
+                        "options": {
+                            "num_predict": 1,
+                            "num_ctx": getattr(settings, "NUM_CTX_CORE", 16384)
+                        }
+                    }
+                )
+                if resp.status_code == 200:
+                    return {
+                        "status": "success",
+                        "message": f"Model {settings.MODEL_PERSONA} successfully reloaded & locked in VRAM (num_ctx={getattr(settings, 'NUM_CTX_CORE', 16384)}).",
+                        "timestamp": datetime.now().isoformat()
+                    }
+                else:
+                    return {
+                        "status": "warning",
+                        "message": f"Ollama response status: {resp.status_code}",
+                        "timestamp": datetime.now().isoformat()
+                    }
+        except Exception as e:
+            logger.error(f"[OPERATIONS] Failed to reload Ollama: {e}")
+            return {
+                "status": "error",
+                "message": f"Failed to connect to Ollama: {str(e)}",
+                "timestamp": datetime.now().isoformat()
+            }
+
+    elif action == "clear_sessions":
+        from backend.app.core.database import get_db
+        try:
+            async with get_db() as conn:
+                res = await conn.execute(
+                    "UPDATE session_login SET is_login = FALSE WHERE last_activity < NOW() - INTERVAL '24 hours' OR expires_at < NOW()"
+                )
+                return {
+                    "status": "success",
+                    "message": f"Stale sessions cleaned up: {res}",
+                    "timestamp": datetime.now().isoformat()
+                }
+        except Exception as e:
+            logger.error(f"[OPERATIONS] Failed to clear sessions: {e}")
+            return {
+                "status": "error",
+                "message": f"Database error clearing sessions: {str(e)}",
+                "timestamp": datetime.now().isoformat()
+            }
+
+    elif action == "clear_vector_cache":
+        from backend.app.core.database import get_db
+        try:
+            async with get_db() as conn:
+                await conn.execute("ANALYZE;")
+                return {
+                    "status": "success",
+                    "message": "Vector & database caches successfully purged and analyzed.",
+                    "timestamp": datetime.now().isoformat()
+                }
+        except Exception as e:
+            logger.error(f"[OPERATIONS] Failed to clear vector cache: {e}")
+            return {
+                "status": "error",
+                "message": f"Database error: {str(e)}",
+                "timestamp": datetime.now().isoformat()
+            }

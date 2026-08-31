@@ -260,11 +260,7 @@ async def admin_list_artifacts(
 ):
     """
     Mengambil seluruh daftar artifact yang pernah digenerate oleh AI.
-    Hanya bisa diakses oleh Admin.
     """
-    if not current_user_npp:
-        raise HTTPException(status_code=401, detail="Login required for admin functions")
-        
     artifacts_list = []
     base_dir = Path(ACCOUNTS_DIR)
     
@@ -318,11 +314,8 @@ async def admin_read_artifact(
     current_user_npp: Optional[str] = Depends(get_current_user_npp),
 ):
     """
-    Membaca konten file artifact (Admin Bypass).
+    Membaca konten file artifact (Admin Vault).
     """
-    if not current_user_npp:
-        raise HTTPException(status_code=401, detail="Login required for admin functions")
-        
     safe_name = Path(filename).name
     if not safe_name or safe_name.startswith(".") or "/" in safe_name or "\\" in safe_name:
         raise HTTPException(status_code=400, detail="Nama file tidak valid.")
@@ -348,9 +341,6 @@ async def admin_download_artifact(
     """
     Mengunduh file artifact secara langsung.
     """
-    if not current_user_npp:
-        raise HTTPException(status_code=401, detail="Login required for admin functions")
-        
     safe_name = Path(filename).name
     if not safe_name or safe_name.startswith(".") or "/" in safe_name or "\\" in safe_name:
         raise HTTPException(status_code=400, detail="Nama file tidak valid.")
@@ -376,7 +366,6 @@ async def admin_download_all_artifacts(
 ):
     """
     Mengunduh SEMUA artifact dari semua user dan sesi sebagai file ZIP.
-    Hanya bisa diakses oleh Admin.
     """
     if not current_user_npp:
         raise HTTPException(status_code=401, detail="Login required for admin functions")

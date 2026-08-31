@@ -17,10 +17,12 @@ export default function LoginPage() {
 
   useEffect(() => {
     if (isAuthenticated) {
-      if (user?.npp === '06652') {
-        window.location.href = import.meta.env.VITE_ANALYTICS_URL || `${window.location.protocol}//${window.location.hostname}:5174/analytics`;
+      // 🧙‍♂️ REDIRECT KE SETUP WIZARD JIKA PERTAMA KALI LOGIN
+      if (user && user.is_onboarded === false) {
+        navigate('/welcome', { replace: true });
         return;
       }
+
       const storeSessionId = useChatStore.getState().sessionUuid;
       const localSessionId = localStorage.getItem("cakra_last_session");
       const guestSessionId = (storeSessionId && storeSessionId !== "new") ? storeSessionId : localSessionId;

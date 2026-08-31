@@ -321,6 +321,19 @@ async def _create_user_integrations_table(conn):
         );
     """)
 
+async def _update_users_onboarding_columns(conn):
+    """
+    Ensure users table has onboarding and preference columns.
+    """
+    await conn.execute("""
+        ALTER TABLE users 
+        ADD COLUMN IF NOT EXISTS is_onboarded BOOLEAN DEFAULT FALSE,
+        ADD COLUMN IF NOT EXISTS preferred_language VARCHAR(10) DEFAULT 'id',
+        ADD COLUMN IF NOT EXISTS theme_preference VARCHAR(20) DEFAULT 'dark',
+        ADD COLUMN IF NOT EXISTS communication_style VARCHAR(30) DEFAULT 'formal_saya_anda',
+        ADD COLUMN IF NOT EXISTS preferred_name VARCHAR(100);
+    """)
+
 async def get_continuation_state(session_uuid: str) -> dict:
     """Retrieve continuation state from chat_sessions."""
     pool = get_db_pool()

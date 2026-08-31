@@ -97,6 +97,31 @@ export async function streamChat(
       headers['X-NPP-Header'] = cleanNpp;
     }
 
+    // 🌐 Client Ambient Context (Timezone & Geolocation cache)
+    let clientContext = {
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      client_time: new Date().toISOString(),
+    };
+    try {
+      const cachedGeo = sessionStorage.getItem("cakra_client_geo");
+      if (cachedGeo) {
+        const geoObj = JSON.parse(cachedGeo);
+        clientContext.lat = geoObj.lat;
+        clientContext.lon = geoObj.lon;
+      } else if (typeof navigator !== "undefined" && navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+          (pos) => {
+            sessionStorage.setItem("cakra_client_geo", JSON.stringify({
+              lat: pos.coords.latitude,
+              lon: pos.coords.longitude
+            }));
+          },
+          () => {},
+          { timeout: 4000, maximumAge: 600000 }
+        );
+      }
+    } catch (e) {}
+
     const baseURL = apiClient.defaults.baseURL || '/api';
     const response = await fetch(`${baseURL}/chat/stream`, {
       method: 'POST',
@@ -111,10 +136,12 @@ export async function streamChat(
         attachment_paths: attachmentPaths,
         edit_index: editIndex,
         active_topic: activeTopic,
-        key_subject: keySubject
+        key_subject: keySubject,
+        client_context: clientContext
       }),
       signal: controller.signal,  // ✅ ADD: Abort signal for timeout
     });
+
 
     clearTimeout(timeoutId);  // ✅ ADD: Clear timeout on success
 

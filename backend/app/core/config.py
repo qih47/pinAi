@@ -42,6 +42,9 @@ class Settings(BaseSettings):
     MODEL_VISION: str = "minicpm-v:latest"   # Vision/OCR untuk attachment PDF & image
     MODEL_EMBEDDING: str = "mxbai-embed-large:latest"  # Embedding untuk RAG
 
+    NUM_CTX_CORE: int = 16384                # Standardisasi context window untuk Core Model (Cegah VRAM reload)
+    NUM_CTX_ROUTER: int = 4096               # Standardisasi context window untuk Router Model
+
     SIMILARITY_THRESHOLD: float = 0.75
     SEARCH_LIMIT: int = 5
     MAX_CONTENT_LENGTH: int = 16 * 1024 * 1024

@@ -21,9 +21,23 @@ export const useChatAuthStore = create((set) => ({
       });
 
       // Di dalam fungsi login & checkSession pada authStore.js lo, simpan objeknya utuh:
-      const { token, npp, fullname, preferred_name, profile_photo_url, divisi, role, email, expires_at } = response.data.data;
+      const { token, npp, fullname, preferred_name, profile_photo_url, divisi, role, email, is_onboarded, preferred_language, theme_preference, communication_style, expires_at } = response.data.data;
       const bustedPhotoUrl = profile_photo_url ? `${profile_photo_url.split('?')[0]}?t=${Date.now()}` : null;
-      const userData = { npp, fullname, name: fullname, preferred_name, profile_photo_url: bustedPhotoUrl, username: npp, divisi, role, email }; // 👈 Mengikuti struktur row data DB FastAPI lo
+      const userData = { 
+        npp, 
+        fullname, 
+        name: fullname, 
+        preferred_name, 
+        profile_photo_url: bustedPhotoUrl, 
+        username: npp, 
+        divisi, 
+        role, 
+        email,
+        is_onboarded: is_onboarded ?? false,
+        preferred_language: preferred_language || 'id',
+        theme_preference: theme_preference || 'light',
+        communication_style: communication_style || 'formal_saya_anda'
+      }; // 👈 Mengikuti struktur row data DB FastAPI lo
       
       // Parse expires_at timestamp (B10 Token Expiry Sync)
       const expiresAt = expires_at ? new Date(expires_at) : new Date(Date.now() + 8 * 60 * 60 * 1000);
@@ -51,7 +65,7 @@ export const useChatAuthStore = create((set) => ({
 
     try {
       const response = await apiClient.get(`/auth/verify-session?token=${currentToken}&_t=${Date.now()}`);
-      const { npp, fullname, preferred_name, profile_photo_url, divisi, role, email, expires_at } = response.data.data;
+      const { npp, fullname, preferred_name, profile_photo_url, divisi, role, email, is_onboarded, preferred_language, theme_preference, communication_style, expires_at } = response.data.data;
 
       const bustedPhotoUrl = profile_photo_url ? `${profile_photo_url.split('?')[0]}?t=${Date.now()}` : null;
 
@@ -64,7 +78,11 @@ export const useChatAuthStore = create((set) => ({
         profile_photo_url: bustedPhotoUrl,
         divisi,
         role,
-        email
+        email,
+        is_onboarded: is_onboarded ?? false,
+        preferred_language: preferred_language || 'id',
+        theme_preference: theme_preference || 'light',
+        communication_style: communication_style || 'formal_saya_anda'
       };
 
       // Parse expires_at timestamp (B10 Token Expiry Sync)

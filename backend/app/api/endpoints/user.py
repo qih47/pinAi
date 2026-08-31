@@ -361,3 +361,99 @@ async def disconnect_cloud(token: str = Query(...)):
         await conn.execute("UPDATE user_integrations SET cloud_username = NULL, cloud_password = NULL, updated_at = now() WHERE npp = $1", npp)
         
     return {"status": "success", "message": "Cloud Pindad berhasil diputus"}
+
+
+class OnboardingRequest(BaseModel):
+    token: str
+    preferred_language: Optional[str] = "id"
+    theme_preference: Optional[str] = "dark"
+    communication_style: Optional[str] = "formal_saya_anda"
+    preferred_name: Optional[str] = None
+    mail_username: Optional[str] = None
+    mail_password: Optional[str] = None
+    cloud_username: Optional[str] = None
+    cloud_password: Optional[str] = None
+
+
+@router.post("/onboarding")
+async def complete_onboarding(req: OnboardingRequest):
+    """
+    Menyimpan preferensi setup pertama kali (OOBE) dan mengaktifkan is_onboarded = TRUE.
+    """
+    logger.info(f"✨ [ONBOARDING] Menerima request onboarding setup...")
+    try:
+        user_data = await verify_session(token=req.token)
+        if not user_data or not hasattr(user_data, 'data'):
+            raise HTTPException(status_code=401, detail="Unauthorized")
+        npp = user_data.data["npp"]
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    async with get_db() as conn:
+        async with conn.transaction():
+            # 1. Update preferred_name di users table
+            if req.preferred_name:
+                await conn.execute("UPDATE users SET preferred_name = $2 WHERE npp = $1", npp, req.preferred_name)
+
+            # 2. Update user_settings JSONB dengan is_onboarded = TRUE
+            import json
+            existing_settings_row = await conn.fetchrow("SELECT settings FROM user_settings WHERE npp = $1", npp)
+            curr_settings = {}
+            if existing_settings_row and existing_settings_row["settings"]:
+                curr_settings = json.loads(existing_settings_row["settings"]) if isinstance(existing_settings_row["settings"], str) else existing_settings_row["settings"]
+            
+            curr_settings["is_onboarded"] = True
+            curr_settings["preferred_language"] = req.preferred_language or curr_settings.get("preferred_language", "id")
+            curr_settings["theme_preference"] = req.theme_preference or curr_settings.get("theme_preference", "dark")
+            curr_settings["communication_style"] = req.communication_style or curr_settings.get("communication_style", "formal_saya_anda")
+            curr_settings["preferred_name"] = req.preferred_name or curr_settings.get("preferred_name")
+
+            await conn.execute("""
+                INSERT INTO user_settings (npp, settings, updated_at)
+                VALUES ($1, $2::jsonb, now())
+                ON CONFLICT (npp) DO UPDATE 
+                SET settings = $2::jsonb, updated_at = now()
+            """, npp, json.dumps(curr_settings))
+
+            # 3. Update integrasi email / cloud jika diisi
+            if req.mail_username and req.mail_password:
+                await conn.execute("""
+                    INSERT INTO user_integrations (npp, mail_username, mail_password, updated_at)
+                    VALUES ($1, $2, $3, now())
+                    ON CONFLICT (npp) DO UPDATE 
+                    SET mail_username = $2, mail_password = $3, updated_at = now()
+                """, npp, req.mail_username, req.mail_password)
+
+            if req.cloud_username and req.cloud_password:
+                await conn.execute("""
+                    INSERT INTO user_integrations (npp, cloud_username, cloud_password, updated_at)
+                    VALUES ($1, $2, $3, now())
+                    ON CONFLICT (npp) DO UPDATE 
+                    SET cloud_username = $2, cloud_password = $3, updated_at = now()
+                """, npp, req.cloud_username, req.cloud_password)
+
+        # Ambil user updated profile
+        updated_user = await conn.fetchrow("""
+            SELECT npp, fullname, preferred_name, divisi, role, email, profile_photo_url
+            FROM users WHERE npp = $1
+        """, npp)
+
+    return {
+        "status": "success",
+        "message": "Onboarding berhasil diselesaikan",
+        "data": {
+            "npp": updated_user["npp"],
+            "fullname": updated_user["fullname"],
+            "preferred_name": updated_user["preferred_name"] or curr_settings.get("preferred_name"),
+            "divisi": updated_user["divisi"],
+            "role": updated_user["role"],
+            "email": updated_user["email"],
+            "profile_photo_url": updated_user["profile_photo_url"],
+            "is_onboarded": True,
+            "preferred_language": curr_settings.get("preferred_language", "id"),
+            "theme_preference": curr_settings.get("theme_preference", "dark"),
+            "communication_style": curr_settings.get("communication_style", "formal_saya_anda"),
+        }
+    }

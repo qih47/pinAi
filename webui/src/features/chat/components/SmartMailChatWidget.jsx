@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { Mail, Send, CheckCircle2, UserCircle2, Eye, Edit3 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
 import apiClient from '../../../services/apiClient';
 import { translations } from '../../../utils/translations';
 
@@ -171,7 +173,7 @@ export default function SmartMailChatWidget({ initialData, darkMode, theme, lang
                         />
                     ) : (
                         <div className={`w-full min-h-[250px] p-4 rounded-lg text-sm border overflow-auto prose ${darkMode ? 'bg-[#1E1E22] border-slate-600 prose-invert max-w-none' : 'bg-slate-50 border-slate-300 max-w-none'}`}>
-                            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                            <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
                                 {draftData.body || ""}
                             </ReactMarkdown>
                         </div>

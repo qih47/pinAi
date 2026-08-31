@@ -84,9 +84,10 @@ _WEB_QUERY_FILLER_PREFIXES = re.compile(
     re.IGNORECASE
 )
 
-def _sanitize_web_query(query: str) -> str:
+def _sanitize_web_query(query: str, user_message: str = "") -> str:
     """
-    Bersihkan prefix filler kata bahasa Indonesia dari web search query.
+    Bersihkan prefix filler kata bahasa Indonesia dari web search query
+    dan tangani over-expansion / disambiguasi semantik (seperti 'demo' unjuk rasa vs 'demo produk').
     Contoh: "data lain qwen3.8" → "qwen3.8"
     """
     cleaned = query.strip()
@@ -96,7 +97,23 @@ def _sanitize_web_query(query: str) -> str:
         if new_cleaned == cleaned:
             break
         cleaned = new_cleaned
-    return cleaned or query.strip()
+
+    # 🚨 Disambiguasi Semantik: "demo" (unjuk rasa massa) vs "demo produk"
+    lower_q = cleaned.lower()
+    if "demo produk" in lower_q or "pameran teknologi" in lower_q or "jadwal pameran" in lower_q:
+        user_msg_lower = (user_message or "").lower()
+        civic_hints = ["jakarta", "dpr", "monas", "patung kuda", "istana", "bandung", "surabaya", "malang", "hari ini", "terkini", "masih ada", "jalan", "polisi", "buruh", "mahasiswa"]
+        product_hints = ["produk", "software", "aplikasi", "alat", "senjata", "fitur", "gadget", "hp", "mobil", "motor"]
+        
+        # Jika konteks user adalah situasi kota/wilayah dan TIDAK meminta produk secara eksplisit
+        if any(h in user_msg_lower for h in civic_hints) and not any(p in user_msg_lower for p in product_hints):
+            cleaned = re.sub(r'demo\s+produk\s*', 'demonstrasi unjuk rasa ', cleaned, flags=re.IGNORECASE)
+            cleaned = re.sub(r'(&\s*)?(jadwal\s+)?pameran(\s+teknologi)?\s*', '', cleaned, flags=re.IGNORECASE).strip()
+            if "unjuk rasa" not in cleaned.lower() and "demonstrasi" not in cleaned.lower():
+                cleaned = f"demonstrasi unjuk rasa {cleaned}"
+
+    return cleaned.strip() or query.strip()
+
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -261,6 +278,7 @@ def _validate_and_normalize_routing(
         "is_chitchat": False,
         "is_map_query": False,
         "fetch_urls": [],
+        "session_chunk_ids": [],
         "wizard": None,
     }
 
@@ -296,6 +314,14 @@ def _validate_and_normalize_routing(
     routing["requires_visual"] = bool(routing_json.get("requires_visual", False))
     routing["is_map_query"] = bool(routing_json.get("is_map_query", False))
     
+    raw_chunk_ids = routing_json.get("session_chunk_ids", [])
+    if isinstance(raw_chunk_ids, list):
+        routing["session_chunk_ids"] = [int(x) for x in raw_chunk_ids if str(x).isdigit()]
+    elif isinstance(raw_chunk_ids, (int, str)) and str(raw_chunk_ids).isdigit():
+        routing["session_chunk_ids"] = [int(raw_chunk_ids)]
+    else:
+        routing["session_chunk_ids"] = []
+    
     # Otomatis aktifkan is_web_search jika ada queries dan bukan dokumen internal / bukan koding / bukan cuaca saat ini
     if is_current_weather:
         logger.info("[CALL1] ⛅ Cuaca lokal saat ini terdeteksi. Mematikan is_web_search agar dijawab instan via Ambient Context Persona.")
@@ -317,13 +343,18 @@ def _validate_and_normalize_routing(
         routing["search_tags"] = []
         routing["is_web_search"] = False
 
-    # ── ATURAN STRICT MUTUAL EXCLUSION: need_rag VS is_web_search ─────────────
-    # need_rag (dokumen internal Pindad) dan is_web_search (pencarian internet publik)
-    # DILARANG KERAS sama-sama aktif!
+    # ── ATURAN STRICT MUTUAL EXCLUSION: need_rag VS is_web_search & is_coding ─────────────
+    # need_rag (dokumen internal Pindad) dan is_web_search/is_coding DILARANG KERAS sama-sama aktif!
     if routing["need_rag"]:
         if routing.get("is_web_search"):
             logger.warning("[CALL1] 🛡️ Strict Mutual Exclusion: need_rag=True, forcing is_web_search=False!")
             routing["is_web_search"] = False
+        if routing.get("is_coding"):
+            logger.warning("[CALL1] 🛡️ Strict Mutual Exclusion: need_rag=True, forcing is_coding=False!")
+            routing["is_coding"] = False
+        if routing.get("is_generate_file"):
+            logger.warning("[CALL1] 🛡️ Strict Mutual Exclusion: need_rag=True, forcing is_generate_file=False!")
+            routing["is_generate_file"] = False
 
     # Tangkap jika model mengembalikan pronoun sebagai boolean flag atau inheritance dari precheck
     if routing.get("pronoun") not in ["informal_gue_lo", "formal_saya_anda", "familiar_aku_kamu"]:
@@ -370,10 +401,11 @@ def _validate_and_normalize_routing(
         cleaned_queries = [
             str(q).strip() for q in queries if isinstance(q, str) and q.strip()
         ][:5]
-        # Sanitize filler kata di web search queries
+        # Sanitize filler kata di web search queries dan disambiguasi overexpansion
         if is_web_search:
-            cleaned_queries = [_sanitize_web_query(q) for q in cleaned_queries]
+            cleaned_queries = [_sanitize_web_query(q, user_message) for q in cleaned_queries]
         routing["queries"] = cleaned_queries
+
     else:
         routing["queries"] = []
 
@@ -509,9 +541,65 @@ def _validate_and_normalize_routing(
     if isinstance(routing.get("queries"), list):
         routing["queries"] = [q.strip() for q in routing["queries"] if isinstance(q, str) and q.strip()]
 
-    routing["is_chitchat"] = bool(routing_json.get("is_chitchat", False))
+    # ── DETERMINISTIC MINIMAL 1-PARAMETER GUARD ───────────────────────────────
+    # Memastikan tidak ada JSON hasil routing yang 'kosong' tanpa satupun parameter kapabilitas aktif
+    capability_flags = [
+        routing.get("need_rag"),
+        routing.get("is_web_search"),
+        routing.get("is_coding"),
+        routing.get("is_generate_file"),
+        routing.get("is_generate_email"),
+        routing.get("is_ambiguous"),
+        routing.get("is_map_query"),
+        routing.get("is_chitchat"),
+    ]
+    
+    if not any(capability_flags):
+        user_text = f"{user_message} {routing.get('active_topic', '')} {routing.get('key_subject', '')}".lower()
+        
+        # 1. Cek indikasi Dokumen / Regulasi Internal Pindad
+        rag_keywords = [
+            "skep", "sk", "sop", "pkb", "peraturan", "keputusan", "surat edaran", "direksi", 
+            "pindad", "organisasi", "tata kerja", "otk", "cuti", "mutasi", "gaji", "tunjangan",
+            "alutsista", "senjata", "munisi", "kendaraan khusus", "anoa", "komodo", "ss2", "harimau"
+        ]
+        coding_keywords = ["koding", "coding", "code", "fungsi", "function", "script", "sql", "query", "endpoint", "api", "bug", "error", "trace", "python", "javascript", "react", "html", "css", "database"]
+        file_keywords = ["buatkan file", "bikin file", "export", "ekspor", "unduh excel", "unduh word", "generate file", ".xlsx", ".docx", ".pdf", ".py"]
+        email_keywords = ["buatkan email", "draf email", "kirim email", "tulis email"]
+        web_keywords = ["berita", "kabar", "terkini", "hari ini", "terbaru", "cuaca besok", "cuaca 7 hari", "saham", "kurs", "presiden", "juara", "pilkada", "gempa"]
+        map_keywords = ["lokasi", "alamat", "dimana", "peta", "gedung", "divisi", "turen", "bandung"]
+        
+        if any(k in user_text for k in file_keywords):
+            routing["is_generate_file"] = True
+            logger.info("[CALL1] 🛡️ Guard: Auto-activated is_generate_file (file intent detected)")
+        elif any(k in user_text for k in email_keywords):
+            routing["is_generate_email"] = True
+            logger.info("[CALL1] 🛡️ Guard: Auto-activated is_generate_email (email intent detected)")
+        elif any(k in user_text for k in coding_keywords) or precheck.get("is_coding"):
+            routing["is_coding"] = True
+            logger.info("[CALL1] 🛡️ Guard: Auto-activated is_coding (coding intent detected)")
+        elif any(k in user_text for k in rag_keywords) or precheck.get("is_doc_query") or precheck.get("need_rag_hint"):
+            routing["need_rag"] = True
+            if not routing.get("query_judul"):
+                from backend.app.services.pipeline.modes.mode_utils import build_rule_based_queries
+                routing["query_judul"] = [routing.get("key_subject") or user_message]
+                routing["queries"] = build_rule_based_queries(user_message, routing.get("key_subject"), routing.get("active_topic"))
+            logger.info(f"[CALL1] 🛡️ Guard: Auto-activated need_rag | query_judul={routing['query_judul']}")
+        elif any(k in user_text for k in map_keywords):
+            routing["is_map_query"] = True
+            logger.info("[CALL1] 🛡️ Guard: Auto-activated is_map_query (map intent detected)")
+        elif any(k in user_text for k in web_keywords):
+            routing["is_web_search"] = True
+            if not routing.get("queries"):
+                routing["queries"] = [routing.get("key_subject") or user_message]
+            logger.info(f"[CALL1] 🛡️ Guard: Auto-activated is_web_search | queries={routing['queries']}")
+        else:
+            # Default fallback jika pertanyaan umum / chitchat
+            routing["is_chitchat"] = True
+            logger.info("[CALL1] 🛡️ Guard: Auto-activated is_chitchat (general conversation)")
 
     return routing
+
 
 
 def _build_fallback_routing(precheck: Dict[str, Any]) -> Dict[str, Any]:

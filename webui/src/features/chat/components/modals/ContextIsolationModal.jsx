@@ -2,6 +2,8 @@ import React, { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
 import { translations } from "../../../../utils/translations";
 import { getApiBase } from "../../../../services/endpoints";
 
@@ -135,7 +137,22 @@ export default function ContextIsolationModal({
   const [isLoadingInsight, setIsLoadingInsight] = useState(false);
 
   const [expandedActions, setExpandedActions] = useState({});
+  const [eyeDropdownDocId, setEyeDropdownDocId] = useState(null);
 
+  const formatDocDate = (dateVal) => {
+    if (!dateVal) return "-";
+    try {
+      const d = new Date(dateVal);
+      if (isNaN(d.getTime())) return String(dateVal);
+      return d.toLocaleDateString(language === 'en' ? 'en-US' : 'id-ID', {
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric'
+      });
+    } catch {
+      return String(dateVal);
+    }
+  };
 
   const limit = 15;
 
@@ -333,7 +350,7 @@ export default function ContextIsolationModal({
                             marginTop: "2px",
                           }}
                         >
-                          {t.number}: {doc.nomor || "-"} | {t.type}: {doc.jenis_dokumen || "-"}
+                          {t.number}: {doc.nomor || "-"} | {t.type}: {doc.jenis_dokumen || "-"} | {t.date || "Tanggal"}: {formatDocDate(doc.tgl_tetap || doc.tanggal || doc.created_at)}
                         </div>
                         {doc.snippet && (
                           <div
@@ -377,38 +394,127 @@ export default function ContextIsolationModal({
                           <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
                             {doc.filename && !isIsolated && expandedActions[doc.id] && (
                               <>
-                                <button
-                                  onClick={async (e) => {
-                                    e.stopPropagation();
-                                    setPreviewPdfUrl(`${getApiBase()}/api/documents/preview/${doc.filename}`);
-                                    setIsLoadingPdf(true);
-                                    try {
-                                      const encodedFilename = btoa(doc.filename);
-                                      const res = await fetch(`${getApiBase()}/api/documents/preview_b64/${encodedFilename}`);
-                                      const rawBlob = await res.blob();
-                                      const pdfBlob = new Blob([rawBlob], { type: "application/pdf" });
-                                      setPreviewPdfBlobUrl(URL.createObjectURL(pdfBlob));
-                                    } catch (err) {
-                                      console.error("Error loading PDF", err);
-                                    } finally {
-                                      setIsLoadingPdf(false);
-                                    }
-                                  }}
-                                  title={t.viewDoc}
-                                  style={{
-                                    background: "transparent",
-                                    border: "none",
-                                    color: theme.textColor,
-                                    cursor: "pointer",
-                                    padding: "4px",
-                                  }}
+                                {/* Tombol Eye dengan dropdown PDF / Portal */}
+                                <div
+                                  style={{ position: 'relative', display: 'inline-flex' }}
+                                  onMouseEnter={() => setEyeDropdownDocId(doc.id)}
+                                  onMouseLeave={() => setEyeDropdownDocId(null)}
                                 >
-                                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
-                                    <circle cx="12" cy="12" r="3"></circle>
-                                  </svg>
-                                </button>
+                                  <button
+                                    title={t.viewDoc}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setEyeDropdownDocId(prev => prev === doc.id ? null : doc.id);
+                                    }}
+                                    style={{
+                                      background: eyeDropdownDocId === doc.id ? (darkMode ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.06)") : "transparent",
+                                      border: "none",
+                                      color: theme.textColor,
+                                      cursor: "pointer",
+                                      padding: "4px",
+                                      borderRadius: "6px",
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      transition: "background 0.15s ease",
+                                    }}
+                                  >
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                                      <circle cx="12" cy="12" r="3"></circle>
+                                    </svg>
+                                  </button>
+                                  {/* Dropdown menu dengan hover bridge mulus (paddingTop bukan marginTop) */}
+                                  {eyeDropdownDocId === doc.id && (
+                                    <div
+                                      style={{
+                                        position: 'absolute',
+                                        top: '100%',
+                                        left: '50%',
+                                        transform: 'translateX(-50%)',
+                                        paddingTop: '6px',
+                                        zIndex: 9999,
+                                      }}
+                                      onClick={(e) => e.stopPropagation()}
+                                    >
+                                      <div style={{
+                                        background: darkMode ? '#1e293b' : '#ffffff',
+                                        border: `1px solid ${darkMode ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.10)'}`,
+                                        borderRadius: '10px',
+                                        boxShadow: '0 8px 24px rgba(0,0,0,0.25)',
+                                        overflow: 'hidden',
+                                        minWidth: '145px',
+                                        backdropFilter: 'blur(12px)',
+                                      }}>
+                                        {/* Opsi 1: Buka PDF */}
+                                        <button
+                                          onClick={async (e) => {
+                                            e.stopPropagation();
+                                            setEyeDropdownDocId(null);
+                                            setPreviewPdfUrl(`${getApiBase()}/api/documents/preview/${doc.filename}`);
+                                            setIsLoadingPdf(true);
+                                            try {
+                                              const encodedFilename = btoa(doc.filename);
+                                              const res = await fetch(`${getApiBase()}/api/documents/preview_b64/${encodedFilename}`);
+                                              const rawBlob = await res.blob();
+                                              const pdfBlob = new Blob([rawBlob], { type: "application/pdf" });
+                                              setPreviewPdfBlobUrl(URL.createObjectURL(pdfBlob));
+                                            } catch (err) {
+                                              console.error("Error loading PDF", err);
+                                            } finally {
+                                              setIsLoadingPdf(false);
+                                            }
+                                          }}
+                                          style={{
+                                            display: 'flex', alignItems: 'center', gap: '8px',
+                                            width: '100%', padding: '8px 12px',
+                                            background: 'transparent', border: 'none',
+                                            color: darkMode ? '#e2e8f0' : '#1f2937',
+                                            cursor: 'pointer', fontSize: '12px', fontWeight: 500,
+                                            textAlign: 'left',
+                                            transition: 'background 0.12s',
+                                          }}
+                                          onMouseOver={(e) => e.currentTarget.style.background = darkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)'}
+                                          onMouseOut={(e) => e.currentTarget.style.background = 'transparent'}
+                                        >
+                                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                                            <circle cx="12" cy="12" r="3"/>
+                                          </svg>
+                                          Buka PDF
+                                        </button>
+                                        {/* Opsi 2: Buka Portal */}
+                                        <button
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            setEyeDropdownDocId(null);
+                                            window.open(`https://peraturan.pindad.com/content/detail/${doc.id}`, '_blank', 'noopener,noreferrer');
+                                          }}
+                                          style={{
+                                            display: 'flex', alignItems: 'center', gap: '8px',
+                                            width: '100%', padding: '8px 12px',
+                                            background: 'transparent', border: 'none',
+                                            borderTop: `1px solid ${darkMode ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.06)'}`,
+                                            color: darkMode ? '#a5b4fc' : '#2563eb',
+                                            cursor: 'pointer', fontSize: '12px', fontWeight: 500,
+                                            textAlign: 'left',
+                                            transition: 'background 0.12s',
+                                          }}
+                                          onMouseOver={(e) => e.currentTarget.style.background = darkMode ? 'rgba(99,102,241,0.12)' : 'rgba(37,99,235,0.06)'}
+                                          onMouseOut={(e) => e.currentTarget.style.background = 'transparent'}
+                                        >
+                                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+                                            <polyline points="15 3 21 3 21 9"/>
+                                            <line x1="10" y1="14" x2="21" y2="3"/>
+                                          </svg>
+                                          Buka di Portal
+                                        </button>
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
 
+                                {/* Tombol Download */}
                                 <button
                                   onClick={(e) => {
                                     e.stopPropagation();
@@ -439,6 +545,7 @@ export default function ContextIsolationModal({
                                   </svg>
                                 </button>
 
+                                {/* Tombol Riwayat (Lineage) */}
                                 <button
                                   onClick={async (e) => {
                                     e.stopPropagation();
@@ -485,6 +592,7 @@ export default function ContextIsolationModal({
                                   {t.lineageBtn}
                                 </button>
 
+                                {/* Tombol AI Smart Insight */}
                                 <button
                                   onClick={async (e) => {
                                     e.stopPropagation();
@@ -752,47 +860,126 @@ export default function ContextIsolationModal({
 
                             {/* Yg mencabut doc ini */}
                             {lineageData.revoked_by && lineageData.revoked_by.length > 0 && (
-                              <div>
+                              <div style={{ marginBottom: lineageData.latest_active && !lineageData.revoked_by.some(r => r.id === lineageData.latest_active.id) ? "12px" : "0px" }}>
                                 <div style={{ color: theme.secondaryText, marginBottom: "4px" }}>{t.revokedBy}</div>
                                 <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-                                  {lineageData.revoked_by.map(r => (
-                                    <div key={r.id} style={{ padding: "6px 10px", background: darkMode ? "rgba(16, 185, 129, 0.15)" : "#d1fae5", border: "1px solid #10b981", borderRadius: "6px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                                      <div style={{ display: "flex", flexDirection: "column", gap: "2px", flex: 1, paddingRight: "10px" }}>
-                                        <span style={{ fontWeight: 500, color: theme.textColor }}>{r.noper || t.noNumber} - {r.judul}</span>
-                                        <span style={{ color: "#10b981", fontSize: "11px", fontWeight: 600 }}>{t.active}</span>
-                                      </div>
-                                      <button
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          onSelectDocument(r.id, r.judul);
-                                          onClose();
-                                        }}
+                                  {lineageData.revoked_by.map(r => {
+                                    const statLower = String(r.stataktif || "").trim().toLowerCase();
+                                    const isRActive = !(statLower === "obsolete" || statLower === "0" || statLower === "2");
+                                    return (
+                                      <div
+                                        key={r.id}
                                         style={{
-                                          padding: "4px 10px",
-                                          borderRadius: "16px",
-                                          border: "none",
-                                          background: "#6366f1",
-                                          color: "#ffffff",
-                                          fontSize: "11px",
-                                          fontWeight: 600,
-                                          cursor: "pointer",
-                                          flexShrink: 0,
+                                          padding: "6px 10px",
+                                          background: isRActive
+                                            ? (darkMode ? "rgba(16, 185, 129, 0.15)" : "#d1fae5")
+                                            : (darkMode ? "rgba(245, 158, 11, 0.12)" : "#fef3c7"),
+                                          border: isRActive
+                                            ? "1px solid #10b981"
+                                            : "1px solid rgba(245, 158, 11, 0.5)",
+                                          borderRadius: "6px",
+                                          display: "flex",
+                                          justifyContent: "space-between",
+                                          alignItems: "center"
                                         }}
                                       >
-                                        {t.focus}
-                                      </button>
-                                    </div>
-                                  ))}
+                                        <div style={{ display: "flex", flexDirection: "column", gap: "2px", flex: 1, paddingRight: "10px" }}>
+                                          <span style={{ fontWeight: 500, color: theme.textColor }}>{r.noper || t.noNumber} - {r.judul}</span>
+                                          <span
+                                            style={{
+                                              color: isRActive ? "#10b981" : "#f59e0b",
+                                              fontSize: "11px",
+                                              fontWeight: 600
+                                            }}
+                                          >
+                                            {isRActive ? t.active : t.inactive}
+                                          </span>
+                                        </div>
+                                        <button
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            onSelectDocument(r.id, r.judul);
+                                            onClose();
+                                          }}
+                                          style={{
+                                            padding: "4px 10px",
+                                            borderRadius: "16px",
+                                            border: "none",
+                                            background: isRActive ? "#10b981" : "#6366f1",
+                                            color: "#ffffff",
+                                            fontSize: "11px",
+                                            fontWeight: 600,
+                                            cursor: "pointer",
+                                            flexShrink: 0,
+                                          }}
+                                        >
+                                          {t.focus}
+                                        </button>
+                                      </div>
+                                    );
+                                  })}
                                 </div>
                               </div>
                             )}
 
-                            {(!lineageData.revokes?.length && !lineageData.revoked_by?.length) && (
+                            {/* Regulasi Terkini yang Berlaku Saat Ini (Ujung Rantai Silsilah) */}
+                            {lineageData.latest_active && !lineageData.revoked_by?.some(r => r.id === lineageData.latest_active.id) && lineageData.latest_active.id !== doc.id && (
+                              <div style={{ marginTop: "10px" }}>
+                                <div style={{ color: "#10b981", fontSize: "11px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: "4px" }}>
+                                  🌟 {t.latestActiveSuccessor}
+                                </div>
+                                <div
+                                  style={{
+                                    padding: "8px 12px",
+                                    background: darkMode ? "rgba(16, 185, 129, 0.18)" : "#d1fae5",
+                                    border: "1.5px solid #10b981",
+                                    borderRadius: "8px",
+                                    display: "flex",
+                                    justifyContent: "space-between",
+                                    alignItems: "center",
+                                    boxShadow: "0 2px 8px rgba(16, 185, 129, 0.15)"
+                                  }}
+                                >
+                                  <div style={{ display: "flex", flexDirection: "column", gap: "2px", flex: 1, paddingRight: "10px" }}>
+                                    <span style={{ fontWeight: 600, color: theme.textColor, fontSize: "12.5px" }}>
+                                      {lineageData.latest_active.noper || t.noNumber} - {lineageData.latest_active.judul}
+                                    </span>
+                                    <span style={{ color: "#10b981", fontSize: "11px", fontWeight: 700 }}>
+                                      {t.active}
+                                    </span>
+                                  </div>
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      onSelectDocument(lineageData.latest_active.id, lineageData.latest_active.judul);
+                                      onClose();
+                                    }}
+                                    style={{
+                                      padding: "5px 12px",
+                                      borderRadius: "16px",
+                                      border: "none",
+                                      background: "#10b981",
+                                      color: "#ffffff",
+                                      fontSize: "11px",
+                                      fontWeight: 700,
+                                      cursor: "pointer",
+                                      flexShrink: 0,
+                                      boxShadow: "0 2px 6px rgba(16, 185, 129, 0.3)"
+                                    }}
+                                  >
+                                    {t.focus}
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+
+                            {(!lineageData.revokes?.length && !lineageData.revoked_by?.length && !lineageData.latest_active) && (
                               <div style={{ color: theme.secondaryText, fontStyle: "italic", textAlign: "center" }}>
                                 {t.noLineage}
                               </div>
                             )}
                           </div>
+
                         ) : null}
                       </div>
                     )}
@@ -834,7 +1021,8 @@ export default function ContextIsolationModal({
                               className="insight-markdown-content"
                             >
                               <ReactMarkdown
-                                remarkPlugins={[remarkGfm]}
+                                remarkPlugins={[remarkGfm, remarkMath]}
+                                rehypePlugins={[rehypeKatex]}
                                 components={{
                                   p: ({ node, ...props }) => <p style={{ margin: "0 0 8px 0" }} {...props} />,
                                   ul: ({ node, ...props }) => <ul style={{ margin: "0 0 8px 0", paddingLeft: "20px" }} {...props} />,

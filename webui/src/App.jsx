@@ -8,6 +8,7 @@ import {
 } from "react-router-dom";
 import ChatPage from "@/features/chat/ChatPage";
 import LoginPage from "@/features/auth/LoginPage"; // 👈 IMPORT LOGIN ENGINE
+import WelcomeWizardPage from "@/features/auth/WelcomeWizardPage"; // 👈 First-Time User Setup OOBE
 import CacheStatsPage from "@/features/admin/CacheStatsPage"; // 👈 W13 & W15: Cache & Search Stats Dashboard
 import { useChatAuthStore } from "@/stores/authStore"; // 👈 IMPORT AUTH STORE
 import { useChatStore } from "@/stores/chatStore";
@@ -26,14 +27,71 @@ function AnalyticsRedirect() {
   return null;
 }
 
+function LoginRedirect() {
+  const isAuthenticated = useChatAuthStore((state) => state.isAuthenticated);
+  useEffect(() => {
+    if (!isAuthenticated) {
+      sessionStorage.setItem('cakra_open_login_modal', 'true');
+    }
+  }, [isAuthenticated]);
+
+  if (isAuthenticated) {
+    const lastSession = localStorage.getItem("cakra_last_session");
+    return <Navigate to={lastSession ? `/chat/${lastSession}` : "/chat/new"} replace />;
+  }
+
+  return <Navigate to="/chat/guest" replace />;
+}
+
+function WelcomeRouteWrapper() {
+  const isAuthenticated = useChatAuthStore((state) => state.isAuthenticated);
+  const user = useChatAuthStore((state) => state.user);
+
+  // 1. Jika belum login -> lempar ke guest (buka modal login)
+  if (!isAuthenticated) {
+    sessionStorage.setItem('cakra_open_login_modal', 'true');
+    return <Navigate to="/chat/guest" replace />;
+  }
+
+  // 2. Jika sudah pernah menyelesaikan setup onboarding (is_onboarded === true) -> lempar ke /chat
+  if (user && user.is_onboarded === true) {
+    const lastSession = localStorage.getItem("cakra_last_session");
+    return (
+      <Navigate
+        to={lastSession ? `/chat/${lastSession}` : "/chat/new"}
+        replace
+      />
+    );
+  }
+
+  return <WelcomeWizardPage />;
+}
+
 function SessionRouteWrapper({ isGuest, corporateMode = null }) {
   const { sessionId } = useParams();
   const isAuthenticated = useChatAuthStore((state) => state.isAuthenticated);
+  const user = useChatAuthStore((state) => state.user);
+
+  useEffect(() => {
+    if (isGuest) {
+      useChatStore.setState({ sessionUuid: null, messages: [] });
+    } else if (sessionId === "new") {
+      // Hanya reset untuk halaman obrolan baru; UUID session ditangani ChatPage via URL
+      useChatStore.setState({ sessionUuid: "new", messages: [] });
+    }
+    // Untuk /chat/:uuid — jangan timpa store di sini agar tidak bentrok dengan load sidebar
+  }, [sessionId, isGuest]);
 
   // 🛡️ SENSOR PENCEGAT OTENTIKASI PEGAWAI
-  // Kalau mau masuk sektor non-guest tapi jimat tokennya kosong, sepak balik ke /login!
+  // Kalau mau masuk sektor non-guest tapi jimat tokennya kosong, sepak balik ke /chat/guest & buka login modal!
   if (!isGuest && !isAuthenticated) {
-    return <Navigate to="/login" replace />;
+    sessionStorage.setItem('cakra_open_login_modal', 'true');
+    return <Navigate to="/chat/guest" replace />;
+  }
+
+  // 🧙‍♂️ REDIRECT KE SETUP WIZARD JIKA PERTAMA KALI LOGIN & BELUM ONBOARDING
+  if (!isGuest && isAuthenticated && user && user.is_onboarded === false) {
+    return <Navigate to="/welcome" replace />;
   }
 
   if (isGuest && isAuthenticated) {
@@ -45,16 +103,6 @@ function SessionRouteWrapper({ isGuest, corporateMode = null }) {
       />
     );
   }
-
-  useEffect(() => {
-    if (isGuest) {
-      useChatStore.setState({ sessionUuid: null, messages: [] });
-    } else if (sessionId === "new") {
-      // Hanya reset untuk halaman obrolan baru; UUID session ditangani ChatPage via URL
-      useChatStore.setState({ sessionUuid: "new", messages: [] });
-    }
-    // Untuk /chat/:uuid — jangan timpa store di sini agar tidak bentrok dengan load sidebar
-  }, [sessionId, isGuest]);
 
   return <ChatPage isGuest={isGuest} corporateMode={corporateMode} />;
 }
@@ -105,8 +153,9 @@ function AppContent() {
 
   return (
     <Routes>
-      {/* 🔐 DAFTARKAN RUTE LOGIN CYBERPUNK DI LUAR BUNGKUSAN LAYOUT */}
-      <Route path="/login" element={<LoginPage />} />
+      {/* 🔐 RUTE /login OTOMATIS REDIRECT KE GUEST & MEMBUKA MODAL LOGIN */}
+      <Route path="/login" element={<LoginRedirect />} />
+      <Route path="/welcome" element={<WelcomeRouteWrapper />} />
 
       {/* ⚡ W13 & W15: Admin Cache & Performance Dashboard */}
       <Route path="/admin/cache-stats" element={<CacheStatsPage />} />

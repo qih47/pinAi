@@ -1,32 +1,26 @@
 """
 Realtime Ambient & Weather Context Service for CAKRA AI
 ======================================================
-Menyediakan informasi live cuaca (Bandung HQ) dan status jam kerja operasional PT Pindad
-secara non-blocking melalui in-memory background cache.
+Menyediakan informasi live cuaca (dinamis sesuai lokasi pengguna / Bandung HQ / Turen Malang)
+dan status jam kerja operasional PT Pindad secara non-blocking melalui in-memory background cache.
 """
 
 import time
 import asyncio
 import logging
-from datetime import datetime
-from typing import Dict, Any, Optional
+from datetime import datetime, timezone, timedelta
+from typing import Dict, Any, Optional, Tuple
 import httpx
 
 logger = logging.getLogger("CAKRA_AMBIENT")
 
-# Koordinat Kantor Pusat PT Pindad Bandung
+# Koordinat Default: Kantor Pusat PT Pindad Bandung
 _BANDUNG_LAT = -6.9271
 _BANDUNG_LON = 107.6413
 
-# Cache Memory
-_WEATHER_CACHE: Dict[str, Any] = {
-    "temperature": 28,
-    "condition": "Cerah Berawan",
-    "humidity": 65,
-    "wind_speed": 10,
-    "last_updated": 0,
-}
-_CACHE_TTL_SECONDS = 1800  # 30 menit
+# Cache Memory Multi-Koordinat: Key = (round(lat, 2), round(lon, 2)) -> Value = dict(data, last_updated)
+_MULTI_WEATHER_CACHE: Dict[Tuple[float, float], Dict[str, Any]] = {}
+_CACHE_TTL_SECONDS = 600  # 10 menit (fresh & akurat)
 
 # Weather code mapping (WMO Weather interpretation codes)
 _WMO_WEATHER_MAP = {
@@ -48,20 +42,47 @@ _WMO_WEATHER_MAP = {
     95: "Badai Petir",
 }
 
+_BULAN_INDONESIA = [
+    "", "Januari", "Februari", "Maret", "April", "Mei", "Juni",
+    "Juli", "Agustus", "September", "Oktober", "November", "Desember"
+]
+_HARI_INDONESIA = ["Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu", "Minggu"]
 
-async def fetch_live_weather() -> Dict[str, Any]:
-    """Fetch data cuaca live dari Open-Meteo secara asinkron (non-blocking)."""
-    global _WEATHER_CACHE
-    now_ts = time.time()
+
+def _resolve_location_name(lat: float, lon: float, city_hint: Optional[str] = None) -> str:
+    """Mengidentifikasi nama lokasi fasilitas Pindad atau kota terdeteksi."""
+    if city_hint and city_hint.strip():
+        return city_hint.strip()
     
-    if now_ts - _WEATHER_CACHE.get("last_updated", 0) < _CACHE_TTL_SECONDS:
-        return _WEATHER_CACHE
+    # Deteksi radius fasilitas Pindad (dalam derajat ~ 15-20km)
+    # 1. Turen / Malang: ~ -8.16, 112.71
+    if abs(lat - (-8.16)) < 0.25 and abs(lon - 112.71) < 0.25:
+        return "Divisi Munisi PT Pindad, Turen, Malang, Jawa Timur"
+    # 2. Kantor Pusat Bandung: ~ -6.92, 107.64
+    elif abs(lat - (-6.92)) < 0.25 and abs(lon - 107.64) < 0.25:
+        return "Kantor Pusat PT Pindad (Persero), Jl. Gatot Subroto No. 517, Bandung, Jawa Barat"
+    # 3. Kantor Jakarta: ~ -6.20, 106.82
+    elif abs(lat - (-6.20)) < 0.3 and abs(lon - 106.82) < 0.3:
+        return "Kantor Perwakilan PT Pindad, Jakarta"
+    else:
+        return f"Lokasi Pengguna (Koordinat: {lat:.3f}, {lon:.3f})"
+
+
+async def fetch_live_weather(lat: float = _BANDUNG_LAT, lon: float = _BANDUNG_LON) -> Dict[str, Any]:
+    """Fetch data cuaca live dari Open-Meteo secara asinkron berdasarkan koordinat."""
+    global _MULTI_WEATHER_CACHE
+    now_ts = time.time()
+    cache_key = (round(lat, 2), round(lon, 2))
+    
+    cached = _MULTI_WEATHER_CACHE.get(cache_key)
+    if cached and (now_ts - cached.get("last_updated", 0) < _CACHE_TTL_SECONDS):
+        return cached
 
     url = (
         f"https://api.open-meteo.com/v1/forecast"
-        f"?latitude={_BANDUNG_LAT}&longitude={_BANDUNG_LON}"
+        f"?latitude={lat}&longitude={lon}"
         f"&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m"
-        f"&timezone=Asia%2FJakarta"
+        f"&timezone=auto"
     )
 
     try:
@@ -76,32 +97,65 @@ async def fetch_live_weather() -> Dict[str, Any]:
                 humidity = round(current.get("relative_humidity_2m", 65))
                 wind = round(current.get("wind_speed_10m", 10))
 
-                _WEATHER_CACHE = {
+                weather_data = {
                     "temperature": temp,
                     "condition": condition,
                     "humidity": humidity,
                     "wind_speed": wind,
                     "last_updated": now_ts,
+                    "lat": lat,
+                    "lon": lon,
                 }
-                logger.info(f"[AMBIENT] ⛅ Live weather Bandung updated: {temp}°C, {condition}, RH {humidity}%")
+                _MULTI_WEATHER_CACHE[cache_key] = weather_data
+                logger.info(f"[AMBIENT] ⛅ Live weather ({lat:.2f}, {lon:.2f}) updated: {temp}°C, {condition}, RH {humidity}%")
+                return weather_data
     except Exception as e:
-        logger.warning(f"[AMBIENT] ⚠️ Weather fetch fallback (using cached/default): {e}")
+        logger.warning(f"[AMBIENT] ⚠️ Weather fetch fallback ({lat:.2f}, {lon:.2f}): {e}")
 
-    return _WEATHER_CACHE
+    # Fallback jika belum pernah ada cache
+    if cached:
+        return cached
+
+    default_data = {
+        "temperature": 28,
+        "condition": "Cerah Berawan",
+        "humidity": 65,
+        "wind_speed": 10,
+        "last_updated": now_ts,
+        "lat": lat,
+        "lon": lon,
+    }
+    _MULTI_WEATHER_CACHE[cache_key] = default_data
+    return default_data
 
 
-def get_cached_weather_sync() -> Dict[str, Any]:
+def get_cached_weather_sync(lat: float = _BANDUNG_LAT, lon: float = _BANDUNG_LON) -> Dict[str, Any]:
     """Mengembalikan data cuaca dari cache secara sinkron untuk prompt builder (0ms)."""
-    global _WEATHER_CACHE
-    # Jika cache sudah kadaluarsa, trigger background task untuk refresh
-    if time.time() - _WEATHER_CACHE.get("last_updated", 0) > _CACHE_TTL_SECONDS:
+    global _MULTI_WEATHER_CACHE
+    cache_key = (round(lat, 2), round(lon, 2))
+    cached = _MULTI_WEATHER_CACHE.get(cache_key)
+
+    # Jika cache belum ada atau kadaluarsa, trigger background fetch
+    if not cached or (time.time() - cached.get("last_updated", 0) > _CACHE_TTL_SECONDS):
         try:
             loop = asyncio.get_event_loop()
             if loop.is_running():
-                loop.create_task(fetch_live_weather())
+                loop.create_task(fetch_live_weather(lat, lon))
         except Exception:
             pass
-    return _WEATHER_CACHE
+
+    if cached:
+        return cached
+
+    return {
+        "temperature": 28,
+        "condition": "Cerah Berawan",
+        "humidity": 65,
+        "wind_speed": 10,
+        "last_updated": 0,
+        "lat": lat,
+        "lon": lon,
+    }
 
 
 def get_pindad_operational_status(now: Optional[datetime] = None) -> str:
@@ -137,13 +191,36 @@ def get_pindad_operational_status(now: Optional[datetime] = None) -> str:
         return "Jam Kerja Aktif"
 
 
-def get_ambient_context_summary(employee_name: str = "Pegawai") -> str:
+def get_ambient_context_summary(
+    employee_name: str = "Pegawai",
+    client_context: Optional[Dict[str, Any]] = None
+) -> str:
     """Merangkum string ambient context awareness untuk disuntikkan ke System Prompt."""
-    now = datetime.now()
-    hari = ["Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu", "Minggu"][now.weekday()]
-    tanggal_str = now.strftime(f"{hari}, %d %B %Y — %H:%M WIB")
+    client_context = client_context or {}
     
-    weather = get_cached_weather_sync()
+    # 1. Koordinat & Lokasi
+    lat = float(client_context.get("lat", _BANDUNG_LAT)) if client_context.get("lat") is not None else _BANDUNG_LAT
+    lon = float(client_context.get("lon", _BANDUNG_LON)) if client_context.get("lon") is not None else _BANDUNG_LON
+    city_hint = client_context.get("city") or client_context.get("city_hint")
+    location_name = _resolve_location_name(lat, lon, city_hint)
+    
+    # 2. Waktu & Tanggal (WIB / WITA / WIT atau Browser Timezone)
+    now = datetime.now()
+    hari = _HARI_INDONESIA[now.weekday()]
+    bulan = _BULAN_INDONESIA[now.month]
+    
+    tz_name = "WIB"
+    if client_context.get("timezone"):
+        tz_raw = str(client_context["timezone"]).lower()
+        if "makassar" in tz_raw or "denpasar" in tz_raw or "wita" in tz_raw:
+            tz_name = "WITA"
+        elif "jayapura" in tz_raw or "wit" in tz_raw:
+            tz_name = "WIT"
+            
+    tanggal_str = f"{hari}, {now.day} {bulan} {now.year}, pukul {now.strftime('%H:%M')} {tz_name}"
+    
+    # 3. Cuaca
+    weather = get_cached_weather_sync(lat, lon)
     temp = weather.get("temperature", 28)
     cond = weather.get("condition", "Cerah Berawan")
     hum = weather.get("humidity", 65)
@@ -152,9 +229,13 @@ def get_ambient_context_summary(employee_name: str = "Pegawai") -> str:
     op_status = get_pindad_operational_status(now)
     
     return (
-        f"🌐 REALTIME ENVIRONMENT & CONTEXT AWARENESS:\n"
-        f"• Waktu & Tanggal Server : {tanggal_str} (Status: {op_status})\n"
-        f"• Lokasi Utama Kantor   : Kantor Pusat PT Pindad (Persero), Jl. Gatot Subroto No. 517, Bandung, Jawa Barat\n"
-        f"• Cuaca Terkini (Bandung): {temp}°C, {cond} (Kelembapan: {hum}%, Angin: {wind} km/jam)\n"
-        f"• Profil Korporasi       : PT Pindad (Persero) — Anggota Holding BUMN Industri Pertahanan (DEFEND ID)\n"
+        f"🌐 [FAKTA REALTIME LINGKUNGAN & CUACA PENGGUNA (MUTLAK & AKURAT)]:\n"
+        f"• Waktu & Tanggal Saat Ini : {tanggal_str} (Status: {op_status})\n"
+        f"• Lokasi Terdeteksi         : {location_name}\n"
+        f"• Cuaca & Suhu Real-Time    : {temp}°C, {cond} (Kelembapan: {hum}%, Angin: {wind} km/jam)\n"
+        f"• Profil Korporasi          : PT Pindad (Persero) — DEFEND ID\n\n"
+        f"[ATURAN MUTLAK WAKTU & CUACA]:\n"
+        f"Jika pengguna menanyakan jam, waktu, hari, tanggal, atau kondisi cuaca/suhu saat ini, "
+        f"kamu WAJIB menjawab secara lugas menggunakan data fakta di atas ({tanggal_str}, Suhu: {temp}°C, {cond}). "
+        f"DILARANG KERAS mengarang jam atau temperatur lain!"
     )

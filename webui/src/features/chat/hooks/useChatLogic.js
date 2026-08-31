@@ -318,6 +318,14 @@ export function useChatLogic({ isGuest,
   // Gunakan storeChatMode sebagai jaminan nilai inisialisasi saat komponen di-remount!
   const [chatMode, setChatMode] = useState(storeChatMode);
   const chatModeRef = useRef(storeChatMode);
+
+  // Sync saat ada tombol aksi (misal Kepatuhan / Bedah / Fokus) yang mengubah storeChatMode secara eksternal
+  useEffect(() => {
+    if (storeChatMode && storeChatMode !== chatMode) {
+      setChatMode(storeChatMode);
+      chatModeRef.current = storeChatMode;
+    }
+  }, [storeChatMode]);
   // Buat fungsi wrapper untuk memantau perubahan chatMode:
   const handleChatModeChange = (val) => {
     chatModeRef.current = val;

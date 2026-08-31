@@ -70,29 +70,55 @@ export default function SidebarFooter({
             </button>
           </div>
 
-          <button
-            onClick={() => {
-              setShowLogoutPopup(false);
-              triggerLogout();
-            }}
-            className={`w-full flex items-center space-x-3 px-4 py-3 text-red-500 transition-colors border-t ${darkMode ? "hover:bg-red-900/10 border-gray-800" : "hover:bg-red-50 border-gray-100"}`}
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              className="h-5 w-5"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
+          {userData?.npp ? (
+            <button
+              onClick={() => {
+                setShowLogoutPopup(false);
+                triggerLogout();
+              }}
+              className={`w-full flex items-center space-x-3 px-4 py-3 text-red-500 transition-colors border-t ${darkMode ? "hover:bg-red-900/10 border-gray-800" : "hover:bg-red-50 border-gray-100"}`}
             >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
-              />
-            </svg>
-            <span className="text-sm font-medium">{t.logout}</span>
-          </button>
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                className="h-5 w-5"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
+                />
+              </svg>
+              <span className="text-sm font-medium">{t.logout}</span>
+            </button>
+          ) : (
+            <button
+              onClick={() => {
+                setShowLogoutPopup(false);
+                window.dispatchEvent(new CustomEvent('cakra_open_login'));
+              }}
+              className={`w-full flex items-center space-x-3 px-4 py-3 text-blue-500 font-semibold transition-colors border-t ${darkMode ? "hover:bg-blue-500/10 border-gray-800" : "hover:bg-blue-50 border-gray-100"}`}
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                className="h-5 w-5"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1"
+                />
+              </svg>
+              <span className="text-sm font-medium">{language === 'en' ? 'Log In' : 'Masuk Pegawai'}</span>
+            </button>
+          )}
         </div>
       )}
 

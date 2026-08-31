@@ -28,21 +28,24 @@ def detect_precheck(user_message: str, chat_mode: str, has_attachment: bool, use
     slang = [s for s in ["bolo", "cuy", "bro", "gan", "sis", "boss", "bos", "bang", "aa", "teteh", "mas", "mba"] if re.search(r'\b' + re.escape(s) + r'\b', msg_lower)]
     profanity = "low_misuh" if any(w in msg_lower for w in ["asu", "jancuk", "anjir", "bangsat"]) else "none"
 
-    if has_explicit_gue_lo:
-        pronoun, mirroring = "informal_gue_lo", "mirror_casual"
-    elif has_formal_pronoun:
-        pronoun, mirroring = "formal_saya_anda", "stay_formal_safe"
-    elif has_aku_kamu:
-        pronoun, mirroring = "familiar_aku_kamu", "mirror_casual"
-    elif slang:
-        # Jika user menyapa akrab (misal "cuy", "bro", "bos") -> balas santai akrab
-        pronoun, mirroring = "informal_gue_lo", "mirror_casual"
-    elif user_default_pronoun in ["informal_gue_lo", "formal_saya_anda", "familiar_aku_kamu"]:
-        # Fallback ke preferensi profil user dari database lintas sesi (cross-session memory)
+    if user_default_pronoun in ["informal_gue_lo", "formal_saya_anda", "familiar_aku_kamu"]:
+        # 1. Prioritas absolut preferensi eksplisit user dari settings / onboarding
         pronoun = user_default_pronoun
         mirroring = "mirror_casual" if user_default_pronoun == "informal_gue_lo" else "stay_formal_safe"
+    elif has_explicit_gue_lo:
+        # 2. Mode Adaptif / Mirroring: user pakai gue/lo -> balas santai
+        pronoun, mirroring = "informal_gue_lo", "mirror_casual"
+    elif has_formal_pronoun:
+        # 2. Mode Adaptif / Mirroring: user pakai saya/anda -> balas formal
+        pronoun, mirroring = "formal_saya_anda", "stay_formal_safe"
+    elif has_aku_kamu:
+        # 2. Mode Adaptif / Mirroring: user pakai aku/kamu -> balas hangat
+        pronoun, mirroring = "familiar_aku_kamu", "mirror_casual"
+    elif slang:
+        # 2. Mode Adaptif / Mirroring: user pakai slang (cuy, bro, bos) -> balas santai
+        pronoun, mirroring = "informal_gue_lo", "mirror_casual"
     else:
-        # Default absolut korporat Pindad jika user baru/belum ada riwayat
+        # 3. Default aman korporat Pindad jika belum ada input kata ganti eksplisit
         pronoun, mirroring = "formal_saya_anda", "stay_formal_safe"
 
     # Deteksi Nuansa Emosi & Mood User
@@ -272,6 +275,26 @@ def build_clean_web_search_query(user_message: str) -> str:
     return msg
 
 
+def sanitize_history_for_rag(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    Membersihkan riwayat pesan dari blok kode besar, script, dan data web search
+    agar tidak mengontaminasi penalaran RAG / regulasi internal.
+    """
+    import re
+    sanitized = []
+    for msg in messages:
+        content = msg.get("content", "")
+        if not content:
+            continue
+        # Hapus blok kode program ```...```
+        cleaned = re.sub(r'```(?:python|javascript|js|ts|html|css|bash|sh|json|sql|c\+\+|cpp|java|go|rust|xml|yaml|yml)?[\s\S]*?```', '[Kode/Script program pada percakapan sebelumnya ditiadakan agar tidak mengontaminasi rujukan regulasi]', content)
+        # Hapus blok artefak web search jika ada
+        cleaned = re.sub(r'\[WEB_SEARCH_RESULT[\s\S]*?\]', '', cleaned)
+        cleaned = re.sub(r'\[TOOL:\s*WEB_SEARCH[\s\S]*?\]', '', cleaned)
+        sanitized.append({**msg, "content": cleaned})
+    return sanitized
+
+
 def select_call2_module(routing: Dict[str, Any], has_rag_context: bool) -> str:
     if has_rag_context:
         if routing.get("is_multi_document"):
@@ -342,6 +365,18 @@ def build_call2_system_prompt(
             DEEP_RESEARCH_GUIDANCE,
             SECURITY_CRITICAL_GUIDANCE,
         )
+
+        # 🛡️ STRICT ISOLATION GUARD: Jika need_rag=True, DILARANG KERAS mengutip koding atau web search masa lalu
+        if precheck.get("need_rag") or module_name in ["rag", "multi_document"]:
+            prompt += (
+                "\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                "🚨 ATURAN MUTLAK ISOLASI REGULASI & DOKUMEN (ANTI-KONTAMINASI CODING & WEB SEARCH)\n"
+                "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                "1. Sesi ini adalah verifikasi dokumen, regulasi, SOP, atau kebijakan resmi internal PT Pindad.\n"
+                "2. DILARANG KERAS memunculkan, mengutip, atau meneruskan potongan kode program/koding/script dari percakapan sebelumnya.\n"
+                "3. DILARANG KERAS menggunakan atau mencampur data hasil pencarian web luar (web search).\n"
+                "4. Jawaban WAJIB 100% berfokus pada pasal, regulasi, SOP, dan rujukan dokumen internal yang tersedia.\n"
+            )
 
         # Injeksi Wizard jika ambigu atau troubleshooting pada modul selain ambiguous
         if (precheck.get("is_ambiguous") or precheck.get("is_troubleshooting")) and module_name != "ambiguous":

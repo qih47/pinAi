@@ -71,10 +71,10 @@ class ModeFlash:
             if employee_memory:
                 system_prompt += employee_memory
 
-        # Inject Session Context (ai_document_chunks)
-        session_chunks = routing_data.get("_session_chunks_text", "")
+        # Inject Session Context (ai_document_chunks) — On-Demand atau Manifest
+        session_chunks = routing_data.get("_retrieved_session_chunks_text") or routing_data.get("_session_chunks_text", "")
         if session_chunks:
-            system_prompt += session_chunks
+            system_prompt += "\n\n" + session_chunks
 
         messages_dict = [{"role": m.role, "content": m.content} for m in chat_history]
         # Mengambil 5 history + 1 current message = 6

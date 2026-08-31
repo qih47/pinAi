@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import List, Optional
+from typing import List, Optional, Union, Any
 from datetime import datetime
 
 class DocumentBaseSchema(BaseModel):
@@ -25,12 +25,13 @@ class DocumentSchema(DocumentBaseSchema):
     file_path: Optional[str] = Field(None, description="Path ke file fisik")
     file_size: int = Field(..., description="Ukuran file dalam bytes")
     file_type: str = Field(..., description="MIME type dokumen")
-    created_at: datetime = Field(..., description="Timestamp pembuatan")
-    updated_at: Optional[datetime] = Field(None, description="Timestamp update terakhir")
+    created_at: Optional[Union[datetime, str]] = Field(None, description="Timestamp pembuatan")
+    updated_at: Optional[Union[datetime, str]] = Field(None, description="Timestamp update terakhir")
     chunk_count: int = Field(0, description="Jumlah chunks dari dokumen ini")
     embedding_status: str = Field("pending", description="Status embedding: pending, processing, completed, failed")
     nomor: Optional[str] = Field(None, description="Nomor dokumen")
-    tanggal: Optional[datetime] = Field(None, description="Tanggal dokumen")
+    tanggal: Optional[Union[datetime, str]] = Field(None, description="Tanggal dokumen (tgl_tetap)")
+    tgl_tetap: Optional[Union[datetime, str]] = Field(None, description="Tanggal penetapan dokumen")
     filename: Optional[str] = Field(None, description="Filename asli dokumen")
     jenis_dokumen: Optional[str] = Field(None, description="Nama jenis dokumen")
     stataktif: Optional[str] = Field(None, description="Status aktif dokumen (batal/obsolete/kosong)")
@@ -55,6 +56,8 @@ class DocumentLineageSchema(BaseModel):
     current: DocumentLineageItemSchema
     revokes: List[DocumentLineageItemSchema] = []
     revoked_by: List[DocumentLineageItemSchema] = []
+    latest_active: Optional[DocumentLineageItemSchema] = None
+
 
 
 class DocumentListSchema(BaseModel):

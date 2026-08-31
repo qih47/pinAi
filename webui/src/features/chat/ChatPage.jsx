@@ -1,19 +1,15 @@
-import React, { useState, useRef, useEffect, useMemo } from "react";
-import { useChatStore, API_BASE, getUploadUrl } from "../../stores/chatStore";
-import { uploadDocuments } from "../../services/endpoints";
-import useToast from "../../hooks/useToast";
+import React, { useState } from "react";
 import cakraLogo from "../../assets/cakra.png";
-import { styles, lightColors, darkColors } from "./chatPage.styles";
+import { styles } from "./chatPage.styles";
 import ChatArea from "./components/ChatArea";
 import GuestWelcome from "../../components/ui/GuestWelcome";
 import Sidebar from "./components/Sidebar";
-import { useNavigate, useParams } from "react-router-dom";
-import { useChatAuthStore } from "../../stores/authStore";
 import HeaderDropdownMenu from "./components/HeaderDropdownMenu";
-import NotificationBell from "../../components/NotificationBell"; // 👈 W16: Notification center
 import PreviewImageModal from "./components/modals/PreviewImageModal";
 import ContextIsolationModal from "./components/modals/ContextIsolationModal";
 import GhostWriterModal from "./components/modals/GhostWriterModal";
+import QuickTipsModal from "./components/modals/QuickTipsModal";
+import LoginModal from "../auth/LoginModal";
 import NextcloudModal from "./components/NextcloudModal";
 import RightSidebar from "./components/RightSidebar";
 import ChatInputArea from "./components/ChatInputArea";
@@ -22,16 +18,7 @@ import DocumentGeneratorTab from "../corporate/DocumentGeneratorTab";
 import VendorAnalyzerTab from "../corporate/VendorAnalyzerTab";
 import PdfInterrogator from "./components/PdfInterrogator";
 import { translations } from "../../utils/translations";
-
-// ============================================================
-// MAIN COMPONENT
-// ============================================================
-
 import { useChatLogic } from "./hooks/useChatLogic";
-
-// ============================================================
-// MAIN COMPONENT
-// ============================================================
 
 export default function ChatPage({ isGuest,
   isLoggedIn: propsIsLoggedIn,
@@ -48,6 +35,7 @@ export default function ChatPage({ isGuest,
     activeIsolatedDocId, activeIsolatedTitle, activeSessionId, artifactContent, artifacts, authUser, baselineHeightRef, bottomRef, chatHistory, chatMode, chatModeRef, currentIsLoggedIn, currentThinking, currentUserData, darkMode, defaultGetGreeting, detectLang, docContent, docSearchQuery, documents, documentsTotal, fetchDocumentsList, fileInputRef, handleChatModeChange, handleClearChat, handleDownloadAllArtifacts, handleDownloadArtifact, handleDragLeave, handleDragOver, handleDrop, handleFileChange, handleFileClick, handleKeyDown, handleOpenArtifact, handlePaste, handleSubmit, handleThinkingModeChange, hasSidebar, input, inputShake, isArtifactLoading, isAuthenticated, isDocLoading, isDragOver, isEmptyChat, isLoading, isLoadingDocuments, isMobile, isMultiLine, isResizingRightSidebar, isStreaming, isStreamingText, isThinking, isThinkingMode, isThinkingModeRef, isUploadingFile, lastAssistantIndex, lastLoadedSessionRef, language, loadChatSession, logout, mainMarginLeft, mainMarginRight, messageSearchInputRef, messages, messagesContainerRef, msgSearchQuery, navigate, previewArtifact, previewDoc, previewImage, removeFilePreview, rightSidebarWidth, selectedFiles, selectedMode, sessionAttachments, setChatHistory, setChatMode, setContextIsolation, setDarkMode, setDocContent, setDocSearchQuery, setInput, setIsArtifactLoading, setIsDocLoading, setIsDragOver, setIsMobile, setIsMultiLine, setIsThinkingMode, setIsUploadingFile, setLanguage, setMsgSearchQuery, setPreviewArtifact, setPreviewDoc, setPreviewImage, setRightSidebarWidth, setSelectedFiles, setSelectedMode, setShowDocumentList, setShowMsgSearch, setShowRightSidebar, setShowScrollBottom, setSidebarOpen, setStagedAttachments, showDocumentList, showMsgSearch, showRightSidebar, showScrollBottom, showWelcome, sidebarOpen, singleLineWidthRef, stagedAttachments, startResizingRightSidebar, storeChatMode, textareaRef, theme, toast, toggleRightSidebar, triggerLogout, validateFile, wasLeftSidebarOpenRef
   } = chatLogic;
   const { themeSetting } = chatLogic;
+  const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
 
   const t = translations[language]?.chatPage || translations.id.chatPage;
   const tGlobal = translations[language] || translations.id;
@@ -420,11 +408,7 @@ export default function ChatPage({ isGuest,
             <HeaderDropdownMenu
               isGuest={isGuest}
               onLogin={() => {
-                const currentSession = useChatStore.getState().sessionUuid;
-                if (currentSession && currentSession !== "new") {
-                  localStorage.setItem("cakra_last_session", currentSession);
-                }
-                navigate("/login");
+                setIsLoginModalOpen(true);
               }}
               darkMode={darkMode}
               setDarkMode={setDarkMode}
@@ -513,13 +497,7 @@ export default function ChatPage({ isGuest,
                 <div style={{ pointerEvents: "auto" }}>
                   <GuestWelcome
                     isLoggedIn={currentIsLoggedIn}
-                    userData={{
-                      fullname:
-                        currentUserData?.name ||
-                        currentUserData?.fullname ||
-                        "Pegawai",
-                      npp: currentUserData?.npp || "NPP -----",
-                    }}
+                    userData={currentUserData}
                     getGreeting={getGreeting || defaultGetGreeting}
                     theme={theme}
                     darkMode={darkMode}
@@ -814,7 +792,7 @@ export default function ChatPage({ isGuest,
                                 marginTop: "2px",
                               }}
                             >
-                              No: {doc.nomor || "-"} | Tipe: {doc.jenis_dokumen || "-"}
+                              No: {doc.nomor || "-"} | Tipe: {doc.jenis_dokumen || "-"} | Tanggal: {(doc.tgl_tetap || doc.tanggal) ? new Date(doc.tgl_tetap || doc.tanggal).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }) : (doc.created_at ? new Date(doc.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }) : "-")}
                             </div>
                           </div>
                           <button
@@ -893,6 +871,20 @@ export default function ChatPage({ isGuest,
 
       {/* ✍️ GHOSTWRITER MODAL */}
       <GhostWriterModal darkMode={darkMode} theme={theme} language={language} />
+
+      {/* 💡 QUICK TIPS ONBOARDING MODAL (Karyawan Terautentikasi Saja, Tidak Muncul di Guest) */}
+      {!isGuest && currentIsLoggedIn && (
+        <QuickTipsModal darkMode={darkMode} language={language} isGuest={isGuest} />
+      )}
+
+
+      {/* 🔐 INTERACTIVE LOGIN MODAL (NPP & HRIS PASSWORD) */}
+      <LoginModal 
+        isOpen={isLoginModalOpen} 
+        onClose={() => setIsLoginModalOpen(false)} 
+        darkMode={darkMode} 
+        language={language} 
+      />
     </div>
   );
 }

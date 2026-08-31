@@ -13,11 +13,11 @@ pkill -9 -f "vite" 2>/dev/null || true
 fuser -k -9 5173/tcp 5174/tcp 5175/tcp 5176/tcp 2>/dev/null || true
 
 echo "🚀 Starting Chat Frontend (5173)..."
-npm run dev:chat -- --host &
+npm run dev:chat -- --host --force &
 CHAT_PID=$!
 
 echo "🚀 Starting Analytics Frontend (5174)..."
-npm run dev:analytics -- --host &
+npm run dev:analytics -- --host --force &
 ANALYTICS_PID=$!
 
 # Pastikan kedua proses ikut mati kalau script ini di-kill (SIGTERM/SIGINT)

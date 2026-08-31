@@ -1,13 +1,130 @@
-import React, { useState, useEffect } from 'react';
-import { Database, Search, FileText, Cpu, Waypoints, Network, Activity, Atom, Flame } from 'lucide-react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { 
+  Database, 
+  Search, 
+  FileText, 
+  Cpu, 
+  Waypoints, 
+  Network, 
+  Activity, 
+  Atom, 
+  Flame, 
+  Sparkles, 
+  ExternalLink, 
+  X,
+  Maximize2,
+  Minimize2,
+  Layers,
+  RotateCcw
+} from 'lucide-react';
+import {
+  ReactFlow,
+  Controls,
+  Background,
+  MiniMap,
+  useNodesState,
+  useEdgesState,
+  MarkerType,
+  Handle,
+  Position
+} from '@xyflow/react';
+import '@xyflow/react/dist/style.css';
 import apiClient from '../../../services/apiClient';
 
+// ── Custom React Flow Node Components ────────────────────────────────────────
+
+const EngineNode = ({ data }) => (
+  <div className="bg-[#090D1A] border-2 border-emerald-500/80 rounded-2xl p-4 shadow-[0_0_30px_rgba(16,185,129,0.25)] min-w-[230px] text-center backdrop-blur-md">
+    <Handle type="source" position={Position.Bottom} className="!bg-emerald-400 !w-3 !h-3 !border-2 !border-slate-900" />
+    <div className="flex items-center justify-center gap-2 mb-1 text-emerald-400 font-bold text-xs uppercase tracking-wider">
+      <Cpu className="w-4 h-4 animate-pulse text-emerald-400" /> CAKRA BRAIN ENGINE
+    </div>
+    <div className="text-xs text-gray-200 font-medium">{data.label || "Hybrid RAG & Semantic Core"}</div>
+    <div className="mt-2 flex items-center justify-center gap-2">
+      <span className="text-[9px] font-mono text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 py-0.5 px-2.5 rounded-full font-semibold">
+        ● Active · 16k Ctx
+      </span>
+      <span className="text-[9px] font-mono text-cyan-400 bg-cyan-500/10 border border-cyan-500/20 py-0.5 px-2 rounded-full">
+        Gemma4 Core
+      </span>
+    </div>
+  </div>
+);
+
+const QueryNode = ({ data }) => (
+  <div className={`bg-[#090D1A] border-2 ${data.borderColor || 'border-blue-500/70'} rounded-xl p-3.5 shadow-xl min-w-[230px] max-w-[260px] backdrop-blur-md transition-all hover:scale-105`}>
+    <Handle type="target" position={Position.Top} className="!bg-blue-400 !w-2.5 !h-2.5 !border-2 !border-slate-900" />
+    <div className="flex items-center justify-between mb-1.5">
+      <span className="text-[9px] font-bold tracking-wider uppercase" style={{ color: data.textColor || '#60a5fa' }}>
+        {data.badge || "SEMANTIC QUERY"}
+      </span>
+      <span className="text-[9px] font-mono text-gray-500">Tier 1</span>
+    </div>
+    <div className="text-xs text-gray-200 line-clamp-2 leading-relaxed font-medium">
+      "{data.queryText}"
+    </div>
+    <Handle type="source" position={Position.Bottom} className="!bg-blue-400 !w-2.5 !h-2.5 !border-2 !border-slate-900" />
+  </div>
+);
+
+const DocNode = ({ data }) => {
+  const score = typeof data.score === 'string' ? parseFloat(data.score) : (data.score || 0);
+  const pct = Math.min(100, Math.max(0, score * 100));
+  const isTitle = data.isTitle;
+  const strokeColor = isTitle ? 'border-amber-500/70' : 'border-purple-500/70';
+  const textColor = isTitle ? '#fbbf24' : '#c084fc';
+  const barColor = isTitle ? '#f59e0b' : '#a855f7';
+
+  return (
+    <div 
+      onClick={() => data.onSelect && data.onSelect(data.raw)}
+      className={`bg-[#090D1A] border-2 ${strokeColor} rounded-xl p-3.5 shadow-xl min-w-[220px] max-w-[260px] backdrop-blur-md cursor-pointer hover:scale-105 transition-all hover:shadow-[0_0_20px_rgba(168,85,247,0.2)]`}
+    >
+      <Handle type="target" position={Position.Top} className="!bg-purple-400 !w-2.5 !h-2.5 !border-2 !border-slate-900" />
+      <div className="flex items-center justify-between mb-1.5">
+        <span className="text-[9px] font-bold tracking-wider uppercase" style={{ color: textColor }}>
+          {isTitle ? 'FTS REGULATION' : 'VECTOR CHUNK'}
+        </span>
+        <span className="text-[10px] font-mono font-bold" style={{ color: textColor }}>
+          {pct.toFixed(1)}%
+        </span>
+      </div>
+      
+      <div className="text-xs font-semibold text-gray-200 line-clamp-1">
+        {data.title || "Dokumen Internal"}
+      </div>
+
+      <div className="mt-2.5 h-1.5 w-full bg-gray-800 rounded-full overflow-hidden">
+        <div 
+          className="h-full rounded-full transition-all duration-500" 
+          style={{ width: `${pct}%`, backgroundColor: barColor }}
+        />
+      </div>
+
+      <div className="mt-2 flex items-center justify-between text-[9px] text-gray-500">
+        <span className="font-mono">{data.docId ? `#${String(data.docId).slice(0,6)}` : 'Chunk'}</span>
+        <span className="text-cyan-400 hover:text-cyan-300 font-semibold flex items-center gap-0.5">
+          Detail <ExternalLink size={9} />
+        </span>
+      </div>
+    </div>
+  );
+};
+
+const nodeTypes = {
+  engine: EngineNode,
+  query: QueryNode,
+  document: DocNode,
+};
+
+// ── Main KnowledgeMonitor Component ──────────────────────────────────────────
+
 export const KnowledgeMonitor = () => {
-  const [activeTab, setActiveTab] = useState('graph'); // 'graph' | 'simulator' | 'clusters'
+  const [activeTab, setActiveTab] = useState('graph'); // 'graph' | 'simulator' | 'clusters' | 'heatmap'
   
   // Graph State
   const [ragData, setRagData] = useState(null);
-  const [isLive, setIsLive] = useState(true);
+  const [selectedNodeDoc, setSelectedNodeDoc] = useState(null);
 
   // Simulator State
   const [totalChunks, setTotalChunks] = useState(0);
@@ -19,10 +136,11 @@ export const KnowledgeMonitor = () => {
   const [clusters, setClusters] = useState([]);
   const [clustersLoading, setClustersLoading] = useState(false);
 
-  // Heatmap State
-  const [heatSources, setHeatSources] = useState([]);
+  // React Flow State
+  const [nodes, setNodes, onNodesChange] = useNodesState([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState([]);
 
-  // Fetch Live Graph
+  // Fetch Live Graph Data from RAG pipeline
   const fetchLiveRAG = async () => {
     try {
       const res = await apiClient.get('/analytics/knowledge/latest-rag');
@@ -36,9 +154,6 @@ export const KnowledgeMonitor = () => {
         } catch (e) {
           console.error("Parse error", e);
         }
-      } else {
-        // If no RAG step is found globally, we don't clear the data if it was already loaded,
-        // or we keep it as null.
       }
     } catch (e) {
       console.error("Failed to fetch pipeline", e);
@@ -75,16 +190,122 @@ export const KnowledgeMonitor = () => {
   useEffect(() => {
     fetchStats();
     if (activeTab === 'graph') {
-        fetchLiveRAG();
-        const interval = setInterval(fetchLiveRAG, 3000);
-        return () => clearInterval(interval);
+      fetchLiveRAG();
+      const interval = setInterval(fetchLiveRAG, 3000);
+      return () => clearInterval(interval);
     } else if (activeTab === 'clusters') {
-        fetchClusters();
+      fetchClusters();
     } else if (activeTab === 'heatmap') {
-        // Reuse ragData from pipeline - refresh once
-        fetchLiveRAG();
+      fetchLiveRAG();
     }
   }, [activeTab]);
+
+  // Construct React Flow graph from ragData
+  useEffect(() => {
+    // Default fallback sample data if no live query run yet
+    const queries = ragData?.queries?.length > 0 ? ragData.queries : [
+      { text: "Aturan cuti tahunan dan kompensasi", type: "SEMANTIC" },
+      { text: "SKEP/14/P/BD/VIII/2026", type: "TITLE_SEARCH" },
+      { text: "Tata kerja organisasi pindad", type: "SEMANTIC" }
+    ];
+
+    const sources = ragData?.sources?.length > 0 ? ragData.sources : [
+      { title: "Organisasi dan Tata Kerja PT Pindad", doc_id: "142026", score: 0.94, type: "TITLE", snippet: "Surat Keputusan Direksi mengenai struktur dan tata kerja unit organisasi." },
+      { title: "Pedoman Disiplin & Hubungan Industrial", doc_id: "082025", score: 0.86, type: "SEMANTIC", snippet: "Ketentuan pelaksanaan waktu kerja, istirahat, serta cuti tahunan karyawan." },
+      { title: "Tata Kelola Manajemen Risiko & Kepatuhan", doc_id: "032024", score: 0.74, type: "SEMANTIC", snippet: "Pedoman mitigasi risiko operasional dan audit kepatuhan regulasi internal." }
+    ];
+
+    const qCount = queries.length;
+    const dCount = sources.length;
+    const centerX = 500;
+
+    const newNodes = [];
+    const newEdges = [];
+
+    // 1. Engine Root Node
+    newNodes.push({
+      id: 'engine-root',
+      type: 'engine',
+      position: { x: centerX - 115, y: 30 },
+      data: { label: "CAKRA Hybrid RAG Core" }
+    });
+
+    // 2. Query Nodes (Tier 1)
+    queries.forEach((q, idx) => {
+      const isObj = typeof q === 'object' && q !== null;
+      const qText = isObj ? q.text : q;
+      const qType = isObj ? q.type : "SEMANTIC";
+      const qId = `query-${idx}`;
+
+      let borderColor = 'border-blue-500/70';
+      let textColor = '#60a5fa';
+      let badge = `SEMANTIC QUERY #${idx + 1}`;
+
+      if (qType === "TITLE_SEARCH") {
+        borderColor = 'border-amber-500/70';
+        textColor = '#fbbf24';
+        badge = "TITLE EXACT MATCH";
+      } else if (qType === "COMMUNITY_KNOWLEDGE") {
+        borderColor = 'border-emerald-500/70';
+        textColor = '#34d399';
+        badge = "AI CORPUS";
+      }
+
+      const qX = centerX + (idx - (qCount - 1) / 2) * 280 - 115;
+      newNodes.push({
+        id: qId,
+        type: 'query',
+        position: { x: qX, y: 190 },
+        data: { queryText: qText, badge, borderColor, textColor }
+      });
+
+      // Edge from Engine to Query
+      newEdges.push({
+        id: `edge-root-${qId}`,
+        source: 'engine-root',
+        target: qId,
+        animated: true,
+        style: { stroke: '#10b981', strokeWidth: 2 },
+        markerEnd: { type: MarkerType.ArrowClosed, color: '#10b981' }
+      });
+    });
+
+    // 3. Document Nodes (Tier 2)
+    sources.forEach((s, idx) => {
+      const dId = `doc-${idx}`;
+      const isTitle = s.type === 'TITLE';
+      const dX = centerX + (idx - (dCount - 1) / 2) * 260 - 115;
+
+      newNodes.push({
+        id: dId,
+        type: 'document',
+        position: { x: dX, y: 370 },
+        data: {
+          title: s.title,
+          docId: s.doc_id,
+          score: s.score,
+          isTitle,
+          raw: s,
+          onSelect: (docRaw) => setSelectedNodeDoc(docRaw)
+        }
+      });
+
+      // Connect Queries to Docs
+      queries.forEach((_, qIdx) => {
+        newEdges.push({
+          id: `edge-q${qIdx}-${dId}`,
+          source: `query-${qIdx}`,
+          target: dId,
+          animated: true,
+          style: { stroke: isTitle ? '#f59e0b' : '#8b5cf6', strokeWidth: 1.5, opacity: 0.6 },
+          markerEnd: { type: MarkerType.ArrowClosed, color: isTitle ? '#f59e0b' : '#8b5cf6' }
+        });
+      });
+    });
+
+    setNodes(newNodes);
+    setEdges(newEdges);
+  }, [ragData]);
 
   // Handle Simulation
   const handleSimulate = async (e) => {
@@ -106,262 +327,209 @@ export const KnowledgeMonitor = () => {
   return (
     <div className="flex-1 flex flex-col gap-6 h-full">
       {/* Header & Tabs */}
-      <div className="bg-[#0B0F19]/90 border border-gray-800 rounded-xl p-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="bg-[#0B0F19] border border-gray-800 rounded-2xl p-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-          <div className="p-2 bg-emerald-500/10 rounded-lg">
-            <Database className="text-emerald-500 w-5 h-5" />
+          <div className="p-2.5 bg-emerald-500/10 border border-emerald-500/30 rounded-xl text-emerald-400">
+            <Database className="w-5 h-5" />
           </div>
           <div>
-            <h2 className="text-sm font-bold text-gray-200 tracking-wide">Knowledge Center</h2>
-            <p className="text-xs text-gray-500">VectorDB stats & RAG visualization</p>
+            <h2 className="text-sm font-bold text-gray-200 tracking-wide flex items-center gap-2">
+              Knowledge Center & Vector Space
+              <span className="bg-emerald-500/10 text-emerald-400 text-[10px] px-2 py-0.5 rounded-full border border-emerald-500/20 font-mono">
+                {totalChunks.toLocaleString()} chunks
+              </span>
+            </h2>
+            <p className="text-xs text-gray-500">Visualisasi relasi retrieval interaktif, attention heatmap, dan query simulator.</p>
           </div>
         </div>
 
         {/* Internal Tabs */}
-        <div className="flex p-1 bg-gray-900 rounded-lg border border-gray-800 flex-wrap gap-1">
-            <button 
-                onClick={() => setActiveTab('graph')}
-                className={`flex items-center gap-2 px-3 py-1.5 text-xs font-semibold rounded-md transition-all ${activeTab === 'graph' ? 'bg-gray-800 text-white shadow' : 'text-gray-500 hover:text-gray-300'}`}
-            >
-                <Network size={13} /> Live Context Graph
-            </button>
-            <button 
-                onClick={() => setActiveTab('heatmap')}
-                className={`flex items-center gap-2 px-3 py-1.5 text-xs font-semibold rounded-md transition-all ${activeTab === 'heatmap' ? 'bg-orange-900/50 text-orange-300 shadow' : 'text-gray-500 hover:text-gray-300'}`}
-            >
-                <Flame size={13} /> Attention Heatmap
-            </button>
-            <button 
-                onClick={() => setActiveTab('clusters')}
-                className={`flex items-center gap-2 px-3 py-1.5 text-xs font-semibold rounded-md transition-all ${activeTab === 'clusters' ? 'bg-gray-800 text-white shadow' : 'text-gray-500 hover:text-gray-300'}`}
-            >
-                <Atom size={13} /> Query Clusters
-            </button>
-            <button 
-                onClick={() => setActiveTab('simulator')}
-                className={`flex items-center gap-2 px-3 py-1.5 text-xs font-semibold rounded-md transition-all ${activeTab === 'simulator' ? 'bg-gray-800 text-white shadow' : 'text-gray-500 hover:text-gray-300'}`}
-            >
-                <Search size={13} /> RAG Simulator
-            </button>
+        <div className="flex p-1 bg-slate-950 rounded-xl border border-gray-800 flex-wrap gap-1">
+          <button 
+            onClick={() => setActiveTab('graph')}
+            className={`flex items-center gap-2 px-3.5 py-1.5 text-xs font-semibold rounded-lg transition-all ${activeTab === 'graph' ? 'bg-gradient-to-r from-emerald-600 to-cyan-600 text-white shadow-lg' : 'text-gray-400 hover:text-gray-200'}`}
+          >
+            <Network size={14} /> Interactive Graph
+          </button>
+          <button 
+            onClick={() => setActiveTab('heatmap')}
+            className={`flex items-center gap-2 px-3.5 py-1.5 text-xs font-semibold rounded-lg transition-all ${activeTab === 'heatmap' ? 'bg-gradient-to-r from-orange-600 to-red-600 text-white shadow-lg' : 'text-gray-400 hover:text-gray-200'}`}
+          >
+            <Flame size={14} /> Attention Heatmap
+          </button>
+          <button 
+            onClick={() => setActiveTab('clusters')}
+            className={`flex items-center gap-2 px-3.5 py-1.5 text-xs font-semibold rounded-lg transition-all ${activeTab === 'clusters' ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-lg' : 'text-gray-400 hover:text-gray-200'}`}
+          >
+            <Atom size={14} /> Query Clusters
+          </button>
+          <button 
+            onClick={() => setActiveTab('simulator')}
+            className={`flex items-center gap-2 px-3.5 py-1.5 text-xs font-semibold rounded-lg transition-all ${activeTab === 'simulator' ? 'bg-gradient-to-r from-blue-600 to-cyan-600 text-white shadow-lg' : 'text-gray-400 hover:text-gray-200'}`}
+          >
+            <Search size={14} /> RAG Simulator
+          </button>
         </div>
       </div>
 
-      {activeTab === 'graph' && (() => {
-        const qCount = ragData?.queries?.length || 0;
-        const dCount = ragData?.sources?.length || 0;
+      {/* Tab: React Flow Interactive Graph */}
+      {activeTab === 'graph' && (
+        <div className="flex-1 bg-[#05070D] border border-gray-800 rounded-2xl overflow-hidden relative flex min-h-[580px]">
+          <div className="flex-1 h-full w-full relative">
+            <ReactFlow
+              nodes={nodes}
+              edges={edges}
+              onNodesChange={onNodesChange}
+              onEdgesChange={onEdgesChange}
+              nodeTypes={nodeTypes}
+              fitView
+              fitViewOptions={{ padding: 0.2 }}
+              minZoom={0.3}
+              maxZoom={2.5}
+            >
+              <Background color="#1e293b" gap={24} size={1.5} />
+              <Controls className="!bg-[#0f172a] !border-gray-800 !text-gray-300 !fill-gray-300 !rounded-xl !shadow-2xl" />
+              <MiniMap 
+                nodeColor={(n) => {
+                  if (n.type === 'engine') return '#10b981';
+                  if (n.type === 'query') return '#3b82f6';
+                  return '#a855f7';
+                }}
+                className="!bg-[#090d1a] !border !border-gray-800 !rounded-xl"
+              />
+            </ReactFlow>
 
-        // ── Layout constants (Horizontal Top-to-Bottom flow) ──
-        const VH = 600; // Fixed height, scroll horizontal
-        const VW = Math.max(1000, Math.max(qCount * 240, dCount * 210) + 120);
-        
-        const ENGINE_X = VW / 2, ENGINE_Y = 100;
-        const QUERY_Y  = 280;
-        const DOC_Y    = 480;
-
-        const queryX = (i) => VW / 2 + (i - (qCount - 1) / 2) * 240;
-        const docX   = (i) => VW / 2 + (i - (dCount - 1) / 2) * 210;
-
-        return (
-        <div className="flex-1 bg-[#090C15] border border-gray-800 rounded-xl overflow-auto min-h-[480px]">
-          <div style={{ minWidth: Math.max(1000, VW), minHeight: 480, position: 'relative' }}>
-            {/* Background Grid */}
-            <div className="absolute inset-0 opacity-10 pointer-events-none"
-                 style={{ backgroundImage: 'linear-gradient(#374151 1px, transparent 1px), linear-gradient(90deg, #374151 1px, transparent 1px)', backgroundSize: '40px 40px' }}/>
-
-            {!ragData ? (
-              <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 text-gray-600">
-                <Waypoints className="w-12 h-12 opacity-50" />
-                <p className="text-sm font-medium tracking-widest uppercase">Waiting for RAG Execution...</p>
-              </div>
-            ) : (
-              <svg width={VW} height="100%" viewBox={`0 0 ${VW} ${VH}`} className="absolute top-0 left-0 min-h-max">
-              <defs>
-                <linearGradient id="lineEQ" x1="0" y1="0" x2="1" y2="0">
-                  <stop offset="0%" stopColor="#10b981" stopOpacity="0.9"/>
-                  <stop offset="100%" stopColor="#3b82f6" stopOpacity="0.5"/>
-                </linearGradient>
-                <linearGradient id="lineQD" x1="0" y1="0" x2="1" y2="0">
-                  <stop offset="0%" stopColor="#3b82f6" stopOpacity="0.6"/>
-                  <stop offset="100%" stopColor="#8b5cf6" stopOpacity="0.4"/>
-                </linearGradient>
-                <filter id="glow">
-                  <feGaussianBlur stdDeviation="3" result="blur"/>
-                  <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
-                </filter>
-              </defs>
-
-              {/* ── Lines: Engine → Queries ── */}
-              {ragData.queries.map((_, i) => (
-                <path key={`eq-${i}`}
-                  d={`M ${ENGINE_X} ${ENGINE_Y + 44} C ${ENGINE_X} ${(ENGINE_Y + QUERY_Y) / 2}, ${queryX(i)} ${(ENGINE_Y + QUERY_Y) / 2}, ${queryX(i)} ${QUERY_Y - 32}`}
-                  fill="none" stroke="url(#lineEQ)" strokeWidth="2.5" strokeLinecap="round"
-                  filter="url(#glow)"
-                />
-              ))}
-
-              {/* ── Lines: Queries → Docs ── */}
-              {ragData.queries.map((_, qi) =>
-                ragData.sources.map((_, di) => (
-                  <path key={`qd-${qi}-${di}`}
-                    d={`M ${queryX(qi)} ${QUERY_Y + 32} C ${queryX(qi)} ${(QUERY_Y + DOC_Y) / 2}, ${docX(di)} ${(QUERY_Y + DOC_Y) / 2}, ${docX(di)} ${DOC_Y - 38}`}
-                    fill="none" stroke="url(#lineQD)" strokeWidth="1.5" strokeLinecap="round"
-                    strokeDasharray="6 4" opacity="0.15"
-                  />
-                ))
-              )}
-
-              {/* ── Node: Engine ── */}
-              <g filter="url(#glow)">
-                <circle cx={ENGINE_X} cy={ENGINE_Y} r="44" fill="#10b981" fillOpacity="0.12" stroke="#10b981" strokeWidth="1.5"/>
-                <rect x={ENGINE_X - 28} y={ENGINE_Y - 28} width="56" height="56" rx="14"
-                      fill="#0f172a" stroke="#10b981" strokeWidth="2"/>
-                {/* CPU icon approx */}
-                <rect x={ENGINE_X - 16} y={ENGINE_Y - 16} width="32" height="32" rx="4" fill="none" stroke="#10b981" strokeWidth="1.5"/>
-                <rect x={ENGINE_X - 8} y={ENGINE_Y - 8} width="16" height="16" rx="2" fill="#10b981" fillOpacity="0.4"/>
-              </g>
-              <text x={ENGINE_X} y={ENGINE_Y + 62} textAnchor="middle" fill="#10b981" fontSize="11" fontWeight="bold" letterSpacing="1">CORE ENGINE</text>
-
-              {/* ── Nodes: Queries ── */}
-              {ragData.queries.map((q, i) => {
-                const isObj = typeof q === 'object' && q !== null;
-                const text = isObj ? q.text : q;
-                const type = isObj ? q.type : "SEMANTIC";
-                
-                let strokeColor = "#3b82f6"; // Default Blue for Semantic
-                let label = `SUB-QUERY ${i + 1}`;
-                
-                if (type === "TITLE_SEARCH") {
-                  strokeColor = "#f59e0b"; // Orange for Title
-                  label = "TITLE SEARCH";
-                } else if (type === "COMMUNITY_KNOWLEDGE") {
-                  strokeColor = "#10b981"; // Emerald for Community
-                  label = "AI CORPUS";
-                } else {
-                  label = `SEMANTIC QUERY ${i + 1}`;
-                }
-
-                return (
-                  <g key={`q-node-${i}`}>
-                    <rect x={queryX(i) - 110} y={QUERY_Y - 32} width="220" height="64" rx="10"
-                          fill="#0f172a" stroke={strokeColor} strokeWidth="1.5" filter="url(#glow)"/>
-                    <rect x={queryX(i) - 110} y={QUERY_Y - 32} width="220" height="64" rx="10"
-                          fill={strokeColor} fillOpacity="0.07"/>
-                    <text x={queryX(i) - 100} y={QUERY_Y - 12} fill={strokeColor} fontSize="8" fontWeight="bold" letterSpacing="1">{label}</text>
-                    <foreignObject x={queryX(i) - 105} y={QUERY_Y - 6} width="210" height="34">
-                      <div xmlns="http://www.w3.org/1999/xhtml"
-                           style={{ fontSize: '11px', color: '#d1d5db', overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
-                        {text}
-                      </div>
-                    </foreignObject>
-                  </g>
-                );
-              })}
-
-              {/* ── Nodes: Documents ── */}
-              {ragData.sources.map((s, i) => {
-                const score = typeof s.score === 'string' ? parseFloat(s.score) : (s.score || 0);
-                const pct = Math.min(1, score);
-                const isTitle = s.type === 'TITLE';
-                const strokeColor = isTitle ? '#f59e0b' : '#7c3aed';
-                const fillLabelColor = isTitle ? '#fbbf24' : '#a78bfa';
-                const labelText = isTitle ? `FTS DOC #${String(s.doc_id || i).slice(0, 6)}` : (s.doc_id ? `SEMANTIC DOC #${String(s.doc_id).slice(0, 6)}` : `DOKUMEN ${i + 1}`);
-
-                return (
-                  <g key={`d-node-${i}`}>
-                    <rect x={docX(i) - 95} y={DOC_Y - 38} width="190" height="76" rx="10"
-                          fill="#0f172a" stroke={strokeColor} strokeWidth="1.5" filter="url(#glow)"/>
-                    <rect x={docX(i) - 95} y={DOC_Y - 38} width="190" height="76" rx="10"
-                          fill={strokeColor} fillOpacity="0.07"/>
-                    <text x={docX(i) - 85} y={DOC_Y - 18} fill={fillLabelColor} fontSize="7.5" fontWeight="bold" letterSpacing="0.8">
-                      {labelText}
-                    </text>
-                    <foreignObject x={docX(i) - 90} y={DOC_Y - 10} width="180" height="24">
-                      <div xmlns="http://www.w3.org/1999/xhtml"
-                           style={{ fontSize: '11px', color: '#e5e7eb', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis', fontWeight: '500' }}>
-                        {s.title || 'Dokumen Internal'}
-                      </div>
-                    </foreignObject>
-                    {/* Score bar */}
-                    <rect x={docX(i) - 85} y={DOC_Y + 20} width="140" height="5" rx="3" fill="#1f2937"/>
-                    <rect x={docX(i) - 85} y={DOC_Y + 20} width={140 * pct} height="5" rx="3" fill={strokeColor}/>
-                    <text x={docX(i) + 60} y={DOC_Y + 26} fill="#9ca3af" fontSize="8" textAnchor="end">
-                      {(pct * 100).toFixed(1)}%
-                    </text>
-                  </g>
-                );
-              })}
-            </svg>
-          )}
+            {/* Instruction Tip Overlay */}
+            <div className="absolute top-4 left-4 z-10 bg-slate-950/80 border border-gray-800 px-3 py-1.5 rounded-lg text-[11px] text-gray-400 backdrop-blur-md flex items-center gap-2 pointer-events-none">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+              <span>Canvas Interaktif: Geser / zoom node & klik dokumen untuk inspeksi</span>
+            </div>
           </div>
-        </div>
-        );
-      })()}
 
-
-      {activeTab === 'simulator' && (
-        <div className="flex flex-col gap-6 animate-in fade-in duration-500">
-            {/* Stats Header */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="bg-[#0B0F19]/90 border border-gray-800 rounded-xl p-6 flex items-center gap-4">
-                    <div className="p-4 bg-emerald-500/10 rounded-full">
-                        <Database className="text-emerald-500 w-8 h-8" />
-                    </div>
-                    <div>
-                        <p className="text-gray-500 text-xs tracking-widest font-bold uppercase mb-1">Total Vector Chunks</p>
-                        <h3 className="text-3xl font-black text-white">{totalChunks.toLocaleString()}</h3>
-                    </div>
+          {/* Slide-out Document Detail Inspection Panel */}
+          {selectedNodeDoc && (
+            <div className="w-80 border-l border-gray-800 bg-[#0B0F19] p-5 flex flex-col justify-between animate-in slide-in-from-right-5 duration-300 z-20 overflow-y-auto">
+              <div className="space-y-4">
+                <div className="flex justify-between items-start">
+                  <div>
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-cyan-400 bg-cyan-500/10 px-2 py-0.5 rounded border border-cyan-500/20">
+                      Doc Inspection
+                    </span>
+                    <h3 className="text-sm font-bold text-gray-100 mt-2 line-clamp-2">
+                      {selectedNodeDoc.title || "Dokumen Internal"}
+                    </h3>
+                  </div>
+                  <button onClick={() => setSelectedNodeDoc(null)} className="text-gray-500 hover:text-gray-300 p-1">
+                    <X size={16} />
+                  </button>
                 </div>
+
+                <div className="space-y-2 text-xs">
+                  <div className="flex justify-between py-1 border-b border-gray-800 text-gray-400">
+                    <span>Document ID:</span>
+                    <span className="font-mono text-gray-200">{selectedNodeDoc.doc_id || "N/A"}</span>
+                  </div>
+                  <div className="flex justify-between py-1 border-b border-gray-800 text-gray-400">
+                    <span>Relevance Score:</span>
+                    <span className="font-mono font-bold text-emerald-400">
+                      {((selectedNodeDoc.score || 0) * 100).toFixed(1)}%
+                    </span>
+                  </div>
+                  <div className="flex justify-between py-1 border-b border-gray-800 text-gray-400">
+                    <span>Search Mode:</span>
+                    <span className="font-semibold text-purple-400">{selectedNodeDoc.type || "SEMANTIC"}</span>
+                  </div>
+                </div>
+
+                <div>
+                  <h4 className="text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Snippet / Excerpt:</h4>
+                  <div className="bg-slate-950 border border-gray-800 p-3 rounded-xl text-xs text-gray-300 leading-relaxed max-h-48 overflow-y-auto">
+                    {selectedNodeDoc.snippet || selectedNodeDoc.content || "Konten potongan paragraf yang diekstrak oleh model embedding."}
+                  </div>
+                </div>
+              </div>
+
+              {selectedNodeDoc.doc_id && (
+                <a 
+                  href={`https://peraturan.pindad.com/content/detail/${selectedNodeDoc.doc_id}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="mt-4 w-full bg-blue-600 hover:bg-blue-500 text-white font-medium text-xs py-2.5 rounded-lg flex items-center justify-center gap-2 transition-colors"
+                >
+                  Buka di Portal Pindad <ExternalLink size={12} />
+                </a>
+              )}
             </div>
-
-            <div className="bg-[#0B0F19]/90 border border-gray-800 rounded-xl overflow-hidden flex-1">
-                <div className="p-4 border-b border-gray-800 bg-gray-900/50">
-                    <form onSubmit={handleSimulate} className="flex gap-2">
-                        <input
-                            type="text"
-                            value={simQuery}
-                            onChange={(e) => setSimQuery(e.target.value)}
-                            placeholder="Ketik pertanyaan untuk simulasi RAG (misal: 'Apa aturan pinjaman?')"
-                            className="flex-1 bg-gray-900 border border-gray-700 text-white rounded-lg px-4 py-2 focus:outline-none focus:border-cyan-500"
-                        />
-                        <button
-                            type="submit"
-                            disabled={isSearching}
-                            className="bg-cyan-600 hover:bg-cyan-500 text-white px-6 py-2 rounded-lg font-semibold flex items-center gap-2 transition-colors disabled:opacity-50"
-                        >
-                            {isSearching ? <Activity className="animate-spin" size={18} /> : <Search size={18} />}
-                            SIMULASI
-                        </button>
-                    </form>
-                </div>
-                
-                <div className="p-4 max-h-[400px] overflow-y-auto">
-                    {simResults.length === 0 && !isSearching ? (
-                        <div className="text-center text-gray-600 py-12">
-                            <FileText className="w-12 h-12 mx-auto opacity-20 mb-3" />
-                            <p>Belum ada hasil simulasi.</p>
-                        </div>
-                    ) : (
-                        <div className="flex flex-col gap-3">
-                            {simResults.map((res, i) => (
-                                <div key={i} className="bg-gray-900 border border-gray-800 rounded-lg p-4 hover:border-cyan-500/50 transition-colors">
-                                    <div className="flex justify-between items-start mb-2">
-                                        <div className="flex items-center gap-2">
-                                            <span className="bg-cyan-500/20 text-cyan-400 text-[10px] font-bold px-2 py-0.5 rounded border border-cyan-500/30">
-                                                Rank #{i+1}
-                                            </span>
-                                            <span className="text-xs text-gray-400 font-mono">Sim: {(res.similarity * 100).toFixed(1)}%</span>
-                                        </div>
-                                        <span className="text-[10px] text-gray-500 border border-gray-800 px-2 py-0.5 rounded">{res.document_title}</span>
-                                    </div>
-                                    <p className="text-gray-300 text-sm leading-relaxed">{res.content}</p>
-                                </div>
-                            ))}
-                        </div>
-                    )}
-                </div>
-            </div>
+          )}
         </div>
       )}
+
+      {/* Tab: Simulator */}
+      {activeTab === 'simulator' && (
+        <div className="flex flex-col gap-6 animate-in fade-in duration-500">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="bg-[#0B0F19] border border-gray-800 rounded-2xl p-6 flex items-center gap-4">
+              <div className="p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl">
+                <Database className="text-emerald-400 w-8 h-8" />
+              </div>
+              <div>
+                <p className="text-gray-500 text-xs tracking-widest font-bold uppercase mb-1">Total Vector Chunks</p>
+                <h3 className="text-3xl font-black text-white">{totalChunks.toLocaleString()}</h3>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-[#0B0F19] border border-gray-800 rounded-2xl overflow-hidden flex-1">
+            <div className="p-4 border-b border-gray-800 bg-slate-900/60">
+              <form onSubmit={handleSimulate} className="flex gap-2">
+                <input
+                  type="text"
+                  value={simQuery}
+                  onChange={(e) => setSimQuery(e.target.value)}
+                  placeholder="Ketik pertanyaan untuk simulasi RAG (misal: 'Apa aturan mutasi karyawan?')"
+                  className="flex-1 bg-slate-950 border border-gray-700 text-white rounded-xl px-4 py-2.5 text-xs focus:outline-none focus:border-cyan-500"
+                />
+                <button
+                  type="submit"
+                  disabled={isSearching}
+                  className="bg-cyan-600 hover:bg-cyan-500 text-white px-6 py-2.5 rounded-xl font-semibold text-xs flex items-center gap-2 transition-colors disabled:opacity-50"
+                >
+                  {isSearching ? <Activity className="animate-spin" size={16} /> : <Search size={16} />}
+                  SIMULASI
+                </button>
+              </form>
+            </div>
+            
+            <div className="p-4 max-h-[420px] overflow-y-auto custom-scrollbar">
+              {simResults.length === 0 && !isSearching ? (
+                <div className="text-center text-gray-600 py-12">
+                  <FileText className="w-12 h-12 mx-auto opacity-20 mb-3" />
+                  <p className="text-sm">Belum ada hasil simulasi. Masukkan query di atas.</p>
+                </div>
+              ) : (
+                <div className="flex flex-col gap-3">
+                  {simResults.map((res, i) => (
+                    <div key={i} className="bg-slate-950 border border-gray-800 rounded-xl p-4 hover:border-cyan-500/50 transition-colors">
+                      <div className="flex justify-between items-start mb-2">
+                        <div className="flex items-center gap-2">
+                          <span className="bg-cyan-500/20 text-cyan-400 text-[10px] font-bold px-2 py-0.5 rounded border border-cyan-500/30">
+                            Rank #{i+1}
+                          </span>
+                          <span className="text-xs text-gray-400 font-mono">Sim: {(res.similarity * 100).toFixed(1)}%</span>
+                        </div>
+                        <span className="text-[10px] text-gray-500 border border-gray-800 px-2 py-0.5 rounded">{res.document_title}</span>
+                      </div>
+                      <p className="text-gray-300 text-xs leading-relaxed">{res.content}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Tab: Query Clusters */}
       {activeTab === 'clusters' && (() => {
         const CLUSTER_COLORS = {
           dokumen:  { text: 'text-blue-400',   border: 'border-blue-500/40',   bg: 'bg-blue-500/10',   glow: 'shadow-[0_0_12px_rgba(59,130,246,0.5)]',  dot: '#3b82f6' },
@@ -372,7 +540,6 @@ export const KnowledgeMonitor = () => {
         };
         const totalCount = clusters.reduce((sum, c) => sum + c.count, 0) || 1;
 
-        // Deterministic scatter positions per mode
         const positions = [
           { x: 50, y: 45 },
           { x: 22, y: 30 },
@@ -384,11 +551,11 @@ export const KnowledgeMonitor = () => {
         return (
           <div className="flex flex-col gap-5 animate-in fade-in duration-500">
             <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
-              {clusters.map((c, idx) => {
+              {clusters.map((c) => {
                 const cfg = CLUSTER_COLORS[c.mode] || CLUSTER_COLORS.ambigu;
                 const pct = Math.round((c.count / totalCount) * 100);
                 return (
-                  <div key={c.mode} className={`${cfg.bg} border ${cfg.border} rounded-xl p-4 flex flex-col gap-2`}>
+                  <div key={c.mode} className={`${cfg.bg} border ${cfg.border} rounded-2xl p-4 flex flex-col gap-2`}>
                     <div className="flex justify-between items-center">
                       <span className={`text-[10px] font-bold uppercase tracking-widest ${cfg.text}`}>{c.mode}</span>
                       <span className={`text-lg font-black ${cfg.text}`}>{pct}%</span>
@@ -402,8 +569,7 @@ export const KnowledgeMonitor = () => {
               })}
             </div>
 
-            {/* Scatter Plot Galaxy */}
-            <div className="bg-[#090C15] border border-gray-800 rounded-xl relative overflow-hidden min-h-[400px] flex items-center justify-center">
+            <div className="bg-[#090C15] border border-gray-800 rounded-2xl relative overflow-hidden min-h-[420px] flex items-center justify-center">
               <div className="absolute inset-0 opacity-[0.07] pointer-events-none" style={{ backgroundImage: 'radial-gradient(circle, #374151 1px, transparent 1px)', backgroundSize: '30px 30px' }}/>
 
               {clustersLoading ? (
@@ -429,43 +595,27 @@ export const KnowledgeMonitor = () => {
                     })}
                   </defs>
 
-                  {/* Connection lines from center to each node */}
                   {clusters.map((c, idx) => {
                     const pos = positions[idx] || { x: 50, y: 50 };
                     const cfg = CLUSTER_COLORS[c.mode] || CLUSTER_COLORS.ambigu;
                     return (
                       <line key={`line-${c.mode}`}
-                            x1="50" y1="50" x2={pos.x} y2={pos.y}
-                            stroke={cfg.dot} strokeWidth="0.3" strokeOpacity="0.3" strokeDasharray="1 1"/>
+                        x1="50" y1="50" x2={pos.x} y2={pos.y}
+                        stroke={cfg.dot} strokeWidth="0.3" strokeOpacity="0.3" strokeDasharray="1 1"/>
                     );
                   })}
 
-                  {/* Cluster Nodes */}
                   {clusters.map((c, idx) => {
                     const pos = positions[idx] || { x: 50, y: 50 };
                     const cfg = CLUSTER_COLORS[c.mode] || CLUSTER_COLORS.ambigu;
                     const pct = c.count / totalCount;
-                    const r = 4 + pct * 8; // radius scales with count
-
-                    // Mini dots around each node (sample queries)
-                    const miniDots = c.queries_sample?.slice(0, 3).map((_, qi) => ({
-                      x: pos.x + Math.cos((qi / 3) * Math.PI * 2) * (r + 3),
-                      y: pos.y + Math.sin((qi / 3) * Math.PI * 2) * (r + 3),
-                    })) || [];
+                    const r = 4 + pct * 8;
 
                     return (
                       <g key={`node-${c.mode}`}>
-                        {/* Glow halo */}
                         <circle cx={pos.x} cy={pos.y} r={r + 4} fill={`url(#grad-${c.mode})`}/>
-                        {/* Main node */}
                         <circle cx={pos.x} cy={pos.y} r={r} fill={cfg.dot} fillOpacity="0.85" className="animate-pulse"/>
-                        {/* Inner highlight */}
                         <circle cx={pos.x - r * 0.3} cy={pos.y - r * 0.3} r={r * 0.3} fill="white" fillOpacity="0.2"/>
-                        {/* Mini orbit dots */}
-                        {miniDots.map((d, di) => (
-                          <circle key={di} cx={d.x} cy={d.y} r="0.8" fill={cfg.dot} fillOpacity="0.6"/>
-                        ))}
-                        {/* Label */}
                         <text x={pos.x} y={pos.y + r + 4} textAnchor="middle" fill={cfg.dot} fontSize="3" fontWeight="bold">
                           {c.mode.toUpperCase()}
                         </text>
@@ -476,7 +626,6 @@ export const KnowledgeMonitor = () => {
                     );
                   })}
 
-                  {/* Center hub */}
                   <circle cx="50" cy="50" r="3" fill="#1f2937" stroke="#4b5563" strokeWidth="0.8"/>
                   <circle cx="50" cy="50" r="1" fill="#9ca3af"/>
                 </svg>
@@ -486,11 +635,11 @@ export const KnowledgeMonitor = () => {
         );
       })()}
 
+      {/* Tab: Attention Heatmap */}
       {activeTab === 'heatmap' && (() => {
         const sources = ragData?.sources || [];
         const queries = ragData?.queries || [];
 
-        // Score to heat color
         const scoreToColor = (score) => {
           const s = Math.min(1, Math.max(0, typeof score === 'string' ? parseFloat(score) : (score || 0)));
           if (s >= 0.8) return { bg: 'rgba(239,68,68,0.15)', border: '#ef4444', text: '#fca5a5', bar: '#ef4444', label: '🔴 HIGH' };
@@ -501,10 +650,9 @@ export const KnowledgeMonitor = () => {
 
         return (
           <div className="flex flex-col gap-5 animate-in fade-in duration-500">
-            {/* Header info */}
-            <div className="bg-[#090C15] border border-orange-900/40 rounded-xl p-4 flex items-center justify-between">
+            <div className="bg-[#090C15] border border-orange-900/40 rounded-2xl p-4 flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="p-2 bg-orange-500/10 rounded-lg border border-orange-500/20">
+                <div className="p-2 bg-orange-500/10 rounded-xl border border-orange-500/20">
                   <Flame className="text-orange-500 w-4 h-4"/>
                 </div>
                 <div>
@@ -512,44 +660,21 @@ export const KnowledgeMonitor = () => {
                   <p className="text-xs text-gray-500">Relevance score setiap sumber dokumen yang ditarik AI</p>
                 </div>
               </div>
-              <button onClick={fetchLiveRAG} className="text-xs text-gray-500 hover:text-gray-300 flex items-center gap-1.5 border border-gray-700 px-3 py-1.5 rounded-lg hover:border-gray-600 transition-colors">
-                <Activity size={12}/> Refresh
+              <button onClick={fetchLiveRAG} className="text-xs text-gray-400 hover:text-gray-200 flex items-center gap-1.5 border border-gray-700 px-3 py-1.5 rounded-lg hover:border-gray-600 transition-colors">
+                <RotateCcw size={12}/> Refresh
               </button>
             </div>
 
-            {/* Queries used */}
-            {queries.length > 0 && (
-              <div className="flex flex-wrap gap-2">
-                {queries.map((q, i) => {
-                  const isObj = typeof q === 'object' && q !== null;
-                  const text = isObj ? q.text : q;
-                  const type = isObj ? q.type : "SEMANTIC";
-                  
-                  let bgClass = "bg-blue-500/10 border-blue-500/30 text-blue-300";
-                  if (type === "TITLE_SEARCH") bgClass = "bg-orange-500/10 border-orange-500/30 text-orange-300";
-                  if (type === "COMMUNITY_KNOWLEDGE") bgClass = "bg-emerald-500/10 border-emerald-500/30 text-emerald-300";
-                  
-                  return (
-                    <span key={i} className={`text-xs border px-3 py-1 rounded-full font-mono ${bgClass}`}>
-                      🔍 {text}
-                    </span>
-                  );
-                })}
-              </div>
-            )}
-
-            {/* No data */}
             {sources.length === 0 ? (
-              <div className="bg-[#090C15] border border-gray-800 rounded-xl min-h-[300px] flex flex-col items-center justify-center gap-4 text-gray-600">
+              <div className="bg-[#090C15] border border-gray-800 rounded-2xl min-h-[300px] flex flex-col items-center justify-center gap-4 text-gray-600">
                 <Flame size={40} className="opacity-20"/>
                 <p className="text-sm">Belum ada data RAG. Chat dengan CAKRA menggunakan mode Dokumen.</p>
               </div>
             ) : (
               <div className="flex flex-col gap-4">
-                {/* Heatmap bar visualization */}
-                <div className="bg-[#090C15] border border-gray-800 rounded-xl p-5">
+                <div className="bg-[#090C15] border border-gray-800 rounded-2xl p-5">
                   <h4 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-4 flex items-center gap-2">
-                    <Flame size={11} className="text-orange-500"/> Relevance Score Map
+                    <Flame size={12} className="text-orange-500"/> Relevance Score Map
                   </h4>
                   <div className="flex flex-col gap-3">
                     {sources.map((s, i) => {
@@ -560,7 +685,7 @@ export const KnowledgeMonitor = () => {
                         <div key={i} className="flex flex-col gap-1.5">
                           <div className="flex items-center justify-between text-xs">
                             <div className="flex items-center gap-2">
-                              <FileText size={11} style={{ color: cfg.text }}/>
+                              <FileText size={12} style={{ color: cfg.text }}/>
                               <span className="text-gray-300 font-medium truncate max-w-[400px]">
                                 {s.title || `Dokumen ${i + 1}`}
                               </span>
@@ -577,7 +702,6 @@ export const KnowledgeMonitor = () => {
                               </span>
                             </div>
                           </div>
-                          {/* Heat bar */}
                           <div className="h-3 bg-gray-800/60 rounded-full overflow-hidden relative">
                             <div
                               className="h-full rounded-full transition-all duration-1000 ease-out relative"
@@ -586,12 +710,7 @@ export const KnowledgeMonitor = () => {
                                 backgroundColor: cfg.bar,
                                 boxShadow: `0 0 12px ${cfg.bar}80`,
                               }}
-                            >
-                              {/* Heat gradient shimmer */}
-                              <div className="absolute inset-0 rounded-full opacity-50"
-                                   style={{ background: `linear-gradient(90deg, transparent, ${cfg.bar}, transparent)`,
-                                            animation: 'shimmer 2s ease-in-out infinite' }}/>
-                            </div>
+                            />
                           </div>
                         </div>
                       );
@@ -599,15 +718,14 @@ export const KnowledgeMonitor = () => {
                   </div>
                 </div>
 
-                {/* Heat Legend + Summary */}
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
                   {[
-                    { label: 'HIGH Relevance', range: '≥ 80%', color: '#ef4444', emoji: '🔴' },
-                    { label: 'GOOD Relevance', range: '65–79%', color: '#f97316', emoji: '🟠' },
-                    { label: 'FAIR Relevance', range: '50–64%', color: '#eab308', emoji: '🟡' },
-                    { label: 'LOW Relevance',  range: '< 50%',  color: '#3b82f6', emoji: '🔵' },
+                    { label: 'HIGH Relevance', range: '≥ 80%', color: '#ef4444' },
+                    { label: 'GOOD Relevance', range: '65–79%', color: '#f97316' },
+                    { label: 'FAIR Relevance', range: '50–64%', color: '#eab308' },
+                    { label: 'LOW Relevance',  range: '< 50%',  color: '#3b82f6' },
                   ].map(item => (
-                    <div key={item.label} className="bg-gray-900/50 border border-gray-800 rounded-lg p-3 flex items-center gap-3">
+                    <div key={item.label} className="bg-gray-900/50 border border-gray-800 rounded-xl p-3 flex items-center gap-3">
                       <div className="w-3 h-8 rounded-full" style={{ backgroundColor: item.color, boxShadow: `0 0 8px ${item.color}60` }}/>
                       <div>
                         <div className="text-[10px] font-bold text-gray-300">{item.label}</div>

@@ -30,9 +30,11 @@ class ChatStreamRequest(BaseModel):
     edit_index: Optional[int] = Field(None, description="Indeks array dari chat user yang ingin diedit di DB (In-Place Update)")
     active_topic: Optional[str] = Field(None, description="Topik percakapan aktif sebelumnya di sesi ini")
     key_subject: Optional[str] = Field(None, description="Entitas / subjek inti spesifik yang sedang dibahas")
+    client_context: Optional[dict] = Field(None, description="Metadata lingkungan klien (lat, lon, timezone, waktu klien)")
 
     class Config:
         from_attributes = True
+
 
 
 class TitleUpdateSchema(BaseModel):

@@ -60,7 +60,7 @@ async def call_ollama_generate_raw(
     raw_prompt: str,
     temperature: float = 1.0,
     num_predict: int = 2048,
-    num_ctx: int = 32000,
+    num_ctx: int = 16384,
     stop_sequences: List[str] = None,
     request: Optional[Request] = None,  # For GPU semaphore
     images: Optional[List[str]] = None
@@ -73,7 +73,7 @@ async def call_ollama_generate_raw(
         raw_prompt: Exact raw prompt string from token_continuation_layer
         temperature: 0.1 (analysis) or 0.7 (response)
         num_predict: Max tokens to generate
-        num_ctx: Context window
+        num_ctx: Context window (locked to 16384 to preserve VRAM KV cache)
         stop_sequences: Stop on these markers (e.g., ["<channel|>"])
         request: FastAPI Request (acquire GPU semaphore)
     
@@ -133,7 +133,7 @@ class RawGenerateClient:
             raw_prompt=raw_prompt,
             temperature=kwargs.get("temperature", 1.0),
             num_predict=kwargs.get("num_predict", 2048),
-            num_ctx=kwargs.get("num_ctx", 32000),
+            num_ctx=kwargs.get("num_ctx", 16384),
             stop_sequences=kwargs.get("stop_sequences")
         )
         

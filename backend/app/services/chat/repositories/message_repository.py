@@ -346,7 +346,7 @@ class MessageRepository:
                 return []
 
     async def get_session_document_chunks_with_meta(self, session_uuid: str) -> List[dict]:
-        """Mengambil semua chunk beserta metadata-nya. Digunakan untuk ekstrak visited_urls."""
+        """Mengambil semua chunk beserta metadata-nya dan ID. Digunakan untuk ekstrak manifest dan visited_urls."""
         async with get_db() as conn:
             try:
                 session_pk = await self._resolve_session_pk(conn, session_uuid)
@@ -354,7 +354,7 @@ class MessageRepository:
                     return []
                 rows = await conn.fetch(
                     """
-                    SELECT content, metadata FROM ai_document_chunks
+                    SELECT id, content, metadata, created_at FROM ai_document_chunks
                     WHERE session_id = $1
                     ORDER BY created_at ASC;
                     """,
@@ -368,10 +368,68 @@ class MessageRepository:
                             meta = json.loads(row["metadata"])
                         except Exception:
                             pass
-                    result.append({"content": row["content"], "metadata": meta})
+                    result.append({
+                        "id": row["id"],
+                        "content": row["content"],
+                        "metadata": meta,
+                        "created_at": row["created_at"]
+                    })
                 return result
             except Exception as e:
                 logger.error(f"[CHAT_HISTORY_ERROR] Failed to get session chunks with meta: {str(e)}")
+                return []
+
+    async def get_session_knowledge_manifest(self, session_uuid: str) -> str:
+        """
+        Menghasilkan katalog ringkas dari semua file / tautan yang pernah diunggah/dibaca di sesi ini.
+        Hanya memakan ~50-100 token dibanding full-text dump puluhan ribu karakter.
+        """
+        chunks = await self.get_session_document_chunks_with_meta(session_uuid)
+        if not chunks:
+            return ""
+
+        manifest_lines = ["[KNOWLEDGE DARI FILE SEBELUMNYA DI SESI INI]"]
+        for idx, c in enumerate(chunks, 1):
+            chunk_id = c.get("id")
+            meta = c.get("metadata", {})
+            item_type = meta.get("type", "file")
+            title = meta.get("title") or meta.get("source") or f"Dokumen #{chunk_id}"
+            summary = meta.get("summary")
+            if not summary:
+                # Fallback: Buat ringkasan ringkas dari 120 karakter pertama
+                content_clean = c.get("content", "").replace("\n", " ").strip()
+                summary = (content_clean[:120] + "...") if len(content_clean) > 120 else content_clean
+
+            manifest_lines.append(f"{idx}. [{item_type.upper()}] {title} (Chunk ID: {chunk_id}) — Ringkasan: {summary}")
+
+        return "\n".join(manifest_lines)
+
+    async def get_document_chunks_by_ids(self, chunk_ids: List[int]) -> List[dict]:
+        """Mengambil full content spesifik untuk chunk IDs tertentu secara on-demand."""
+        if not chunk_ids:
+            return []
+        async with get_db() as conn:
+            try:
+                rows = await conn.fetch(
+                    """
+                    SELECT id, content, metadata FROM ai_document_chunks
+                    WHERE id = ANY($1::int[])
+                    ORDER BY id ASC;
+                    """,
+                    chunk_ids
+                )
+                result = []
+                for row in rows:
+                    meta = {}
+                    if row["metadata"]:
+                        try:
+                            meta = json.loads(row["metadata"])
+                        except Exception:
+                            pass
+                    result.append({"id": row["id"], "content": row["content"], "metadata": meta})
+                return result
+            except Exception as e:
+                logger.error(f"[CHAT_HISTORY_ERROR] Failed to get chunks by IDs: {str(e)}")
                 return []
 
     

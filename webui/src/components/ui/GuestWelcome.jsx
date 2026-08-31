@@ -30,8 +30,8 @@ export default function GuestWelcome({
     }
   }, [isLoggedIn, t.greeting, t.guest]);
 
-  const rawFirstName = userData?.preferred_name || userData?.fullname?.split(" ")[0] || "Guest";
-  const firstName = rawFirstName.charAt(0).toUpperCase() + rawFirstName.slice(1).toLowerCase();
+  const preferredName = userData?.preferred_name?.trim();
+  const firstName = preferredName || (userData?.fullname ? userData.fullname.split(" ")[0] : (language === 'en' ? 'User' : 'Rekan'));
 
   return (
     <div style={{

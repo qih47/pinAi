@@ -38,11 +38,12 @@ export const createChatSlice = (set, get) => ({
         });
     },
 
-    setContextIsolation: (docId, docTitle) => {
-        set({
+    setContextIsolation: (docId, docTitle, mode = null) => {
+        set((state) => ({
             activeIsolatedDocId: docId || null,
-            activeIsolatedTitle: docTitle || null
-        });
+            activeIsolatedTitle: docTitle || null,
+            chatMode: mode ? mode : (docId ? (state.chatMode === 'compliance' || state.chatMode === 'redteam' ? state.chatMode : 'focus') : 'auto')
+        }));
     },
 
     setSplitScreen: (isSplit, url = null) => {

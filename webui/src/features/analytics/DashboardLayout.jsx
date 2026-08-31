@@ -73,8 +73,7 @@ export const DashboardLayout = () => {
         <nav className={`flex-1 w-full ${isSidebarExpanded ? 'px-4' : 'px-3'} space-y-2 overflow-y-auto custom-scrollbar`}>
           <NavItem icon={<Activity />} label="Overview" active={activeTab === 'overview'} onClick={() => setActiveTab('overview')} isExpanded={isSidebarExpanded} />
           <NavItem icon={<Database />} label="Knowledge Base" active={activeTab === 'knowledge'} onClick={() => setActiveTab('knowledge')} isExpanded={isSidebarExpanded} />
-          <NavItem icon={<Brain />} label="Deep Learning" active={activeTab === 'training'} onClick={() => setActiveTab('training')} isExpanded={isSidebarExpanded} />
-          <NavItem icon={<Brain />} label="Synthetic RAG Training" active={activeTab === 'synthetic'} onClick={() => setActiveTab('synthetic')} isExpanded={isSidebarExpanded} />
+          <NavItem icon={<Brain />} label="Deep Learning Hub" active={activeTab === 'training' || activeTab === 'synthetic'} onClick={() => setActiveTab('training')} isExpanded={isSidebarExpanded} />
           <NavItem icon={<ShieldAlert />} label="Cyber Security" active={activeTab === 'security'} onClick={() => setActiveTab('security')} isExpanded={isSidebarExpanded} />
           <NavItem icon={<Code2 />} label="Prompt Studio" active={activeTab === 'prompts'} onClick={() => setActiveTab('prompts')} isExpanded={isSidebarExpanded} />
           <NavItem icon={<Archive />} label="Artifact Vault" active={activeTab === 'artifacts'} onClick={() => setActiveTab('artifacts')} isExpanded={isSidebarExpanded} />
@@ -231,14 +230,9 @@ export const DashboardLayout = () => {
                 <KnowledgeMonitor />
               </div>
             )}
-            {activeTab === 'training' && (
+            {(activeTab === 'training' || activeTab === 'synthetic') && (
               <div className="flex-1 flex flex-col min-h-0 animate-in fade-in slide-in-from-bottom-4 duration-500">
                 <DeepLearningTab />
-              </div>
-            )}
-            {activeTab === 'synthetic' && (
-              <div className="flex-1 flex flex-col min-h-0 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                <SyntheticQATab />
               </div>
             )}
             {activeTab === 'security' && (

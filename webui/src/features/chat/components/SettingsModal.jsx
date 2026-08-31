@@ -34,8 +34,38 @@ export default function SettingsModal({
   const [isVoiceDropdownOpen, setIsVoiceDropdownOpen] = useState(false);
   const [isLanguageDropdownOpen, setIsLanguageDropdownOpen] = useState(false);
   const [showSuggestionForm, setShowSuggestionForm] = useState(false);
+  const [communicationStyle, setCommunicationStyle] = useState(
+    userData?.communication_style || 'formal_saya_anda'
+  );
+  const [isStyleDropdownOpen, setIsStyleDropdownOpen] = useState(false);
   const voiceDropdownRef = useRef(null);
   const languageDropdownRef = useRef(null);
+  const styleDropdownRef = useRef(null);
+
+  useEffect(() => {
+    if (userData?.communication_style) {
+      setCommunicationStyle(userData.communication_style);
+    }
+  }, [userData]);
+
+  const handleStyleChange = async (newStyle) => {
+    setCommunicationStyle(newStyle);
+    setIsStyleDropdownOpen(false);
+    try {
+      const token = localStorage.getItem('cakra_token') || '';
+      await apiClient.put('/user/settings', {
+        token,
+        settings: {
+          communication_style: newStyle
+        }
+      });
+      const updatedUser = { ...(userData || {}), communication_style: newStyle };
+      localStorage.setItem('cakra_user', JSON.stringify(updatedUser));
+      useChatAuthStore.setState({ user: updatedUser });
+    } catch (err) {
+      console.error("Failed to update communication style", err);
+    }
+  };
 
   // Edit Account State
   const [isEditingAccount, setIsEditingAccount] = useState(false);
@@ -138,6 +168,9 @@ export default function SettingsModal({
       }
       if (languageDropdownRef.current && !languageDropdownRef.current.contains(e.target)) {
         setIsLanguageDropdownOpen(false);
+      }
+      if (styleDropdownRef.current && !styleDropdownRef.current.contains(e.target)) {
+        setIsStyleDropdownOpen(false);
       }
     };
     if (isOpen) {
@@ -354,6 +387,60 @@ export default function SettingsModal({
                         className={`w-full text-left px-4 py-2 text-sm transition-colors ${language === 'id' ? (darkMode ? 'bg-blue-500/10 text-blue-400 font-medium' : 'bg-blue-50 text-blue-600 font-medium') : (darkMode ? 'text-gray-300 hover:bg-gray-800' : 'text-gray-700 hover:bg-gray-50')}`}
                       >
                         Bahasa Indonesia
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Communication Style / Gaya Bahasa */}
+            <div className={`flex items-center justify-between py-4 border-b ${darkMode ? 'border-gray-700/50' : 'border-gray-200'}`}>
+              <div>
+                <h3 className="font-medium text-[14px]">{t.communicationStyle}</h3>
+              </div>
+              <div className="relative" ref={styleDropdownRef}>
+                <button
+                  onClick={() => setIsStyleDropdownOpen(!isStyleDropdownOpen)}
+                  className={`flex items-center justify-between text-sm border rounded-lg px-3 py-2 outline-none w-[190px] transition-all ${darkMode ? 'bg-[#18181b] border-gray-700 hover:border-gray-500 text-gray-200' : 'bg-gray-50 border-gray-300 hover:border-gray-400 text-gray-700'} ${isStyleDropdownOpen ? (darkMode ? 'border-gray-500 ring-2 ring-gray-700' : 'border-gray-400 ring-2 ring-gray-200') : ''}`}
+                >
+                  <span className="truncate text-left">
+                    {communicationStyle === 'informal_gue_lo' && t.commStyleCasual}
+                    {communicationStyle === 'familiar_aku_kamu' && t.commStyleFriendly}
+                    {communicationStyle === 'adaptive_mirroring' && t.commStyleAdaptive}
+                    {(!communicationStyle || communicationStyle === 'formal_saya_anda') && t.commStyleFormal}
+                  </span>
+                  <svg className={`w-4 h-4 ml-2 flex-shrink-0 transition-transform duration-200 ${isStyleDropdownOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+
+                {isStyleDropdownOpen && (
+                  <div className={`absolute right-0 mt-2 w-[190px] rounded-xl shadow-xl border overflow-hidden z-50 animate-in fade-in zoom-in-95 duration-200 ${darkMode ? 'bg-[#18181b] border-gray-700 shadow-black/50' : 'bg-white border-gray-200 shadow-gray-200/50'}`}>
+                    <div className="py-2">
+                      <button
+                        onClick={() => handleStyleChange('formal_saya_anda')}
+                        className={`w-full text-left px-3.5 py-2 text-sm truncate transition-colors ${(!communicationStyle || communicationStyle === 'formal_saya_anda') ? (darkMode ? 'bg-blue-500/10 text-blue-400 font-medium' : 'bg-blue-50 text-blue-600 font-medium') : (darkMode ? 'text-gray-300 hover:bg-gray-800' : 'text-gray-700 hover:bg-gray-50')}`}
+                      >
+                        {t.commStyleFormal}
+                      </button>
+                      <button
+                        onClick={() => handleStyleChange('informal_gue_lo')}
+                        className={`w-full text-left px-3.5 py-2 text-sm truncate transition-colors ${communicationStyle === 'informal_gue_lo' ? (darkMode ? 'bg-blue-500/10 text-blue-400 font-medium' : 'bg-blue-50 text-blue-600 font-medium') : (darkMode ? 'text-gray-300 hover:bg-gray-800' : 'text-gray-700 hover:bg-gray-50')}`}
+                      >
+                        {t.commStyleCasual}
+                      </button>
+                      <button
+                        onClick={() => handleStyleChange('familiar_aku_kamu')}
+                        className={`w-full text-left px-3.5 py-2 text-sm truncate transition-colors ${communicationStyle === 'familiar_aku_kamu' ? (darkMode ? 'bg-blue-500/10 text-blue-400 font-medium' : 'bg-blue-50 text-blue-600 font-medium') : (darkMode ? 'text-gray-300 hover:bg-gray-800' : 'text-gray-700 hover:bg-gray-50')}`}
+                      >
+                        {t.commStyleFriendly}
+                      </button>
+                      <button
+                        onClick={() => handleStyleChange('adaptive_mirroring')}
+                        className={`w-full text-left px-3.5 py-2 text-sm truncate transition-colors ${communicationStyle === 'adaptive_mirroring' ? (darkMode ? 'bg-blue-500/10 text-blue-400 font-medium' : 'bg-blue-50 text-blue-600 font-medium') : (darkMode ? 'text-gray-300 hover:bg-gray-800' : 'text-gray-700 hover:bg-gray-50')}`}
+                      >
+                        {t.commStyleAdaptive}
                       </button>
                     </div>
                   </div>

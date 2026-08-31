@@ -106,21 +106,28 @@ async def lifespan(app: FastAPI):
         await setup_hnsw_index()
         await optimize_vector_search()
 
-        await _warmup_and_pin_models()
+        # Background Warmup: Model pinning, BGE reranker, dan F5-TTS di-load secara asinkron
+        # agar Chat Service langsung membuka port 8001 dalam <1 detik tanpa blocking gateway
+        async def background_warmup():
+            try:
+                await _warmup_and_pin_models()
+                logger.info("⏳ [WARMUP] Loading BAAI/bge-reranker...")
+                await asyncio.get_event_loop().run_in_executor(None, _load_reranker)
+                logger.info("⏳ [WARMUP] Preloading F5-TTS...")
+                from backend.app.api.endpoints.voice import get_f5_tts
+                ema_model, vocoder = await asyncio.get_event_loop().run_in_executor(None, get_f5_tts)
+                if ema_model is not None:
+                    logger.info("✅ [WARMUP] F5-TTS ready.")
+                else:
+                    logger.warning("⚠️ [WARMUP] F5-TTS will lazy-load on first request.")
+                logger.info("✅ [WARMUP] All background models pinned and ready.")
+            except Exception as e:
+                logger.warning(f"⚠️ [WARMUP] Background warmup encountered: {e}")
 
-        logger.info("⏳ [WARMUP] Loading BAAI/bge-reranker...")
-        await asyncio.get_event_loop().run_in_executor(None, _load_reranker)
-
-        logger.info("⏳ [WARMUP] Preloading F5-TTS...")
-        from backend.app.api.endpoints.voice import get_f5_tts
-        ema_model, vocoder = await asyncio.get_event_loop().run_in_executor(None, get_f5_tts)
-        if ema_model is not None:
-            logger.info("✅ [WARMUP] F5-TTS ready.")
-        else:
-            logger.warning("⚠️ [WARMUP] F5-TTS will lazy-load on first request.")
+        asyncio.create_task(background_warmup())
 
         await start_background_scheduler(app)
-        logger.info("✅ [CHAT_SERVICE] All systems nominal.")
+        logger.info("✅ [CHAT_SERVICE] All systems nominal. Service ready on port 8001.")
     except Exception as e:
         logger.error(f"❌ [CHAT_SERVICE] Startup failed: {e}")
         raise

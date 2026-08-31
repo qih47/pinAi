@@ -209,7 +209,8 @@ export default function SessionList({
           </span>
         </Link>
 
-        {/* 2. Nota Dinas Gen */}
+        {/* 2. Nota Dinas Gen & 3. Vendor Analyzer (Hidden Temporarily) */}
+        {/*
         <Link
           to="/corporate/notadinas"
           onClick={() => setActiveMenuId?.(null)}
@@ -232,7 +233,6 @@ export default function SessionList({
           </span>
         </Link>
 
-        {/* 3. Vendor Analyzer */}
         <Link
           to="/corporate/vendor"
           onClick={() => setActiveMenuId?.(null)}
@@ -254,6 +254,8 @@ export default function SessionList({
             {t.vendorAnalyzer}
           </span>
         </Link>
+        */}
+
 
         {/* ── TOMBOL: ANALYTICS (HANYA UNTUK 06652) ── */}
         {userData?.npp === '06652' && (

@@ -1,6 +1,8 @@
 import React, { useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
 import ThoughtAccordion from './ThoughtAccordion';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
@@ -23,7 +25,8 @@ const LazyWebSearchWidget = lazy(() => import('./WebSearchWidget'));
 const LazyUrlFetchTimelineWidget = lazy(() => import('./UrlFetchTimelineWidget'));
 const LazyInteractiveWizardWidget = lazy(() => import('./InteractiveWizardWidget'));
 
-const remarkPluginsList = [remarkGfm];
+const remarkPluginsList = [remarkGfm, remarkMath];
+const rehypePluginsList = [rehypeKatex];
 
 // 🌐 SMART LINKIFIER: Otomatis ubah domain/URL mentah (seperti jdih.setneg.go.id) menjadi tautan aktif
 const linkifyRawDomains = (text) => {
@@ -651,6 +654,7 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
                                     children={displayContent}
                                     components={markdownComponents}
                                     remarkPlugins={remarkPluginsList}
+                                    rehypePlugins={rehypePluginsList}
                                 />
                             </div>
                         )}

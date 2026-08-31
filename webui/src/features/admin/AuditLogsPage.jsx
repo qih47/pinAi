@@ -103,9 +103,9 @@ export default function AuditLogsPage() {
   const [selectedTelepathyNpp, setSelectedTelepathyNpp] = useState(null);
   const exportRef = useRef(null);
 
-  // Check admin access
+  // Check admin access (only if standalone page)
   useEffect(() => {
-    if (!isAuthenticated) {
+    if (!isAuthenticated && window.location.pathname === '/audit-logs') {
       navigate('/login');
     }
   }, [isAuthenticated, navigate]);

@@ -64,20 +64,24 @@ async def _sequential_pipeline_generator(
     
     if payload.attachment_paths:
         import os
-        from backend.app.core.paths import UPLOAD_DIR, get_abs_path
+        from backend.app.core.paths import UPLOAD_DIR, BASE_DIR, get_abs_path
         import base64
         
         for path in payload.attachment_paths:
             path_lower = path.lower()
             filename = os.path.basename(path)
             
-            if path.startswith("accounts/"):
-                abs_path = get_abs_path(path)
-            else:
-                abs_path = os.path.join(UPLOAD_DIR, filename)
+            cand_paths = [
+                path if os.path.isabs(path) else None,
+                os.path.join(UPLOAD_DIR, filename),
+                os.path.join(BASE_DIR, path),
+                os.path.join(BASE_DIR, "file_peraturan", filename),
+                get_abs_path(path)
+            ]
+            abs_path = next((p for p in cand_paths if p and os.path.exists(p)), None)
             
-            if not os.path.exists(abs_path):
-                logger.warning(f"[PIPELINE] Attachment not found: {abs_path}")
+            if not abs_path:
+                logger.warning(f"[PIPELINE] Attachment not found in candidate paths: {path}")
                 continue
                 
             if any(path_lower.endswith(ext) for ext in [".jpg", ".jpeg", ".png", ".webp", ".bmp"]):
@@ -88,54 +92,21 @@ async def _sequential_pipeline_generator(
                         formatted_attachments.append({"base64": encoded, "type": "image"})
                 except Exception as e:
                     logger.error(f"[PIPELINE] Gagal membaca gambar {path}: {e}")
+            elif path_lower.endswith(".pdf"):
+                # Lampiran PDF: teruskan path dan metadata terstruktur ke mode_attachment
+                # agar diproses menggunakan Parallel OCR & Two-Stage Context Intelligence secara utuh
+                formatted_attachments.append({
+                    "type": "pdf",
+                    "mime_type": "application/pdf",
+                    "file_path": abs_path,
+                    "file_name": filename
+                })
             else:
-                # Text/PDF/Doc extraction
+                # Text/Doc/Code extraction
                 try:
                     ext = os.path.splitext(filename)[1].lower()
                     extracted = ""
-                    if ext == ".pdf":
-                        import fitz
-                        try:
-                            doc = fitz.open(abs_path)
-                            for page in doc:
-                                page_text = page.get_text()
-                                if page_text:
-                                    extracted += page_text + "\n"
-                        except Exception as e:
-                            logger.warning(f"[PDF] fitz extraction failed, fallback PyPDF2: {e}")
-                            import PyPDF2
-                            with open(abs_path, "rb") as f:
-                                reader = PyPDF2.PdfReader(f)
-                                for page in reader.pages:
-                                    page_text = page.extract_text()
-                                    if page_text:
-                                        extracted += page_text + "\n"
-                        
-                        # Fallback untuk PDF Scan (kosong teksnya), jalankan pre-restorasi OCRmyPDF lalu render jadi gambar
-                        if not extracted.strip():
-                            import fitz
-                            import base64
-                            
-                            restored_pdf = abs_path + ".restored.pdf"
-                            try:
-                                import ocrmypdf
-                                ocrmypdf.ocr(abs_path, restored_pdf, deskew=True, force_ocr=True, optimize=1)
-                                target_pdf = restored_pdf
-                            except Exception as e:
-                                logger.warning(f"[OCR] ocrmypdf failed, fallback to original: {e}")
-                                target_pdf = abs_path
-
-                            doc = fitz.open(target_pdf)
-                            # Render semua halaman karena Gemma4 memiliki 256K context
-                            for page_num in range(len(doc)):
-                                page = doc.load_page(page_num)
-                                pix = page.get_pixmap(dpi=150) # Resolusi cukup tinggi untuk OCR mandiri VLM
-                                img_data = pix.tobytes("png")
-                                encoded = base64.b64encode(img_data).decode("utf-8")
-                                formatted_attachments.append({"base64": encoded, "type": "image"})
-                            
-                            has_images = True
-                    elif ext == ".docx":
+                    if ext == ".docx":
                         import docx
                         doc = docx.Document(abs_path)
                         extracted = "\n".join([para.text for para in doc.paragraphs])
@@ -146,13 +117,21 @@ async def _sequential_pipeline_generator(
                     if extracted.strip():
                         extracted_file_texts.append(f"--- ISI FILE: {filename} ---\n{extracted.strip()}\n-------------------")
                         
-                        # Save to memory (ai_document_chunks)
+                        # Save to memory (ai_document_chunks) dengan metadata terstruktur
                         if payload.session_uuid and current_user_npp:
+                            clean_sample = " ".join(extracted.strip().split())[:180]
+                            doc_summary = f"Dokumen {filename} ({ext}): {clean_sample}..."
                             await chat_history_service.save_document_chunk(
                                 session_uuid=payload.session_uuid,
                                 npp=current_user_npp,
                                 content=extracted.strip(),
-                                chunk_metadata={"source": path}
+                                chunk_metadata={
+                                    "type": "file",
+                                    "title": filename,
+                                    "source": path,
+                                    "summary": doc_summary,
+                                    "size_chars": len(extracted.strip())
+                                }
                             )
                 except Exception as e:
                     logger.error(f"[PIPELINE] Gagal mengekstrak isi file {path}: {e}")
@@ -268,7 +247,9 @@ async def _sequential_pipeline_generator(
             has_new_document=bool(extracted_file_texts),
             active_topic=getattr(payload, 'active_topic', None),
             key_subject=getattr(payload, 'key_subject', None),
+            client_context=getattr(payload, 'client_context', None),
         )
+
 
         async for sse in agentic_engine:
             raw = sse.strip()

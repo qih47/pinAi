@@ -49,16 +49,17 @@ async def perform_web_search(query: str, num_results: int = 5) -> List[Dict[str,
     params = {
         "q": query,
         "format": "json",
-        "engines": "google,bing,duckduckgo",
+        "engines": "google,duckduckgo",
         "language": "id",
         "categories": "general",
         "safesearch": "0"
     }
     
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        async with httpx.AsyncClient(timeout=4.0) as client:
             response = await client.get(SEARXNG_URL, params=params)
             response.raise_for_status()
+
             
             data = response.json()
             results = data.get("results", [])

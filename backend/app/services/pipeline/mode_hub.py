@@ -58,6 +58,7 @@ class ModeHub:
         has_new_document: bool = False,
         active_topic: Optional[str] = None,
         key_subject: Optional[str] = None,
+        client_context: Optional[Dict[str, Any]] = None,
     ) -> AsyncGenerator[str, None]:
         """
         Main entry point for stream.py to route the request to the correct mode handler.
@@ -74,6 +75,8 @@ class ModeHub:
         precheck = detect_precheck(user_message, chat_mode, has_attachment, user_default_pronoun=user_default_pronoun)
         precheck["_user_message"] = user_message
         precheck["user_default_pronoun"] = user_default_pronoun
+        precheck["client_context"] = client_context
+
         
         is_guest = (current_user_npp == "GUEST")
         is_first_chat = len(chat_history) <= 1
@@ -83,10 +86,10 @@ class ModeHub:
         visited_urls = []
         if session_uuid:
             from backend.app.services.chat.chat_history_service import chat_history_service
+            # Gunakan katalog manifest ringkas (~50-100 token) alih-alih dump full text puluhan ribu karakter
+            session_chunks_text = await chat_history_service.get_session_knowledge_manifest(session_uuid)
             chunks_with_meta = await chat_history_service.get_session_document_chunks_with_meta(session_uuid)
             if chunks_with_meta:
-                text_chunks = [c["content"] for c in chunks_with_meta]
-                session_chunks_text = "\n\n[KNOWLEDGE DARI FILE SEBELUMNYA DI SESI INI]\n" + "\n---\n".join(text_chunks)
                 # Ekstrak domain URL yang pernah dikunjungi untuk multi-turn URL awareness
                 for c in chunks_with_meta:
                     meta = c.get("metadata", {})
@@ -373,14 +376,20 @@ class ModeHub:
                 
                 if session_uuid and current_user_npp:
                     from backend.app.services.chat.chat_history_service import chat_history_service
+                    clean_web_sample = " ".join(url_contexts.replace("==== ISI WEB:", "").split())[:180]
+                    target_title = approved_fetch_urls[0] if approved_fetch_urls else "Tautan Web"
+                    web_summary = f"Konten web {target_title}: {clean_web_sample}..."
                     asyncio.create_task(chat_history_service.save_document_chunk(
                         session_uuid=session_uuid,
                         npp=current_user_npp,
                         content=url_contexts[:30000],
                         file_id=None,
                         chunk_metadata={
+                            "type": "web",
                             "source": "url_read",
+                            "title": target_title,
                             "urls": approved_fetch_urls,
+                            "summary": web_summary,
                             "fetched_at": datetime.now().isoformat()
                         }
                     ))
@@ -389,6 +398,24 @@ class ModeHub:
             f"[MODE_HUB] Call 1 complete | need_rag={routing_data.get('need_rag')} | "
             f"is_coding={routing_data.get('is_coding')} | queries={routing_data.get('queries')}"
         )
+
+        # ── On-Demand Retrieval dari Dokumen Sesi Sebelumnya ───────────────────
+        session_chunk_ids = routing_data.get("session_chunk_ids", [])
+        if session_chunk_ids and isinstance(session_chunk_ids, list):
+            try:
+                from backend.app.services.chat.chat_history_service import chat_history_service
+                valid_ids = [int(cid) for cid in session_chunk_ids if str(cid).isdigit()]
+                if valid_ids:
+                    retrieved_chunks = await chat_history_service.get_document_chunks_by_ids(valid_ids)
+                    if retrieved_chunks:
+                        logger.info(f"[MODE_HUB] On-Demand retrieved {len(retrieved_chunks)} session document chunk(s) for IDs: {valid_ids}")
+                        retrieved_text = "\n\n[KONTEN DOKUMEN SESI YANG DIPANGGIL KEMBALI]\n" + "\n---\n".join(
+                            f"--- DOKUMEN #{c['id']} ({c.get('metadata', {}).get('title', 'Dokumen')}) ---\n{c['content']}"
+                            for c in retrieved_chunks
+                        )
+                        precheck["_retrieved_session_chunks_text"] = retrieved_text
+            except Exception as e:
+                logger.error(f"[MODE_HUB] Failed on-demand chunk retrieval: {e}")
         
         # ── Update Session Title (Gemma 4 Native / Fallback) ────────────────────────
         if routing_data.get("session_title") and session_uuid:

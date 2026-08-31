@@ -30,9 +30,11 @@ class AuthService:
         """Verify the session token and update last activity."""
         async with get_db() as conn:
             query = """
-                SELECT u.npp, u.fullname, u.preferred_name, u.divisi, u.role, s.expires_at, u.email, u.profile_photo_url
+                SELECT u.npp, u.fullname, u.preferred_name, u.divisi, u.role, s.expires_at, u.email, u.profile_photo_url,
+                       us.settings AS user_settings_json
                 FROM session_login s
                 JOIN users u ON s.npp = u.npp
+                LEFT JOIN user_settings us ON us.npp = u.npp
                 WHERE s.session_token = $1 AND s.is_login = TRUE AND s.expires_at > NOW()
             """
             user = await conn.fetchrow(query, token)
@@ -44,6 +46,11 @@ class AuthService:
                     token,
                 )
                 
+                settings_data = {}
+                if user["user_settings_json"]:
+                    import json
+                    settings_data = json.loads(user["user_settings_json"]) if isinstance(user["user_settings_json"], str) else user["user_settings_json"]
+
                 user_email = user["email"]
                 if not user_email:
                     try:
@@ -60,11 +67,15 @@ class AuthService:
                     "npp": user["npp"],
                     "username": user["npp"],
                     "fullname": user["fullname"],
-                    "preferred_name": user["preferred_name"],
+                    "preferred_name": user["preferred_name"] or settings_data.get("preferred_name"),
                     "divisi": user["divisi"],
                     "role": user["role"],
                     "email": user_email,
                     "profile_photo_url": user["profile_photo_url"],
+                    "is_onboarded": settings_data.get("is_onboarded", False),
+                    "preferred_language": settings_data.get("preferred_language", "id"),
+                    "theme_preference": settings_data.get("theme_preference", "light"),
+                    "communication_style": settings_data.get("communication_style", "formal_saya_anda"),
                     "session_token": token,
                     "expires_at": user["expires_at"].isoformat() if user["expires_at"] else None
                 }
@@ -200,13 +211,31 @@ class AuthService:
 
         user_email = user_hris.get("email_internet") or user_hris.get("email_intranet") if user_hris else None
         
+        # Ambil state preferensi & onboarding user dari database
+        async with get_db() as conn:
+            us_row = await conn.fetchrow("SELECT settings FROM user_settings WHERE npp = $1", npp)
+            settings_data = {}
+            if us_row and us_row["settings"]:
+                import json
+                settings_data = json.loads(us_row["settings"]) if isinstance(us_row["settings"], str) else us_row["settings"]
+            
+            u_row = await conn.fetchrow("SELECT preferred_name, profile_photo_url FROM users WHERE npp = $1", npp)
+            pref_name = u_row["preferred_name"] if u_row else None
+            photo_url = u_row["profile_photo_url"] if u_row else None
+
         return True, {
             "token": session_token,
             "npp": npp,
             "fullname": user_fullname,
+            "preferred_name": pref_name or settings_data.get("preferred_name"),
+            "profile_photo_url": photo_url,
             "divisi": user_divisi,
             "role": current_role,
             "email": user_email,
+            "is_onboarded": settings_data.get("is_onboarded", False),
+            "preferred_language": settings_data.get("preferred_language", "id"),
+            "theme_preference": settings_data.get("theme_preference", "light"),
+            "communication_style": settings_data.get("communication_style", "formal_saya_anda"),
             "expires_at": expires_at.isoformat() if expires_at else None,
         }, None
 

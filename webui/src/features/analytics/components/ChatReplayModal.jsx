@@ -2,6 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { X, MessageSquare, Clock, User, Bot, AlertTriangle, Play, File, Paperclip, CheckSquare } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
 import apiClient from '../../../services/apiClient';
 
 export const ChatReplayModal = ({ npp, onClose }) => {
@@ -204,7 +206,7 @@ export const ChatReplayModal = ({ npp, onClose }) => {
                                 </div>
                               )}
                               
-                              <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                              <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
                                 {msg.message_text}
                               </ReactMarkdown>
 

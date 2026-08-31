@@ -1,14 +1,23 @@
 import logging
 import json
+import os
+import asyncio
+import base64
+import datetime
 from typing import AsyncGenerator, List, Dict, Any, Optional
-
 from fastapi import Request
 
 from backend.app.api.schemas.chat_schemas import ChatMessageSchema
 from backend.app.services.pipeline.sse_validation import format_sse, SSEEventType
 from backend.app.core.llm_client import stream_ollama_chat
 from backend.app.core.config import settings
+from backend.app.core.paths import get_abs_path, UPLOAD_DIR, BASE_DIR
 from backend.app.services.pipeline.system_prompts import build_attachment_system_prompt
+from backend.app.services.pipeline.document_intelligence import (
+    extract_and_ocr_document_async,
+    two_stage_rerank_cluster_async,
+    extract_explicit_pages_from_query
+)
 
 logger = logging.getLogger("MODE_ATTACHMENT")
 
@@ -19,12 +28,24 @@ TEXT_EXTENSIONS = {
     "sh", "bash", "dart", "swift", "go", "rs", "sql", "toml", "ini", "conf"
 }
 
+def is_summary_intent(query: str) -> bool:
+    q = (query or "").lower().strip()
+    if not q or len(q) < 5:
+        return True
+    summary_keywords = [
+        "rangkum", "ringkas", "summary", "summarize", "ikhtisar", "garis besar",
+        "jelaskan seluruh", "baca seluruh", "review seluruh", "apa isi dokumen ini",
+        "keseluruhan", "secara umum", "overview", "sinopsis", "poin-poin penting",
+        "bedah seluruh", "analisis dokumen ini"
+    ]
+    return any(kw in q for kw in summary_keywords)
+
 class ModeAttachment:
     """
-    Mode Attachment: Bypasses Call 1 and RAG, focuses purely on the provided attachment.
-    Menangani dua jenis attachment:
-    1. File teks (txt, csv, code) → diinjeksi sebagai konten teks ke dalam prompt
-    2. File gambar / PDF → diproses sebagai vision (base64 images)
+    Mode Attachment: Memproses file yang diunggah pengguna (PDF, Gambar, Teks/Kode).
+    Dilengkapi Dual-Intent Routing:
+    1. Targeted Clause QA: Two-Stage Tri-Window Context Retrieval & Structural Continuity.
+    2. Full Document Summarization: Single-Pass Context Assembly (<= 40 hal) / Skeleton Map-Reduce (> 40 hal).
     """
     async def execute(
         self,
@@ -41,11 +62,115 @@ class ModeAttachment:
     ) -> AsyncGenerator[str, None]:
         logger.info("[MODE_ATTACHMENT] Starting execution")
         
+        yield format_sse(status="👁️ Memindai file lampiran", event_type=SSEEventType.STATUS)
+        await asyncio.sleep(0.02)
+
+        # ── 1. Ekstraksi Path File Lampiran ─────────────────────────────────────
+        pdf_file_path = None
+        text_contents = []
+        direct_images_b64 = []
+
+        if attachments:
+            for att in attachments:
+                if isinstance(att, str):
+                    direct_images_b64.append(att)
+                    continue
+                if not isinstance(att, dict):
+                    continue
+
+                mime = att.get("mime_type", "")
+                file_path = att.get("file_path", "")
+                if not file_path:
+                    file_path = att.get("path", "")
+                
+                # Resolve physical path
+                abs_path = None
+                if file_path:
+                    if os.path.isabs(file_path) and os.path.exists(file_path):
+                        abs_path = file_path
+                    else:
+                        cand1 = os.path.join(UPLOAD_DIR, os.path.basename(file_path))
+                        cand2 = get_abs_path(file_path)
+                        if os.path.exists(cand1):
+                            abs_path = cand1
+                        elif os.path.exists(cand2):
+                            abs_path = cand2
+
+                if abs_path and (mime == "application/pdf" or abs_path.lower().endswith(".pdf")):
+                    pdf_file_path = abs_path
+                elif abs_path and any(abs_path.lower().endswith(ext) for ext in [".jpg", ".jpeg", ".png", ".webp", ".bmp"]):
+                    try:
+                        with open(abs_path, "rb") as img_f:
+                            direct_images_b64.append(base64.b64encode(img_f.read()).decode("utf-8"))
+                    except Exception as e:
+                        logger.error(f"[MODE_ATTACHMENT] Error reading image {abs_path}: {e}")
+                elif att.get("base64"):
+                    direct_images_b64.append(att["base64"])
+                elif att.get("extracted_text"):
+                    file_name = att.get("file_name", os.path.basename(file_path or "dokumen.txt"))
+                    text_contents.append(f"### File: {file_name}\n```\n{att.get('extracted_text', '').strip()}\n```")
+
+        # ── 2. Penanganan Khusus Lampiran PDF dengan Document Intelligence ───────
+        final_extracted_text = ""
+        final_base64_images = []
+        selected_pages = []
+        total_pages = 0
+
+        if pdf_file_path and os.path.exists(pdf_file_path):
+            yield format_sse(status="⚙️ Memindai & mengekstrak konten PDF...", event_type=SSEEventType.STATUS)
+            await asyncio.sleep(0.02)
+
+            cache_key = session_uuid or pdf_file_path
+            text_map, all_base64_images, total_pages = await extract_and_ocr_document_async(pdf_file_path, cache_key=cache_key)
+
+            is_summary = is_summary_intent(user_message)
+            logger.info(f"[MODE_ATTACHMENT] PDF detected ({total_pages} pages). Intent: {'SUMMARY' if is_summary else 'TARGETED_QA'}")
+
+            if is_summary:
+                # Mode Rangkuman Dokumen Utuh
+                yield format_sse(status=f"📑 Merangkum seluruh {total_pages} halaman dokumen...", event_type=SSEEventType.STATUS)
+                await asyncio.sleep(0.05)
+
+                if total_pages <= 40:
+                    # Single-Pass Full Context
+                    doc_builder = []
+                    for item in text_map:
+                        p_idx = item.get("page_num", 0)
+                        p_text = item.get("text", "").strip()
+                        doc_builder.append(f"--- TEKS HALAMAN {p_idx+1} ---\n{p_text}")
+                    final_extracted_text = "\n\n".join(doc_builder)
+                    final_base64_images = [] # Text sudah diekstrak lengkap lewat OCR paralel
+                else:
+                    # Map-Reduce / Skeleton mode untuk dokumen raksasa (> 40 halaman)
+                    doc_builder = []
+                    for item in text_map[:60]:
+                        p_idx = item.get("page_num", 0)
+                        p_text = item.get("text", "").strip()
+                        lines = p_text.splitlines()[:15]
+                        doc_builder.append(f"--- OUTLINE HALAMAN {p_idx+1} ---\n" + "\n".join(lines))
+                    final_extracted_text = "\n\n".join(doc_builder)
+                    final_base64_images = []
+            else:
+                # Mode Targeted QA (Two-Stage Context-Aware Retrieval)
+                yield format_sse(status=f"🔍 Menganalisis klausul terkait pada {total_pages} halaman...", event_type=SSEEventType.STATUS)
+                await asyncio.sleep(0.05)
+
+                explicit_pages = extract_explicit_pages_from_query(user_message, total_pages)
+                selected_pages, final_base64_images, final_extracted_text = await two_stage_rerank_cluster_async(
+                    user_message=user_message,
+                    text_map=text_map,
+                    all_base64_images=all_base64_images,
+                    total_pages=total_pages,
+                    explicit_pages=explicit_pages,
+                    top_k_seeds=4
+                )
+
+                halaman_str = ", ".join([str(p+1) for p in selected_pages])
+                yield format_sse(status=f"📌 Ditemukan Klausul pada Halaman {halaman_str}!", event_type=SSEEventType.STATUS)
+                await asyncio.sleep(0.1)
+
+        # ── 3. Susun Prompt & Context ───────────────────────────────────────────
         system_prompt = build_attachment_system_prompt(employee_name=employee_name)
-
-        messages_dict = [{"role": m.role, "content": m.content} for m in chat_history]
-        trimmed_messages = messages_dict[-6:] if len(messages_dict) > 6 else messages_dict
-
         if is_thinking:
             system_prompt = "<|think|\>\n" + system_prompt
 
@@ -53,189 +178,80 @@ class ModeAttachment:
         if session_chunks:
             system_prompt = session_chunks + "\n\n" + system_prompt
 
-        # ── Klasifikasi Attachment: Teks vs Gambar ──────────────────────────────
-        is_from_pdf = False
-        images_base64 = []
-        text_contents = []  # Konten teks dari file txt/csv/code
-
-        if attachments:
-            for att in attachments:
-                if not isinstance(att, dict):
-                    if isinstance(att, str):
-                        images_base64.append(att)
-                    continue
-
-                # Deteksi PDF
-                mime = att.get("mime_type", "")
-                file_path = att.get("file_path", "")
-                if mime == "application/pdf" or "pdf" in file_path.lower():
-                    is_from_pdf = True
-
-                # Deteksi file teks berdasarkan ekstensi atau mime type
-                ext = file_path.rsplit(".", 1)[-1].lower() if "." in file_path else ""
-                is_text_file = (
-                    ext in TEXT_EXTENSIONS or
-                    mime.startswith("text/") or
-                    "csv" in mime or "json" in mime
-                )
-
-                if is_text_file and att.get("extracted_text"):
-                    # File teks: ambil konten teks yang sudah di-extract
-                    file_name = att.get("file_name", file_path.split("/")[-1])
-                    content_text = att.get("extracted_text", "").strip()
-                    text_contents.append(f"### File: {file_name}\n```\n{content_text}\n```")
-                    logger.info(f"[MODE_ATTACHMENT] File teks terdeteksi: {file_name} ({len(content_text)} chars)")
-                elif att.get("base64"):
-                    images_base64.append(att["base64"])
-
-        # ── Build Message yang Tepat ────────────────────────────────────────────
-        # Gabungkan konten teks ke dalam user message jika ada
+        # Gabungkan teks yang diekstrak ke dalam pesan user
         augmented_user_message = user_message
-        if text_contents:
+        if final_extracted_text:
+            pdf_name = os.path.basename(pdf_file_path) if pdf_file_path else "dokumen.pdf"
+            augmented_user_message = (
+                f"{user_message}\n\n"
+                f"[KONTEN DOKUMEN PDF LAMPIRAN: '{pdf_name}' (Total {total_pages} Halaman)]:\n"
+                f"{final_extracted_text}"
+            )
+        elif text_contents:
             text_block = "\n\n".join(text_contents)
             augmented_user_message = (
                 f"{user_message}\n\n"
                 f"[KONTEN FILE TERLAMPIR]\n{text_block}"
             )
-            logger.info(f"[MODE_ATTACHMENT] Menginjeksi {len(text_contents)} file teks ke dalam prompt")
 
-        # (blok replace lama dihapus - sekarang ditangani langsung di stream_messages di bawah)
+        messages_dict = [{"role": m.role, "content": m.content} for m in chat_history]
+        trimmed_messages = messages_dict[-6:] if len(messages_dict) > 6 else messages_dict
 
+        # Build stream messages
         stream_messages = [
             {"role": "system", "content": system_prompt},
             *trimmed_messages,
         ]
+
+        user_payload = {"role": "user", "content": augmented_user_message}
         
-        # PENTING: user_message yang diterima dari orchestrator sudah berisi teks file yang diinjeksi
-        # (baik via pipeline_orchestrator.py maupun via text_contents di atas).
-        # Pastikan SELALU pesan user terakhir di stream_messages berisi augmented_user_message / user_message penuh.
-        # Ini menangani kasus paste text dimana attachments array kosong tapi user_message sudah berisi kode.
-        final_user_msg = augmented_user_message  # Sudah include text_contents jika ada
+        # Masukkan gambar visual (baik dari PDF pages maupun direct images)
+        all_imgs = final_base64_images + direct_images_b64
+        if all_imgs:
+            user_payload["images"] = all_imgs[:4]
+
+        # Gantikan atau tambahkan pesan user terakhir
         replaced = False
         for i in range(len(stream_messages) - 1, -1, -1):
             if stream_messages[i]["role"] == "user":
-                stream_messages[i] = {"role": "user", "content": final_user_msg}
+                stream_messages[i] = user_payload
                 replaced = True
                 break
         if not replaced:
-            # Kalau tidak ada pesan user sama sekali (sesi baru), tambahkan
-            stream_messages.append({"role": "user", "content": final_user_msg})
+            stream_messages.append(user_payload)
+
+        # ── 4. Token Budget & Eksekusi Streaming ─────────────────────────────────
+        # Hitung estimasi token dinamis agar muat di context window Gemma 4 (32k / 64k)
+        estimated_prompt_tokens = len(augmented_user_message) // 3.5
+        if all_imgs:
+            estimated_prompt_tokens += len(all_imgs[:4]) * 1024
         
-        logger.info(f"[MODE_ATTACHMENT] Final user msg length: {len(final_user_msg)} chars")
+        num_ctx = max(16384, int(estimated_prompt_tokens + 8192))
+        num_ctx = min(num_ctx, 65536)
+        logger.info(f"[MODE_ATTACHMENT] Dynamic context size: {num_ctx} (estimated: {int(estimated_prompt_tokens)} tokens)")
+        target_model = getattr(settings, "MODEL_PERSONA", "gemma4:31b")
 
-        # ── Proses Gambar (Vision) ──────────────────────────────────────────────
-        if images_base64:
-            import base64
-            from io import BytesIO
-            try:
-                from PIL import Image
-                processed_images = []
-                for b64_str in images_base64:
-                    if len(b64_str) * 0.75 > 2 * 1024 * 1024:
-                        image_data = base64.b64decode(b64_str)
-                        image = Image.open(BytesIO(image_data))
-                        max_size = (1024, 1024)
-                        image.thumbnail(max_size, Image.Resampling.LANCZOS)
-                        buffered = BytesIO()
-                        image.save(buffered, format="JPEG", quality=85)
-                        processed_images.append(base64.b64encode(buffered.getvalue()).decode("utf-8"))
-                    else:
-                        processed_images.append(b64_str)
-                
-                for msg in reversed(stream_messages):
-                    if msg["role"] == "user":
-                        msg["images"] = processed_images
-                        break
-            except Exception as e:
-                logger.error(f"[VISION] Gagal memproses gambar: {e}")
+        yield format_sse(status="", event_type=SSEEventType.STATUS)
+        await asyncio.sleep(0.01)
 
-        # ── Token Budget & Context Window ───────────────────────────────────────
-        # Karena pipeline_orchestrator.py MENGINJEKSI isi dokumen langsung ke user_message,
-        # array `attachments` akan kosong untuk file teks.
-        # Jadi kita kalkulasi token berdasarkan panjang actual dari user_message.
-        
-        # Cari pesan user terakhir untuk dihitung
-        actual_user_msg = augmented_user_message
-        for m in reversed(stream_messages):
-            if m.get("role") == "user":
-                actual_user_msg = m.get("content", "")
-                break
-
-        estimated_text_tokens = len(actual_user_msg) // 3
-        
-        # Jika panjang pesan user > 1000 char (berarti ada teks lampiran) atau text_contents terisi,
-        # berikan context & budget besar
-        has_large_text = estimated_text_tokens > 300 or bool(text_contents)
-
-        num_ctx = 16384
-        if is_from_pdf:
-            token_budget = 1120
-            num_predict_output = -1
-        elif has_large_text:
-            token_budget = None
-            num_predict_output = -1
-            logger.info(
-                f"[MODE_ATTACHMENT] Text file mode | "
-                f"estimated_tokens={estimated_text_tokens} | "
-                f"num_ctx={num_ctx} | num_predict={num_predict_output} | token_budget=NONE (unlimited)"
-            )
-        else:
-            token_budget = 280
-            num_predict_output = -1
-
-        temperature = 1.0  # Standard best practice Gemma 4
-        target_model = getattr(settings, "MODEL_PERSONA", "gemma4:12b")
-
-        # ── Observability ───────────────────────────────────────────────────────
-        sys_tokens = len(system_prompt) // 4
-        hist_tokens = sum(len(m.get("content", "")) for m in messages_dict) // 4
-        total_used = sys_tokens + hist_tokens + estimated_text_tokens
-
-        session_uuid_to_use = session_uuid or (routing_data.get("_session_uuid") if routing_data else None)
-        if session_uuid_to_use:
-            from backend.app.services.chat.chat_history_service import chat_history_service
-            obs_dict = {
-                "msg": "Generating response for attachment",
-                "attachment_type": "pdf" if is_from_pdf else ("text" if text_contents else "image"),
-                "memory": {
-                    "system_tokens": sys_tokens,
-                    "history_tokens": hist_tokens,
-                    "text_tokens": estimated_text_tokens,
-                    "total_used": total_used,
-                    "max_ctx": num_ctx,
-                    "token_budget": token_budget
-                }
-            }
-            await chat_history_service.save_agent_step(
-                session_id=session_uuid_to_use,
-                step_number=3,
-                tool_called="CALL_2_ATTACHMENT",
-                tool_input=f"Attachment analysis mode",
-                observation=json.dumps(obs_dict)
-            )
-
-        yield format_sse(status="👁️ Memindai lampiran", event_type=SSEEventType.STATUS)
-
+        buffer = ""
         try:
             async for chunk_line in stream_ollama_chat(
                 model_name=target_model,
                 messages=stream_messages,
                 request=request,
-                temperature=temperature,
-                keep_alive=-1,
+                temperature=0.7,
                 num_ctx=num_ctx,
-                num_predict=num_predict_output,
+                num_predict=8192,
                 is_thinking=is_thinking,
-                token_budget=token_budget,
+                stream_speed=0.01,
+                employee_name=employee_name
             ):
-                try:
-                    chunk_data = json.loads(chunk_line.strip())
-                    yield chunk_line
-                except json.JSONDecodeError:
-                    yield chunk_line
+                buffer += chunk_line
+                yield chunk_line
         except Exception as e:
             logger.error(f"[MODE_ATTACHMENT] Execution error: {str(e)}", exc_info=True)
             yield format_sse(
-                status=f"Terjadi kesalahan saat mengeksekusi Mode Attachment: {str(e)}",
-                event_type=SSEEventType.STATUS
+                chunk=f"\n\n[SYSTEM ERROR]: Terjadi kesalahan saat memproses lampiran: {str(e)}",
+                event_type=SSEEventType.ERROR
             )

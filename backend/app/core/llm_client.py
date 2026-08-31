@@ -110,7 +110,7 @@ async def warm_up_model(model_name: str, prompt: str = "keep alive") -> bool:
         "model": model_name,
         "messages": [{"role": "user", "content": prompt}],
         "stream": False,
-        "keep_alive": 600,  # 10 menit
+        "keep_alive": -1,  # Forever — tetap di VRAM
         "options": {"temperature": 0.1},
     }
     async with httpx.AsyncClient(timeout=httpx.Timeout(120.0, connect=10.0)) as client:
@@ -138,7 +138,7 @@ async def _flush_kv_cache(model_name: str) -> None:
             "model": model_name,
             "messages": [{"role": "user", "content": " "}],
             "stream": False,
-            "keep_alive": 600,  # Perpanjang keep-alive 10 menit dari sekarang
+            "keep_alive": -1,  # Tetap pinned permanent di VRAM (-1)
             "options": {
                 "temperature": 0.1,
                 "num_predict": 1,   # Hanya generate 1 token — minimal
@@ -148,6 +148,7 @@ async def _flush_kv_cache(model_name: str) -> None:
         async with httpx.AsyncClient(timeout=httpx.Timeout(30.0, connect=5.0)) as client:
             resp = await client.post(url, json=flush_payload)
             if resp.status_code == 200:
+
                 logger.info(f"♻️ [KV_CACHE] Flush berhasil untuk model '{model_name}' — VRAM context dibebaskan.")
             else:
                 logger.warning(f"⚠️ [KV_CACHE] Flush response {resp.status_code} untuk model '{model_name}'")
@@ -215,7 +216,7 @@ async def stream_ollama_chat(
     temperature: float = 1.0,
     session_uuid: Optional[str] = None,
     keep_alive: int = -1,  # Forever — model tetap di VRAM
-    num_ctx: int = 4096,
+    num_ctx: int = 16384,
     is_thinking: bool = False,
     **kwargs,
 ) -> AsyncGenerator[str, None]:
@@ -468,7 +469,7 @@ async def generate_json_response(
     temperature: float = 0.3,
     keep_alive: int = -1,  # Forever di VRAM
     timeout: float = 60.0,
-    num_ctx: int = 2048,
+    num_ctx: int = 4096,
     num_predict: int = 2048,
     thinking_budget: int = 0,  # Retained for API compatibility, unused for Gemma 4
     **kwargs,
@@ -585,7 +586,7 @@ async def call_ollama_generate_raw(
     raw_prompt: str,
     temperature: float = 1.0,
     num_predict: int = 2048,
-    num_ctx: int = 32000,
+    num_ctx: int = 16384,
     stop_sequences: List[str] = None,
     request: Optional[Request] = None
 ) -> AsyncGenerator[str, None]:

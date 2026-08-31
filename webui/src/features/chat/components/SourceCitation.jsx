@@ -105,7 +105,9 @@ const ModeHintIcon = ({ title, hintText, icon, darkMode }) => {
 
 const SourceCitation = ({ sources, darkMode, theme, language = 'id', onPreview, onActivateIsolation, activeIsolatedDocId }) => {
   const [hoveredIndex, setHoveredIndex] = useState(null);
+  const [portalHoveredIndex, setPortalHoveredIndex] = useState(null);
   const setSplitScreen = useChatStore(state => state.setSplitScreen);
+  const currentChatMode = useChatStore(state => state.chatMode || 'auto');
   const t = translations[language]?.chat || translations.id.chat;
 
   if (!sources || sources.length === 0) return null;
@@ -122,27 +124,62 @@ const SourceCitation = ({ sources, darkMode, theme, language = 'id', onPreview, 
     }
   };
 
+  const handleOpenPortal = (e, source) => {
+    e.stopPropagation();
+    const docId = source.id || source.dokumen_id;
+    if (docId) {
+      window.open(`https://peraturan.pindad.com/content/detail/${docId}`, '_blank', 'noopener,noreferrer');
+    }
+  };
+
   const handleChatIsolation = (e, source) => {
     e.stopPropagation();
-    if (onActivateIsolation) {
-      useChatStore.setState({ chatMode: 'focus' });
-      onActivateIsolation(source);
+    const docId = source.id || source.dokumen_id;
+    const docTitle = source.title || source.filename || source.name;
+    const isThisActive = activeIsolatedDocId && (
+      String(activeIsolatedDocId) === String(docId) ||
+      String(activeIsolatedDocId) === String(source.doc_id) ||
+      activeIsolatedDocId === docTitle
+    ) && (currentChatMode === 'focus' || currentChatMode === 'auto');
+
+    if (isThisActive) {
+      useChatStore.getState().setContextIsolation(null, null, 'auto');
+    } else {
+      useChatStore.getState().setContextIsolation(docId, docTitle, 'focus');
     }
   };
 
   const handleComplianceIsolation = (e, source) => {
     e.stopPropagation();
-    if (onActivateIsolation) {
-      useChatStore.setState({ chatMode: 'compliance' });
-      onActivateIsolation(source);
+    const docId = source.id || source.dokumen_id;
+    const docTitle = source.title || source.filename || source.name;
+    const isThisActive = activeIsolatedDocId && (
+      String(activeIsolatedDocId) === String(docId) ||
+      String(activeIsolatedDocId) === String(source.doc_id) ||
+      activeIsolatedDocId === docTitle
+    ) && currentChatMode === 'compliance';
+
+    if (isThisActive) {
+      useChatStore.getState().setContextIsolation(null, null, 'auto');
+    } else {
+      useChatStore.getState().setContextIsolation(docId, docTitle, 'compliance');
     }
   };
 
   const handleRedTeamIsolation = (e, source) => {
     e.stopPropagation();
-    if (onActivateIsolation) {
-      useChatStore.setState({ chatMode: 'redteam' });
-      onActivateIsolation(source);
+    const docId = source.id || source.dokumen_id;
+    const docTitle = source.title || source.filename || source.name;
+    const isThisActive = activeIsolatedDocId && (
+      String(activeIsolatedDocId) === String(docId) ||
+      String(activeIsolatedDocId) === String(source.doc_id) ||
+      activeIsolatedDocId === docTitle
+    ) && currentChatMode === 'redteam';
+
+    if (isThisActive) {
+      useChatStore.getState().setContextIsolation(null, null, 'auto');
+    } else {
+      useChatStore.getState().setContextIsolation(docId, docTitle, 'redteam');
     }
   };
 
@@ -266,13 +303,56 @@ const SourceCitation = ({ sources, darkMode, theme, language = 'id', onPreview, 
           (src.title && activeIsolatedDocId === src.title)
         );
 
+        const isFocusActive = isCurrentlyIsolated && (currentChatMode === 'focus' || currentChatMode === 'auto');
+        const isComplianceActive = isCurrentlyIsolated && currentChatMode === 'compliance';
+        const isRedTeamActive = isCurrentlyIsolated && currentChatMode === 'redteam';
+
         return (
           <div
             key={`source-card-${idx}`}
-            style={cardStyle(isHovered, isCurrentlyIsolated)}
             onMouseEnter={() => setHoveredIndex(idx)}
             onMouseLeave={() => setHoveredIndex(null)}
+            style={cardStyle(isHovered, isCurrentlyIsolated)}
           >
+            {/* Tombol External Link Portal */}
+            <button
+              type="button"
+              onClick={(e) => handleOpenPortal(e, src)}
+              onMouseEnter={() => setPortalHoveredIndex(idx)}
+              onMouseLeave={() => setPortalHoveredIndex(null)}
+              title="Buka detail dokumen di Portal Peraturan Pindad"
+              style={{
+                position: 'absolute',
+                top: '10px',
+                right: '10px',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '3px',
+                padding: '3px 7px',
+                borderRadius: '8px',
+                border: `1px solid ${darkMode ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.10)'}`,
+                background: portalHoveredIndex === idx
+                  ? (darkMode ? 'rgba(99,102,241,0.25)' : 'rgba(37,99,235,0.12)')
+                  : (darkMode ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)'),
+                color: portalHoveredIndex === idx
+                  ? (darkMode ? '#a5b4fc' : '#2563eb')
+                  : (darkMode ? '#94a3b8' : '#9ca3af'),
+                cursor: 'pointer',
+                fontSize: '9px',
+                fontWeight: 600,
+                transition: 'all 0.15s ease',
+                transform: portalHoveredIndex === idx ? 'scale(1.05)' : 'scale(1)',
+                zIndex: 2,
+              }}
+            >
+              <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                <polyline points="15 3 21 3 21 9" />
+                <line x1="10" y1="14" x2="21" y2="3" />
+              </svg>
+            </button>
+
             {/* Informasi Utama Dokumen */}
             <div style={headerRowStyle}>
               <span style={iconStyle}>📄</span>
@@ -345,14 +425,19 @@ const SourceCitation = ({ sources, darkMode, theme, language = 'id', onPreview, 
               <button
                 type="button"
                 onClick={(e) => handleChatIsolation(e, src)}
-                style={btnStyle(true, isHovered, true, 0.85)}
+                style={{
+                  ...btnStyle(true, isHovered, true, 0.85),
+                  background: isFocusActive ? (darkMode ? '#6366f1' : '#2563eb') : (darkMode ? 'rgba(99, 102, 241, 0.12)' : 'rgba(99, 102, 241, 0.08)'),
+                  color: isFocusActive ? '#ffffff' : (darkMode ? '#a5b4fc' : '#2563eb'),
+                  border: `1px solid ${isFocusActive ? (darkMode ? '#6366f1' : '#2563eb') : (darkMode ? 'rgba(99, 102, 241, 0.3)' : 'rgba(99, 102, 241, 0.2)')}`,
+                }}
               >
-                <span>{isCurrentlyIsolated && useChatStore.getState().chatMode !== 'compliance' ? '🔒 Fokus' : `💬 ${t.tanyaBtn}`}</span>
-                <ModeHintIcon 
-                  title={t.tanyaHintTitle} 
-                  hintText={t.tanyaHint} 
-                  icon="💬" 
-                  darkMode={darkMode} 
+                <span>{isFocusActive ? '🎯 Fokus' : `💬 ${t.tanyaBtn}`}</span>
+                <ModeHintIcon
+                  title={t.tanyaHintTitle}
+                  hintText={t.tanyaHint}
+                  icon="💬"
+                  darkMode={darkMode}
                 />
               </button>
               <button
@@ -360,17 +445,17 @@ const SourceCitation = ({ sources, darkMode, theme, language = 'id', onPreview, 
                 onClick={(e) => handleComplianceIsolation(e, src)}
                 style={{
                   ...btnStyle(true, isHovered, true, 1.35),
-                  background: isCurrentlyIsolated && useChatStore.getState().chatMode === 'compliance' ? '#ef4444' : (darkMode ? 'rgba(239, 68, 68, 0.15)' : 'rgba(239, 68, 68, 0.1)'),
-                  color: isCurrentlyIsolated && useChatStore.getState().chatMode === 'compliance' ? '#ffffff' : (darkMode ? '#fca5a5' : '#b91c1c'),
-                  border: `1px solid ${isCurrentlyIsolated && useChatStore.getState().chatMode === 'compliance' ? '#ef4444' : (darkMode ? 'rgba(239, 68, 68, 0.3)' : 'rgba(239, 68, 68, 0.2)')}`,
+                  background: isComplianceActive ? '#ef4444' : (darkMode ? 'rgba(239, 68, 68, 0.12)' : 'rgba(239, 68, 68, 0.08)'),
+                  color: isComplianceActive ? '#ffffff' : (darkMode ? '#fca5a5' : '#b91c1c'),
+                  border: `1px solid ${isComplianceActive ? '#ef4444' : (darkMode ? 'rgba(239, 68, 68, 0.3)' : 'rgba(239, 68, 68, 0.2)')}`,
                 }}
               >
-                <span>{isCurrentlyIsolated && useChatStore.getState().chatMode === 'compliance' ? `🔒 ${t.kepatuhanBtn}` : `⚖️ ${t.kepatuhanBtn}`}</span>
-                <ModeHintIcon 
-                  title={t.kepatuhanHintTitle} 
-                  hintText={t.kepatuhanHint} 
-                  icon="⚖️" 
-                  darkMode={darkMode} 
+                <span>{isComplianceActive ? `🔒 ${t.kepatuhanBtn}` : `⚖️ ${t.kepatuhanBtn}`}</span>
+                <ModeHintIcon
+                  title={t.kepatuhanHintTitle}
+                  hintText={t.kepatuhanHint}
+                  icon="⚖️"
+                  darkMode={darkMode}
                 />
               </button>
               <button
@@ -378,17 +463,17 @@ const SourceCitation = ({ sources, darkMode, theme, language = 'id', onPreview, 
                 onClick={(e) => handleRedTeamIsolation(e, src)}
                 style={{
                   ...btnStyle(true, isHovered, true, 1.15),
-                  background: isCurrentlyIsolated && useChatStore.getState().chatMode === 'redteam' ? '#f97316' : (darkMode ? 'rgba(249, 115, 22, 0.15)' : 'rgba(249, 115, 22, 0.1)'),
-                  color: isCurrentlyIsolated && useChatStore.getState().chatMode === 'redteam' ? '#ffffff' : (darkMode ? '#fdba74' : '#c2410c'),
-                  border: `1px solid ${isCurrentlyIsolated && useChatStore.getState().chatMode === 'redteam' ? '#f97316' : (darkMode ? 'rgba(249, 115, 22, 0.3)' : 'rgba(249, 115, 22, 0.2)')}`,
+                  background: isRedTeamActive ? '#f97316' : (darkMode ? 'rgba(249, 115, 22, 0.12)' : 'rgba(249, 115, 22, 0.08)'),
+                  color: isRedTeamActive ? '#ffffff' : (darkMode ? '#fdba74' : '#c2410c'),
+                  border: `1px solid ${isRedTeamActive ? '#f97316' : (darkMode ? 'rgba(249, 115, 22, 0.3)' : 'rgba(249, 115, 22, 0.2)')}`,
                 }}
               >
-                <span>{isCurrentlyIsolated && useChatStore.getState().chatMode === 'redteam' ? '🔒 Red-Team' : `🕵️ ${t.bedahBtn}`}</span>
-                <ModeHintIcon 
-                  title={t.bedahHintTitle} 
-                  hintText={t.bedahHint} 
-                  icon="🕵️" 
-                  darkMode={darkMode} 
+                <span>{isRedTeamActive ? '🔒 Red-Team' : `🕵️ ${t.bedahBtn}`}</span>
+                <ModeHintIcon
+                  title={t.bedahHintTitle}
+                  hintText={t.bedahHint}
+                  icon="🕵️"
+                  darkMode={darkMode}
                 />
               </button>
             </div>
