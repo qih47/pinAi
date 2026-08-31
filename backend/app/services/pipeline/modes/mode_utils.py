@@ -3,14 +3,21 @@ from typing import List, Dict, Any, Optional
 
 _CODING_KEYWORDS = ["import ", "export ", "const ", "async ", "await ", "function", "def ", "return ", "class ", "select ", "docker", "sql ", "query", "react", "python", "javascript", "coding", "koding", "usecontext", "usememo", "typescript", "golang", "kotlin", "flutter", "dart", "frontend", "backend", "jsx", "html", "css", "tailwind"]
 _GREETING_KEYWORDS = ["hai", "halo", "hello", "hi ", "apa kabar", "selamat pagi", "selamat siang", "selamat sore", "selamat malam", "assalamualaikum", "pagi", "siang", "malam", "thanks", "thank you", "terima kasih", "makasih", "ok", "oke", "siap", "tq", "nuhun", "suwun", "mantap", "sip"]
-_DOC_KEYWORDS = ["ketentuan", "peraturan", "skep", "sk direksi", "surat edaran", "regulasi", "kebijakan", "prosedur", "sop", "seragam", "cuti", "gaji", "tunjangan", "rekrutmen", "rekrut", "pegawai", "pindad", "aturan", "pasal", "syarat", "lembur", "pensiun", "promosi", "jabatan", "seleksi", "penerimaan"]
+_DOC_KEYWORDS = ["ketentuan", "peraturan", "skep", "surat keputusan", "surat edaran", "regulasi", "kebijakan", "prosedur", "sop", "seragam", "cuti", "gaji", "tunjangan", "rekrutmen", "rekrut", "pegawai", "pindad", "aturan", "pasal", "syarat", "lembur", "pensiun", "promosi", "jabatan", "seleksi", "penerimaan", "ik "]
+_PUBLIC_WEB_KEYWORDS = [
+    "cari di web", "carikan di web", "cari web", "search web", "browsing", "di internet", 
+    "web publik", "sumber publik", "di google", "berita online", "berita terkini", 
+    "dpr", "dpr ri", "dpr-ri", "presiden ri", "kementerian", "menteri", "mahkamah konstitusi", 
+    "pilkada", "pemilu", "bmkg", "prakiraan cuaca", "kurs rupiah", "ihsg", "inflasi nasional"
+]
 
 def detect_precheck(user_message: str, chat_mode: str, has_attachment: bool, user_default_pronoun: Optional[str] = None) -> Dict[str, Any]:
     msg_lower = user_message.lower()
 
     is_coding = any(kw in msg_lower for kw in _CODING_KEYWORDS)
     is_greeting = any(kw in msg_lower for kw in _GREETING_KEYWORDS)
-    is_doc_query = any(kw in msg_lower for kw in _DOC_KEYWORDS)
+    is_public_web = any(kw in msg_lower for kw in _PUBLIC_WEB_KEYWORDS)
+    is_doc_query = any(kw in msg_lower for kw in _DOC_KEYWORDS) and not is_public_web
     
     _EMAIL_KEYWORDS = ["kirim email", "buat email", "draft email", "balas email", "email ke", "draf email"]
     is_generate_email = any(kw in msg_lower for kw in _EMAIL_KEYWORDS)
@@ -83,6 +90,9 @@ def detect_precheck(user_message: str, chat_mode: str, has_attachment: bool, use
     # Jangan paksakan need_rag_hint=True jika user sekadar sapaan ringan / makasih di mode "documents"
     if is_chitchat and not is_doc_query and not has_instruction:
         need_rag_hint = False
+    elif is_public_web:
+        need_rag_hint = False
+        is_chitchat = False
     elif chat_mode == "documents" or has_attachment or is_doc_query:
         need_rag_hint = True
         is_chitchat = False
@@ -100,6 +110,7 @@ def detect_precheck(user_message: str, chat_mode: str, has_attachment: bool, use
         "is_coding": is_coding,
         "is_greeting": is_greeting,
         "is_doc_query": is_doc_query,
+        "is_public_web": is_public_web,
         "need_rag_hint": need_rag_hint,
         "pronoun": pronoun,
         "tone_hint": tone_hint,

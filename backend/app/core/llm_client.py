@@ -57,50 +57,50 @@ def _extract_json_from_response(raw: str, model_name: str) -> Dict[str, Any]:
         except json.JSONDecodeError:
             pass  # Fall through to robust repair
 
-    # Robust JSON Repair for Truncated Responses (num_predict limit)
+    # Robust JSON Repair for Truncated Responses (Iterative Backtracking)
     logger_local.warning(
         f"[JSON_GEN] JSON terpotong / decode awal gagal. "
         f"Model: {model_name} | Mencoba robust repair..."
     )
-    partial = cleaned[start_idx:]
+    candidate = cleaned[start_idx:]
 
-    # 1. Bersihkan string yang terbuka tanpa penutup (odd unescaped quotes)
-    quotes = len(re.findall(r'(?<!\\)"', partial))
-    if quotes % 2 != 0:
-        # Cari koma terakhir sebelum string yang rusak
-        last_comma_idx = partial.rfind(',')
-        if last_comma_idx > 0:
-            partial = partial[:last_comma_idx]
-        else:
-            # Fallback: tutup quote
-            partial = partial + '"'
+    for attempt in range(5):
+        # 1. Bersihkan string yang terbuka tanpa penutup
+        curr = candidate
+        quotes = len(re.findall(r'(?<!\\)"', curr))
+        if quotes % 2 != 0:
+            curr += '"'
 
-    # 2. Bersihkan trailing separator / colon
-    repaired = partial.rstrip().rstrip(",").rstrip(":").rstrip(",")
+        # 2. Bersihkan trailing separator / colon
+        repaired = curr.rstrip().rstrip(",").rstrip(":").rstrip(",")
 
-    # 3. Seimbangkan kurung siku dan kurawal
-    open_brackets = repaired.count("[") - repaired.count("]")
-    if open_brackets > 0:
-        repaired += "]" * open_brackets
+        # 3. Seimbangkan kurung siku dan kurawal
+        open_brackets = repaired.count("[") - repaired.count("]")
+        if open_brackets > 0:
+            repaired += "]" * open_brackets
 
-    open_braces = repaired.count("{") - repaired.count("}")
-    if open_braces > 0:
-        repaired += "}" * open_braces
+        open_braces = repaired.count("{") - repaired.count("}")
+        if open_braces > 0:
+            repaired += "}" * open_braces
 
-    try:
-        result = json.loads(repaired)
-        logger_local.warning(
-            f"[JSON_GEN] Robust partial JSON repair BERHASIL | Model: {model_name}"
-        )
-        return result
-    except json.JSONDecodeError as je:
-        logger_local.error(
-            f"[JSON_GEN] Robust repair gagal. Model: {model_name} | "
-            f"Error: {je.msg} | Repaired: {repaired}"
-        )
-        raise ValueError(
-            f"[JSON_GEN] Model {model_name} output truncated and repair failed: {je.msg}"
-        )
+        try:
+            result = json.loads(repaired)
+            logger_local.warning(
+                f"[JSON_GEN] Robust partial JSON repair BERHASIL (attempt {attempt+1}) | Model: {model_name}"
+            )
+            return result
+        except json.JSONDecodeError:
+            # Potong ke koma sebelumnya untuk membuang field yang rusak, lalu loop lagi
+            last_comma_idx = candidate.rfind(',')
+            if last_comma_idx > 0:
+                candidate = candidate[:last_comma_idx]
+            else:
+                break
+
+    # Fallback terakhir jika semua perbaikan gagal
+    raise ValueError(
+        f"[JSON_GEN] Model {model_name} output truncated and repair failed"
+    )
 
 
 async def warm_up_model(model_name: str, prompt: str = "keep alive") -> bool:
@@ -124,16 +124,11 @@ async def warm_up_model(model_name: str, prompt: str = "keep alive") -> bool:
 
 async def _flush_kv_cache(model_name: str) -> None:
     """
-    Flush KV Cache Ollama setelah inference selesai.
-    
-    Cara kerja: Mengirim request minimal ke Ollama dengan keep_alive refresh.
-    Ini memaksa Ollama untuk mereset context window dan membebaskan VRAM
-    yang dipakai KV cache dari prompt panjang (RAG, web context, dll)
-    tanpa harus unload model sepenuhnya.
+    Flush/refresh keep-alive Ollama tanpa mengubah ukuran context window di VRAM.
     """
     try:
         url = f"{settings.OLLAMA_BASE_URL}/api/chat"
-        # Kirim prompt minimal — Ollama akan reset KV cache dan start fresh
+        target_ctx = getattr(settings, "NUM_CTX_ROUTER", 4096) if "router" in model_name.lower() or "e4b" in model_name.lower() else getattr(settings, "NUM_CTX_CORE", 16384)
         flush_payload = {
             "model": model_name,
             "messages": [{"role": "user", "content": " "}],
@@ -141,20 +136,16 @@ async def _flush_kv_cache(model_name: str) -> None:
             "keep_alive": -1,  # Tetap pinned permanent di VRAM (-1)
             "options": {
                 "temperature": 0.1,
-                "num_predict": 1,   # Hanya generate 1 token — minimal
-                "num_ctx": 512,     # Context kecil untuk flush
+                "num_predict": 1,
+                "num_ctx": target_ctx,
             },
         }
-        async with httpx.AsyncClient(timeout=httpx.Timeout(30.0, connect=5.0)) as client:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(10.0, connect=3.0)) as client:
             resp = await client.post(url, json=flush_payload)
             if resp.status_code == 200:
-
-                logger.info(f"♻️ [KV_CACHE] Flush berhasil untuk model '{model_name}' — VRAM context dibebaskan.")
-            else:
-                logger.warning(f"⚠️ [KV_CACHE] Flush response {resp.status_code} untuk model '{model_name}'")
+                logger.info(f"♻️ [KV_CACHE] Refresh berhasil untuk model '{model_name}' (ctx={target_ctx}).")
     except Exception as e:
-        # Jangan crash jika flush gagal — ini hanya optimasi
-        logger.warning(f"⚠️ [KV_CACHE] Flush gagal untuk model '{model_name}': {e}")
+        logger.warning(f"⚠️ [KV_CACHE] Refresh warning untuk model '{model_name}': {e}")
 
 
 
@@ -503,6 +494,7 @@ async def generate_json_response(
         "top_k": 64,
         "num_ctx": num_ctx,
         "num_predict": num_predict,
+        "think": False,
         **kwargs,
     }
 

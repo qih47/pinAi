@@ -5,7 +5,7 @@ import asyncio
 
 from backend.app.core.config import settings
 from backend.app.core.llm_client import stream_ollama_chat
-from backend.app.services.web_tools.web_search import perform_web_search, format_search_results_for_llm
+from backend.app.services.web_tools.web_search import perform_web_search, format_search_results_for_llm, sanitize_web_query
 from backend.app.services.pipeline.sse_validation import format_sse, SSEEventType
 from backend.app.services.pipeline.prompts.core_prompts import build_web_search_prompt
 
@@ -30,12 +30,13 @@ async def handle_web_search(
     # Ambil semua query dari Call 1 (mendukung multi-query paralel untuk komparasi / multi-topik)
     queries_from_call1 = precheck.get("queries", [])
     if isinstance(queries_from_call1, list) and queries_from_call1:
-        target_queries = [q.strip() for q in queries_from_call1 if isinstance(q, str) and q.strip()]
+        target_queries = [sanitize_web_query(q.strip()) for q in queries_from_call1 if isinstance(q, str) and q.strip()]
     else:
-        target_queries = [query.strip()] if query.strip() else []
+        target_queries = [sanitize_web_query(query.strip())] if query.strip() else []
 
+    target_queries = [q for q in target_queries if q]
     if not target_queries:
-        target_queries = [query]
+        target_queries = [query.strip()]
 
     # Bersihkan duplikat
     seen_q = set()

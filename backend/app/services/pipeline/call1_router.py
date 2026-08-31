@@ -131,6 +131,7 @@ async def execute_call1_routing(
     is_first_chat: bool = False,
     previous_topic: Optional[str] = None,
     previous_subject: Optional[str] = None,
+    model_name: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Execute Call 1: Intent Classification & Routing.
@@ -188,20 +189,26 @@ async def execute_call1_routing(
         {"role": "user", "content": stripped_message},
     ]
 
-    # Alokasi num_predict dinamis (Sparse JSON murni, aman tanpa clipping)
+    # Alokasi num_predict dinamis hemat token untuk kecepatan respons maksimal (~1.2s - 1.5s)
     dynamic_predict = 350 if is_first_chat else 250
 
-    # Kunci num_ctx konstan di 4096 agar sama persis dengan warmup (tidak memicu re-alokasi KV context di Ollama)
-    router_ctx = 4096
+    # Tentukan model yang digunakan
+    effective_model = model_name or getattr(settings, "MODEL_ROUTER", "gemma4:e4b")
+
+    # Kunci num_ctx adaptif: Gemma (vocab 256k -> ~3.1k tokens) cukup 4096. Model lain (Granite/Llama vocab 128k -> ~5.1k tokens) butuh 8192.
+    if any(k in effective_model.lower() for k in ["granite", "llama", "mistral", "qwen"]):
+        router_ctx = 8192
+    else:
+        router_ctx = getattr(settings, "NUM_CTX_ROUTER", 4096)
 
     logger.info(
-        f"[CALL1] Executing routing | user_msg_len={len(user_message)} | stripped_len={len(stripped_message)} | "
+        f"[CALL1] Executing routing | model={effective_model} | user_msg_len={len(user_message)} | stripped_len={len(stripped_message)} | "
         f"dynamic_num_predict={dynamic_predict} | prompt_chars={len(system_prompt) + len(stripped_message)} | ctx={router_ctx}"
     )
 
     try:
         routing_json = await generate_json_response(
-            model_name=getattr(settings, "MODEL_ROUTER", "gemma4:e4b"),
+            model_name=effective_model,
             messages=messages,
             request=request,
             temperature=0.0,
@@ -345,10 +352,13 @@ def _validate_and_normalize_routing(
 
     # ── ATURAN STRICT MUTUAL EXCLUSION: need_rag VS is_web_search & is_coding ─────────────
     # need_rag (dokumen internal Pindad) dan is_web_search/is_coding DILARANG KERAS sama-sama aktif!
-    if routing["need_rag"]:
-        if routing.get("is_web_search"):
-            logger.warning("[CALL1] 🛡️ Strict Mutual Exclusion: need_rag=True, forcing is_web_search=False!")
-            routing["is_web_search"] = False
+    if routing.get("is_web_search"):
+        # Jika web search aktif (misal DPR RI, berita, internet), matikan need_rag
+        if routing.get("need_rag"):
+            logger.info("[CALL1] 🌐 Web search is active. Setting need_rag=False.")
+            routing["need_rag"] = False
+    elif routing.get("need_rag"):
+        routing["is_web_search"] = False
         if routing.get("is_coding"):
             logger.warning("[CALL1] 🛡️ Strict Mutual Exclusion: need_rag=True, forcing is_coding=False!")
             routing["is_coding"] = False
@@ -477,8 +487,8 @@ def _validate_and_normalize_routing(
     else:
         routing["session_title"] = None
 
-    # Override dengan precheck jika ada hint yang kuat
-    if precheck.get("need_rag_hint") is True and not routing["need_rag"]:
+    # Override dengan precheck jika ada hint yang kuat (HANYA jika bukan public web search)
+    if precheck.get("need_rag_hint") is True and not routing["need_rag"] and not routing.get("is_web_search") and not precheck.get("is_public_web"):
         logger.warning("[CALL1] Precheck override: need_rag forced to True")
         routing["need_rag"] = True
 

@@ -1,0 +1,548 @@
+{
+  "gemma4:e4b": {
+    "model": "gemma4:e4b",
+    "use_precheck": false,
+    "passed": 15,
+    "total": 18,
+    "accuracy": 83.3,
+    "avg_latency_ms": 2672.2,
+    "details": [
+      {
+        "id": "TC-01",
+        "name": "Web Search + Visual",
+        "passed": false,
+        "latency_ms": 2032.8,
+        "mismatches": [
+          "Expected is_web_search=True, got False",
+          "Expected requires_visual=True, got False"
+        ],
+        "active_flags": {
+          "is_chitchat": true
+        }
+      },
+      {
+        "id": "TC-02",
+        "name": "Web Search (Komparasi Tank)",
+        "passed": true,
+        "latency_ms": 2361.4,
+        "mismatches": [],
+        "active_flags": {
+          "queries": [
+            "spesifikasi tank Leopard 2",
+            "spesifikasi tank Abrams X"
+          ],
+          "query_judul": [
+            "Leopard 2",
+            "Abrams X",
+            "tank tempur"
+          ],
+          "is_web_search": true
+        }
+      },
+      {
+        "id": "TC-03",
+        "name": "RAG (Cuti PKB)",
+        "passed": true,
+        "latency_ms": 3059.1,
+        "mismatches": [],
+        "active_flags": {
+          "need_rag": true,
+          "queries": [
+            "Alur Pengajuan Cuti Tahunan menurut PKB",
+            "alur pengajuan cuti tahunan PKB",
+            "prosedur cuti tahunan Perjanjian Kerja Bersama"
+          ],
+          "query_judul": [
+            "PKB",
+            "Perjanjian Kerja Bersama",
+            "Cuti",
+            "Cuti Tahunan",
+            "Alur"
+          ]
+        }
+      },
+      {
+        "id": "TC-04",
+        "name": "RAG (Pasal Lembur PKB)",
+        "passed": true,
+        "latency_ms": 3274.7,
+        "mismatches": [],
+        "active_flags": {
+          "need_rag": true,
+          "queries": [
+            "Perbedaan Tunjangan Lembur PKB 2021 vs 2024 pasal",
+            "perbedaan pasal tunjangan lembur PKB 2021 dan PKB 2024",
+            "ketentuan tunjangan lembur PKB 2021 vs PKB 2024"
+          ],
+          "query_judul": [
+            "PKB",
+            "Perjanjian Kerja Bersama",
+            "Tunjangan Lembur",
+            "2021",
+            "2024"
+          ]
+        }
+      },
+      {
+        "id": "TC-05",
+        "name": "RAG (SOP Mutasi)",
+        "passed": true,
+        "latency_ms": 2896.5,
+        "mismatches": [],
+        "active_flags": {
+          "need_rag": true,
+          "queries": [
+            "Prosedur dan Syarat Mutasi Antar Divisi Pindad sop",
+            "SOP mutasi antar divisi Pindad",
+            "prosedur syarat mutasi internal Pindad"
+          ],
+          "query_judul": [
+            "SOP",
+            "Prosedur",
+            "Mutasi",
+            "Divisi",
+            "Pindad"
+          ]
+        }
+      },
+      {
+        "id": "TC-06",
+        "name": "Coding (Debug 401)",
+        "passed": true,
+        "latency_ms": 2131.0,
+        "mismatches": [],
+        "active_flags": {
+          "is_coding": true
+        }
+      },
+      {
+        "id": "TC-07",
+        "name": "Coding (JWT Express)",
+        "passed": true,
+        "latency_ms": 2673.2,
+        "mismatches": [],
+        "active_flags": {
+          "query_judul": [
+            "express",
+            "middleware",
+            "jwt",
+            "authentication",
+            "role",
+            "admin"
+          ],
+          "is_coding": true,
+          "is_generate_file": true
+        }
+      },
+      {
+        "id": "TC-08",
+        "name": "Coding + Ambiguous",
+        "passed": true,
+        "latency_ms": 1793.0,
+        "mismatches": [],
+        "active_flags": {
+          "is_coding": true,
+          "is_ambiguous": true
+        }
+      },
+      {
+        "id": "TC-09",
+        "name": "Map Query",
+        "passed": false,
+        "latency_ms": 2521.1,
+        "mismatches": [
+          "Expected is_map_query=True, got False"
+        ],
+        "active_flags": {
+          "need_rag": true,
+          "queries": [
+            "Alamat Pabrik Munisi PT Pindad Turen Malang dimana lokasi",
+            "alamat pabrik munisi PT Pindad Turen Malang"
+          ],
+          "query_judul": [
+            "PT Pindad",
+            "pabrik munisi",
+            "Turen",
+            "Malang"
+          ]
+        }
+      },
+      {
+        "id": "TC-10",
+        "name": "Self-Correction",
+        "passed": true,
+        "latency_ms": 1969.1,
+        "mismatches": [],
+        "active_flags": {
+          "queries": [
+            "tahun rilis The Nun",
+            "The Nun film tahun berapa"
+          ],
+          "is_self_correction": true,
+          "is_web_search": true
+        }
+      },
+      {
+        "id": "TC-11",
+        "name": "Follow-up Web Search",
+        "passed": true,
+        "latency_ms": 1879.6,
+        "mismatches": [],
+        "active_flags": {
+          "queries": [
+            "berita terkini NTT hari ini",
+            "kabar terbaru Nusa Tenggara Timur"
+          ],
+          "is_web_search": true
+        }
+      },
+      {
+        "id": "TC-12",
+        "name": "Follow-up PKB / RAG",
+        "passed": true,
+        "latency_ms": 2561.4,
+        "mismatches": [],
+        "active_flags": {
+          "need_rag": true,
+          "queries": [
+            "Dasar Hukum Sanksi SP3 dalam PKB pasalnya",
+            "dasar hukum pasal PKB",
+            "peraturan perundang-undangan PKB"
+          ]
+        }
+      },
+      {
+        "id": "TC-13",
+        "name": "Wizard Stack Selection",
+        "passed": true,
+        "latency_ms": 2128.3,
+        "mismatches": [],
+        "active_flags": {
+          "is_coding": true
+        }
+      },
+      {
+        "id": "TC-14",
+        "name": "Data Simulation Chat",
+        "passed": true,
+        "latency_ms": 5131.7,
+        "mismatches": [],
+        "active_flags": {
+          "need_rag": true,
+          "queries": [
+            "Data Dummy Penjualan Senjata contoh divisi bentuk sini",
+            "contoh data dummy penjualan divisi"
+          ],
+          "query_judul": [
+            "Data Dummy Penjualan Senjata"
+          ]
+        }
+      },
+      {
+        "id": "TC-15",
+        "name": "File Export Fisik",
+        "passed": true,
+        "latency_ms": 1621.6,
+        "mismatches": [],
+        "active_flags": {
+          "is_generate_file": true
+        }
+      },
+      {
+        "id": "TC-16",
+        "name": "Ambient Weather Chitchat",
+        "passed": true,
+        "latency_ms": 1794.3,
+        "mismatches": [],
+        "active_flags": {
+          "is_chitchat": true
+        }
+      },
+      {
+        "id": "TC-17",
+        "name": "URL Reader / Web",
+        "passed": false,
+        "latency_ms": 2279.3,
+        "mismatches": [
+          "Expected is_web_search=True, got False"
+        ],
+        "active_flags": {
+          "need_rag": true,
+          "queries": [
+            "Profil Perusahaan Pindad baca rangkum isi link https //pindad com/profil-perusahaan",
+            "baca rangkum isi link https"
+          ],
+          "query_judul": [
+            "Profil Perusahaan Pindad"
+          ]
+        }
+      },
+      {
+        "id": "TC-18",
+        "name": "Email / Nota Dinas",
+        "passed": true,
+        "latency_ms": 5991.7,
+        "mismatches": [],
+        "active_flags": {
+          "is_generate_email": true
+        }
+      }
+    ]
+  },
+  "granite4.2:8b": {
+    "model": "granite4.2:8b",
+    "use_precheck": false,
+    "passed": 16,
+    "total": 18,
+    "accuracy": 88.9,
+    "avg_latency_ms": 8724.9,
+    "details": [
+      {
+        "id": "TC-01",
+        "name": "Web Search + Visual",
+        "passed": true,
+        "latency_ms": 11458.4,
+        "mismatches": [],
+        "active_flags": {
+          "queries": [
+            "prakiraan cuaca bandung 7 hari",
+            "kondisi cuaca bandung minggu depan"
+          ],
+          "requires_visual": true,
+          "is_chitchat": true,
+          "is_web_search": true
+        }
+      },
+      {
+        "id": "TC-02",
+        "name": "Web Search (Komparasi Tank)",
+        "passed": false,
+        "latency_ms": 7026.6,
+        "mismatches": [
+          "Expected is_web_search=True, got False"
+        ],
+        "active_flags": {
+          "is_comparative": true,
+          "is_ambiguous": true
+        }
+      },
+      {
+        "id": "TC-03",
+        "name": "RAG (Cuti PKB)",
+        "passed": true,
+        "latency_ms": 12364.4,
+        "mismatches": [],
+        "active_flags": {
+          "need_rag": true,
+          "queries": [
+            "Alur Pengajuan Cuti Tahunan PKB",
+            "prosedur pengajuan cuti tahunan",
+            "syarat cuti tahunan pegawai"
+          ],
+          "query_judul": [
+            "PKB",
+            "Perjanjian Kerja Bersama",
+            "Cuti"
+          ],
+          "requires_visual": true
+        }
+      },
+      {
+        "id": "TC-04",
+        "name": "RAG (Pasal Lembur PKB)",
+        "passed": true,
+        "latency_ms": 15564.3,
+        "mismatches": [],
+        "active_flags": {
+          "need_rag": true,
+          "queries": [
+            "Perbedaan Pasal Tunjangan Lembur PKB 2021 vs 2024",
+            "perbedaan pasal tunjangan lembur PKB 2021",
+            "perbedaan pasal tunjangan lembur PKB 2024"
+          ],
+          "query_judul": [
+            "PKB",
+            "Perjanjian Kerja Bersama",
+            "Tunjangan Lembur"
+          ]
+        }
+      },
+      {
+        "id": "TC-05",
+        "name": "RAG (SOP Mutasi)",
+        "passed": true,
+        "latency_ms": 10896.5,
+        "mismatches": [],
+        "active_flags": {
+          "need_rag": true,
+          "queries": [
+            "Prosedur Mutasi Antar Divisi Pindad syarat sop",
+            "prosedur mutasi antar divisi",
+            "syarat mutasi antar divisi"
+          ],
+          "query_judul": [
+            "SOP",
+            "Mutasi Antar Divisi",
+            "Pindad"
+          ]
+        }
+      },
+      {
+        "id": "TC-06",
+        "name": "Coding (Debug 401)",
+        "passed": true,
+        "latency_ms": 6218.4,
+        "mismatches": [],
+        "active_flags": {
+          "is_coding": true,
+          "is_troubleshooting": true
+        }
+      },
+      {
+        "id": "TC-07",
+        "name": "Coding (JWT Express)",
+        "passed": true,
+        "latency_ms": 7939.4,
+        "mismatches": [],
+        "active_flags": {
+          "is_coding": true,
+          "is_security_critical": true
+        }
+      },
+      {
+        "id": "TC-08",
+        "name": "Coding + Ambiguous",
+        "passed": true,
+        "latency_ms": 6386.2,
+        "mismatches": [],
+        "active_flags": {
+          "is_coding": true,
+          "is_ambiguous": true
+        }
+      },
+      {
+        "id": "TC-09",
+        "name": "Map Query",
+        "passed": true,
+        "latency_ms": 6463.9,
+        "mismatches": [],
+        "active_flags": {
+          "is_map_query": true
+        }
+      },
+      {
+        "id": "TC-10",
+        "name": "Self-Correction",
+        "passed": true,
+        "latency_ms": 9403.0,
+        "mismatches": [],
+        "active_flags": {
+          "queries": [
+            "tanggal rilis The Nun tahun 2018 2020"
+          ],
+          "is_self_correction": true,
+          "is_web_search": true
+        }
+      },
+      {
+        "id": "TC-11",
+        "name": "Follow-up Web Search",
+        "passed": true,
+        "latency_ms": 8313.1,
+        "mismatches": [],
+        "active_flags": {
+          "queries": [
+            "berita terkini NTT hari ini",
+            "kabar terbaru Nusa Tenggara Timur"
+          ],
+          "is_web_search": true
+        }
+      },
+      {
+        "id": "TC-12",
+        "name": "Follow-up PKB / RAG",
+        "passed": true,
+        "latency_ms": 9813.7,
+        "mismatches": [],
+        "active_flags": {
+          "need_rag": true,
+          "queries": [
+            "Sanksi SP3 PKB dasar hukum pasalnya",
+            "dasar hukum pasalnya pkb"
+          ],
+          "query_judul": [
+            "PKB",
+            "Perjanjian Kerja Bersama",
+            "SP3"
+          ]
+        }
+      },
+      {
+        "id": "TC-13",
+        "name": "Wizard Stack Selection",
+        "passed": true,
+        "latency_ms": 6821.5,
+        "mismatches": [],
+        "active_flags": {
+          "is_coding": true
+        }
+      },
+      {
+        "id": "TC-14",
+        "name": "Data Simulation Chat",
+        "passed": false,
+        "latency_ms": 7400.5,
+        "mismatches": [
+          "Expected is_generate_file=False, got True"
+        ],
+        "active_flags": {
+          "is_generate_file": true
+        }
+      },
+      {
+        "id": "TC-15",
+        "name": "File Export Fisik",
+        "passed": true,
+        "latency_ms": 6649.9,
+        "mismatches": [],
+        "active_flags": {
+          "is_generate_file": true
+        }
+      },
+      {
+        "id": "TC-16",
+        "name": "Ambient Weather Chitchat",
+        "passed": true,
+        "latency_ms": 7098.7,
+        "mismatches": [],
+        "active_flags": {
+          "is_chitchat": true
+        }
+      },
+      {
+        "id": "TC-17",
+        "name": "URL Reader / Web",
+        "passed": true,
+        "latency_ms": 10338.6,
+        "mismatches": [],
+        "active_flags": {
+          "queries": [
+            "profil perusahaan pindad",
+            "isi link pindad.com/profil-perusahaan"
+          ],
+          "is_web_search": true
+        }
+      },
+      {
+        "id": "TC-18",
+        "name": "Email / Nota Dinas",
+        "passed": true,
+        "latency_ms": 6891.8,
+        "mismatches": [],
+        "active_flags": {
+          "is_generate_email": true
+        }
+      }
+    ]
+  }
+}

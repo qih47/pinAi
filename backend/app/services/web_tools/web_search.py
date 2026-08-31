@@ -34,33 +34,55 @@ def _set_cache(query: str, results: List[Dict[str, Any]]) -> None:
         del _search_cache[oldest_key]
     _search_cache[key] = (time.time(), results)
 
+import re
+
+def sanitize_web_query(query: str) -> str:
+    """Membersihkan kata-kata filler percakapan dari query pencarian web."""
+    if not query:
+        return ""
+    q = query.strip()
+    fillers = [
+        r"^mencari referensi terkait\s*",
+        r"^referensi terkait\s*",
+        r"^carikan info(rmasi)? terkait\s*",
+        r"^cari di web\s*",
+        r"^cari web\s*",
+        r"^tolong cari(kan)?\s*",
+        r"^info(rmasi)? tentang\s*",
+    ]
+    for pattern in fillers:
+        q = re.sub(pattern, "", q, flags=re.IGNORECASE).strip()
+    return q or query.strip()
+
 async def perform_web_search(query: str, num_results: int = 5) -> List[Dict[str, Any]]:
     """
     Melakukan pencarian ke SearXNG dan mengembalikan daftar hasil.
     Hasil di-cache selama 5 menit untuk menghindari duplikat request.
     """
+    clean_q = sanitize_web_query(query)
+    if not clean_q:
+        clean_q = query.strip()
+
     # Cek cache dulu
-    cached = _get_cached_results(query)
+    cached = _get_cached_results(clean_q)
     if cached is not None:
         return cached[:num_results]
 
-    logger.info(f"[Web Search] Searching for: '{query}'")
+    logger.info(f"[Web Search] Searching for: '{clean_q}' (raw: '{query}')")
     
     params = {
-        "q": query,
+        "q": clean_q,
         "format": "json",
-        "engines": "google,duckduckgo",
         "language": "id",
         "categories": "general",
         "safesearch": "0"
     }
     
     try:
-        async with httpx.AsyncClient(timeout=4.0) as client:
+        async with httpx.AsyncClient(timeout=8.0) as client:
             response = await client.get(SEARXNG_URL, params=params)
             response.raise_for_status()
 
-            
             data = response.json()
             results = data.get("results", [])
             
@@ -75,7 +97,7 @@ async def perform_web_search(query: str, num_results: int = 5) -> List[Dict[str,
                 })
             
             # Simpan ke cache
-            _set_cache(query, formatted_results)
+            _set_cache(clean_q, formatted_results)
             return formatted_results
             
     except Exception as e:
