@@ -101,9 +101,8 @@ def detect_precheck(user_message: str, chat_mode: str, has_attachment: bool, use
     else:
         need_rag_hint = None
         
-    if is_generate_email:
-        is_chitchat = False
-        need_rag_hint = False
+    from backend.app.services.pipeline.intent_dictionary import extract_slang_mirror
+    slang_mirror = extract_slang_mirror(user_message, user_pronoun=pronoun)
 
     return {
         "is_chitchat": is_chitchat,
@@ -116,6 +115,7 @@ def detect_precheck(user_message: str, chat_mode: str, has_attachment: bool, use
         "tone_hint": tone_hint,
         "mirroring": mirroring,
         "slang": slang,
+        "slang_mirror": slang_mirror,
         "profanity": profanity,
         "word_count": word_count,
         "requires_visual": requires_visual,

@@ -198,9 +198,23 @@ async def handle_web_search(
                     "score": score
                 })
                 
-            # Ambil Top potongan terbaik (maksimal 15 chunks, relevan dari hasil BGE)
+            # Ambil Top potongan terbaik berbasis skor relevansi presisi (Threshold >= 0.55, dinamis 4 - 7 chunk)
             scored_chunks.sort(key=lambda x: x["score"], reverse=True)
-            top_chunks = scored_chunks[:15]
+            
+            # Filter chunk relevan & hindari duplikasi teks
+            seen_texts = set()
+            unique_scored = []
+            for c in scored_chunks:
+                snippet = c["text"][:100].strip()
+                if snippet not in seen_texts:
+                    seen_texts.add(snippet)
+                    unique_scored.append(c)
+
+            relevant_chunks = [c for c in unique_scored if c["score"] >= 0.55]
+            if len(relevant_chunks) < 3:
+                top_chunks = unique_scored[:4]  # Minimal 4 terbaik jika skor ketat
+            else:
+                top_chunks = relevant_chunks[:7]  # Maksimal 7 chunk presisi tinggi
             
             combined_deep = "\n\n---\n\n".join(
                 f"[Sumber: {c['source']}]\n{c['text']}"
@@ -209,7 +223,7 @@ async def handle_web_search(
             
             web_context += "\n\n=== KONTEN MENDALAM DARI TAUTAN TERATAS (FILTERED & RERANKED) ===\n"
             web_context += combined_deep
-            logger.info(f"[Web Search] Reranking complete. Selected {len(top_chunks)} top chunks from {len(all_chunks)}.")
+            logger.info(f"[Web Search] Reranking complete. Dynamically selected {len(top_chunks)} high-precision chunks from {len(all_chunks)} total.")
 
     
     # 4. Bangun system prompt

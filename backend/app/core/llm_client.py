@@ -331,8 +331,8 @@ async def stream_ollama_chat(
                     thought = message_chunk.get("thinking", "")
                     done = chunk.get("done", False)
 
-                    if content or thought:
-                        if first_token:
+                    if content or thought or done:
+                        if first_token and (content or thought):
                             ttft_ms = (datetime.now() - inference_start_time).total_seconds() * 1000
                             queue_ms_log = queue_wait_time * 1000
                             logger.info(

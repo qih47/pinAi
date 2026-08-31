@@ -87,6 +87,24 @@ async def update_profile(
             values.append(npp)
             query = f"UPDATE users SET {', '.join(updates)} WHERE npp = ${idx}"
             await conn.execute(query, *values)
+
+            # Sinkronisasi preferred_name ke user_settings JSONB jika ada perubahan
+            if preferred_name is not None:
+                existing_settings_row = await conn.fetchrow("SELECT settings FROM user_settings WHERE npp = $1", npp)
+                curr_settings = {}
+                if existing_settings_row and existing_settings_row["settings"]:
+                    curr_settings = json.loads(existing_settings_row["settings"]) if isinstance(existing_settings_row["settings"], str) else existing_settings_row["settings"]
+                curr_settings["preferred_name"] = preferred_name
+                await conn.execute("""
+                    INSERT INTO user_settings (npp, settings, updated_at)
+                    VALUES ($1, $2::jsonb, now())
+                    ON CONFLICT (npp) DO UPDATE 
+                    SET settings = $2::jsonb, updated_at = now()
+                """, npp, json.dumps(curr_settings))
+
+        # Realtime refresh in-memory cache
+        from backend.app.utils.employee_cache import invalidate_employee_cache
+        invalidate_employee_cache(npp)
             
     return {"status": "success", "message": "Profil berhasil diperbarui", "profile_photo_url": profile_photo_url}
 
@@ -206,6 +224,14 @@ async def update_user_settings(payload: dict = Body(...)):
             ON CONFLICT (npp) DO UPDATE 
             SET settings = $2::jsonb, updated_at = now()
         """, npp, settings_json)
+
+        # Sinkronisasi ke tabel users jika preferred_name dikirimkan
+        if "preferred_name" in settings_data and settings_data["preferred_name"]:
+            await conn.execute("UPDATE users SET preferred_name = $2 WHERE npp = $1", npp, settings_data["preferred_name"])
+
+        # Realtime refresh in-memory cache
+        from backend.app.utils.employee_cache import invalidate_employee_cache
+        invalidate_employee_cache(npp)
         
     return {"status": "success", "message": "Settings updated"}
 
@@ -439,6 +465,10 @@ async def complete_onboarding(req: OnboardingRequest):
             SELECT npp, fullname, preferred_name, divisi, role, email, profile_photo_url
             FROM users WHERE npp = $1
         """, npp)
+
+        # Realtime refresh in-memory cache
+        from backend.app.utils.employee_cache import invalidate_employee_cache
+        invalidate_employee_cache(npp)
 
     return {
         "status": "success",

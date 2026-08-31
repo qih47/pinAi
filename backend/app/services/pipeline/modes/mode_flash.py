@@ -77,8 +77,11 @@ class ModeFlash:
             system_prompt += "\n\n" + session_chunks
 
         messages_dict = [{"role": m.role, "content": m.content} for m in chat_history]
-        # Mengambil 5 history + 1 current message = 6
-        trimmed_messages = messages_dict[-6:] if len(messages_dict) > 6 else messages_dict
+        # Mengambil lean history: 4 pesan terakhir untuk chitchat, 6 pesan untuk modul lainnya
+        if module_name == "chitchat":
+            trimmed_messages = messages_dict[-4:] if len(messages_dict) > 4 else messages_dict
+        else:
+            trimmed_messages = messages_dict[-6:] if len(messages_dict) > 6 else messages_dict
         
         stream_messages = [
             {"role": "system", "content": system_prompt},

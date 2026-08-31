@@ -329,14 +329,34 @@ def _validate_and_normalize_routing(
     else:
         routing["session_chunk_ids"] = []
     
+    from backend.app.services.pipeline.intent_dictionary import (
+        is_explicit_web_search_required,
+        is_pure_opinion_or_chitchat
+    )
+
+    # Deteksi cerdas opini/afirmasi/curhat/keluh kesah: jika user memberi tanggapan opini tanpa meminta cari di web
+    is_opinion = is_pure_opinion_or_chitchat(user_message)
+    is_explicit_web = is_explicit_web_search_required(user_message)
+
     # Otomatis aktifkan is_web_search jika ada queries dan bukan dokumen internal / bukan koding / bukan cuaca saat ini
     if is_current_weather:
         logger.info("[CALL1] ⛅ Cuaca lokal saat ini terdeteksi. Mematikan is_web_search agar dijawab instan via Ambient Context Persona.")
         routing["is_web_search"] = False
         routing["queries"] = []
         routing["is_chitchat"] = True
+    elif is_opinion and not is_explicit_web:
+        logger.info("[CALL1] 💬 Pesan opini/afirmasi/chitchat terdeteksi. Mematikan is_web_search agar dijawab empatik & reflektif via Persona Core.")
+        routing["is_web_search"] = False
+        routing["queries"] = []
+        routing["is_chitchat"] = True
     elif routing_json.get("queries") and not routing["need_rag"] and not routing["is_coding"] and not routing["is_generate_file"]:
-        routing["is_web_search"] = True
+        # Hanya aktifkan web search jika memang diminta di JSON atau terdeteksi di spektrum web search
+        if routing_json.get("is_web_search", False) or is_explicit_web:
+            routing["is_web_search"] = True
+        else:
+            routing["is_web_search"] = False
+            routing["queries"] = []
+            routing["is_chitchat"] = True
     else:
         routing["is_web_search"] = bool(routing_json.get("is_web_search", False))
 
