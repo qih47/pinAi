@@ -102,10 +102,11 @@ class InterceptorParser:
                     full_preamble = self._transition_buffer + pre_tag_text
                     self._transition_buffer = ""
                 
+                if self._state == "WAITING_FOR_NEXT_FILE":
+                    results.append(("batch_break", {}))
+                
                 if full_preamble.strip():
                     results.append(("preamble", full_preamble))
-                    if self._state == "WAITING_FOR_NEXT_FILE":
-                        results.append(("batch_break", {}))
                 
                 self._tag_type = m.group(1).lower()      
                 self._filename = _sanitize_filename(m.group(2))
@@ -121,14 +122,22 @@ class InterceptorParser:
                 results.extend(self._capture_code(rest))
             else:
                 last_lt = self._buffer.rfind('<')
-                if last_lt > 0:
-                    safe_to_stream = self._buffer[:last_lt]
-                    self._buffer   = self._buffer[last_lt:]
-                    if safe_to_stream:
+                if last_lt != -1:
+                    potential_tag = self._buffer[last_lt:]
+                    # Jika setelah '<' sudah panjang (>60 char) dan bukan tag, stream semuanya
+                    if len(potential_tag) > 60:
+                        safe_to_stream = self._buffer
+                        self._buffer = ""
                         results.append(("preamble", safe_to_stream))
-                elif last_lt == -1 and len(self._buffer) > 60:
-                    safe_to_stream = self._buffer[:-10]
-                    self._buffer   = self._buffer[-10:]
+                    elif last_lt > 0:
+                        safe_to_stream = self._buffer[:last_lt]
+                        self._buffer = self._buffer[last_lt:]
+                        if safe_to_stream:
+                            results.append(("preamble", safe_to_stream))
+                else:
+                    # Tidak ada karakter '<' sama sekali: langsung stream tanpa ditahan!
+                    safe_to_stream = self._buffer
+                    self._buffer = ""
                     if safe_to_stream:
                         results.append(("preamble", safe_to_stream))
 
@@ -200,27 +209,29 @@ class InterceptorParser:
                 self._buffer = rest_after_close
                 results.extend(self.process_chunk(""))  
         else:
-            TAG_PREFIXES = ["</create_file", "</edit_file", "<create_file", "<edit_file"]
-            partial_pos = -1
-            for prefix_str in TAG_PREFIXES:
-                for prefix_len in range(len(prefix_str), 1, -1):
-                    prefix = prefix_str[:prefix_len]
-                    if text.endswith(prefix):
-                        pos = len(text) - prefix_len
-                        if pos > partial_pos:
-                            partial_pos = pos
-                        break
-
-            if partial_pos != -1:
-                safe = text[:partial_pos]
-                self._buffer = text[partial_pos:]
-                if safe:
+            last_lt = text.rfind('<')
+            if last_lt != -1:
+                potential_tag = text[last_lt:].lower()
+                is_partial = any(
+                    prefix.startswith(potential_tag)
+                    for prefix in ("</create_file", "</edit_file", "<create_file", "<edit_file")
+                )
+                if is_partial:
+                    safe = text[:last_lt]
+                    self._buffer = text[last_lt:]
+                    if safe:
+                        self._code_buffer.append(safe)
+                        results.append(("code_chunk", safe))
+                        results.append(("preamble", safe))
+                else:
+                    safe = text
+                    self._buffer = ""
                     self._code_buffer.append(safe)
                     results.append(("code_chunk", safe))
                     results.append(("preamble", safe))
             else:
-                safe = text[:-5] if len(text) > 5 else ""
-                self._buffer = text[-5:] if len(text) > 5 else text
+                safe = text
+                self._buffer = ""
                 if safe:
                     self._code_buffer.append(safe)
                     results.append(("code_chunk", safe))
@@ -333,7 +344,7 @@ class ModeGenerateFile:
         # ── SINGLE UNIFIED STREAM (gemma4:31b) ──────────────────────────────────────
         try:
             async for chunk_line in stream_ollama_chat(
-                model_name=getattr(settings, "MODEL_PERSONA", "gemma4:12b"),
+                model_name=getattr(settings, "MODEL_PERSONA", "gemma4:31b"),
                 messages=stream_messages,
                 request=request,
                 temperature=0.6,

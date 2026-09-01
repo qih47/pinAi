@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
+import { translations } from '../../../utils/translations';
 
 const PulseLoader = () => (
   <div style={{
@@ -77,32 +78,54 @@ const ChevronRight = ({ expanded, color }) => (
   </svg>
 );
 
-export default function FileProcessLog({ fileGenerations, darkMode, batchIndex = 0, isFinalBatch = false }) {
+export default function FileProcessLog({ fileGenerations, darkMode, batchIndex = 0, isFinalBatch = false, isStreaming = false, allFilesCompleted = false, language = 'id' }) {
+  const t = translations[language]?.fileProcess || translations.id.fileProcess || {};
   const [expanded, setExpanded] = useState(true);
   const [expandedSteps, setExpandedSteps] = useState({});
-
-  if (!fileGenerations || fileGenerations.length === 0) return null;
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
 
   // Filter ONLY generations that belong to this batch
-  const batchGens = fileGenerations.filter(fg => (fg.batchIndex || 0) === batchIndex);
-  if (batchGens.length === 0) return null;
+  const batchGens = Array.isArray(fileGenerations)
+    ? fileGenerations.filter(fg => (fg.batchIndex || 0) === batchIndex)
+    : [];
+
+  const isInProgressAny = batchGens.some(fg => fg.stage === 'streaming' || fg.stage === 'creating');
+
+  // Active elapsed time counting (Called unconditionally at top level)
+  useEffect(() => {
+    let timer = null;
+    if (isInProgressAny) {
+      timer = setInterval(() => {
+        setElapsedSeconds(prev => prev + 1);
+      }, 1000);
+    }
+    return () => {
+      if (timer) clearInterval(timer);
+    };
+  }, [isInProgressAny]);
+
+  if (!fileGenerations || fileGenerations.length === 0 || batchGens.length === 0) return null;
 
   const textColor = darkMode ? '#e4e4e7' : '#18181b';
   const mutedText = darkMode ? '#a1a1aa' : '#71717a';
   const borderColor = darkMode ? '#3f3f46' : '#d4d4d8';
 
   const doneCount = batchGens.filter(fg => fg.stage === 'done').length;
-  const inProgressCount = batchGens.filter(fg => fg.stage === 'streaming' || fg.stage === 'creating').length;
+  const inProgressCount = batchGens.filter(fg => fg.stage === 'streaming' || fg.stage === 'creating');
+  const inProgressLength = inProgressCount.length;
   const errorCount = batchGens.filter(fg => fg.stage === 'error').length;
   const total = batchGens.length;
 
   let headerText = "";
-  if (inProgressCount > 0) {
-    headerText = `Mengerjakan ${inProgressCount} file...`;
+  if (inProgressLength > 0) {
+    const textTpl = t.working || "Mengerjakan {count} file";
+    headerText = `${textTpl.replace('{count}', inProgressLength)} (${elapsedSeconds}s)...`;
   } else if (doneCount === total) {
-    headerText = `Selesai ${total} file`;
+    const textTpl = t.finished || "Selesai {count} file";
+    headerText = textTpl.replace('{count}', total);
   } else {
-    headerText = `Selesai dengan ${errorCount} error`;
+    const textTpl = t.finishedWithErrors || "Selesai dengan {count} error";
+    headerText = textTpl.replace('{count}', errorCount);
   }
 
   const toggleStep = (idx) => {
@@ -166,6 +189,14 @@ export default function FileProcessLog({ fileGenerations, darkMode, batchIndex =
 
             const isAllDone = batchGens.every(g => g.stage === 'done' || g.stage === 'error');
 
+            const stepLabel = isInProgress
+              ? (fg.tag_type === 'edit_file'
+                  ? (t.editingFile || "Mengedit {filename}...").replace('{filename}', fg.filename)
+                  : (t.creatingFile || "Membuat {filename}...").replace('{filename}', fg.filename))
+              : (isError
+                  ? (t.failedFile || "Gagal menulis {filename}").replace('{filename}', fg.filename)
+                  : (t.finishedFile || "Selesai {filename}").replace('{filename}', fg.filename));
+
             return (
               <div key={fg.filename + idx} style={{
                 display: 'flex',
@@ -206,10 +237,17 @@ export default function FileProcessLog({ fileGenerations, darkMode, batchIndex =
                       fontSize: '13px',
                       color: textColor,
                       fontWeight: 500,
-                      display: 'inline-block'
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px'
                     }}
                   >
-                    {isInProgress ? (fg.tag_type === 'edit_file' ? `Mengedit ${fg.filename}...` : `Membuat ${fg.filename}...`) : (isError ? `Gagal menulis ${fg.filename}` : `Selesai ${fg.filename}`)}
+                    <span>{stepLabel}</span>
+                    {isInProgress && (
+                      <span style={{ fontSize: '11px', color: '#818cf8', fontWeight: 600, opacity: 0.9 }}>
+                        ({elapsedSeconds}s)
+                      </span>
+                    )}
                   </span>
 
                   <div
@@ -230,7 +268,7 @@ export default function FileProcessLog({ fileGenerations, darkMode, batchIndex =
                   >
                     <TerminalIcon color={isStepExpanded ? '#818cf8' : mutedText} size={12} />
                     <span style={{ fontWeight: 500 }}>
-                      File System
+                      {t.fileSystem || "File System"}
                     </span>
                     <ChevronRight expanded={isStepExpanded} color={isStepExpanded ? '#818cf8' : mutedText} />
                   </div>
@@ -302,7 +340,7 @@ export default function FileProcessLog({ fileGenerations, darkMode, batchIndex =
                             whiteSpace: 'pre-wrap',
                             wordBreak: 'break-all'
                           }}>
-                            {fg.liveCode || '// Sedang menginisialisasi...'}
+                            {fg.liveCode || (t.initializing || '// Sedang menginisialisasi...')}
                           </pre>
                         ) : (
                           <SyntaxHighlighter
@@ -315,7 +353,7 @@ export default function FileProcessLog({ fileGenerations, darkMode, batchIndex =
                               fontSize: '12px'
                             }}
                           >
-                            {fg.liveCode || '// Selesai.'}
+                            {fg.liveCode || (t.completed || '// Selesai.')}
                           </SyntaxHighlighter>
                         )}
                       </div>
@@ -327,7 +365,7 @@ export default function FileProcessLog({ fileGenerations, darkMode, batchIndex =
           })}
 
           {/* FINAL DONE ROW */}
-          {isFinalBatch && batchGens.length > 0 && fileGenerations.every(g => g.stage === 'done' || g.stage === 'error') && (
+          {isFinalBatch && (allFilesCompleted || !isStreaming) && batchGens.length > 0 && fileGenerations.every(g => g.stage === 'done' || g.stage === 'error') && (
             <>
               {/* Presented Files Step */}
               <div style={{
@@ -362,7 +400,7 @@ export default function FileProcessLog({ fileGenerations, darkMode, batchIndex =
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', width: '100%' }}>
                   <span style={{ fontSize: '13px', color: mutedText, fontWeight: 500 }}>
-                    Presented {fileGenerations.length} files
+                    {(t.presentedFiles || "Presented {count} files").replace('{count}', fileGenerations.length)}
                   </span>
                 </div>
               </div>
@@ -392,7 +430,7 @@ export default function FileProcessLog({ fileGenerations, darkMode, batchIndex =
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', width: '100%' }}>
                   <span style={{ fontSize: '13px', color: mutedText, fontWeight: 500 }}>
-                    Done
+                    {t.done || "Done"}
                   </span>
                 </div>
               </div>

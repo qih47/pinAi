@@ -21,7 +21,7 @@ export function normalizeAttachments(files) {
 }
 
 // Tambahkan parameter targetAssistantIdx di akhir (default null)
-export async function performStream(set, get, messagesToSend, assistantMessage, forcedSessionUuid = null, npp = null, isolatedDocId = null, attachmentPaths = [], chatMode = 'auto', isThinkingMode = true, toast = null, targetAssistantIdx = null, editIndex = null) {
+export async function performStream(set, get, messagesToSend, assistantMessage, forcedSessionUuid = null, npp = null, isolatedDocId = null, attachmentPaths = [], chatMode = 'auto', isThinkingMode = true, toast = null, targetAssistantIdx = null, editIndex = null, streamOptions = {}) {
     let attempts = 0;
     const maxAttempts = 4;
     let success = false;
@@ -87,6 +87,9 @@ export async function performStream(set, get, messagesToSend, assistantMessage, 
             const controller = new AbortController();
             set({ abortController: controller });
 
+            const activeForcedMode = streamOptions.forcedMode || streamOptions.forced_mode || get().activeModeTag || null;
+            const activeBypassRouter = streamOptions.bypassRouter !== undefined ? streamOptions.bypassRouter : Boolean(streamOptions.bypass_router);
+
             await endpoints.streamChat(
                 {
                     sessionUuid: activeSessionUuid,
@@ -99,7 +102,9 @@ export async function performStream(set, get, messagesToSend, assistantMessage, 
                     editIndex,
                     signal: controller.signal,
                     activeTopic: (typeof get().sessionTopics?.[activeSessionUuid] === 'object' ? get().sessionTopics[activeSessionUuid]?.topic : get().sessionTopics?.[activeSessionUuid]) || get().activeTopic || null,
-                    keySubject: (typeof get().sessionTopics?.[activeSessionUuid] === 'object' ? get().sessionTopics[activeSessionUuid]?.keySubject : null) || get().keySubject || null
+                    keySubject: (typeof get().sessionTopics?.[activeSessionUuid] === 'object' ? get().sessionTopics[activeSessionUuid]?.keySubject : null) || get().keySubject || null,
+                    forcedMode: activeForcedMode,
+                    bypassRouter: activeBypassRouter
                 },
                 {
                     onTopicUpdate: (topic, keySubject) => {
@@ -208,6 +213,16 @@ export async function performStream(set, get, messagesToSend, assistantMessage, 
                             });
                         }
 
+                        // 🔥 DETEKSI SINYAL SEMUA FILE SELESAI 🔥
+                        const hasAllFilesDoneSignal = cleanReply.includes('[[ALL_FILES_COMPLETED]]') || cleanReply.includes('<all_files_done');
+                        if (hasAllFilesDoneSignal) {
+                            cleanReply = cleanReply
+                                .replace(/\[\[ALL_FILES_COMPLETED\]\]/g, '')
+                                .replace(/<all_files_done\s*\/?>/gi, '');
+                        }
+
+                        const existingGens = [...(assistantMessage.fileGenerations || [])];
+
                         // 🔥 DYNAMIC FRONTEND PARSER 🔥
                         let textDisplay = cleanReply;
 
@@ -223,6 +238,7 @@ export async function performStream(set, get, messagesToSend, assistantMessage, 
                             let match;
                             while ((match = openTagRegex.exec(cleanReply)) !== null) {
                                 const precedingText = cleanReply.substring(lastIdx, match.index);
+                                const filename = match[2];
 
                                 if (!hasInjectedFirst) {
                                     textDisplay += precedingText;
@@ -234,6 +250,17 @@ export async function performStream(set, get, messagesToSend, assistantMessage, 
                                     textDisplay += `\n\n[[CAKRA_FILE_PROCESS_LOG_${currentBatchIndex}]]\n\n`;
                                 } else {
                                     textDisplay += precedingText; // Just whitespace
+                                }
+
+                                // Sinkronkan batchIndex fileGeneration yang cocok dengan urutan penempatan teks
+                                if (filename) {
+                                    const fgIdx = existingGens.findIndex(fg => fg.filename === filename);
+                                    if (fgIdx !== -1) {
+                                        existingGens[fgIdx] = {
+                                            ...existingGens[fgIdx],
+                                            batchIndex: currentBatchIndex
+                                        };
+                                    }
                                 }
 
                                 const contentStart = openTagRegex.lastIndex;
@@ -257,12 +284,11 @@ export async function performStream(set, get, messagesToSend, assistantMessage, 
                             textDisplay += cleanReply.substring(lastIdx);
                         }
 
-                        const existingGens = [...(assistantMessage.fileGenerations || [])];
-
                         assistantMessage = {
                             ...assistantMessage,
                             content: textDisplay,
-                            fileGenerations: existingGens
+                            fileGenerations: existingGens,
+                            allFilesDone: Boolean(hasAllFilesDoneSignal || assistantMessage.allFilesDone)
                         };
 
                         // Gabungkan hasil pemikiran yang bocor jika ada
@@ -423,8 +449,8 @@ export async function performStream(set, get, messagesToSend, assistantMessage, 
 
             success = true;
         } catch (error) {
-            console.warn(`💥 [FE STREAM ERROR]:`, error);
             if (error.name === 'AbortError') {
+                console.info('[FE STREAM] Stream stopped by user (aborted).');
                 assistantMessage.content += ' *Respons dihentikan*';
                 assistantMessage.isStreaming = false;
                 assistantMessage.isThinking = false;
@@ -434,6 +460,7 @@ export async function performStream(set, get, messagesToSend, assistantMessage, 
                 updateStreamState({ messages: currentMessages, isThinking: false, currentThinking: '', isStreaming: false, isLoading: false, isEditRegenerating: false });
                 break; // Stop retry loop
             }
+            console.warn(`💥 [FE STREAM ERROR]:`, error);
 
             attempts++;
             if (attempts >= maxAttempts) {

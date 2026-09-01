@@ -252,7 +252,7 @@ async def handle_web_search(
     # 5. Mulai streaming jawaban dari LLM dengan num_ctx=16384 dan num_predict=-1 (tak terbatas)
     response_stream = stream_ollama_chat(
         messages=modified_messages,
-        model_name=getattr(settings, "MODEL_PERSONA", "gemma4:12b"),
+        model_name=getattr(settings, "MODEL_PERSONA", "gemma4:31b"),
         is_thinking=is_thinking,
         temperature=0.4,
         num_ctx=16384,

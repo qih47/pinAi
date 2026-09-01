@@ -47,6 +47,24 @@ export async function updateSessionSettings(sessionUuid, settings) {
 }
 
 /**
+ * Fetch dynamic suggestions/hints for web search, documents, code, and focus modes
+ * @param {string} mode - Mode: 'websearch' | 'documents' | 'code' | 'focus'
+ * @param {string} query - Live typed query in the input bar
+ * @param {number} limit - Max results
+ */
+export async function fetchChatSuggestions(mode = 'documents', query = '', limit = 6, docId = null) {
+  try {
+    const params = { mode, q: query, limit };
+    if (docId) params.doc_id = docId;
+    const response = await apiClient.get('/chat/suggestions', { params });
+    return response.data?.data || [];
+  } catch (error) {
+    console.error('Error fetching chat suggestions:', error);
+    return [];
+  }
+}
+
+/**
  * Handle SSE streaming chat using native fetch and ReadableStream
  * 
  * Features:
@@ -60,7 +78,7 @@ export async function updateSessionSettings(sessionUuid, settings) {
  * @param {Object} options - Configuration options (timeoutMs, etc)
  */
 export async function streamChat(
-  { sessionUuid, messages, chatMode, thinking, isolatedDocId, attachmentPaths, npp, editIndex, signal, activeTopic, keySubject },
+  { sessionUuid, messages, chatMode, thinking, isolatedDocId, attachmentPaths, npp, editIndex, signal, activeTopic, keySubject, forcedMode, bypassRouter },
   { onThinking, onStatus, onSources, onChunk, onFileStatus, onDone, onError, onTopicUpdate },
   options = {}
 ) {
@@ -137,7 +155,9 @@ export async function streamChat(
         edit_index: editIndex,
         active_topic: activeTopic,
         key_subject: keySubject,
-        client_context: clientContext
+        client_context: clientContext,
+        forced_mode: forcedMode || undefined,
+        bypass_router: Boolean(bypassRouter)
       }),
       signal: controller.signal,  // ✅ ADD: Abort signal for timeout
     });

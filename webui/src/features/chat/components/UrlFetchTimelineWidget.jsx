@@ -1,9 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { ChevronDown, ChevronUp, ExternalLink, Clock } from 'lucide-react';
+import { translations } from '../../../utils/translations';
 
-const UrlFetchTimelineWidget = ({ data, isStreaming, hasStartedResponding, darkMode = true }) => {
+const UrlFetchTimelineWidget = ({ data, isStreaming, hasStartedResponding, darkMode = true, language = 'id' }) => {
     // Open by default if streaming and hasn't started responding.
     const [isOpen, setIsOpen] = useState(true);
+
+    const t = translations[language]?.webSearch || translations.id.webSearch;
 
     useEffect(() => {
         if (hasStartedResponding || (!isStreaming && hasStartedResponding)) {
@@ -22,8 +25,8 @@ const UrlFetchTimelineWidget = ({ data, isStreaming, hasStartedResponding, darkM
     if (nodes.length === 0 && !currentFetching) return null;
 
     const headerText = hasStartedResponding 
-        ? "Hasil penelusuran informasi dari tautan" 
-        : "Menelusuri informasi dari tautan";
+        ? (t.fetchLinksHeaderDone || "Hasil penelusuran informasi dari tautan")
+        : (t.fetchLinksHeader || "Menelusuri informasi dari tautan");
 
     return (
         <div className="my-4 w-full max-w-3xl font-sans">

@@ -64,7 +64,7 @@ def build_redteam_system_prompt(
     rag_context: str = ""
 ) -> str:
     if isinstance(selected_pages, list):
-        pages_str = ", ".join([str(p + 1) for p in selected_pages])
+        pages_str = ", ".join([str(p + 1 if isinstance(p, int) else (int(p) if str(p).isdigit() else p)) for p in selected_pages])
     elif isinstance(selected_pages, str):
         pages_str = selected_pages
     else:

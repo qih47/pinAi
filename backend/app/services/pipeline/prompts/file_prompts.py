@@ -55,7 +55,7 @@ SANGAT PENTING: Kamu WAJIB menulis 1-2 kalimat transisi (normal text) di antara 
 Contoh kalimat transisi: "Nah, sekarang mari kita lanjutkan dengan membuat file CSS-nya..."
 
 LANGKAH 3 — PENJELASAN ARSITEKTUR & CARA PENGGUNAAN (SETELAH SEMUA FILE SELESAI):
-Setelah kamu menutup tag `</create_file>` atau `</edit_file>` terakhir, lanjutkan LANGSUNG secara mengalir dengan:
+Setelah kamu menutup tag `</create_file>` atau `</edit_file>` terakhir, tuliskan penanda `[[ALL_FILES_COMPLETED]]` di baris baru sebagai sinyal selesai, lalu lanjutkan LANGSUNG secara mengalir dengan:
 1. Rangkuman singkat arsitektur komponen/script yang telah dibuat.
 2. Panduan instalasi dependensi dan perintah terminal yang diperlukan (contoh: `npm install ...` atau `pip install ...`).
 3. Cara mengintegrasikan atau menjalankan file tersebut.

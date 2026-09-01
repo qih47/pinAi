@@ -11,10 +11,11 @@ export default function DataGridViewer({ chartCode, darkMode, isStreaming, langu
   const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' });
   const [isExpanded, setIsExpanded] = useState(false);
   const exportRef = useRef(null);
+  const lastValidDataRef = useRef(null);
 
   // 2. Resilient JSON Parsing & Normalization (Mendukung Full & Streaming Partial JSON)
   const parsedData = useMemo(() => {
-    if (!chartCode || chartCode.trim() === '') return null;
+    if (!chartCode || chartCode.trim() === '') return lastValidDataRef.current || null;
     try {
       const clean = chartCode.trim();
       let rawObj = null;
@@ -27,7 +28,7 @@ export default function DataGridViewer({ chartCode, darkMode, isStreaming, langu
       }
 
       if (!rawObj || typeof rawObj !== 'object') {
-        return { error: 'Invalid JSON format for datagrid.' };
+        return lastValidDataRef.current || { error: 'Invalid JSON format for datagrid.' };
       }
 
       // Normalisasi columns: dukung array string ["A", "B"] atau array object [{ key: "a", label: "A" }]
@@ -71,22 +72,31 @@ export default function DataGridViewer({ chartCode, darkMode, isStreaming, langu
         normalizedColumns = Object.keys(normalizedRows[0]).map(k => ({ key: k, label: k }));
       }
 
-      return {
-        ...rawObj,
-        title: rawObj.title || rawObj.caption || rawObj.name || 'Data Table',
-        columns: normalizedColumns,
-        rows: normalizedRows
-      };
+      if (normalizedColumns.length > 0) {
+        const validObj = {
+          ...rawObj,
+          title: rawObj.title || rawObj.caption || rawObj.name || 'Data Table',
+          columns: normalizedColumns,
+          rows: normalizedRows
+        };
+        lastValidDataRef.current = validObj;
+        return validObj;
+      }
+
+      return lastValidDataRef.current || { error: 'Invalid JSON format for datagrid.' };
     } catch (e) {
-      return { error: 'Invalid JSON format for datagrid.' };
+      return lastValidDataRef.current || { error: 'Invalid JSON format for datagrid.' };
     }
   }, [chartCode]);
 
+  // Gunakan data aktif atau data valid terakhir saat streaming untuk mencegah flicker
+  const activeData = parsedData || lastValidDataRef.current;
+
   // 4. Data Processing (Search & Sort)
   const filteredAndSortedRows = useMemo(() => {
-    if (!parsedData || parsedData.error || !Array.isArray(parsedData.rows)) return [];
+    if (!activeData || activeData.error || !Array.isArray(activeData.rows)) return [];
     
-    let result = [...parsedData.rows];
+    let result = [...activeData.rows];
 
     // Filter by search
     if (searchQuery.trim() !== '') {
@@ -111,7 +121,7 @@ export default function DataGridViewer({ chartCode, darkMode, isStreaming, langu
     }
 
     return result;
-  }, [parsedData, searchQuery, sortConfig]);
+  }, [activeData, searchQuery, sortConfig]);
 
   const handleSort = (key) => {
     let direction = 'asc';
@@ -122,17 +132,17 @@ export default function DataGridViewer({ chartCode, darkMode, isStreaming, langu
   };
 
   const hasValidStructure = Boolean(
-    parsedData &&
-    !parsedData.error &&
-    Array.isArray(parsedData.columns) &&
-    parsedData.columns.length > 0 &&
-    Array.isArray(parsedData.rows)
+    activeData &&
+    !activeData.error &&
+    Array.isArray(activeData.columns) &&
+    activeData.columns.length > 0 &&
+    Array.isArray(activeData.rows)
   );
 
-  // 1. Loading State (Hanya tampil saat streaming DAN struktur kolom/baris belum terbentuk)
+  // 1. Loading State (Hanya tampil di awal streaming saat struktur kolom belum ada sama sekali)
   if (isStreaming && !hasValidStructure) {
     return (
-      <div className={`w-full py-8 my-3 flex items-center justify-center rounded-xl border border-dashed ${darkMode ? 'border-gray-700 bg-gray-800/30 text-gray-400' : 'border-gray-300 bg-gray-50 text-gray-500'}`}>
+      <div className={`w-full py-8 my-3 flex items-center justify-center rounded-xl border border-dashed transition-all ${darkMode ? 'border-gray-700 bg-gray-800/30 text-gray-400' : 'border-gray-300 bg-gray-50 text-gray-500'}`}>
         <div className="flex items-center gap-3">
           <svg className="animate-spin h-5 w-5 text-indigo-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
@@ -165,14 +175,14 @@ export default function DataGridViewer({ chartCode, darkMode, isStreaming, langu
         : `my-4 w-full rounded-xl border shadow-sm flex flex-col ${darkMode ? 'bg-[#222225] border-gray-700/60' : 'bg-white border-gray-200'}`
     }>
       <ViewerHeader 
-        title={parsedData.title || "Data Table"} 
+        title={activeData.title || "Data Table"} 
         icon={<TableProperties size={15} />} 
         onExpand={() => setIsExpanded(!isExpanded)} 
         isExpanded={isExpanded} 
         exportTargetRef={exportRef} 
         darkMode={darkMode}
         isTable={true}
-        tableData={parsedData}
+        tableData={activeData}
       />
 
       <div 
@@ -180,10 +190,10 @@ export default function DataGridViewer({ chartCode, darkMode, isStreaming, langu
         className={`flex-1 w-full flex flex-col overflow-hidden ${darkMode ? 'bg-[#222225]' : 'bg-white'} ${isExpanded ? 'rounded-b-xl shadow-2xl border-x border-b ' + (darkMode ? 'border-gray-800' : 'border-gray-200') : 'rounded-b-xl'}`}
       >
         {/* Search Toolbar di dalam container tabel */}
-        <div className={`p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${darkMode ? 'border-gray-700/60' : 'border-gray-200'} ${isExpanded && parsedData.title ? 'border-b' : ''}`}>
-          {isExpanded && parsedData.title ? (
+        <div className={`p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${darkMode ? 'border-gray-700/60' : 'border-gray-200'} ${isExpanded && activeData.title ? 'border-b' : ''}`}>
+          {isExpanded && activeData.title ? (
             <h3 className={`text-lg font-bold m-0 ${darkMode ? 'text-gray-100' : 'text-gray-800'}`}>
-              {parsedData.title}
+              {activeData.title}
             </h3>
           ) : <div></div>}
           
@@ -210,7 +220,7 @@ export default function DataGridViewer({ chartCode, darkMode, isStreaming, langu
         <table className="w-full text-sm text-left">
           <thead className={`text-xs uppercase ${darkMode ? 'bg-gray-800/50 text-gray-400 border-b border-gray-700' : 'bg-gray-50 text-gray-500 border-b border-gray-200'}`}>
             <tr>
-              {parsedData.columns.map((col, idx) => (
+              {activeData.columns.map((col, idx) => (
                 <th 
                   key={idx} 
                   scope="col" 
@@ -242,7 +252,7 @@ export default function DataGridViewer({ chartCode, darkMode, isStreaming, langu
                       : 'border-gray-100 hover:bg-gray-50 text-gray-600'
                   }`}
                 >
-                  {parsedData.columns.map((col, colIndex) => (
+                  {activeData.columns.map((col, colIndex) => (
                     <td key={colIndex} className="px-4 py-3 whitespace-nowrap">
                       {row[col.key]}
                     </td>
@@ -251,7 +261,7 @@ export default function DataGridViewer({ chartCode, darkMode, isStreaming, langu
               ))
             ) : (
               <tr>
-                <td colSpan={parsedData.columns.length} className={`px-4 py-8 text-center italic ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                <td colSpan={activeData.columns.length} className={`px-4 py-8 text-center italic ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
                   Data tidak ditemukan
                 </td>
               </tr>
@@ -262,7 +272,13 @@ export default function DataGridViewer({ chartCode, darkMode, isStreaming, langu
       
       {/* Footer / Summary */}
       <div className={`p-3 text-xs flex justify-between items-center ${darkMode ? 'bg-gray-800/30 text-gray-500 border-t border-gray-800' : 'bg-gray-50 text-gray-400 border-t border-gray-100'}`}>
-        <span>Menampilkan {filteredAndSortedRows.length} dari {parsedData.rows.length} data</span>
+        <span>Menampilkan {filteredAndSortedRows.length} dari {activeData.rows.length} data</span>
+        {isStreaming && (
+          <span className="flex items-center gap-1.5 text-indigo-400 font-medium">
+            <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse"></span>
+            Mengalirkan data...
+          </span>
+        )}
       </div>
       </div>
     </div>

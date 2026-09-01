@@ -44,12 +44,30 @@ export function getUploadUrl(filePath) {
  * @returns {boolean} True if event is valid
  */
 export function validateSSEEvent(parsedData) {
-  // ✅ Validate event has at least one field
+  if (!parsedData || typeof parsedData !== 'object') {
+    console.warn('[SSE_VALIDATION] Non-object event data:', parsedData);
+    return false;
+  }
+
+  // ✅ Validate event has at least one valid semantic field
   const hasValidFields =
     parsedData.thinking !== undefined ||
     parsedData.chunk !== undefined ||
+    parsedData.status !== undefined ||
+    parsedData.status_key !== undefined ||
+    parsedData.event_type !== undefined ||
     parsedData.sources !== undefined ||
-    parsedData.done === true;
+    parsedData.topic !== undefined ||
+    parsedData.active_topic !== undefined ||
+    parsedData.key_subject !== undefined ||
+    parsedData.wizard !== undefined ||
+    parsedData.radar !== undefined ||
+    parsedData.file_process !== undefined ||
+    parsedData.title !== undefined ||
+    parsedData.error !== undefined ||
+    parsedData.metrics !== undefined ||
+    parsedData.suggestions !== undefined ||
+    parsedData.done !== undefined;
 
   if (!hasValidFields) {
     console.warn('[SSE_VALIDATION] Empty event, all fields undefined', parsedData);

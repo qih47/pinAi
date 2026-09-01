@@ -4,7 +4,7 @@ import ChatBubble from './ChatBubble';
 import ChatNavigator from './ChatNavigator';
 import cakraLogo from '../../../assets/cakra.png';
 import { styles } from '../chatPage.styles';
-import { translations } from '../../../utils/translations';
+import { translations, resolveStatusMessage } from '../../../utils/translations';
 import { useChatStore } from '../../../stores/chatStore';
 
 const SkeletonChat = () => (
@@ -145,7 +145,7 @@ export default function ChatArea({
                 <span style={{ ...styles.statusDot, background: '#ef4444', borderColor: theme.mainBg }} />
               </div>
               <span style={{ ...styles.thinkingInline, color: theme.secondaryText, marginLeft: 10 }}>
-                {currentThinking || t.thinking}
+                {resolveStatusMessage(currentThinking, language) || t.thinking}
               </span>
             </div>
             <div style={styles.assistantContent} />
@@ -155,7 +155,7 @@ export default function ChatArea({
       {/* Spacer bawah lega (150px) agar batas bawah jelas & tombol aksi tidak pernah nembus/tenggelam di balik kotak input */}
       <div style={{ height: '150px', width: '100%', flexShrink: 0, overflowAnchor: 'auto' }} />
     </>
-  ), [isStreaming, lastAssistantIndex, currentThinking, theme.mainBg, theme.secondaryText]);
+  ), [isStreaming, lastAssistantIndex, currentThinking, theme.mainBg, theme.secondaryText, language]);
 
   return (
     <div style={{ flex: 1, minHeight: 0, position: 'relative', display: 'flex', flexDirection: 'column', width: '100%' }}>

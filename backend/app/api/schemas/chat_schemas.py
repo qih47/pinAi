@@ -31,6 +31,8 @@ class ChatStreamRequest(BaseModel):
     active_topic: Optional[str] = Field(None, description="Topik percakapan aktif sebelumnya di sesi ini")
     key_subject: Optional[str] = Field(None, description="Entitas / subjek inti spesifik yang sedang dibahas")
     client_context: Optional[dict] = Field(None, description="Metadata lingkungan klien (lat, lon, timezone, waktu klien)")
+    forced_mode: Optional[str] = Field(None, description="Mode paksa dari FE pill: websearch, documents, code, focus")
+    bypass_router: Optional[bool] = Field(False, description="Flag untuk bypass Call 1 router langsung ke executor mode")
 
     class Config:
         from_attributes = True

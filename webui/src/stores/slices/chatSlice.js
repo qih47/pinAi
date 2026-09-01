@@ -5,6 +5,8 @@ let _sessionLoadSeq = 0;
 export const createChatSlice = (set, get) => ({
     activeWizard: null, // { messageIndex, data }
     wizardAnswers: {}, // { [messageIndex]: [ { question: string, answer: string } ] }
+    activeModeTag: null, // null | 'websearch' | 'documents' | 'code' | 'focus'
+    setActiveModeTag: (tag) => set({ activeModeTag: tag }),
     setActiveWizard: (wizard) => set({ activeWizard: wizard }),
     dismissActiveWizard: () => set({ activeWizard: null }),
     saveWizardAnswer: (messageIndex, answersList) => {
@@ -27,6 +29,7 @@ export const createChatSlice = (set, get) => ({
             stagedAttachments: [],
             activeIsolatedDocId: null,
             activeIsolatedTitle: null,
+            activeModeTag: null,
             artifacts: [],  // ← Reset artifacts saat session baru
             isSplitScreen: false,
             activePdfUrl: null,
@@ -124,6 +127,14 @@ export const createChatSlice = (set, get) => ({
                     
                     // 🔥 PARSE TAGS FROM SAVED CONTENT (FIX RELOAD BUG) 🔥
                     if (newMsg.role === 'assistant' && newMsg.content) {
+                        const hasAllFilesDoneSignal = newMsg.content.includes('[[ALL_FILES_COMPLETED]]') || newMsg.content.includes('<all_files_done');
+                        if (hasAllFilesDoneSignal) {
+                            newMsg.allFilesDone = true;
+                            newMsg.content = newMsg.content
+                                .replace(/\[\[ALL_FILES_COMPLETED\]\]/g, '')
+                                .replace(/<all_files_done\s*\/?>/gi, '');
+                        }
+
                         const openTagRegex = /<(create_file|edit_file)\s+filename=["']([^"'>\s]+)["']\s*>/gi;
                         const closeTagRegex = /<\/(create_file|edit_file)\s*>/gi;
                         

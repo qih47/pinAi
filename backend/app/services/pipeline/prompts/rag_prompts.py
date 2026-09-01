@@ -389,7 +389,10 @@ def build_response_prompt_focus(
     extracted_text: str,
     is_scanned: bool
 ) -> str:
-    pages_1_indexed = [p + 1 for p in selected_pages]
+    pages_1_indexed = [
+        p + 1 if isinstance(p, int) else (int(p) if str(p).isdigit() else p)
+        for p in selected_pages
+    ]
     selected_pages_str = ", ".join(map(str, pages_1_indexed))
     return prompt_manager.render(
         name="RESPONSE_PROMPT_FOCUS",

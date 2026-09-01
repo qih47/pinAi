@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
+import { translations, resolveStatusMessage } from '../../../utils/translations';
 
-const ThoughtAccordion = ({ thought, darkMode, theme, statusMessage, isStreaming }) => {
+const ThoughtAccordion = ({ thought, darkMode, theme, statusMessage, isStreaming, language = 'id' }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
 
@@ -80,7 +81,10 @@ const ThoughtAccordion = ({ thought, darkMode, theme, statusMessage, isStreaming
     borderTop: isOpen ? (darkMode ? '1px solid rgba(255, 255, 255, 0.05)' : '1px solid rgba(0, 0, 0, 0.03)') : 'none'
   };
 
-  const titleText = !isStreaming ? 'Thinking Done' : (statusMessage || 'Thinking');
+  const sseDict = translations[language]?.sseStatus || translations.id.sseStatus || {};
+  const titleText = !isStreaming 
+    ? (sseDict.THINKING_DONE || 'Thinking Done') 
+    : (statusMessage ? resolveStatusMessage(statusMessage, language) : (sseDict.THINKING_DEFAULT || 'Thinking'));
 
   return (
     <div style={accordionStyle}>

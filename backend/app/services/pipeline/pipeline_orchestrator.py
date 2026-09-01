@@ -248,6 +248,8 @@ async def _sequential_pipeline_generator(
             active_topic=getattr(payload, 'active_topic', None),
             key_subject=getattr(payload, 'key_subject', None),
             client_context=getattr(payload, 'client_context', None),
+            forced_mode=getattr(payload, 'forced_mode', None),
+            bypass_router=bool(getattr(payload, 'bypass_router', False)),
         )
 
 

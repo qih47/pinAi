@@ -636,7 +636,7 @@ class ModeDocuments:
         
         try:
             async for chunk_line in stream_ollama_chat(
-                model_name=getattr(settings, "MODEL_PERSONA", "gemma4:12b"),
+                model_name=getattr(settings, "MODEL_PERSONA", "gemma4:31b"),
                 messages=stream_messages,
                 request=request,
                 keep_alive=-1,

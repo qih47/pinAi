@@ -1018,6 +1018,8 @@ export function useChatLogic({ isGuest,
       }
     }
 
+    const activeModeTag = useChatStore.getState().activeModeTag;
+
     // PERBAIKAN UTAMA: Meneruskan data berkas yang berhasil diunggah langsung ke fungsi sendMessage
     sendMessage(
       input,
@@ -1033,6 +1035,7 @@ export function useChatLogic({ isGuest,
       chatModeRef.current, // PARAMETER MODE: 'auto' | 'documents' (untuk dikirim ke backend)
       isThinkingModeRef.current, // PARAMETER THINKING: true/false
       toast,
+      { forced_mode: activeModeTag, bypass_router: false }
     );
 
     sessionStorage.removeItem("cakra_draft_new");
@@ -1057,7 +1060,64 @@ export function useChatLogic({ isGuest,
     }, 100);
   };
 
+  const handleSelectHint = async (hintText, targetMode, hintItem = null) => {
+    if (!hintText.trim() || isStreaming || isUploadingFile) return;
+
+    const streamOptions = { bypass_router: true, forced_mode: targetMode };
+    if (hintItem && (hintItem.doc_id || hintItem.id_berita || hintItem.filename)) {
+      const docId = hintItem.doc_id || hintItem.id_berita || hintItem.filename;
+      streamOptions.isolated_doc_id = docId;
+      streamOptions.doc_title = hintItem.title;
+      // Hanya aktifkan persistent context isolation UI jika targetMode adalah focus / audit
+      if (targetMode === 'focus' || targetMode === 'audit') {
+        useChatStore.getState().setContextIsolation(docId, hintItem.title);
+      }
+    }
+
+    sendMessage(
+      hintText,
+      isGuest ? null : currentUserData?.npp,
+      isGuest
+        ? null
+        : (newSessionObj) => {
+          setChatHistory((prev) => [newSessionObj, ...prev]);
+          lastLoadedSessionRef.current = newSessionObj.session_uuid;
+          navigate(`/chat/${newSessionObj.session_uuid}`, { replace: true });
+        },
+      [],
+      chatModeRef.current,
+      isThinkingModeRef.current,
+      toast,
+      streamOptions
+    );
+
+    sessionStorage.removeItem("cakra_draft_new");
+    if (sessionId) sessionStorage.removeItem(`cakra_draft_${sessionId}`);
+    
+    setInput("");
+    useChatStore.getState().setActiveModeTag(null);
+    setSelectedFiles([]);
+    setStagedAttachments([]);
+    setIsMultiLine(false);
+    if (textareaRef.current) {
+      textareaRef.current.style.height = "auto";
+    }
+
+    setTimeout(() => {
+      if (messagesContainerRef?.current) {
+        messagesContainerRef.current.scrollTo({
+          top: 9999999,
+          behavior: "smooth",
+        });
+      }
+    }, 100);
+  };
+
   const handleKeyDown = (e) => {
+    if (e.key === "Backspace" && !input && useChatStore.getState().activeModeTag) {
+      useChatStore.getState().setActiveModeTag(null);
+      return;
+    }
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       if (isStreaming) return;
@@ -1131,6 +1191,7 @@ export function useChatLogic({ isGuest,
     handleOpenArtifact,
     handlePaste,
     handleSubmit,
+    handleSelectHint,
     handleThinkingModeChange,
     hasSidebar,
     input,

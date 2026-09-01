@@ -26,7 +26,8 @@ PROMPT_CODING_TEMPLATE = """{{ get_base_persona(employee_name, mode_title) }}"""
 
 Gunakan fitur penalaran internal (native thinking) kamu untuk memikirkan langkah-langkah sebelum menjawab.
 Fokus pemikiran untuk CODING: Analisis arsitektur, edge cases, dan struktur kode sebelum menjawab.
-{% else %}
+{% endif %}
+
 {% if is_ambiguous %}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 🧭 PERMINTAAN KODING BERCABANG / AMBIGU (GUIDED WIZARD MODE)
@@ -39,7 +40,6 @@ TUGASMU:
 {% else %}
 Jawaban akhir WAJIB komprehensif dan panjang.
 Jika ada kode, JANGAN sekadar menaruh snippet. Berikan pengantar, tulis kodenya, lalu jelaskan alurnya (step-by-step) agar user paham cara kerjanya.
-{% endif %}
 {% endif %}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

@@ -103,22 +103,27 @@ def _extract_json_from_response(raw: str, model_name: str) -> Dict[str, Any]:
     )
 
 
-async def warm_up_model(model_name: str, prompt: str = "keep alive") -> bool:
-    """Warm up Gemma 4 on Ollama dan keep loaded di VRAM."""
+async def warm_up_model(model_name: str, prompt: str = "keep alive", num_ctx: Optional[int] = None) -> bool:
+    """Warm up Gemma 4 on Ollama dan keep loaded di VRAM dengan num_ctx yang konsisten."""
     url = f"{settings.OLLAMA_BASE_URL}/api/chat"
+    target_ctx = num_ctx or (getattr(settings, "NUM_CTX_ROUTER", 4096) if ("router" in model_name.lower() or "e4b" in model_name.lower()) else getattr(settings, "NUM_CTX_CORE", 16384))
     payload = {
         "model": model_name,
         "messages": [{"role": "user", "content": prompt}],
         "stream": False,
         "keep_alive": -1,  # Forever — tetap di VRAM
-        "options": {"temperature": 0.1},
+        "options": {
+            "temperature": 0.1,
+            "num_predict": 1,
+            "num_ctx": target_ctx,
+        },
     }
     async with httpx.AsyncClient(timeout=httpx.Timeout(120.0, connect=10.0)) as client:
         try:
             response = await client.post(url, json=payload)
             return response.status_code == 200
         except Exception as e:
-            logger.warning(f"⚠️ [LLM CLIENT] Warm up model {model_name} failed: {e}")
+            logger.warning(f"⚠️ [LLM CLIENT] Warm up model {model_name} (ctx={target_ctx}) failed: {e}")
             return False
 
 

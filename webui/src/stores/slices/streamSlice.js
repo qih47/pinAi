@@ -41,7 +41,7 @@ export const createStreamSlice = (set, get) => ({
         });
     },
 
-    sendMessage: async (content, npp, onSessionCreatedCallback, directUploadedFiles = null, chatMode = 'auto', isThinkingMode = true, toast = null) => {
+    sendMessage: async (content, npp, onSessionCreatedCallback, directUploadedFiles = null, chatMode = 'auto', isThinkingMode = true, toast = null, options = {}) => {
         const hasAttachments = (directUploadedFiles?.length > 0) || (get().stagedAttachments?.length > 0);
         if (!content.trim() && !hasAttachments) return;
 
@@ -153,7 +153,10 @@ export const createStreamSlice = (set, get) => ({
             currentAttachmentPaths,
             effectiveChatMode,
             isThinkingMode,
-            toast
+            toast,
+            null,
+            null,
+            options
         );
 
         set({ stagedAttachments: [] });

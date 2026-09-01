@@ -7,10 +7,11 @@ import ScrollBottomButton from "./ChatInputArea/ScrollBottomButton";
 import IsolatedDocBanner from "./ChatInputArea/IsolatedDocBanner";
 import AttachmentPreview from "./ChatInputArea/AttachmentPreview";
 import useNextcloudStore from "../../../stores/nextcloudStore";
-import { Paperclip, Cloud } from "lucide-react";
+import { Paperclip, Cloud, Globe, FileText, Code2, Target, X, BarChart3, Workflow, FilePlus, Mail } from "lucide-react";
 import VoiceButton from "./ChatInputArea/VoiceButton";
 import { translations } from "../../../utils/translations";
 import InteractiveWizardWidget from "./InteractiveWizardWidget";
+import HintSuggestions from "./HintSuggestions";
 
 export default function ChatInputArea({
   theme,
@@ -25,6 +26,7 @@ export default function ChatInputArea({
   selectedFiles,
   removeFilePreview,
   handleSubmit,
+  handleSelectHint,
   handlePaste,
   handleDragOver,
   handleDragLeave,
@@ -52,8 +54,11 @@ export default function ChatInputArea({
   const [isAttachmentMenuOpen, setIsAttachmentMenuOpen] = useState(false);
   const attachmentMenuRef = useRef(null);
   const t = translations[language]?.chatInput || translations.id.chatInput;
+  const tHints = translations[language]?.chat?.hints || translations.id.chat.hints;
   const openNextcloudModal = useNextcloudStore(state => state.openModal);
   const activeWizard = useChatStore(state => state.activeWizard);
+  const activeModeTag = useChatStore(state => state.activeModeTag);
+  const setActiveModeTag = useChatStore(state => state.setActiveModeTag);
 
   useEffect(() => {
     function handleClickOutside(event) {
@@ -103,6 +108,7 @@ export default function ChatInputArea({
           setContextIsolation={setContextIsolation}
           darkMode={darkMode}
           chatMode={chatMode}
+          language={language}
         />
 
         <AttachmentPreview
@@ -119,6 +125,7 @@ export default function ChatInputArea({
               data={activeWizard.data}
               messageIndex={activeWizard.messageIndex}
               darkMode={darkMode}
+              language={language}
             />
           </div>
         )}
@@ -244,6 +251,75 @@ export default function ChatInputArea({
                     )}
                   </div>
                 )}
+              </div>
+            )}
+
+            {/* 🏷️ ACTIVE MODE PILL DI DALAM INPUT AREA */}
+            {activeModeTag && (
+              <div
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "7px",
+                  padding: "5px 12px",
+                  borderRadius: "10px",
+                  fontSize: "13px",
+                  fontWeight: "500",
+                  background: darkMode ? "#1f1f23" : "#e5e7eb",
+                  color: darkMode ? "#ffffff" : "#111827",
+                  flexShrink: 0,
+                  userSelect: "none",
+                  alignSelf: "center",
+                  marginLeft: "4px",
+                  marginRight: "2px"
+                }}
+              >
+                {activeModeTag === "code" && <Code2 size={15} className="opacity-90 flex-shrink-0" />}
+                {activeModeTag === "websearch" && <Globe size={15} className="opacity-90 flex-shrink-0" />}
+                {activeModeTag === "documents" && <FileText size={15} className="opacity-90 flex-shrink-0" />}
+                {activeModeTag === "diagram" && <Workflow size={15} className="opacity-90 flex-shrink-0" />}
+                {activeModeTag === "chart" && <BarChart3 size={15} className="opacity-90 flex-shrink-0" />}
+                {activeModeTag === "create_file" && <FilePlus size={15} className="opacity-90 flex-shrink-0" />}
+                {activeModeTag === "smart_mail" && <Mail size={15} className="opacity-90 flex-shrink-0" />}
+                {activeModeTag === "focus" && <Target size={15} className="opacity-90 flex-shrink-0" />}
+                <span style={{ letterSpacing: "0.01em" }}>
+                  {activeModeTag === "code"
+                    ? tHints.code
+                    : activeModeTag === "websearch"
+                    ? tHints.websearch
+                    : activeModeTag === "documents"
+                    ? tHints.documents
+                    : activeModeTag === "diagram"
+                    ? tHints.diagram
+                    : activeModeTag === "chart"
+                    ? tHints.chart
+                    : activeModeTag === "create_file"
+                    ? tHints.createFile
+                    : activeModeTag === "smart_mail"
+                    ? tHints.smartMail
+                    : tHints.focus}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setActiveModeTag(null)}
+                  style={{
+                    background: "transparent",
+                    border: "none",
+                    cursor: "pointer",
+                    color: "inherit",
+                    padding: "0 2px",
+                    display: "flex",
+                    alignItems: "center",
+                    opacity: 0.7,
+                    transition: "opacity 0.2s",
+                    marginLeft: "2px"
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.opacity = 1)}
+                  onMouseLeave={(e) => (e.currentTarget.style.opacity = 0.7)}
+                  title="Hapus mode"
+                >
+                  <X size={14} />
+                </button>
               </div>
             )}
 
@@ -502,7 +578,23 @@ export default function ChatInputArea({
           )}
         </form>
 
-        {isBottom && (
+        {/* 💡 SMART HINT & ACTION SUGGESTIONS (Hanya tampil di layar awal sebelum ada chat) */}
+        {(showWelcome || !messages || messages.length === 0) && (
+          <HintSuggestions
+            input={input}
+            setInput={setInput}
+            activeModeTag={activeModeTag}
+            setActiveModeTag={setActiveModeTag}
+            onSelectHint={handleSelectHint}
+            darkMode={darkMode}
+            theme={theme}
+            isStreaming={isStreaming}
+            isGuest={isGuest}
+            language={language}
+          />
+        )}
+
+        {isBottom && !showWelcome && messages && messages.length > 0 && (
           <div className="flex justify-center px-4 pt-1">
             <p className="text-[10px] text-gray-400 font-medium tracking-wide">
               {t.disclaimer}

@@ -316,7 +316,11 @@ def sanitize_history_for_rag(messages: List[Dict[str, Any]]) -> List[Dict[str, A
     return sanitized
 
 
-def select_call2_module(routing: Dict[str, Any], has_rag_context: bool) -> str:
+def select_call2_module(routing: Dict[str, Any], has_rag_context: bool = False) -> str:
+    # 🚨 Prioritas 1: Jika request bersifat ambigu / bercabang, selalu prioritaskan ambiguous handler
+    # agar menyajikan kartu wizard / opsi klarifikasi interaktif alih-alih mengeksekusi langsung
+    if routing.get("is_ambiguous"):
+        return "ambiguous"
     if has_rag_context:
         if routing.get("is_multi_document"):
             return "multi_document"   # dari "rag_multi_document"
@@ -327,8 +331,6 @@ def select_call2_module(routing: Dict[str, Any], has_rag_context: bool) -> str:
         return "analytic"             # dari "analytic_expert"
     if routing.get("is_self_correction"):
         return "self_correction"      # sudah benar
-    if routing.get("is_ambiguous"):
-        return "ambiguous"            # dari "ambiguous_handler"
     if routing.get("is_chitchat") or routing.get("is_greeting"):
         return "chitchat"             # sudah benar
     topic_sub = f"{routing.get('active_topic', '')} {routing.get('key_subject', '')}".lower()
@@ -537,3 +539,117 @@ def get_module_config(module_name: str, precheck: Optional[Dict[str, Any]] = Non
             cfg["num_predict"] = 4096
 
     return cfg
+
+
+_ACRONYMS = {
+    "php": "PHP",
+    "css": "CSS",
+    "js": "JS",
+    "jsx": "JSX",
+    "ts": "TS",
+    "tsx": "TSX",
+    "html": "HTML",
+    "sql": "SQL",
+    "api": "API",
+    "rest": "REST",
+    "ui": "UI",
+    "ux": "UX",
+    "pdf": "PDF",
+    "csv": "CSV",
+    "xlsx": "XLSX",
+    "docx": "DOCX",
+    "sop": "SOP",
+    "pkb": "PKB",
+    "skep": "SKEP",
+    "sdm": "SDM",
+    "k3": "K3",
+    "it": "IT",
+    "ai": "AI",
+    "llm": "LLM",
+    "rag": "RAG",
+    "sse": "SSE",
+    "db": "DB",
+    "url": "URL",
+    "jwt": "JWT",
+    "auth": "Auth",
+    "nextcloud": "Nextcloud",
+    "pindad": "Pindad",
+    "cakra": "CAKRA",
+    "react": "React",
+    "vue": "Vue",
+    "node": "Node",
+    "python": "Python",
+    "fastapi": "FastAPI",
+    "vite": "Vite",
+    "tailwind": "Tailwind",
+}
+
+_CONVERSATIONAL_FILLERS = {
+    "sekarang", "coba", "pake", "pakai", "tolong", "bikin", "buatkan", "buat", "bikinin",
+    "gimana", "dong", "cuy", "nih", "ya", "bro", "gan", "bang", "mas", "mba", "bos", "aja",
+    "saja", "kan", "deh", "yuk", "lah", "plis", "please", "can", "you", "help", "me", "kali",
+    "salam", "sapaan", "halo", "hai", "assalamualaikum", "pagi", "siang", "malam", "tes", "test"
+}
+
+def format_session_title(title_input: str, max_words: int = 5, max_chars: int = 40) -> str:
+    """
+    Cleans and formats session titles naturally, preserving technical acronyms
+    and stripping conversational slang/fillers.
+    """
+    if not title_input or not isinstance(title_input, str):
+        return "Obrolan Cakra AI"
+
+    cleaned = title_input.strip().strip('"').strip("'").strip(".").strip("`")
+    
+    # 🚫 Jika judul hanya berisi satu kata sapaan generik, fallback ke judul ramah
+    if cleaned.lower() in {"salam", "sapaan", "sapaan pembuka", "halo", "hai", "tes", "test", "obrolan baru", "percakapan baru", "salam & sapaan", "salam dan sapaan"}:
+        return "Obrolan Cakra AI"
+    
+    # Strip common leading command phrases
+    for prefix in [
+        "Buatkan format ", "Buatkan draft ", "Buatkan ", "Bikinin ", "Buat ", "Gambarkan ",
+        "Visualisasikan ", "Generate ", "Susun ", "Cari di web: ", "Cari di web ",
+        "Cari di arsip dokumen: ", "Cari kode: ", "Cari: ", "Jelaskan tentang ", "Tolong jelaskan ",
+        "Tolong buatkan ", "Tolong buat ", "Tolong carikan ", "Tolong bantu "
+    ]:
+        if cleaned.lower().startswith(prefix.lower()):
+            cleaned = cleaned[len(prefix):].strip()
+            break
+
+    words = cleaned.split()
+    if not words:
+        return "Obrolan Cakra AI"
+
+    # Filter leading and trailing filler words
+    start_idx = 0
+    while start_idx < len(words) and words[start_idx].lower().strip(".,!?:;\"'") in _CONVERSATIONAL_FILLERS:
+        start_idx += 1
+
+    end_idx = len(words)
+    while end_idx > start_idx and words[end_idx - 1].lower().strip(".,!?:;\"'") in _CONVERSATIONAL_FILLERS:
+        end_idx -= 1
+
+    trimmed_words = words[start_idx:end_idx] if start_idx < end_idx else words
+    target_words = trimmed_words[:max_words]
+
+    # Format each word with smart casing
+    formatted_words = []
+    for w in target_words:
+        clean_w = w.strip(".,!?:;\"'")
+        punct_end = w[len(clean_w):] if len(clean_w) < len(w) else ""
+        lower_w = clean_w.lower()
+        if lower_w in _ACRONYMS:
+            formatted_words.append(_ACRONYMS[lower_w] + punct_end)
+        elif len(clean_w) > 1 and clean_w.isupper():
+            formatted_words.append(clean_w + punct_end)
+        elif lower_w in ["dan", "di", "ke", "dari", "pada", "untuk", "dengan", "atau", "vs", "&"] and formatted_words:
+            formatted_words.append(lower_w + punct_end)
+        else:
+            formatted_words.append(clean_w.capitalize() + punct_end)
+
+    result = " ".join(formatted_words).strip()
+    if len(result) > max_chars:
+        result = result[:max_chars].rsplit(" ", 1)[0]
+
+    return result if result else "Obrolan Cakra AI"
+

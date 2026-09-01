@@ -496,14 +496,15 @@ def _validate_and_normalize_routing(
     routing["detected_language"] = lang if lang in valid_langs else "id"
 
     # Ekstrak atau buat fallback judul obrolan untuk sidebar kiri (SPRINT 5 OPTIMIZED)
+    from backend.app.services.pipeline.modes.mode_utils import format_session_title
     session_title = routing_json.get("session_title")
     if isinstance(session_title, str) and session_title.strip() and session_title.strip().lower() not in ["null", "none", "obrolan baru", ""]:
-        routing["session_title"] = session_title.strip()
+        routing["session_title"] = format_session_title(session_title)
     elif is_first_chat:
-        words = [w for w in user_message.split() if len(w) >= 3 and w.lower() not in ["jadi", "gimana", "nih", "coba", "jelasin", "tolong", "buatkan", "dong"]]
-        auto_title = " ".join(words[:4]).title() if words else "Obrolan Cakra AI"
+        fallback_source = routing_json.get("key_subject") or user_message
+        auto_title = format_session_title(fallback_source)
         routing["session_title"] = auto_title
-        logger.info(f"[CALL1] Auto-fallback session_title generated: '{auto_title}'")
+        logger.info(f"[CALL1] Smart-fallback session_title generated: '{auto_title}'")
     else:
         routing["session_title"] = None
 

@@ -121,7 +121,44 @@ export const translations = {
       selectedRefs: "Rujukan Terpilih",
       pages: "Halaman",
       pageAbbrev: "Hal.",
-      liveOllamaEmbed: "Live Ollama Embed"
+      liveOllamaEmbed: "Live Ollama Embed",
+      isolatedBanner: {
+        switchMode: "Beralih Mode Analisis",
+        isolatedDocCount: "1 Dokumen Terisolasi",
+        closeTitle: "Tutup & kembali ke mode obrolan biasa",
+        focus: {
+          name: "Mode Fokus Dokumen",
+          badge: "FOKUS",
+          desc: "Menanyai & menjelajahi seluruh isi dokumen",
+          action: "Menanyai isi:"
+        },
+        compliance: {
+          name: "Uji Kepatuhan Regulasi",
+          badge: "KEPATUHAN",
+          desc: "Uji skenario tindakan/SOP apakah sesuai aturan",
+          action: "Uji skenario kepatuhan terhadap:"
+        },
+        redteam: {
+          name: "Bedah Celah (Red-Team)",
+          badge: "BEDAH",
+          desc: "Membedah ambiguitas, kelemahan & risiko hukum",
+          action: "Membedah ambiguitas & risiko pada:"
+        }
+      },
+      hints: {
+        code: "Kode",
+        websearch: "Cari di Web",
+        documents: "Cari Dokumen",
+        focus: "Fokus & Audit",
+        chart: "Grafik & Data",
+        diagram: "Diagram & Alur",
+        createFile: "Buat Berkas",
+        smartMail: "Draf Surat",
+        more: "Lainnya",
+        less: "Tutup",
+        moreTitle: "Tampilkan opsi lainnya",
+        lessTitle: "Sembunyikan opsi tambahan"
+      }
     },
     searchModal: {
       placeholder: "Ketik untuk mencari...",
@@ -374,6 +411,105 @@ export const translations = {
       contentCopied: "Teks berhasil disalin!",
       failedToCopy: "Gagal menyalin teks",
       copy: "Salin"
+    },
+    fileProcess: {
+      working: "Mengerjakan {count} file",
+      finished: "Selesai {count} file",
+      finishedWithErrors: "Selesai dengan {count} error",
+      creatingFile: "Membuat {filename}...",
+      editingFile: "Mengedit {filename}...",
+      failedFile: "Gagal menulis {filename}",
+      finishedFile: "Selesai {filename}",
+      fileSystem: "Sistem Berkas",
+      presentedFiles: "Menyajikan {count} file",
+      done: "Selesai",
+      initializing: "// Sedang menginisialisasi...",
+      completed: "// Selesai."
+    },
+    webSearch: {
+      searchingInfo: "Menelusuri informasi dari web",
+      searchingInfoWithTime: "Menelusuri informasi dari web ({elapsed}s)",
+      analyzingResults: "Menganalisis hasil pencarian...",
+      searchResults: "Hasil penelusuran informasi dari web",
+      searchingWeb: "Mencari informasi di web...",
+      searchingReferencesFor: "mencari referensi terkait {query}",
+      searchingWebReferences: "mencari referensi web",
+      resultsCount: "{count} hasil",
+      done: "Selesai",
+      fetchLinksHeader: "Menelusuri informasi dari tautan",
+      fetchLinksHeaderDone: "Hasil penelusuran informasi dari tautan",
+      readingWebLinks: "Membaca tautan web...",
+      loadingResults: "Memuat hasil pencarian..."
+    },
+    wizard: {
+      defaultQuestion: "Silakan pilih opsi berikut:",
+      typeCustom: "Ketik sendiri jawaban...",
+      customPlaceholder: "Tulis instruksi spesifik Anda di sini...",
+      prev: "Sebelumnya",
+      skip: "Lewati",
+      next: "Lanjut",
+      send: "Kirim",
+      sent: "Terkirim",
+      preparingOptions: "Menyiapkan opsi interaktif..."
+    },
+    sseStatus: {
+      ANALYZING_INTENT: "🧠 Menganalisis intent",
+      ANALYZING_CONTEXT: "🧠 Menganalisis konteks",
+      SEARCHING_DOCS: "🔍 Menelusuri dokumen",
+      CHECKING_ARCHIVE: "⏳ Memeriksa arsip rujukan",
+      CACHE_USED: "⚡ Menggunakan cache dokumen",
+      DOCS_FOUND: "✨ Menemukan {count} dokumen",
+      DOC_REFS_FOUND: "✅ Menemukan {count} rujukan dokumen",
+      SELECTING_REFS: "📊 Memilih rujukan sesuai",
+      DOCS_ACCESS_FAILED: "⚠️ Gagal mengakses dokumen rujukan",
+      USING_INTERNAL_KNOWLEDGE: "⚠️ Menggunakan pengetahuan internal",
+      WEB_SEARCHING: "🌐 Mencari di web",
+      WEB_DOWNLOADING: "🌐 Mengunduh {domain}",
+      WEB_EXTRACTING: "📖 Mengekstrak konten web",
+      WEB_READING_LINKS: "📖 Membaca {count} tautan",
+      WEB_FILTERING_FACTS: "🎯 Menyaring fakta penting",
+      WEB_SUMMARIZING: "💡 Menyusun ringkasan",
+      SYNTHESIZING_ANSWER: "💡 Menyusun jawaban",
+      PREPARING_RESPONSE: "✨ Menyiapkan respon",
+      MAP_SEARCHING: "🌍 Mencari koordinat peta",
+      MAP_LOCATION_NOT_FOUND: "⚠️ Lokasi tidak ditemukan",
+      WRITING_EMAIL: "📧 Menulis email",
+      EMAIL_READY: "✨ Email siap ({duration}s)",
+      PREPARING_FILE: "📁 Menyiapkan {filename}",
+      CREATING_FILE_PROGRESS: "✍️ Sedang membuat file...",
+      FILE_READY: "✨ Berkas {filename} siap",
+      SCANNING_ATTACHMENT: "👁️ Memindai file lampiran",
+      EXTRACTING_PDF: "⚙️ Memindai & mengekstrak konten PDF...",
+      SUMMARIZING_PAGES: "📑 Merangkum seluruh {pages} halaman dokumen...",
+      ANALYZING_CLAUSES_PAGES: "🔍 Menganalisis klausul terkait pada {pages} halaman...",
+      FOUND_CLAUSE_PAGE: "📌 Ditemukan Klausul pada Halaman {pages}!",
+      OPENING_FOCUS_DOC: "🎯 Membuka dokumen fokus rujukan",
+      SCANNING_DOC_CONTENT: "⚙️ Memindai isi {title}...",
+      ANALYZING_DOC_PAGES: "🔍 Menganalisis {pages} halaman dokumen rujukan...",
+      RETRIEVING_FULL_TEXT: "📂 Mengambil teks utuh dari arsip dokumen...",
+      SEARCHING_GLOBAL_ARCHIVE: "🔄 Mencari secara global di arsip...",
+      SEARCHING_GLOBAL: "🔄 Mencari secara global",
+      FOCUSED_CONTEXT: "📌 Konteks Terfokus: {title} (Hal. {pages})",
+      OPENING_COMPLIANCE_TEST: "🎯 Membuka uji kepatuhan dokumen",
+      SCANNING_REF_DOC: "⚙️ Memindai & memproses dokumen acuan...",
+      ANALYZING_REGULATION_PAGES: "🔍 Menganalisis seluruh {pages} halaman regulasi...",
+      FOUND_RELATED_CLAUSE_PAGE: "📌 Ditemukan Klausul Terkait pada Halaman {pages}!",
+      ANALYZING_COMPLIANCE_SCENARIO: "⚖️ Menganalisis kepatuhan skenario terhadap klausul utuh...",
+      OPENING_REDTEAM_DOC: "🕵️ Membedah dokumen sasaran",
+      SCANNING_REDTEAM_CLAUSES: "⚙️ Memindai & memproses klausul dokumen...",
+      ANALYZING_REDTEAM_PAGES: "🔍 Menganalisis seluruh {pages} halaman dokumen...",
+      FOUND_TARGET_CLAUSE_PAGE: "📌 Ditemukan Klausul Sasaran pada Halaman {pages}!",
+      CONNECTING_CAKRA: "✨ Menghubungkan ke Cakra AI",
+      DESIGNING_FILE_ARCHITECTURE: "💻 Merancang arsitektur file",
+      SEARCHING_REGULATIONS: "🔍 Menelusuri regulasi",
+      FILTERING_RELEVANT_ARTICLES: "🎯 Menyaring pasal relevan",
+      READING_SELECTED_ARTICLES: "📄 Membaca pasal terpilih",
+      SEARCHING_VECTOR_SEMANTICS: "🔍 Menelusuri semantik vector",
+      ANALYZING_ARTICLE: "📄 Menganalisis pasal",
+      DRAFTING_RESPONSE: "✍️ Menyusun jawaban",
+      FINISHED: "Selesai",
+      THINKING_DEFAULT: "Sedang berpikir",
+      THINKING_DONE: "Selesai berpikir"
     }
   },
   en: {
@@ -498,7 +634,44 @@ export const translations = {
       selectedRefs: "Selected References",
       pages: "Pages",
       pageAbbrev: "Pg.",
-      liveOllamaEmbed: "Live Ollama Embed"
+      liveOllamaEmbed: "Live Ollama Embed",
+      isolatedBanner: {
+        switchMode: "Switch Analysis Mode",
+        isolatedDocCount: "1 Isolated Document",
+        closeTitle: "Close & return to standard chat",
+        focus: {
+          name: "Document Focus Mode",
+          badge: "FOCUS",
+          desc: "Inquire & explore the entire document content",
+          action: "Inquiring content:"
+        },
+        compliance: {
+          name: "Regulatory Compliance Check",
+          badge: "COMPLIANCE",
+          desc: "Test action/SOP scenarios against regulations",
+          action: "Testing compliance against:"
+        },
+        redteam: {
+          name: "Legal Red-Team Analysis",
+          badge: "RED-TEAM",
+          desc: "Dissect ambiguities, weaknesses & legal risks",
+          action: "Dissecting ambiguities & risks on:"
+        }
+      },
+      hints: {
+        code: "Code",
+        websearch: "Search the web",
+        documents: "Document search",
+        focus: "Focus & Audit",
+        chart: "Chart & Data",
+        diagram: "Diagram & Flow",
+        createFile: "Create File",
+        smartMail: "Draft Letter",
+        more: "More",
+        less: "Less",
+        moreTitle: "Show more options",
+        lessTitle: "Hide extra options"
+      }
     },
     searchModal: {
       placeholder: "Search chats",
@@ -753,6 +926,216 @@ export const translations = {
       failedToCopy: "Failed to copy text",
       copy: "Copy",
       loadingArtifact: "Structuring code architecture..."
+    },
+    fileProcess: {
+      working: "Working on {count} file(s)",
+      finished: "Finished {count} file(s)",
+      finishedWithErrors: "Finished with {count} error(s)",
+      creatingFile: "Creating {filename}...",
+      editingFile: "Editing {filename}...",
+      failedFile: "Failed to write {filename}",
+      finishedFile: "Finished {filename}",
+      fileSystem: "File System",
+      presentedFiles: "Presented {count} files",
+      done: "Done",
+      initializing: "// Initializing...",
+      completed: "// Completed."
+    },
+    webSearch: {
+      searchingInfo: "Searching information from web",
+      searchingInfoWithTime: "Searching information from web ({elapsed}s)",
+      analyzingResults: "Analyzing search results...",
+      searchResults: "Web search results",
+      searchingWeb: "Searching information on the web...",
+      searchingReferencesFor: "searching references for {query}",
+      searchingWebReferences: "searching web references",
+      resultsCount: "{count} results",
+      done: "Done",
+      fetchLinksHeader: "Searching information from links",
+      fetchLinksHeaderDone: "Results from web links",
+      readingWebLinks: "Reading web links...",
+      loadingResults: "Loading search results..."
+    },
+    wizard: {
+      defaultQuestion: "Please select an option below:",
+      typeCustom: "Type custom answer...",
+      customPlaceholder: "Write your specific instructions here...",
+      prev: "Back",
+      skip: "Skip",
+      next: "Next",
+      send: "Send",
+      sent: "Sent",
+      preparingOptions: "Preparing interactive options..."
+    },
+    sseStatus: {
+      ANALYZING_INTENT: "🧠 Analyzing intent",
+      ANALYZING_CONTEXT: "🧠 Analyzing context",
+      SEARCHING_DOCS: "🔍 Searching documents",
+      CHECKING_ARCHIVE: "⏳ Checking reference archives",
+      CACHE_USED: "⚡ Using document cache",
+      DOCS_FOUND: "✨ Found {count} documents",
+      DOC_REFS_FOUND: "✅ Found {count} document references",
+      SELECTING_REFS: "📊 Selecting matching references",
+      DOCS_ACCESS_FAILED: "⚠️ Failed to access reference documents",
+      USING_INTERNAL_KNOWLEDGE: "⚠️ Using internal knowledge",
+      WEB_SEARCHING: "🌐 Searching the web",
+      WEB_DOWNLOADING: "🌐 Downloading {domain}",
+      WEB_EXTRACTING: "📖 Extracting web content",
+      WEB_READING_LINKS: "📖 Reading {count} links",
+      WEB_FILTERING_FACTS: "🎯 Filtering important facts",
+      WEB_SUMMARIZING: "💡 Summarizing information",
+      SYNTHESIZING_ANSWER: "💡 Synthesizing response",
+      PREPARING_RESPONSE: "✨ Preparing response",
+      MAP_SEARCHING: "🌍 Searching map coordinates",
+      MAP_LOCATION_NOT_FOUND: "⚠️ Location not found",
+      WRITING_EMAIL: "📧 Writing email",
+      EMAIL_READY: "✨ Email ready ({duration}s)",
+      PREPARING_FILE: "📁 Preparing {filename}",
+      CREATING_FILE_PROGRESS: "✍️ Creating file...",
+      FILE_READY: "✨ File {filename} ready",
+      SCANNING_ATTACHMENT: "👁️ Scanning attached file",
+      EXTRACTING_PDF: "⚙️ Scanning & extracting PDF content...",
+      SUMMARIZING_PAGES: "📑 Summarizing all {pages} pages of document...",
+      ANALYZING_CLAUSES_PAGES: "🔍 Analyzing relevant clauses on {pages} pages...",
+      FOUND_CLAUSE_PAGE: "📌 Target clause found on Page {pages}!",
+      OPENING_FOCUS_DOC: "🎯 Opening focus reference document",
+      SCANNING_DOC_CONTENT: "⚙️ Scanning content of {title}...",
+      ANALYZING_DOC_PAGES: "🔍 Analyzing {pages} pages of reference document...",
+      RETRIEVING_FULL_TEXT: "📂 Retrieving full text from document archive...",
+      SEARCHING_GLOBAL_ARCHIVE: "🔄 Searching globally in archive...",
+      SEARCHING_GLOBAL: "🔄 Searching globally",
+      FOCUSED_CONTEXT: "📌 Focused Context: {title} (Pg. {pages})",
+      OPENING_COMPLIANCE_TEST: "🎯 Opening document compliance test",
+      SCANNING_REF_DOC: "⚙️ Scanning & processing reference document...",
+      ANALYZING_REGULATION_PAGES: "🔍 Analyzing all {pages} pages of regulation...",
+      FOUND_RELATED_CLAUSE_PAGE: "📌 Found related clause on Page {pages}!",
+      ANALYZING_COMPLIANCE_SCENARIO: "⚖️ Analyzing scenario compliance against full clauses...",
+      OPENING_REDTEAM_DOC: "🕵️ Dissecting target document",
+      SCANNING_REDTEAM_CLAUSES: "⚙️ Scanning & processing document clauses...",
+      ANALYZING_REDTEAM_PAGES: "🔍 Analyzing all {pages} pages of document...",
+      FOUND_TARGET_CLAUSE_PAGE: "📌 Target clause found on Page {pages}!",
+      CONNECTING_CAKRA: "✨ Connecting to Cakra AI",
+      DESIGNING_FILE_ARCHITECTURE: "💻 Designing file architecture",
+      SEARCHING_REGULATIONS: "🔍 Searching regulations",
+      FILTERING_RELEVANT_ARTICLES: "🎯 Filtering relevant articles",
+      READING_SELECTED_ARTICLES: "📄 Reading selected articles",
+      SEARCHING_VECTOR_SEMANTICS: "🔍 Searching vector semantics",
+      ANALYZING_ARTICLE: "📄 Analyzing article",
+      DRAFTING_RESPONSE: "✍️ Drafting response",
+      FINISHED: "Done",
+      THINKING_DEFAULT: "Thinking",
+      THINKING_DONE: "Thinking Done"
     }
   }
 };
+
+/**
+ * Resolves any SSE status message (whether raw text, key object, or legacy string)
+ * into the localized string for the specified language.
+ */
+export function resolveStatusMessage(statusInput, language = 'id') {
+  if (!statusInput) return '';
+  const sseDict = translations[language]?.sseStatus || translations.id.sseStatus || {};
+
+  // 1. If statusInput is an object { key, params, fallback }
+  if (typeof statusInput === 'object') {
+    const key = statusInput.key;
+    if (key && sseDict[key]) {
+      let text = sseDict[key];
+      if (statusInput.params) {
+        Object.entries(statusInput.params).forEach(([k, v]) => {
+          text = text.replace(new RegExp(`\\{${k}\\}`, 'g'), v);
+        });
+      }
+      return text;
+    }
+    return statusInput.fallback || '';
+  }
+
+  // 2. If statusInput is a direct dictionary key
+  if (sseDict[statusInput]) {
+    return sseDict[statusInput];
+  }
+
+  // 3. Pattern / Regex matching for dynamic legacy string statuses
+  const mDocsFound = statusInput.match(/^✨ Menemukan (\d+) dokumen$/);
+  if (mDocsFound && sseDict.DOCS_FOUND) {
+    return sseDict.DOCS_FOUND.replace('{count}', mDocsFound[1]);
+  }
+  const mRefsFound = statusInput.match(/^✅ Menemukan (\d+) rujukan dokumen$/);
+  if (mRefsFound && sseDict.DOC_REFS_FOUND) {
+    return sseDict.DOC_REFS_FOUND.replace('{count}', mRefsFound[1]);
+  }
+  const mWebDown = statusInput.match(/^🌐 Mengunduh (.+)$/);
+  if (mWebDown && sseDict.WEB_DOWNLOADING) {
+    return sseDict.WEB_DOWNLOADING.replace('{domain}', mWebDown[1]);
+  }
+  const mLinksRead = statusInput.match(/^📖 Membaca (\d+) tautan$/);
+  if (mLinksRead && sseDict.WEB_READING_LINKS) {
+    return sseDict.WEB_READING_LINKS.replace('{count}', mLinksRead[1]);
+  }
+  const mEmailReady = statusInput.match(/^✨ Email siap \(([\d\.]+)s\)$/);
+  if (mEmailReady && sseDict.EMAIL_READY) {
+    return sseDict.EMAIL_READY.replace('{duration}', mEmailReady[1]);
+  }
+  const mPrepFile = statusInput.match(/^📁 Menyiapkan (.+)$/);
+  if (mPrepFile && sseDict.PREPARING_FILE) {
+    return sseDict.PREPARING_FILE.replace('{filename}', mPrepFile[1]);
+  }
+  const mFileReady = statusInput.match(/^✨ Berkas (.+) siap$/);
+  if (mFileReady && sseDict.FILE_READY) {
+    return sseDict.FILE_READY.replace('{filename}', mFileReady[1]);
+  }
+  const mScanDoc = statusInput.match(/^⚙️ Memindai isi (.+)\.\.\.$/);
+  if (mScanDoc && sseDict.SCANNING_DOC_CONTENT) {
+    return sseDict.SCANNING_DOC_CONTENT.replace('{title}', mScanDoc[1]);
+  }
+  const mAnalyzeDoc = statusInput.match(/^🔍 Menganalisis (.+) halaman dokumen rujukan\.\.\.$/);
+  if (mAnalyzeDoc && sseDict.ANALYZING_DOC_PAGES) {
+    return sseDict.ANALYZING_DOC_PAGES.replace('{pages}', mAnalyzeDoc[1]);
+  }
+  const mAnalyzeReg = statusInput.match(/^🔍 Menganalisis seluruh (.+) halaman regulasi\.\.\.$/);
+  if (mAnalyzeReg && sseDict.ANALYZING_REGULATION_PAGES) {
+    return sseDict.ANALYZING_REGULATION_PAGES.replace('{pages}', mAnalyzeReg[1]);
+  }
+  const mAnalyzeRed = statusInput.match(/^🔍 Menganalisis seluruh (.+) halaman dokumen\.\.\.$/);
+  if (mAnalyzeRed && sseDict.ANALYZING_REDTEAM_PAGES) {
+    return sseDict.ANALYZING_REDTEAM_PAGES.replace('{pages}', mAnalyzeRed[1]);
+  }
+  const mSummPages = statusInput.match(/^📑 Merangkum seluruh (.+) halaman dokumen\.\.\.$/);
+  if (mSummPages && sseDict.SUMMARIZING_PAGES) {
+    return sseDict.SUMMARIZING_PAGES.replace('{pages}', mSummPages[1]);
+  }
+  const mClausePages = statusInput.match(/^🔍 Menganalisis klausul terkait pada (.+) halaman\.\.\.$/);
+  if (mClausePages && sseDict.ANALYZING_CLAUSES_PAGES) {
+    return sseDict.ANALYZING_CLAUSES_PAGES.replace('{pages}', mClausePages[1]);
+  }
+  const mFoundClauseRel = statusInput.match(/^📌 Ditemukan Klausul Terkait pada Halaman (.+)!$/);
+  if (mFoundClauseRel && sseDict.FOUND_RELATED_CLAUSE_PAGE) {
+    return sseDict.FOUND_RELATED_CLAUSE_PAGE.replace('{pages}', mFoundClauseRel[1]);
+  }
+  const mFoundClauseTarget = statusInput.match(/^📌 Ditemukan Klausul Sasaran pada Halaman (.+)!$/);
+  if (mFoundClauseTarget && sseDict.FOUND_TARGET_CLAUSE_PAGE) {
+    return sseDict.FOUND_TARGET_CLAUSE_PAGE.replace('{pages}', mFoundClauseTarget[1]);
+  }
+  const mFoundClause = statusInput.match(/^📌 Ditemukan Klausul pada Halaman (.+)!$/);
+  if (mFoundClause && sseDict.FOUND_CLAUSE_PAGE) {
+    return sseDict.FOUND_CLAUSE_PAGE.replace('{pages}', mFoundClause[1]);
+  }
+  const mFocusCtx = statusInput.match(/^📌 Konteks Terfokus: (.+) \(Hal\. (.+)\)$/);
+  if (mFocusCtx && sseDict.FOCUSED_CONTEXT) {
+    return sseDict.FOCUSED_CONTEXT.replace('{title}', mFocusCtx[1]).replace('{pages}', mFocusCtx[2]);
+  }
+
+  // 4. Exact reverse-map from Indonesian text to current language
+  if (language !== 'id') {
+    const idSseDict = translations.id?.sseStatus || {};
+    for (const [k, idText] of Object.entries(idSseDict)) {
+      if (idText === statusInput && sseDict[k]) {
+        return sseDict[k];
+      }
+    }
+  }
+
+  return statusInput;
+}

@@ -17,7 +17,7 @@ from backend.app.services.pipeline.modes.mode_compliance import ModeCompliance
 from backend.app.services.pipeline.modes.mode_redteam import ModeRedTeam
 from backend.app.services.pipeline.modes.mode_email import ModeEmail
 
-from backend.app.services.pipeline.modes.mode_utils import detect_precheck
+from backend.app.services.pipeline.modes.mode_utils import detect_precheck, format_session_title
 from backend.app.services.pipeline.call1_router import execute_call1_routing
 from backend.app.services.pipeline.sse_validation import format_sse, SSEEventType
 
@@ -59,6 +59,8 @@ class ModeHub:
         active_topic: Optional[str] = None,
         key_subject: Optional[str] = None,
         client_context: Optional[Dict[str, Any]] = None,
+        forced_mode: Optional[str] = None,
+        bypass_router: bool = False,
     ) -> AsyncGenerator[str, None]:
         """
         Main entry point for stream.py to route the request to the correct mode handler.
@@ -79,13 +81,17 @@ class ModeHub:
 
         
         is_guest = (current_user_npp == "GUEST")
-        is_first_chat = len(chat_history) <= 1
-
-        # ── Fetch Long-Term Memory (ai_document_chunks) ────────────────────────
+        # ── Fetch Long-Term Memory (ai_document_chunks) & Check Generic Title ────────
         session_chunks_text = ""
         visited_urls = []
+        is_title_generic = False
         if session_uuid:
             from backend.app.services.chat.chat_history_service import chat_history_service
+            # Cek apakah judul sesi saat ini masih placeholder/generik (misal: "Salam", "Obrolan Baru", "Obrolan Cakra AI")
+            existing_title = await chat_history_service.get_session_title(session_uuid)
+            GENERIC_TITLES = {"obrolan baru", "percakapan baru", "salam", "sapaan", "sapaan pembuka", "obrolan cakra ai", "new chat", "untitled", "halo", "hai", ""}
+            is_title_generic = not existing_title or existing_title.strip().lower() in GENERIC_TITLES
+
             # Gunakan katalog manifest ringkas (~50-100 token) alih-alih dump full text puluhan ribu karakter
             session_chunks_text = await chat_history_service.get_session_knowledge_manifest(session_uuid)
             chunks_with_meta = await chat_history_service.get_session_document_chunks_with_meta(session_uuid)
@@ -98,6 +104,8 @@ class ModeHub:
                 if visited_urls:
                     visited_urls = list(set(visited_urls))  # deduplicate
                     logger.info(f"[MODE_HUB] Loaded {len(visited_urls)} previously visited URL(s) from session memory")
+
+        is_first_chat = (len(chat_history) <= 1) or is_title_generic
         precheck["_session_chunks_text"] = session_chunks_text
         precheck["_session_uuid"] = session_uuid
         precheck["_visited_urls"] = visited_urls
@@ -127,6 +135,182 @@ class ModeHub:
             pass
 
 
+
+        # ── ⚡ FAST-PATH BYPASS CALL 1 ROUTER (Jalur A: Klik Preset / Hint Item) ───
+        if bypass_router and forced_mode:
+            logger.info(f"[MODE_HUB] ⚡ Bypassing Call 1 Router due to explicit preset hint selection. Forced Mode: {forced_mode}")
+            forced_mode_clean = forced_mode.lower().strip()
+
+            if session_uuid:
+                from backend.app.services.chat.chat_history_service import chat_history_service
+                obs_dict = {"msg": f"Fast-Path Bypass Call 1 -> {forced_mode_clean.upper()}", "queries": [user_message]}
+                asyncio.create_task(chat_history_service.save_agent_step(
+                    session_id=session_uuid,
+                    step_number=1,
+                    tool_called="FAST_PATH_BYPASS",
+                    tool_input=user_message[:200],
+                    observation=json.dumps(obs_dict)
+                ))
+
+            # 🏷️ Auto-Generate Clean Session Title untuk First Chat Bypass (0ms Latency)
+            if is_first_chat and session_uuid:
+                try:
+                    from backend.app.services.chat.chat_history_service import chat_history_service
+                    auto_title = format_session_title(user_message, max_words=5, max_chars=35)
+                    if not auto_title or auto_title == "Obrolan Cakra AI":
+                        auto_title = f"{format_session_title(forced_mode_clean)} Cakra AI"
+                    asyncio.create_task(chat_history_service.update_title_direct(session_uuid, auto_title))
+                    logger.info(f"[MODE_HUB] ⚡ Fast-Path First-Chat Session Title updated -> '{auto_title}'")
+                except Exception as e:
+                    logger.warning(f"[MODE_HUB] Failed to update fast-path session title: {e}")
+
+            # 1. Web Search Mode Bypass
+            if forced_mode_clean in ["websearch", "search", "web"]:
+                from backend.app.services.pipeline.modes.mode_web_search import handle_web_search
+                history_dicts = [m.model_dump() for m in chat_history]
+                if not history_dicts or history_dicts[-1]["content"] != user_message:
+                    history_dicts.append({"role": "user", "content": user_message})
+
+                precheck["is_web_search"] = True
+                precheck["need_rag"] = False
+                precheck["queries"] = [user_message]
+
+                async for chunk in handle_web_search(
+                    query=user_message,
+                    messages=history_dicts,
+                    request=request,
+                    employee_name=employee_name,
+                    precheck=precheck,
+                    is_thinking=is_thinking
+                ):
+                    yield chunk
+                return
+
+            # 2. Document Search & Focus / Audit Mode Bypass
+            elif forced_mode_clean in ["documents", "document", "rag", "focus", "audit", "compliance"]:
+                precheck["need_rag"] = True
+                precheck["is_chitchat"] = False
+                precheck["queries"] = [user_message]
+
+                # Jika terdapat context_isolation (misal user klik dokumen PKB/SOP dari hint):
+                # Langsung tembak ke Mode Focus (Context Isolation) agar tidak melebar ke RAG global!
+                if context_isolation and (context_isolation.get("isolated_doc_id") or context_isolation.get("doc_id") or context_isolation.get("id_dokumen")):
+                    logger.info(f"[MODE_HUB] 🎯 Fast-Path Bypass routed directly to MODE_FOCUS for isolated document: {context_isolation}")
+                    handler = self.mode_handlers["focus"]
+                else:
+                    handler = self.mode_handlers["documents"]
+
+                async for chunk in handler.execute(
+                    user_message=user_message,
+                    chat_history=chat_history,
+                    is_thinking=is_thinking,
+                    attachments=attachments,
+                    context_isolation=context_isolation,
+                    routing_data=precheck,
+                    request=request,
+                    employee_name=employee_name,
+                    current_user_npp=current_user_npp,
+                    session_uuid=session_uuid
+                ):
+                    yield chunk
+                return
+
+            # 3. Code / Generate File Mode Bypass
+            elif forced_mode_clean in ["code", "coding", "generate_file", "create_file"]:
+                precheck["is_coding"] = True
+                precheck["is_generate_file"] = True
+                handler = self.mode_handlers["generate_file"]
+                async for chunk in handler.execute(
+                    user_message=user_message,
+                    chat_history=chat_history,
+                    is_thinking=is_thinking,
+                    attachments=attachments,
+                    context_isolation=context_isolation,
+                    routing_data=precheck,
+                    request=request,
+                    employee_name=employee_name,
+                    current_user_npp=current_user_npp,
+                    session_uuid=session_uuid
+                ):
+                    yield chunk
+                return
+
+            # 4. Diagram / Flowchart Bypass
+            elif forced_mode_clean in ["diagram", "flow", "flowchart"]:
+                precheck["requires_visual"] = True
+                precheck["visual_type"] = "mermaid"
+                handler = self.mode_handlers["flash"]
+                async for chunk in handler.execute(
+                    user_message=user_message,
+                    chat_history=chat_history,
+                    is_thinking=is_thinking,
+                    attachments=attachments,
+                    context_isolation=context_isolation,
+                    routing_data=precheck,
+                    request=request,
+                    employee_name=employee_name,
+                    current_user_npp=current_user_npp,
+                    session_uuid=session_uuid
+                ):
+                    yield chunk
+                return
+
+            # 5. Chart / Data Visualization Bypass
+            elif forced_mode_clean in ["chart", "data", "visualization"]:
+                precheck["requires_visual"] = True
+                precheck["visual_type"] = "chart"
+                handler = self.mode_handlers["flash"]
+                async for chunk in handler.execute(
+                    user_message=user_message,
+                    chat_history=chat_history,
+                    is_thinking=is_thinking,
+                    attachments=attachments,
+                    context_isolation=context_isolation,
+                    routing_data=precheck,
+                    request=request,
+                    employee_name=employee_name,
+                    current_user_npp=current_user_npp,
+                    session_uuid=session_uuid
+                ):
+                    yield chunk
+                return
+
+            # 6. Smart Mail / Draft Surat Bypass
+            elif forced_mode_clean in ["smart_mail", "mail", "email", "surat"]:
+                handler = self.mode_handlers["email"]
+                async for chunk in handler.execute(
+                    user_message=user_message,
+                    chat_history=chat_history,
+                    is_thinking=is_thinking,
+                    attachments=attachments,
+                    context_isolation=context_isolation,
+                    routing_data=precheck,
+                    request=request,
+                    employee_name=employee_name,
+                    current_user_npp=current_user_npp,
+                    session_uuid=session_uuid
+                ):
+                    yield chunk
+                return
+
+            # 7. Focus Mode Bypass
+            elif forced_mode_clean in ["focus", "compliance"]:
+                target_mode = forced_mode_clean if forced_mode_clean in self.mode_handlers else "focus"
+                handler = self.mode_handlers[target_mode]
+                async for chunk in handler.execute(
+                    user_message=user_message,
+                    chat_history=chat_history,
+                    is_thinking=is_thinking,
+                    attachments=attachments,
+                    context_isolation=context_isolation,
+                    routing_data=precheck,
+                    request=request,
+                    employee_name=employee_name,
+                    current_user_npp=current_user_npp,
+                    session_uuid=session_uuid
+                ):
+                    yield chunk
+                return
 
         if chat_mode == "redteam":
             logger.info("[MODE_HUB] Routing to Red-Team Mode.")
@@ -241,8 +425,8 @@ class ModeHub:
                 try:
                     from backend.app.services.chat.chat_history_service import chat_history_service
                     file_name = attachments[0].get('file_name', 'Lampiran') if attachments else 'Lampiran'
-                    base_name = file_name.rsplit('.', 1)[0].replace('_', ' ').replace('-', ' ').title()
-                    title = f"Analisis {base_name[:25]}"
+                    base_name = format_session_title(file_name.rsplit('.', 1)[0].replace('_', ' ').replace('-', ' '))
+                    title = f"Analisis {base_name[:28]}"
                     asyncio.create_task(chat_history_service.update_session_title(session_uuid, title))
                     logger.info(f"[MODE_HUB] Attachment First-Chat Title updated -> '{title}'")
                 except Exception as e:
@@ -420,7 +604,7 @@ class ModeHub:
         # ── Update Session Title (Gemma 4 Native / Fallback) ────────────────────────
         if routing_data.get("session_title") and session_uuid:
             try:
-                new_title = routing_data["session_title"].strip().strip('"').strip("'").strip(".").title()
+                new_title = format_session_title(routing_data["session_title"])
                 from backend.app.services.chat.chat_history_service import chat_history_service
                 await chat_history_service.update_title_direct(session_uuid, new_title)
             except Exception as e:
@@ -527,6 +711,28 @@ class ModeHub:
         elif router_pronoun:
             precheck["pronoun"] = router_pronoun
 
+        # ── 🛡️ Lock intent if forced_mode is active from FE Tag (Jalur B: User Ketik Sendiri) ──
+        if forced_mode:
+            f_mode = forced_mode.lower().strip()
+            if f_mode in ["websearch", "search", "web"]:
+                precheck["is_web_search"] = True
+                precheck["need_rag"] = False
+                precheck["is_chitchat"] = False
+                logger.info(f"[MODE_HUB] 🔒 Enforcing is_web_search=True due to forced_mode={forced_mode}")
+            elif f_mode in ["documents", "document", "rag"]:
+                precheck["need_rag"] = True
+                precheck["is_web_search"] = False
+                precheck["is_chitchat"] = False
+                logger.info(f"[MODE_HUB] 🔒 Enforcing need_rag=True due to forced_mode={forced_mode}")
+            elif f_mode in ["code", "coding", "generate_file"]:
+                precheck["is_coding"] = True
+                precheck["is_generate_file"] = True
+                precheck["is_chitchat"] = False
+                logger.info(f"[MODE_HUB] 🔒 Enforcing is_coding=True due to forced_mode={forced_mode}")
+            elif f_mode in ["focus", "compliance"]:
+                chat_mode = f_mode
+                logger.info(f"[MODE_HUB] 🔒 Enforcing chat_mode={chat_mode} due to forced_mode={forced_mode}")
+
         # ── Override Router if URL Context Exists ─────────────────────────────────
         if precheck.get("has_url_context"):
             precheck["is_chitchat"] = False
@@ -606,20 +812,29 @@ class ModeHub:
         mode = chat_mode if chat_mode in self.mode_handlers else "auto"
 
         # ── Priority 1: is_generate_file / is_coding intent (Interceptor-Analyst Pipeline) ──────
-        if (routing_data.get("is_generate_file") or routing_data.get("is_coding")) and not is_guest:
-            logger.info("[MODE_HUB] Coding intent detected → routing to GENERATE_FILE mode")
+        # Hanya masuk ke generate_file jika BUKAN ambigu (artinya spesifikasi sudah jelas/lengkap)
+        if (routing_data.get("is_generate_file") or routing_data.get("is_coding")) and not is_guest and not routing_data.get("is_ambiguous"):
+            logger.info("[MODE_HUB] Coding intent detected & not ambiguous → routing to GENERATE_FILE mode")
             mode = "generate_file"
-        elif routing_data.get("is_generate_email") and not is_guest:
-            logger.info("[MODE_HUB] is_generate_email=True detected → routing to EMAIL mode")
+        elif routing_data.get("is_generate_email") and not is_guest and not routing_data.get("is_ambiguous"):
+            logger.info("[MODE_HUB] is_generate_email=True detected & not ambiguous → routing to EMAIL mode")
             mode = "email"
         elif mode == "auto":
-            # Gunakan precheck (bukan routing_data) agar override URL context (need_rag=False)
-            # tidak tertimpa oleh nilai raw dari routing_data
-            need_rag = precheck.get("need_rag", False)
-            if need_rag:
-                mode = "documents"
-            else:
+            # Jika is_ambiguous True, pastikan masuk flash mode untuk klarifikasi wizard
+            if routing_data.get("is_ambiguous"):
+                logger.info("[MODE_HUB] Ambiguous intent detected → routing to FLASH mode for guided wizard clarification")
                 mode = "flash"
+            else:
+                # Gunakan precheck (bukan routing_data) agar override URL context (need_rag=False)
+                # tidak tertimpa oleh nilai raw dari routing_data
+                need_rag = precheck.get("need_rag", False)
+                if need_rag:
+                    mode = "documents"
+                else:
+                    mode = "flash"
+        elif routing_data.get("is_ambiguous"):
+            logger.info(f"[MODE_HUB] Ambiguous intent detected with mode={mode} → redirecting to FLASH mode")
+            mode = "flash"
         
         logger.info(f"[MODE_HUB] Dispatching request to Mode: {mode.upper()}")
         

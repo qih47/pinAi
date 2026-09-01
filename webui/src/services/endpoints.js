@@ -24,7 +24,8 @@ export {
   streamChat,
   trimSessionMessages,
   fetchSessionSettings,
-  updateSessionSettings
+  updateSessionSettings,
+  fetchChatSuggestions
 } from './api/chatApi';
 
 export {

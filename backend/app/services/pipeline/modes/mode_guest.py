@@ -70,7 +70,7 @@ class ModeGuest:
         # Pastikan thinking selalu off
         is_thinking = False
 
-        yield format_sse(status="⚡ Menyiapkan respon", event_type=SSEEventType.STATUS)
+        yield format_sse(status="✨ Menyiapkan respon", status_key="PREPARING_RESPONSE", event_type=SSEEventType.STATUS)
 
         # Hitung estimasi token (1 token ~ 4 karakter)
         sys_tokens = len(system_prompt) // 4
@@ -103,7 +103,7 @@ class ModeGuest:
         try:
             from backend.app.services.pipeline.agentic_interceptor import agentic_stream_wrapper
             async for chunk in agentic_stream_wrapper(
-                model_name=getattr(settings, "MODEL_PERSONA", "gemma4:12b"),
+                model_name=getattr(settings, "MODEL_PERSONA", "gemma4:31b"),
                 messages=stream_messages,
                 request=request,
                 temperature=temperature,

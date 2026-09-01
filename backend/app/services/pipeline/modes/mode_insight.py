@@ -115,7 +115,7 @@ class ModeInsight:
             
         messages = [user_msg]
         
-        model_name = getattr(settings, "MODEL_PERSONA", "gemma4:12b")
+        model_name = getattr(settings, "MODEL_PERSONA", "gemma4:31b")
         
         async for chunk_str in stream_ollama_chat(
             model_name=model_name,

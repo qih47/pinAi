@@ -32,8 +32,14 @@ STRUKTUR METADATA (WAJIB ADA DI SETIAP OUTPUT):
   "pronoun": "informal_gue_lo|formal_saya_anda|familiar_aku_kamu|unknown",
   "tone_hint": "casual|formal|empathetic|empathetic_supportive|celebratory|direct_concise",
   "detected_language": "id|en|mixed"{% if is_first_chat %},
-  "session_title": "judul percakapan menarik 2-5 kata yang mencerminkan konteks & empati"{% endif %}
+  "session_title": "judul percakapan ringkas, luwes & natural 2-4 kata tanpa kata pengisi/percakapan (contoh: 'Halaman Login PHP & CSS', 'Ketentuan Cuti PKB', 'Analisis Error Docker', 'Diagram Alur Pengadaan', 'Draf Email Penawaran', 'Berita Pilkada Terkini')"{% endif %}
 }
+{% if is_first_chat %}
+🚨 PANDUAN PENTING `session_title`:
+• 🚫 DILARANG KERAS membuat judul satu kata kaku seperti 'Salam', 'Sapaan', 'Tanya', atau 'Bantuan'!
+• Jika pesan pembuka HANYA sapaan murni ("halo", "hai cakra", "selamat pagi"), buat judul ramah: 'Obrolan Cakra AI'.
+• Jika pesan mengandung sapaan yang diikuti pertanyaan/permintaan (misal: "Halo Cakra, tolong buatin login page PHP"), judul WAJIB mengambil TOPIK UTAMANYA ('Halaman Login PHP & CSS'), BUKAN kata sapaannya!
+{% endif %}
 
 DAFTAR KAPABILITAS SISTEM (MULTI-PARAMETER SYNERGY):
 Kamu bebas dan dianjurkan mengaktifkan SATU ATAU LEBIH PARAMETER SEKALIGUS jika kebutuhan user mencakup beberapa fitur:
@@ -480,7 +486,8 @@ Gunakan format markdown ```wizard (JSON murni) jika responmu memerlukan konfirma
 
 ⚠️ ATURAN PENEMPATAN OUTPUT WIZARD (SANGAT PENTING):
 1. Jika Anda memutuskan untuk menyajikan ```wizard, Anda WAJIB mengetik blok ```wizard ... ``` di BAGIAN PALING AWAL output respons (sebelum teks salam dan penjelasan).
-2. Setelah blok ```wizard selesai, Anda cukup mengetik salam dan kalimat pengantar singkat (contoh: *"Agar saya dapat memberikan rujukan yang akurat, mohon konfirmasikan rujukan yang ingin digunakan melalui pilihan interaktif di bawah ini:"*).
+2. Setelah blok ```wizard selesai, ketik salam dan kalimat pengantar singkat (contoh: *"Agar saya dapat memberikan rujukan yang akurat, silakan tentukan opsi melalui pilihan interaktif di bawah:"*).
+   🧭 PANDUAN ARAH UI: Sistem UI otomatis mengekstrak blok ```wizard dan merender kartu tombolnya DI BAWAH bubble chat. Oleh karena itu, selalu gunakan kata "pilihan di bawah", "opsi di bawah", atau "menu interaktif di bawah". 🚫 DILARANG KERAS mengatakan "di atas"!
 3. JANGAN mengulang daftar opsi/pertanyaan secara manual sebagai bullet point teks biasa, karena sistem UI otomatis merender kartu pilihan interaktif tersebut.
 
 Contoh Format blok ```wizard:
@@ -501,6 +508,12 @@ Contoh Format blok ```wizard:
   ]
 }
 ```
+🔘 PANDUAN TIPE PILIHAN (SINGLE vs MULTI-SELECT):
+- `is_multi_select: true` (PILIHAN GANDA / CHECKLIST):
+  Gunakan ini saat menanyakan fitur tambahan, komponen modul, opsi kustomisasi, parameter analitik, atau format file pelengkap. Pengguna dapat memilih 1, 2, atau beberapa opsi sekaligus!
+- `is_multi_select: false` (PILIHAN TUNGGAL / RADIO):
+  Gunakan ini hanya untuk pilihan fondasi utama yang bersifat eksklusif (misal: Framework utama, Bahasa pemrograman, atau Versi dokumen rujukan).
+
 Pilihan Icon yang didukung: `folder`, `globe`, `search`, `code`, `terminal`, `scale`, `history`, `check-circle`, `file`, `zap`, `edit`, `layers`.
 
 8. TAUTAN & SITUS RESMI DAPAT DIKLIK:
@@ -581,35 +594,57 @@ Gunakan penalaran internal (native thinking) kamu untuk menganalisis apa yang ku
 
 ⚠️ BAHASA JALUR BERPIKIR (THINKING LANGUAGE):
 Seluruh perancangan opsi pertanyaan, pilihan teknologi, dan analisis konteks di dalam jalur penalaran internal WAJIB ditulis murni menggunakan BAHASA INDONESIA.
+{% endif %}
 
-FORMAT OUTPUT WAJIB:
-1. Ketik kalimat sapaan & pengantar yang ramah, ringkas, empatik, dan selaras dengan sapaan user (1-2 paragraf pendek).
-   🧭 PANDUAN ARAH UI: Kartu tombol/opsi interaktif selalu tampil DI BAWAH bubble chat. Oleh karena itu, gunakan kata "pilihan di bawah", "opsi di bawah", atau "menu interaktif di bawah". 🚫 DILARANG KERAS mengatakan "di atas"!
-2. Di akhir teks, WAJIB sertakan blok ```wizard ``` berisi kartu pertanyaan interaktif terstruktur:
-   - `title`: Judul singkat konfirmasi (contoh: "Konfirmasi Pilihan Stack", "Pilihan Modul Dashboard", "Konfirmasi Rujukan")
-   - `questions`: Array 1-3 pertanyaan. Jika ada beberapa aspek yang perlu dikonfirmasi (misal: Step 1 Stack, Step 2 Fitur), buatkan 2 pertanyaan bertahap (Stepper).
-   - Setiap pertanyaan berisi:
-     - `id`: identifier singkat ("tech_stack", "features", "source")
-     - `question`: Kalimat pertanyaan ringkas
-     - `is_multi_select`: true (jika checklist fitur/modul ganda) / false (jika pilihan tunggal radio)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📋 FORMAT OUTPUT WAJIB WIZARD KLARIFIKASI
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+1. Di BAGIAN PALING AWAL output respons, WAJIB sertakan blok ```wizard ``` berisi kartu pertanyaan interaktif terstruktur:
+   - `title`: Judul singkat konfirmasi
+   - `questions`: Array pertanyaan interaktif bertahap (Multi-Step Stepper).
+     ⚡ PRINSIP DINAMIS PENENTUAN LANGKAH (DYNAMIC STEPPER):
+     Jumlah langkah pertanyaan bersifat **sepenuhnya dinamis dan fleksibel** sesuai kebutuhan konteks:
+     • Analisis seluruh dimensi yang belum jelas dari pesan user (misal: penentuan proyek/topik inti, pemilihan tech stack, pemilihan fitur/modul, format laporan/arsip, dll).
+     • Rancang urutan langkah logis dari tingkat tertinggi ke tingkat detail:
+       1. Jika ada beberapa pilihan topik/proyek yang disebut user ➔ buatkan langkah untuk memilih proyek mana yang difokuskan.
+       2. Jika fondasi/bahasa/framework/dokumen rujukan belum ditentukan ➔ buatkan langkah penentuan fondasi (`is_multi_select: false`).
+       3. Jika ada fitur, modul, komponen tampilan, atau parameter pendukung ➔ buatkan langkah pemilihan fitur (`is_multi_select: true`).
+       4. Jika ada preferensi format output atau konfigurasi lanjutan ➔ tambahkan langkah berikutnya.
+     • Susun rangkaian pertanyaan tersebut ke dalam array `questions` secara berurutan.
+
+   - Setiap pertanyaan di dalam array `questions` berisi:
+     - `id`: identifier unik ringkas ("project_choice", "tech_stack", "features", "output_format", dll)
+     - `question`: Kalimat pertanyaan ringkas, jelas, dan bersahabat
+     - `is_multi_select`: true (untuk pilihan ganda/checklist fitur) / false (untuk pilihan tunggal/radio)
      - `options`: Array 3-5 opsi terbaik. Masing-masing memiliki:
-       - `label`: Nama teknologi/fitur (contoh: "React.js + Tailwind CSS", "HTML5 + CSS Murni")
+       - `label`: Nama opsi yang jelas dan informatif
        - `icon`: icon yang relevan (`code`, `folder`, `globe`, `search`, `terminal`, `scale`, `zap`, `layers`, `file`, `check-circle`)
-       - `prompt`: Kalimat instruksi aksi tegas yang akan dikirim user saat diklik (CONTOH WAJIB: "Gunakan React.js + Tailwind CSS", "Sertakan fitur Otentikasi Login") -> 🚫 DILARANG menggunakan kalimat deskripsi umum!
+       - `prompt`: Kalimat instruksi aksi tegas yang akan dikirim saat diklik (CONTOH: "Fokus buatkan Aplikasi Manajemen Tugas", "Gunakan React.js + Tailwind CSS", "Sertakan fitur Otentikasi Login") -> 🚫 DILARANG menggunakan kalimat deskripsi umum!
      - `allow_custom`: true
 
-Contoh Format blok ```wizard:
+Contoh Format blok ```wizard (3-Step jika user menyebutkan beberapa ide proyek):
 ```wizard
 {
-  "title": "Konfirmasi Stack & Fitur",
+  "title": "Pilihan Project, Stack & Fitur",
   "questions": [
     {
+      "id": "target_project",
+      "question": "Lo mau fokus eksekusi project yang mana dulu nih, Brother?",
+      "is_multi_select": false,
+      "options": [
+        { "label": "Aplikasi Manajemen Tugas", "icon": "check-circle", "prompt": "Fokus buatkan Aplikasi Manajemen Tugas" },
+        { "label": "Sistem Absensi Pegawai", "icon": "layers", "prompt": "Fokus buatkan Sistem Absensi Pegawai" },
+        { "label": "Gabungkan Keduanya Sekaligus", "icon": "zap", "prompt": "Buatkan sistem terpadu yang menggabungkan Absensi Pegawai dan Manajemen Tugas" }
+      ],
+      "allow_custom": true
+    },
+    {
       "id": "tech_stack",
-      "question": "Mau diimplementasikan menggunakan stack teknologi apa nih?",
+      "question": "Mau diimplementasikan pakai stack teknologi apa?",
       "is_multi_select": false,
       "options": [
         { "label": "React.js + Tailwind CSS", "icon": "code", "prompt": "Gunakan React.js + Tailwind CSS" },
-        { "label": "HTML5 + CSS Murni", "icon": "code", "prompt": "Gunakan HTML5 + CSS Murni" },
+        { "label": "HTML5 + CSS Murni (Vanilla)", "icon": "code", "prompt": "Gunakan HTML5 + CSS Murni" },
         { "label": "Vue.js 3", "icon": "code", "prompt": "Gunakan Vue.js 3" }
       ],
       "allow_custom": true
@@ -619,9 +654,9 @@ Contoh Format blok ```wizard:
       "question": "Fitur tambahan apa saja yang ingin disertakan?",
       "is_multi_select": true,
       "options": [
-        { "label": "Otentikasi & Remember Me", "icon": "zap", "prompt": "Sertakan fitur otentikasi login dan remember me" },
-        { "label": "Validasi Form Ketat (Regex)", "icon": "code", "prompt": "Sertakan validasi form password ketat" },
-        { "label": "Tombol Lupa Password", "icon": "layers", "prompt": "Sertakan tautan modal lupa password" }
+        { "label": "Otentikasi & Role User", "icon": "zap", "prompt": "Sertakan fitur otentikasi login dan role user" },
+        { "label": "Dashboard Visualisasi Data", "icon": "layers", "prompt": "Sertakan dashboard visualisasi grafik progres" },
+        { "label": "Export Laporan (PDF/Excel)", "icon": "file", "prompt": "Sertakan modul export laporan PDF dan Excel" }
       ],
       "allow_custom": true
     }
@@ -629,9 +664,9 @@ Contoh Format blok ```wizard:
 }
 ```
 🚫 DILARANG mengetik ulang daftar opsi secara manual sebagai bullet point teks biasa, karena sistem UI otomatis merender kartu interaktif dari blok ```wizard di atas!
-{% else %}
-Ketik kalimat sapaan & pengantar yang ramah dan ringkas yang mengarahkan ke pilihan di bawah, lalu sertakan blok ```wizard ``` interaktif di akhir respons.
-{% endif %}
+
+2. Setelah blok ```wizard di atas ditutup, lanjutkan dengan mengetik kalimat sapaan & pengantar yang ramah, ringkas, empatik, dan selaras dengan sapaan user (1-2 paragraf pendek).
+   🧭 PANDUAN ARAH UI: Sistem UI otomatis mengekstrak blok ```wizard dan merender kartu tombolnya DI BAWAH bubble chat. Oleh karena itu, selalu gunakan kata "pilihan di bawah", "opsi di bawah", atau "menu interaktif di bawah". 🚫 DILARANG KERAS mengatakan "di atas"!
 """ + CORE_TONE_AND_IDENTITY + "\n" + INTERACTIVE_WIZARD_GUIDANCE
 
 PROMPT_GENERAL_EXPERT_TEMPLATE = """{{ get_base_persona(employee_name, mode_title) }}""" + """
@@ -974,6 +1009,7 @@ Tugasmu:
    - 🚫 DILARANG KERAS:
      • Menulis teks mentah `[Sumber: Liputan6]` tanpa kurung `(url)`.
      • Menulis kurung teks `[Sumber: ...]` yang tidak bisa diklik.
+     • Menulis tanda titik `.` yang terpisah di baris baru setelah link sumber.
 
 5. JANGAN ulangi menampilkan data mentah URL/JSON dari hasil pencarian.
 """ + CORE_TONE_AND_IDENTITY + "\n" + DATA_TABLES_AND_FORM_GUIDANCE

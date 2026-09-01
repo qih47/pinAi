@@ -10,7 +10,7 @@ import { useChatStore } from '../../../stores/chatStore';
 import UserBubble from './UserBubble';
 import MessageTimer from './MessageTimer';
 import apiClient from '../../../services/apiClient';
-import { translations } from '../../../utils/translations';
+import { translations, resolveStatusMessage } from '../../../utils/translations';
 
 const toastFloatingStyle = {
     position: 'fixed',
@@ -501,7 +501,8 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
         if (!isThinkingMsg) return;
 
         // PRIORITIZE msg.statusMessage (e.g. from RAG SSE status event) over static fallback
-        const nextThought = msg.statusMessage ? msg.statusMessage : formatThinkingPhase(msg.thought);
+        const localizedStatus = msg.statusMessage ? resolveStatusMessage(msg.statusMessage, language) : '';
+        const nextThought = localizedStatus ? localizedStatus : formatThinkingPhase(msg.thought, language);
 
         if (nextThought !== displayThought) {
             if (thoughtTimerRef.current) {
@@ -519,7 +520,7 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
         return () => {
             if (thoughtTimerRef.current) clearTimeout(thoughtTimerRef.current);
         };
-    }, [msg.thought, msg.statusMessage, isThinkingMsg, displayThought]);
+    }, [msg.thought, msg.statusMessage, isThinkingMsg, displayThought, language]);
 
     return (
         <div style={{ ...styles.assistantRow, animation: 'fadeInUp 0.15s ease-out forwards' }}>
@@ -614,27 +615,31 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
 
                             if (parts.length === 1) {
                                 return (
-                                    <CakraResponseRenderer
-                                        rawContent={parts[0]}
-                                        thinkingContent={msg.thinking || msg.thought || ''}
-                                        isStreaming={isThisMessageStreaming}
-                                        darkMode={darkMode}
-                                        theme={theme}
-                                        searchQuery={searchQuery}
-                                        statusMessage={msg.statusMessage}
-                                        messageIndex={idx}
-                                        isLastMessage={isLastMessage}
-                                        middleContent={fileGens.length > 0 ? (
+                                    <div style={{ width: '100%', display: 'flex', flexDirection: 'column' }}>
+                                        <CakraResponseRenderer
+                                            rawContent={parts[0]}
+                                            thinkingContent={msg.thinking || msg.thought || ''}
+                                            isStreaming={isThisMessageStreaming}
+                                            darkMode={darkMode}
+                                            theme={theme}
+                                            searchQuery={searchQuery}
+                                            statusMessage={resolveStatusMessage(msg.statusMessage, language)}
+                                            messageIndex={idx}
+                                            isLastMessage={isLastMessage}
+                                            language={language}
+                                        />
+                                        {fileGens.length > 0 && (
                                             <FileProcessLog
                                                 fileGenerations={fileGens}
                                                 darkMode={darkMode}
                                                 batchIndex={0}
                                                 isFinalBatch={true}
                                                 language={language}
+                                                isStreaming={isThisMessageStreaming}
+                                                allFilesCompleted={Boolean(msg.allFilesDone)}
                                             />
-                                        ) : null}
-                                        language={language}
-                                    />
+                                        )}
+                                    </div>
                                 );
                             }
 
@@ -649,7 +654,7 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
                                     darkMode={darkMode}
                                     theme={theme}
                                     searchQuery={searchQuery}
-                                    statusMessage={msg.statusMessage}
+                                    statusMessage={resolveStatusMessage(msg.statusMessage, language)}
                                     messageIndex={idx}
                                     isLastMessage={isLastMessage}
                                     language={language}
@@ -667,6 +672,9 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
                                         darkMode={darkMode}
                                         batchIndex={bIdx}
                                         isFinalBatch={bIdx === highestBatchIndex}
+                                        isStreaming={isThisMessageStreaming}
+                                        allFilesCompleted={Boolean(msg.allFilesDone)}
+                                        language={language}
                                     />
                                 );
 
@@ -680,9 +688,10 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
                                             darkMode={darkMode}
                                             theme={theme}
                                             searchQuery={searchQuery}
-                                            statusMessage={msg.statusMessage}
+                                            statusMessage={resolveStatusMessage(msg.statusMessage, language)}
                                             messageIndex={idx}
                                             isLastMessage={isLastMessage}
+                                            language={language}
                                         />
                                     );
                                 }
@@ -692,7 +701,7 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
                         })()}
 
                         {/* 🔥 POSISI BERHASIL DIPINDAHKAN DI AKHIR STREAM (DI BAWAH RENDERING TEKS JAWABAN) */}
-                        {msg.fileGenerations && msg.fileGenerations.length > 0 && msg.statusMessage !== "✍️ Sedang membuat file..." && msg.fileGenerations.every(g => g.stage === 'done' || g.stage === 'error') && (
+                        {!isThisMessageStreaming && msg.fileGenerations && msg.fileGenerations.length > 0 && msg.fileGenerations.every(g => g.stage === 'done' || g.stage === 'error') && (
                             <div style={{ marginTop: '12px', marginBottom: '8px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
                                 {msg.fileGenerations.map((fg, fgIdx) => (
                                     <FileGenerationCard
@@ -1063,8 +1072,8 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
         </div>
     );
 }, (prevProps, nextProps) => {
-    // Jika bukan pesan terakhir dan objek msg sama persis, abaikan perubahan status streaming global
-    if (!prevProps.isLastMessage && !nextProps.isLastMessage && prevProps.msg === nextProps.msg && prevProps.darkMode === nextProps.darkMode) {
+    // Jika bukan pesan terakhir dan objek msg sama persis serta bahasa sama, abaikan perubahan status streaming global
+    if (!prevProps.isLastMessage && !nextProps.isLastMessage && prevProps.msg === nextProps.msg && prevProps.darkMode === nextProps.darkMode && prevProps.language === nextProps.language) {
         return true;
     }
     return (
@@ -1077,6 +1086,7 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
         prevProps.isThinking === nextProps.isThinking &&
         prevProps.isStreamingText === nextProps.isStreamingText &&
         prevProps.darkMode === nextProps.darkMode &&
+        prevProps.language === nextProps.language &&
         prevProps.idx === nextProps.idx &&
         prevProps.searchQuery === nextProps.searchQuery &&
         prevProps.msg.totalMessages === nextProps.msg.totalMessages &&

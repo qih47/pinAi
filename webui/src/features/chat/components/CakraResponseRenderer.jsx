@@ -31,9 +31,10 @@ const rehypePluginsList = [rehypeKatex];
 // 🌐 SMART LINKIFIER: Otomatis ubah domain/URL mentah (seperti jdih.setneg.go.id) menjadi tautan aktif
 const linkifyRawDomains = (text) => {
     if (!text || typeof text !== 'string') return text;
-    const parts = text.split(/(```[\s\S]*?```|`[^`\n]+`|\[[^\]]+\]\([^\)]+\))/g);
+    // Lindungi blok kode baik yang sudah tertutup (```...```) maupun yang sedang streaming (```...$)
+    const parts = text.split(/(```[\s\S]*?(?:```|$)|`[^`\n]+`|\[[^\]]+\]\([^\)]+\))/g);
     return parts.map((part, idx) => {
-        if (idx % 2 === 1) return part; // Jangan ubah kode atau link yang sudah valid
+        if (idx % 2 === 1) return part; // Jangan ubah isi blok kode atau link yang sudah valid
         return part.replace(
             /(?<![\w@/])((?:https?:\/\/)?(?:[a-zA-Z0-9-]+\.)+(?:com|org|net|gov|go\.id|co\.id|ac\.id|id|io|edu|ai)(?:\/[^\s\)\],<"']*)?)/gi,
             (match) => {
@@ -151,7 +152,7 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
     const setActiveWizard = useChatStore(state => state.setActiveWizard);
     const activeWizard = useChatStore(state => state.activeWizard);
 
-    const { thinkingBlock, finalResponseBlock, wizardBlock } = useMemo(() => {
+    const { thinkingBlock, finalResponseBlock, wizardBlock, isWizardStreaming } = useMemo(() => {
         const thinking = thinkingContent || "";
         let final = rawContent || "";
 
@@ -209,34 +210,48 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
 
         // 🎯 EKSTRAK BLOK WIZARD / INTERACTIVE OPTIONS AGAR SELALU DI-RENDER DI BAWAH TEKS JAWABAN
         let wizard = null;
-        const wizardMatch = final.match(/```(?:wizard|interactive_options)\s*([\s\S]*?)```/);
+        let isWizardStreaming = false;
+        const wizardMatch = final.match(/```(?:wizard|interactive_options)\s*([\s\S]*?)```/i);
         if (wizardMatch) {
             wizard = wizardMatch[1]?.trim();
-            final = final.replace(/```(?:wizard|interactive_options)\s*[\s\S]*?```/, '').trim();
+            final = final.replace(/```(?:wizard|interactive_options)\s*[\s\S]*?```/i, '').trim();
         } else {
             // Tangani partial streaming wizard yang belum ditutup ```
-            const unclosedMatch = final.match(/```(?:wizard|interactive_options)\s*([\s\S]*)$/);
+            const unclosedMatch = final.match(/```(?:wizard|interactive_options)\s*([\s\S]*)$/i);
             if (unclosedMatch) {
+                isWizardStreaming = true;
                 const partial = unclosedMatch[1]?.trim() || '';
                 const firstBrace = partial.indexOf('{');
                 const lastBrace = partial.lastIndexOf('}');
                 if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
                     try {
                         const parsed = JSON.parse(partial.substring(firstBrace, lastBrace + 1));
-                        if (parsed && parsed.questions) {
+                        if (parsed && (parsed.questions || parsed.options)) {
                             wizard = partial.substring(firstBrace, lastBrace + 1);
                         }
                     } catch (e) {}
                 }
                 // Sembunyikan teks JSON mentah dari atas chat saat sedang streaming
-                final = final.replace(/```(?:wizard|interactive_options)\s*[\s\S]*$/, '').trim();
+                final = final.replace(/```(?:wizard|interactive_options)\s*[\s\S]*$/i, '').trim();
+            } else {
+                // Cegah visual glitch: jika stream baru saja mulai memancarkan pembuka wizard (misal: "```w", "```wiz", "```")
+                const partialOpeningMatch = final.match(/```(?:w(?:i(?:z(?:a(?:r(?:d)?)?)?)?)?|i(?:n(?:t(?:e(?:r(?:a(?:c(?:t(?:i(?:v(?:e(?:_(?:o(?:p(?:t(?:i(?:o(?:n(?:s)?)?)?)?)?)?)?)?)?)?)?)?)?)?)?)?)?)?)?\s*$/i);
+                if (partialOpeningMatch) {
+                    isWizardStreaming = true;
+                    final = final.replace(/```(?:w(?:i(?:z(?:a(?:r(?:d)?)?)?)?)?|i(?:n(?:t(?:e(?:r(?:a(?:c(?:t(?:i(?:v(?:e(?:_(?:o(?:p(?:t(?:i(?:o(?:n(?:s)?)?)?)?)?)?)?)?)?)?)?)?)?)?)?)?)?)?)?\s*$/i, '').trim();
+                }
             }
         }
 
         // 🌐 Otomatis linkify domain mentah agar selalu bisa diklik sebagai tautan
         final = linkifyRawDomains(final);
 
-        return { thinkingBlock: thinking, finalResponseBlock: final, wizardBlock: wizard };
+        // 🧹 Bersihkan titik terisolasi yang berdiri sendiri di baris baru setelah sitasi / list (misal "\n.\n" atau "\n.")
+        final = final.replace(/\n\s*\.\s*(?=\n|$)/g, '\n');
+        final = final.replace(/(\[[^\]]+\]\([^\)]+\))\s*\n\s*\.\s*/g, '$1\n');
+        final = final.replace(/(\[[^\]]+\]\([^\)]+\))\s*\.\s*(?=\n|$)/g, '$1');
+
+        return { thinkingBlock: thinking, finalResponseBlock: final, wizardBlock: wizard, isWizardStreaming };
     }, [rawContent, thinkingContent]);
 
 
@@ -421,6 +436,11 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
             const match = /language-(\w+)/.exec(className || '');
             const cleanCode = String(children).replace(/\n$/, '');
 
+            // Cegah leak blok wizard mentah ke UI syntax highlighter
+            if (!inline && match && (match[1] === 'wizard' || match[1] === 'interactive_options' || match[1] === 'wiz')) {
+                return null;
+            }
+
             if (!inline && match && match[1] === 'mermaid') {
                 return (
                     <Suspense fallback={<div className="animate-pulse p-8 border border-dashed rounded-xl text-sm text-center font-medium my-4">Memuat engine diagram...</div>}>
@@ -469,7 +489,7 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
                         searchData = null;
                     }
                 }
-                const { rawContent, isStreaming, darkMode } = latestProps.current;
+                const { rawContent, isStreaming, darkMode, language } = latestProps.current;
                 let hasStartedResponding = false;
                 if (rawContent && rawContent.includes('```websearch')) {
                     const wsIdx = rawContent.indexOf('```websearch');
@@ -481,9 +501,11 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
                     }
                 }
 
+                const tGlobal = translations[language]?.webSearch || translations.id.webSearch;
+
                 return (
-                    <Suspense fallback={<div className="animate-pulse p-3 border border-[#2d2d2d] bg-[#1e1e1e] rounded-xl text-xs text-gray-400 font-medium my-2">Memuat hasil pencarian...</div>}>
-                        <LazyWebSearchWidget searchData={searchData} isStreaming={isStreaming} hasStartedResponding={hasStartedResponding} darkMode={darkMode} />
+                    <Suspense fallback={<div className="animate-pulse p-3 border border-[#2d2d2d] bg-[#1e1e1e] rounded-xl text-xs text-gray-400 font-medium my-2">{tGlobal.loadingResults || "Memuat hasil pencarian..."}</div>}>
+                        <LazyWebSearchWidget searchData={searchData} isStreaming={isStreaming} hasStartedResponding={hasStartedResponding} darkMode={darkMode} language={language} />
                     </Suspense>
                 );
             }
@@ -503,17 +525,19 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
                         fetchPayload = null;
                     }
                 }
-                const { isStreaming, darkMode, rawContent } = latestProps.current;
+                const { isStreaming, darkMode, rawContent, language } = latestProps.current;
                 const hasTextAfterBlock = rawContent && rawContent.includes('```urlfetch') && rawContent.split('```urlfetch')[1]?.split('```')[1]?.trim().length > 5;
                 const hasStartedResponding = Boolean(hasTextAfterBlock || !isStreaming);
+                const tGlobal = translations[language]?.webSearch || translations.id.webSearch;
 
                 return (
-                    <Suspense fallback={<div className="animate-pulse p-2 text-xs text-gray-400 font-medium my-2">Membaca tautan web...</div>}>
+                    <Suspense fallback={<div className="animate-pulse p-2 text-xs text-gray-400 font-medium my-2">{tGlobal.readingWebLinks || "Membaca tautan web..."}</div>}>
                         <LazyUrlFetchTimelineWidget 
                             data={fetchPayload} 
                             isStreaming={isStreaming} 
                             hasStartedResponding={hasStartedResponding} 
                             darkMode={darkMode} 
+                            language={language}
                         />
                     </Suspense>
                 );
@@ -612,6 +636,15 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
     // 🛠️ FIX AMAN: guard render kosong dipindah ke bawah useMemo agar
     // hooks tidak dipanggil secara kondisional (Rules of Hooks)
     if (!thinkingBlock.trim() && !finalResponseBlock.trim() && !wizardBlock && !middleContent) {
+        if (isStreaming && isWizardStreaming) {
+            const tWizard = translations[language]?.wizard || translations.id.wizard;
+            return (
+                <div className="py-2 flex items-center gap-2 text-xs text-indigo-400 font-medium animate-pulse">
+                    <span className="w-2 h-2 rounded-full bg-indigo-500 animate-ping" />
+                    <span>{tWizard.preparingOptions || "Menyiapkan opsi interaktif..."}</span>
+                </div>
+            );
+        }
         return <div style={{ minHeight: '20px' }} />;
     }
 
@@ -625,6 +658,7 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
                     theme={theme}
                     statusMessage={statusMessage}
                     isStreaming={isStreaming}
+                    language={language}
                 />
             )}
 
@@ -639,6 +673,12 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
                     .replace(/\[LINEAGE\]/ig, '')
                     .replace(/\[(?:TANYA(?:\s+LAGI)?|FOLLOW_UP|KLARIFIKASI|SUMMARY)\]/ig, '')
                 let displayContent = sanitizedResponseBlock;
+                if (displayContent) {
+                    // Bersihkan garis horizontal ganda / berlebih di awal teks (misal setelah selesai create_file)
+                    displayContent = displayContent
+                        .replace(/^(\s*[-*_━─—]{3,}\s*\n?)+/g, '')
+                        .replace(/\n(\s*[-*_━─—]{3,}\s*\n?){2,}/g, '\n---\n');
+                }
                 if (isStreaming && displayContent) {
                     // Hindari flash horizontal rule saat teks berakhir sementara dengan trailing dashes/setext
                     displayContent = displayContent.replace(/\n[-_]{2,}\s*$/, '\n');

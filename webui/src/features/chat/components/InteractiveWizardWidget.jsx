@@ -20,6 +20,7 @@ import {
     Check
 } from 'lucide-react';
 import { useChatStore } from '../../../stores/chatStore';
+import { translations } from '../../../utils/translations';
 
 // Map icon string names to Lucide icons
 const ICON_MAP = {
@@ -39,7 +40,9 @@ const ICON_MAP = {
     default: HelpCircle
 };
 
-const InteractiveWizardWidget = ({ data, messageIndex, isStreaming, darkMode = true }) => {
+const InteractiveWizardWidget = ({ data, messageIndex, isStreaming, darkMode = true, language = 'id' }) => {
+    const t = translations[language]?.wizard || translations.id.wizard;
+
     // Parse wizard data safely
     let wizardData = null;
     try {
@@ -57,7 +60,7 @@ const InteractiveWizardWidget = ({ data, messageIndex, isStreaming, darkMode = t
         return null;
     }
 
-    const title = wizardData.title || 'Konfirmasi Kebutuhan';
+    const title = wizardData.title || (language === 'en' ? 'Clarify Requirements' : 'Konfirmasi Kebutuhan');
     const questions = wizardData.questions;
     const totalSteps = questions.length;
 
@@ -177,6 +180,32 @@ const InteractiveWizardWidget = ({ data, messageIndex, isStreaming, darkMode = t
                     isCustom: true
                 }
             }));
+        }
+    };
+
+    // Handle Enter Key on Custom Input
+    const handleCustomKeyDown = (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            const val = (customInputs[currentStep] || '').trim();
+            if (!val && !hasSelectedCurrent) return;
+
+            const updatedAnswers = {
+                ...answers,
+                [currentStep]: {
+                    selectedValue: '__custom__',
+                    label: val || 'Jawaban Manual',
+                    prompt: val,
+                    isCustom: true
+                }
+            };
+            setAnswers(updatedAnswers);
+
+            if (currentStep < totalSteps - 1) {
+                setCurrentStep(prev => prev + 1);
+            } else {
+                handleSubmit(updatedAnswers);
+            }
         }
     };
 
@@ -330,11 +359,11 @@ const InteractiveWizardWidget = ({ data, messageIndex, isStreaming, darkMode = t
             <div className="p-3.5">
                 <div className="flex items-center justify-between mb-3">
                     <p className="text-[13px] font-medium leading-snug text-zinc-200">
-                        {currentQ.question || 'Silakan pilih opsi berikut:'}
+                        {currentQ.question || t.defaultQuestion || 'Silakan pilih opsi berikut:'}
                     </p>
                     {isMultiSelect && (
                         <span className="text-[10.5px] font-semibold px-2 py-0.5 rounded-full bg-indigo-500/15 text-indigo-300 border border-indigo-500/30 flex-shrink-0 ml-2">
-                            Pilihan Ganda
+                            {language === 'en' ? 'Multi-select' : 'Pilihan Ganda'}
                         </span>
                     )}
                 </div>
@@ -414,7 +443,7 @@ const InteractiveWizardWidget = ({ data, messageIndex, isStreaming, darkMode = t
                                     <span className={`text-[12.5px] font-medium ${
                                         isCustomActive ? 'text-indigo-400 font-semibold' : darkMode ? 'text-zinc-200' : 'text-gray-800'
                                     }`}>
-                                        Ketik sendiri jawaban...
+                                        {t.typeCustom || "Ketik sendiri jawaban..."}
                                     </span>
                                 </div>
 
@@ -435,7 +464,8 @@ const InteractiveWizardWidget = ({ data, messageIndex, isStreaming, darkMode = t
                                         disabled={isSubmitted}
                                         value={customInputs[currentStep] || ''}
                                         onChange={handleCustomTextChange}
-                                        placeholder="Tulis instruksi spesifik Anda di sini..."
+                                        onKeyDown={handleCustomKeyDown}
+                                        placeholder={t.customPlaceholder || "Tulis instruksi spesifik Anda di sini..."}
                                         autoFocus
                                         className={`w-full px-3 py-1.5 rounded-md text-[12px] border outline-none transition-all ${
                                             darkMode 
@@ -465,7 +495,7 @@ const InteractiveWizardWidget = ({ data, messageIndex, isStreaming, darkMode = t
                             }`}
                         >
                             <ChevronLeft className="w-3 h-3" />
-                            <span>Sebelumnya</span>
+                            <span>{t.prev || "Sebelumnya"}</span>
                         </button>
                     )}
                 </div>
@@ -481,7 +511,7 @@ const InteractiveWizardWidget = ({ data, messageIndex, isStreaming, darkMode = t
                         }`}
                     >
                         <SkipForward className="w-3 h-3" />
-                        <span>Lewati</span>
+                        <span>{t.skip || "Lewati"}</span>
                     </button>
 
                     {/* Next / Submit Button */}
@@ -496,7 +526,7 @@ const InteractiveWizardWidget = ({ data, messageIndex, isStreaming, darkMode = t
                                     : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-500/20 active:scale-95'
                             }`}
                         >
-                            <span>{isSubmitted ? 'Terkirim' : 'Kirim'}</span>
+                            <span>{isSubmitted ? (t.sent || 'Terkirim') : (t.send || 'Kirim')}</span>
                             <Send className="w-3 h-3" />
                         </button>
                     ) : (
@@ -510,7 +540,7 @@ const InteractiveWizardWidget = ({ data, messageIndex, isStreaming, darkMode = t
                                     : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-500/20 active:scale-95'
                             }`}
                         >
-                            <span>Lanjut</span>
+                            <span>{t.next || "Lanjut"}</span>
                             <ChevronRight className="w-3 h-3" />
                         </button>
                     )}

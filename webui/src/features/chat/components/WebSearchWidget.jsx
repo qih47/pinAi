@@ -1,10 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { Globe, ChevronDown, ChevronUp, Clock, CheckCircle2 } from 'lucide-react';
+import { translations } from '../../../utils/translations';
 
-const WebSearchWidget = ({ searchData, isStreaming, hasStartedResponding, darkMode = true }) => {
+const WebSearchWidget = ({ searchData, isStreaming, hasStartedResponding, darkMode = true, language = 'id' }) => {
     // Open by default if streaming and hasn't started responding.
     const [isOpen, setIsOpen] = useState(true);
     const [elapsedSec, setElapsedSec] = useState(0);
+
+    const t = translations[language]?.webSearch || translations.id.webSearch;
 
     const results = Array.isArray(searchData) ? searchData : (searchData?.results || []);
     const isLoading = isStreaming && results.length === 0;
@@ -43,11 +46,11 @@ const WebSearchWidget = ({ searchData, isStreaming, hasStartedResponding, darkMo
     
     let originalQuery = !Array.isArray(searchData) && searchData?.query 
         ? searchData.query 
-        : (results[0]?.title || "Penelusuran Web");
+        : (results[0]?.title || "");
         
     let displayQuery = originalQuery
-        ? `mencari referensi terkait ${originalQuery.toLowerCase()}`
-        : "mencari referensi web";
+        ? (t.searchingReferencesFor || "mencari referensi terkait {query}").replace('{query}', originalQuery.toLowerCase())
+        : (t.searchingWebReferences || "mencari referensi web");
     
     return (
         <div className="my-4 w-full max-w-3xl font-sans">
@@ -60,17 +63,17 @@ const WebSearchWidget = ({ searchData, isStreaming, hasStartedResponding, darkMo
                     {isLoading ? (
                         <>
                             <span className="inline-block w-2 h-2 rounded-full bg-indigo-500 animate-ping" />
-                            <span>Menelusuri informasi dari web ({elapsedSec}s)</span>
+                            <span>{(t.searchingInfoWithTime || "Menelusuri informasi dari web ({elapsed}s)").replace('{elapsed}', elapsedSec)}</span>
                         </>
                     ) : isAnalyzing ? (
                         <>
                             <span className="inline-block w-2 h-2 rounded-full bg-indigo-400 animate-pulse" />
-                            <span>Menganalisis hasil pencarian...</span>
+                            <span>{t.analyzingResults || "Menganalisis hasil pencarian..."}</span>
                         </>
                     ) : isSearchComplete ? (
-                        "Hasil penelusuran informasi dari web"
+                        t.searchResults || "Hasil penelusuran informasi dari web"
                     ) : (
-                        "Menelusuri informasi dari web"
+                        t.searchingInfo || "Menelusuri informasi dari web"
                     )}
                 </span>
                 <span className="text-[#888888] flex items-center justify-center">
@@ -99,7 +102,7 @@ const WebSearchWidget = ({ searchData, isStreaming, hasStartedResponding, darkMo
                                 "{displayQuery}"
                             </span>
                             <span className="text-[12px] text-[#666666] whitespace-nowrap">
-                                {results.length} results
+                                {(t.resultsCount || "{count} results").replace('{count}', results.length)}
                             </span>
                         </div>
                         
@@ -119,7 +122,7 @@ const WebSearchWidget = ({ searchData, isStreaming, hasStartedResponding, darkMo
                                     {isLoading ? (
                                         <div className="p-3 text-xs text-gray-400 flex items-center gap-2">
                                             <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-ping" />
-                                            <span>Mencari informasi di web...</span>
+                                            <span>{t.searchingWeb || "Mencari informasi di web..."}</span>
                                         </div>
                                     ) : (
                                         results.map((item, idx) => {
@@ -179,7 +182,7 @@ const WebSearchWidget = ({ searchData, isStreaming, hasStartedResponding, darkMo
                                     )}
                                 </div>
                                 <span className={`text-[13.5px] ${isAnalyzing ? 'text-indigo-300 font-medium' : 'text-[#888888]'}`}>
-                                    Menganalisis hasil pencarian...
+                                    {t.analyzingResults || "Menganalisis hasil pencarian..."}
                                 </span>
                             </div>
 
@@ -189,7 +192,7 @@ const WebSearchWidget = ({ searchData, isStreaming, hasStartedResponding, darkMo
                                         <CheckCircle2 className="w-[14px] h-[14px] text-emerald-400" />
                                     </div>
                                     <span className="text-[13.5px] font-medium text-emerald-400">
-                                        Selesai
+                                        {t.done || "Selesai"}
                                     </span>
                                 </div>
                             )}

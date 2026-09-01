@@ -166,13 +166,26 @@ async def agentic_stream_wrapper(
                         buffer = ""
                         logger.info("[AGENTIC_TOOL] 🎯 Intercepted ```websearch open tag during stream!")
                     else:
-                        # Belum ada tanda tag tool, alirkan teks dengan aman (sisakan 12 karakter untuk potensi pembuka tag)
-                        if len(buffer) > 15:
-                            safe_to_flush = buffer[:-12]
-                            buffer = buffer[-12:]
-                            yield format_sse(safe_to_flush, "", False, event_type=SSEEventType.CHUNK)
-                            accumulated_full_text += safe_to_flush
-                            pre_tool_text += safe_to_flush
+                        last_bt = buffer.rfind('`')
+                        if last_bt != -1:
+                            potential = buffer[last_bt:]
+                            if len(potential) > 20:
+                                yield format_sse(buffer, "", False, event_type=SSEEventType.CHUNK)
+                                accumulated_full_text += buffer
+                                pre_tool_text += buffer
+                                buffer = ""
+                            elif last_bt > 0:
+                                safe_to_flush = buffer[:last_bt]
+                                buffer = buffer[last_bt:]
+                                yield format_sse(safe_to_flush, "", False, event_type=SSEEventType.CHUNK)
+                                accumulated_full_text += safe_to_flush
+                                pre_tool_text += safe_to_flush
+                        else:
+                            # Tidak ada backtick sama sekali: langsung stream tanpa ditahan!
+                            yield format_sse(buffer, "", False, event_type=SSEEventType.CHUNK)
+                            accumulated_full_text += buffer
+                            pre_tool_text += buffer
+                            buffer = ""
                 else:
                     # Sedang menangkap isi JSON di dalam blok ```websearch
                     tool_buffer += chunk_text
