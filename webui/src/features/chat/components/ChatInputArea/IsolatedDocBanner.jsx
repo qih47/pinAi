@@ -113,6 +113,8 @@ export default function IsolatedDocBanner({
         fontSize: "13px",
         color: bannerTheme.textColor,
         transition: "all 0.25s cubic-bezier(0.16, 1, 0.3, 1)",
+        boxSizing: "border-box",
+        width: "100%",
       }}
     >
       <div

@@ -1,9 +1,0 @@
---- CakraResponseRenderer.jsx
-+++ CakraResponseRenderer.jsx
-@@ -127,5 +130,6 @@
- 
-     const markdownComponents = useMemo(() => ({
-         // 1. PARAGRAF (Spasi yang proporsional)
-         p({ children, ...props }) {
-+            const { darkMode, searchQuery } = latestProps.current;
-             return <p style={{ marginTop: 0, marginBottom: '14px', fontSize: '15px', lineHeight: '1.75', whiteSpace: 'normal', color: darkMode ? '#f1f5f9' : '#334155' }} {...props}>{recursiveHighlight(children, searchQuery)}</p>;

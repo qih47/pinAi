@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
+import { useChatStore } from '../../../stores/chatStore';
 
 export default function ChatNavigator({ messages, onNavigate, darkMode, theme, scrollContainerRef }) {
   const [isHovered, setIsHovered] = useState(false);
@@ -75,7 +76,9 @@ export default function ChatNavigator({ messages, onNavigate, darkMode, theme, s
     };
   }, [scrollContainerRef]);
 
-  if (userMessages.length < 5) return null;
+  const isSplitScreen = useChatStore(state => state.isSplitScreen);
+
+  if (userMessages.length < 5 || isSplitScreen) return null;
 
   return (
     <div

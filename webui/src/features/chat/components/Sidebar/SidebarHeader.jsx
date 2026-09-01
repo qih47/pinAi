@@ -45,10 +45,10 @@ export default function SidebarHeader({
           </h1>
         </div>
 
-        {!isMobile && (
+        {(!isMobile || isOpen) && (
           <button
             onClick={() => setIsOpen(!isOpen)}
-            className={`absolute transition-all duration-300 p-1 rounded ${darkMode ? 'hover:bg-gray-800' : 'hover:bg-gray-200'}`}
+            className={`absolute transition-all duration-300 p-1.5 rounded-lg ${darkMode ? 'hover:bg-gray-800 active:bg-gray-700' : 'hover:bg-gray-200 active:bg-gray-300'}`}
             style={{
               color: theme?.iconColor,
               top: isOpen ? "20px" : "12px",

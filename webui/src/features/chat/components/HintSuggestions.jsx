@@ -14,7 +14,8 @@ export default function HintSuggestions({
   theme,
   isStreaming = false,
   isGuest = false,
-  language = "id"
+  language = "id",
+  isMobile = false
 }) {
   const [suggestions, setSuggestions] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -99,9 +100,10 @@ export default function HintSuggestions({
       ]
     : allActions;
 
-  // Bagi aksi: Baris 1 (4 pertama) dan Baris 2 (sisanya)
-  const primaryActions = defaultActions.slice(0, 4);
-  const secondaryActions = defaultActions.slice(4);
+  // Bagi aksi: Jika mobile, tampilkan maksimal 3 di baris utama (primary) dan sisanya saat di-expand
+  const splitCount = isMobile ? 3 : 4;
+  const primaryActions = defaultActions.slice(0, splitCount);
+  const secondaryActions = defaultActions.slice(splitCount);
 
   // Fetch dynamic suggestions (documents list OR questions for selected doc)
   useEffect(() => {
@@ -219,8 +221,8 @@ export default function HintSuggestions({
       {/* 🧭 STATE 2: BARIS OPSI UTAMA DENGAN SPRING BOUNCE ANIMATION */}
       {!activeModeTag && !input.trim() && (
         <div className="flex flex-col items-center justify-center gap-1.5 w-full">
-          {/* Baris 1 Murni: 4 Tombol Utama (Kode, Cari di Web, Cari Dokumen, Fokus & Audit) */}
-          <div className="flex flex-wrap items-center justify-center gap-1.5 w-full text-center">
+          {/* Baris 1: 3 Tombol Berjejer Alami dengan Lebar Dinamis (Proporsional Sesuai Panjang Teks) */}
+          <div className="flex flex-nowrap items-center justify-center gap-1.5 sm:gap-2.5 w-full max-w-full px-1">
             {primaryActions.map((action, idx) => {
               const Icon = action.icon;
               return (
@@ -228,7 +230,7 @@ export default function HintSuggestions({
                   key={action.id}
                   type="button"
                   onClick={() => setActiveModeTag(action.id)}
-                  className={`inline-flex items-center justify-center gap-2 px-3.5 py-1.5 rounded-xl transition-all duration-200 cursor-pointer group border-0 text-center hover:scale-[1.04] active:scale-[0.96] ${
+                  className={`inline-flex items-center justify-center gap-1.5 sm:gap-2 px-2.5 sm:px-3.5 py-1.5 rounded-xl transition-all duration-200 cursor-pointer group border-0 text-center flex-shrink-0 hover:scale-[1.04] active:scale-[0.96] ${
                     darkMode
                       ? "text-[#d1d5db] hover:text-white hover:bg-[#1f1f23] shadow-black/20"
                       : "text-gray-700 hover:text-gray-900 hover:bg-gray-100"
@@ -243,7 +245,7 @@ export default function HintSuggestions({
                     size={15}
                     className="opacity-75 group-hover:opacity-100 group-hover:scale-110 transition-transform duration-150 flex-shrink-0"
                   />
-                  <span className="text-[13px] font-normal tracking-wide text-center leading-none">
+                  <span className="text-[13px] font-normal tracking-wide text-center leading-none whitespace-nowrap">
                     {action.label}
                   </span>
                 </button>
@@ -277,19 +279,19 @@ export default function HintSuggestions({
             </div>
           )}
 
-          {/* Baris 2: Muncul dinamis dengan efek spring bounce saat di-expand */}
+          {/* Baris Secondary: Muncul dinamis dengan format 3-3-2 di Mobile saat di-expand */}
           {isExpanded && secondaryActions.length > 0 && (
             <div className="flex flex-col items-center justify-center gap-1.5 w-full text-center">
-              {/* Baris 2 Actions dengan Staggered Cascade Animation */}
-              <div className="flex flex-wrap items-center justify-center gap-1.5 w-full text-center">
-                {secondaryActions.map((action, idx) => {
+              {/* Row 2: 3 Tombol di Mobile / 4 Tombol di Desktop */}
+              <div className="flex flex-nowrap sm:flex-wrap items-center justify-center gap-1.5 sm:gap-2.5 w-full max-w-full px-1">
+                {(isMobile ? secondaryActions.slice(0, 3) : secondaryActions).map((action, idx) => {
                   const Icon = action.icon;
                   return (
                     <button
                       key={action.id}
                       type="button"
                       onClick={() => setActiveModeTag(action.id)}
-                      className={`inline-flex items-center justify-center gap-2 px-3.5 py-1.5 rounded-xl transition-all duration-200 cursor-pointer group border-0 text-center hover:scale-[1.04] active:scale-[0.96] ${
+                      className={`inline-flex items-center justify-center gap-1.5 sm:gap-2 px-2.5 sm:px-3.5 py-1.5 rounded-xl transition-all duration-200 cursor-pointer group border-0 text-center flex-shrink-0 hover:scale-[1.03] active:scale-[0.97] ${
                         darkMode
                           ? "text-[#d1d5db] hover:text-white hover:bg-[#1f1f23]"
                           : "text-gray-700 hover:text-gray-900 hover:bg-gray-100"
@@ -304,7 +306,7 @@ export default function HintSuggestions({
                         size={15}
                         className="opacity-75 group-hover:opacity-100 group-hover:scale-110 transition-transform duration-150 flex-shrink-0"
                       />
-                      <span className="text-[13px] font-normal tracking-wide text-center leading-none">
+                      <span className="text-[13px] font-normal tracking-wide leading-none whitespace-nowrap">
                         {action.label}
                       </span>
                     </button>
@@ -312,7 +314,41 @@ export default function HintSuggestions({
                 })}
               </div>
 
-              {/* Tombol 'Tutup ▴' tepat di bawah baris ke-2 (Centered) */}
+              {/* Row 3 (Khusus Mobile: 2 Tombol Terakhir) */}
+              {isMobile && secondaryActions.slice(3).length > 0 && (
+                <div className="flex flex-nowrap items-center justify-center gap-1.5 sm:gap-2.5 w-full max-w-full px-1">
+                  {secondaryActions.slice(3).map((action, idx) => {
+                    const Icon = action.icon;
+                    return (
+                      <button
+                        key={action.id}
+                        type="button"
+                        onClick={() => setActiveModeTag(action.id)}
+                        className={`inline-flex items-center justify-center gap-1.5 sm:gap-2 px-2.5 sm:px-3.5 py-1.5 rounded-xl transition-all duration-200 cursor-pointer group border-0 text-center flex-shrink-0 hover:scale-[1.03] active:scale-[0.97] ${
+                          darkMode
+                            ? "text-[#d1d5db] hover:text-white hover:bg-[#1f1f23]"
+                            : "text-gray-700 hover:text-gray-900 hover:bg-gray-100"
+                        }`}
+                        style={{
+                          outline: "none",
+                          background: "transparent",
+                          animation: `cakraSpringBounce 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) ${(idx + 3) * 50 + 40}ms both`
+                        }}
+                      >
+                        <Icon
+                          size={15}
+                          className="opacity-75 group-hover:opacity-100 group-hover:scale-110 transition-transform duration-150 flex-shrink-0"
+                        />
+                        <span className="text-[13px] font-normal tracking-wide leading-none whitespace-nowrap">
+                          {action.label}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Tombol 'Tutup ▴' tepat di bawah baris ke-3 (Centered) */}
               <div className="flex justify-center w-full pt-0.5">
                 <button
                   type="button"

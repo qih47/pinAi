@@ -1068,6 +1068,7 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
 
                 </div>
             </div>
+
             {showToast && <div style={toastFloatingStyle}>{toastMsg}</div>}
         </div>
     );
@@ -1091,7 +1092,9 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
         prevProps.searchQuery === nextProps.searchQuery &&
         prevProps.msg.totalMessages === nextProps.msg.totalMessages &&
         prevProps.msg.attachments === nextProps.msg.attachments &&
-        prevProps.msg.fileGenerations === nextProps.msg.fileGenerations
+        prevProps.msg.fileGenerations === nextProps.msg.fileGenerations &&
+        prevProps.msg.sources === nextProps.msg.sources &&
+        prevProps.msg.citations === nextProps.msg.citations
     );
 });
 

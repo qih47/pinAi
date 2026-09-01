@@ -281,15 +281,18 @@ export const translations = {
       loggingIn: "Sedang menghubungkan ke server..."
     },
     pdf: {
+      title: "Dokumen Rujukan",
       failLoad: "Gagal memuat dokumen.",
       zoomIn: "Perbesar",
       zoomOut: "Perkecil",
       modeScroll: "Mode: Scroll",
-      modePage: "Mode: Page",
+      modePage: "Mode: Halaman",
       page: "Hal",
       of: "dari",
       openInNewTab: "Buka di tab baru",
-      closeSplitScreen: "Tutup Layar Belah"
+      closeSplitScreen: "Tutup Dokumen",
+      fullScreen: "Layar Penuh",
+      splitView: "Layar Belah"
     },
     ghostWriter: {
       initialDraft: "Draft dokumen otomatis dari AI...\n\n(Silakan edit di sini)",
@@ -451,6 +454,27 @@ export const translations = {
       send: "Kirim",
       sent: "Terkirim",
       preparingOptions: "Menyiapkan opsi interaktif..."
+    },
+    documentPill: {
+      title: "Dokumen Rujukan PT Pindad",
+      sessionDocs: "Dokumen di Sesi Ini",
+      currentTurn: "Pertanyaan Ini",
+      openPdf: "Buka PDF",
+      isolate: "Fokus Dokumen",
+      docCount: "{count} Dokumen",
+      allDocs: "Jelajahi Semua Regulasi Pindad",
+      searchPlaceholder: "Cari dokumen rujukan...",
+      noResults: "Dokumen tidak ditemukan",
+      modeFocus: "Fokus",
+      modeCompliance: "Kepatuhan",
+      modeRedTeam: "Bedah",
+      modeActive: "Aktif",
+      openPortal: "Portal",
+      exploreGlobal: "Cari di Seluruh Regulasi Pindad",
+      exploreGlobalDesc: "Cari SK Direksi, SOP, SE, & PKB di luar sesi ini",
+      searchGlobalPlaceholder: "Ketik judul/nomor (misal: PKB, Cuti, SOP)...",
+      loadingGlobal: "Mencari regulasi di database...",
+      emptyGlobal: "Tidak ada regulasi yang cocok"
     },
     sseStatus: {
       ANALYZING_INTENT: "🧠 Menganalisis intent",
@@ -794,6 +818,7 @@ export const translations = {
       loggingIn: "Connecting to server..."
     },
     pdf: {
+      title: "Reference Document",
       failLoad: "Failed to load document.",
       zoomIn: "Zoom In",
       zoomOut: "Zoom Out",
@@ -802,7 +827,9 @@ export const translations = {
       page: "Page",
       of: "of",
       openInNewTab: "Open in new tab",
-      closeSplitScreen: "Close Split Screen"
+      closeSplitScreen: "Close Document",
+      fullScreen: "Fullscreen",
+      splitView: "Split View"
     },
     ghostWriter: {
       initialDraft: "Automatic AI document draft...\n\n(Please edit here)",
@@ -966,6 +993,27 @@ export const translations = {
       send: "Send",
       sent: "Sent",
       preparingOptions: "Preparing interactive options..."
+    },
+    documentPill: {
+      title: "PT Pindad Reference Documents",
+      sessionDocs: "Session Documents",
+      currentTurn: "This Turn",
+      openPdf: "Open PDF",
+      isolate: "Focus Document",
+      docCount: "{count} Documents",
+      allDocs: "Explore All Pindad Regulations",
+      searchPlaceholder: "Search reference docs...",
+      noResults: "No matching documents",
+      modeFocus: "Focus",
+      modeCompliance: "Compliance",
+      modeRedTeam: "Red Team",
+      modeActive: "Active",
+      openPortal: "Portal",
+      exploreGlobal: "Search All Pindad Regulations",
+      exploreGlobalDesc: "Search SK Direksi, SOP, Circulars & PKB outside this session",
+      searchGlobalPlaceholder: "Type title/number (e.g., PKB, Leave, SOP)...",
+      loadingGlobal: "Searching database regulations...",
+      emptyGlobal: "No matching regulations found"
     },
     sseStatus: {
       ANALYZING_INTENT: "🧠 Analyzing intent",

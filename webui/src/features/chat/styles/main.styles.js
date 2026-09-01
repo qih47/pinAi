@@ -185,12 +185,12 @@ export const styles = {
     },
 
     inputArea: {
-        flexShrink: 0, padding: '8px 24px 16px', transition: 'background 0.2s'
+        flexShrink: 0, padding: '8px 24px 16px', transition: 'background 0.2s', boxSizing: 'border-box'
     },
-    inputContainer: { maxWidth: 768, margin: '0 auto', width: '100%', position: 'relative' },
+    inputContainer: { maxWidth: 768, margin: '0 auto', width: '100%', position: 'relative', boxSizing: 'border-box' },
     inputForm: {
         display: 'flex', alignItems: 'flex-end', gap: 8,
-        borderRadius: 28, padding: '10px 10px 10px 20px', transition: 'all 0.2s'
+        borderRadius: 28, padding: '10px 10px 10px 20px', transition: 'all 0.2s', boxSizing: 'border-box'
     },
     textarea: {
         flex: 1, border: 'none', outline: 'none', background: 'transparent',

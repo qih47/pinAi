@@ -64,7 +64,7 @@ export default function ChatPage({ isGuest,
             inset: 0,
             background: "rgba(0,0,0,0.5)",
             backdropFilter: "blur(4px)",
-            zIndex: 35, // Sidebar adalah 40
+            zIndex: 55, // Sidebar mobile adalah 60
             animation: "fadeInUp 0.3s ease-out",
           }}
         />
@@ -421,7 +421,7 @@ export default function ChatPage({ isGuest,
 
         {/* WRAPPER FOR SPLIT SCREEN */}
         <div style={{ flex: 1, display: "flex", flexDirection: "row", overflow: "hidden", marginTop: 0 }}>
-          <PdfInterrogator darkMode={darkMode} language={language} />
+          <PdfInterrogator darkMode={darkMode} language={language} isMobile={isMobile} />
           <div
             style={{
               flex: 1,
@@ -445,7 +445,7 @@ export default function ChatPage({ isGuest,
                 flexDirection: "column",
               }}
             >
-              {corporateMode === 'mail' && <EmailTriageTab theme={theme} darkMode={darkMode} userData={currentUserData} language={language} />}
+              {corporateMode === 'mail' && <EmailTriageTab theme={theme} darkMode={darkMode} userData={currentUserData} language={language} isMobile={isMobile} toggleSidebar={() => setSidebarOpen(!sidebarOpen)} />}
               {corporateMode === 'notadinas' && <DocumentGeneratorTab theme={theme} darkMode={darkMode} userData={currentUserData} language={language} />}
               {corporateMode === 'vendor' && <VendorAnalyzerTab theme={theme} darkMode={darkMode} userData={currentUserData} language={language} />}
 
@@ -474,6 +474,9 @@ export default function ChatPage({ isGuest,
                     onOpenArtifact={handleOpenArtifact}
                     handleDownloadAllArtifacts={handleDownloadAllArtifacts}
                     language={language}
+                    isMobile={isMobile}
+                    sidebarOpen={sidebarOpen}
+                    hasSidebar={hasSidebar}
                   />
                 </>
               )}
@@ -509,15 +512,17 @@ export default function ChatPage({ isGuest,
                   style={{
                     width: "100%",
                     maxWidth: "700px",
-                    padding: "0 20px",
+                    padding: isMobile ? "0 16px" : "0 20px",
                     marginTop: "0px",
                     pointerEvents: "auto",
+                    boxSizing: "border-box",
                   }}
                 >
                   <ChatInputArea
                     theme={theme}
                     darkMode={darkMode}
                     isBottom={true}
+                    isMobile={isMobile}
                     showScrollBottom={showScrollBottom}
                     showWelcome={showWelcome}
                     messages={messages}
@@ -563,6 +568,7 @@ export default function ChatPage({ isGuest,
                 theme={theme}
                 darkMode={darkMode}
                 isBottom={true}
+                isMobile={isMobile}
                 showScrollBottom={showScrollBottom}
                 showWelcome={showWelcome}
                 messages={messages}

@@ -154,7 +154,7 @@ const Sidebar = ({
   return (
     <>
       <div
-      className={`fixed left-0 top-0 h-[100dvh] flex flex-col overflow-visible transition-all duration-300 z-40 ${isMobile
+      className={`fixed left-0 top-0 h-[100dvh] flex flex-col overflow-visible transition-all duration-300 ${isMobile ? "z-[60]" : "z-40"} ${isMobile
           ? (isOpen ? "w-64 translate-x-0" : "w-64 -translate-x-full")
           : (isOpen ? "w-64 translate-x-0" : "w-16 translate-x-0")
         }`}

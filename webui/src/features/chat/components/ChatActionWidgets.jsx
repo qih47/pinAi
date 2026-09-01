@@ -10,10 +10,10 @@ export const ActionSkeletonButton = ({ actionName }) => {
     return (
         <button 
             onClick={() => toast.info(`🚀 API Eksekusi untuk aksi "${actionName}" sedang dalam pengembangan.`)}
-            className="mt-3 flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl text-sm font-semibold transition-all shadow-md hover:shadow-lg"
+            className="inline-flex items-center gap-1.5 sm:gap-2 px-2.5 py-1.5 sm:px-4 sm:py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-lg sm:rounded-xl text-xs sm:text-sm font-semibold transition-all shadow-sm hover:shadow-md whitespace-nowrap shrink-0"
         >
-            <Rocket size={18} />
-            {actionName || "Eksekusi Aksi Sekarang"}
+            <Rocket className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
+            <span>{actionName || "Eksekusi Aksi"}</span>
         </button>
     );
 }
@@ -24,10 +24,10 @@ export const GhostWriterButton = ({ contentRef }) => {
     return (
         <button 
             onClick={() => setGhostWriter(true, "")}
-            className="mt-3 ml-2 inline-flex items-center gap-2 px-5 py-2.5 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-xl text-sm font-semibold transition-all shadow-sm"
+            className="inline-flex items-center gap-1.5 sm:gap-2 px-2.5 py-1.5 sm:px-4 sm:py-2 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-lg sm:rounded-xl text-xs sm:text-sm font-semibold transition-all shadow-sm whitespace-nowrap shrink-0"
         >
-            <FileText size={18} />
-            Buka di Editor (GhostWriter)
+            <FileText className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
+            <span>Buka di Editor<span className="hidden sm:inline"> (GhostWriter)</span></span>
         </button>
     );
 }
@@ -52,10 +52,10 @@ const ChatActionWidgets = ({ rawContent }) => {
     if (actions.length === 0 && !hasGhostWriter && !hasLineage) return null;
 
     return (
-        <div className="flex flex-col gap-2 mt-4 mb-3 pt-2 border-t border-gray-100 dark:border-gray-800">
+        <div className="flex flex-col gap-2 mt-3 mb-2 pt-2 border-t border-gray-100 dark:border-gray-800">
             {hasLineage && <LineageGraphWidget />}
             
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
                 {actions.map((action, idx) => (
                     <ActionSkeletonButton key={`action-${idx}`} actionName={action} />
                 ))}
@@ -69,3 +69,4 @@ const ChatActionWidgets = ({ rawContent }) => {
 };
 
 export default ChatActionWidgets;
+

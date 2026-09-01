@@ -14,7 +14,12 @@ export const getApiBase = () => {
  * @returns {string} Absolute URL to the file
  */
 export function getUploadUrl(filePath) {
-  if (!filePath) return '';
+  if (!filePath || typeof filePath !== 'string') return '';
+  
+  // If it's already an absolute HTTP/HTTPS URL
+  if (filePath.startsWith('http://') || filePath.startsWith('https://') || filePath.startsWith('blob:')) {
+    return filePath;
+  }
   
   let npp = '';
   try {
@@ -26,15 +31,16 @@ export function getUploadUrl(filePath) {
   } catch(e) {}
   
   const tokenQuery = npp ? `?npp=${encodeURIComponent(npp)}` : '';
+  const cleanPath = filePath.startsWith('/') ? filePath.slice(1) : filePath;
   
-  if (filePath.startsWith('accounts/')) {
-    return `${getApiBase()}/${filePath}${tokenQuery}`;
+  if (cleanPath.startsWith('accounts/')) {
+    return `${getApiBase()}/${cleanPath}${tokenQuery}`;
   }
-  if (filePath.includes('file_peraturan/')) {
-    const filename = filePath.split('file_peraturan/').pop();
+  if (cleanPath.includes('file_peraturan/')) {
+    const filename = cleanPath.split('file_peraturan/').pop();
     return `${getApiBase()}/file_peraturan/${filename}${tokenQuery}`;
   }
-  const filename = filePath.includes('/') ? filePath.split('/').pop() : filePath;
+  const filename = cleanPath.includes('/') ? cleanPath.split('/').pop() : cleanPath;
   return `${getApiBase()}/uploads/${filename}${tokenQuery}`;
 }
 

@@ -4,24 +4,43 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
+import { Document, Page, pdfjs } from 'react-pdf';
+import 'react-pdf/dist/Page/AnnotationLayer.css';
+import 'react-pdf/dist/Page/TextLayer.css';
 import { translations } from "../../../../utils/translations";
 import { getApiBase } from "../../../../services/endpoints";
+
+pdfjs.GlobalWorkerOptions.workerSrc = new URL(
+    'pdfjs-dist/build/pdf.worker.min.mjs',
+    import.meta.url,
+).toString();
 
 const ModeHintIcon = ({ title, hintText, icon, darkMode }) => {
   const [show, setShow] = useState(false);
   const triggerRef = useRef(null);
   const [coords, setCoords] = useState({ top: 0, left: 0 });
 
-  const handleMouseEnter = (e) => {
-    e.stopPropagation();
+  const updateCoords = () => {
     if (triggerRef.current) {
       const rect = triggerRef.current.getBoundingClientRect();
+      const safeLeft = Math.min(window.innerWidth - 125, Math.max(125, rect.left + rect.width / 2));
       setCoords({
         top: rect.top - 6,
-        left: rect.left + rect.width / 2,
+        left: safeLeft,
       });
     }
+  };
+
+  const handleMouseEnter = (e) => {
+    e.stopPropagation();
+    updateCoords();
     setShow(true);
+  };
+
+  const handleClick = (e) => {
+    e.stopPropagation();
+    updateCoords();
+    setShow(prev => !prev);
   };
 
   return (
@@ -30,7 +49,7 @@ const ModeHintIcon = ({ title, hintText, icon, darkMode }) => {
         ref={triggerRef}
         onMouseEnter={handleMouseEnter}
         onMouseLeave={(e) => { e.stopPropagation(); setShow(false); }}
-        onClick={(e) => e.stopPropagation()}
+        onClick={handleClick}
         style={{
           position: 'absolute',
           right: '6px',
@@ -61,7 +80,7 @@ const ModeHintIcon = ({ title, hintText, icon, darkMode }) => {
             left: `${coords.left}px`,
             transform: 'translate(-50%, -100%)',
             zIndex: 999999,
-            width: '230px',
+            width: 'min(230px, calc(100vw - 32px))',
             padding: '8px 11px',
             borderRadius: '8px',
             fontSize: '11px',
@@ -127,6 +146,10 @@ export default function ContextIsolationModal({
   const [previewPdfUrl, setPreviewPdfUrl] = useState(null);
   const [previewPdfBlobUrl, setPreviewPdfBlobUrl] = useState(null);
   const [isLoadingPdf, setIsLoadingPdf] = useState(false);
+  const [previewNumPages, setPreviewNumPages] = useState(null);
+  const [previewPageNumber, setPreviewPageNumber] = useState(1);
+  const [previewScale, setPreviewScale] = useState(1.0);
+  const [previewViewMode, setPreviewViewMode] = useState('scroll');
 
   const [expandedLineageDocId, setExpandedLineageDocId] = useState(null);
   const [lineageData, setLineageData] = useState(null);
@@ -190,10 +213,12 @@ export default function ContextIsolationModal({
         alignItems: "center",
         justifyContent: "center",
         animation: "fadeInUp 0.2s ease-out",
-        padding: "20px",
+        padding: "10px",
       }}
+      onClick={onClose}
     >
       <div
+        onClick={(e) => e.stopPropagation()}
         style={{
           background: darkMode ? "#1e1e20" : "#ffffff",
           color: theme.textColor,
@@ -204,20 +229,20 @@ export default function ContextIsolationModal({
           boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.3)",
           display: "flex",
           flexDirection: "column",
-          maxHeight: "85vh",
+          maxHeight: "92vh",
           overflow: "hidden",
         }}
       >
         <div
           style={{
-            padding: "16px 20px",
+            padding: "14px 16px",
             borderBottom: `1px solid ${theme.borderColor}`,
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
           }}
         >
-          <h3 style={{ margin: 0, fontSize: "16px", fontWeight: 600 }}>
+          <h3 style={{ margin: 0, fontSize: "15px", fontWeight: 600 }}>
             {t.title}
           </h3>
           <button
@@ -229,6 +254,8 @@ export default function ContextIsolationModal({
               cursor: "pointer",
               fontSize: "18px",
               fontWeight: "bold",
+              padding: "4px 8px",
+              lineHeight: 1,
             }}
           >
             ✕
@@ -237,10 +264,10 @@ export default function ContextIsolationModal({
 
         <div
           style={{
-            padding: "16px 20px",
+            padding: "12px 14px",
             display: "flex",
             flexDirection: "column",
-            gap: "12px",
+            gap: "10px",
             flex: 1,
             overflowY: "auto",
           }}
@@ -251,14 +278,15 @@ export default function ContextIsolationModal({
             value={docSearchQuery}
             onChange={(e) => setDocSearchQuery(e.target.value)}
             style={{
-              padding: "10px 14px",
+              padding: "9px 12px",
               borderRadius: "8px",
               border: `1px solid ${theme.inputBorder}`,
               background: theme.inputBg,
               color: theme.textColor,
               outline: "none",
-              fontSize: "14px",
+              fontSize: "13px",
               width: "100%",
+              boxSizing: "border-box",
             }}
           />
 
@@ -310,7 +338,7 @@ export default function ContextIsolationModal({
                   <div
                     key={doc.id}
                     style={{
-                      padding: "12px 16px",
+                      padding: "12px 14px",
                       borderRadius: "10px",
                       background: isIsolated
                         ? darkMode
@@ -323,12 +351,12 @@ export default function ContextIsolationModal({
                         }`,
                       display: "flex",
                       flexDirection: "column",
-                      gap: "12px",
+                      gap: "10px",
                       transition: "all 0.15s ease",
                     }}
                   >
                     <div
-                      style={{ display: "flex", flexDirection: "column", gap: "12px" }}
+                      style={{ display: "flex", flexDirection: "column", gap: "10px" }}
                     >
                       <div style={{ minWidth: 0, flex: 1, textAlign: "left" }}>
                         <div
@@ -336,7 +364,7 @@ export default function ContextIsolationModal({
                             fontWeight: 600,
                             fontSize: "13.5px",
                             lineHeight: "1.4",
-                            overflowWrap: "break-word",
+                            overflowWrap: "anywhere",
                             wordBreak: "break-word",
                             color: theme.textColor,
                           }}
@@ -347,7 +375,10 @@ export default function ContextIsolationModal({
                           style={{
                             fontSize: "11px",
                             color: theme.secondaryText,
-                            marginTop: "2px",
+                            marginTop: "3px",
+                            lineHeight: "1.4",
+                            overflowWrap: "break-word",
+                            wordBreak: "break-word",
                           }}
                         >
                           {t.number}: {doc.nomor || "-"} | {t.type}: {doc.jenis_dokumen || "-"} | {t.date || "Tanggal"}: {formatDocDate(doc.tgl_tetap || doc.tanggal || doc.created_at)}
@@ -364,34 +395,48 @@ export default function ContextIsolationModal({
                               borderLeft: `2px solid ${theme.borderColor}`,
                               lineHeight: "1.5",
                               fontStyle: "italic",
+                              overflowWrap: "break-word",
+                              wordBreak: "break-word",
                             }}
                             dangerouslySetInnerHTML={{ __html: doc.snippet }}
                           />
                         )}
-                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: "12px" }}>
-                          <div
-                            style={{
-                              display: "inline-block",
-                              padding: "2px 8px",
-                              borderRadius: "12px",
-                              fontSize: "10px",
-                              fontWeight: 600,
-                              backgroundColor:
-                                doc.stataktif === "batal" ? "rgba(239, 68, 68, 0.15)" :
-                                  doc.stataktif === "obsolete" ? "rgba(245, 158, 11, 0.15)" :
-                                    "rgba(10, 185, 129, 0.15)",
-                              color:
-                                doc.stataktif === "batal" ? "#ef4444" :
-                                  doc.stataktif === "obsolete" ? "#f59e0b" :
-                                    "#10b981",
-                            }}
-                          >
-                            {doc.stataktif === "batal" ? t.revokedStatus :
-                              doc.stataktif === "obsolete" ? t.obsoleteStatus :
-                                t.validStatus}
-                          </div>
+                        <div
+                          style={{
+                            display: "flex",
+                            flexWrap: "wrap",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                            gap: "8px",
+                            marginTop: "10px",
+                            paddingTop: "6px",
+                          }}
+                        >
+                          {/* Sisi Kiri: Status Dokumen + Alat Ekstra (Eye, Download, Lineage, Insight, Chevron) */}
+                          <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
+                            <div
+                              style={{
+                                display: "inline-flex",
+                                alignItems: "center",
+                                padding: "2px 8px",
+                                borderRadius: "12px",
+                                fontSize: "10px",
+                                fontWeight: 600,
+                                backgroundColor:
+                                  doc.stataktif === "batal" ? "rgba(239, 68, 68, 0.15)" :
+                                    doc.stataktif === "obsolete" ? "rgba(245, 158, 11, 0.15)" :
+                                      "rgba(10, 185, 129, 0.15)",
+                                color:
+                                  doc.stataktif === "batal" ? "#ef4444" :
+                                    doc.stataktif === "obsolete" ? "#f59e0b" :
+                                      "#10b981",
+                              }}
+                            >
+                              {doc.stataktif === "batal" ? t.revokedStatus :
+                                doc.stataktif === "obsolete" ? t.obsoleteStatus :
+                                  t.validStatus}
+                            </div>
 
-                          <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
                             {doc.filename && !isIsolated && expandedActions[doc.id] && (
                               <>
                                 {/* Tombol Eye dengan dropdown PDF / Portal */}
@@ -423,7 +468,7 @@ export default function ContextIsolationModal({
                                       <circle cx="12" cy="12" r="3"></circle>
                                     </svg>
                                   </button>
-                                  {/* Dropdown menu dengan hover bridge mulus (paddingTop bukan marginTop) */}
+                                  {/* Dropdown menu dengan hover bridge mulus */}
                                   {eyeDropdownDocId === doc.id && (
                                     <div
                                       style={{
@@ -648,9 +693,9 @@ export default function ContextIsolationModal({
                                 }}
                                 title={expandedActions[doc.id] ? "Sembunyikan aksi" : "Tampilkan aksi lainnya"}
                                 style={{
-                                  padding: "4px 8px",
-                                  background: "transparent",
-                                  border: "none",
+                                  padding: "4px 6px",
+                                  background: expandedActions[doc.id] ? (darkMode ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.06)") : "transparent",
+                                  border: `1px solid ${expandedActions[doc.id] ? (darkMode ? "rgba(255,255,255,0.15)" : "rgba(0,0,0,0.1)") : "transparent"}`,
                                   color: theme.textColor,
                                   cursor: "pointer",
                                   display: "flex",
@@ -665,7 +710,10 @@ export default function ContextIsolationModal({
                                 </svg>
                               </button>
                             )}
+                          </div>
 
+                          {/* Sisi Kanan: Tombol Mode Chat (Tanya, Kepatuhan, Bedah, atau Unfocus) */}
+                          <div style={{ display: "flex", gap: "6px", alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end" }}>
                             {isIsolated ? (
                               <button
                                 onClick={() => {
@@ -1050,12 +1098,14 @@ export default function ContextIsolationModal({
         {/* Pagination UI */}
         <div
           style={{
-            padding: "12px 20px",
+            padding: "10px 16px",
             borderTop: `1px solid ${theme.borderColor}`,
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
+            gap: "8px",
             background: darkMode ? "#1e1e20" : "#ffffff",
+            flexShrink: 0,
           }}
         >
           <button
@@ -1105,8 +1155,8 @@ export default function ContextIsolationModal({
             position: "fixed",
             inset: 0,
             zIndex: 1000,
-            background: "rgba(0,0,0,0.75)",
-            backdropFilter: "blur(4px)",
+            background: "rgba(0,0,0,0.85)",
+            backdropFilter: "blur(6px)",
             display: "flex",
             flexDirection: "column",
             alignItems: "center",
@@ -1124,60 +1174,242 @@ export default function ContextIsolationModal({
             style={{
               width: "100%",
               height: "100%",
-              background: "#000000",
+              background: darkMode ? "#18181b" : "#f1f5f9",
               position: "relative",
               display: "flex",
               flexDirection: "column",
+              overflow: "hidden",
             }}
             onClick={(e) => e.stopPropagation()}
           >
-            {/* Floating Close Button */}
-            <button
-              onClick={() => {
-                setPreviewPdfUrl(null);
-                if (previewPdfBlobUrl) URL.revokeObjectURL(previewPdfBlobUrl);
-                setPreviewPdfBlobUrl(null);
-              }}
+            {/* Top Toolbar */}
+            <div
               style={{
-                position: "absolute",
-                top: "20px",
-                right: "20px",
-                zIndex: 1001,
-                background: "rgba(0,0,0,0.5)",
-                border: "none",
-                borderRadius: "50%",
-                color: "#ffffff",
-                cursor: "pointer",
-                padding: "8px",
                 display: "flex",
                 alignItems: "center",
-                justifyContent: "center",
-                backdropFilter: "blur(4px)",
-                transition: "all 0.2s ease",
+                justifyContent: "space-between",
+                padding: "10px 16px",
+                background: darkMode ? "#1f1f23" : "#ffffff",
+                borderBottom: `1px solid ${darkMode ? "rgba(255,255,255,0.08)" : "#e2e8f0"}`,
+                zIndex: 10,
+                flexWrap: "wrap",
+                gap: "8px",
               }}
-              onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(239,68,68,0.8)")}
-              onMouseLeave={(e) => (e.currentTarget.style.background = "rgba(0,0,0,0.5)")}
             >
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                <line x1="18" y1="6" x2="6" y2="18"></line>
-                <line x1="6" y1="6" x2="18" y2="18"></line>
-              </svg>
-            </button>
+              <div style={{ display: "flex", alignItems: "center", gap: "10px", minWidth: 0 }}>
+                <span style={{ fontSize: "13px", fontWeight: "600", color: darkMode ? "#f3f4f6" : "#1f2937", whiteSpace: "nowrap" }}>
+                  Pratinjau Dokumen
+                </span>
+                {previewNumPages && (
+                  <span style={{ fontSize: "12px", color: darkMode ? "#9ca3af" : "#6b7280", whiteSpace: "nowrap" }}>
+                    {previewViewMode === 'page' ? `Hal. ${previewPageNumber}/${previewNumPages}` : `${previewNumPages} Halaman`}
+                  </span>
+                )}
+              </div>
 
-            {/* PDF Viewer */}
-            <div style={{ flex: 1, position: "relative", width: "100%", height: "100%" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                {/* Zoom Controls */}
+                <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                  <button
+                    onClick={() => setPreviewScale(s => Math.max(0.6, s - 0.15))}
+                    style={{
+                      padding: "4px 8px",
+                      borderRadius: "6px",
+                      fontSize: "12px",
+                      fontWeight: 600,
+                      background: darkMode ? "#27272a" : "#f1f5f9",
+                      border: `1px solid ${darkMode ? "#3f3f46" : "#cbd5e1"}`,
+                      color: darkMode ? "#e4e4e7" : "#334155",
+                      cursor: "pointer",
+                    }}
+                    title="Perkecil"
+                  >
+                    -
+                  </button>
+                  <span style={{ fontSize: "11px", fontWeight: 600, width: "36px", textAlign: "center", color: darkMode ? "#a1a1aa" : "#4b5563" }}>
+                    {Math.round(previewScale * 100)}%
+                  </span>
+                  <button
+                    onClick={() => setPreviewScale(s => Math.min(2.5, s + 0.15))}
+                    style={{
+                      padding: "4px 8px",
+                      borderRadius: "6px",
+                      fontSize: "12px",
+                      fontWeight: 600,
+                      background: darkMode ? "#27272a" : "#f1f5f9",
+                      border: `1px solid ${darkMode ? "#3f3f46" : "#cbd5e1"}`,
+                      color: darkMode ? "#e4e4e7" : "#334155",
+                      cursor: "pointer",
+                    }}
+                    title="Perbesar"
+                  >
+                    +
+                  </button>
+                </div>
+
+                {/* Mode Scroll / Page */}
+                {previewNumPages && (
+                  <button
+                    onClick={() => setPreviewViewMode(prev => prev === 'scroll' ? 'page' : 'scroll')}
+                    style={{
+                      padding: "5px 10px",
+                      borderRadius: "6px",
+                      fontSize: "12px",
+                      fontWeight: 500,
+                      background: darkMode ? "#27272a" : "#f1f5f9",
+                      border: `1px solid ${darkMode ? "#3f3f46" : "#cbd5e1"}`,
+                      color: darkMode ? "#e4e4e7" : "#334155",
+                      cursor: "pointer",
+                    }}
+                  >
+                    {previewViewMode === 'scroll' ? "Gulir" : "Halaman"}
+                  </button>
+                )}
+
+                {/* Open in New Tab */}
+                {previewPdfBlobUrl && (
+                  <button
+                    onClick={() => window.open(previewPdfBlobUrl, '_blank')}
+                    style={{
+                      padding: "5px 8px",
+                      borderRadius: "6px",
+                      fontSize: "12px",
+                      fontWeight: 500,
+                      background: darkMode ? "#27272a" : "#f1f5f9",
+                      border: `1px solid ${darkMode ? "#3f3f46" : "#cbd5e1"}`,
+                      color: darkMode ? "#e4e4e7" : "#334155",
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                    }}
+                    title="Buka di tab baru"
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+                      <polyline points="15 3 21 3 21 9"></polyline>
+                      <line x1="10" y1="14" x2="21" y2="3"></line>
+                    </svg>
+                  </button>
+                )}
+
+                {/* Close Button */}
+                <button
+                  onClick={() => {
+                    setPreviewPdfUrl(null);
+                    if (previewPdfBlobUrl) URL.revokeObjectURL(previewPdfBlobUrl);
+                    setPreviewPdfBlobUrl(null);
+                  }}
+                  style={{
+                    background: "rgba(239,68,68,0.15)",
+                    border: "1px solid rgba(239,68,68,0.3)",
+                    borderRadius: "6px",
+                    color: "#ef4444",
+                    cursor: "pointer",
+                    padding: "5px 10px",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "4px",
+                    fontSize: "12px",
+                    fontWeight: 600,
+                  }}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                  </svg>
+                  <span>Tutup</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Document Content with Touch Scrolling */}
+            <div
+              style={{
+                flex: 1,
+                overflowY: "auto",
+                overflowX: "hidden",
+                WebkitOverflowScrolling: "touch",
+                position: "relative",
+                padding: "12px",
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+              }}
+              className="custom-scrollbar"
+            >
               {isLoadingPdf ? (
-                <div style={{ display: "flex", justifyContent: "center", alignItems: "center", height: "100%", color: theme.secondaryText }}>
-                  {t.loadingPdf}
+                <div style={{ display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", height: "100%", gap: "8px", color: darkMode ? "#9ca3af" : "#64748b" }}>
+                  <div style={{ width: "24px", height: "24px", border: "2px solid rgba(99,102,241,0.2)", borderTopColor: "#6366f1", borderRadius: "50%", animation: "rotate-spin 0.8s linear infinite" }} />
+                  <span style={{ fontSize: "13px" }}>{t.loadingPdf || "Memuat dokumen..."}</span>
                 </div>
               ) : previewPdfBlobUrl ? (
-                <iframe
-                  src={`${previewPdfBlobUrl}#view=FitH`}
-                  title="Preview Dokumen"
-                  width="100%"
-                  height="100%"
-                  style={{ border: "none", display: "block" }}
-                />
+                <Document
+                  file={previewPdfBlobUrl}
+                  onLoadSuccess={({ numPages }) => {
+                    setPreviewNumPages(numPages);
+                    setPreviewPageNumber(1);
+                  }}
+                  loading={
+                    <div style={{ display: "flex", justifyContent: "center", alignItems: "center", height: "100%", color: darkMode ? "#9ca3af" : "#64748b" }}>
+                      Memuat halaman PDF...
+                    </div>
+                  }
+                  error={
+                    <div style={{ display: "flex", justifyContent: "center", alignItems: "center", height: "100%", color: "#ef4444" }}>
+                      Gagal memuat PDF.
+                    </div>
+                  }
+                  className="flex flex-col items-center w-full"
+                >
+                  {previewViewMode === 'scroll' && previewNumPages ? (
+                    <div className="flex flex-col items-center gap-4 w-full">
+                      {Array.from(new Array(previewNumPages), (_, index) => (
+                        <div key={`page_${index + 1}`} className="shadow-xl bg-white max-w-full overflow-hidden">
+                          <Page
+                            pageNumber={index + 1}
+                            scale={previewScale}
+                            width={Math.min(window.innerWidth - 24, 750)}
+                            renderTextLayer={true}
+                            renderAnnotationLayer={true}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    previewNumPages && (
+                      <div className="flex flex-col items-center gap-3">
+                        <div className="shadow-xl bg-white max-w-full overflow-hidden">
+                          <Page
+                            pageNumber={previewPageNumber}
+                            scale={previewScale}
+                            width={Math.min(window.innerWidth - 24, 750)}
+                            renderTextLayer={true}
+                            renderAnnotationLayer={true}
+                          />
+                        </div>
+                        <div className="flex items-center gap-2 mt-2">
+                          <button
+                            disabled={previewPageNumber <= 1}
+                            onClick={() => setPreviewPageNumber(p => Math.max(1, p - 1))}
+                            className="px-3 py-1.5 rounded bg-gray-200 dark:bg-gray-700 text-xs font-semibold disabled:opacity-40"
+                          >
+                            Prev
+                          </button>
+                          <span className="text-xs font-medium text-gray-700 dark:text-gray-300">
+                            {previewPageNumber} / {previewNumPages}
+                          </span>
+                          <button
+                            disabled={previewPageNumber >= previewNumPages}
+                            onClick={() => setPreviewPageNumber(p => Math.min(previewNumPages, p + 1))}
+                            className="px-3 py-1.5 rounded bg-gray-200 dark:bg-gray-700 text-xs font-semibold disabled:opacity-40"
+                          >
+                            Next
+                          </button>
+                        </div>
+                      </div>
+                    )
+                  )}
+                </Document>
               ) : null}
             </div>
           </div>

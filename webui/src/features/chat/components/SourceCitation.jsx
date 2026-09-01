@@ -114,13 +114,18 @@ const SourceCitation = ({ sources, darkMode, theme, language = 'id', onPreview, 
 
   const handleView = (e, source) => {
     e.stopPropagation();
-    const rawPath = source.url || source.file_path;
-    const fileUrl = rawPath ? getUploadUrl(rawPath) : null;
+    const rawPath = source.file_path || (source.filename && source.filename.endsWith('.pdf') ? source.filename : null);
+    const fileUrl = rawPath ? getUploadUrl(rawPath) : (source.url && source.url.endsWith('.pdf') ? source.url : null);
 
     if (fileUrl) {
       setSplitScreen(true, fileUrl);
-    } else if (onPreview) {
-      onPreview(source);
+    } else {
+      const docId = source.id || source.dokumen_id;
+      if (docId) {
+        window.open(`https://peraturan.pindad.com/content/detail/${docId}`, '_blank', 'noopener,noreferrer');
+      } else if (onPreview) {
+        onPreview(source);
+      }
     }
   };
 

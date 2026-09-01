@@ -327,30 +327,30 @@ export default function SettingsModal({
     switch (activeTab) {
       case "general":
         return (
-          <div className="space-y-8 max-w-2xl">
-            <h2 className="text-xl font-bold mb-6">{t.general}</h2>
+          <div className="space-y-6 sm:space-y-8 max-w-2xl">
+            <h2 className="text-lg sm:text-xl font-bold mb-4 sm:mb-6">{t.general}</h2>
 
             {/* Theme */}
-            <div className={`flex items-center justify-between py-4 border-b ${darkMode ? 'border-gray-700/50' : 'border-gray-200'}`}>
+            <div className={`flex flex-col sm:flex-row sm:items-center justify-between gap-3 py-3.5 sm:py-4 border-b ${darkMode ? 'border-gray-700/50' : 'border-gray-200'}`}>
               <div>
                 <h3 className="font-medium text-[14px]">{t.theme}</h3>
               </div>
-              <div className={`flex rounded-full p-1 border ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-gray-100 border-gray-200'}`}>
+              <div className={`flex rounded-full p-1 border w-full sm:w-auto justify-center ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-gray-100 border-gray-200'}`}>
                 <button
                   onClick={() => setDarkMode(false)}
-                  className={`px-4 py-1.5 rounded-full text-sm font-medium transition-all ${themeSetting === 'light' ? (darkMode ? 'bg-gray-700 text-white shadow-sm' : 'bg-white text-gray-900 shadow-sm') : (darkMode ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-gray-900')}`}
+                  className={`flex-1 sm:flex-none px-3 sm:px-4 py-1.5 rounded-full text-xs sm:text-sm font-medium transition-all ${themeSetting === 'light' ? (darkMode ? 'bg-gray-700 text-white shadow-sm' : 'bg-white text-gray-900 shadow-sm') : (darkMode ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-gray-900')}`}
                 >
                   {t.light}
                 </button>
                 <button
                   onClick={() => setDarkMode(true)}
-                  className={`px-4 py-1.5 rounded-full text-sm font-medium transition-all ${themeSetting === 'dark' ? (darkMode ? 'bg-gray-700 text-white shadow-sm' : 'bg-white text-gray-900 shadow-sm') : (darkMode ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-gray-900')}`}
+                  className={`flex-1 sm:flex-none px-3 sm:px-4 py-1.5 rounded-full text-xs sm:text-sm font-medium transition-all ${themeSetting === 'dark' ? (darkMode ? 'bg-gray-700 text-white shadow-sm' : 'bg-white text-gray-900 shadow-sm') : (darkMode ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-gray-900')}`}
                 >
                   {t.dark}
                 </button>
                 <button
                   onClick={() => setDarkMode('system')}
-                  className={`px-4 py-1.5 rounded-full text-sm font-medium transition-all ${themeSetting === 'system' ? (darkMode ? 'bg-gray-700 text-white shadow-sm' : 'bg-white text-gray-900 shadow-sm') : (darkMode ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-gray-900')}`}
+                  className={`flex-1 sm:flex-none px-3 sm:px-4 py-1.5 rounded-full text-xs sm:text-sm font-medium transition-all ${themeSetting === 'system' ? (darkMode ? 'bg-gray-700 text-white shadow-sm' : 'bg-white text-gray-900 shadow-sm') : (darkMode ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-gray-900')}`}
                 >
                   {t.system}
                 </button>
@@ -358,14 +358,14 @@ export default function SettingsModal({
             </div>
 
             {/* Language */}
-            <div className={`flex items-center justify-between py-4 border-b ${darkMode ? 'border-gray-700/50' : 'border-gray-200'}`}>
+            <div className={`flex flex-col sm:flex-row sm:items-center justify-between gap-3 py-3.5 sm:py-4 border-b ${darkMode ? 'border-gray-700/50' : 'border-gray-200'}`}>
               <div>
                 <h3 className="font-medium text-[14px]">{t.language}</h3>
               </div>
-              <div className="relative" ref={languageDropdownRef}>
+              <div className="relative w-full sm:w-auto" ref={languageDropdownRef}>
                 <button
                   onClick={() => setIsLanguageDropdownOpen(!isLanguageDropdownOpen)}
-                  className={`flex items-center justify-between text-sm border rounded-lg px-3 py-2 outline-none min-w-[160px] transition-all ${darkMode ? 'bg-[#18181b] border-gray-700 hover:border-gray-500 text-gray-200' : 'bg-gray-50 border-gray-300 hover:border-gray-400 text-gray-700'} ${isLanguageDropdownOpen ? (darkMode ? 'border-gray-500 ring-2 ring-gray-700' : 'border-gray-400 ring-2 ring-gray-200') : ''}`}
+                  className={`flex items-center justify-between text-sm border rounded-lg px-3 py-2 outline-none w-full sm:min-w-[160px] transition-all ${darkMode ? 'bg-[#18181b] border-gray-700 hover:border-gray-500 text-gray-200' : 'bg-gray-50 border-gray-300 hover:border-gray-400 text-gray-700'} ${isLanguageDropdownOpen ? (darkMode ? 'border-gray-500 ring-2 ring-gray-700' : 'border-gray-400 ring-2 ring-gray-200') : ''}`}
                 >
                   <span>{language === 'en' ? 'English (US)' : 'Bahasa Indonesia'}</span>
                   <svg className={`w-4 h-4 transition-transform duration-200 ${isLanguageDropdownOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -374,7 +374,7 @@ export default function SettingsModal({
                 </button>
 
                 {isLanguageDropdownOpen && (
-                  <div className={`absolute right-0 mt-2 w-[160px] rounded-xl shadow-xl border overflow-hidden z-50 animate-in fade-in zoom-in-95 duration-200 ${darkMode ? 'bg-[#18181b] border-gray-700 shadow-black/50' : 'bg-white border-gray-200 shadow-gray-200/50'}`}>
+                  <div className={`absolute right-0 mt-2 w-full sm:w-[160px] rounded-xl shadow-xl border overflow-hidden z-50 animate-in fade-in zoom-in-95 duration-200 ${darkMode ? 'bg-[#18181b] border-gray-700 shadow-black/50' : 'bg-white border-gray-200 shadow-gray-200/50'}`}>
                     <div className="py-2">
                       <button
                         onClick={() => { setLanguage('en'); setIsLanguageDropdownOpen(false); }}
@@ -395,14 +395,14 @@ export default function SettingsModal({
             </div>
 
             {/* Communication Style / Gaya Bahasa */}
-            <div className={`flex items-center justify-between py-4 border-b ${darkMode ? 'border-gray-700/50' : 'border-gray-200'}`}>
+            <div className={`flex flex-col sm:flex-row sm:items-center justify-between gap-3 py-3.5 sm:py-4 border-b ${darkMode ? 'border-gray-700/50' : 'border-gray-200'}`}>
               <div>
                 <h3 className="font-medium text-[14px]">{t.communicationStyle}</h3>
               </div>
-              <div className="relative" ref={styleDropdownRef}>
+              <div className="relative w-full sm:w-auto" ref={styleDropdownRef}>
                 <button
                   onClick={() => setIsStyleDropdownOpen(!isStyleDropdownOpen)}
-                  className={`flex items-center justify-between text-sm border rounded-lg px-3 py-2 outline-none w-[190px] transition-all ${darkMode ? 'bg-[#18181b] border-gray-700 hover:border-gray-500 text-gray-200' : 'bg-gray-50 border-gray-300 hover:border-gray-400 text-gray-700'} ${isStyleDropdownOpen ? (darkMode ? 'border-gray-500 ring-2 ring-gray-700' : 'border-gray-400 ring-2 ring-gray-200') : ''}`}
+                  className={`flex items-center justify-between text-sm border rounded-lg px-3 py-2 outline-none w-full sm:w-[190px] transition-all ${darkMode ? 'bg-[#18181b] border-gray-700 hover:border-gray-500 text-gray-200' : 'bg-gray-50 border-gray-300 hover:border-gray-400 text-gray-700'} ${isStyleDropdownOpen ? (darkMode ? 'border-gray-500 ring-2 ring-gray-700' : 'border-gray-400 ring-2 ring-gray-200') : ''}`}
                 >
                   <span className="truncate text-left">
                     {communicationStyle === 'informal_gue_lo' && t.commStyleCasual}
@@ -416,7 +416,7 @@ export default function SettingsModal({
                 </button>
 
                 {isStyleDropdownOpen && (
-                  <div className={`absolute right-0 mt-2 w-[190px] rounded-xl shadow-xl border overflow-hidden z-50 animate-in fade-in zoom-in-95 duration-200 ${darkMode ? 'bg-[#18181b] border-gray-700 shadow-black/50' : 'bg-white border-gray-200 shadow-gray-200/50'}`}>
+                  <div className={`absolute right-0 mt-2 w-full sm:w-[190px] rounded-xl shadow-xl border overflow-hidden z-50 animate-in fade-in zoom-in-95 duration-200 ${darkMode ? 'bg-[#18181b] border-gray-700 shadow-black/50' : 'bg-white border-gray-200 shadow-gray-200/50'}`}>
                     <div className="py-2">
                       <button
                         onClick={() => handleStyleChange('formal_saya_anda')}
@@ -449,39 +449,39 @@ export default function SettingsModal({
             </div>
 
             {/* Auto Read Aloud */}
-            <div className={`flex items-center justify-between py-4 border-b ${darkMode ? 'border-gray-700/50' : 'border-gray-200'}`}>
-              <div>
+            <div className={`flex items-center justify-between py-3.5 sm:py-4 border-b ${darkMode ? 'border-gray-700/50' : 'border-gray-200'}`}>
+              <div className="pr-4">
                 <h3 className="font-medium text-[14px]">{t.autoReadAloud}</h3>
                 <p className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{t.autoReadAloudDesc}</p>
               </div>
               <button
                 onClick={() => setAutoReadAloud(!autoReadAloud)}
-                className={`relative inline-flex h-5 w-10 items-center rounded-full transition-colors ${autoReadAloud ? 'bg-blue-500' : (darkMode ? 'bg-gray-600' : 'bg-gray-300')}`}
+                className={`relative inline-flex h-5 w-10 items-center rounded-full transition-colors flex-shrink-0 ${autoReadAloud ? 'bg-blue-500' : (darkMode ? 'bg-gray-600' : 'bg-gray-300')}`}
               >
                 <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${autoReadAloud ? 'translate-x-5' : 'translate-x-1'}`} />
               </button>
             </div>
 
             {/* Voice Settings */}
-            <div className={`flex items-center justify-between py-4 border-b ${darkMode ? 'border-gray-700/50' : 'border-gray-200'}`}>
+            <div className={`flex flex-col sm:flex-row sm:items-center justify-between gap-3 py-3.5 sm:py-4 border-b ${darkMode ? 'border-gray-700/50' : 'border-gray-200'}`}>
               <div>
                 <h3 className="font-medium text-[14px]">{t.voiceSelection}</h3>
                 <p className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{t.voiceSelectionDesc}</p>
               </div>
-              <div className="flex items-center space-x-3">
+              <div className="flex flex-wrap sm:flex-nowrap items-center gap-2.5 sm:space-x-3 w-full sm:w-auto">
                 <button
                   onClick={handleTestVoice}
                   disabled={isPlayingTest}
-                  className={`px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors disabled:opacity-50 ${darkMode ? 'border-gray-700 hover:bg-gray-800 text-gray-200' : 'border-gray-300 hover:bg-gray-100 text-gray-700'}`}
+                  className={`px-3 py-2 sm:py-1.5 text-xs font-medium rounded-lg border transition-colors disabled:opacity-50 flex-shrink-0 ${darkMode ? 'border-gray-700 hover:bg-gray-800 text-gray-200' : 'border-gray-300 hover:bg-gray-100 text-gray-700'}`}
                 >
                   {isPlayingTest ? t.playing : t.testVoice}
                 </button>
-                <div className="relative" ref={voiceDropdownRef}>
+                <div className="relative flex-1 sm:flex-none min-w-[170px]" ref={voiceDropdownRef}>
                   <button
                     onClick={() => setIsVoiceDropdownOpen(!isVoiceDropdownOpen)}
-                    className={`flex items-center justify-between text-sm border rounded-lg px-3 py-2 outline-none min-w-[180px] transition-all ${darkMode ? 'bg-[#18181b] border-gray-700 hover:border-gray-500 text-gray-200' : 'bg-gray-50 border-gray-300 hover:border-gray-400 text-gray-700'} ${isVoiceDropdownOpen ? (darkMode ? 'border-gray-500 ring-2 ring-gray-700' : 'border-gray-400 ring-2 ring-gray-200') : ''}`}
+                    className={`flex items-center justify-between text-sm border rounded-lg px-3 py-2 outline-none w-full sm:min-w-[180px] transition-all ${darkMode ? 'bg-[#18181b] border-gray-700 hover:border-gray-500 text-gray-200' : 'bg-gray-50 border-gray-300 hover:border-gray-400 text-gray-700'} ${isVoiceDropdownOpen ? (darkMode ? 'border-gray-500 ring-2 ring-gray-700' : 'border-gray-400 ring-2 ring-gray-200') : ''}`}
                   >
-                    <span>
+                    <span className="truncate text-left">
                       {ttsVoice === 'id-ID-Pria1' && `CAKRA (ID) - ${t.male} 1`}
                       {ttsVoice === 'id-ID-Pria2' && `CAKRA (ID) - ${t.male} 2`}
                       {ttsVoice === 'id-ID-Wanita1' && `CAKRA (ID) - ${t.female} 1`}
@@ -490,13 +490,13 @@ export default function SettingsModal({
                       {ttsVoice === 'en-US-ChristopherNeural' && `Christopher (${t.male})`}
                       {ttsVoice === 'en-US-AriaNeural' && `Aria (${t.female})`}
                     </span>
-                    <svg className={`w-4 h-4 transition-transform duration-200 ${isVoiceDropdownOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className={`w-4 h-4 ml-1 flex-shrink-0 transition-transform duration-200 ${isVoiceDropdownOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
                     </svg>
                   </button>
 
                   {isVoiceDropdownOpen && (
-                    <div className={`absolute right-0 mt-2 w-[220px] rounded-xl shadow-xl border overflow-hidden z-50 animate-in fade-in zoom-in-95 duration-200 ${darkMode ? 'bg-[#18181b] border-gray-700 shadow-black/50' : 'bg-white border-gray-200 shadow-gray-200/50'}`}>
+                    <div className={`absolute right-0 mt-2 w-full sm:w-[220px] rounded-xl shadow-xl border overflow-hidden z-50 animate-in fade-in zoom-in-95 duration-200 ${darkMode ? 'bg-[#18181b] border-gray-700 shadow-black/50' : 'bg-white border-gray-200 shadow-gray-200/50'}`}>
                       <div className="py-2">
                         <div className={`px-3 py-1.5 text-xs font-semibold ${darkMode ? 'text-gray-400 bg-gray-800/50' : 'text-gray-500 bg-gray-100'} uppercase tracking-wider`}>
                           Bahasa Indonesia (CAKRA F5)
@@ -549,26 +549,26 @@ export default function SettingsModal({
             </div>
 
             {/* Voice Speed */}
-            <div className={`flex items-center justify-between py-4 border-b ${darkMode ? 'border-gray-700/50' : 'border-gray-200'}`}>
+            <div className={`flex flex-col sm:flex-row sm:items-center justify-between gap-3 py-3.5 sm:py-4 border-b ${darkMode ? 'border-gray-700/50' : 'border-gray-200'}`}>
               <div>
                 <h3 className="font-medium text-[14px]">{t.voiceSpeed}</h3>
               </div>
-              <div className={`flex rounded-full p-1 border ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-gray-100 border-gray-200'}`}>
+              <div className={`flex rounded-full p-1 border w-full sm:w-auto justify-center ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-gray-100 border-gray-200'}`}>
                 <button
                   onClick={() => setTtsSpeed('slow')}
-                  className={`px-4 py-1.5 rounded-full text-sm font-medium transition-all ${ttsSpeed === 'slow' ? (darkMode ? 'bg-gray-700 text-white shadow-sm' : 'bg-white text-gray-900 shadow-sm') : (darkMode ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-gray-900')}`}
+                  className={`flex-1 sm:flex-none px-3 sm:px-4 py-1.5 rounded-full text-xs sm:text-sm font-medium transition-all ${ttsSpeed === 'slow' ? (darkMode ? 'bg-gray-700 text-white shadow-sm' : 'bg-white text-gray-900 shadow-sm') : (darkMode ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-gray-900')}`}
                 >
                   {t.speedSlow}
                 </button>
                 <button
                   onClick={() => setTtsSpeed('normal')}
-                  className={`px-4 py-1.5 rounded-full text-sm font-medium transition-all ${ttsSpeed === 'normal' ? (darkMode ? 'bg-gray-700 text-white shadow-sm' : 'bg-white text-gray-900 shadow-sm') : (darkMode ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-gray-900')}`}
+                  className={`flex-1 sm:flex-none px-3 sm:px-4 py-1.5 rounded-full text-xs sm:text-sm font-medium transition-all ${ttsSpeed === 'normal' ? (darkMode ? 'bg-gray-700 text-white shadow-sm' : 'bg-white text-gray-900 shadow-sm') : (darkMode ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-gray-900')}`}
                 >
                   {t.speedNormal}
                 </button>
                 <button
                   onClick={() => setTtsSpeed('fast')}
-                  className={`px-4 py-1.5 rounded-full text-sm font-medium transition-all ${ttsSpeed === 'fast' ? (darkMode ? 'bg-gray-700 text-white shadow-sm' : 'bg-white text-gray-900 shadow-sm') : (darkMode ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-gray-900')}`}
+                  className={`flex-1 sm:flex-none px-3 sm:px-4 py-1.5 rounded-full text-xs sm:text-sm font-medium transition-all ${ttsSpeed === 'fast' ? (darkMode ? 'bg-gray-700 text-white shadow-sm' : 'bg-white text-gray-900 shadow-sm') : (darkMode ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-gray-900')}`}
                 >
                   {t.speedFast}
                 </button>
@@ -742,9 +742,9 @@ export default function SettingsModal({
           <div className="space-y-6 max-w-3xl">
             {/* Header Hero Section */}
             <div className="relative py-2 mb-2">
-              <div className="relative flex items-center justify-between z-10">
-                <div className="flex items-center space-x-5">
-                  <div className={`w-16 h-16 rounded-full overflow-hidden flex-shrink-0 ${darkMode ? 'bg-gray-800' : 'bg-gray-200'} shadow-sm flex items-center justify-center`}>
+              <div className="relative flex flex-col sm:flex-row sm:items-center justify-between gap-4 z-10">
+                <div className="flex items-center space-x-4 sm:space-x-5">
+                  <div className={`w-14 h-14 sm:w-16 sm:h-16 rounded-full overflow-hidden flex-shrink-0 ${darkMode ? 'bg-gray-800' : 'bg-gray-200'} shadow-sm flex items-center justify-center`}>
                     {userData?.profile_photo_url ? (
                       <img
                         src={`${getApiBase()}${userData.profile_photo_url}`}
@@ -763,16 +763,16 @@ export default function SettingsModal({
                       <User size={28} className={darkMode ? 'text-gray-500' : 'text-gray-400'} />
                     )}
                   </div>
-                  <div>
-                    <h3 className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{userData?.name || userData?.nama || "User"}</h3>
-                    <p className={`text-sm mt-0.5 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{userData?.email || `${userData?.npp || 'user'}@pindad.co.id`}</p>
-                    <div className="flex items-center mt-2 space-x-2">
-                      <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-500/10 text-green-500 border border-green-500/20">
+                  <div className="min-w-0 flex-1">
+                    <h3 className={`text-base sm:text-lg font-bold truncate ${darkMode ? 'text-white' : 'text-gray-900'}`}>{userData?.name || userData?.nama || "User"}</h3>
+                    <p className={`text-xs sm:text-sm mt-0.5 truncate ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{userData?.email || `${userData?.npp || 'user'}@pindad.co.id`}</p>
+                    <div className="flex items-center mt-1.5 space-x-2 flex-wrap gap-y-1">
+                      <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] sm:text-xs font-medium bg-green-500/10 text-green-500 border border-green-500/20">
                         <span className="w-1.5 h-1.5 rounded-full bg-green-500 mr-1.5"></span>
                         Active
                       </span>
                       {userData?.divisi && (
-                        <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${darkMode ? 'bg-gray-700/50 text-gray-300' : 'bg-gray-100 text-gray-600'}`}>
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] sm:text-xs font-medium ${darkMode ? 'bg-gray-700/50 text-gray-300' : 'bg-gray-100 text-gray-600'}`}>
                           {userData.divisi}
                         </span>
                       )}
@@ -781,7 +781,7 @@ export default function SettingsModal({
                 </div>
                 <button
                   onClick={() => setIsEditingAccount(true)}
-                  className={`px-4 py-2 text-sm font-medium rounded-full transition-colors ${darkMode ? 'bg-gray-800 hover:bg-gray-700 text-white' : 'bg-gray-200 hover:bg-gray-300 text-gray-900'}`}
+                  className={`self-start sm:self-auto px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium rounded-full transition-colors ${darkMode ? 'bg-gray-800 hover:bg-gray-700 text-white' : 'bg-gray-200 hover:bg-gray-300 text-gray-900'}`}
                 >
                   {t.editAccount}
                 </button>
@@ -796,13 +796,13 @@ export default function SettingsModal({
                 {/* Zimbra Mail List Row */}
                 <div className="flex flex-col transition-all duration-300">
                   <div className="flex items-center justify-between py-3">
-                    <div className="flex items-center space-x-4">
+                    <div className="flex items-center space-x-3 sm:space-x-4">
                       <div className={`p-2.5 rounded-xl ${darkMode ? 'bg-blue-500/10 text-blue-400' : 'bg-blue-50 text-blue-600'}`}>
                         <Mail size={20} strokeWidth={1.5} />
                       </div>
                       <div>
                         <div className="flex items-center space-x-2">
-                          <h4 className={`font-medium text-[15px] ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>{t.mailPindad}</h4>
+                          <h4 className={`font-medium text-[14px] sm:text-[15px] ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>{t.mailPindad}</h4>
                           {integrations.mail_connected && <CheckCircle2 size={16} className="text-green-500" />}
                         </div>
                         <p className={`text-xs mt-0.5 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Smart Mail (Zimbra)</p>
@@ -810,11 +810,11 @@ export default function SettingsModal({
                     </div>
                     <div>
                       {integrations.mail_connected ? (
-                        <button onClick={() => handleDisconnect('mail')} className={`px-4 py-1.5 text-sm font-medium rounded-full transition-colors ${darkMode ? 'bg-gray-800 hover:bg-gray-700 text-gray-300' : 'bg-gray-200 hover:bg-gray-300 text-gray-700'}`}>{t.disconnect}</button>
+                        <button onClick={() => handleDisconnect('mail')} className={`px-3.5 sm:px-4 py-1.5 text-xs sm:text-sm font-medium rounded-full transition-colors ${darkMode ? 'bg-gray-800 hover:bg-gray-700 text-gray-300' : 'bg-gray-200 hover:bg-gray-300 text-gray-700'}`}>{t.disconnect}</button>
                       ) : connectingType === 'mail' ? (
                          null
                       ) : (
-                        <button onClick={() => { setConnectingType('mail'); setIntegrationUser(userData?.email || (userData?.npp ? `${userData.npp}@pindad.com` : "")); }} className={`px-4 py-1.5 flex items-center justify-center space-x-2 text-sm font-medium rounded-full transition-colors ${darkMode ? 'bg-blue-500/10 text-blue-400 hover:bg-blue-500/20' : 'bg-blue-50 text-blue-600 hover:bg-blue-100'}`}>
+                        <button onClick={() => { setConnectingType('mail'); setIntegrationUser(userData?.email || (userData?.npp ? `${userData.npp}@pindad.com` : "")); }} className={`px-3.5 sm:px-4 py-1.5 flex items-center justify-center space-x-1.5 sm:space-x-2 text-xs sm:text-sm font-medium rounded-full transition-colors ${darkMode ? 'bg-blue-500/10 text-blue-400 hover:bg-blue-500/20' : 'bg-blue-50 text-blue-600 hover:bg-blue-100'}`}>
                           <span>{t.connect}</span>
                           <ArrowRight size={14} />
                         </button>
@@ -822,7 +822,7 @@ export default function SettingsModal({
                     </div>
                   </div>
                   {/* Expandable Form */}
-                  <div className={`overflow-hidden transition-all duration-300 ${connectingType === 'mail' ? 'max-h-64 mt-2 mb-2 opacity-100 pl-[3.25rem]' : 'max-h-0 opacity-0'}`}>
+                  <div className={`overflow-hidden transition-all duration-300 ${connectingType === 'mail' ? 'max-h-64 mt-2 mb-2 opacity-100 pl-4 sm:pl-[3.25rem]' : 'max-h-0 opacity-0'}`}>
                     <form onSubmit={handleConnectSubmit} className="space-y-3 max-w-sm">
                       <input type="text" placeholder="Username" value={integrationUser} onChange={e => setIntegrationUser(e.target.value)} required className={`w-full px-3 py-2 text-sm rounded-xl border ${darkMode ? 'bg-gray-900/50 border-gray-700 text-white focus:border-blue-500' : 'bg-white border-gray-200 text-black focus:border-blue-500'} outline-none transition-all`} />
                       <input type="password" placeholder="Password" value={integrationPass} onChange={e => setIntegrationPass(e.target.value)} required className={`w-full px-3 py-2 text-sm rounded-xl border ${darkMode ? 'bg-gray-900/50 border-gray-700 text-white focus:border-blue-500' : 'bg-white border-gray-200 text-black focus:border-blue-500'} outline-none transition-all`} />
@@ -837,13 +837,13 @@ export default function SettingsModal({
                 {/* Nextcloud List Row */}
                 <div className="flex flex-col transition-all duration-300">
                   <div className="flex items-center justify-between py-3">
-                    <div className="flex items-center space-x-4">
+                    <div className="flex items-center space-x-3 sm:space-x-4">
                       <div className={`p-2.5 rounded-xl ${darkMode ? 'bg-indigo-500/10 text-indigo-400' : 'bg-indigo-50 text-indigo-600'}`}>
                         <Cloud size={20} strokeWidth={1.5} />
                       </div>
                       <div>
                         <div className="flex items-center space-x-2">
-                          <h4 className={`font-medium text-[15px] ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>{t.cloudPindad}</h4>
+                          <h4 className={`font-medium text-[14px] sm:text-[15px] ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>{t.cloudPindad}</h4>
                           {integrations.cloud_connected && <CheckCircle2 size={16} className="text-green-500" />}
                         </div>
                         <p className={`text-xs mt-0.5 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Nextcloud WebDAV</p>
@@ -851,11 +851,11 @@ export default function SettingsModal({
                     </div>
                     <div>
                       {integrations.cloud_connected ? (
-                        <button onClick={() => handleDisconnect('cloud')} className={`px-4 py-1.5 text-sm font-medium rounded-full transition-colors ${darkMode ? 'bg-gray-800 hover:bg-gray-700 text-gray-300' : 'bg-gray-200 hover:bg-gray-300 text-gray-700'}`}>{t.disconnect}</button>
+                        <button onClick={() => handleDisconnect('cloud')} className={`px-3.5 sm:px-4 py-1.5 text-xs sm:text-sm font-medium rounded-full transition-colors ${darkMode ? 'bg-gray-800 hover:bg-gray-700 text-gray-300' : 'bg-gray-200 hover:bg-gray-300 text-gray-700'}`}>{t.disconnect}</button>
                       ) : connectingType === 'cloud' ? (
                          null
                       ) : (
-                        <button onClick={() => { setConnectingType('cloud'); setIntegrationUser(userData?.email || (userData?.npp ? `${userData.npp}@pindad.com` : "")); }} className={`px-4 py-1.5 flex items-center justify-center space-x-2 text-sm font-medium rounded-full transition-colors ${darkMode ? 'bg-indigo-500/10 text-indigo-400 hover:bg-indigo-500/20' : 'bg-indigo-50 text-indigo-600 hover:bg-indigo-100'}`}>
+                        <button onClick={() => { setConnectingType('cloud'); setIntegrationUser(userData?.email || (userData?.npp ? `${userData.npp}@pindad.com` : "")); }} className={`px-3.5 sm:px-4 py-1.5 flex items-center justify-center space-x-1.5 sm:space-x-2 text-xs sm:text-sm font-medium rounded-full transition-colors ${darkMode ? 'bg-indigo-500/10 text-indigo-400 hover:bg-indigo-500/20' : 'bg-indigo-50 text-indigo-600 hover:bg-indigo-100'}`}>
                           <span>{t.connect}</span>
                           <ArrowRight size={14} />
                         </button>
@@ -863,7 +863,7 @@ export default function SettingsModal({
                     </div>
                   </div>
                   {/* Expandable Form */}
-                  <div className={`overflow-hidden transition-all duration-300 ${connectingType === 'cloud' ? 'max-h-64 mt-2 mb-2 opacity-100 pl-[3.25rem]' : 'max-h-0 opacity-0'}`}>
+                  <div className={`overflow-hidden transition-all duration-300 ${connectingType === 'cloud' ? 'max-h-64 mt-2 mb-2 opacity-100 pl-4 sm:pl-[3.25rem]' : 'max-h-0 opacity-0'}`}>
                     <form onSubmit={handleConnectSubmit} className="space-y-3 max-w-sm">
                       <input type="text" placeholder="Username" value={integrationUser} onChange={e => setIntegrationUser(e.target.value)} required className={`w-full px-3 py-2 text-sm rounded-xl border ${darkMode ? 'bg-gray-900/50 border-gray-700 text-white focus:border-indigo-500' : 'bg-white border-gray-200 text-black focus:border-indigo-500'} outline-none transition-all`} />
                       <input type="password" placeholder="Password" value={integrationPass} onChange={e => setIntegrationPass(e.target.value)} required className={`w-full px-3 py-2 text-sm rounded-xl border ${darkMode ? 'bg-gray-900/50 border-gray-700 text-white focus:border-indigo-500' : 'bg-white border-gray-200 text-black focus:border-indigo-500'} outline-none transition-all`} />
@@ -883,18 +883,18 @@ export default function SettingsModal({
               <div className="space-y-2">
                 {/* Ubah Password */}
                 <div className={`flex items-center justify-between py-3 transition-colors`}>
-                  <div className="flex items-center space-x-4">
+                  <div className="flex items-center space-x-3 sm:space-x-4">
                     <div className={`p-2.5 rounded-xl ${darkMode ? 'bg-gray-700/50 text-gray-300' : 'bg-gray-100 text-gray-600'}`}>
                       <KeyRound size={20} strokeWidth={1.5} />
                     </div>
                     <div>
-                      <h4 className={`font-medium text-[15px] ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>{t.passwordManagement}</h4>
+                      <h4 className={`font-medium text-[14px] sm:text-[15px] ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>{t.passwordManagement}</h4>
                       <p className={`text-xs mt-0.5 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Perbarui kata sandi akun Cakra Anda</p>
                     </div>
                   </div>
                   <button
                     onClick={() => setIsChangingPassword(true)}
-                    className={`px-4 py-2 text-sm font-medium rounded-xl transition-all duration-200 ${darkMode ? 'bg-gray-700 hover:bg-gray-600 text-white' : 'bg-gray-100 hover:bg-gray-200 text-gray-800'}`}
+                    className={`px-3.5 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium rounded-xl transition-all duration-200 ${darkMode ? 'bg-gray-700 hover:bg-gray-600 text-white' : 'bg-gray-100 hover:bg-gray-200 text-gray-800'}`}
                   >
                     {t.changePassword}
                   </button>
@@ -902,12 +902,12 @@ export default function SettingsModal({
                 
                 {/* Logout */}
                 <div className={`flex items-center justify-between py-3 transition-colors group`}>
-                  <div className="flex items-center space-x-4">
+                  <div className="flex items-center space-x-3 sm:space-x-4">
                     <div className={`p-2.5 rounded-xl ${darkMode ? 'bg-red-500/10 text-red-400 group-hover:bg-red-500/20 group-hover:text-red-500' : 'bg-red-50 text-red-500 group-hover:bg-red-100'} transition-colors`}>
                       <LogOut size={20} strokeWidth={1.5} />
                     </div>
                     <div>
-                      <h4 className={`font-medium text-[15px] ${darkMode ? 'text-red-400' : 'text-red-600'}`}>{t.accountManagement}</h4>
+                      <h4 className={`font-medium text-[14px] sm:text-[15px] ${darkMode ? 'text-red-400' : 'text-red-600'}`}>{t.accountManagement}</h4>
                       <p className={`text-xs mt-0.5 ${darkMode ? 'text-gray-400 group-hover:text-red-400/70' : 'text-gray-500 group-hover:text-red-500/70'}`}>Keluar dari perangkat ini</p>
                     </div>
                   </div>
@@ -917,7 +917,7 @@ export default function SettingsModal({
                       if (triggerLogout) triggerLogout();
                       else window.location.href = '/login';
                     }}
-                    className={`px-4 py-2 text-sm font-medium rounded-full transition-colors ${darkMode ? 'bg-red-500/10 text-red-400 hover:bg-red-500/20' : 'bg-red-50 text-red-600 hover:bg-red-100'}`}
+                    className={`px-3.5 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium rounded-full transition-colors ${darkMode ? 'bg-red-500/10 text-red-400 hover:bg-red-500/20' : 'bg-red-50 text-red-600 hover:bg-red-100'}`}
                   >
                     {t.logoutAccount}
                   </button>
@@ -929,7 +929,7 @@ export default function SettingsModal({
       case "about":
         return (
           <div className="space-y-6 max-w-2xl">
-            <h2 className="text-xl font-bold mb-6">{t.about}</h2>
+            <h2 className="text-lg sm:text-xl font-bold mb-4 sm:mb-6">{t.about}</h2>
             <div className={`prose max-w-none text-sm leading-relaxed text-justify ${darkMode ? 'prose-invert text-gray-300' : 'text-gray-600'}`}>
               <p>
                 <strong>CAKRA AI</strong> {t.aboutText1.replace("CAKRA AI ", "")}
@@ -956,7 +956,7 @@ export default function SettingsModal({
 
             {/* Popup Form Saran */}
             {showSuggestionForm && (
-              <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm" style={{ padding: '20px' }}>
+              <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
                 <div className={`w-full max-w-md p-6 rounded-2xl shadow-2xl ${darkMode ? 'bg-[#1e1e22] text-white border border-gray-800' : 'bg-white text-gray-900 border border-gray-200'}`}>
                   <div className="flex justify-between items-center mb-6">
                     <h2 className="text-lg font-bold">{t.sendSuggestion}</h2>
@@ -1042,16 +1042,16 @@ export default function SettingsModal({
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-4 md:p-6 bg-black/60 backdrop-blur-sm animate-fade-in">
       {/* Modal Container */}
       <div
-        className="w-[90%] max-w-4xl h-[80vh] rounded-2xl flex overflow-hidden shadow-2xl relative animate-slide-up"
+        className="w-full max-w-4xl h-[90vh] sm:h-[85vh] md:h-[80vh] rounded-2xl flex flex-col md:flex-row overflow-hidden shadow-2xl relative animate-slide-up"
         style={{ background: darkMode ? '#27272a' : '#ffffff', color: darkMode ? '#e5e7eb' : '#1f2937' }}
       >
         {/* Close button (X) */}
         <button
           onClick={onClose}
-          className="absolute top-4 right-4 p-2 rounded-full hover:bg-gray-700/50 transition-colors z-10"
+          className="absolute top-3.5 right-3.5 md:top-4 md:right-4 p-2 rounded-full hover:bg-gray-700/50 transition-colors z-20"
         >
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <line x1="18" y1="6" x2="6" y2="18"></line>
@@ -1059,22 +1059,23 @@ export default function SettingsModal({
           </svg>
         </button>
 
-        {/* Sidebar */}
-        <div className={`w-64 flex-shrink-0 border-r ${darkMode ? 'border-gray-700/50' : 'border-gray-200'} flex flex-col py-6`}
-          style={{ background: darkMode ? '#18181b' : '#f9fafb' }}>
-
-          <div className="px-6 mb-8 mt-2">
+        {/* Sidebar / Top Navigation on Mobile */}
+        <div
+          className={`w-full md:w-64 flex-shrink-0 border-b md:border-b-0 md:border-r ${darkMode ? 'border-gray-700/50' : 'border-gray-200'} flex flex-col pt-4 pb-2.5 md:py-6`}
+          style={{ background: darkMode ? '#18181b' : '#f9fafb' }}
+        >
+          <div className="px-4 md:px-6 mb-2.5 md:mb-8 mt-0 md:mt-2 pr-12 md:pr-6">
             <h2 className={`text-[11px] font-bold uppercase tracking-wider ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
               {t.settingsTitle}
             </h2>
           </div>
 
-          <div className="flex-1 overflow-y-auto px-3 space-y-1">
+          <div className="flex md:flex-col overflow-x-auto md:overflow-x-visible no-scrollbar px-3 space-x-1.5 md:space-x-0 md:space-y-1">
             {tabs.map((tab) => (
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
-                className={`w-full flex items-center space-x-3 px-3 py-2.5 rounded-lg transition-colors text-sm font-medium ${activeTab === tab.id
+                className={`flex items-center space-x-2 md:space-x-3 px-3 py-2 md:py-2.5 rounded-lg transition-colors text-xs sm:text-sm font-medium whitespace-nowrap flex-shrink-0 ${activeTab === tab.id
                   ? (darkMode ? 'bg-gray-800 text-white' : 'bg-gray-200 text-black')
                   : (darkMode ? 'text-gray-400 hover:text-gray-200 hover:bg-gray-800/50' : 'text-gray-600 hover:bg-gray-100')
                   }`}
@@ -1087,7 +1088,7 @@ export default function SettingsModal({
         </div>
 
         {/* Main Content Area */}
-        <div className="flex-1 overflow-y-auto p-10 pt-16">
+        <div className="flex-1 overflow-y-auto p-4 sm:p-6 md:p-10 pt-4 sm:pt-6 md:pt-16">
           {renderContent()}
         </div>
       </div>

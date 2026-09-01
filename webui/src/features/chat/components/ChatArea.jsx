@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useCallback, useState } from 'react';
 import { Virtuoso } from 'react-virtuoso';
 import ChatBubble from './ChatBubble';
 import ChatNavigator from './ChatNavigator';
+import DocumentMinimapPill from './DocumentMinimapPill';
 import cakraLogo from '../../../assets/cakra.png';
 import { styles } from '../chatPage.styles';
 import { translations, resolveStatusMessage } from '../../../utils/translations';
@@ -45,7 +46,10 @@ export default function ChatArea({
   onOpenArtifact,
   handleDownloadAllArtifacts,
   handleDownloadArtifact,
-  language
+  language,
+  isMobile = false,
+  sidebarOpen = false,
+  hasSidebar = false,
 }) {
   const virtuosoRef = useRef(null);
 
@@ -210,7 +214,23 @@ export default function ChatArea({
       </div>
     </div>
       
-      {/* Navigasi Mini-Map User Messages - Sekarang absolute terhadap parent yang tidak scroll */}
+      {/* 💊 Navigasi Dokumen Rujukan PT Pindad (Kiri) */}
+      <DocumentMinimapPill
+        messages={messages}
+        darkMode={darkMode}
+        language={language}
+        isMobile={isMobile}
+        sidebarOpen={sidebarOpen}
+        hasSidebar={hasSidebar}
+        scrollContainerRef={messagesContainerRef}
+        onNavigate={(index) => {
+          if (virtuosoRef.current) {
+            virtuosoRef.current.scrollToIndex({ index, align: 'start', behavior: 'smooth' });
+          }
+        }}
+      />
+
+      {/* 🧭 Navigasi Mini-Map User Messages (Kanan) */}
       <ChatNavigator 
         messages={messages} 
         darkMode={darkMode} 

@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import apiClient from '../../services/apiClient';
 import DOMPurify from 'dompurify';
-import { Mail, Lock, RefreshCw, Bot, CircleDot, CheckCircle2, Send, Forward as ForwardIcon, Hourglass, Ban, ShieldAlert, Key, LogOut } from 'lucide-react';
+import { Mail, Lock, RefreshCw, Bot, CircleDot, CheckCircle2, Send, Forward as ForwardIcon, Hourglass, Ban, ShieldAlert, Key, LogOut, ArrowLeft, PanelLeft } from 'lucide-react';
 import { useCorporateStore } from '../../stores/corporateStore';
 import { translations } from '../../utils/translations';
 
-export default function EmailTriageTab({ theme, darkMode, userData, language }) {
+export default function EmailTriageTab({ theme, darkMode, userData, language, isMobile = false, toggleSidebar }) {
   const t = translations[language]?.smartMail || translations.id.smartMail;
   const tz = translations[language]?.zimbraAuth || translations.id.zimbraAuth;
   // Gunakan email dari DB jika ada, jika tidak, construct dari NPP
@@ -17,6 +17,7 @@ export default function EmailTriageTab({ theme, darkMode, userData, language }) 
   const clearZimbraEmails = useCorporateStore(state => state.clearZimbraEmails);
 
   const [selectedEmail, setSelectedEmail] = useState(null);
+  const [mobileView, setMobileView] = useState('list'); // 'list' | 'detail'
   const [isLoadingEmails, setIsLoadingEmails] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
 
@@ -283,20 +284,63 @@ export default function EmailTriageTab({ theme, darkMode, userData, language }) 
   ];
 
   return (
-    <div style={{ flex: 1, padding: '20px', color: theme.textColor, display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
-      {isZimbraAuthenticated && (
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-          <h2 style={{ fontSize: '1.5rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Mail size={24} /> {t.title}
-          </h2>
-          <div style={{ fontSize: '14px', background: darkMode ? '#2A2A2D' : '#F3F4F6', padding: '6px 12px', borderRadius: '20px', color: theme.secondaryText, marginRight: '24px' }}>
+    <div style={{ flex: 1, padding: isMobile ? '12px' : '20px', color: theme.textColor, display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
+      {isZimbraAuthenticated ? (
+        <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', justifyContent: 'space-between', alignItems: isMobile ? 'flex-start' : 'center', marginBottom: '14px', gap: '8px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: isMobile ? '100%' : 'auto' }}>
+            <h2 style={{ fontSize: isMobile ? '1.25rem' : '1.5rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Mail size={isMobile ? 20 : 24} /> {t.title}
+            </h2>
+
+            {isMobile && toggleSidebar && (
+              <button
+                onClick={toggleSidebar}
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  cursor: "pointer",
+                  color: theme.textColor,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  padding: "6px",
+                  borderRadius: "8px",
+                }}
+                title="Menu Sidebar"
+              >
+                <PanelLeft size={22} />
+              </button>
+            )}
+          </div>
+          <div style={{ fontSize: '13px', background: darkMode ? '#2A2A2D' : '#F3F4F6', padding: '5px 12px', borderRadius: '20px', color: theme.secondaryText, marginRight: isMobile ? '0' : '24px' }}>
             Kotak Masuk: <strong style={{ color: theme.textColor }}>{userEmail}</strong>
           </div>
+        </div>
+      ) : isMobile && toggleSidebar && (
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '8px' }}>
+          <button
+            onClick={toggleSidebar}
+            style={{
+              background: "transparent",
+              border: "none",
+              cursor: "pointer",
+              color: theme.textColor,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: "6px",
+              borderRadius: "8px",
+            }}
+            title="Menu Sidebar"
+          >
+            <PanelLeft size={22} />
+          </button>
         </div>
       )}
       <div style={{ 
         display: 'flex', 
-        gap: '20px', 
+        flexDirection: isMobile ? 'column' : 'row',
+        gap: isMobile ? '12px' : '20px', 
         flex: 1, 
         minHeight: 0, 
         height: '100%',
@@ -304,149 +348,184 @@ export default function EmailTriageTab({ theme, darkMode, userData, language }) 
         alignItems: isZimbraAuthenticated ? 'stretch' : 'center'
       }}>
         {/* Kiri: Inbox List */}
-        <div style={{ 
-          width: '380px', 
-          background: darkMode ? '#1E1E22' : '#F9FAFB', 
-          borderRadius: '12px', 
-          padding: '16px', 
-          border: `1px solid ${theme.borderColor}`, 
-          display: 'flex', 
-          flexDirection: 'column', 
-          minHeight: 0,
-          height: isZimbraAuthenticated ? '100%' : 'auto'
-        }}>
-          
-          {!isZimbraAuthenticated ? (
-            <div style={{ display: 'flex', flexDirection: 'column', height: '100%', justifyContent: 'center' }}>
+        {(!isMobile || mobileView === 'list') && (
+          <div style={{ 
+            width: isMobile ? '100%' : '380px', 
+            background: darkMode ? '#1E1E22' : '#F9FAFB', 
+            borderRadius: '12px', 
+            padding: isMobile ? '12px' : '16px', 
+            border: `1px solid ${theme.borderColor}`, 
+            display: 'flex', 
+            flexDirection: 'column', 
+            minHeight: 0,
+            flex: isMobile ? 1 : undefined,
+            height: isZimbraAuthenticated ? '100%' : 'auto'
+          }}>
+            
+            {!isZimbraAuthenticated ? (
+              <div style={{ display: 'flex', flexDirection: 'column', height: '100%', justifyContent: 'center' }}>
 
-              {isLoadingEmails ? (
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '16px' }}>
-                  <div className="spinner" style={{ width: '32px', height: '32px', border: `3px solid ${darkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'}`, borderTopColor: '#3B82F6', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
-                  <p style={{ color: theme.secondaryText, fontSize: '14px', fontWeight: 500 }}>Menyambungkan...</p>
-                  <style>{`@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`}</style>
-                </div>
-              ) : (
-                <div style={{ marginTop: '20px', display: 'flex', flexDirection: 'column', gap: '12px', alignItems: 'center' }}>
-                  <p style={{ fontSize: '14px', textAlign: 'center', color: theme.textColor, fontWeight: 'bold' }}>
-                    Koneksi Smart Mail Terputus atau Gagal
-                  </p>
-                  <p style={{ fontSize: '12px', textAlign: 'center', color: theme.secondaryText }}>
-                    Silakan buka menu <strong>Pengaturan &gt; Akun</strong> untuk menyambungkan ulang atau memperbarui kredensial Anda. 
-                  </p>
-                  <button 
-                    onClick={() => fetchEmails()} 
-                    disabled={isLoadingEmails}
-                    style={{ 
-                      background: '#3B82F6', 
-                      color: 'white', 
-                      padding: '8px 16px', 
-                      borderRadius: '8px', 
-                      fontWeight: 'bold', 
-                      border: 'none', 
-                      cursor: isLoadingEmails ? 'not-allowed' : 'pointer',
-                      opacity: isLoadingEmails ? 0.7 : 1,
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '8px',
-                      marginTop: '12px'
-                    }}
-                  >
-                    <RefreshCw size={16} className={isLoadingEmails ? "spin" : ""} />
-                    Coba Lagi
-                  </button>
-                </div>
-              )}
-
-              {errorMsg && (
-                <div style={{ padding: '10px', background: darkMode ? '#3f1a1a' : '#fee2e2', color: '#ef4444', borderRadius: '8px', fontSize: '12px', marginTop: '16px', textAlign: 'center' }}>
-                  {errorMsg}
-                </div>
-              )}
-            </div>
-          ) : (
-            <>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                <h3 style={{ fontSize: '1rem', fontWeight: '600' }}>Inbox (Zimbra)</h3>
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  <button onClick={() => fetchEmails(true)} disabled={isLoadingEmails} title="Refresh Email" style={{ background: 'transparent', border: 'none', cursor: isLoadingEmails ? 'not-allowed' : 'pointer', opacity: isLoadingEmails ? 0.5 : 1, display: 'flex', alignItems: 'center', color: theme.textColor }}>
-                    <RefreshCw size={18} />
-                  </button>
-                </div>
-              </div>
-              
-              <div style={{ flex: 1, overflowY: 'auto', paddingRight: '8px' }}>
-              {isLoadingEmails && zimbraEmails.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: '20px', color: theme.secondaryText }}>Menyinkronkan ulang...</div>
-              ) : errorMsg ? (
-                <div style={{ padding: '12px', background: darkMode ? '#3f1a1a' : '#fee2e2', color: '#ef4444', borderRadius: '8px', fontSize: '12px' }}>
-                  {errorMsg}
-                </div>
-              ) : zimbraEmails.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: '20px', color: theme.secondaryText }}>Tidak ada email.</div>
-              ) : (
-                zimbraEmails.map((email) => (
-                  <div 
-                    key={email.id}
-                    onClick={() => { setSelectedEmail(email); setDraftContent(""); setInstruction(""); }}
-                    onMouseEnter={(e) => {
-                      if (selectedEmail?.id !== email.id) {
-                        e.currentTarget.style.transform = 'translateY(-2px)';
-                        e.currentTarget.style.boxShadow = '0 4px 6px -1px rgba(0, 0, 0, 0.1)';
-                      }
-                    }}
-                    onMouseLeave={(e) => {
-                      if (selectedEmail?.id !== email.id) {
-                        e.currentTarget.style.transform = 'none';
-                        e.currentTarget.style.boxShadow = 'none';
-                      }
-                    }}
-                    style={{ 
-                      padding: '14px', 
-                      background: selectedEmail?.id === email.id ? (darkMode ? '#2A2A2D' : 'white') : (darkMode ? 'rgba(255,255,255,0.02)' : 'white'), 
-                      borderRadius: '10px', 
-                      borderLeft: `4px solid ${(email.priority?.includes('URGENT') || email.priority === '🔴 Unread') ? '#ef4444' : (email.priority?.includes('APPROVAL') || email.priority?.includes('Scanning')) ? '#f59e0b' : email.priority?.includes('SPAM') ? '#8b5cf6' : '#10b981'}`, 
-                      marginBottom: '10px', 
-                      cursor: 'pointer',
-                      borderTop: selectedEmail?.id === email.id ? `1px solid ${theme.borderColor}` : '1px solid transparent',
-                      borderRight: selectedEmail?.id === email.id ? `1px solid ${theme.borderColor}` : '1px solid transparent',
-                      borderBottom: selectedEmail?.id === email.id ? `1px solid ${theme.borderColor}` : '1px solid transparent',
-                      transition: 'all 0.2s ease',
-                      boxShadow: selectedEmail?.id === email.id ? '0 4px 6px -1px rgba(0, 0, 0, 0.1)' : 'none'
-                    }}
-                  >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                      <div style={{ 
-                        display: 'flex', alignItems: 'center', gap: '4px', fontSize: '10px', fontWeight: 'bold', padding: '2px 6px', borderRadius: '4px',
-                        color: (email.priority?.includes('URGENT') || email.priority === '🔴 Unread') ? '#ef4444' : (email.priority?.includes('APPROVAL') || email.priority?.includes('Scanning')) ? '#f59e0b' : email.priority?.includes('SPAM') ? '#8b5cf6' : '#10b981',
-                        background: (email.priority?.includes('URGENT') || email.priority === '🔴 Unread') ? 'rgba(239, 68, 68, 0.1)' : (email.priority?.includes('APPROVAL') || email.priority?.includes('Scanning')) ? 'rgba(245, 158, 11, 0.1)' : email.priority?.includes('SPAM') ? 'rgba(139, 92, 246, 0.1)' : 'rgba(16, 185, 129, 0.1)'
-                      }}>
-                        {(email.priority?.includes('URGENT') || email.priority === '🔴 Unread') ? <CircleDot size={12} /> : email.priority?.includes('Scanning') ? <Hourglass size={12} /> : email.priority?.includes('SPAM') ? <Ban size={12} /> : <CheckCircle2 size={12} />}
-                        {email.priority?.replace(/🔴 |🟡 |🟢 |⏳ |🚫 /g, '')}
-                      </div>
-                    </div>
-                    <div style={{ fontWeight: '600', fontSize: '14px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: selectedEmail?.id === email.id ? theme.textColor : theme.secondaryText }}>{email.subject}</div>
-                    <div style={{ fontSize: '12px', color: theme.secondaryText, marginTop: '6px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', opacity: 0.8 }}>Dari: {email.sender}</div>
-                    <div style={{ fontSize: '10px', color: theme.secondaryText, marginTop: '4px', opacity: 0.6 }}>{formatRelativeDate(email.received_at)}</div>
+                {isLoadingEmails ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '16px' }}>
+                    <div className="spinner" style={{ width: '32px', height: '32px', border: `3px solid ${darkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'}`, borderTopColor: '#3B82F6', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+                    <p style={{ color: theme.secondaryText, fontSize: '14px', fontWeight: 500 }}>Menyambungkan...</p>
+                    <style>{`@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`}</style>
                   </div>
-                ))
-              )}
+                ) : (
+                  <div style={{ marginTop: '20px', display: 'flex', flexDirection: 'column', gap: '12px', alignItems: 'center' }}>
+                    <p style={{ fontSize: '14px', textAlign: 'center', color: theme.textColor, fontWeight: 'bold' }}>
+                      Koneksi Smart Mail Terputus atau Gagal
+                    </p>
+                    <p style={{ fontSize: '12px', textAlign: 'center', color: theme.secondaryText }}>
+                      Silakan buka menu <strong>Pengaturan &gt; Akun</strong> untuk menyambungkan ulang atau memperbarui kredensial Anda. 
+                    </p>
+                    <button 
+                      onClick={() => fetchEmails()} 
+                      disabled={isLoadingEmails}
+                      style={{ 
+                        background: '#3B82F6', 
+                        color: 'white', 
+                        padding: '8px 16px', 
+                        borderRadius: '8px', 
+                        fontWeight: 'bold', 
+                        border: 'none', 
+                        cursor: isLoadingEmails ? 'not-allowed' : 'pointer',
+                        opacity: isLoadingEmails ? 0.7 : 1,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        marginTop: '12px'
+                      }}
+                    >
+                      <RefreshCw size={16} className={isLoadingEmails ? "spin" : ""} />
+                      Coba Lagi
+                    </button>
+                  </div>
+                )}
+
+                {errorMsg && (
+                  <div style={{ padding: '10px', background: darkMode ? '#3f1a1a' : '#fee2e2', color: '#ef4444', borderRadius: '8px', fontSize: '12px', marginTop: '16px', textAlign: 'center' }}>
+                    {errorMsg}
+                  </div>
+                )}
               </div>
-            </>
-          )}
-        </div>
+            ) : (
+              <>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                  <h3 style={{ fontSize: '1rem', fontWeight: '600' }}>Inbox (Zimbra)</h3>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <button onClick={() => fetchEmails(true)} disabled={isLoadingEmails} title="Refresh Email" style={{ background: 'transparent', border: 'none', cursor: isLoadingEmails ? 'not-allowed' : 'pointer', opacity: isLoadingEmails ? 0.5 : 1, display: 'flex', alignItems: 'center', color: theme.textColor }}>
+                      <RefreshCw size={18} />
+                    </button>
+                  </div>
+                </div>
+                
+                <div style={{ flex: 1, overflowY: 'auto', paddingRight: '8px' }}>
+                {isLoadingEmails && zimbraEmails.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: '20px', color: theme.secondaryText }}>Menyinkronkan ulang...</div>
+                ) : errorMsg ? (
+                  <div style={{ padding: '12px', background: darkMode ? '#3f1a1a' : '#fee2e2', color: '#ef4444', borderRadius: '8px', fontSize: '12px' }}>
+                    {errorMsg}
+                  </div>
+                ) : zimbraEmails.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: '20px', color: theme.secondaryText }}>Tidak ada email.</div>
+                ) : (
+                  zimbraEmails.map((email) => (
+                    <div 
+                      key={email.id}
+                      onClick={() => { 
+                        setSelectedEmail(email); 
+                        setDraftContent(""); 
+                        setInstruction(""); 
+                        if (isMobile) {
+                          setMobileView('detail');
+                        }
+                      }}
+                      onMouseEnter={(e) => {
+                        if (selectedEmail?.id !== email.id) {
+                          e.currentTarget.style.transform = 'translateY(-2px)';
+                          e.currentTarget.style.boxShadow = '0 4px 6px -1px rgba(0, 0, 0, 0.1)';
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        if (selectedEmail?.id !== email.id) {
+                          e.currentTarget.style.transform = 'none';
+                          e.currentTarget.style.boxShadow = 'none';
+                        }
+                      }}
+                      style={{ 
+                        padding: '14px', 
+                        background: selectedEmail?.id === email.id ? (darkMode ? '#2A2A2D' : 'white') : (darkMode ? 'rgba(255,255,255,0.02)' : 'white'), 
+                        borderRadius: '10px', 
+                        borderLeft: `4px solid ${(email.priority?.includes('URGENT') || email.priority === '🔴 Unread') ? '#ef4444' : (email.priority?.includes('APPROVAL') || email.priority?.includes('Scanning')) ? '#f59e0b' : email.priority?.includes('SPAM') ? '#8b5cf6' : '#10b981'}`, 
+                        marginBottom: '10px', 
+                        cursor: 'pointer',
+                        borderTop: selectedEmail?.id === email.id ? `1px solid ${theme.borderColor}` : '1px solid transparent',
+                        borderRight: selectedEmail?.id === email.id ? `1px solid ${theme.borderColor}` : '1px solid transparent',
+                        borderBottom: selectedEmail?.id === email.id ? `1px solid ${theme.borderColor}` : '1px solid transparent',
+                        transition: 'all 0.2s ease',
+                        boxShadow: selectedEmail?.id === email.id ? '0 4px 6px -1px rgba(0, 0, 0, 0.1)' : 'none'
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                        <div style={{ 
+                          display: 'flex', alignItems: 'center', gap: '4px', fontSize: '10px', fontWeight: 'bold', padding: '2px 6px', borderRadius: '4px',
+                          color: (email.priority?.includes('URGENT') || email.priority === '🔴 Unread') ? '#ef4444' : (email.priority?.includes('APPROVAL') || email.priority?.includes('Scanning')) ? '#f59e0b' : email.priority?.includes('SPAM') ? '#8b5cf6' : '#10b981',
+                          background: (email.priority?.includes('URGENT') || email.priority === '🔴 Unread') ? 'rgba(239, 68, 68, 0.1)' : (email.priority?.includes('APPROVAL') || email.priority?.includes('Scanning')) ? 'rgba(245, 158, 11, 0.1)' : email.priority?.includes('SPAM') ? 'rgba(139, 92, 246, 0.1)' : 'rgba(16, 185, 129, 0.1)'
+                        }}>
+                          {(email.priority?.includes('URGENT') || email.priority === '🔴 Unread') ? <CircleDot size={12} /> : email.priority?.includes('Scanning') ? <Hourglass size={12} /> : email.priority?.includes('SPAM') ? <Ban size={12} /> : <CheckCircle2 size={12} />}
+                          {email.priority?.replace(/🔴 |🟡 |🟢 |⏳ |🚫 /g, '')}
+                        </div>
+                      </div>
+                      <div style={{ fontWeight: '600', fontSize: '14px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: selectedEmail?.id === email.id ? theme.textColor : theme.secondaryText }}>{email.subject}</div>
+                      <div style={{ fontSize: '12px', color: theme.secondaryText, marginTop: '6px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', opacity: 0.8 }}>Dari: {email.sender}</div>
+                      <div style={{ fontSize: '10px', color: theme.secondaryText, marginTop: '4px', opacity: 0.6 }}>{formatRelativeDate(email.received_at)}</div>
+                    </div>
+                  ))
+                )}
+                </div>
+              </>
+            )}
+          </div>
+        )}
 
         {/* Kanan: AI Assistant & Detail */}
-        {isZimbraAuthenticated && (
-          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-          {/* Email Reading Bubble */}
-          <div style={{ background: darkMode ? '#1E1E22' : 'white', borderRadius: '12px', padding: '24px', border: `1px solid ${theme.borderColor}`, flex: 1, minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
-            {selectedEmail ? (
-              <>
-                <h3 style={{ fontSize: '1.2rem', fontWeight: 'bold', marginBottom: '8px' }}>{selectedEmail.subject}</h3>
-                <div style={{ fontSize: '12px', color: theme.secondaryText, marginBottom: '16px' }}>
-                  <div>{formatRelativeDate(selectedEmail.received_at)} - {selectedEmail.sender}</div>
-                  {selectedEmail.cc && <div style={{ marginTop: '4px', fontStyle: 'italic' }}>CC: {selectedEmail.cc}</div>}
-                </div>
+        {isZimbraAuthenticated && (!isMobile || mobileView === 'detail') && (
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, width: isMobile ? '100%' : undefined }}>
+            {/* Tombol Back ke Kotak Masuk di Mobile */}
+            {isMobile && (
+              <button
+                onClick={() => setMobileView('list')}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  padding: '7px 14px',
+                  borderRadius: '8px',
+                  background: darkMode ? '#27272a' : '#f3f4f6',
+                  border: `1px solid ${darkMode ? '#3f3f46' : '#e5e7eb'}`,
+                  color: theme.textColor,
+                  fontSize: '13px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  marginBottom: '10px',
+                  alignSelf: 'flex-start'
+                }}
+              >
+                <ArrowLeft size={16} />
+                <span>Kembali ke Kotak Masuk</span>
+              </button>
+            )}
+
+            {/* Email Reading Bubble */}
+            <div style={{ background: darkMode ? '#1E1E22' : 'white', borderRadius: '12px', padding: isMobile ? '16px' : '24px', border: `1px solid ${theme.borderColor}`, flex: 1, minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
+              {selectedEmail ? (
+                <>
+                  <h3 style={{ fontSize: isMobile ? '1.1rem' : '1.2rem', fontWeight: 'bold', marginBottom: '8px' }}>{selectedEmail.subject}</h3>
+                  <div style={{ fontSize: '12px', color: theme.secondaryText, marginBottom: '16px' }}>
+                    <div>{formatRelativeDate(selectedEmail.received_at)} - {selectedEmail.sender}</div>
+                    {selectedEmail.cc && <div style={{ marginTop: '4px', fontStyle: 'italic' }}>CC: {selectedEmail.cc}</div>}
+                  </div>
                 
                 {selectedEmail.priority?.includes('SPAM') && !unlockedSpamEmails.has(selectedEmail.id) ? (
                   <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: darkMode ? 'rgba(239, 68, 68, 0.05)' : 'rgba(239, 68, 68, 0.05)', border: '1px solid #ef4444', borderRadius: '12px', padding: '32px', textAlign: 'center' }}>
@@ -537,42 +616,55 @@ export default function EmailTriageTab({ theme, darkMode, userData, language }) 
             )}
           </div>
 
-          {/* Resizer Divider */}
-          <div 
-            onMouseDown={(e) => {
-              setIsResizing(true);
-              startYRef.current = e.clientY;
-              startHeightRef.current = draftHeight;
-            }}
-            style={{ 
-              height: '12px', 
-              cursor: 'row-resize', 
-              display: 'flex', 
-              justifyContent: 'center', 
-              alignItems: 'center',
-              margin: '6px 0',
-              opacity: isResizing ? 1 : 0.6,
-              transition: 'opacity 0.2s ease'
-            }}
-            onMouseEnter={(e) => e.currentTarget.style.opacity = 1}
-            onMouseLeave={(e) => { if(!isResizing) e.currentTarget.style.opacity = 0.6 }}
-          >
-            <div style={{ width: '60px', height: '4px', background: darkMode ? '#4B5563' : '#D1D5DB', borderRadius: '2px' }} />
-          </div>
+          {/* Resizer Divider (Desktop Only) */}
+          {!isMobile && (
+            <div 
+              onMouseDown={(e) => {
+                setIsResizing(true);
+                startYRef.current = e.clientY;
+                startHeightRef.current = draftHeight;
+              }}
+              style={{ 
+                height: '12px', 
+                cursor: 'row-resize', 
+                display: 'flex', 
+                justifyContent: 'center', 
+                alignItems: 'center',
+                margin: '6px 0',
+                opacity: isResizing ? 1 : 0.6,
+                transition: 'opacity 0.2s ease'
+              }}
+              onMouseEnter={(e) => e.currentTarget.style.opacity = 1}
+              onMouseLeave={(e) => { if(!isResizing) e.currentTarget.style.opacity = 0.6 }}
+            >
+              <div style={{ width: '60px', height: '4px', background: darkMode ? '#4B5563' : '#D1D5DB', borderRadius: '2px' }} />
+            </div>
+          )}
 
           {/* AI Draft Area */}
-          <div style={{ height: `${draftHeight}px`, flexShrink: 0, background: darkMode ? 'rgba(59, 130, 246, 0.1)' : '#F0F9FF', borderRadius: '12px', padding: '20px', border: `1px solid ${darkMode ? 'rgba(59, 130, 246, 0.3)' : '#bae6fd'}`, display: 'flex', flexDirection: 'column' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
+          <div style={{ 
+            height: isMobile ? 'auto' : `${draftHeight}px`, 
+            minHeight: isMobile ? '260px' : undefined,
+            flexShrink: 0, 
+            background: darkMode ? 'rgba(59, 130, 246, 0.1)' : '#F0F9FF', 
+            borderRadius: '12px', 
+            padding: isMobile ? '14px' : '20px', 
+            border: `1px solid ${darkMode ? 'rgba(59, 130, 246, 0.3)' : '#bae6fd'}`, 
+            display: 'flex', 
+            flexDirection: 'column',
+            marginTop: isMobile ? '12px' : 0
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '8px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <Bot size={24} style={{ color: darkMode ? '#60A5FA' : '#2563EB' }} />
-                <span style={{ fontWeight: '600', color: darkMode ? '#60A5FA' : '#2563EB' }}>Draf Balasan Resmi CAKRA</span>
+                <Bot size={20} style={{ color: darkMode ? '#60A5FA' : '#2563EB' }} />
+                <span style={{ fontWeight: '600', fontSize: isMobile ? '13px' : '14px', color: darkMode ? '#60A5FA' : '#2563EB' }}>Draf Balasan Resmi CAKRA</span>
               </div>
               
-              <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
+              <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
                 {!isForwarding && selectedEmail?.cc && (
                   <label style={{ fontSize: '12px', display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', color: theme.secondaryText }}>
                     <input type="checkbox" checked={replyAll} onChange={(e) => setReplyAll(e.target.checked)} />
-                    Reply All (Balas ke CC)
+                    Reply All
                   </label>
                 )}
                 
@@ -595,14 +687,14 @@ export default function EmailTriageTab({ theme, darkMode, userData, language }) 
                       color: theme.textColor,
                       fontSize: '12px',
                       outline: 'none',
-                      width: '180px'
+                      width: isMobile ? '100%' : '180px'
                     }}
                   />
                 )}
               </div>
             </div>
             
-            <div style={{ display: 'flex', gap: '8px', marginBottom: '12px', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', gap: '6px', marginBottom: '10px', flexWrap: 'wrap' }}>
               {quickActions.map(action => (
                 <button
                   key={action.label}
@@ -615,9 +707,9 @@ export default function EmailTriageTab({ theme, darkMode, userData, language }) 
                     background: darkMode ? '#374151' : '#E5E7EB',
                     color: theme.textColor,
                     border: 'none',
-                    padding: '6px 12px',
-                    borderRadius: '16px',
-                    fontSize: '12px',
+                    padding: '5px 10px',
+                    borderRadius: '14px',
+                    fontSize: '11px',
                     cursor: isGenerating ? 'not-allowed' : 'pointer',
                     transition: 'all 0.2s ease',
                     opacity: isGenerating ? 0.5 : 1
@@ -632,13 +724,13 @@ export default function EmailTriageTab({ theme, darkMode, userData, language }) 
               style={{ 
                 width: '100%', 
                 flex: 1,
-                minHeight: '120px', 
+                minHeight: isMobile ? '100px' : '120px', 
                 background: darkMode ? '#2A2A2D' : 'white', 
                 border: `1px solid ${theme.borderColor}`,
                 borderRadius: '8px',
-                padding: '12px',
+                padding: '10px',
                 color: theme.textColor,
-                fontSize: '14px',
+                fontSize: '13px',
                 resize: 'none',
                 outline: 'none'
               }}
@@ -646,7 +738,7 @@ export default function EmailTriageTab({ theme, darkMode, userData, language }) 
               onChange={(e) => setDraftContent(e.target.value)}
             />
             
-            <div style={{ display: 'flex', gap: '8px', marginTop: '12px', alignItems: 'center' }}>
+            <div style={{ display: 'flex', gap: '8px', marginTop: '10px', alignItems: 'center', flexWrap: isMobile ? 'wrap' : 'nowrap' }}>
               <input 
                 type="text" 
                 placeholder="Instruksi tambahan (Opsional)..."
@@ -655,20 +747,22 @@ export default function EmailTriageTab({ theme, darkMode, userData, language }) 
                 onKeyDown={(e) => e.key === 'Enter' && handleGenerate()}
                 disabled={isGenerating}
                 style={{
-                  flex: 1,
+                  flex: isMobile ? '1 1 100%' : 1,
                   background: darkMode ? '#1E1E22' : 'white',
                   border: `1px solid ${theme.borderColor}`,
                   borderRadius: '6px',
                   padding: '8px 12px',
                   color: theme.textColor,
                   fontSize: '13px',
-                  outline: 'none'
+                  outline: 'none',
+                  width: isMobile ? '100%' : 'auto'
                 }}
               />
               <button 
                 onClick={() => handleGenerate()}
                 disabled={isGenerating}
                 style={{ 
+                  flex: isMobile ? 1 : undefined,
                   background: isGenerating ? '#9CA3AF' : '#3B82F6', 
                   color: 'white', 
                   padding: '8px 16px', 
@@ -677,7 +771,8 @@ export default function EmailTriageTab({ theme, darkMode, userData, language }) 
                   fontWeight: '500', 
                   border: 'none', 
                   cursor: isGenerating ? 'not-allowed' : 'pointer',
-                  whiteSpace: 'nowrap'
+                  whiteSpace: 'nowrap',
+                  textAlign: 'center'
                 }}
               >
                 {isGenerating ? 'Loading...' : 'Generate'}
@@ -686,6 +781,7 @@ export default function EmailTriageTab({ theme, darkMode, userData, language }) 
                 onClick={handleSendEmail}
                 disabled={isSending || isGenerating || !draftContent}
                 style={{
+                  flex: isMobile ? 1 : undefined,
                   background: isSending ? '#9CA3AF' : (isForwarding ? '#F59E0B' : '#10B981'),
                   color: 'white',
                   padding: '8px 16px',
@@ -696,6 +792,7 @@ export default function EmailTriageTab({ theme, darkMode, userData, language }) 
                   cursor: (isSending || isGenerating || !draftContent) ? 'not-allowed' : 'pointer',
                   display: 'flex',
                   alignItems: 'center',
+                  justifyContent: 'center',
                   gap: '6px',
                   whiteSpace: 'nowrap'
                 }}

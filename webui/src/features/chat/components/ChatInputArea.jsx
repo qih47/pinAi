@@ -17,6 +17,7 @@ export default function ChatInputArea({
   theme,
   darkMode,
   isBottom = false,
+  isMobile = false,
   showScrollBottom,
   showWelcome,
   messages,
@@ -60,6 +61,10 @@ export default function ChatInputArea({
   const activeModeTag = useChatStore(state => state.activeModeTag);
   const setActiveModeTag = useChatStore(state => state.setActiveModeTag);
 
+  // Pada mode mobile, selalu gunakan layout bertingkat (textarea di atas, buttons di bawah)
+  // Pada mode desktop, tetap responsif mengikuti state isMultiLine
+  const showMultilineLayout = isMobile || isMultiLine;
+
   useEffect(() => {
     function handleClickOutside(event) {
       if (attachmentMenuRef.current && !attachmentMenuRef.current.contains(event.target)) {
@@ -85,14 +90,21 @@ export default function ChatInputArea({
         marginRight: isBottom ? undefined : "auto",
         width: "100%",
         maxWidth: isBottom ? undefined : "700px",
-        padding: isBottom ? undefined : "0 20px",
+        padding: isBottom
+          ? isMobile
+            ? "8px 16px 16px"
+            : "8px 24px 16px"
+          : isMobile
+            ? "0 16px"
+            : "0 20px",
         marginTop: isBottom ? undefined : undefined,
         flexShrink: 0,
         zIndex: isBottom ? undefined : 11,
         pointerEvents: "auto",
+        boxSizing: "border-box",
       }}
     >
-      <div style={styles.inputContainer}>
+      <div style={{ ...styles.inputContainer, width: "100%", boxSizing: "border-box" }}>
 
         <ScrollBottomButton
           isBottom={isBottom}
@@ -150,12 +162,13 @@ export default function ChatInputArea({
             borderWidth: isDragOver ? "2px" : "1px",
             borderStyle: isDragOver ? "dashed" : "solid",
             boxShadow: darkMode ? "0 4px 30px rgba(0,0,0,0.3)" : "0 4px 30px rgba(0,0,0,0.08)",
+            borderRadius: showMultilineLayout ? "24px" : "28px",
             display: "flex",
             flexDirection: "column",
-            paddingTop: "8px",
-            paddingBottom: "8px",
-            paddingLeft: "8px",
-            paddingRight: "12px",
+            paddingTop: isMobile ? "6px" : "8px",
+            paddingBottom: isMobile ? "6px" : "8px",
+            paddingLeft: isMobile ? "8px" : "8px",
+            paddingRight: isMobile ? "8px" : "12px",
             minHeight: "56px",
             height: "auto",
             transition: "border-color 0.15s ease",
@@ -172,7 +185,7 @@ export default function ChatInputArea({
             style={{ display: "none" }}
           />
 
-          {/* ── BARIS 1: wrapper textarea + plus (single) ── */}
+          {/* ── BARIS 1: wrapper textarea + plus (hanya single line di desktop) ── */}
           <div
             style={{
               display: "flex",
@@ -182,8 +195,8 @@ export default function ChatInputArea({
               width: "100%",
             }}
           >
-            {/* Plus button — kiri, selalu align bottom */}
-            {!isMultiLine && (
+            {/* Plus button — kiri, hanya di desktop single line */}
+            {!showMultilineLayout && (
               <div style={{ flexShrink: 0, paddingBottom: "0px", position: "relative" }} ref={attachmentMenuRef}>
                 <PlusButton
                   onClick={() => setIsAttachmentMenuOpen(!isAttachmentMenuOpen)}
@@ -358,8 +371,8 @@ export default function ChatInputArea({
               }}
             />
 
-            {/* Kanan single line: Auto + Send */}
-            {!isMultiLine && (
+            {/* Kanan single line: Auto + Send (hanya di desktop single line) */}
+            {!showMultilineLayout && (
               <div
                 style={{
                   display: "flex",
@@ -412,17 +425,17 @@ export default function ChatInputArea({
             )}
           </div>
 
-          {/* ── BARIS 2: toolbar multiline — hanya tampil saat isMultiLine ── */}
-          {isMultiLine && (
+          {/* ── BARIS 2: toolbar bottom — tampil saat mode mobile atau desktop multiline ── */}
+          {showMultilineLayout && (
             <div
               style={{
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "space-between",
                 width: "100%",
-                paddingLeft: "4px",
-                paddingRight: "4px",
-                paddingTop: "2px",
+                paddingLeft: isMobile ? "2px" : "4px",
+                paddingRight: isMobile ? "2px" : "4px",
+                paddingTop: isMobile ? "4px" : "2px",
               }}
             >
               {/* Kiri: Plus */}
@@ -591,6 +604,7 @@ export default function ChatInputArea({
             isStreaming={isStreaming}
             isGuest={isGuest}
             language={language}
+            isMobile={isMobile}
           />
         )}
 

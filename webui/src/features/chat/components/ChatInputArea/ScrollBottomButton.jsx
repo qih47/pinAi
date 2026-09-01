@@ -22,7 +22,7 @@ export default function ScrollBottomButton({
         display: "flex",
         justifyContent: "center",
         pointerEvents: "none",
-        zIndex: 40,
+        zIndex: 20,
         animation: "fadeSlideIn 0.25s ease-out forwards",
       }}
     >
