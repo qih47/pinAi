@@ -8,6 +8,12 @@ const WebSearchWidget = ({ searchData, isStreaming, hasStartedResponding, darkMo
 
     const results = Array.isArray(searchData) ? searchData : (searchData?.results || []);
     const isLoading = isStreaming && results.length === 0;
+    
+    // Status Analisis:
+    // Selama results sudah ada tapi respons teks LLM belum mulai keluar -> sedang menganalisis (prefill LLM)
+    const isAnalyzing = isStreaming && results.length > 0 && !hasStartedResponding;
+    // Begitu respons teks mulai keluar atau streaming selesai -> analisis & pencarian selesai!
+    const isSearchComplete = hasStartedResponding || (!isStreaming && results.length > 0);
 
     useEffect(() => {
         let timer;
@@ -22,12 +28,16 @@ const WebSearchWidget = ({ searchData, isStreaming, hasStartedResponding, darkMo
     }, [isLoading]);
 
     useEffect(() => {
-        if (hasStartedResponding || !isStreaming) {
-            setIsOpen(false);
+        if (isSearchComplete) {
+            // Beri jeda 800ms agar mata user sempat melihat status 'Selesai' (centang hijau) sebelum accordion menutup
+            const timer = setTimeout(() => {
+                setIsOpen(false);
+            }, 800);
+            return () => clearTimeout(timer);
         } else {
             setIsOpen(true);
         }
-    }, [hasStartedResponding, isStreaming]);
+    }, [isSearchComplete]);
 
     if (!searchData && !isStreaming) return null;
     
@@ -52,7 +62,12 @@ const WebSearchWidget = ({ searchData, isStreaming, hasStartedResponding, darkMo
                             <span className="inline-block w-2 h-2 rounded-full bg-indigo-500 animate-ping" />
                             <span>Menelusuri informasi dari web ({elapsedSec}s)</span>
                         </>
-                    ) : hasStartedResponding ? (
+                    ) : isAnalyzing ? (
+                        <>
+                            <span className="inline-block w-2 h-2 rounded-full bg-indigo-400 animate-pulse" />
+                            <span>Menganalisis hasil pencarian...</span>
+                        </>
+                    ) : isSearchComplete ? (
                         "Hasil penelusuran informasi dari web"
                     ) : (
                         "Menelusuri informasi dari web"
@@ -153,23 +168,27 @@ const WebSearchWidget = ({ searchData, isStreaming, hasStartedResponding, darkMo
                     </div>
 
                     {/* Step 2: Analyzing / Done */}
-                    {hasStartedResponding && (
-                        <div className="flex flex-col gap-4 mt-1">
+                    {results.length > 0 && (
+                        <div className="flex flex-col gap-3 mt-1 ml-[1px]">
                             <div className="flex items-center gap-3">
-                                <div className="bg-[#1e1e1e] py-1 rounded-full z-10 relative">
-                                    <Clock className="w-[14px] h-[14px] text-[#888888] flex-shrink-0" />
+                                <div className="bg-[#1e1e1e] py-0.5 rounded-full z-10 relative flex items-center justify-center w-[18px]">
+                                    {isAnalyzing ? (
+                                        <span className="w-2.5 h-2.5 rounded-full bg-indigo-500 animate-pulse" />
+                                    ) : (
+                                        <Clock className="w-[14px] h-[14px] text-[#888888]" />
+                                    )}
                                 </div>
-                                <span className="text-[13.5px] text-[#a3a3a3]">
+                                <span className={`text-[13.5px] ${isAnalyzing ? 'text-indigo-300 font-medium' : 'text-[#888888]'}`}>
                                     Menganalisis hasil pencarian...
                                 </span>
                             </div>
 
-                            {!isStreaming && (
+                            {isSearchComplete && (
                                 <div className="flex items-center gap-3">
-                                    <div className="bg-[#1e1e1e] py-1 rounded-full z-10 relative">
-                                        <CheckCircle2 className="w-[14px] h-[14px] text-[#888888] flex-shrink-0" />
+                                    <div className="bg-[#1e1e1e] py-0.5 rounded-full z-10 relative flex items-center justify-center w-[18px]">
+                                        <CheckCircle2 className="w-[14px] h-[14px] text-emerald-400" />
                                     </div>
-                                    <span className="text-[13.5px] text-[#a3a3a3]">
+                                    <span className="text-[13.5px] font-medium text-emerald-400">
                                         Selesai
                                     </span>
                                 </div>

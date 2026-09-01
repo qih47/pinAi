@@ -37,22 +37,32 @@ class MemoryService:
                 rows = await conn.fetch(query, npp)
                 summaries = [f"{row['mem_key']}: {row['mem_value']}" for row in rows] if rows else []
 
-                # 2. 🔥 REAL-TIME CROSS-SESSION SYNC: Ambil topik dari 4 sesi obrolan terbaru milik user
+                # 2. 🔥 REAL-TIME CROSS-SESSION SYNC: Ambil topik dari 4 sesi obrolan terbaru milik user (selain sesi aktif saat ini)
                 recent_sessions = await conn.fetch("""
-                    SELECT judul, memory_summary, started_at
-                    FROM chat_sessions
-                    WHERE npp = $1 AND is_deleted = false AND judul IS NOT NULL AND judul != 'Obrolan Baru'
-                    ORDER BY started_at DESC
-                    LIMIT 5;
-                """, npp)
+                    SELECT s.session_uuid, s.judul, s.memory_summary, s.started_at,
+                           (SELECT m.message_text 
+                            FROM chat_messages m 
+                            WHERE m.session_id = s.id AND m.role = 'user' 
+                            ORDER BY m.timestamp DESC LIMIT 1) as last_user_query
+                    FROM chat_sessions s
+                    WHERE s.npp = $1 AND s.is_deleted = false 
+                      AND ($2::text IS NULL OR s.session_uuid::text != $2::text)
+                      AND s.judul IS NOT NULL AND s.judul != 'Obrolan Baru'
+                    ORDER BY s.started_at DESC
+                    LIMIT 4;
+                """, npp, str(current_session_uuid) if current_session_uuid else None)
                 
                 if recent_sessions:
                     session_topics = []
                     for s in recent_sessions:
                         title = s['judul']
                         summary = s['memory_summary']
+                        last_q = s['last_user_query']
                         if summary and len(summary.strip()) > 5:
                             session_topics.append(f"Topik '{title}': {summary.strip()}")
+                        elif last_q and len(last_q.strip()) > 3:
+                            clean_q = last_q.strip()[:80] + "..." if len(last_q.strip()) > 80 else last_q.strip()
+                            session_topics.append(f"Topik '{title}' (Membahas: \"{clean_q}\")")
                         elif title:
                             session_topics.append(f"Membahas '{title}'")
                     
@@ -79,6 +89,14 @@ class MemoryService:
 
         async with get_db() as conn:
             try:
+                # 0. PRIORITAS UTAMA: Baca pengaturan gaya bahasa akun dari user_settings
+                settings_row = await conn.fetchrow("SELECT settings FROM user_settings WHERE npp = $1", npp)
+                if settings_row and settings_row["settings"]:
+                    s_data = json.loads(settings_row["settings"]) if isinstance(settings_row["settings"], str) else settings_row["settings"]
+                    style = s_data.get("communication_style")
+                    if style in ["informal_gue_lo", "formal_saya_anda", "familiar_aku_kamu"]:
+                        return style
+
                 # 1. Cek dari memori yang sudah terkunci di ai_memory
                 row = await conn.fetchrow(
                     "SELECT mem_value FROM ai_memory WHERE npp = $1 AND mem_key = 'Karakter Komunikasi'",

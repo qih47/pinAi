@@ -217,13 +217,25 @@ export default function QuickTipsModal({ darkMode, language = "id", isOpen: exte
             ))}
           </div>
 
-          {/* Action Buttons */}
-          <div className="flex items-center space-x-2.5">
+          {/* Action Buttons & Skip Link */}
+          <div className="flex items-center space-x-3">
+            {!isLast && (
+              <button
+                type="button"
+                onClick={handleClose}
+                className={`text-xs font-medium transition-colors hover:underline underline-offset-4 px-1 py-1 cursor-pointer ${
+                  darkMode ? "text-gray-400 hover:text-gray-200" : "text-gray-500 hover:text-gray-800"
+                }`}
+              >
+                {language === "en" ? "Skip" : "Lewati"}
+              </button>
+            )}
+
             {currentSlide > 0 && (
               <button
                 type="button"
                 onClick={() => setCurrentSlide(prev => Math.max(0, prev - 1))}
-                className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${darkMode
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors cursor-pointer ${darkMode
                     ? "border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700"
                     : "border-gray-300 bg-white text-gray-700 hover:bg-gray-100"
                   }`}
@@ -236,7 +248,7 @@ export default function QuickTipsModal({ darkMode, language = "id", isOpen: exte
               <button
                 type="button"
                 onClick={() => setCurrentSlide(prev => Math.min(slides.length - 1, prev + 1))}
-                className="flex items-center space-x-1 px-4 py-1.5 rounded-lg text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white shadow-sm shadow-blue-500/20 transition-all"
+                className="flex items-center space-x-1 px-4 py-1.5 rounded-lg text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white shadow-sm shadow-blue-500/20 transition-all cursor-pointer"
               >
                 <span>{language === "en" ? "Next" : "Lanjut"}</span>
                 <ChevronRight size={14} />
@@ -245,7 +257,7 @@ export default function QuickTipsModal({ darkMode, language = "id", isOpen: exte
               <button
                 type="button"
                 onClick={handleClose}
-                className="flex items-center space-x-1.5 px-4 py-1.5 rounded-lg text-xs font-semibold bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white shadow-md shadow-blue-500/25 transition-all"
+                className="flex items-center space-x-1.5 px-4 py-1.5 rounded-lg text-xs font-semibold bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white shadow-md shadow-blue-500/25 transition-all cursor-pointer"
               >
                 <CheckCircle2 size={14} />
                 <span>{language === "en" ? "Start Chatting" : "Mulai Percakapan"}</span>

@@ -217,7 +217,17 @@ async def update_user_settings(payload: dict = Body(...)):
         raise HTTPException(status_code=401, detail="Unauthorized")
         
     async with get_db() as conn:
-        settings_json = json.dumps(settings_data)
+        existing_row = await conn.fetchrow("SELECT settings FROM user_settings WHERE npp = $1", npp)
+        curr_settings = {}
+        if existing_row and existing_row["settings"]:
+            curr_settings = json.loads(existing_row["settings"]) if isinstance(existing_row["settings"], str) else existing_row["settings"]
+        
+        # Merge settings baru ke settings yang ada
+        curr_settings.update(settings_data)
+        if "is_onboarded" not in curr_settings:
+            curr_settings["is_onboarded"] = True
+            
+        settings_json = json.dumps(curr_settings)
         await conn.execute("""
             INSERT INTO user_settings (npp, settings, updated_at)
             VALUES ($1, $2::jsonb, now())
@@ -226,8 +236,8 @@ async def update_user_settings(payload: dict = Body(...)):
         """, npp, settings_json)
 
         # Sinkronisasi ke tabel users jika preferred_name dikirimkan
-        if "preferred_name" in settings_data and settings_data["preferred_name"]:
-            await conn.execute("UPDATE users SET preferred_name = $2 WHERE npp = $1", npp, settings_data["preferred_name"])
+        if "preferred_name" in curr_settings and curr_settings["preferred_name"]:
+            await conn.execute("UPDATE users SET preferred_name = $2 WHERE npp = $1", npp, curr_settings["preferred_name"])
 
         # Realtime refresh in-memory cache
         from backend.app.utils.employee_cache import invalidate_employee_cache

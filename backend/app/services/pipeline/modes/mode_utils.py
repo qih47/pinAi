@@ -72,23 +72,33 @@ def detect_precheck(user_message: str, chat_mode: str, has_attachment: bool, use
     if word_count > 8:
         is_greeting = False
         
+    farewell_phrases = ["balik dulu", "pamit", "pulang dulu", "besok lanjut", "nanti lanjut", "dadah", "bye", "good night", "selamat malam", "selamat istirahat", "mau balik", "offline dulu"]
+    is_farewell = any(fp in msg_lower for fp in farewell_phrases)
+
     _INSTRUCTION_VERBS = [
         "buat", "buatkan", "buatin", "bikin", "bikinin", "analisa", "analisis", 
-        "jelaskan", "jelasin", "tabel", "timeline", "jadwal", "lanjut", "lanjutkan", 
+        "jelaskan", "jelasin", "tabel", "timeline", "jadwal", 
         "coba", "gas", "tolong", "perbaiki", "fix", "ubah", "ganti", "edit", 
         "tampilkan", "ringkas", "rangkum", "terapkan"
     ]
-    has_instruction = any(iv in msg_lower for iv in _INSTRUCTION_VERBS)
+    if not is_farewell and any(w in msg_lower for w in ["lanjut", "lanjutkan"]):
+        has_instruction = True
+    else:
+        has_instruction = any(iv in msg_lower for iv in _INSTRUCTION_VERBS)
 
-    if has_instruction:
+    if is_farewell:
+        is_greeting = True
+        is_chitchat = True
+        has_instruction = False
+    elif has_instruction:
         is_greeting = False
         is_chitchat = False
     else:
         is_chitchat = is_greeting
 
-    # SPRINT 5: Proteksi sapaan & ucapan terima kasih/apresiasi di mode apapun!
-    # Jangan paksakan need_rag_hint=True jika user sekadar sapaan ringan / makasih di mode "documents"
-    if is_chitchat and not is_doc_query and not has_instruction:
+    # SPRINT 5: Proteksi sapaan & ucapan terima kasih/apresiasi/pamitan di mode apapun!
+    # Jangan paksakan need_rag_hint=True jika user sekadar sapaan ringan / makasih / pamitan di mode "documents"
+    if (is_chitchat or is_farewell) and not is_doc_query and not has_instruction:
         need_rag_hint = False
     elif is_public_web:
         need_rag_hint = False
@@ -427,7 +437,7 @@ def get_module_config(module_name: str, precheck: Optional[Dict[str, Any]] = Non
             "temperature": 0.8,
             "top_p": 0.95,
             "top_k": 64,
-            "num_predict": 512,
+            "num_predict": 4096,
             "repeat_penalty": 1.1,
             "repeat_last_n": 128,
             "num_batch": 512,

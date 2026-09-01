@@ -5,22 +5,28 @@
 set -uo pipefail
 cd "$(dirname "$0")"
 
-echo "🧹 Membersihkan proses Vite lama & cache..."
-# Matikan semua proses vite yang mungkin masih nyangkut
-pkill -9 -f "vite" 2>/dev/null || true
-
-# Bersihkan port yang biasa dipakai frontend (5173-5176)
-fuser -k -9 5173/tcp 5174/tcp 5175/tcp 5176/tcp 2>/dev/null || true
+echo "🧹 Membersihkan proses Chat Vite (port 5173)..."
+# Matikan hanya frontend chat (5173)
+fuser -k -9 5173/tcp 2>/dev/null || true
 
 echo "🚀 Starting Chat Frontend (5173)..."
 npm run dev:chat -- --host --force &
 CHAT_PID=$!
 
-echo "🚀 Starting Analytics Frontend (5174)..."
-npm run dev:analytics -- --host --force &
-ANALYTICS_PID=$!
+ANALYTICS_PID=""
+if ! fuser 5174/tcp >/dev/null 2>&1; then
+    echo "🚀 Starting Analytics Frontend (5174)..."
+    npm run dev:analytics -- --host --force &
+    ANALYTICS_PID=$!
+else
+    echo "⚡ Analytics Frontend (5174) is already active, preserving running instance."
+fi
 
-# Pastikan kedua proses ikut mati kalau script ini di-kill (SIGTERM/SIGINT)
+# Pastikan proses chat ikut mati kalau script ini di-kill
 trap "echo '🛑 Stopping frontends...'; kill $CHAT_PID $ANALYTICS_PID 2>/dev/null" EXIT INT TERM
 
-wait $CHAT_PID $ANALYTICS_PID
+if [ -n "$ANALYTICS_PID" ]; then
+    wait $CHAT_PID $ANALYTICS_PID
+else
+    wait $CHAT_PID
+fi

@@ -131,18 +131,51 @@ async def get_system_metrics():
     }
 
 async def get_ollama_running_models() -> List[Dict[str, Any]]:
-    """Fetches currently loaded models from Ollama /api/ps"""
+    """Fetches currently loaded models from Ollama /api/ps and Chat Service PyTorch runtime"""
     ollama_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+    chat_svc_url = os.getenv("CHAT_SERVICE_URL", "http://localhost:8001")
     import httpx
+    models = []
+    
+    # 1. Fetch from Ollama /api/ps
     try:
-        async with httpx.AsyncClient(timeout=5.0) as client:
+        async with httpx.AsyncClient(timeout=4.0) as client:
             res = await client.get(f"{ollama_url}/api/ps")
             if res.status_code == 200:
                 models = res.json().get("models", [])
-                return models
     except Exception as e:
         logger.error(f"Failed to fetch Ollama PS: {e}")
-    return []
+
+    # 2. Fetch PyTorch CUDA models status from Chat Service (BGE-Reranker & F5-TTS)
+    try:
+        async with httpx.AsyncClient(timeout=3.0) as client:
+            res = await client.get(f"{chat_svc_url}/api/system/models-status")
+            if res.status_code == 200:
+                data = res.json()
+                if data.get("reranker", {}).get("loaded"):
+                    models.append({
+                        "name": "bge-reranker-v2-m3",
+                        "model": "bge-reranker-v2-m3",
+                        "size": data["reranker"]["size"],
+                        "size_vram": data["reranker"]["size_vram"],
+                        "expires_at": "2318-12-12T00:00:00.000000+07:00",
+                        "context_length": 512,
+                        "is_pytorch": True
+                    })
+                if data.get("f5_tts", {}).get("loaded"):
+                    models.append({
+                        "name": "f5-tts-indo",
+                        "model": "f5-tts-indo",
+                        "size": data["f5_tts"]["size"],
+                        "size_vram": data["f5_tts"]["size_vram"],
+                        "expires_at": "2318-12-12T00:00:00.000000+07:00",
+                        "context_length": 1024,
+                        "is_pytorch": True
+                    })
+    except Exception as e:
+        logger.debug(f"Chat service PyTorch models check: {e}")
+
+    return models
 
 async def get_top_users() -> List[Dict[str, Any]]:
     """Fetches top 5 token consumers in the last 7 days based on message count"""

@@ -64,10 +64,10 @@ class ModeFlash:
         else:
             logger.info("[MODE_FLASH] Skipping community knowledge search for chitchat/greeting module.")
 
-        # Inject Employee Long-Term Memory (ai_memory) - lewati pada modul sapaan agar respon instan
-        if current_user_npp and current_user_npp != "GUEST" and module_name != "chitchat":
+        # Inject Employee Long-Term Memory (ai_memory & cross-session topics)
+        if current_user_npp and current_user_npp != "GUEST":
             from backend.app.services.memory.memory_service import memory_service
-            employee_memory = await memory_service.get_employee_long_term_memory(current_user_npp)
+            employee_memory = await memory_service.get_employee_long_term_memory(current_user_npp, current_session_uuid=session_uuid)
             if employee_memory:
                 system_prompt += employee_memory
 

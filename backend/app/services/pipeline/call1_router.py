@@ -507,8 +507,8 @@ def _validate_and_normalize_routing(
     else:
         routing["session_title"] = None
 
-    # Override dengan precheck jika ada hint yang kuat (HANYA jika bukan public web search)
-    if precheck.get("need_rag_hint") is True and not routing["need_rag"] and not routing.get("is_web_search") and not precheck.get("is_public_web"):
+    # Override dengan precheck jika ada hint yang kuat (HANYA jika bukan public web search dan BUKAN chitchat/greeting/closing)
+    if precheck.get("need_rag_hint") is True and not routing["need_rag"] and not routing.get("is_web_search") and not precheck.get("is_public_web") and not routing.get("is_chitchat") and not routing.get("is_greeting"):
         logger.warning("[CALL1] Precheck override: need_rag forced to True")
         routing["need_rag"] = True
 

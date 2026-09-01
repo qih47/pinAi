@@ -26,6 +26,7 @@ class VectorService:
         payload = {
             "model": settings.MODEL_EMBEDDING,
             "prompt": prompt,
+            "keep_alive": -1,
         }
 
         client = get_shared_client()

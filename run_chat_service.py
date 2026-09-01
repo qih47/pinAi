@@ -193,6 +193,30 @@ async def serve_db_doc(file_path: str, request: Request, current_user_npp: Optio
         raise HTTPException(status_code=404, detail="File tidak ditemukan")
     return FileResponse(abs_path)
 
+@app.get("/api/system/models-status", tags=["System"])
+async def get_system_models_status():
+    from backend.app.services.rag.reranker_service import _load_reranker
+    from backend.app.api.endpoints import voice
+    
+    reranker_loaded = _load_reranker.cache_info().currsize > 0
+    f5_loaded = getattr(voice, "_f5_ema_model", None) is not None
+    return {
+        "status": "success",
+        "reranker": {
+            "loaded": reranker_loaded,
+            "name": "bge-reranker-v2-m3",
+            "size": 570 * 1024 * 1024,
+            "size_vram": 570 * 1024 * 1024 if reranker_loaded else 0
+        },
+        "f5_tts": {
+            "loaded": f5_loaded,
+            "name": "f5-tts-indo",
+            "size": 1500 * 1024 * 1024,
+            "size_vram": 1500 * 1024 * 1024 if f5_loaded else 0
+        }
+    }
+
+
 @app.get("/uploads/{file_path:path}", tags=["Static Files"])
 async def serve_uploads(file_path: str, request: Request):
     abs_path = os.path.join(UPLOAD_DIR, file_path)

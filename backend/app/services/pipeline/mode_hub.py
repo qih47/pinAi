@@ -519,9 +519,13 @@ class ModeHub:
 
         if current_user_npp == "GUEST":
             routing_data["need_rag"] = False
-            logger.info("[MODE_HUB] GUEST User detected — RAG forcefully disabled.")
-
+        # 🛡️ Proteksi Kata Ganti: Preferensi eksplisit akun (settings/onboarding) adalah prioritas mutlak
+        router_pronoun = routing_data.pop("pronoun", None)
         precheck.update(routing_data)
+        if user_default_pronoun in ["informal_gue_lo", "formal_saya_anda", "familiar_aku_kamu"]:
+            precheck["pronoun"] = user_default_pronoun
+        elif router_pronoun:
+            precheck["pronoun"] = router_pronoun
 
         # ── Override Router if URL Context Exists ─────────────────────────────────
         if precheck.get("has_url_context"):

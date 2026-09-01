@@ -41,17 +41,15 @@ stop_services() {
         fi
     done
 
-    # 2. Fast kill all associated python & vite processes
+    # 2. Fast kill all associated python backend processes & chat frontend
     pkill -9 -f "run_chat_service.py" 2>/dev/null || true
     pkill -9 -f "run_gateway.py" 2>/dev/null || true
     pkill -9 -f "run_auth_service.py" 2>/dev/null || true
     pkill -9 -f "run_analytics_service.py" 2>/dev/null || true
-    pkill -9 -f "start_frontends.sh" 2>/dev/null || true
-    pkill -9 -f "vite" 2>/dev/null || true
+    pkill -9 -f "dev:chat" 2>/dev/null || true
 
-    # 3. Clean network ports
-    fuser -k -9 8000/tcp 8001/tcp 8002/tcp 8003/tcp 5173/tcp 5174/tcp 2>/dev/null || true
-    rm -rf "$FRONTEND_DIR/node_modules/.vite" 2>/dev/null || true
+    # 3. Clean network ports (preserve 5174 for Analytics dashboard)
+    fuser -k -9 8000/tcp 8001/tcp 8002/tcp 8003/tcp 5173/tcp 2>/dev/null || true
 }
 
 reset_vram() {
@@ -69,7 +67,7 @@ reset_vram() {
 case "${1:-all}" in
     stop)
         stop_services
-        echo "✅ All CAKRA services stopped."
+        echo "✅ All CAKRA backend & chat services stopped (Analytics 5174 preserved if running)."
         ;;
     reset-vram)
         stop_services
@@ -97,9 +95,7 @@ case "${1:-all}" in
         start_service "auth_service" "run_auth_service.py"
         ;;
     frontend)
-        pkill -9 -f "start_frontends.sh" 2>/dev/null || true
-        pkill -9 -f "vite" 2>/dev/null || true
-        fuser -k -9 5173/tcp 5174/tcp 2>/dev/null || true
+        fuser -k -9 5173/tcp 2>/dev/null || true
         start_frontend
         ;;
     all|start|restart)

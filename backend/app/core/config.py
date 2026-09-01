@@ -37,9 +37,8 @@ class Settings(BaseSettings):
     ZIMBRA_EMAIL: Optional[str] = None
     ZIMBRA_PASSWORD: Optional[str] = None
 
-    MODEL_PERSONA: str = "gemma4:31b"       # Gemma4 Agentic Engine
-    MODEL_ROUTER: str = "gemma4:e4b"       # Gemma4 Agentic Engine
-    MODEL_VISION: str = "minicpm-v:latest"   # Vision/OCR untuk attachment PDF & image
+    MODEL_PERSONA: str = "gemma4:31b"       # Gemma4 Agentic Engine (Chat, Reasoning & Multimodal Vision)
+    MODEL_ROUTER: str = "gemma4:e4b"       # Gemma4 Router Engine (Call 1 JSON)
     MODEL_EMBEDDING: str = "mxbai-embed-large:latest"  # Embedding untuk RAG
 
     NUM_CTX_CORE: int = 16384                # Standardisasi context window untuk Core Model (Cegah VRAM reload)
@@ -96,7 +95,6 @@ print("------------------------------------------------------------------", flus
 print("📊 [ACTIVE RUNTIME OLLAMA MODELS]:", flush=True)
 print(f"   • GEMMA4 PERSONA (Call 2): {settings.MODEL_PERSONA}", flush=True)
 print(f"   • ROUTER (Call 1)        : {getattr(settings, 'MODEL_ROUTER', settings.MODEL_PERSONA)}", flush=True)
-print(f"   • VISION (MiniCPM)       : {settings.MODEL_VISION}", flush=True)
 print(f"   • EMBEDDING              : {settings.MODEL_EMBEDDING}", flush=True)
 print("------------------------------------------------------------------", flush=True)
 print(f"🔌 [CONFIG] Database User: {settings.DB_USER} | Target Database: {settings.DB_DATABASE}", flush=True)
