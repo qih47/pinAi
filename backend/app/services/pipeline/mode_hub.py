@@ -711,27 +711,31 @@ class ModeHub:
         elif router_pronoun:
             precheck["pronoun"] = router_pronoun
 
-        # ── 🛡️ Lock intent if forced_mode is active from FE Tag (Jalur B: User Ketik Sendiri) ──
-        if forced_mode:
-            f_mode = forced_mode.lower().strip()
-            if f_mode in ["websearch", "search", "web"]:
-                precheck["is_web_search"] = True
-                precheck["need_rag"] = False
-                precheck["is_chitchat"] = False
-                logger.info(f"[MODE_HUB] 🔒 Enforcing is_web_search=True due to forced_mode={forced_mode}")
-            elif f_mode in ["documents", "document", "rag"]:
-                precheck["need_rag"] = True
-                precheck["is_web_search"] = False
-                precheck["is_chitchat"] = False
-                logger.info(f"[MODE_HUB] 🔒 Enforcing need_rag=True due to forced_mode={forced_mode}")
-            elif f_mode in ["code", "coding", "generate_file"]:
-                precheck["is_coding"] = True
-                precheck["is_generate_file"] = True
-                precheck["is_chitchat"] = False
-                logger.info(f"[MODE_HUB] 🔒 Enforcing is_coding=True due to forced_mode={forced_mode}")
-            elif f_mode in ["focus", "compliance"]:
-                chat_mode = f_mode
-                logger.info(f"[MODE_HUB] 🔒 Enforcing chat_mode={chat_mode} due to forced_mode={forced_mode}")
+        # ── 🛡️ Lock intent if forced_mode / chat_mode is active from FE Tag ──
+        effective_req_mode = (forced_mode or chat_mode or "").lower().strip()
+        if effective_req_mode in ["documents", "document", "global_chat", "rag"]:
+            precheck["need_rag"] = True
+            precheck["is_web_search"] = False
+            precheck["is_chitchat"] = False
+            precheck["is_coding"] = False
+            precheck["is_generate_file"] = False
+            if not precheck.get("queries"):
+                precheck["queries"] = [user_message]
+            chat_mode = "documents"
+            logger.info(f"[MODE_HUB] 🔒 Enforcing need_rag=True & is_web_search=False due to mode={effective_req_mode}")
+        elif effective_req_mode in ["websearch", "search", "web"]:
+            precheck["is_web_search"] = True
+            precheck["need_rag"] = False
+            precheck["is_chitchat"] = False
+            logger.info(f"[MODE_HUB] 🔒 Enforcing is_web_search=True due to mode={effective_req_mode}")
+        elif effective_req_mode in ["code", "coding", "generate_file"]:
+            precheck["is_coding"] = True
+            precheck["is_generate_file"] = True
+            precheck["is_chitchat"] = False
+            logger.info(f"[MODE_HUB] 🔒 Enforcing is_coding=True due to mode={effective_req_mode}")
+        elif effective_req_mode in ["focus", "compliance"]:
+            chat_mode = effective_req_mode
+            logger.info(f"[MODE_HUB] 🔒 Enforcing chat_mode={chat_mode} due to mode={effective_req_mode}")
 
         # ── Override Router if URL Context Exists ─────────────────────────────────
         if precheck.get("has_url_context"):
@@ -774,7 +778,7 @@ class ModeHub:
 
         # ── Web Search Mode Routing ─────────────────────────────────────
         # JANGAN izinkan web search jika need_rag bernilai True atau user secara eksplisit di mode Dokumen
-        if precheck.get("is_web_search", False) and not precheck.get("need_rag", False) and chat_mode != "documents":
+        if precheck.get("is_web_search", False) and not precheck.get("need_rag", False) and chat_mode not in ["documents", "document", "global_chat"]:
             logger.info("[MODE_HUB] Routing to Web Search Mode.")
             from backend.app.services.pipeline.modes.mode_web_search import handle_web_search
             # Convert ChatMessageSchema to dict

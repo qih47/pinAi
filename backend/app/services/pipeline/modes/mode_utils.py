@@ -97,13 +97,19 @@ def detect_precheck(user_message: str, chat_mode: str, has_attachment: bool, use
         is_chitchat = is_greeting
 
     # SPRINT 5: Proteksi sapaan & ucapan terima kasih/apresiasi/pamitan di mode apapun!
-    # Jangan paksakan need_rag_hint=True jika user sekadar sapaan ringan / makasih / pamitan di mode "documents"
-    if (is_chitchat or is_farewell) and not is_doc_query and not has_instruction:
+    # Prioritaskan chat_mode eksplisit jika user memilih mode dokumen
+    is_explicit_doc_mode = str(chat_mode).lower().strip() in ["documents", "document", "global_chat"]
+
+    if (is_chitchat or is_farewell) and not is_doc_query and not has_instruction and not is_explicit_doc_mode:
         need_rag_hint = False
+    elif is_explicit_doc_mode:
+        need_rag_hint = True
+        is_public_web = False
+        is_chitchat = False
     elif is_public_web:
         need_rag_hint = False
         is_chitchat = False
-    elif chat_mode == "documents" or has_attachment or is_doc_query:
+    elif has_attachment or is_doc_query:
         need_rag_hint = True
         is_chitchat = False
     elif is_coding:
@@ -115,6 +121,7 @@ def detect_precheck(user_message: str, chat_mode: str, has_attachment: bool, use
     slang_mirror = extract_slang_mirror(user_message, user_pronoun=pronoun)
 
     return {
+        "chat_mode": chat_mode,
         "is_chitchat": is_chitchat,
         "is_coding": is_coding,
         "is_greeting": is_greeting,

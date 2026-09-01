@@ -97,19 +97,6 @@ export const createStreamSlice = (set, get) => ({
         const targetFiles = directUploadedFiles !== null ? directUploadedFiles : get().stagedAttachments;
         const attachmentMeta = normalizeAttachments(targetFiles);
 
-        const userMessage = {
-            role: 'user',
-            content: content.trim(),
-            timestamp: new Date().toISOString(),
-            ...(attachmentMeta.length > 0 ? { attachments: attachmentMeta } : {}),
-        };
-        const updatedMessages = [...get().messages, userMessage];
-        const assistantMessage = { role: 'assistant', content: '', timestamp: new Date().toISOString(), isStreaming: true };
-
-        const currentAttachmentPaths = attachmentMeta
-            .map((file) => file.file_path)
-            .filter(Boolean);
-
         const currentIsolatedDocId = get().activeIsolatedDocId;
         const currentChatMode = get().chatMode;
         
@@ -118,13 +105,39 @@ export const createStreamSlice = (set, get) => ({
             effectiveChatMode = currentChatMode === 'compliance' ? 'compliance' : 'focus';
         }
 
+        const userMessage = {
+            role: 'user',
+            content: content.trim(),
+            timestamp: new Date().toISOString(),
+            chatMode: effectiveChatMode,
+            mode: effectiveChatMode,
+            isThinkingMode: isThinkingMode,
+            thinking: isThinkingMode,
+            ...(attachmentMeta.length > 0 ? { attachments: attachmentMeta } : {}),
+        };
+        const updatedMessages = [...get().messages, userMessage];
+        const assistantMessage = { 
+            role: 'assistant', 
+            content: '', 
+            timestamp: new Date().toISOString(), 
+            isStreaming: true,
+            chatMode: effectiveChatMode,
+            mode: effectiveChatMode,
+            isThinkingMode: isThinkingMode,
+            thinking: isThinkingMode ? '' : undefined,
+        };
+
+        const currentAttachmentPaths = attachmentMeta
+            .map((file) => file.file_path)
+            .filter(Boolean);
+
         // Setup Multi-Session Stream State
         const controller = new AbortController();
         const activeStreams = { ...get().activeStreams };
         activeStreams[currentSessionUuid] = {
             messages: [...updatedMessages, assistantMessage],
             isStreaming: true,
-            isThinking: true,
+            isThinking: isThinkingMode,
             abortController: controller,
             currentThinking: ''
         };
@@ -133,14 +146,19 @@ export const createStreamSlice = (set, get) => ({
         set({
             activeStreams,
             chatMode: effectiveChatMode, // Menyinkronkan chatMode ke store
-            messages: [...updatedMessages, assistantMessage],
+            isThinkingMode: isThinkingMode,
             isStreaming: true,
-            // isLoading: true,
-            isThinking: true,
-            abortController: controller
+            isThinking: isThinkingMode,
+            abortController: controller,
+            messages: [...updatedMessages, assistantMessage],
+            currentThinking: '',
+            isLoading: false
         });
 
         await new Promise(resolve => setTimeout(resolve, 100));
+
+        // Simpan preferensi toggle ke DB secara asinkron
+        endpoints.updateSessionSettings(currentSessionUuid, { chatMode: effectiveChatMode, isThinkingMode }).catch(() => {});
 
         await performStream(
             set,
@@ -154,8 +172,8 @@ export const createStreamSlice = (set, get) => ({
             effectiveChatMode,
             isThinkingMode,
             toast,
-            null,
-            null,
+            null, // targetAssistantIdx null untuk chat baru
+            null, // editIndex null untuk chat baru
             options
         );
 
@@ -170,14 +188,64 @@ export const createStreamSlice = (set, get) => ({
         const currentMessages = [...get().messages];
         currentMessages[index] = { ...currentMessages[index], content: newContent };
 
+        // Cek mode asli dan thinking asli dari pesan yang diedit atau respons setelahnya
+        const editedMsg = currentMessages[index];
+        const prevAssistantMsg = currentMessages[index + 1];
+
+        const currentIsolatedDocId = get().activeIsolatedDocId;
+        const currentChatMode = get().chatMode || 'auto';
+        let effectiveChatMode = currentChatMode;
+
+        let detectedMode = editedMsg?.chatMode || editedMsg?.mode || editedMsg?.metadata?.mode;
+        if (!detectedMode && prevAssistantMsg) {
+            detectedMode = prevAssistantMsg.chatMode || prevAssistantMsg.mode || prevAssistantMsg.metadata?.mode;
+            if (!detectedMode && prevAssistantMsg.thought) {
+                const match = prevAssistantMsg.thought.match(/Mode:\s*([a-zA-Z_]+)/i);
+                if (match && match[1]) {
+                    detectedMode = match[1].toLowerCase();
+                }
+            }
+        }
+
+        if (detectedMode && ['auto', 'focus', 'documents', 'document', 'compliance', 'flash', 'guest', 'email', 'insight'].includes(detectedMode)) {
+            effectiveChatMode = (detectedMode === 'document') ? 'documents' : detectedMode;
+        } else if (currentIsolatedDocId) {
+            effectiveChatMode = currentChatMode === 'compliance' ? 'compliance' : 'focus';
+        }
+
+        // Cek thinking mode asli dari pesan yang diedit atau respons setelahnya
+        let effectiveThinkingMode = get().isThinkingMode;
+        let detectedThinking = editedMsg?.isThinkingMode ?? editedMsg?.thinking ?? editedMsg?.isThinking;
+
+        if (detectedThinking === undefined && prevAssistantMsg) {
+            if (prevAssistantMsg.isThinkingMode !== undefined) {
+                detectedThinking = Boolean(prevAssistantMsg.isThinkingMode);
+            } else if (prevAssistantMsg.thinking !== undefined && typeof prevAssistantMsg.thinking === 'boolean') {
+                detectedThinking = prevAssistantMsg.thinking;
+            } else if (prevAssistantMsg.thought) {
+                const thoughtStr = String(prevAssistantMsg.thought);
+                const hasThinkingFlag = /Thinking:\s*true/i.test(thoughtStr);
+                const hasThinkingTag = thoughtStr.includes('<think>') || thoughtStr.includes('<|channel>thought');
+                const hasRealThought = thoughtStr.length > 50 && !thoughtStr.startsWith('Gemma Agentic | Mode:') && !thoughtStr.startsWith('Gemma Agentic [Mode:');
+                detectedThinking = hasThinkingFlag || hasThinkingTag || hasRealThought;
+            }
+        }
+
+        if (detectedThinking !== undefined) {
+            effectiveThinkingMode = Boolean(detectedThinking);
+        }
+
         // 2. Siapkan/update asisten message tepat di posisi index + 1
         const assistantMessage = {
             role: 'assistant',
             content: '',
-            isThinking: get().isThinkingMode,
+            isThinking: effectiveThinkingMode,
             isStreaming: true,
             thinking: '',
-            statusMessage: get().isThinkingMode ? 'Sedang berpikir' : ''
+            statusMessage: effectiveThinkingMode ? 'Sedang berpikir' : '',
+            chatMode: effectiveChatMode,
+            mode: effectiveChatMode,
+            isThinkingMode: effectiveThinkingMode
         };
         if (currentMessages[index + 1] && currentMessages[index + 1].role === 'assistant') {
             currentMessages[index + 1] = assistantMessage;
@@ -190,9 +258,9 @@ export const createStreamSlice = (set, get) => ({
         activeStreams[sessionUuid] = {
             messages: currentMessages,
             isStreaming: true,
-            isThinking: true,
+            isThinking: effectiveThinkingMode,
             abortController: controller,
-            currentThinking: get().isThinkingMode ? 'Sedang berpikir...' : ''
+            currentThinking: effectiveThinkingMode ? 'Sedang berpikir...' : ''
         };
 
         const newWizardAnswers = { ...(get().wizardAnswers || {}) };
@@ -206,12 +274,12 @@ export const createStreamSlice = (set, get) => ({
             activeStreams,
             messages: currentMessages,
             isStreaming: true,
-            isThinking: true,
+            isThinking: effectiveThinkingMode,
             isEditRegenerating: true,
             activeWizard: null,
             wizardAnswers: newWizardAnswers,
             abortController: controller,
-            currentThinking: get().isThinkingMode ? 'Sedang berpikir...' : ''
+            currentThinking: effectiveThinkingMode ? 'Sedang berpikir...' : ''
         });
 
         await new Promise(resolve => setTimeout(resolve, 100));
@@ -224,28 +292,6 @@ export const createStreamSlice = (set, get) => ({
             .map((file) => file.file_path)
             .filter(Boolean);
 
-        // 4. Tentukan mode chat berdasarkan mode asli pesan yang sedang diregenerate (jika ada)
-        const currentIsolatedDocId = get().activeIsolatedDocId;
-        const currentChatMode = get().chatMode || 'auto';
-        let effectiveChatMode = currentChatMode;
-
-        // Cek mode asli dari pesan yang diedit atau respons setelahnya
-        const editedMsg = currentMessages[index];
-        const prevAssistantMsg = currentMessages[index + 1];
-        let detectedMode = editedMsg?.metadata?.mode || editedMsg?.mode;
-        if (!detectedMode && prevAssistantMsg?.thought) {
-            const match = prevAssistantMsg.thought.match(/Mode:\s*([a-zA-Z]+)/i);
-            if (match && match[1]) {
-                detectedMode = match[1].toLowerCase();
-            }
-        }
-
-        if (detectedMode && ['auto', 'focus', 'documents', 'compliance'].includes(detectedMode)) {
-            effectiveChatMode = detectedMode; // Gunakan mode asli pesan tersebut
-        } else if (currentIsolatedDocId) {
-            effectiveChatMode = currentChatMode === 'compliance' ? 'compliance' : 'focus';
-        }
-        
         await performStream(
             set,
             get,
@@ -256,7 +302,7 @@ export const createStreamSlice = (set, get) => ({
             currentIsolatedDocId,
             currentAttachmentPaths,
             effectiveChatMode,
-            get().isThinkingMode,
+            effectiveThinkingMode,
             toast,
             index + 1, // targetAssistantIdx
             index      // 🔥 editIndex

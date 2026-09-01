@@ -23,6 +23,13 @@ ATURAN FORMAT OUTPUT:
 {% if is_guest %}
 6. Tamu (GUEST): Dilarang menyertakan `need_rag`.
 {% endif %}
+{% if is_document_mode or need_rag_hint %}
+7. 🚨 ATURAN MODE DOKUMEN INTERNAL AKTIF:
+   - Pengguna secara eksplisit memilih MODE DOKUMEN (Arsip Regulasi, SOP, PKB, Dokumen Internal PT Pindad).
+   - Output JSON WAJIB menyertakan: `"need_rag": true`.
+   - 🚫 DILARANG KERAS menyertakan: `"is_web_search": true`!
+   - Fokuskan `"query_judul"` (nama dokumen/regulasi) dan `"queries"` (kata kunci substansi pasal/topik) untuk pencarian arsip internal.
+{% endif %}
 
 
 STRUKTUR METADATA (WAJIB ADA DI SETIAP OUTPUT):
@@ -219,6 +226,10 @@ def build_call1_routing_prompt(
 ) -> str:
     is_coding_precheck = precheck.get("is_coding", False)
     need_rag_hint = precheck.get("need_rag_hint")
+    is_document_mode = bool(
+        str(precheck.get("chat_mode", "")).lower().strip() in ["documents", "document", "global_chat"]
+        or need_rag_hint is True
+    ) and not is_guest
     
     # Format visited URLs dari sesi sebelumnya untuk disuntikkan ke prompt
     visited_urls_list = precheck.get("_visited_urls", [])
@@ -232,6 +243,7 @@ def build_call1_routing_prompt(
         session_manifest_str=session_manifest_str,
         is_guest=is_guest,
         is_first_chat=is_first_chat,
+        is_document_mode=is_document_mode,
         need_rag_hint=need_rag_hint is True and not is_guest,
         is_coding_precheck=is_coding_precheck,
         previous_urls=previous_urls_str,

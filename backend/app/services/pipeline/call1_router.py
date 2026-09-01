@@ -360,6 +360,17 @@ def _validate_and_normalize_routing(
     else:
         routing["is_web_search"] = bool(routing_json.get("is_web_search", False))
 
+    # ── ATURAN STRICT MODE DOKUMEN (USER EXPLICIT INTENT OVERRIDE) ───────────
+    # Jika user secara eksplisit memilih Mode Dokumen, pastikan need_rag selalu True dan web search False
+    is_explicit_doc_mode = precheck.get("chat_mode") in ["documents", "document", "global_chat"] or precheck.get("need_rag_hint") is True
+    if is_explicit_doc_mode and not routing["is_ambiguous"]:
+        routing["need_rag"] = True
+        routing["is_web_search"] = False
+        routing["is_chitchat"] = False
+        if not routing.get("queries"):
+            routing["queries"] = [user_message]
+        logger.info(f"[CALL1] 📚 Explicit Document Mode enforced: need_rag=True, queries={routing['queries']}")
+
     # ── ATURAN STRICT AMBIGUOUS GATE ──────────────────────────────────────────
     # Jika is_ambiguous True, paksa need_rag = False dan kosongkan search queries/web search
     # agar sistem tidak buang latency RAG & langsung menanyakan klarifikasi/wizard ke user.
@@ -372,7 +383,7 @@ def _validate_and_normalize_routing(
 
     # ── ATURAN STRICT MUTUAL EXCLUSION: need_rag VS is_web_search & is_coding ─────────────
     # need_rag (dokumen internal Pindad) dan is_web_search/is_coding DILARANG KERAS sama-sama aktif!
-    if routing.get("is_web_search"):
+    if routing.get("is_web_search") and not is_explicit_doc_mode:
         # Jika web search aktif (misal DPR RI, berita, internet), matikan need_rag
         if routing.get("need_rag"):
             logger.info("[CALL1] 🌐 Web search is active. Setting need_rag=False.")
