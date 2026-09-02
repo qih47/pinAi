@@ -67,7 +67,8 @@ export default function ChatInputArea({
   const showMultilineLayout = isMobile || isMultiLine;
 
   const renderActiveModePill = () => {
-    if (!activeModeTag) return null;
+    const effectiveTag = activeModeTag || (chatMode && chatMode !== 'auto' && chatMode !== 'flash' && chatMode !== 'guest' ? chatMode : null);
+    if (!effectiveTag) return null;
     return (
       <div
         style={{
@@ -87,34 +88,39 @@ export default function ChatInputArea({
           marginRight: "2px"
         }}
       >
-        {activeModeTag === "code" && <Code2 size={15} className="opacity-90 flex-shrink-0" />}
-        {activeModeTag === "websearch" && <Globe size={15} className="opacity-90 flex-shrink-0" />}
-        {activeModeTag === "documents" && <FileText size={15} className="opacity-90 flex-shrink-0" />}
-        {activeModeTag === "diagram" && <Workflow size={15} className="opacity-90 flex-shrink-0" />}
-        {activeModeTag === "chart" && <BarChart3 size={15} className="opacity-90 flex-shrink-0" />}
-        {activeModeTag === "create_file" && <FilePlus size={15} className="opacity-90 flex-shrink-0" />}
-        {activeModeTag === "smart_mail" && <Mail size={15} className="opacity-90 flex-shrink-0" />}
-        {activeModeTag === "focus" && <Target size={15} className="opacity-90 flex-shrink-0" />}
+        {effectiveTag === "code" && <Code2 size={15} className="opacity-90 flex-shrink-0" />}
+        {effectiveTag === "websearch" && <Globe size={15} className="opacity-90 flex-shrink-0" />}
+        {effectiveTag === "documents" && <FileText size={15} className="opacity-90 flex-shrink-0" />}
+        {effectiveTag === "diagram" && <Workflow size={15} className="opacity-90 flex-shrink-0" />}
+        {effectiveTag === "chart" && <BarChart3 size={15} className="opacity-90 flex-shrink-0" />}
+        {effectiveTag === "create_file" && <FilePlus size={15} className="opacity-90 flex-shrink-0" />}
+        {effectiveTag === "smart_mail" && <Mail size={15} className="opacity-90 flex-shrink-0" />}
+        {effectiveTag === "focus" && <Target size={15} className="opacity-90 flex-shrink-0" />}
         <span style={{ letterSpacing: "0.01em" }}>
-          {activeModeTag === "code"
+          {effectiveTag === "code"
             ? tHints.code
-            : activeModeTag === "websearch"
+            : effectiveTag === "websearch"
               ? tHints.websearch
-              : activeModeTag === "documents"
+              : effectiveTag === "documents"
                 ? tHints.documents
-                : activeModeTag === "diagram"
+                : effectiveTag === "diagram"
                   ? tHints.diagram
-                  : activeModeTag === "chart"
+                  : effectiveTag === "chart"
                     ? tHints.chart
-                    : activeModeTag === "create_file"
+                    : effectiveTag === "create_file"
                       ? tHints.createFile
-                      : activeModeTag === "smart_mail"
+                      : effectiveTag === "smart_mail"
                         ? tHints.smartMail
                         : tHints.focus}
         </span>
         <button
           type="button"
-          onClick={() => setActiveModeTag(null)}
+          onClick={() => {
+            setActiveModeTag(null);
+            if (chatMode && chatMode !== 'auto') {
+              handleChatModeChange('auto');
+            }
+          }}
           style={{
             background: "transparent",
             border: "none",

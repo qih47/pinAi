@@ -1095,7 +1095,6 @@ export function useChatLogic({ isGuest,
     if (sessionId) sessionStorage.removeItem(`cakra_draft_${sessionId}`);
 
     setInput("");
-    useChatStore.getState().setActiveModeTag(null);
     setSelectedFiles([]);
     setStagedAttachments([]);
     setIsMultiLine(false);

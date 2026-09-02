@@ -17,7 +17,13 @@ export default function IsolatedDocBanner({
 
   const tGlobal = translations[language]?.chat?.isolatedBanner || translations.id.chat.isolatedBanner;
 
+  const activeModeTag = useChatStore((state) => state.activeModeTag);
+
   if (!activeIsolatedTitle) return null;
+  // Sembunyikan banner FOCUS jika dalam mode Document Search (baik saat pilih dokumen maupun sesudah kirim chat)
+  if (activeModeTag === 'documents' || chatMode === 'documents' || (chatMode !== 'focus' && chatMode !== 'compliance' && chatMode !== 'redteam')) {
+    return null;
+  }
 
   const currentMode = chatMode === 'compliance' ? 'compliance' : chatMode === 'redteam' ? 'redteam' : 'focus';
 
