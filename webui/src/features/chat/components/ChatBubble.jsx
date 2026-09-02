@@ -108,8 +108,8 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
         isStopped: false,
     });
     const currentAudioRef = useRef(null);
-
-    const isThisMessageStreaming = msg.isStreaming === true;
+    const globalIsStreaming = useChatStore((state) => state.isStreaming);
+    const isThisMessageStreaming = msg.isStreaming === true || (isLastMessage && globalIsStreaming);
     const autoReadAloud = useChatStore((state) => state.autoReadAloud);
     const ttsVoice = useChatStore((state) => state.ttsVoice);
 
@@ -466,7 +466,6 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
     };
 
     const globalIsThinking = useChatStore((state) => state.isThinking);
-    const globalIsStreaming = useChatStore((state) => state.isStreaming);
     const activeIsolatedDocId = useChatStore((state) => state.activeIsolatedDocId);
     const setContextIsolation = useChatStore((state) => state.setContextIsolation);
 
@@ -488,21 +487,22 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
         );
     }
 
-    const isThinkingMsg = isThisMessageStreaming && globalIsThinking && (!msg.content || msg.content === '');
+    const showStatusText = isThisMessageStreaming && (!msg.content || msg.content === '');
+    const isThinkingMsg = isThisMessageStreaming && Boolean(msg.isThinking || msg.thinking || (globalIsThinking && (!msg.content || msg.content === '')));
     const isStreamingMsg = isThisMessageStreaming && msg.content !== '';
-    const isActive = isThinkingMsg || isStreamingMsg;
+    const isActive = isThisMessageStreaming;
 
-    // 🔥 Smooth transition & animasi untuk teks berpikir
-    const [displayThought, setDisplayThought] = useState("CAKRA sedang berpikir");
+    // 🔥 Smooth transition & animasi untuk teks status / berpikir dinamis
+    const [displayThought, setDisplayThought] = useState("CAKRA sedang menyiapkan respon");
     const [isThoughtVisible, setIsThoughtVisible] = useState(true);
     const thoughtTimerRef = useRef(null);
 
     useEffect(() => {
-        if (!isThinkingMsg) return;
+        if (!showStatusText) return;
 
-        // PRIORITIZE msg.statusMessage (e.g. from RAG SSE status event) over static fallback
+        // PRIORITIZE msg.statusMessage (e.g. from SSE status event) over static fallback
         const localizedStatus = msg.statusMessage ? resolveStatusMessage(msg.statusMessage, language) : '';
-        const nextThought = localizedStatus ? localizedStatus : formatThinkingPhase(msg.thought, language);
+        const nextThought = localizedStatus ? localizedStatus : (formatThinkingPhase(msg.thought, language) || "CAKRA sedang berpikir");
 
         if (nextThought !== displayThought) {
             if (thoughtTimerRef.current) {
@@ -520,7 +520,7 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
         return () => {
             if (thoughtTimerRef.current) clearTimeout(thoughtTimerRef.current);
         };
-    }, [msg.thought, msg.statusMessage, isThinkingMsg, displayThought, language]);
+    }, [msg.thought, msg.statusMessage, showStatusText, displayThought, language]);
 
     return (
         <div style={{ ...styles.assistantRow, animation: 'fadeInUp 0.15s ease-out forwards' }}>
@@ -547,12 +547,12 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
                         {isActive && (
                             <span style={{
                                 ...styles.statusDot,
-                                background: isThinkingMsg ? '#ef4444' : '#10b981',
+                                background: showStatusText ? '#ef4444' : '#10b981',
                                 borderColor: theme.mainBg
                             }} />
                         )}
                     </div>
-                    {isThinkingMsg ? (
+                    {showStatusText ? (
                         <span style={{ display: 'flex', alignItems: 'center', marginLeft: 10, opacity: isThoughtVisible ? 1 : 0, transition: 'opacity 0.1s ease', flexShrink: 0 }}>
                             <span
                                 style={{

@@ -94,8 +94,8 @@ export async function performStream(set, get, messagesToSend, assistantMessage, 
                 {
                     sessionUuid: activeSessionUuid,
                     messages: messagesToSend,
-                    chatMode: get().chatMode || chatMode,
-                    thinking: isThinkingMode,
+                    chatMode: chatMode || get().chatMode || 'auto',
+                    thinking: isThinkingMode !== undefined ? isThinkingMode : get().isThinkingMode,
                     isolatedDocId,
                     attachmentPaths,
                     npp,
@@ -150,7 +150,8 @@ export async function performStream(set, get, messagesToSend, assistantMessage, 
                                     }
                                     return {
                                         messages: newMessages,
-                                        currentThinking: cleanThinking
+                                        currentThinking: cleanThinking,
+                                        isThinking: true
                                     };
                                 });
                                 renderThinkingTimeout = null;
