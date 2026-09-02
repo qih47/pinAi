@@ -148,6 +148,7 @@ export const translations = {
       hints: {
         code: "Kode",
         websearch: "Cari di Web",
+        websearchTag: "Pencarian Web",
         documents: "Cari Dokumen",
         focus: "Fokus & Audit",
         chart: "Grafik & Data",
@@ -698,6 +699,7 @@ export const translations = {
       hints: {
         code: "Code",
         websearch: "Search the web",
+        websearchTag: "Web search",
         documents: "Document search",
         focus: "Focus & Audit",
         chart: "Chart & Data",

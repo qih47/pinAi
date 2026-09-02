@@ -100,7 +100,7 @@ export default function ChatInputArea({
           {effectiveTag === "code"
             ? tHints.code
             : effectiveTag === "websearch"
-              ? tHints.websearch
+              ? (tHints.websearchTag || "Web search")
               : effectiveTag === "documents"
                 ? tHints.documents
                 : effectiveTag === "diagram"

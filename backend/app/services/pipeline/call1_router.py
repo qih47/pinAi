@@ -233,7 +233,8 @@ async def execute_call1_routing(
             clean_sparse_json, 
             precheck,
             is_first_chat=is_first_chat,
-            user_message=user_message
+            user_message=user_message,
+            is_guest=is_guest,
         )
 
         logger.info(
@@ -253,8 +254,10 @@ def _validate_and_normalize_routing(
     precheck: Dict[str, Any],
     is_first_chat: bool = False,
     user_message: str = "",
+    is_guest: bool = False,
 ) -> Dict[str, Any]:
     """Validasi dan normalize routing JSON dari Call 1."""
+    is_guest = is_guest or precheck.get("is_guest", False)
     default_routing = {
         "active_topic": str(routing_json.get("active_topic") or precheck.get("previous_topic") or "Obrolan Umum"),
         "key_subject": str(routing_json.get("key_subject") or precheck.get("previous_subject") or "").strip(),
@@ -435,6 +438,10 @@ def _validate_and_normalize_routing(
     if not routing["fetch_urls"] and precheck.get("_detected_urls"):
         routing["fetch_urls"] = precheck.get("_detected_urls")
         logger.info(f"[CALL1] Auto-populated fetch_urls from precheck detected URLs: {routing['fetch_urls']}")
+
+    # Jika user memberikan URL untuk dibaca langsung, prioritaskan URL Reader daripada DuckDuckGo Web Search
+    if routing["fetch_urls"]:
+        routing["is_web_search"] = False
 
     queries = routing_json.get("queries", [])
     is_web_search = bool(routing.get("is_web_search", False))
@@ -683,12 +690,15 @@ def _build_fallback_routing(precheck: Dict[str, Any]) -> Dict[str, Any]:
     need_rag_hint = precheck.get("need_rag_hint")
     user_message = precheck.get("_user_message", "")
 
+    detected_urls = precheck.get("_detected_urls", [])
     if need_rag_hint is True:
         queries = build_rule_based_queries(user_message)
         return {
             "need_rag": True,
             "queries": queries,
             "query_judul": [user_message],
+            "fetch_urls": detected_urls,
+            "is_web_search": False,
             "search_tags": [],
             "context_snippets": [],
             "is_coding": False,
@@ -711,6 +721,8 @@ def _build_fallback_routing(precheck: Dict[str, Any]) -> Dict[str, Any]:
             "need_rag": False,
             "queries": [],
             "query_judul": [],
+            "fetch_urls": detected_urls,
+            "is_web_search": False,
             "search_tags": [],
             "context_snippets": [],
             "is_coding": precheck.get("is_coding", False),
