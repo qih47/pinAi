@@ -137,7 +137,7 @@ class ModeHub:
 
 
         # ── ⚡ FAST-PATH BYPASS CALL 1 ROUTER (Jalur A: Klik Preset / Hint Item) ───
-        if bypass_router and forced_mode:
+        if (bypass_router or forced_mode) and forced_mode:
             logger.info(f"[MODE_HUB] ⚡ Bypassing Call 1 Router due to explicit preset hint selection. Forced Mode: {forced_mode}")
             forced_mode_clean = forced_mode.lower().strip()
 
@@ -152,18 +152,18 @@ class ModeHub:
                     observation=json.dumps(obs_dict)
                 ))
 
-            # 🏷️ Auto-Generate Clean Session Title untuk First Chat Bypass (0ms Latency)
-            if is_first_chat and session_uuid:
-                try:
-                    from backend.app.services.chat.chat_history_service import chat_history_service
-                    auto_title = format_session_title(user_message, max_words=5, max_chars=35)
-                    if not auto_title or auto_title == "Obrolan Cakra AI":
-                        auto_title = f"{format_session_title(forced_mode_clean)} Cakra AI"
-                    asyncio.create_task(chat_history_service.update_title_direct(session_uuid, auto_title))
-                    logger.info(f"[MODE_HUB] ⚡ Fast-Path First-Chat Session Title updated -> '{auto_title}'")
-                except Exception as e:
-                    logger.warning(f"[MODE_HUB] Failed to update fast-path session title: {e}")
-
+                # 🎯 JALUR PRESET CALL 1: Jika obrolan pertama, buat judul cepat (<300ms) tanpa routing rumit
+                if is_first_chat:
+                    from backend.app.services.pipeline.call1_router import generate_call1_preset_title
+                    preset_title = await generate_call1_preset_title(user_message, request=request)
+                    if preset_title:
+                        await chat_history_service.update_title_direct(session_uuid, preset_title)
+                        logger.info(f"[MODE_HUB] ⚡ Preset Call 1 generated title: '{preset_title}'")
+                        yield json.dumps({
+                            "event_type": "topic_update",
+                            "topic": forced_mode_clean.title(),
+                            "key_subject": preset_title
+                        }) + "\n"
             # 1. Web Search Mode Bypass
             if forced_mode_clean in ["websearch", "search", "web"]:
                 from backend.app.services.pipeline.modes.mode_web_search import handle_web_search
@@ -173,7 +173,10 @@ class ModeHub:
 
                 precheck["is_web_search"] = True
                 precheck["need_rag"] = False
-                precheck["queries"] = [user_message]
+
+                from backend.app.services.pipeline.call1_router import generate_call1_web_queries
+                clean_queries = await generate_call1_web_queries(user_message, request)
+                precheck["queries"] = clean_queries if clean_queries else [user_message]
 
                 async for chunk in handle_web_search(
                     query=user_message,
@@ -239,6 +242,9 @@ class ModeHub:
             elif forced_mode_clean in ["diagram", "flow", "flowchart"]:
                 precheck["requires_visual"] = True
                 precheck["visual_type"] = "mermaid"
+                precheck["is_web_search"] = False
+                precheck["need_rag"] = False
+                precheck["is_chitchat"] = False
                 handler = self.mode_handlers["flash"]
                 async for chunk in handler.execute(
                     user_message=user_message,
@@ -259,6 +265,9 @@ class ModeHub:
             elif forced_mode_clean in ["chart", "data", "visualization"]:
                 precheck["requires_visual"] = True
                 precheck["visual_type"] = "chart"
+                precheck["is_web_search"] = False
+                precheck["need_rag"] = False
+                precheck["is_chitchat"] = False
                 handler = self.mode_handlers["flash"]
                 async for chunk in handler.execute(
                     user_message=user_message,
@@ -736,6 +745,27 @@ class ModeHub:
         elif effective_req_mode in ["focus", "compliance"]:
             chat_mode = effective_req_mode
             logger.info(f"[MODE_HUB] 🔒 Enforcing chat_mode={chat_mode} due to mode={effective_req_mode}")
+        elif effective_req_mode in ["diagram", "flow", "flowchart"]:
+            precheck["requires_visual"] = True
+            precheck["visual_type"] = "mermaid"
+            precheck["is_web_search"] = False
+            precheck["need_rag"] = False
+            precheck["is_chitchat"] = False
+            logger.info(f"[MODE_HUB] 🔒 Enforcing requires_visual=True (mermaid) & is_web_search=False due to mode={effective_req_mode}")
+        elif effective_req_mode in ["chart", "data", "visualization"]:
+            precheck["requires_visual"] = True
+            precheck["visual_type"] = "chart"
+            precheck["is_web_search"] = False
+            precheck["need_rag"] = False
+            precheck["is_chitchat"] = False
+            logger.info(f"[MODE_HUB] 🔒 Enforcing requires_visual=True (chart) & is_web_search=False due to mode={effective_req_mode}")
+        elif effective_req_mode in ["smart_mail", "mail", "email", "surat"]:
+            precheck["is_generate_email"] = True
+            precheck["is_web_search"] = False
+            precheck["need_rag"] = False
+            precheck["is_chitchat"] = False
+            chat_mode = "email"
+            logger.info(f"[MODE_HUB] 🔒 Enforcing email mode due to mode={effective_req_mode}")
 
         # ── Override Router if URL Context Exists ─────────────────────────────────
         if precheck.get("has_url_context"):

@@ -9,6 +9,7 @@ import AttachmentPreview from "./ChatInputArea/AttachmentPreview";
 import useNextcloudStore from "../../../stores/nextcloudStore";
 import { Paperclip, Cloud, Globe, FileText, Code2, Target, X, BarChart3, Workflow, FilePlus, Mail } from "lucide-react";
 import VoiceButton from "./ChatInputArea/VoiceButton";
+import PlusActionMenu from "./ChatInputArea/PlusActionMenu";
 import { translations } from "../../../utils/translations";
 import InteractiveWizardWidget from "./InteractiveWizardWidget";
 import HintSuggestions from "./HintSuggestions";
@@ -65,15 +66,94 @@ export default function ChatInputArea({
   // Pada mode desktop, tetap responsif mengikuti state isMultiLine
   const showMultilineLayout = isMobile || isMultiLine;
 
+  const renderActiveModePill = () => {
+    if (!activeModeTag) return null;
+    return (
+      <div
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: "7px",
+          padding: "4px 10px",
+          borderRadius: "10px",
+          fontSize: "13px",
+          fontWeight: "500",
+          background: darkMode ? "#1f1f23" : "#e5e7eb",
+          color: darkMode ? "#ffffff" : "#111827",
+          flexShrink: 0,
+          userSelect: "none",
+          alignSelf: "center",
+          marginLeft: "2px",
+          marginRight: "2px"
+        }}
+      >
+        {activeModeTag === "code" && <Code2 size={15} className="opacity-90 flex-shrink-0" />}
+        {activeModeTag === "websearch" && <Globe size={15} className="opacity-90 flex-shrink-0" />}
+        {activeModeTag === "documents" && <FileText size={15} className="opacity-90 flex-shrink-0" />}
+        {activeModeTag === "diagram" && <Workflow size={15} className="opacity-90 flex-shrink-0" />}
+        {activeModeTag === "chart" && <BarChart3 size={15} className="opacity-90 flex-shrink-0" />}
+        {activeModeTag === "create_file" && <FilePlus size={15} className="opacity-90 flex-shrink-0" />}
+        {activeModeTag === "smart_mail" && <Mail size={15} className="opacity-90 flex-shrink-0" />}
+        {activeModeTag === "focus" && <Target size={15} className="opacity-90 flex-shrink-0" />}
+        <span style={{ letterSpacing: "0.01em" }}>
+          {activeModeTag === "code"
+            ? tHints.code
+            : activeModeTag === "websearch"
+            ? tHints.websearch
+            : activeModeTag === "documents"
+            ? tHints.documents
+            : activeModeTag === "diagram"
+            ? tHints.diagram
+            : activeModeTag === "chart"
+            ? tHints.chart
+            : activeModeTag === "create_file"
+            ? tHints.createFile
+            : activeModeTag === "smart_mail"
+            ? tHints.smartMail
+            : tHints.focus}
+        </span>
+        <button
+          type="button"
+          onClick={() => setActiveModeTag(null)}
+          style={{
+            background: "transparent",
+            border: "none",
+            cursor: "pointer",
+            color: "inherit",
+            padding: "0 2px",
+            display: "flex",
+            alignItems: "center",
+            opacity: 0.7,
+            transition: "opacity 0.2s",
+            marginLeft: "2px"
+          }}
+          onMouseEnter={(e) => (e.currentTarget.style.opacity = 1)}
+          onMouseLeave={(e) => (e.currentTarget.style.opacity = 0.7)}
+          title="Hapus mode"
+        >
+          <X size={14} />
+        </button>
+      </div>
+    );
+  };
+
+  const menuRef = useRef(null);
+
   useEffect(() => {
     function handleClickOutside(event) {
-      if (attachmentMenuRef.current && !attachmentMenuRef.current.contains(event.target)) {
+      if (
+        menuRef.current &&
+        !menuRef.current.contains(event.target) &&
+        !event.target.closest(".cakra-plus-trigger")
+      ) {
         setIsAttachmentMenuOpen(false);
       }
     }
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
+    if (isAttachmentMenuOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+      return () => document.removeEventListener("mousedown", handleClickOutside);
+    }
+  }, [isAttachmentMenuOpen]);
 
   return (
     <div
@@ -176,6 +256,21 @@ export default function ChatInputArea({
             gap: "4px",
           }}
         >
+          {/* 🌟 POPUP MENU PLUS SEUKURAN TEXT INPUT DENGAN SPACE ELEGAN 🌟 */}
+          <PlusActionMenu
+            ref={menuRef}
+            isOpen={isAttachmentMenuOpen}
+            onClose={() => setIsAttachmentMenuOpen(false)}
+            fileInputRef={fileInputRef}
+            openNextcloudModal={openNextcloudModal}
+            isGuest={isGuest}
+            currentIsLoggedIn={currentIsLoggedIn}
+            darkMode={darkMode}
+            language={language}
+            setActiveModeTag={setActiveModeTag}
+            textareaRef={textareaRef}
+          />
+
           <input
             type="file"
             ref={fileInputRef}
@@ -197,144 +292,20 @@ export default function ChatInputArea({
           >
             {/* Plus button — kiri, hanya di desktop single line */}
             {!showMultilineLayout && (
-              <div style={{ flexShrink: 0, paddingBottom: "0px", position: "relative" }} ref={attachmentMenuRef}>
+              <div className="cakra-plus-trigger" style={{ flexShrink: 0, paddingBottom: "0px" }}>
                 <PlusButton
-                  onClick={() => setIsAttachmentMenuOpen(!isAttachmentMenuOpen)}
+                  onClick={() => setIsAttachmentMenuOpen(prev => !prev)}
                   disabled={isUploadingFile}
                   selectedFiles={selectedFiles}
                   darkMode={darkMode}
                   isStreaming={isStreaming}
                   language={language}
                 />
-
-                {isAttachmentMenuOpen && (
-                  <div style={{
-                    position: 'absolute',
-                    bottom: '100%',
-                    left: 0,
-                    marginBottom: '10px',
-                    background: darkMode ? '#1e1e20' : '#ffffff',
-                    border: darkMode ? 'none' : '1px solid #e2e8f0',
-                    borderRadius: '16px',
-                    boxShadow: darkMode ? '0 4px 20px rgba(0,0,0,0.5), 0 0 2px rgba(255,255,255,0.1)' : '0 4px 15px rgba(0,0,0,0.1)',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    minWidth: '250px',
-                    padding: '8px 0',
-                    zIndex: 50
-                  }}>
-                    <button
-                      onClick={() => {
-                        setIsAttachmentMenuOpen(false);
-                        fileInputRef.current?.click();
-                      }}
-                      style={{
-                        display: 'flex', alignItems: 'center', gap: '16px',
-                        padding: '10px 16px', margin: '2px 8px', border: 'none', background: 'transparent',
-                        color: darkMode ? '#e3e3e3' : '#374151',
-                        fontSize: '14.5px', fontWeight: '500', cursor: 'pointer', textAlign: 'left',
-                        borderRadius: '8px', transition: 'background 0.2s ease'
-                      }}
-                      onMouseEnter={(e) => e.currentTarget.style.background = darkMode ? '#333336' : '#f3f4f6'}
-                      onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                    >
-                      <Paperclip size={18} color={darkMode ? '#c4c7c5' : '#64748b'} />
-                      {t.uploadFile}
-                    </button>
-
-                    {!isGuest && currentIsLoggedIn && (
-                      <button
-                        onClick={() => {
-                          setIsAttachmentMenuOpen(false);
-                          openNextcloudModal();
-                        }}
-                        style={{
-                          display: 'flex', alignItems: 'center', gap: '16px',
-                          padding: '10px 16px', margin: '2px 8px', border: 'none', background: 'transparent',
-                          color: darkMode ? '#e3e3e3' : '#374151',
-                          fontSize: '14.5px', fontWeight: '500', cursor: 'pointer', textAlign: 'left',
-                          borderRadius: '8px', transition: 'background 0.2s ease'
-                        }}
-                        onMouseEnter={(e) => e.currentTarget.style.background = darkMode ? '#333336' : '#f3f4f6'}
-                        onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                      >
-                        <Cloud size={18} color={darkMode ? '#c4c7c5' : '#64748b'} />
-                        {t.uploadCloud}
-                      </button>
-                    )}
-                  </div>
-                )}
               </div>
             )}
 
-            {/* 🏷️ ACTIVE MODE PILL DI DALAM INPUT AREA */}
-            {activeModeTag && (
-              <div
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: "7px",
-                  padding: "5px 12px",
-                  borderRadius: "10px",
-                  fontSize: "13px",
-                  fontWeight: "500",
-                  background: darkMode ? "#1f1f23" : "#e5e7eb",
-                  color: darkMode ? "#ffffff" : "#111827",
-                  flexShrink: 0,
-                  userSelect: "none",
-                  alignSelf: "center",
-                  marginLeft: "4px",
-                  marginRight: "2px"
-                }}
-              >
-                {activeModeTag === "code" && <Code2 size={15} className="opacity-90 flex-shrink-0" />}
-                {activeModeTag === "websearch" && <Globe size={15} className="opacity-90 flex-shrink-0" />}
-                {activeModeTag === "documents" && <FileText size={15} className="opacity-90 flex-shrink-0" />}
-                {activeModeTag === "diagram" && <Workflow size={15} className="opacity-90 flex-shrink-0" />}
-                {activeModeTag === "chart" && <BarChart3 size={15} className="opacity-90 flex-shrink-0" />}
-                {activeModeTag === "create_file" && <FilePlus size={15} className="opacity-90 flex-shrink-0" />}
-                {activeModeTag === "smart_mail" && <Mail size={15} className="opacity-90 flex-shrink-0" />}
-                {activeModeTag === "focus" && <Target size={15} className="opacity-90 flex-shrink-0" />}
-                <span style={{ letterSpacing: "0.01em" }}>
-                  {activeModeTag === "code"
-                    ? tHints.code
-                    : activeModeTag === "websearch"
-                    ? tHints.websearch
-                    : activeModeTag === "documents"
-                    ? tHints.documents
-                    : activeModeTag === "diagram"
-                    ? tHints.diagram
-                    : activeModeTag === "chart"
-                    ? tHints.chart
-                    : activeModeTag === "create_file"
-                    ? tHints.createFile
-                    : activeModeTag === "smart_mail"
-                    ? tHints.smartMail
-                    : tHints.focus}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setActiveModeTag(null)}
-                  style={{
-                    background: "transparent",
-                    border: "none",
-                    cursor: "pointer",
-                    color: "inherit",
-                    padding: "0 2px",
-                    display: "flex",
-                    alignItems: "center",
-                    opacity: 0.7,
-                    transition: "opacity 0.2s",
-                    marginLeft: "2px"
-                  }}
-                  onMouseEnter={(e) => (e.currentTarget.style.opacity = 1)}
-                  onMouseLeave={(e) => (e.currentTarget.style.opacity = 0.7)}
-                  title="Hapus mode"
-                >
-                  <X size={14} />
-                </button>
-              </div>
-            )}
+            {/* 🏷️ ACTIVE MODE PILL DI DALAM INPUT AREA (Hanya saat desktop single line) */}
+            {!showMultilineLayout && renderActiveModePill()}
 
             <textarea
               ref={textareaRef}
@@ -438,73 +409,20 @@ export default function ChatInputArea({
                 paddingTop: isMobile ? "4px" : "2px",
               }}
             >
-              {/* Kiri: Plus */}
-              <div style={{ display: 'flex', gap: '4px', position: "relative" }} ref={attachmentMenuRef}>
-                <PlusButton
-                  onClick={() => setIsAttachmentMenuOpen(!isAttachmentMenuOpen)}
-                  disabled={isUploadingFile}
-                  selectedFiles={selectedFiles}
-                  darkMode={darkMode}
-                  isStreaming={isStreaming}
-                  language={language}
-                />
+              {/* Kiri: Plus + Preset Pill saat multiline */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+                <div className="cakra-plus-trigger" style={{ display: 'flex', gap: '4px' }}>
+                  <PlusButton
+                    onClick={() => setIsAttachmentMenuOpen(prev => !prev)}
+                    disabled={isUploadingFile}
+                    selectedFiles={selectedFiles}
+                    darkMode={darkMode}
+                    isStreaming={isStreaming}
+                    language={language}
+                  />
+                </div>
 
-                {isAttachmentMenuOpen && (
-                  <div style={{
-                    position: 'absolute',
-                    bottom: '100%',
-                    left: 0,
-                    marginBottom: '10px',
-                    background: darkMode ? '#1e1e20' : '#ffffff',
-                    border: darkMode ? 'none' : '1px solid #e2e8f0',
-                    borderRadius: '16px',
-                    boxShadow: darkMode ? '0 4px 20px rgba(0,0,0,0.5), 0 0 2px rgba(255,255,255,0.1)' : '0 4px 15px rgba(0,0,0,0.1)',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    minWidth: '250px',
-                    padding: '8px 0',
-                    zIndex: 50
-                  }}>
-                    <button
-                      onClick={() => {
-                        setIsAttachmentMenuOpen(false);
-                        fileInputRef.current?.click();
-                      }}
-                      style={{
-                        display: 'flex', alignItems: 'center', gap: '16px',
-                        padding: '10px 16px', margin: '2px 8px', border: 'none', background: 'transparent',
-                        color: darkMode ? '#e3e3e3' : '#374151',
-                        fontSize: '14.5px', fontWeight: '500', cursor: 'pointer', textAlign: 'left',
-                        borderRadius: '8px', transition: 'background 0.2s ease'
-                      }}
-                      onMouseEnter={(e) => e.currentTarget.style.background = darkMode ? '#333336' : '#f3f4f6'}
-                      onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                    >
-                      <Paperclip size={18} color={darkMode ? '#c4c7c5' : '#64748b'} />
-                      {t.uploadFile}
-                    </button>
-                    {!isGuest && currentIsLoggedIn && (
-                      <button
-                        onClick={() => {
-                          setIsAttachmentMenuOpen(false);
-                          openNextcloudModal();
-                        }}
-                        style={{
-                          display: 'flex', alignItems: 'center', gap: '16px',
-                          padding: '10px 16px', margin: '2px 8px', border: 'none', background: 'transparent',
-                          color: darkMode ? '#e3e3e3' : '#374151',
-                          fontSize: '14.5px', fontWeight: '500', cursor: 'pointer', textAlign: 'left',
-                          borderRadius: '8px', transition: 'background 0.2s ease'
-                        }}
-                        onMouseEnter={(e) => e.currentTarget.style.background = darkMode ? '#333336' : '#f3f4f6'}
-                        onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                      >
-                        <Cloud size={18} color={darkMode ? '#c4c7c5' : '#64748b'} />
-                        {t.uploadCloud}
-                      </button>
-                    )}
-                  </div>
-                )}
+                {showMultilineLayout && renderActiveModePill()}
               </div>
 
               {/* Kanan: Auto + Send */}

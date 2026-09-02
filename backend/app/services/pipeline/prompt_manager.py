@@ -61,14 +61,20 @@ class PromptManager:
                         logger.error(f"[PROMPT_MANAGER] Jinja syntax error on prompt {name}: {e}")
                         # Fallback ke default jika error
                         if name in self._default_prompts:
-                            self._cache[name] = self.env.from_string(self._default_prompts[name]["template"])
+                            try:
+                                self._cache[name] = self.env.from_string(self._default_prompts[name]["template"])
+                            except Exception as e_def:
+                                logger.error(f"[PROMPT_MANAGER] Default template error for {name}: {e_def}")
 
         except Exception as e:
             logger.error(f"[PROMPT_MANAGER] Failed to initialize from DB: {e}. Falling back to hardcoded defaults.")
             # Fallback total
             self._cache.clear()
             for name, data in self._default_prompts.items():
-                self._cache[name] = self.env.from_string(data["template"])
+                try:
+                    self._cache[name] = self.env.from_string(data["template"])
+                except Exception as e_def:
+                    logger.error(f"[PROMPT_MANAGER] Hardcoded default error for {name}: {e_def}")
 
     async def refresh(self):
         """Alias untuk hot-reload."""

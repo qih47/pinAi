@@ -99,6 +99,15 @@ async def lifespan(app: FastAPI):
         await init_db_pool()
         logger.info("✅ [CHAT_SERVICE] Database pool ready.")
 
+        # Import semua modul prompt agar mendaftarkan default template terbaru ke prompt_manager
+        import backend.app.services.pipeline.prompts.core_prompts
+        import backend.app.services.pipeline.prompts.rag_prompts
+        import backend.app.services.pipeline.prompts.coding_prompts
+        import backend.app.services.pipeline.prompts.file_prompts
+        import backend.app.services.pipeline.prompts.email_prompts
+        import backend.app.services.pipeline.prompts.compliance_prompts
+        import backend.app.services.pipeline.prompts.redteam_prompts
+
         from backend.app.services.pipeline.prompt_manager import prompt_manager
         await prompt_manager.initialize()
 

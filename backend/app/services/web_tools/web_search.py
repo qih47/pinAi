@@ -2,6 +2,7 @@ import logging
 import httpx
 import asyncio
 import time
+import re
 from typing import List, Dict, Any, Optional
 
 logger = logging.getLogger("cakra.web_tools.search")
@@ -34,24 +35,48 @@ def _set_cache(query: str, results: List[Dict[str, Any]]) -> None:
         del _search_cache[oldest_key]
     _search_cache[key] = (time.time(), results)
 
-import re
-
 def sanitize_web_query(query: str) -> str:
-    """Membersihkan kata-kata filler percakapan dari query pencarian web."""
+    """Membersihkan kata-kata filler percakapan, slang, dan keluhan dari query pencarian web."""
     if not query:
         return ""
     q = query.strip()
-    fillers = [
+    
+    # Hapus tanda kutip luar
+    q = re.sub(r'^["\']+|["\']+$', '', q).strip()
+
+    # Prefix fillers
+    prefix_fillers = [
         r"^mencari referensi terkait\s*",
         r"^referensi terkait\s*",
         r"^carikan info(rmasi)? terkait\s*",
+        r"^carikan referensi terkait\s*",
         r"^cari di web\s*",
         r"^cari web\s*",
         r"^tolong cari(kan)?\s*",
+        r"^coba cari(kan)?\s*",
         r"^info(rmasi)? tentang\s*",
+        r"^berita tentang\s*",
+        r"^apa itu\s*",
+        r"^apakah ada\s*",
+        r"^siapa itu\s*",
     ]
-    for pattern in fillers:
+    for pattern in prefix_fillers:
         q = re.sub(pattern, "", q, flags=re.IGNORECASE).strip()
+
+    # Suffix / inline slang & conversational rant fillers
+    slang_patterns = [
+        r"\b(cuy|bro|gan|bang|mas|mba|bos)\b",
+        r"\b(hadeh|hadeuh|astaga|buset|waduh|anjir|anjay|gila|parah)\b",
+        r"\b(wkwk+|haha+|hehe+)\b",
+        r"\b(dong|deh|sih|nih|tuh|kan|lah|ya|kah|kek|kayak|plis|please)\b",
+        r"\b(coba|tolong|bikin|bikinin|buatkan)\b",
+        r"\b(gw|gue|lu|lo|elu|aku|kamu|kita|saya)\b",
+    ]
+    for pattern in slang_patterns:
+        q = re.sub(pattern, " ", q, flags=re.IGNORECASE)
+
+    # Bersihkan multiple spaces
+    q = re.sub(r"\s+", " ", q).strip()
     return q or query.strip()
 
 async def perform_web_search(query: str, num_results: int = 5) -> List[Dict[str, Any]]:

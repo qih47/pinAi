@@ -34,18 +34,46 @@ ATURAN FORMAT OUTPUT:
 
 STRUKTUR METADATA (WAJIB ADA DI SETIAP OUTPUT):
 {
-  "active_topic": "nama topik besar (2-3 kata, contoh: Berita Terkini, Lokasi & Fasilitas, Film Horor, Frontend Web, Regulasi SDM)",
+{% if is_first_chat %}  "session_title": "judul percakapan ringkas, luwes & natural 2-4 kata (WAJIB ADA di obrolan pertama, contoh: 'Sapaan & Tanya Kabar', 'Halaman Login PHP & CSS', 'Ketentuan Cuti PKB', 'Analisis Error Docker', 'Berita Pilkada Terkini')",
+{% endif %}  "active_topic": "nama topik besar (2-3 kata, contoh: Berita Terkini, Lokasi & Fasilitas, Film Horor, Frontend Web, Regulasi SDM)",
   "key_subject": "subjek/entitas spesifik yang dibahas (2-5 kata, contoh: Berita NTT Hari Ini, Pabrik Munisi Turen, The Conjuring Universe, React Login Page, Cuti Tahunan PKB)",
   "pronoun": "informal_gue_lo|formal_saya_anda|familiar_aku_kamu|unknown",
   "tone_hint": "casual|formal|empathetic|empathetic_supportive|celebratory|direct_concise",
-  "detected_language": "id|en|mixed"{% if is_first_chat %},
-  "session_title": "judul percakapan ringkas, luwes & natural 2-4 kata tanpa kata pengisi/percakapan (contoh: 'Halaman Login PHP & CSS', 'Ketentuan Cuti PKB', 'Analisis Error Docker', 'Diagram Alur Pengadaan', 'Draf Email Penawaran', 'Berita Pilkada Terkini')"{% endif %}
+  "detected_language": "id|en|mixed"
 }
 {% if is_first_chat %}
-🚨 PANDUAN PENTING `session_title`:
-• 🚫 DILARANG KERAS membuat judul satu kata kaku seperti 'Salam', 'Sapaan', 'Tanya', atau 'Bantuan'!
-• Jika pesan pembuka HANYA sapaan murni ("halo", "hai cakra", "selamat pagi"), buat judul ramah: 'Obrolan Cakra AI'.
-• Jika pesan mengandung sapaan yang diikuti pertanyaan/permintaan (misal: "Halo Cakra, tolong buatin login page PHP"), judul WAJIB mengambil TOPIK UTAMANYA ('Halaman Login PHP & CSS'), BUKAN kata sapaannya!
+🚨 PANDUAN PENTING & CONTOH PEMBUATAN `session_title` (WAJIB PADA CHAT PERTAMA):
+• Letakkan `"session_title"` sebagai property PERTAMA di JSON output kamu!
+• Panjang judul: 2–4 kata yang ringkas, luwes, ekspresif, dan spesifik menggambarkan esensi pesan user.
+• 🚫 DILARANG membuat judul 1 kata kaku: "Salam", "Sapaan", "Tanya", "Bantuan", "Awal", "N/A".
+• 🚫 DILARANG membuat judul generik monoton: "Obrolan Baru", "Obrolan Cakra AI".
+
+CONTOH JUDUL YANG DIHARAPKAN BERDASARKAN BERBAGAI KEMUNGKINAN PESAN USER:
+1. Sapaan & Obrolan Santai (Chitchat):
+   - User: "halo cuy" / "hai cakra" → "session_title": "Sapaan Akrab"
+   - User: "selamat pagi cakra apa kabar" → "session_title": "Sapaan Pagi Hari"
+   - User: "bro capek banget kerjaan hari ini" → "session_title": "Curhat Beban Kerja"
+   - User: "menurut lo AI bakal gantiin programmer gak?" → "session_title": "Diskusi Masa Depan AI"
+2. Pencarian Dokumen & Regulasi Internal Pindad (RAG):
+   - User: "coba carikan dokumen internal terkait cuti" → "session_title": "Pencarian Dokumen Cuti"
+   - User: "aturan seragam dinas hari jumat apa ya" → "session_title": "Regulasi Seragam Dinas"
+   - User: "prosedur mutasi divisi di PKB gimana ketentuannya" → "session_title": "Prosedur Mutasi Divisi"
+   - User: "spesifikasi teknis panser anoa 6x6" → "session_title": "Spesifikasi Panser Anoa"
+3. Koding, Debugging & Troubleshooting (Code):
+   - User: "cuy coba benerin error code js gw" (atau ada lampiran file kode) → "session_title": "Memperbaiki Error Code JS"
+   - User: "tolong bikinin endpoint login jwt fastapi" → "session_title": "Pembuatan Endpoint Login JWT"
+   - User: "docker compose crash pas run postgres connection refused" → "session_title": "Troubleshooting Docker Postgres"
+   - User: "fungsi python kalkulator sederhana" → "session_title": "Fungsi Kalkulator Python"
+4. Pencarian Web & Berita Terkini (Web Search):
+   - User: "berita peluncuran maung pindad terbaru hari ini" → "session_title": "Berita Maung Pindad Terbaru"
+   - User: "siapa presiden terpilih amerika serikat" → "session_title": "Presiden Terpilih Amerika"
+   - User: "jadwal pertandingan timnas indonesia vs jepang" → "session_title": "Jadwal Timnas Indonesia"
+5. Administrasi, File & Surat Dinas:
+   - User: "bikinin draf surat izin dinas luar kota" → "session_title": "Draf Surat Izin Dinas"
+   - User: "buatkan tabel excel estimasi anggaran proyek 2026" → "session_title": "Estimasi Anggaran Proyek"
+6. Diagram, Flowchart & Visualisasi:
+   - User: "bikinin diagram alir proses rekrutmen pegawai" → "session_title": "Diagram Alir Rekrutmen"
+   - User: "buatkan bagan struktur organisasi divisi senjata" → "session_title": "Struktur Organisasi Senjata"
 {% endif %}
 
 DAFTAR KAPABILITAS SISTEM (MULTI-PARAMETER SYNERGY):
@@ -72,40 +100,40 @@ Kamu bebas dan dianjurkan mengaktifkan SATU ATAU LEBIH PARAMETER SEKALIGUS jika 
 
 🌟 CONTOH SINERGI MULTI-PARAMETER & SPARSE JSON (TIDAK ADA FALSE, TIDAK ADA NULL):
 • Tanya Cuaca Saat Ini / Sapaan Santai:
-  {"active_topic": "Cuaca & Waktu", "key_subject": "Kondisi Cuaca Hari Ini", "is_chitchat": true, "pronoun": "informal_gue_lo", "tone_hint": "casual", "detected_language": "id"}
+  {"session_title": "Sapaan & Cuaca Hari Ini", "active_topic": "Cuaca & Waktu", "key_subject": "Kondisi Cuaca Hari Ini", "is_chitchat": true, "pronoun": "informal_gue_lo", "tone_hint": "casual", "detected_language": "id"}
 
 • Opini / Afirmasi / Refleksi Diskusi Lanjutan (Contoh: "susah emang korupsi kalau pembuat aturannya korupsi"):
-  {"active_topic": "Pemberantasan Korupsi", "key_subject": "Refleksi Regulasi dan Korupsi", "is_chitchat": true, "pronoun": "informal_gue_lo", "tone_hint": "empathetic_supportive", "detected_language": "id"}
+  {"session_title": "Diskusi Regulasi Korupsi", "active_topic": "Pemberantasan Korupsi", "key_subject": "Refleksi Regulasi dan Korupsi", "is_chitchat": true, "pronoun": "informal_gue_lo", "tone_hint": "empathetic_supportive", "detected_language": "id"}
 
 • Tanya Film / Pop Culture / Pengetahuan Umum Mandiri (Contoh: "film spiderman ada apa aja?"):
-  {"active_topic": "Film & Sinema", "key_subject": "Waralaba Film Spider-Man", "is_chitchat": true, "pronoun": "informal_gue_lo", "tone_hint": "casual", "detected_language": "id"}
+  {"session_title": "Waralaba Film Spider-Man", "active_topic": "Film & Sinema", "key_subject": "Waralaba Film Spider-Man", "is_chitchat": true, "pronoun": "informal_gue_lo", "tone_hint": "casual", "detected_language": "id"}
 
 • Prediksi Cuaca 7 Hari Ke Depan + Grafik (Kebutuhan Spektrum Data Dinamis):
-  {"active_topic": "Prakiraan Cuaca", "key_subject": "Prediksi Cuaca 7 Hari Bandung", "is_web_search": true, "requires_visual": true, "queries": ["prakiraan cuaca bandung 7 hari BMKG"], "pronoun": "informal_gue_lo", "tone_hint": "casual", "detected_language": "id"}
+  {"session_title": "Prakiraan Cuaca Bandung", "active_topic": "Prakiraan Cuaca", "key_subject": "Prediksi Cuaca 7 Hari Bandung", "is_web_search": true, "requires_visual": true, "queries": ["prakiraan cuaca bandung 7 hari BMKG"], "pronoun": "informal_gue_lo", "tone_hint": "casual", "detected_language": "id"}
 
 • Berita Terkini Daerah / Nasional (Kebutuhan Spektrum Berita Terkini):
-  {"active_topic": "Berita Terkini", "key_subject": "Berita NTT Hari Ini", "is_web_search": true, "queries": ["berita terkini NTT hari ini", "kabar terbaru Nusa Tenggara Timur"], "pronoun": "informal_gue_lo", "tone_hint": "casual", "detected_language": "id"}
+  {"session_title": "Kabar Berita Terkini NTT", "active_topic": "Berita Terkini", "key_subject": "Berita NTT Hari Ini", "is_web_search": true, "queries": ["berita terkini NTT hari ini", "kabar terbaru Nusa Tenggara Timur"], "pronoun": "informal_gue_lo", "tone_hint": "casual", "detected_language": "id"}
 
 • Permintaan Validasi Fakta di Web (Contoh: "cek faktanya bener ga spider-man 4 udah syuting?"):
-  {"active_topic": "Verifikasi Fakta", "key_subject": "Status Produksi Spider-Man 4", "is_web_search": true, "queries": ["syuting spider man 4 rilis produksi kabar terbaru"], "pronoun": "informal_gue_lo", "tone_hint": "casual", "detected_language": "id"}
+  {"session_title": "Status Produksi Spider-Man 4", "active_topic": "Verifikasi Fakta", "key_subject": "Status Produksi Spider-Man 4", "is_web_search": true, "queries": ["syuting spider man 4 rilis produksi kabar terbaru"], "pronoun": "informal_gue_lo", "tone_hint": "casual", "detected_language": "id"}
 
 • Tanya Lokasi Fisik / Peta:
-  {"active_topic": "Lokasi & Fasilitas", "key_subject": "Pabrik Munisi Pindad Turen Malang", "is_map_query": true, "pronoun": "informal_gue_lo", "tone_hint": "casual", "detected_language": "id"}
+  {"session_title": "Lokasi Pabrik Munisi Turen", "active_topic": "Lokasi & Fasilitas", "key_subject": "Pabrik Munisi Pindad Turen Malang", "is_map_query": true, "pronoun": "informal_gue_lo", "tone_hint": "casual", "detected_language": "id"}
 
 • Debat / Sanggahan User (Self-Correction & Verifikasi):
-  {"active_topic": "Verifikasi Fakta", "key_subject": "Klarifikasi Tanggal Rilis Film", "is_self_correction": true, "is_web_search": true, "queries": ["tanggal rilis resmi The Conjuring 4"], "pronoun": "informal_gue_lo", "tone_hint": "casual", "detected_language": "id"}
+  {"session_title": "Klarifikasi Rilis Film", "active_topic": "Verifikasi Fakta", "key_subject": "Klarifikasi Tanggal Rilis Film", "is_self_correction": true, "is_web_search": true, "queries": ["tanggal rilis resmi The Conjuring 4"], "pronoun": "informal_gue_lo", "tone_hint": "casual", "detected_language": "id"}
 
 • Alur Cuti PKB + Bagan Alir / Flowchart:
-  {"active_topic": "Regulasi SDM", "key_subject": "Alur Pengajuan Cuti PKB", "need_rag": true, "requires_visual": true, "queries": ["prosedur pengajuan cuti tahunan", "syarat cuti tahunan pegawai"], "query_judul": ["PKB", "Perjanjian Kerja Bersama"], "search_tags": ["cuti", "hrd", "izin"], "pronoun": "formal_saya_anda", "tone_hint": "formal", "detected_language": "id"}
+  {"session_title": "Prosedur Cuti Tahunan PKB", "active_topic": "Regulasi SDM", "key_subject": "Alur Pengajuan Cuti PKB", "need_rag": true, "requires_visual": true, "queries": ["prosedur pengajuan cuti tahunan", "syarat cuti tahunan pegawai"], "query_judul": ["PKB", "Perjanjian Kerja Bersama"], "search_tags": ["cuti", "hrd", "izin"], "pronoun": "formal_saya_anda", "tone_hint": "formal", "detected_language": "id"}
 
 • Debugging Error Koding:
-  {"active_topic": "Debugging API", "key_subject": "Error CORS Axios", "is_coding": true, "is_troubleshooting": true, "pronoun": "informal_gue_lo", "tone_hint": "casual", "detected_language": "id"}
+  {"session_title": "Penyelesaian Error CORS Axios", "active_topic": "Debugging API", "key_subject": "Error CORS Axios", "is_coding": true, "is_troubleshooting": true, "pronoun": "informal_gue_lo", "tone_hint": "casual", "detected_language": "id"}
 
 • Bikin Modul Auth Login Aman:
-  {"active_topic": "Backend Security", "key_subject": "Sistem Autentikasi JWT & Bcrypt", "is_coding": true, "is_security_critical": true, "pronoun": "informal_gue_lo", "tone_hint": "casual", "detected_language": "id"}
+  {"session_title": "Sistem Autentikasi JWT Bcrypt", "active_topic": "Backend Security", "key_subject": "Sistem Autentikasi JWT & Bcrypt", "is_coding": true, "is_security_critical": true, "pronoun": "informal_gue_lo", "tone_hint": "casual", "detected_language": "id"}
 
 • Pertanyaan Koding Masih Umum (Butuh Opsi):
-  {"active_topic": "Pengembangan Web", "key_subject": "Aplikasi Manajemen Tugas", "is_coding": true, "is_ambiguous": true, "pronoun": "informal_gue_lo", "tone_hint": "casual", "detected_language": "id"}
+  {"session_title": "Rancangan Aplikasi Manajemen Tugas", "active_topic": "Pengembangan Web", "key_subject": "Aplikasi Manajemen Tugas", "is_coding": true, "is_ambiguous": true, "pronoun": "informal_gue_lo", "tone_hint": "casual", "detected_language": "id"}
 
 
 PANDUAN PENALARAN `active_topic` & `key_subject` (DYNAMIC CONTEXT & ENTITY TRACKING):
@@ -248,7 +276,61 @@ def build_call1_routing_prompt(
         is_coding_precheck=is_coding_precheck,
         previous_urls=previous_urls_str,
         previous_topic=previous_topic or precheck.get("previous_topic"),
-        previous_subject=previous_subject or precheck.get("previous_subject") or precheck.get("key_subject"),
+    )
+
+
+CALL1_PRESET_TITLE_PROMPT_TEMPLATE = """Kamu adalah asisten penamaan judul percakapan CAKRA AI PT Pindad.
+
+TUGAS UTAMA:
+Buatlah judul percakapan yang ringkas, ekspresif, dan natural (2-4 kata) berdasarkan pesan pengguna.
+
+ATURAN FORMAT OUTPUT:
+1. Kembalikan HANYA format JSON valid murni: {"session_title": "Judul Anda"}
+2. DILARANG membuat judul satu kata kaku seperti "Salam", "Sapaan", "Tanya", "Bantuan", "Awal", atau "N/A".
+3. DILARANG membuat judul generik monoton seperti "Obrolan Baru" atau "Obrolan Cakra AI".
+4. DILARANG menambahkan markdown triple backtick, komentar, atau teks tambahan apapun di luar JSON.
+
+CONTOH JUDUL YANG DIHARAPKAN BERDASARKAN BERBAGAI KEMUNGKINAN:
+• User: "halo cuy" / "hai cakra"
+  {"session_title": "Sapaan Akrab"}
+
+• User: "coba carikan dokumen internal terkait cuti"
+  {"session_title": "Pencarian Dokumen Cuti"}
+
+• User: "cuy coba benerin error code js gw" (atau ada lampiran kode error)
+  {"session_title": "Memperbaiki Error Code JS"}
+
+• User: "fungsi python kalkulator sederhana"
+  {"session_title": "Fungsi Kalkulator Python"}
+
+• User: "berita peluncuran maung pindad terbaru hari ini"
+  {"session_title": "Berita Maung Pindad Terbaru"}
+
+• User: "aturan seragam dinas hari jumat di pindad apa ya"
+  {"session_title": "Regulasi Seragam Dinas"}
+
+• User: "bikinin draf surat izin dinas ke jakarta"
+  {"session_title": "Draf Surat Izin Dinas"}
+
+• User: "bikinin diagram alir proses rekrutmen pegawai"
+  {"session_title": "Diagram Alir Rekrutmen"}
+
+PESAN PENGGUNA:
+{{ user_message }}
+
+OUTPUT JSON:
+"""
+
+prompt_manager.register_default(
+    name="CALL1_PRESET_TITLE_PROMPT",
+    template_str=CALL1_PRESET_TITLE_PROMPT_TEMPLATE,
+    description="Prompt ringan Call 1 untuk menghasilkan session_title pada jalur preset (bypass) dalam < 300ms."
+)
+
+def build_call1_preset_title_prompt(user_message: str) -> str:
+    return prompt_manager.render(
+        name="CALL1_PRESET_TITLE_PROMPT",
+        user_message=user_message,
     )
 
 

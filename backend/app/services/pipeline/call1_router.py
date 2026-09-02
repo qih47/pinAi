@@ -318,7 +318,7 @@ def _validate_and_normalize_routing(
     routing["is_self_correction"] = bool(routing_json.get("is_self_correction", False))
     routing["is_multi_document"] = bool(routing_json.get("is_multi_document", False))
     routing["is_multi_turn_task"] = bool(routing_json.get("is_multi_turn_task", False))
-    routing["requires_visual"] = bool(routing_json.get("requires_visual", False))
+    routing["requires_visual"] = bool(routing_json.get("requires_visual", False)) or bool(precheck.get("requires_visual", False))
     routing["is_map_query"] = bool(routing_json.get("is_map_query", False))
     
     raw_chunk_ids = routing_json.get("session_chunk_ids", [])
@@ -506,16 +506,24 @@ def _validate_and_normalize_routing(
     lang = routing_json.get("detected_language", "id")
     routing["detected_language"] = lang if lang in valid_langs else "id"
 
-    # Ekstrak atau buat fallback judul obrolan untuk sidebar kiri (SPRINT 5 OPTIMIZED)
-    from backend.app.services.pipeline.modes.mode_utils import format_session_title
+    # Ekstrak judul obrolan untuk sidebar kiri (Gemma 4 Call 1 LLM)
+    from backend.app.services.pipeline.modes.mode_utils import format_session_title, GENERIC_SESSION_TITLES
     session_title = routing_json.get("session_title")
-    if isinstance(session_title, str) and session_title.strip() and session_title.strip().lower() not in ["null", "none", "obrolan baru", ""]:
+    if isinstance(session_title, str) and session_title.strip() and session_title.strip().lower() not in GENERIC_SESSION_TITLES:
         routing["session_title"] = format_session_title(session_title)
     elif is_first_chat:
-        fallback_source = routing_json.get("key_subject") or user_message
-        auto_title = format_session_title(fallback_source)
-        routing["session_title"] = auto_title
-        logger.info(f"[CALL1] Smart-fallback session_title generated: '{auto_title}'")
+        # Fallback bertingkat:
+        # 1. Gunakan key_subject atau active_topic jika informatif
+        subj = routing_json.get("key_subject") or routing_json.get("active_topic")
+        if subj and subj.strip().lower() not in GENERIC_SESSION_TITLES:
+            routing["session_title"] = format_session_title(subj)
+        else:
+            # 2. Format dari pesan pengguna agar judul langsung luwes di sidebar
+            formatted_user = format_session_title(user_message)
+            if formatted_user and formatted_user.strip().lower() not in GENERIC_SESSION_TITLES:
+                routing["session_title"] = formatted_user
+            else:
+                routing["session_title"] = "Sapaan & Obrolan Santai"
     else:
         routing["session_title"] = None
 
@@ -533,14 +541,20 @@ def _validate_and_normalize_routing(
         logger.warning("[CALL1] Precheck override: is_generate_email forced to True")
         routing["is_generate_email"] = True
 
-    # Sanity check: Hanya sanitize jika user secara eksplisit meminta data murni dummy/tiruan
+    # Sanity check: Jika user meminta diagram, flowchart, grafik, arsitektur, atau data dummy TANPA instruksi cari di web
     if (routing.get("requires_visual") or precheck.get("requires_visual")) and routing.get("is_web_search"):
         user_msg_lower = precheck.get("_user_message", "").lower()
-        if any(w in user_msg_lower for w in ["dummy", "data tiruan", "data palsu", "angka sembarang", "simulasi acak"]):
-            if not any(sw in user_msg_lower for sw in ["cari di web", "google", "berita", "terbaru", "terkini", "internet", "cuaca", "saham", "inflasi"]):
-                logger.warning("[CALL1] Sanitizing false positive is_web_search on pure dummy task")
-                routing["is_web_search"] = False
-                routing["queries"] = []
+        is_visual_creation = any(w in user_msg_lower for w in [
+            "diagram", "flowchart", "alur", "bagan", "skema", "arsitektur", 
+            "grafik", "chart", "visualisasi", "dummy", "data tiruan", "simulasi"
+        ])
+        has_explicit_web_kw = any(sw in user_msg_lower for sw in [
+            "cari di web", "google", "berita", "terbaru", "terkini", "internet", "cuaca", "saham", "inflasi"
+        ])
+        if is_visual_creation and not has_explicit_web_kw:
+            logger.warning("[CALL1] Sanitizing false positive is_web_search on visual diagram/chart task")
+            routing["is_web_search"] = False
+            routing["queries"] = []
 
     # Sanity check: Jika user hanya meminta data dummy / perbandingan data di chat TANPA instruksi buat/ekspor file fisik atau coding
     if (routing.get("is_generate_file") or routing.get("is_coding")) and not precheck.get("is_coding"):
@@ -594,6 +608,7 @@ def _validate_and_normalize_routing(
         routing.get("is_ambiguous"),
         routing.get("is_map_query"),
         routing.get("is_chitchat"),
+        routing.get("requires_visual"),
     ]
     
     if not any(capability_flags):
@@ -605,13 +620,17 @@ def _validate_and_normalize_routing(
             "pindad", "organisasi", "tata kerja", "otk", "cuti", "mutasi", "gaji", "tunjangan",
             "alutsista", "senjata", "munisi", "kendaraan khusus", "anoa", "komodo", "ss2", "harimau"
         ]
+        visual_keywords = ["grafik", "chart", "diagram", "flowchart", "bagan alir", "visualisasi", "kurva", "plot", "gantt", "infografis", "jadikan grafik", "buat grafik"]
         coding_keywords = ["koding", "coding", "code", "fungsi", "function", "script", "sql", "query", "endpoint", "api", "bug", "error", "trace", "python", "javascript", "react", "html", "css", "database"]
         file_keywords = ["buatkan file", "bikin file", "export", "ekspor", "unduh excel", "unduh word", "generate file", ".xlsx", ".docx", ".pdf", ".py"]
         email_keywords = ["buatkan email", "draf email", "kirim email", "tulis email"]
         web_keywords = ["berita", "kabar", "terkini", "hari ini", "terbaru", "cuaca besok", "cuaca 7 hari", "saham", "kurs", "presiden", "juara", "pilkada", "gempa"]
         map_keywords = ["lokasi", "alamat", "dimana", "peta", "gedung", "divisi", "turen", "bandung"]
         
-        if any(k in user_text for k in file_keywords):
+        if any(k in user_text for k in visual_keywords) or precheck.get("requires_visual"):
+            routing["requires_visual"] = True
+            logger.info("[CALL1] 🛡️ Guard: Auto-activated requires_visual (visual/chart intent detected)")
+        elif any(k in user_text for k in file_keywords):
             routing["is_generate_file"] = True
             logger.info("[CALL1] 🛡️ Guard: Auto-activated is_generate_file (file intent detected)")
         elif any(k in user_text for k in email_keywords):
@@ -696,3 +715,98 @@ def _build_fallback_routing(precheck: Dict[str, Any]) -> Dict[str, Any]:
             "detected_language": "id",
             "is_chitchat": precheck.get("is_chitchat", False),
         }
+
+
+async def generate_call1_preset_title(user_message: str, request: Optional[Request] = None) -> Optional[str]:
+    """
+    Menghasilkan judul percakapan cepat via Gemma 4 e4b khusus untuk jalur preset (bypass).
+    Hanya meminta judul 2-4 kata tanpa melakukan klasifikasi parameter routing apapun (< 300 ms).
+    """
+    if not user_message or not user_message.strip():
+        return None
+
+    from datetime import datetime
+    from backend.app.services.pipeline.prompts.core_prompts import build_call1_preset_title_prompt
+    from backend.app.services.pipeline.modes.mode_utils import format_session_title, GENERIC_SESSION_TITLES
+
+    prompt = build_call1_preset_title_prompt(user_message.strip())
+    model = getattr(settings, "MODEL_ROUTER", "gemma4:e4b")
+    router_ctx = getattr(settings, "NUM_CTX_ROUTER", 4096)
+
+    try:
+        t0 = datetime.now()
+        res_json = await generate_json_response(
+            model_name=model,
+            messages=[{"role": "user", "content": prompt}],
+            request=request,
+            temperature=0.2,
+            top_p=0.3,
+            keep_alive=-1,
+            num_ctx=router_ctx,
+            num_predict=35,
+            timeout=10.0,
+        )
+        duration_ms = (datetime.now() - t0).total_seconds() * 1000
+        raw_title = res_json.get("session_title") if isinstance(res_json, dict) else None
+
+        if isinstance(raw_title, str) and raw_title.strip() and raw_title.strip().lower() not in GENERIC_SESSION_TITLES:
+            final_title = format_session_title(raw_title)
+            logger.info(f"⚡ [CALL1_PRESET_TITLE] Title generated in {duration_ms:.1f}ms: '{final_title}'")
+            return final_title
+    except Exception as e:
+        logger.warning(f"[CALL1_PRESET_TITLE] Gagal generate judul preset via LLM: {e}")
+
+    # Fallback aman jika LLM timeout atau mengembalikan string kosong
+    formatted = format_session_title(user_message)
+    return formatted if formatted and formatted.strip().lower() not in GENERIC_SESSION_TITLES else None
+
+
+async def generate_call1_web_queries(user_message: str, request: Optional[Request] = None) -> List[str]:
+    """
+    Menghasilkan 1-2 kata kunci pencarian web cerdas via Gemma 4 e4b
+    dari pesan user yang santai/penuh keluhan (< 300 ms).
+    """
+    if not user_message or not user_message.strip():
+        return []
+
+    from datetime import datetime
+    from backend.app.services.web_tools.web_search import sanitize_web_query
+
+    clean_fallback = sanitize_web_query(user_message.strip())
+    model = getattr(settings, "MODEL_ROUTER", "gemma4:e4b")
+    router_ctx = getattr(settings, "NUM_CTX_ROUTER", 4096)
+
+    prompt = (
+        "Kamu adalah Cakra Search Query Optimizer.\n"
+        "Tugas: Ubah pesan pengguna yang santai, penuh keluhan, emosional, atau bahasa gaul menjadi 1-2 kata kunci pencarian web/Google yang bersih, objektif, dan efektif mencari berita/fakta terpercaya.\n"
+        f'Pesan user: "{user_message.strip()}"\n'
+        "Format output WAJIB JSON murni tanpa markdown:\n"
+        '{"queries": ["kata kunci 1", "kata kunci 2"]}'
+    )
+
+    try:
+        t0 = datetime.now()
+        res_json = await generate_json_response(
+            model_name=model,
+            messages=[{"role": "user", "content": prompt}],
+            request=request,
+            temperature=0.1,
+            top_p=0.3,
+            keep_alive=-1,
+            num_ctx=router_ctx,
+            num_predict=50,
+            timeout=8.0,
+        )
+        duration_ms = (datetime.now() - t0).total_seconds() * 1000
+        queries = res_json.get("queries") if isinstance(res_json, dict) else None
+        if isinstance(queries, list) and queries:
+            clean_queries = [sanitize_web_query(str(q)) for q in queries if str(q).strip()]
+            clean_queries = [q for q in clean_queries if q]
+            if clean_queries:
+                logger.info(f"⚡ [CALL1_WEB_QUERIES] Generated {clean_queries} in {duration_ms:.1f}ms (from: '{user_message}')")
+                return clean_queries
+    except Exception as e:
+        logger.warning(f"[CALL1_WEB_QUERIES] Gagal generate query via LLM: {e}")
+
+    return [clean_fallback] if clean_fallback else [user_message.strip()]
+

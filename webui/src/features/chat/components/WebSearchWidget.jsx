@@ -48,9 +48,7 @@ const WebSearchWidget = ({ searchData, isStreaming, hasStartedResponding, darkMo
         ? searchData.query 
         : (results[0]?.title || "");
         
-    let displayQuery = originalQuery
-        ? (t.searchingReferencesFor || "mencari referensi terkait {query}").replace('{query}', originalQuery.toLowerCase())
-        : (t.searchingWebReferences || "mencari referensi web");
+    let displayQuery = originalQuery || (t.searchingWebReferences || "Penelusuran Web");
     
     return (
         <div className="my-4 w-full max-w-3xl font-sans">

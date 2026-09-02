@@ -334,8 +334,8 @@ def select_call2_module(routing: Dict[str, Any], has_rag_context: bool = False) 
         return "rag"                  # dari "rag_standard"
     if routing.get("is_coding"):
         return "coding"               # dari "coding_expert"
-    if routing.get("need_analytic"):
-        return "analytic"             # dari "analytic_expert"
+    if routing.get("need_analytic") or routing.get("requires_visual"):
+        return "analytic"             # visual / analytic expert
     if routing.get("is_self_correction"):
         return "self_correction"      # sudah benar
     if routing.get("is_chitchat") or routing.get("is_greeting"):
@@ -433,8 +433,8 @@ def build_call2_system_prompt(
         if precheck.get("is_security_critical"):
             prompt += "\n\n" + SECURITY_CRITICAL_GUIDANCE
 
-        # Injeksi Visual Capabilities
-        if precheck.get("requires_visual") is True and module_name != "chitchat":
+        # Injeksi Visual Capabilities (Chart, Mermaid, Gantt, Infografis)
+        if precheck.get("requires_visual") is True:
             prompt += "\n\n" + VISUAL_CAPABILITIES_GUIDANCE + "\n\n" + VISUAL_SYSTEM_PROMPT + "\n\n"
 
     return prompt
@@ -595,7 +595,15 @@ _CONVERSATIONAL_FILLERS = {
     "sekarang", "coba", "pake", "pakai", "tolong", "bikin", "buatkan", "buat", "bikinin",
     "gimana", "dong", "cuy", "nih", "ya", "bro", "gan", "bang", "mas", "mba", "bos", "aja",
     "saja", "kan", "deh", "yuk", "lah", "plis", "please", "can", "you", "help", "me", "kali",
-    "salam", "sapaan", "halo", "hai", "assalamualaikum", "pagi", "siang", "malam", "tes", "test"
+    "halo", "hai", "assalamualaikum", "pagi", "siang", "malam", "tes", "test"
+}
+
+GENERIC_SESSION_TITLES = {
+    "salam", "sapaan", "sapaan pembuka", "halo", "hai", "tes", "test",
+    "obrolan baru", "percakapan baru", "salam & sapaan", "salam dan sapaan",
+    "greeting", "greetings", "general greeting", "n/a", "na", "none", "null",
+    "undefined", "tanya", "pertanyaan", "bantuan", "help", "chitchat",
+    "obrolan", "percakapan", "obrolan santai", "salam pembuka", "new chat", "untitled"
 }
 
 def format_session_title(title_input: str, max_words: int = 5, max_chars: int = 40) -> str:
@@ -608,8 +616,8 @@ def format_session_title(title_input: str, max_words: int = 5, max_chars: int = 
 
     cleaned = title_input.strip().strip('"').strip("'").strip(".").strip("`")
     
-    # 🚫 Jika judul hanya berisi satu kata sapaan generik, fallback ke judul ramah
-    if cleaned.lower() in {"salam", "sapaan", "sapaan pembuka", "halo", "hai", "tes", "test", "obrolan baru", "percakapan baru", "salam & sapaan", "salam dan sapaan"}:
+    # 🚫 Jika judul hanya berisi satu kata sapaan generik atau N/A, fallback ke judul ramah
+    if cleaned.lower() in GENERIC_SESSION_TITLES:
         return "Obrolan Cakra AI"
     
     # Strip common leading command phrases
@@ -657,6 +665,5 @@ def format_session_title(title_input: str, max_words: int = 5, max_chars: int = 
     result = " ".join(formatted_words).strip()
     if len(result) > max_chars:
         result = result[:max_chars].rsplit(" ", 1)[0]
-
-    return result if result else "Obrolan Cakra AI"
+    return result if result and result.lower() not in GENERIC_SESSION_TITLES else "Obrolan Cakra AI"
 

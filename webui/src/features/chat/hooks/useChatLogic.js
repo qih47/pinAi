@@ -1035,7 +1035,7 @@ export function useChatLogic({ isGuest,
       chatModeRef.current, // PARAMETER MODE: 'auto' | 'documents' (untuk dikirim ke backend)
       isThinkingModeRef.current, // PARAMETER THINKING: true/false
       toast,
-      { forced_mode: activeModeTag, bypass_router: false }
+      { forced_mode: activeModeTag, bypass_router: Boolean(activeModeTag) }
     );
 
     sessionStorage.removeItem("cakra_draft_new");

@@ -358,7 +358,7 @@ async def _sequential_pipeline_generator(
     # Jalankan save (selain title) di background agar kebal terhadap CancelledError
     asyncio.create_task(_save_to_db())
 
-    # Ambil judul terbaru (mungkin diubah oleh Call 1 / Mode Hub)
+    # Ambil judul terbaru (ditetapkan oleh Call 1 Normal atau Call 1 Preset)
     new_title = None
     if payload.session_uuid:
         new_title = await chat_history_service.get_session_title(payload.session_uuid)

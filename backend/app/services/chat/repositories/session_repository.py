@@ -164,7 +164,8 @@ class SessionRepository:
     
     async def update_title_direct(self, session_uuid: str, new_title: str) -> bool:
         """
-        Update judul sesi secara langsung (dari Gemma 4 di Call 1).
+        Update judul sesi secara langsung (dari Gemma 4 di Call 1 atau Call 2).
+        Boleh update jika judul saat ini masih berupa placeholder / judul generik.
         """
         async with get_db() as conn:
             try:
@@ -172,13 +173,15 @@ class SessionRepository:
                     "SELECT judul FROM chat_sessions WHERE session_uuid = $1",
                     session_uuid,
                 )
-                if check_title and check_title["judul"] == "Obrolan Baru":
+                from backend.app.services.pipeline.modes.mode_utils import GENERIC_SESSION_TITLES
+                current_title = (check_title["judul"] or "").strip().lower() if check_title else ""
+                if not check_title or current_title in GENERIC_SESSION_TITLES:
                     await conn.execute(
                         "UPDATE chat_sessions SET judul = $1 WHERE session_uuid = $2",
                         new_title,
                         session_uuid
                     )
-                    logger.info(f"✅ [SESSION] Title updated directly via Call 1 for {session_uuid}: '{new_title}'")
+                    logger.info(f"✅ [SESSION] Title updated directly for {session_uuid}: '{new_title}'")
                     return True
                 return False
             except Exception as e:
