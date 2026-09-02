@@ -99,18 +99,18 @@ export default function ChatInputArea({
           {activeModeTag === "code"
             ? tHints.code
             : activeModeTag === "websearch"
-            ? tHints.websearch
-            : activeModeTag === "documents"
-            ? tHints.documents
-            : activeModeTag === "diagram"
-            ? tHints.diagram
-            : activeModeTag === "chart"
-            ? tHints.chart
-            : activeModeTag === "create_file"
-            ? tHints.createFile
-            : activeModeTag === "smart_mail"
-            ? tHints.smartMail
-            : tHints.focus}
+              ? tHints.websearch
+              : activeModeTag === "documents"
+                ? tHints.documents
+                : activeModeTag === "diagram"
+                  ? tHints.diagram
+                  : activeModeTag === "chart"
+                    ? tHints.chart
+                    : activeModeTag === "create_file"
+                      ? tHints.createFile
+                      : activeModeTag === "smart_mail"
+                        ? tHints.smartMail
+                        : tHints.focus}
         </span>
         <button
           type="button"

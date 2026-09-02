@@ -654,10 +654,23 @@ def _validate_and_normalize_routing(
             if not routing.get("queries"):
                 routing["queries"] = [routing.get("key_subject") or user_message]
             logger.info(f"[CALL1] 🛡️ Guard: Auto-activated is_web_search | queries={routing['queries']}")
-        else:
-            # Default fallback jika pertanyaan umum / chitchat
-            routing["is_chitchat"] = True
-            logger.info("[CALL1] 🛡️ Guard: Auto-activated is_chitchat (general conversation)")
+    # 🔒 GUEST HARD-WALL SECURITY GUARD:
+    # Tamu DILARANG KERAS mengakses dokumen/arsip internal PT Pindad dalam kondisi apapun!
+    if is_guest:
+        if routing.get("need_rag"):
+            logger.info("[CALL1] 🛡️ Guest Mode: Forcing need_rag=False (RAG hard-block for Guest)")
+            routing["need_rag"] = False
+            routing["query_judul"] = []
+            if not any([
+                routing.get("is_coding"),
+                routing.get("is_generate_file"),
+                routing.get("is_web_search"),
+                routing.get("requires_visual"),
+                routing.get("need_analytic"),
+                routing.get("is_ambiguous")
+            ]):
+                routing["is_chitchat"] = True
+        routing["is_multi_document"] = False
 
     return routing
 
@@ -716,20 +729,33 @@ def _build_fallback_routing(precheck: Dict[str, Any]) -> Dict[str, Any]:
             "is_chitchat": precheck.get("is_chitchat", False),
         }
 
-
-async def generate_call1_preset_title(user_message: str, request: Optional[Request] = None) -> Optional[str]:
+async def generate_call1_preset_routing(
+    user_message: str,
+    forced_mode: str = "auto",
+    is_first_chat: bool = False,
+    request: Optional[Request] = None,
+) -> Dict[str, Any]:
     """
-    Menghasilkan judul percakapan cepat via Gemma 4 e4b khusus untuk jalur preset (bypass).
-    Hanya meminta judul 2-4 kata tanpa melakukan klasifikasi parameter routing apapun (< 300 ms).
+    Mini routing analyzer untuk jalur preset/bypass — pengganti generate_call1_preset_title().
+    Menganalisis pesan user dan mengembalikan dict routing (hanya field truthy):
+      - session_title  : str | None  — hanya jika is_first_chat=True
+      - is_ambiguous   : bool        — True jika pesan terlalu umum/ambigu
+      - requires_visual: bool        — True jika perlu output diagram/grafik
+      - need_analytic  : bool        — True jika perlu analisis data/statistik
+    Menggunakan gemma4:e4b yang sudah di VRAM. Fallback ke {} jika timeout/error.
     """
     if not user_message or not user_message.strip():
-        return None
+        return {}
 
     from datetime import datetime
-    from backend.app.services.pipeline.prompts.core_prompts import build_call1_preset_title_prompt
+    from backend.app.services.pipeline.prompts.core_prompts import build_call1_preset_prompt
     from backend.app.services.pipeline.modes.mode_utils import format_session_title, GENERIC_SESSION_TITLES
 
-    prompt = build_call1_preset_title_prompt(user_message.strip())
+    prompt = build_call1_preset_prompt(
+        user_message=user_message.strip(),
+        forced_mode=forced_mode,
+        is_first_chat=is_first_chat,
+    )
     model = getattr(settings, "MODEL_ROUTER", "gemma4:e4b")
     router_ctx = getattr(settings, "NUM_CTX_ROUTER", 4096)
 
@@ -739,26 +765,67 @@ async def generate_call1_preset_title(user_message: str, request: Optional[Reque
             model_name=model,
             messages=[{"role": "user", "content": prompt}],
             request=request,
-            temperature=0.2,
-            top_p=0.3,
+            temperature=0.1,
+            top_p=0.2,
             keep_alive=-1,
             num_ctx=router_ctx,
-            num_predict=35,
-            timeout=10.0,
+            num_predict=60,
+            timeout=8.0,
         )
         duration_ms = (datetime.now() - t0).total_seconds() * 1000
-        raw_title = res_json.get("session_title") if isinstance(res_json, dict) else None
 
-        if isinstance(raw_title, str) and raw_title.strip() and raw_title.strip().lower() not in GENERIC_SESSION_TITLES:
-            final_title = format_session_title(raw_title)
-            logger.info(f"⚡ [CALL1_PRESET_TITLE] Title generated in {duration_ms:.1f}ms: '{final_title}'")
-            return final_title
+        if not isinstance(res_json, dict):
+            return {}
+
+        result: Dict[str, Any] = {}
+
+        # Ambiguity flag
+        if res_json.get("is_ambiguous") is True:
+            result["is_ambiguous"] = True
+
+        # Visual flag
+        if res_json.get("requires_visual") is True:
+            result["requires_visual"] = True
+
+        # Analytic flag
+        if res_json.get("need_analytic") is True:
+            result["need_analytic"] = True
+
+        # Session title — hanya jika first_chat
+        if is_first_chat:
+            raw_title = res_json.get("session_title")
+            if isinstance(raw_title, str) and raw_title.strip() and raw_title.strip().lower() not in GENERIC_SESSION_TITLES:
+                result["session_title"] = format_session_title(raw_title)
+
+        logger.info(f"⚡ [CALL1_PRESET_ROUTING] Result in {duration_ms:.1f}ms: {result} (mode={forced_mode}, first_chat={is_first_chat})")
+        return result
+
     except Exception as e:
-        logger.warning(f"[CALL1_PRESET_TITLE] Gagal generate judul preset via LLM: {e}")
+        logger.warning(f"[CALL1_PRESET_ROUTING] Gagal via LLM: {e}")
 
-    # Fallback aman jika LLM timeout atau mengembalikan string kosong
-    formatted = format_session_title(user_message)
-    return formatted if formatted and formatted.strip().lower() not in GENERIC_SESSION_TITLES else None
+    # Fallback: jika first_chat, coba generate title dari teks user saja
+    if is_first_chat:
+        from backend.app.services.pipeline.modes.mode_utils import format_session_title, GENERIC_SESSION_TITLES
+        formatted = format_session_title(user_message)
+        if formatted and formatted.strip().lower() not in GENERIC_SESSION_TITLES:
+            return {"session_title": formatted}
+
+    return {}
+
+
+async def generate_call1_preset_title(user_message: str, request: Optional[Request] = None) -> Optional[str]:
+    """
+    Deprecated: dipertahankan sebagai backward-compat alias.
+    Gunakan generate_call1_preset_routing() untuk jalur preset.
+    """
+    result = await generate_call1_preset_routing(
+        user_message=user_message,
+        forced_mode="auto",
+        is_first_chat=True,
+        request=request,
+    )
+    return result.get("session_title")
+
 
 
 async def generate_call1_web_queries(user_message: str, request: Optional[Request] = None) -> List[str]:

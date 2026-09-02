@@ -55,15 +55,15 @@ export default function IsolatedDocBanner({
 
   const bannerTheme = currentMode === 'compliance'
     ? {
-        bg: darkMode ? "rgba(239, 68, 68, 0.14)" : "rgba(254, 226, 226, 0.7)",
-        border: darkMode ? "rgba(239, 68, 68, 0.4)" : "rgba(239, 68, 68, 0.35)",
-        textColor: darkMode ? "#fecaca" : "#991b1b",
-        glow: darkMode ? "0 0 16px rgba(239, 68, 68, 0.12)" : "0 2px 8px rgba(239, 68, 68, 0.06)",
-        badgeBg: darkMode ? "rgba(239, 68, 68, 0.28)" : "rgba(239, 68, 68, 0.15)",
-        actionDesc: activeConfig.actionDesc
-      }
+      bg: darkMode ? "rgba(239, 68, 68, 0.14)" : "rgba(254, 226, 226, 0.7)",
+      border: darkMode ? "rgba(239, 68, 68, 0.4)" : "rgba(239, 68, 68, 0.35)",
+      textColor: darkMode ? "#fecaca" : "#991b1b",
+      glow: darkMode ? "0 0 16px rgba(239, 68, 68, 0.12)" : "0 2px 8px rgba(239, 68, 68, 0.06)",
+      badgeBg: darkMode ? "rgba(239, 68, 68, 0.28)" : "rgba(239, 68, 68, 0.15)",
+      actionDesc: activeConfig.actionDesc
+    }
     : currentMode === 'redteam'
-    ? {
+      ? {
         bg: darkMode ? "rgba(249, 115, 22, 0.14)" : "rgba(255, 237, 213, 0.7)",
         border: darkMode ? "rgba(249, 115, 22, 0.4)" : "rgba(249, 115, 22, 0.35)",
         textColor: darkMode ? "#fed7aa" : "#9a3412",
@@ -71,7 +71,7 @@ export default function IsolatedDocBanner({
         badgeBg: darkMode ? "rgba(249, 115, 22, 0.28)" : "rgba(249, 115, 22, 0.15)",
         actionDesc: activeConfig.actionDesc
       }
-    : {
+      : {
         bg: darkMode ? "rgba(99, 102, 241, 0.14)" : "rgba(238, 242, 255, 0.8)",
         border: darkMode ? "rgba(99, 102, 241, 0.4)" : "rgba(99, 102, 241, 0.35)",
         textColor: darkMode ? "#e0e7ff" : "#1e3a8a",
@@ -150,20 +150,18 @@ export default function IsolatedDocBanner({
             <span>{activeConfig.badgeLabel}</span>
             <ChevronDown
               size={12}
-              className={`transition-transform duration-200 opacity-60 group-hover:opacity-100 ${
-                isOpen ? "rotate-180" : ""
-              }`}
+              className={`transition-transform duration-200 opacity-60 group-hover:opacity-100 ${isOpen ? "rotate-180" : ""
+                }`}
             />
           </button>
 
           {/* 🔽 POPOVER MENU LENGKAP & DETAIL SAAT HOVER / CLICK */}
           {isOpen && (
             <div
-              className={`absolute left-0 bottom-full mb-2.5 w-72 rounded-xl shadow-2xl p-1.5 z-50 transition-all duration-150 border ${
-                darkMode
+              className={`absolute left-0 bottom-full mb-2.5 w-72 rounded-xl shadow-2xl p-1.5 z-50 transition-all duration-150 border ${darkMode
                   ? "bg-[#1c1c22]/95 border-gray-700/80 backdrop-blur-xl text-gray-200 shadow-black/70"
                   : "bg-white/95 border-gray-200/90 backdrop-blur-xl text-gray-800 shadow-indigo-500/10"
-              }`}
+                }`}
             >
               <div className="px-2.5 py-1.5 border-b border-gray-200/40 dark:border-gray-700/50 mb-1 flex items-center justify-between">
                 <span className="text-[10px] font-bold tracking-wider uppercase text-gray-400 dark:text-gray-500">
@@ -180,15 +178,14 @@ export default function IsolatedDocBanner({
                       key={mode.id}
                       type="button"
                       onClick={() => handleSwitchMode(mode.id)}
-                      className={`w-full flex items-start gap-2.5 p-2 rounded-lg text-left transition-all duration-150 cursor-pointer ${
-                        isActive
+                      className={`w-full flex items-start gap-2.5 p-2 rounded-lg text-left transition-all duration-150 cursor-pointer ${isActive
                           ? darkMode
                             ? "bg-white/10 text-white font-medium"
                             : "bg-indigo-50 text-indigo-900 font-medium"
                           : darkMode
-                          ? "hover:bg-white/5 text-gray-300 hover:text-white"
-                          : "hover:bg-gray-100/80 text-gray-700 hover:text-gray-900"
-                      }`}
+                            ? "hover:bg-white/5 text-gray-300 hover:text-white"
+                            : "hover:bg-gray-100/80 text-gray-700 hover:text-gray-900"
+                        }`}
                     >
                       <span className="text-base flex-shrink-0 mt-0.5">{mode.icon}</span>
                       <div className="flex-1 min-w-0">

@@ -487,13 +487,15 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
         );
     }
 
-    const showStatusText = isThisMessageStreaming && (!msg.content || msg.content === '');
+    const fileGens = msg.fileGenerations || [];
+    const isFileProcessing = fileGens.some(g => g.stage !== 'done' && g.stage !== 'error');
+    const showStatusText = isThisMessageStreaming && (!msg.content || msg.content === '' || isFileProcessing);
     const isThinkingMsg = isThisMessageStreaming && Boolean(msg.isThinking || msg.thinking || (globalIsThinking && (!msg.content || msg.content === '')));
     const isStreamingMsg = isThisMessageStreaming && msg.content !== '';
     const isActive = isThisMessageStreaming;
 
-    // 🔥 Smooth transition & animasi untuk teks status / berpikir dinamis
-    const [displayThought, setDisplayThought] = useState("CAKRA sedang menyiapkan respon");
+    // 🔥 Smooth transition & animasi untuk teks status / berpikir dinamis (Claude Style)
+    const [displayThought, setDisplayThought] = useState(language === 'en' ? '✨ Responding...' : '✨ Merespons...');
     const [isThoughtVisible, setIsThoughtVisible] = useState(true);
     const thoughtTimerRef = useRef(null);
 
@@ -502,7 +504,7 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
 
         // PRIORITIZE msg.statusMessage (e.g. from SSE status event) over static fallback
         const localizedStatus = msg.statusMessage ? resolveStatusMessage(msg.statusMessage, language) : '';
-        const nextThought = localizedStatus ? localizedStatus : (formatThinkingPhase(msg.thought, language) || "CAKRA sedang berpikir");
+        const nextThought = localizedStatus ? localizedStatus : (formatThinkingPhase(msg.thought, language) || (language === 'en' ? '🧠 Thinking...' : '🧠 Berpikir...'));
 
         if (nextThought !== displayThought) {
             if (thoughtTimerRef.current) {

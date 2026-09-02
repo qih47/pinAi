@@ -34,6 +34,7 @@ export default defineConfig({
   server: {
     port: 5174,
     host: true,
+    allowedHosts: ['cakra.ai', 'www.cakra.ai', '.pindad.co.id', 'localhost', '127.0.0.1'],
   },
   optimizeDeps: {
     include: [

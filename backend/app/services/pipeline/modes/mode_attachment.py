@@ -117,7 +117,7 @@ class ModeAttachment:
         total_pages = 0
 
         if pdf_file_path and os.path.exists(pdf_file_path):
-            yield format_sse(status="⚙️ Memindai & mengekstrak konten PDF...", event_type=SSEEventType.STATUS)
+            yield format_sse(status="⚙️ Memindai & mengekstrak konten PDF", event_type=SSEEventType.STATUS)
             await asyncio.sleep(0.02)
 
             cache_key = session_uuid or pdf_file_path
@@ -128,7 +128,7 @@ class ModeAttachment:
 
             if is_summary:
                 # Mode Rangkuman Dokumen Utuh
-                yield format_sse(status=f"📑 Merangkum seluruh {total_pages} halaman dokumen...", event_type=SSEEventType.STATUS)
+                yield format_sse(status=f"📑 Merangkum seluruh {total_pages} halaman dokumen", event_type=SSEEventType.STATUS)
                 await asyncio.sleep(0.05)
 
                 if total_pages <= 40:
@@ -152,7 +152,7 @@ class ModeAttachment:
                     final_base64_images = []
             else:
                 # Mode Targeted QA (Two-Stage Context-Aware Retrieval)
-                yield format_sse(status=f"🔍 Menganalisis klausul terkait pada {total_pages} halaman...", event_type=SSEEventType.STATUS)
+                yield format_sse(status=f"🔍 Menganalisis klausul terkait pada {total_pages} halaman", event_type=SSEEventType.STATUS)
                 await asyncio.sleep(0.05)
 
                 explicit_pages = extract_explicit_pages_from_query(user_message, total_pages)

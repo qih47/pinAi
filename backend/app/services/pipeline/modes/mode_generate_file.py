@@ -280,8 +280,30 @@ class ModeGenerateFile:
         logger.info(f"[MODE_GENERATE_FILE] Starting Unified Single-Stream Generation for: {employee_name} (NPP: {current_user_npp})")
 
         routing_data = routing_data or {}
+
+        # 🧭 AMBIGUITY GUARD: Jika pesan ambigu (dari preset routing), delegasikan ke ModeFlash
+        # agar modul 'ambiguous' dipilih dan wizard klarifikasi muncul — bukan langsung generate file.
+        if routing_data.get("is_ambiguous"):
+            logger.info("[MODE_GENERATE_FILE] is_ambiguous=True detected → delegating to ModeFlash (ambiguous wizard)")
+            from backend.app.services.pipeline.modes.mode_flash import ModeFlash
+            async for chunk in ModeFlash().execute(
+                user_message=user_message,
+                chat_history=chat_history,
+                is_thinking=is_thinking,
+                attachments=attachments,
+                context_isolation=context_isolation,
+                routing_data=routing_data,
+                request=request,
+                employee_name=employee_name,
+                current_user_npp=current_user_npp,
+                session_uuid=session_uuid,
+            ):
+                yield chunk
+            return
+
         pronoun = routing_data.get("pronoun", "unknown")
         tone_hint = routing_data.get("tone_hint", "casual")
+
 
         # Prepare RAG / existing files text
         existing_artifacts_content = ""

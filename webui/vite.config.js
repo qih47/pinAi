@@ -31,6 +31,7 @@ export default defineConfig({
   server: {
     port: 5173,
     host: true,
+    allowedHosts: ['cakra.ai', 'www.cakra.ai', '.pindad.co.id', 'localhost', '127.0.0.1'],
   },
   build: {
     target: 'esnext',

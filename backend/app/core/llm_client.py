@@ -116,6 +116,7 @@ async def warm_up_model(model_name: str, prompt: str = "keep alive", num_ctx: Op
             "temperature": 0.1,
             "num_predict": 1,
             "num_ctx": target_ctx,
+            "num_batch": 512,
         },
     }
     async with httpx.AsyncClient(timeout=httpx.Timeout(120.0, connect=10.0)) as client:
@@ -143,6 +144,7 @@ async def _flush_kv_cache(model_name: str) -> None:
                 "temperature": 0.1,
                 "num_predict": 1,
                 "num_ctx": target_ctx,
+                "num_batch": 512,
             },
         }
         async with httpx.AsyncClient(timeout=httpx.Timeout(10.0, connect=3.0)) as client:
@@ -297,6 +299,7 @@ async def stream_ollama_chat(
             "top_k": kwargs.pop("top_k", 64),
             "num_ctx": num_ctx,
             "num_predict": num_predict,
+            "num_batch": kwargs.pop("num_batch", 512),
             "repeat_penalty": kwargs.pop("repeat_penalty", 1.1),
             "repeat_last_n": kwargs.pop("repeat_last_n", 128),
             **kwargs,
@@ -499,6 +502,7 @@ async def generate_json_response(
         "top_k": 64,
         "num_ctx": num_ctx,
         "num_predict": num_predict,
+        "num_batch": kwargs.pop("num_batch", 512),
         "think": False,
         **kwargs,
     }

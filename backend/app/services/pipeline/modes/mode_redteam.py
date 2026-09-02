@@ -115,13 +115,13 @@ class ModeRedTeam:
 
         # 3. Fast Parallel OCR & Rendering via Document Intelligence
         cache_key = session_uuid or file_path
-        yield format_sse(status="⚙️ Memindai & memproses klausul dokumen...", event_type=SSEEventType.STATUS)
+        yield format_sse(status="⚙️ Memindai & memproses klausul dokumen", event_type=SSEEventType.STATUS)
         await asyncio.sleep(0.05)
 
         text_map, all_base64_images, total_pages = await extract_and_ocr_document_async(file_path, cache_key=cache_key)
 
         # 4. Two-Stage Context-Aware Reranking & Structural Continuity Engine
-        yield format_sse(status=f"🔍 Menganalisis seluruh {total_pages} halaman dokumen...", event_type=SSEEventType.STATUS)
+        yield format_sse(status=f"🔍 Menganalisis seluruh {total_pages} halaman dokumen", event_type=SSEEventType.STATUS)
         await asyncio.sleep(0.05)
 
         explicit_pages = extract_explicit_pages_from_query(user_message, total_pages)
@@ -139,7 +139,7 @@ class ModeRedTeam:
         yield format_sse(status=f"📌 Ditemukan Klausul Sasaran pada Halaman {halaman_str}!", event_type=SSEEventType.STATUS)
         await asyncio.sleep(0.2)
         
-        yield format_sse(status=f"⚔️ Membedah celah hukum dari 2 sudut pandang ekstrem...", event_type=SSEEventType.STATUS)
+        yield format_sse(status=f"⚔️ Membedah celah hukum dari 2 sudut pandang ekstrem", event_type=SSEEventType.STATUS)
         await asyncio.sleep(0.1)
 
         # 6. Persiapkan Chat History & Prompt

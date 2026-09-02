@@ -107,11 +107,18 @@ origins = [
     "http://192.168.11.80:5174",
     "http://127.0.0.1:5173",
     "http://127.0.0.1:5174",
+    "http://cakra.ai",
+    "http://cakra.ai:5173",
+    "http://cakra.ai:8000",
+    "http://www.cakra.ai",
+    "http://www.cakra.ai:5173",
+    "http://www.cakra.ai:8000",
 ]
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
+    allow_origin_regex=r"^http://(localhost|127\.0\.0\.1|192\.168\.11\.80|cakra\.ai|www\.cakra\.ai)(:\d+)?$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

@@ -96,7 +96,7 @@ export function useChatLogic({ isGuest,
 
     setIsDocLoading(true);
     setDocContent("");
-    
+
     const controller = new AbortController();
     const endpoint = `${API_BASE}/api/chat/documents/extract?path=${encodeURIComponent(previewDoc.path)}`;
 
@@ -119,7 +119,7 @@ export function useChatLogic({ isGuest,
           setIsDocLoading(false);
         }
       });
-      
+
     return () => controller.abort();
   }, [previewDoc]);
 
@@ -130,21 +130,21 @@ export function useChatLogic({ isGuest,
       setArtifactContent(previewArtifact.code || '');
       return;
     }
-    
+
     // Gunakan sessionId dari route, fallback ke sessionUuid dari store
     const activeSessionId = sessionId && sessionId !== "new" ? sessionId : useChatStore.getState().sessionUuid;
-    
+
     setIsArtifactLoading(true);
     setArtifactContent('');
-    
+
     const controller = new AbortController();
-    
+
     // Siapkan header otentikasi agar backend bisa mengekstrak current_user_npp
     const headers = {};
     if (authUser?.npp) {
       headers['X-NPP-Header'] = authUser.npp;
     }
-    
+
     fetch(`${API_BASE}/api/chat/artifacts/read?filename=${encodeURIComponent(previewArtifact.file_path)}&session_id=${encodeURIComponent(activeSessionId)}`, {
       headers,
       signal: controller.signal
@@ -161,7 +161,7 @@ export function useChatLogic({ isGuest,
           setIsArtifactLoading(false);
         }
       });
-      
+
     return () => controller.abort();
   }, [previewArtifact, sessionId, authUser]);
 
@@ -221,10 +221,10 @@ export function useChatLogic({ isGuest,
 
   const handleDownloadArtifact = async (filename, file_path, code) => {
     if (code) {
-       const blob = new Blob([code], { type: 'text/plain;charset=utf-8' });
-       const url = URL.createObjectURL(blob);
-       const a = document.createElement('a'); a.href = url; a.download = filename; a.click(); URL.revokeObjectURL(url);
-       return;
+      const blob = new Blob([code], { type: 'text/plain;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href = url; a.download = filename; a.click(); URL.revokeObjectURL(url);
+      return;
     }
     try {
       const activeSessionId = sessionId && sessionId !== "new" ? sessionId : useChatStore.getState().sessionUuid;
@@ -479,7 +479,7 @@ export function useChatLogic({ isGuest,
     const pastedText = e.clipboardData?.getData("text/plain");
     if (pastedText && pastedText.length > 4000) {
       e.preventDefault();
-      
+
       if (isGuest || !currentIsLoggedIn) {
         if (selectedFiles.length >= 1) {
           toast.warning(tToast?.maxAttachment || "Batas attachment telah tercapai");
@@ -492,7 +492,7 @@ export function useChatLogic({ isGuest,
         `pasted-text-${Date.now()}.txt`,
         { type: "text/plain" }
       );
-      
+
       const newFiles = [textFile];
       if (isGuest || !currentIsLoggedIn) {
         const processed = await processFilesForLines([newFiles[0]]);
@@ -513,7 +513,7 @@ export function useChatLogic({ isGuest,
     // B. Tangani Paste Gambar
     const items = e.clipboardData?.items;
     if (!items) return;
-    
+
     const imageItems = Array.from(items).filter((item) =>
       item.type.startsWith("image/"),
     );
@@ -697,7 +697,7 @@ export function useChatLogic({ isGuest,
     const handleTitleUpdate = (e) => {
       const { sessionUuid, title } = e.detail;
       if (!title) return;
-      
+
       // Update state dengan _titleUpdated = true agar komponen TypewriterTitle terpicu
       setChatHistory(prev => prev.map(session => {
         if (session.session_uuid === sessionUuid) {
@@ -921,7 +921,7 @@ export function useChatLogic({ isGuest,
     }
 
     const newHeight = Math.min(el.scrollHeight, 450);
-    
+
     // KEMBALIKAN LEBAR KE SEMULA JIKA DIMODIFIKASI
     if (isMultiLine && singleLineWidthRef.current > 0) {
       el.style.width = originalWidth;
@@ -980,10 +980,10 @@ export function useChatLogic({ isGuest,
 
           // Tambahkan sesi baru ke history agar langsung muncul di sidebar
           const newSessionObj = {
-              session_uuid: created,
-              judul: "Obrolan Baru",
-              is_pinned: false,
-              started_at: new Date().toISOString()
+            session_uuid: created,
+            judul: "Obrolan Baru",
+            is_pinned: false,
+            started_at: new Date().toISOString()
           };
           setChatHistory((prev) => [newSessionObj, ...prev]);
 
@@ -1040,7 +1040,7 @@ export function useChatLogic({ isGuest,
 
     sessionStorage.removeItem("cakra_draft_new");
     if (sessionId) sessionStorage.removeItem(`cakra_draft_${sessionId}`);
-    
+
     setInput("");
     setSelectedFiles([]);
     setStagedAttachments([]);
@@ -1093,7 +1093,7 @@ export function useChatLogic({ isGuest,
 
     sessionStorage.removeItem("cakra_draft_new");
     if (sessionId) sessionStorage.removeItem(`cakra_draft_${sessionId}`);
-    
+
     setInput("");
     useChatStore.getState().setActiveModeTag(null);
     setSelectedFiles([]);
@@ -1149,8 +1149,8 @@ export function useChatLogic({ isGuest,
       ? "0"
       : isPreviewMode
         ? (rightSidebarWidth === 9999
-            ? `calc(100vw - ${sidebarOpen ? 256 : 64}px)`
-            : `${rightSidebarWidth}px`)
+          ? `calc(100vw - ${sidebarOpen ? 256 : 64}px)`
+          : `${rightSidebarWidth}px`)
         : "325px";
 
 

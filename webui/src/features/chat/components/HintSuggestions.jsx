@@ -93,11 +93,11 @@ export default function HintSuggestions({
   // Guest users only have access to safe public tools (Code, Web Search, Diagram, Chart)
   const defaultActions = isGuest
     ? [
-        { id: "code", label: tHints.code, icon: Code2 },
-        { id: "websearch", label: tHints.websearch, icon: Globe },
-        { id: "diagram", label: tHints.diagram, icon: Workflow },
-        { id: "chart", label: tHints.chart, icon: BarChart3 },
-      ]
+      { id: "code", label: tHints.code, icon: Code2 },
+      { id: "websearch", label: tHints.websearch, icon: Globe },
+      { id: "diagram", label: tHints.diagram, icon: Workflow },
+      { id: "chart", label: tHints.chart, icon: BarChart3 },
+    ]
     : allActions;
 
   // Bagi aksi: Jika mobile, tampilkan maksimal 3 di baris utama (primary) dan sisanya saat di-expand
@@ -122,9 +122,9 @@ export default function HintSuggestions({
         if (selectedDoc) {
           // ── STEP 2: Ambil Rekomendasi Pertanyaan Sintetis Dokumen ──
           const results = await fetchChatSuggestions(
-            "doc_questions", 
-            input || selectedDoc.title, 
-            5, 
+            "doc_questions",
+            input || selectedDoc.title,
+            5,
             selectedDoc.doc_id || selectedDoc.id
           );
           setSuggestions(results || []);
@@ -230,11 +230,10 @@ export default function HintSuggestions({
                   key={action.id}
                   type="button"
                   onClick={() => setActiveModeTag(action.id)}
-                  className={`inline-flex items-center justify-center gap-1.5 sm:gap-2 px-2.5 sm:px-3.5 py-1.5 rounded-xl transition-all duration-200 cursor-pointer group border-0 text-center flex-shrink-0 hover:scale-[1.04] active:scale-[0.96] ${
-                    darkMode
+                  className={`inline-flex items-center justify-center gap-1.5 sm:gap-2 px-2.5 sm:px-3.5 py-1.5 rounded-xl transition-all duration-200 cursor-pointer group border-0 text-center flex-shrink-0 hover:scale-[1.04] active:scale-[0.96] ${darkMode
                       ? "text-[#d1d5db] hover:text-white hover:bg-[#1f1f23] shadow-black/20"
                       : "text-gray-700 hover:text-gray-900 hover:bg-gray-100"
-                  }`}
+                    }`}
                   style={{
                     outline: "none",
                     background: "transparent",
@@ -259,11 +258,10 @@ export default function HintSuggestions({
               <button
                 type="button"
                 onClick={() => setIsExpanded(true)}
-                className={`inline-flex items-center justify-center gap-1 px-3 py-1 rounded-lg text-xs transition-all duration-200 cursor-pointer group border-0 text-center hover:scale-[1.05] active:scale-[0.95] ${
-                  darkMode
+                className={`inline-flex items-center justify-center gap-1 px-3 py-1 rounded-lg text-xs transition-all duration-200 cursor-pointer group border-0 text-center hover:scale-[1.05] active:scale-[0.95] ${darkMode
                     ? "text-[#9ca3af] hover:text-white hover:bg-[#1f1f23]"
                     : "text-gray-500 hover:text-gray-800 hover:bg-gray-100"
-                }`}
+                  }`}
                 style={{
                   outline: "none",
                   background: "transparent",
@@ -291,11 +289,10 @@ export default function HintSuggestions({
                       key={action.id}
                       type="button"
                       onClick={() => setActiveModeTag(action.id)}
-                      className={`inline-flex items-center justify-center gap-1.5 sm:gap-2 px-2.5 sm:px-3.5 py-1.5 rounded-xl transition-all duration-200 cursor-pointer group border-0 text-center flex-shrink-0 hover:scale-[1.03] active:scale-[0.97] ${
-                        darkMode
+                      className={`inline-flex items-center justify-center gap-1.5 sm:gap-2 px-2.5 sm:px-3.5 py-1.5 rounded-xl transition-all duration-200 cursor-pointer group border-0 text-center flex-shrink-0 hover:scale-[1.03] active:scale-[0.97] ${darkMode
                           ? "text-[#d1d5db] hover:text-white hover:bg-[#1f1f23]"
                           : "text-gray-700 hover:text-gray-900 hover:bg-gray-100"
-                      }`}
+                        }`}
                       style={{
                         outline: "none",
                         background: "transparent",
@@ -324,11 +321,10 @@ export default function HintSuggestions({
                         key={action.id}
                         type="button"
                         onClick={() => setActiveModeTag(action.id)}
-                        className={`inline-flex items-center justify-center gap-1.5 sm:gap-2 px-2.5 sm:px-3.5 py-1.5 rounded-xl transition-all duration-200 cursor-pointer group border-0 text-center flex-shrink-0 hover:scale-[1.03] active:scale-[0.97] ${
-                          darkMode
+                        className={`inline-flex items-center justify-center gap-1.5 sm:gap-2 px-2.5 sm:px-3.5 py-1.5 rounded-xl transition-all duration-200 cursor-pointer group border-0 text-center flex-shrink-0 hover:scale-[1.03] active:scale-[0.97] ${darkMode
                             ? "text-[#d1d5db] hover:text-white hover:bg-[#1f1f23]"
                             : "text-gray-700 hover:text-gray-900 hover:bg-gray-100"
-                        }`}
+                          }`}
                         style={{
                           outline: "none",
                           background: "transparent",
@@ -353,11 +349,10 @@ export default function HintSuggestions({
                 <button
                   type="button"
                   onClick={() => setIsExpanded(false)}
-                  className={`inline-flex items-center justify-center gap-1 px-3.5 py-1 rounded-lg text-xs transition-all duration-200 cursor-pointer group border-0 text-center hover:scale-[1.05] active:scale-[0.95] ${
-                    darkMode
+                  className={`inline-flex items-center justify-center gap-1 px-3.5 py-1 rounded-lg text-xs transition-all duration-200 cursor-pointer group border-0 text-center hover:scale-[1.05] active:scale-[0.95] ${darkMode
                       ? "text-indigo-400/90 hover:text-indigo-300 hover:bg-indigo-500/10"
                       : "text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50"
-                  }`}
+                    }`}
                   style={{
                     outline: "none",
                     animation: `cakraRowCascade 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) 220ms both`
@@ -402,11 +397,10 @@ export default function HintSuggestions({
               key={idx}
               type="button"
               onClick={() => handleItemClick(item)}
-              className={`flex items-center justify-between w-full px-3.5 py-2 rounded-xl text-left transition-all duration-150 group cursor-pointer border-0 ${
-                darkMode
+              className={`flex items-center justify-between w-full px-3.5 py-2 rounded-xl text-left transition-all duration-150 group cursor-pointer border-0 ${darkMode
                   ? "text-[#d1d5db] hover:text-white hover:bg-[#1a1a1e]"
                   : "text-gray-700 hover:text-gray-900 hover:bg-gray-100"
-              }`}
+                }`}
               style={{
                 outline: "none",
                 background: "transparent",
@@ -424,11 +418,10 @@ export default function HintSuggestions({
               </div>
               {item.category && (
                 <span
-                  className={`text-[11px] px-2 py-0.5 rounded-md font-medium flex-shrink-0 ${
-                    darkMode
+                  className={`text-[11px] px-2 py-0.5 rounded-md font-medium flex-shrink-0 ${darkMode
                       ? "bg-white/5 text-gray-400 group-hover:text-gray-300"
                       : "bg-gray-200/70 text-gray-500 group-hover:text-gray-700"
-                  }`}
+                    }`}
                 >
                   {item.category}
                 </span>

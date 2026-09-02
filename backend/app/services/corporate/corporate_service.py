@@ -21,7 +21,12 @@ async def generate_text_response(model_name: str, prompt: str, temperature: floa
         "messages": [{"role": "user", "content": prompt}],
         "stream": False,
         "think": False,
-        "options": {"temperature": temperature},
+        "keep_alive": -1,
+        "options": {
+            "temperature": temperature,
+            "num_ctx": 16384 if ("31b" in model_name or "persona" in model_name.lower()) else 4096,
+            "num_batch": 512,
+        },
     }
     
     try:

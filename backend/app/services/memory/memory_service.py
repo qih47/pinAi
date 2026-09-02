@@ -240,7 +240,12 @@ class MemoryService:
                         {"role": "user", "content": f"Ekstrak memori dari log obrolan ini:\n{full_chat_log}"}
                     ],
                     "stream": False,
-                    "options": {"temperature": 0.2}
+                    "keep_alive": -1,
+                    "options": {
+                        "temperature": 0.2,
+                        "num_ctx": 4096,
+                        "num_batch": 512,
+                    }
                 }
 
                 try:

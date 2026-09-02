@@ -135,12 +135,12 @@ class ModeFocus:
         if file_path and os.path.exists(file_path):
             logger.info(f"[MODE_FOCUS] Processing physical file: {file_path}")
             cache_key = session_uuid or file_path
-            yield format_sse(status=f"⚙️ Memindai isi {doc_title or filename or 'dokumen'}...", event_type=SSEEventType.STATUS)
+            yield format_sse(status=f"⚙️ Memindai isi {doc_title or filename or 'dokumen'}", event_type=SSEEventType.STATUS)
             await asyncio.sleep(0.05)
 
             text_map, all_base64_images, total_pages = await extract_and_ocr_document_async(file_path, cache_key=cache_key)
 
-            yield format_sse(status=f"🔍 Menganalisis {total_pages} halaman dokumen rujukan...", event_type=SSEEventType.STATUS)
+            yield format_sse(status=f"🔍 Menganalisis {total_pages} halaman dokumen rujukan", event_type=SSEEventType.STATUS)
             await asyncio.sleep(0.05)
 
             explicit_pages = extract_explicit_pages_from_query(user_message, total_pages)
@@ -156,7 +156,7 @@ class ModeFocus:
         # Skenario B: File fisik tidak di disk, tapi chunk teks sudah ada di PostgreSQL dokumen_chunk
         elif pg_doc_id or isolated_doc_id:
             logger.info(f"[MODE_FOCUS] File physical not found, fetching direct chunks from dokumen_chunk for doc_id={pg_doc_id or isolated_doc_id}")
-            yield format_sse(status="📂 Mengambil teks utuh dari arsip dokumen...", event_type=SSEEventType.STATUS)
+            yield format_sse(status="📂 Mengambil teks utuh dari arsip dokumen", event_type=SSEEventType.STATUS)
             await asyncio.sleep(0.05)
 
             try:
@@ -185,7 +185,7 @@ class ModeFocus:
         # Skenario C: Dokumen benar-benar tidak ditemukan -> Fallback ke RAG global
         if not final_extracted_text and not file_path:
             logger.warning(f"[MODE_FOCUS] Fallback to RAG triggered: File not found in DB or missing isolated_doc_id ({isolated_doc_id})")
-            yield format_sse(status="🔄 Mencari secara global di arsip...", event_type=SSEEventType.STATUS)
+            yield format_sse(status="🔄 Mencari secara global di arsip", event_type=SSEEventType.STATUS)
             await asyncio.sleep(0.01)
             from backend.app.services.pipeline.modes.mode_documents import ModeDocuments
             fallback_handler = ModeDocuments()

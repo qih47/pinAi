@@ -79,7 +79,7 @@ async def _warmup_and_pin_models():
                     "messages": [{"role": "user", "content": "hi"}],
                     "stream": False,
                     "keep_alive": -1,   # permanent — tidak di-evict sampai service restart
-                    "options": {"temperature": 0.1, "num_predict": 1, "num_ctx": ctx_len},
+                    "options": {"temperature": 0.1, "num_predict": 1, "num_ctx": ctx_len, "num_batch": 512},
                 }
                 resp = await client.post(chat_url, json=payload)
                 if resp.status_code == 200:
@@ -250,11 +250,18 @@ origins = [
     "http://localhost:8000",
     "http://127.0.0.1:5173",
     "http://127.0.0.1:5174",
+    "http://cakra.ai",
+    "http://cakra.ai:5173",
+    "http://cakra.ai:8000",
+    "http://www.cakra.ai",
+    "http://www.cakra.ai:5173",
+    "http://www.cakra.ai:8000",
 ]
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
+    allow_origin_regex=r"^http://(localhost|127\.0\.0\.1|192\.168\.11\.80|cakra\.ai|www\.cakra\.ai)(:\d+)?$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

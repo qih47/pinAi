@@ -69,8 +69,16 @@ class ModeGuest:
         temperature = 0.6
         # Pastikan thinking selalu off
         is_thinking = False
-
-        yield format_sse(status="✨ Menyiapkan respon", status_key="PREPARING_RESPONSE", event_type=SSEEventType.STATUS)
+        # Standarisasi status SSE agar persis sama dengan Mode Flash
+        if routing_data and routing_data.get("requires_visual"):
+            if routing_data.get("visual_type") == "mermaid":
+                yield format_sse(status="🔄 Menggambar diagram", status_key="DIAGRAM_RENDERING", event_type=SSEEventType.STATUS)
+            elif routing_data.get("visual_type") == "chart":
+                yield format_sse(status="📊 Membuat grafik", status_key="CHART_RENDERING", event_type=SSEEventType.STATUS)
+            else:
+                yield format_sse(status="✨ Merespons", status_key="PREPARING_RESPONSE", event_type=SSEEventType.STATUS)
+        else:
+            yield format_sse(status="✨ Merespons", status_key="PREPARING_RESPONSE", event_type=SSEEventType.STATUS)
 
         # Hitung estimasi token (1 token ~ 4 karakter)
         sys_tokens = len(system_prompt) // 4

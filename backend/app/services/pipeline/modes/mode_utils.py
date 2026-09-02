@@ -469,7 +469,7 @@ def get_module_config(module_name: str, precheck: Optional[Dict[str, Any]] = Non
             "num_predict": 8192,
             "repeat_penalty": 1.1,
             "repeat_last_n": 128,
-            "num_batch": 1024,
+            "num_batch": 512,
         },
         "multi_document": {
             "num_ctx": 16384,
@@ -479,7 +479,7 @@ def get_module_config(module_name: str, precheck: Optional[Dict[str, Any]] = Non
             "num_predict": 8192,
             "repeat_penalty": 1.1,
             "repeat_last_n": 128,
-            "num_batch": 1024,
+            "num_batch": 512,
         },
         "analytic": {
             "num_ctx": 16384,

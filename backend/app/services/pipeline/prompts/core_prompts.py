@@ -279,59 +279,66 @@ def build_call1_routing_prompt(
     )
 
 
-CALL1_PRESET_TITLE_PROMPT_TEMPLATE = """Kamu adalah asisten penamaan judul percakapan CAKRA AI PT Pindad.
+CALL1_PRESET_PROMPT_TEMPLATE = """Kamu adalah asisten analisis cepat jalur preset CAKRA AI PT Pindad.
 
-TUGAS UTAMA:
-Buatlah judul percakapan yang ringkas, ekspresif, dan natural (2-4 kata) berdasarkan pesan pengguna.
+MODE PRESET AKTIF: {{ forced_mode }}
+PESAN PENGGUNA: {{ user_message }}
+FIRST CHAT: {{ is_first_chat }}
 
-ATURAN FORMAT OUTPUT:
-1. Kembalikan HANYA format JSON valid murni: {"session_title": "Judul Anda"}
-2. DILARANG membuat judul satu kata kaku seperti "Salam", "Sapaan", "Tanya", "Bantuan", "Awal", atau "N/A".
-3. DILARANG membuat judul generik monoton seperti "Obrolan Baru" atau "Obrolan Cakra AI".
-4. DILARANG menambahkan markdown triple backtick, komentar, atau teks tambahan apapun di luar JSON.
+TUGAS:
+1. Analisis apakah pesan pengguna AMBIGU atau terlalu umum untuk dieksekusi di mode {{ forced_mode }}.
+   - Ambigu = tidak ada spesifikasi cukup (teknologi/stack, topik, tujuan, data konkret, penerima, dll).
+   - Contoh ambigu: "buatkan aplikasi", "buat diagram", "tulis surat", "bikin grafik".
+   - Contoh TIDAK ambigu: "buatkan landing page React dengan Tailwind", "diagram alur rekrutmen pegawai", "surat izin dinas ke Jakarta untuk Budi".
+2. Tentukan apakah pesan membutuhkan output visual (diagram/grafik/chart).
+3. Tentukan apakah pesan membutuhkan analisis data/statistik.
+4. Jika FIRST CHAT = true, buatkan judul percakapan ringkas 2-4 kata.
 
-CONTOH JUDUL YANG DIHARAPKAN BERDASARKAN BERBAGAI KEMUNGKINAN:
-• User: "halo cuy" / "hai cakra"
-  {"session_title": "Sapaan Akrab"}
+ATURAN OUTPUT JSON (WAJIB DIIKUTI):
+- Kembalikan JSON murni tanpa markdown/backtick.
+- HANYA sertakan field yang bernilai TRUE atau non-null. Field yang FALSE tidak perlu ditulis.
+- Jika FIRST CHAT = false, JANGAN sertakan field session_title.
+- Judul DILARANG generik: "Salam", "Obrolan Baru", "Tanya", "Bantuan", "N/A".
 
-• User: "coba carikan dokumen internal terkait cuti"
-  {"session_title": "Pencarian Dokumen Cuti"}
+CONTOH OUTPUT:
+• Pesan ambigu, first_chat=true:
+  {"session_title": "Membuat Aplikasi Todo", "is_ambiguous": true}
 
-• User: "cuy coba benerin error code js gw" (atau ada lampiran kode error)
-  {"session_title": "Memperbaiki Error Code JS"}
+• Pesan ambigu, first_chat=false:
+  {"is_ambiguous": true}
 
-• User: "fungsi python kalkulator sederhana"
-  {"session_title": "Fungsi Kalkulator Python"}
+• Pesan jelas + butuh visual, first_chat=true:
+  {"session_title": "Grafik Penjualan 2024", "requires_visual": true}
 
-• User: "berita peluncuran maung pindad terbaru hari ini"
-  {"session_title": "Berita Maung Pindad Terbaru"}
+• Pesan jelas + perlu analitik data:
+  {"need_analytic": true}
 
-• User: "aturan seragam dinas hari jumat di pindad apa ya"
-  {"session_title": "Regulasi Seragam Dinas"}
-
-• User: "bikinin draf surat izin dinas ke jakarta"
-  {"session_title": "Draf Surat Izin Dinas"}
-
-• User: "bikinin diagram alir proses rekrutmen pegawai"
-  {"session_title": "Diagram Alir Rekrutmen"}
-
-PESAN PENGGUNA:
-{{ user_message }}
+• Pesan jelas, first_chat=false → kembalikan JSON kosong:
+  {}
 
 OUTPUT JSON:
 """
 
 prompt_manager.register_default(
-    name="CALL1_PRESET_TITLE_PROMPT",
-    template_str=CALL1_PRESET_TITLE_PROMPT_TEMPLATE,
-    description="Prompt ringan Call 1 untuk menghasilkan session_title pada jalur preset (bypass) dalam < 300ms."
+    name="CALL1_PRESET_PROMPT",
+    template_str=CALL1_PRESET_PROMPT_TEMPLATE,
+    description="Prompt ringan jalur preset (bypass) untuk routing parameter: is_ambiguous, requires_visual, need_analytic, session_title (conditional). < 400ms."
 )
 
-def build_call1_preset_title_prompt(user_message: str) -> str:
+def build_call1_preset_prompt(user_message: str, forced_mode: str, is_first_chat: bool) -> str:
     return prompt_manager.render(
-        name="CALL1_PRESET_TITLE_PROMPT",
+        name="CALL1_PRESET_PROMPT",
         user_message=user_message,
+        forced_mode=forced_mode,
+        is_first_chat="true" if is_first_chat else "false",
     )
+
+# --- Backward-compat alias (tidak digunakan lagi, dipertahankan agar import lama tidak error) ---
+CALL1_PRESET_TITLE_PROMPT_TEMPLATE = CALL1_PRESET_PROMPT_TEMPLATE
+
+def build_call1_preset_title_prompt(user_message: str) -> str:
+    """Deprecated: gunakan build_call1_preset_prompt() untuk jalur preset."""
+    return build_call1_preset_prompt(user_message, forced_mode="auto", is_first_chat=True)
 
 
 

@@ -18,14 +18,14 @@ class VectorService:
 
     async def _call_ollama_embedding(self, prompt: str) -> List[float]:
         """
-        Panggil Ollama embedding API. mxbai-embed-large tidak butuh options tambahan
-        karena 1024 dimensi sudah native dari model-nya.
+        Panggil Ollama embedding API via /api/embed (standar modern Ollama).
+        mxbai-embed-large native 1024 dimensi.
         """
-        url = f"{settings.OLLAMA_BASE_URL}/api/embeddings"
+        url = f"{settings.OLLAMA_BASE_URL}/api/embed"
 
         payload = {
             "model": settings.MODEL_EMBEDDING,
-            "prompt": prompt,
+            "input": prompt,
             "keep_alive": -1,
         }
 
@@ -34,13 +34,27 @@ class VectorService:
             response = await client.post(url, json=payload, timeout=90.0)
 
             if response.status_code != 200:
-                logger.error(
-                    f"[VECTOR_OLLAMA_ERROR] Ollama error {response.status_code}: {response.text}"
-                )
-                return []
+                # Fallback ke endpoint legacy /api/embeddings jika /api/embed gagal
+                legacy_url = f"{settings.OLLAMA_BASE_URL}/api/embeddings"
+                legacy_payload = {
+                    "model": settings.MODEL_EMBEDDING,
+                    "prompt": prompt,
+                    "keep_alive": -1,
+                }
+                response = await client.post(legacy_url, json=legacy_payload, timeout=90.0)
+                if response.status_code != 200:
+                    logger.error(
+                        f"[VECTOR_OLLAMA_ERROR] Ollama error {response.status_code}: {response.text}"
+                    )
+                    return []
 
             response_json = response.json()
-            embedding = response_json.get("embedding")
+            # Dukung format baru /api/embed ('embeddings': [[...]]) dan legacy ('embedding': [...])
+            embeddings_list = response_json.get("embeddings")
+            if embeddings_list and isinstance(embeddings_list, list) and len(embeddings_list) > 0:
+                embedding = embeddings_list[0]
+            else:
+                embedding = response_json.get("embedding")
 
             if not embedding:
                 logger.warning("[VECTOR_OLLAMA_EMPTY] Empty embedding returned from Ollama")

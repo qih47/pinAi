@@ -53,6 +53,20 @@ export default function ChatPage({ isGuest,
     setTimeout(() => setPreviewArtifact(null), 300);
   }, [activeSessionId, setShowRightSidebar, setPreviewArtifact]);
 
+  // 🏷️ Dinamis Browser Tab Title (document.title) sesuai judul sesi yang aktif
+  React.useEffect(() => {
+    if (activeSessionId && Array.isArray(chatHistory)) {
+      const currentSession = chatHistory.find((s) => s.session_uuid === activeSessionId);
+      const title = currentSession?.judul || currentSession?.title;
+      const GENERIC = ["obrolan baru", "new chat", "untitled", "percakapan baru", "salam", ""];
+      if (title && typeof title === "string" && !GENERIC.includes(title.trim().toLowerCase())) {
+        document.title = `${title.trim()} • CAKRA AI`;
+        return;
+      }
+    }
+    document.title = "CAKRA AI";
+  }, [activeSessionId, chatHistory]);
+
   return (
     <div style={{ ...styles.root, background: theme.rootBg }}>
       {/* ── BACKDROP MOBILE ── */}

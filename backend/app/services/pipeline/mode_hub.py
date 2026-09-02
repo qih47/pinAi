@@ -141,6 +141,24 @@ class ModeHub:
             logger.info(f"[MODE_HUB] ⚡ Bypassing Call 1 Router due to explicit preset hint selection. Forced Mode: {forced_mode}")
             forced_mode_clean = forced_mode.lower().strip()
 
+            # 🎯 JALUR PRESET ROUTING: Panggil e4b untuk deteksi ambiguitas + generate title (jika first_chat)
+            # Dipanggil di dalam bypass block tapi SEBELUM session_uuid block agar precheck selalu ter-update
+            from backend.app.services.pipeline.call1_router import generate_call1_preset_routing
+            preset_routing = await generate_call1_preset_routing(
+                user_message=user_message,
+                forced_mode=forced_mode_clean,
+                is_first_chat=is_first_chat,
+                request=request,
+            )
+
+            # Inject routing params ke precheck
+            if preset_routing.get("is_ambiguous"):
+                precheck["is_ambiguous"] = True
+            if preset_routing.get("requires_visual"):
+                precheck["requires_visual"] = preset_routing["requires_visual"]
+            if preset_routing.get("need_analytic"):
+                precheck["need_analytic"] = preset_routing["need_analytic"]
+
             if session_uuid:
                 from backend.app.services.chat.chat_history_service import chat_history_service
                 obs_dict = {"msg": f"Fast-Path Bypass Call 1 -> {forced_mode_clean.upper()}", "queries": [user_message]}
@@ -152,20 +170,22 @@ class ModeHub:
                     observation=json.dumps(obs_dict)
                 ))
 
-                # 🎯 JALUR PRESET CALL 1: Jika obrolan pertama, buat judul cepat (<300ms) tanpa routing rumit
+                # Update title sesi hanya jika first_chat dan ada judul yang valid
                 if is_first_chat:
-                    from backend.app.services.pipeline.call1_router import generate_call1_preset_title
-                    preset_title = await generate_call1_preset_title(user_message, request=request)
+                    preset_title = preset_routing.get("session_title")
                     if preset_title:
                         await chat_history_service.update_title_direct(session_uuid, preset_title)
-                        logger.info(f"[MODE_HUB] ⚡ Preset Call 1 generated title: '{preset_title}'")
+                        logger.info(f"[MODE_HUB] ⚡ Preset routing generated title: '{preset_title}'")
                         yield json.dumps({
                             "event_type": "topic_update",
                             "topic": forced_mode_clean.title(),
                             "key_subject": preset_title
                         }) + "\n"
+
+
             # 1. Web Search Mode Bypass
             if forced_mode_clean in ["websearch", "search", "web"]:
+                yield format_sse(status="🌐 Menjelajah web", status_key="WEB_INIT", event_type=SSEEventType.STATUS)
                 from backend.app.services.pipeline.modes.mode_web_search import handle_web_search
                 history_dicts = [m.model_dump() for m in chat_history]
                 if not history_dicts or history_dicts[-1]["content"] != user_message:
@@ -191,6 +211,21 @@ class ModeHub:
 
             # 2. Document Search & Focus / Audit Mode Bypass
             elif forced_mode_clean in ["documents", "document", "rag", "focus", "audit", "compliance"]:
+                if is_guest:
+                    logger.warning("[MODE_HUB] 🛡️ Blocked Guest from accessing internal documents via forced_mode bypass!")
+                    yield format_sse(status="🔒 Akses Dokumen Terbatas", status_key="ACCESS_DENIED", event_type=SSEEventType.STATUS)
+                    yield format_sse(
+                        "🔒 **Akses Dokumen Internal Terbatas**\n\n"
+                        "Mohon maaf, fitur penelusuran dokumen, regulasi, dan arsip internal PT Pindad hanya dapat diakses oleh **Pegawai Resmi PT Pindad**.\n\n"
+                        "Silakan masuk (*Login*) menggunakan akun NPP Anda untuk membuka akses penuh ke arsip dan regulasi internal.",
+                        "",
+                        False,
+                        event_type=SSEEventType.CHUNK
+                    )
+                    yield format_sse("", "", True, event_type=SSEEventType.DONE)
+                    return
+
+                yield format_sse(status="📚 Membuka arsip", status_key="DOCS_INIT", event_type=SSEEventType.STATUS)
                 precheck["need_rag"] = True
                 precheck["is_chitchat"] = False
                 precheck["queries"] = [user_message]
@@ -220,6 +255,7 @@ class ModeHub:
 
             # 3. Code / Generate File Mode Bypass
             elif forced_mode_clean in ["code", "coding", "generate_file", "create_file"]:
+                yield format_sse(status="💻 Menyiapkan kode", status_key="CODE_INIT", event_type=SSEEventType.STATUS)
                 precheck["is_coding"] = True
                 precheck["is_generate_file"] = True
                 handler = self.mode_handlers["generate_file"]
@@ -240,6 +276,7 @@ class ModeHub:
 
             # 4. Diagram / Flowchart Bypass
             elif forced_mode_clean in ["diagram", "flow", "flowchart"]:
+                yield format_sse(status="📐 Merancang alur", status_key="DIAGRAM_INIT", event_type=SSEEventType.STATUS)
                 precheck["requires_visual"] = True
                 precheck["visual_type"] = "mermaid"
                 precheck["is_web_search"] = False
@@ -263,6 +300,7 @@ class ModeHub:
 
             # 5. Chart / Data Visualization Bypass
             elif forced_mode_clean in ["chart", "data", "visualization"]:
+                yield format_sse(status="📈 Mengolah data", status_key="CHART_INIT", event_type=SSEEventType.STATUS)
                 precheck["requires_visual"] = True
                 precheck["visual_type"] = "chart"
                 precheck["is_web_search"] = False
@@ -286,6 +324,7 @@ class ModeHub:
 
             # 6. Smart Mail / Draft Surat Bypass
             elif forced_mode_clean in ["smart_mail", "mail", "email", "surat"]:
+                yield format_sse(status="✉️ Menyusun surat", status_key="MAIL_INIT", event_type=SSEEventType.STATUS)
                 handler = self.mode_handlers["email"]
                 async for chunk in handler.execute(
                     user_message=user_message,
@@ -319,6 +358,21 @@ class ModeHub:
                     session_uuid=session_uuid
                 ):
                     yield chunk
+                return
+
+        if chat_mode in ["redteam", "compliance", "insight"] or (context_isolation and context_isolation.get("isolated_doc_id")):
+            if is_guest:
+                logger.warning(f"[MODE_HUB] 🛡️ Blocked Guest from accessing internal mode ({chat_mode}) / context isolation!")
+                yield format_sse(status="🔒 Fitur Khusus Pegawai", status_key="ACCESS_DENIED", event_type=SSEEventType.STATUS)
+                yield format_sse(
+                    "🔒 **Fitur Khusus Pegawai PT Pindad**\n\n"
+                    "Fitur analisis mendalam, audit kepatuhan regulasi, red-teaming, dan penelusuran dokumen internal hanya dapat diakses oleh **Pegawai Resmi PT Pindad**.\n\n"
+                    "Silakan masuk (*Login*) menggunakan akun NPP Anda untuk menggunakan fitur ini.",
+                    "",
+                    False,
+                    event_type=SSEEventType.CHUNK
+                )
+                yield format_sse("", "", True, event_type=SSEEventType.DONE)
                 return
 
         if chat_mode == "redteam":
@@ -457,7 +511,7 @@ class ModeHub:
             return
 
         # ── Step 2: Call 1 — Intent Classification & Routing ──────────────────────
-        yield format_sse(status="🧠 Menganalisis intent", event_type=SSEEventType.STATUS)
+        yield format_sse(status="🧠 Menganalisis", status_key="ANALYZING_INTENT", event_type=SSEEventType.STATUS)
         await asyncio.sleep(0.01)
 
         messages_dict = [{"role": m.role, "content": m.content} for m in chat_history]
@@ -862,13 +916,13 @@ class ModeHub:
                 # Gunakan precheck (bukan routing_data) agar override URL context (need_rag=False)
                 # tidak tertimpa oleh nilai raw dari routing_data
                 need_rag = precheck.get("need_rag", False)
-                if need_rag:
+                if need_rag and not is_guest:
                     mode = "documents"
                 else:
-                    mode = "flash"
+                    mode = "guest" if is_guest else "flash"
         elif routing_data.get("is_ambiguous"):
-            logger.info(f"[MODE_HUB] Ambiguous intent detected with mode={mode} → redirecting to FLASH mode")
-            mode = "flash"
+            logger.info(f"[MODE_HUB] Ambiguous intent detected with mode={mode} → redirecting to {'GUEST' if is_guest else 'FLASH'} mode")
+            mode = "guest" if is_guest else "flash"
         
         logger.info(f"[MODE_HUB] Dispatching request to Mode: {mode.upper()}")
         

@@ -25,6 +25,7 @@ def _build_ollama_request_payload(
         "top_p": 0.95,
         "top_k": 64,
         "num_ctx": num_ctx,
+        "num_batch": 512,
     }
     # Jika num_predict > 0, set limit. Jika -1 (unlimited), biarkan Ollama menentukan secara default (tanpa limit)
     if num_predict > 0:
