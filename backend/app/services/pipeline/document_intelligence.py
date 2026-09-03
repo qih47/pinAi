@@ -165,6 +165,7 @@ async def extract_and_ocr_document_async(file_path: str, cache_key: Optional[str
     """
     Mengekstrak dan melakukan OCR paralel pada seluruh halaman dokumen PDF.
     Mengembalikan (text_map, all_base64_images, total_pages).
+    Terintegrasi dengan Unified Extractor (dual L1/L2 cache) dengan fallback lokal.
     """
     key_to_use = cache_key or file_path
     cached = get_document_cache(key_to_use)
@@ -174,6 +175,18 @@ async def extract_and_ocr_document_async(file_path: str, cache_key: Optional[str
 
     if not os.path.exists(file_path):
         raise FileNotFoundError(f"Document file not found at: {file_path}")
+
+    # Coba via Unified Extractor (dual-layer cache)
+    try:
+        from backend.app.services.tools.unified_extractor import extract_document
+        doc_obj = await extract_document(file_path, cache_key=key_to_use, render_images=True)
+        t_map = doc_obj.to_text_map()
+        imgs = doc_obj.base64_images
+        set_document_cache(key_to_use, t_map, imgs)
+        logger.info(f"[DOC_INTEL] ✅ Ekstraksi selesai via Unified Extractor ({doc_obj.total_pages} hal, {doc_obj.extraction_seconds:.2f}s)")
+        return t_map, imgs, doc_obj.total_pages
+    except Exception as ue_err:
+        logger.warning(f"[DOC_INTEL] Unified Extractor fallback: {ue_err} → menjalankan fallback lokal...")
 
     doc = fitz.open(file_path)
     total_pages = len(doc)
@@ -194,6 +207,7 @@ async def extract_and_ocr_document_async(file_path: str, cache_key: Optional[str
 
     set_document_cache(key_to_use, text_map, all_base64_images)
     return text_map, all_base64_images, total_pages
+
 
 
 async def two_stage_rerank_cluster_async(

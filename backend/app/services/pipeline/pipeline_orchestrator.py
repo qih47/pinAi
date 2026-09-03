@@ -102,41 +102,25 @@ async def _sequential_pipeline_generator(
                     "file_name": filename
                 })
             else:
-                # Text/Doc/Code extraction
+                # Text/Doc/Spreadsheet/Code extraction via unified_extractor
                 try:
-                    ext = os.path.splitext(filename)[1].lower()
-                    extracted = ""
-                    if ext == ".docx":
-                        import docx
-                        doc = docx.Document(abs_path)
-                        extracted = "\n".join([para.text for para in doc.paragraphs])
-                    else:
+                    from backend.app.services.tools.unified_extractor import extract_document
+                    doc = await extract_document(abs_path)
+                    extracted = doc.full_text
+                except Exception as extract_err:
+                    logger.warning(f"[PIPELINE] unified_extractor fallback for {filename}: {extract_err}")
+                    try:
                         with open(abs_path, "r", encoding="utf-8", errors="replace") as f:
                             extracted = f.read()
-                            
-                    if extracted.strip():
-                        extracted_file_texts.append(f"--- ISI FILE: {filename} ---\n{extracted.strip()}\n-------------------")
-                        
-                        # Save to memory (ai_document_chunks) dengan metadata terstruktur
-                        if payload.session_uuid and current_user_npp:
-                            clean_sample = " ".join(extracted.strip().split())[:180]
-                            doc_summary = f"Dokumen {filename} ({ext}): {clean_sample}..."
-                            await chat_history_service.save_document_chunk(
-                                session_uuid=payload.session_uuid,
-                                npp=current_user_npp,
-                                content=extracted.strip(),
-                                chunk_metadata={
-                                    "type": "file",
-                                    "title": filename,
-                                    "source": path,
-                                    "summary": doc_summary,
-                                    "size_chars": len(extracted.strip())
-                                }
-                            )
-                except Exception as e:
-                    logger.error(f"[PIPELINE] Gagal mengekstrak isi file {path}: {e}")
+                    except Exception as fallback_err:
+                        logger.error(f"[PIPELINE] Gagal membaca attachment {filename}: {fallback_err}")
+                        extracted = ""
+
+                if extracted and extracted.strip():
+                    extracted_file_texts.append(f"--- ISI FILE: {filename} ---\n{extracted.strip()}\n-------------------")
                     
     # Save original user message for DB saving, so DB isn't bloated
+
     original_user_message = user_message
     
     # Append extracted texts to user message so LLM sees it directly

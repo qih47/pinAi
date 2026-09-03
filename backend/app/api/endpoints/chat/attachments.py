@@ -92,8 +92,8 @@ async def upload_chat_attachments(
             logger.info(f"✅ [UPLOAD] File '{file.filename}' ({file_size} bytes) tersimpan ke disk")
 
             # Hitung path relatif dari folder ROOT "accounts/"
-            # Supaya frontend/static files bisa langsung load via: /accounts/{npp}/{session_id}/images/filename
-            relative_account_path = f"accounts/{current_user_npp}/{session_uuid}/images/{unique_filename}"
+            # Supaya frontend/static files bisa langsung load via: /accounts/{npp}/{session_id}/brain/images/filename
+            relative_account_path = f"accounts/{current_user_npp}/{session_uuid}/brain/images/{unique_filename}"
 
             # ── 5. Ekstrak konten teks jika file adalah file teks ─────────────
             TEXT_MIME_PREFIXES = ("text/", "application/json", "application/xml")
@@ -171,37 +171,38 @@ async def extract_file_content(path: str):
     from backend.app.core.paths import get_abs_path
     if path.startswith("accounts/"):
         abs_path = get_abs_path(path)
+        # Smart resolver fallback untuk path accounts
+        if not os.path.exists(abs_path):
+            parts = Path(path).parts
+            if len(parts) >= 4 and parts[3] != "brain":
+                alt_parts = list(parts[:3]) + ["brain"] + list(parts[3:])
+                alt_path = get_abs_path("/".join(alt_parts))
+                if os.path.exists(alt_path):
+                    abs_path = alt_path
+            elif len(parts) >= 5 and parts[3] == "brain":
+                alt_parts = list(parts[:3]) + list(parts[4:])
+                alt_path = get_abs_path("/".join(alt_parts))
+                if os.path.exists(alt_path):
+                    abs_path = alt_path
     else:
         abs_path = os.path.join(UPLOAD_DIR, filename)
 
     if not os.path.exists(abs_path):
         raise HTTPException(status_code=404, detail="File tidak ditemukan.")
-    
-    ext = os.path.splitext(filename)[1].lower()
+
     
     try:
-        if ext == ".pdf":
-            import PyPDF2
-            text = ""
-            with open(abs_path, "rb") as f:
-                reader = PyPDF2.PdfReader(f)
-                for page in reader.pages:
-                    extracted = page.extract_text()
-                    if extracted:
-                        text += extracted + "\n"
-            if not text.strip():
-                text = "[Teks tidak dapat diekstrak atau PDF berupa gambar scan]"
-            return {"content": text}
-        elif ext == ".docx":
-            import docx
-            doc = docx.Document(abs_path)
-            text = "\n".join([para.text for para in doc.paragraphs])
-            return {"content": text}
-        else:
-            # Assume text/code file
-            with open(abs_path, "r", encoding="utf-8", errors="replace") as f:
-                text = f.read()
-            return {"content": text}
+        from backend.app.services.tools.unified_extractor import extract_document
+        doc = await extract_document(abs_path)
+        content = doc.full_text.strip()
+        if not content:
+            content = "[Teks tidak dapat diekstrak dari dokumen atau file kosong]"
+        return {"content": content, "total_pages": doc.total_pages, "is_scanned": doc.is_scanned}
     except Exception as e:
         logger.error(f"[EXTRACT] Gagal mengekstrak file {filename}: {e}")
-        raise HTTPException(status_code=500, detail=f"Gagal mengekstrak isi file: {str(e)}")
+        # Fallback sederhana jika extractor gagal
+        try:
+            with open(abs_path, "r", encoding="utf-8", errors="replace") as f:
+                return {"content": f.read()}
+        except Exception:
+            raise HTTPException(status_code=500, detail=f"Gagal mengekstrak isi file: {str(e)}")

@@ -4,36 +4,38 @@ from typing import Dict, Any, List
 logger = logging.getLogger("CAKRA_PIPELINE")
 
 async def extract_pdf_text(file_paths: List[str]) -> Dict[str, Any]:
-    import fitz  # pymupdf
+    """
+    Ekstrak teks PDF secara backward-compatible menggunakan Unified Extractor.
+    Mempertahankan format dict return yang sama: {status, extracted_text, page_count}.
+    """
+    from backend.app.services.tools.unified_extractor import extract_document
 
     all_text = []
-    page_count = 0
+    total_pages = 0
 
     for path in file_paths:
         try:
-            doc = fitz.open(path)
-            page_count += len(doc)
-            for page in doc:
-                text = page.get_text().strip()
-                if text:
-                    all_text.append(text)
-            doc.close()
+            doc = await extract_document(path)
+            total_pages += doc.total_pages
+            if doc.full_text:
+                all_text.append(doc.full_text)
         except Exception as e:
-            logger.warning(f"⚠️ [PDF] pymupdf gagal untuk {path}: {e} → skip")
+            logger.warning(f"⚠️ [PDF] Unified extractor gagal untuk {path}: {e} → coba fallback pymupdf...")
+            try:
+                import fitz
+                d = fitz.open(path)
+                total_pages += len(d)
+                for page in d:
+                    t = page.get_text().strip()
+                    if t:
+                        all_text.append(t)
+                d.close()
+            except Exception as fe:
+                logger.error(f"❌ [PDF] Fallback pymupdf juga gagal untuk {path}: {fe}")
 
     extracted = "\n\n".join(all_text).strip()
-
-    if not extracted:
-        logger.info("📸 [PDF] Teks kosong → fallback ke MiniCPM-V OCR...")
-        try:
-            from backend.app.services.vision.vision_service import extract_text_from_files
-            result = await extract_text_from_files(file_paths)
-            extracted = result.get("extracted_text", "")
-            page_count = result.get("page_count", page_count)
-        except Exception as e:
-            logger.error(f"❌ [PDF] Vision fallback gagal: {e}")
-
     logger.info(
-        f"✅ [PDF] Ekstraksi selesai | {page_count} halaman | {len(extracted)} chars"
+        f"✅ [PDF] Ekstraksi selesai via Unified Extractor | {total_pages} halaman | {len(extracted)} chars"
     )
-    return {"status": "success", "extracted_text": extracted, "page_count": page_count}
+    return {"status": "success", "extracted_text": extracted, "page_count": total_pages}
+
