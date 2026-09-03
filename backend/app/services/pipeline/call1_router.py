@@ -836,16 +836,22 @@ async def generate_call1_preset_routing(
     user_message: str,
     forced_mode: str = "auto",
     is_first_chat: bool = False,
+    context_history_str: str = "",
+    previous_topic: Optional[str] = None,
+    previous_subject: Optional[str] = None,
     request: Optional[Request] = None,
 ) -> Dict[str, Any]:
     """
-    Mini routing analyzer untuk jalur preset/bypass — pengganti generate_call1_preset_title().
-    Menganalisis pesan user dan mengembalikan dict routing (hanya field truthy):
+    Mini routing analyzer untuk jalur preset/bypass dengan multi-turn reasoning.
+    Menganalisis pesan user dan mengembalikan dict routing:
       - session_title  : str | None  — hanya jika is_first_chat=True
       - is_ambiguous   : bool        — True jika pesan terlalu umum/ambigu
       - requires_visual: bool        — True jika perlu output diagram/grafik
       - need_analytic  : bool        — True jika perlu analisis data/statistik
-    Menggunakan gemma4:e4b yang sudah di VRAM. Fallback ke {} jika timeout/error.
+      - queries        : List[str]   — Query pencarian mandiri hasil penggabungan konteks multi-turn
+      - query_judul    : List[str]   — Target judul/regulasi jika terdeteksi
+      - key_subject    : str         — Subjek spesifik yang sedang dibahas
+      - active_topic   : str         — Topik umum
     """
     if not user_message or not user_message.strip():
         return {}
@@ -858,6 +864,9 @@ async def generate_call1_preset_routing(
         user_message=user_message.strip(),
         forced_mode=forced_mode,
         is_first_chat=is_first_chat,
+        context_history_str=context_history_str,
+        previous_topic=previous_topic,
+        previous_subject=previous_subject,
     )
     model = getattr(settings, "MODEL_ROUTER", "gemma4:e4b")
     router_ctx = getattr(settings, "NUM_CTX_ROUTER", 4096)
@@ -872,7 +881,7 @@ async def generate_call1_preset_routing(
             top_p=0.2,
             keep_alive=-1,
             num_ctx=router_ctx,
-            num_predict=60,
+            num_predict=150,
             timeout=8.0,
         )
         duration_ms = (datetime.now() - t0).total_seconds() * 1000
@@ -882,8 +891,28 @@ async def generate_call1_preset_routing(
 
         result: Dict[str, Any] = {}
 
-        # Ambiguity flag
-        if res_json.get("is_ambiguous") is True:
+        # Multi-turn queries
+        if res_json.get("queries") and isinstance(res_json["queries"], list):
+            valid_q = [str(q).strip() for q in res_json["queries"] if str(q).strip()]
+            if valid_q:
+                result["queries"] = valid_q
+
+        # Query judul
+        if res_json.get("query_judul") and isinstance(res_json["query_judul"], list):
+            valid_qj = [str(q).strip() for q in res_json["query_judul"] if str(q).strip()]
+            if valid_qj:
+                result["query_judul"] = valid_qj
+
+        # Entity tracking
+        if res_json.get("key_subject") and isinstance(res_json["key_subject"], str):
+            result["key_subject"] = res_json["key_subject"].strip()
+        if res_json.get("active_topic") and isinstance(res_json["active_topic"], str):
+            result["active_topic"] = res_json["active_topic"].strip()
+
+        # Ambiguity flag — jika user sudah memberikan instruksi detail / konfirmasi wizard / ada konteks sebelumnya, jangan tandai ambigu!
+        has_prior_context = bool(context_history_str and context_history_str.strip())
+        is_detailed_confirmation = any(user_message.strip().lower().startswith(kw) for kw in ["gunakan ", "pilih ", "fokus pada ", "rujuk "]) or len(user_message.strip()) > 50
+        if res_json.get("is_ambiguous") is True and not is_detailed_confirmation and not has_prior_context:
             result["is_ambiguous"] = True
 
         # Visual flag
@@ -905,6 +934,7 @@ async def generate_call1_preset_routing(
 
     except Exception as e:
         logger.warning(f"[CALL1_PRESET_ROUTING] Gagal via LLM: {e}")
+
 
     # Fallback: jika first_chat, coba generate title dari teks user saja
     if is_first_chat:

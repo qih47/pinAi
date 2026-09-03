@@ -126,19 +126,62 @@ class ModeDocuments:
                 all_source_metadata = []
                 doc_text_maps = {}  # doc_id -> list of {"page_num": int, "text": str}
                 
-                # 1A. Progressive per-file reading stepper (Document Intelligence & In-Memory Cache)
+                # 1A. Brain-First Check: Cek ketersediaan dokumen di Memori Sesi (Brain)
+                brain = None
+                if session_uuid and current_user_npp:
+                    from backend.app.services.session.session_brain_service import SessionBrainService
+                    brain = SessionBrainService(current_user_npp, session_uuid)
+
+                cached_docs = {}
+                uncached_docs = []
+                for doc in full_read_docs:
+                    d_key = str(doc.get("id"))
+                    if brain and brain.has_document(d_key):
+                        cached_item = brain.get_document(d_key)
+                        if cached_item and "text_map" in cached_item:
+                            cached_docs[doc["id"]] = cached_item
+                            continue
+                    uncached_docs.append(doc)
+
+                # Emit status cerdas tanpa kedipan berulang-ulang
+                if cached_docs and not uncached_docs:
+                    yield format_sse(status="🧠 Dari memori sesi", event_type=SSEEventType.STATUS)
+                    await asyncio.sleep(0.4)
+                elif cached_docs and uncached_docs:
+                    yield format_sse(status="🧠 Dari memori sesi", event_type=SSEEventType.STATUS)
+                    await asyncio.sleep(0.35)
+                    yield format_sse(status="📄 Memuat dokumen", event_type=SSEEventType.STATUS)
+                    await asyncio.sleep(0.2)
+                else:
+                    yield format_sse(status="📄 Memuat dokumen", event_type=SSEEventType.STATUS)
+                    await asyncio.sleep(0.2)
+
+                newly_saved_count = 0
                 for doc in full_read_docs:
                     valid_file = doc.get("valid_file")
                     if not valid_file or not os.path.exists(valid_file):
                         continue
                         
-                    doc_title_display = doc['judul'][:38].strip()
-                    yield format_sse(status=f"📖 Membaca {doc_title_display}", event_type=SSEEventType.STATUS)
-                    await asyncio.sleep(0.02)
-                    
-                    cache_key = f"doc_{doc['id']}"
-                    text_map, _, page_count = await extract_and_ocr_document_async(valid_file, cache_key=cache_key)
-                    doc_text_maps[doc["id"]] = text_map
+                    doc_id = doc["id"]
+                    doc_id_key = str(doc_id)
+
+                    if doc_id in cached_docs:
+                        text_map = cached_docs[doc_id]["text_map"]
+                        page_count = cached_docs[doc_id].get("total_pages", len(text_map))
+                    else:
+                        cache_key = f"doc_{doc_id}"
+                        text_map, _, page_count = await extract_and_ocr_document_async(valid_file, cache_key=cache_key)
+                        if brain:
+                            await brain.save_document(doc_id_key, {
+                                "title": doc.get("judul", ""),
+                                "text_map": text_map,
+                                "total_pages": page_count,
+                            })
+                            newly_saved_count += 1
+
+                    doc_text_maps[doc_id] = text_map
+
+
                     
                     for item in text_map:
                         p_num = item["page_num"] + 1  # 1-based page number
@@ -177,8 +220,13 @@ class ModeDocuments:
                         "raw_isi": doc.get("raw_isi", ""),
                         "tgl_obs": doc.get("tgl_obs", "")
                     })
+
+                if newly_saved_count > 0:
+                    yield format_sse(status="💾 Menyimpan ke memori", event_type=SSEEventType.STATUS)
+                    await asyncio.sleep(0.35)
                 
                 # 1B. Historical docs — TIDAK baca PDF, buat daftar ringkas saja
+
                 # Daftar ini akan disuntikkan ke judul_context sebagai blok referensi silang
                 historical_summary_lines = []
                 for doc in historical_docs[:15]:  # Maksimal 15 histori/tambahan

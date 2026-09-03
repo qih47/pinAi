@@ -103,7 +103,7 @@ class SuggestionService:
         query: str = "",
         limit: int = 6,
         is_guest: bool = False,
-        doc_id: Optional[int] = None
+        doc_id: Optional[Any] = None
     ) -> List[Dict[str, Any]]:
         clean_q = query.strip()
         mode_lower = (mode or "documents").lower()
@@ -133,13 +133,13 @@ class SuggestionService:
 
         # Mode Documents / Focus -> Jika guest, jangan beri dokumen internal (PKB/SOP/SKEP)
         if is_guest:
-            return self._filter_static(DEFAULT_WEB_SUGGESTIONS, clean_q, "Cari informasi", "web", limit)
+            return self._filter_static(GUEST_DOCUMENT_SUGGESTIONS, clean_q, "Dokumen umum", "dokumen", limit)
 
         return await self._fetch_document_suggestions(clean_q, limit)
 
     async def get_document_questions(
         self,
-        doc_id: Optional[int] = None,
+        doc_id: Optional[Any] = None,
         doc_title: str = "",
         limit: int = 5
     ) -> List[Dict[str, Any]]:
@@ -151,24 +151,48 @@ class SuggestionService:
         doc_pages = ""
         doc_filename = ""
 
+        numeric_doc_id = None
+        if doc_id is not None:
+            if isinstance(doc_id, int):
+                numeric_doc_id = doc_id
+            elif str(doc_id).strip().isdigit():
+                numeric_doc_id = int(str(doc_id).strip())
+            else:
+                if not clean_title:
+                    clean_title = str(doc_id).strip().replace(".pdf", "").replace(".docx", "").replace(".txt", "").strip()
+
         # 1. Coba ambil metadata dokumen dan rag_document_questions (Synthetic QA di PostgreSQL)
-        if doc_id:
-            try:
-                from backend.app.core import database
-                pool = database.db_pool
-                if pool:
-                    async with pool.acquire() as conn:
-                        drow = await conn.fetchrow(
-                            "SELECT nomor, tanggal::text, filename FROM dokumen WHERE id = $1",
-                            doc_id
+        try:
+            from backend.app.core import database
+            pool = database.db_pool
+            if pool:
+                async with pool.acquire() as conn:
+                    if numeric_doc_id is None and clean_title:
+                        # Cari id dokumen berdasarkan judul
+                        srow = await conn.fetchrow(
+                            "SELECT id, nomor, tanggal::text, filename FROM dokumen WHERE judul ILIKE $1 OR filename ILIKE $1 LIMIT 1",
+                            f"%{clean_title}%"
                         )
-                        if drow:
-                            doc_nomor = (drow["nomor"] or "").strip()
-                            if doc_nomor in ["N/A", "No Regulasi ----"]:
-                                doc_nomor = ""
-                            doc_tanggal = (drow["tanggal"] or "").strip()
-                            doc_filename = (drow["filename"] or "").strip()
+                        if srow:
+                            numeric_doc_id = srow["id"]
+                            doc_nomor = (srow["nomor"] or "").strip()
+                            doc_tanggal = (srow["tanggal"] or "").strip()
+                            doc_filename = (srow["filename"] or "").strip()
                             doc_pages = _count_pdf_pages(doc_filename)
+
+                    if numeric_doc_id:
+                        if not doc_nomor:
+                            drow = await conn.fetchrow(
+                                "SELECT nomor, tanggal::text, filename FROM dokumen WHERE id = $1",
+                                numeric_doc_id
+                            )
+                            if drow:
+                                doc_nomor = (drow["nomor"] or "").strip()
+                                if doc_nomor in ["N/A", "No Regulasi ----"]:
+                                    doc_nomor = ""
+                                doc_tanggal = (drow["tanggal"] or "").strip()
+                                doc_filename = (drow["filename"] or "").strip()
+                                doc_pages = _count_pdf_pages(doc_filename)
 
                         rows = await conn.fetch(
                             """
@@ -178,7 +202,7 @@ class SuggestionService:
                             ORDER BY id ASC 
                             LIMIT $2
                             """,
-                            doc_id, limit
+                            numeric_doc_id, limit
                         )
                         for r in rows:
                             q_text = r["generated_question"].strip()
@@ -186,17 +210,17 @@ class SuggestionService:
                                 questions.append({
                                     "title": q_text,
                                     "category": "Pertanyaan Dokumen",
-                                    "doc_id": doc_id,
-                                    "id_berita": doc_id,
-                                    "id": doc_id,
+                                    "doc_id": numeric_doc_id,
+                                    "id_berita": numeric_doc_id,
+                                    "id": numeric_doc_id,
                                     "nomor": doc_nomor,
                                     "tanggal": doc_tanggal,
                                     "total_pages": doc_pages,
                                     "filename": doc_filename,
                                     "source": "synthetic_qa"
                                 })
-            except Exception as e:
-                logger.warning(f"[SUGGESTIONS] Error querying rag_document_questions: {e}")
+        except Exception as e:
+            logger.warning(f"[SUGGESTIONS] Error querying rag_document_questions: {e}")
 
         # 2. Fallback: Template pertanyaan sintetis bermutu tinggi berbasis judul dokumen
         if not questions:

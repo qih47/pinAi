@@ -108,26 +108,11 @@ def extract_pdf_pages_sync(abs_path: str, max_pages: int = 100) -> List[Dict[str
     return results
 
 
-def _find_valid_pdf_file(gambar: Any, gambar2: Any, gambar3: Any) -> Optional[str]:
-    """Mencari file PDF yang valid dari kolom attachment peraturan."""
-    for file_name in [gambar, gambar2, gambar3]:
-        if file_name and isinstance(file_name, str) and file_name.lower().endswith(".pdf"):
-            abs_path = os.path.join(PERATURAN_DIR, file_name)
-            if os.path.exists(abs_path):
-                return abs_path
-    return None
-
-
-def _resolve_status_berlaku(id_berita: int, stataktif: str, dicabut_oleh: Dict[int, Any]) -> str:
-    """Menentukan status berlaku regulasi berdasarkan tabel silsilah dan stataktif."""
-    if id_berita in dicabut_oleh:
-        pengganti_judul = dicabut_oleh[id_berita][1]
-        return f"Tidak Berlaku (Digantikan oleh: {pengganti_judul})"
-    if stataktif == "batal":
-        return "Dicabut"
-    elif stataktif == "obsolete":
-        return "Tidak Berlaku"
-    return "Berlaku"
+from backend.app.services.tools.document_resolver import (
+    find_valid_pdf_file as _find_valid_pdf_file,
+    resolve_status_berlaku as _resolve_status_berlaku,
+    resolve_mencabut_text as _resolve_mencabut_text,
+)
 
 
 async def _resolve_latest_active_via_cursor(
@@ -136,10 +121,9 @@ async def _resolve_latest_active_via_cursor(
     max_depth: int = 10
 ) -> Optional[Dict[str, Any]]:
     """
-    Traversal forward melalui rantai mencabut/linkper untuk menemukan
-    regulasi penerus yang masih berlaku (stataktif bukan obsolete/batal).
-    Menggunakan cursor MySQL yang sudah terbuka (shared) agar tidak
-    membuka koneksi baru per dokumen.
+    Traversal silsilah dua arah (reverse & forward) melalui kolom mencabut/linkper 
+    untuk menemukan regulasi penerus yang masih berlaku (stataktif bukan obsolete/batal).
+    Menggunakan cursor MySQL yang sudah terbuka (shared) agar efisien.
     Mengembalikan dict {id, judul, noper} atau None jika tidak ditemukan.
     """
     visited = set()
@@ -163,13 +147,40 @@ async def _resolve_latest_active_via_cursor(
         r_id, r_judul, r_noper, r_stataktif, r_mencabut, r_linkper = row
         r_stataktif_norm = str(r_stataktif or "").strip().lower()
 
-        # Jika dokumen ini masih aktif → ini adalah leaf node
-        if r_stataktif_norm not in ("obsolete", "batal"):
-            if r_id != doc_id:  # Jangan kembalikan diri sendiri
-                return {"id": r_id, "judul": r_judul, "noper": r_noper or ""}
-            break
+        # Jika dokumen ini bukan dokumen awal dan masih aktif -> leaf node aktif
+        if r_stataktif_norm not in ("obsolete", "batal") and r_id != doc_id:
+            return {"id": r_id, "judul": r_judul, "noper": r_noper or ""}
 
-        # Cari penerus dari mencabut atau linkper
+        # 1. Reverse lookup (Cari regulasi baru yang MENCABUT current_id)
+        pattern = f"%|{current_id}|%"
+        await cursor.execute(
+            """
+            SELECT id_berita, judul, noper, stataktif, mencabut, linkper 
+            FROM berita 
+            WHERE CONCAT('|', COALESCE(mencabut, ''), '|') LIKE %s 
+               OR CONCAT('|', COALESCE(linkper, ''), '|') LIKE %s
+            ORDER BY tanggal DESC, id_berita DESC
+            LIMIT 5
+            """,
+            (pattern, pattern)
+        )
+        rev_rows = await cursor.fetchall()
+        if rev_rows:
+            active_found = None
+            for rev_row in rev_rows:
+                rev_id, rev_judul, rev_noper, rev_stat, _, _ = rev_row
+                rev_stat_norm = str(rev_stat or "").strip().lower()
+                if rev_stat_norm not in ("obsolete", "batal"):
+                    active_found = {"id": rev_id, "judul": rev_judul, "noper": rev_noper or ""}
+                    break
+            if active_found:
+                return active_found
+            # Jika semua pencabut juga sudah obsolete, telusuri pencabut pertama
+            current_id = rev_rows[0][0]
+            depth += 1
+            continue
+
+        # 2. Forward lookup (Jika current_id sendiri mencatat linkper ke regulasi baru)
         next_ids = []
         for field in [r_mencabut, r_linkper]:
             if field:
@@ -181,47 +192,15 @@ async def _resolve_latest_active_via_cursor(
         if not next_ids:
             break  # Tidak ada penerus — rantai putus
 
-        current_id = next_ids[0]  # Ambil penerus pertama
+        current_id = next_ids[0]
         depth += 1
 
     return None
 
 
-def _resolve_mencabut_text(mencabut_str: str, linkper_str: str, doc_map: Dict[int, Dict[str, Any]]) -> str:
-    """Mengubah ID dokumen pada kolom mencabut/linkper menjadi teks deskriptif lengkap (No SKEP, Judul, Tanggal)."""
-    parts = []
-    seen = set()
-    for s in [mencabut_str, linkper_str]:
-        if not s:
-            continue
-        for item in str(s).split('|'):
-            item = item.strip()
-            if not item:
-                continue
-            if item.isdigit():
-                doc_id = int(item)
-                if doc_id in seen:
-                    continue
-                seen.add(doc_id)
-                if doc_id in doc_map:
-                    noper = str(doc_map[doc_id].get("noper") or "").strip()
-                    judul = str(doc_map[doc_id].get("judul") or "").strip()
-                    tgl = str(doc_map[doc_id].get("tanggal") or "").strip()[:10]
-                    tgl_str = f" ({tgl})" if tgl and tgl not in ("0000-00-00", "None") else ""
-                    if noper and judul:
-                        parts.append(f"{noper} - {judul}{tgl_str}")
-                    elif judul:
-                        parts.append(f"{judul}{tgl_str}")
-                    elif noper:
-                        parts.append(f"{noper}{tgl_str}")
-                    else:
-                        parts.append(f"Dokumen ID #{doc_id}")
-                else:
-                    parts.append(f"Dokumen ID #{doc_id}")
-            elif item not in seen:
-                seen.add(item)
-                parts.append(item)
-    return "; ".join(parts) if parts else "-"
+
+
+
 
 
 async def search_and_ocr_by_judul(query_judul: Any) -> Tuple[str, List[Dict[str, Any]], List[Dict[str, Any]]]:
@@ -705,9 +684,24 @@ async def get_candidate_documents_metadata(
         async with get_peraturan_db() as conn_my:
             async with conn_my.cursor() as cur:
                 for term in search_terms_set:
+                    # Direct Noper & Regex pattern matching (misal: Skep/32/P/BD/I/2018)
+                    noper_patterns = re.findall(r'[A-Za-z0-9]+/[A-Za-z0-9/_-]+', term)
+                    for np in noper_patterns:
+                        if len(np) >= 5:
+                            await cur.execute("SELECT id_berita FROM berita WHERE noper LIKE %s LIMIT 10", (f"%{np}%",))
+                            for row in await cur.fetchall():
+                                candidate_ids.add(row[0])
+
+                    clean_term = term.strip()
+                    if any(c in clean_term.lower() for c in ['/', 'skep', 'perpres', 'permen', 'uu', 'pp', 'sop']):
+                        await cur.execute("SELECT id_berita FROM berita WHERE noper LIKE %s LIMIT 10", (f"%{clean_term}%",))
+                        for row in await cur.fetchall():
+                            candidate_ids.add(row[0])
+
                     words = [w for w in re.findall(r'\b\w{2,}\b', term.lower()) if w not in {"yang", "dan", "atau", "untuk", "dari", "pada", "dalam", "dengan", "ke", "di", "ini", "itu"}]
                     if not words: 
                         continue
+
                     
                     # Contiguous multi-word match
                     phrase_like = f"%{'%'.join(words[:4])}%"
@@ -757,6 +751,7 @@ async def get_candidate_documents_metadata(
         for _hop in range(3):
             needed_ids = set()
             for r in current_rows:
+                # 1. Forward: dokumen lama yang dicabut oleh r
                 m_str = r[9] or ""
                 l_str = r[10] or ""
                 for s in [m_str, l_str]:
@@ -766,6 +761,28 @@ async def get_candidate_documents_metadata(
                             ref_id = int(item)
                             if ref_id not in fetched_ids:
                                 needed_ids.add(ref_id)
+            
+            # 2. Reverse: dokumen baru yang MENCABUT r (jika r berstatus obsolete/batal)
+            async with get_peraturan_db() as conn_my:
+                async with conn_my.cursor() as cur:
+                    for r in current_rows:
+                        curr_r_id = r[0]
+                        r_stat = str(r[8] or "").strip().lower()
+                        if r_stat in ("obsolete", "batal", "tidak aktif", ""):
+                            pat = f"%|{curr_r_id}|%"
+                            await cur.execute(
+                                """
+                                SELECT id_berita FROM berita 
+                                WHERE CONCAT('|', COALESCE(mencabut, ''), '|') LIKE %s 
+                                   OR CONCAT('|', COALESCE(linkper, ''), '|') LIKE %s 
+                                LIMIT 3
+                                """,
+                                (pat, pat)
+                            )
+                            for rev_r in await cur.fetchall():
+                                if rev_r[0] not in fetched_ids:
+                                    needed_ids.add(rev_r[0])
+
             if not needed_ids:
                 break
                 
@@ -776,7 +793,7 @@ async def get_candidate_documents_metadata(
                         SELECT b.id_berita, b.noper, b.judul, b.gambar, b.gambar2, b.gambar3, k.nama_kategori,
                                COALESCE(NULLIF(b.tanggal, '0000-00-00'), NULLIF(b.tgl_tetap, '0000-00-00'), NULLIF(b.tgl_edit, '0000-00-00'), NULLIF(b.tgl_obs, '0000-00-00')) as tanggal,
                                b.stataktif, b.mencabut, b.linkper,
-                               0.35 as dummy_score,
+                               CASE WHEN LOWER(COALESCE(b.stataktif, '')) NOT IN ('obsolete', 'batal') THEN 1.25 ELSE 0.35 END as dummy_score,
                                b.tag,
                                SUBSTRING(b.isi_berita, 1, 5000) as isi_snippet,
                                b.tgl_obs,
@@ -790,6 +807,7 @@ async def get_candidate_documents_metadata(
                     for ref_r in ref_rows:
                         current_rows.append(ref_r)
                         fetched_ids.add(ref_r[0])
+
                         
         all_rows = [list(r) for r in current_rows]
         
@@ -983,6 +1001,8 @@ async def get_candidate_documents_metadata(
                     if status_berlaku_str != "Berlaku":
                         try:
                             latest_active_info = await _resolve_latest_active_via_cursor(_lineage_cur, id_berita)
+                            if latest_active_info:
+                                status_berlaku_str = f"Tidak Berlaku (Digantikan oleh: [{latest_active_info['noper']}] {latest_active_info['judul']})"
                         except Exception as _la_err:
                             logger.warning(f"[PERATURAN_SERVICE_CANDIDATES] Lineage resolve failed for {id_berita}: {_la_err}")
 
@@ -1026,6 +1046,8 @@ async def get_candidate_documents_metadata(
                     if status_berlaku_str != "Berlaku":
                         try:
                             latest_active_info = await _resolve_latest_active_via_cursor(_lineage_cur, id_berita)
+                            if latest_active_info:
+                                status_berlaku_str = f"Tidak Berlaku (Digantikan oleh: [{latest_active_info['noper']}] {latest_active_info['judul']})"
                         except Exception as _la_err:
                             logger.warning(f"[PERATURAN_SERVICE_CANDIDATES] Lineage resolve failed (supp) for {id_berita}: {_la_err}")
 
@@ -1057,6 +1079,60 @@ async def get_candidate_documents_metadata(
                         "is_supplementary": True,
                         "latest_active": latest_active_info,
                     })
+
+                # 3. Otomatis tarik dan injeksikan dokumen penerus sah (pengganti) jika belum ada di candidate_docs
+                existing_candidate_ids = {d["id"] for d in candidate_docs}
+                for doc in list(candidate_docs):
+                    l_act = doc.get("latest_active")
+                    if l_act and l_act.get("id") and l_act["id"] not in existing_candidate_ids:
+                        succ_id = l_act["id"]
+                        existing_candidate_ids.add(succ_id)
+                        try:
+                            await _lineage_cur.execute(
+                                """
+                                SELECT b.id_berita, b.noper, b.judul, b.gambar, b.gambar2, b.gambar3,
+                                       k.nama_kategori, b.tanggal, b.stataktif, b.mencabut, b.linkper,
+                                       b.tgl_obs, b.tgl_tetap
+                                FROM berita b
+                                LEFT JOIN kategori k ON b.id_kategori = k.id_kategori
+                                WHERE b.id_berita = %s
+                                """,
+                                (succ_id,)
+                            )
+                            succ_row = await _lineage_cur.fetchone()
+                            if succ_row:
+                                s_id, s_noper, s_judul, s_g1, s_g2, s_g3, s_kat, s_tgl, s_stat, s_mencabut, s_linkper, s_tgl_obs, s_tgl_tetap = succ_row
+                                s_valid_file = _find_valid_pdf_file(s_g1, s_g2, s_g3)
+                                s_status_str = "Berlaku" if str(s_stat or "").strip().lower() not in ("obsolete", "batal") else "Tidak Berlaku"
+                                s_mencabut_display = _resolve_mencabut_text(s_mencabut, s_linkper, doc_map)
+                                candidate_docs.insert(0, {
+                                    "id": s_id,
+                                    "id_berita": s_id,
+                                    "judul": s_judul,
+                                    "title": s_judul,
+                                    "document_title": s_judul,
+                                    "noper": s_noper or "N/A",
+                                    "nomor": s_noper or "N/A",
+                                    "tanggal": str(s_tgl) if s_tgl else "",
+                                    "tgl_obs": str(s_tgl_obs) if s_tgl_obs else "",
+                                    "tgl_tetap": str(s_tgl_tetap) if s_tgl_tetap else "",
+                                    "stataktif": s_stat,
+                                    "status_berlaku": s_status_str,
+                                    "mencabut": s_mencabut_display,
+                                    "score": 1.45,
+                                    "jenis": s_kat or "Regulasi",
+                                    "valid_file": s_valid_file,
+                                    "filename": os.path.basename(s_valid_file) if s_valid_file else None,
+                                    "file_path": f"file_peraturan/{os.path.basename(s_valid_file)}" if s_valid_file else None,
+                                    "raw_tag": "",
+                                    "raw_isi": "",
+                                    "is_supplementary": False,
+                                    "latest_active": None,
+                                })
+                                logger.info(f"[PERATURAN_SERVICE_CANDIDATES] 🎯 Berhasil menginjeksikan dokumen pengganti sah: ID {s_id} ({s_noper} - {s_judul})")
+                        except Exception as _succ_err:
+                            logger.warning(f"[PERATURAN_SERVICE_CANDIDATES] Gagal fetch dokumen penerus ID {succ_id}: {_succ_err}")
+
             
         logger.info(
             f"[PERATURAN_SERVICE_CANDIDATES] Final ranking (Primary: {len(scored_primary_rows)}, Supplementary: {len(supplementary_inactive)}):\n" +

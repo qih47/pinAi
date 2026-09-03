@@ -117,11 +117,39 @@ class ModeAttachment:
         total_pages = 0
 
         if pdf_file_path and os.path.exists(pdf_file_path):
-            yield format_sse(status="⚙️ Memindai & mengekstrak konten PDF", event_type=SSEEventType.STATUS)
-            await asyncio.sleep(0.02)
+            doc_id_key = str(os.path.basename(pdf_file_path))
+            text_map = None
+            all_base64_images = None
+            total_pages = 0
+            brain = None
 
-            cache_key = session_uuid or pdf_file_path
-            text_map, all_base64_images, total_pages = await extract_and_ocr_document_async(pdf_file_path, cache_key=cache_key)
+            if session_uuid and current_user_npp:
+                from backend.app.services.session.session_brain_service import SessionBrainService
+                brain = SessionBrainService(current_user_npp, session_uuid)
+                cached_brain = brain.get_document(doc_id_key)
+                if cached_brain and "text_map" in cached_brain:
+                    yield format_sse(status="🧠 Dari memori sesi", event_type=SSEEventType.STATUS)
+                    await asyncio.sleep(0.01)
+                    text_map = cached_brain["text_map"]
+                    all_base64_images = cached_brain.get("images", [])
+                    total_pages = cached_brain.get("total_pages", len(text_map))
+
+            if text_map is None:
+                yield format_sse(status="📄 Memuat dokumen", event_type=SSEEventType.STATUS)
+                await asyncio.sleep(0.01)
+                cache_key = session_uuid or pdf_file_path
+                text_map, all_base64_images, total_pages = await extract_and_ocr_document_async(pdf_file_path, cache_key=cache_key)
+
+                if brain:
+                    await brain.save_document(doc_id_key, {
+                        "title": os.path.basename(pdf_file_path),
+                        "text_map": text_map,
+                        "images": all_base64_images,
+                        "total_pages": total_pages,
+                    })
+                    yield format_sse(status="💾 Menyimpan ke memori", event_type=SSEEventType.STATUS)
+                    await asyncio.sleep(0.01)
+
 
             is_summary = is_summary_intent(user_message)
             logger.info(f"[MODE_ATTACHMENT] PDF detected ({total_pages} pages). Intent: {'SUMMARY' if is_summary else 'TARGETED_QA'}")

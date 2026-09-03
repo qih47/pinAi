@@ -233,15 +233,18 @@ export async function streamChat(
 
           // ✅ Handle error events
           if (parsedData.error) {
+            const errCode = (typeof parsedData.error === 'object' && parsedData.error?.code) ? parsedData.error.code : 'STREAM_ERROR';
+            const errMsg = (typeof parsedData.error === 'object' && parsedData.error?.message) ? parsedData.error.message : String(parsedData.error);
             console.error(
-              `[SSE_ERROR_EVENT] ${parsedData.error.code}: ${parsedData.error.message}`,
+              `[SSE_ERROR_EVENT] ${errCode}: ${errMsg}`,
               parsedData.error
             );
             if (onError) {
-              onError(new Error(JSON.stringify(parsedData.error)));
+              onError(new Error(errMsg));
             }
             continue;
           }
+
 
           // Handle regular events
           if (parsedData.thinking !== undefined && parsedData.thinking && onThinking) {

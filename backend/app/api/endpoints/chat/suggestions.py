@@ -14,7 +14,7 @@ async def get_chat_suggestions(
     mode: str = Query("documents", description="Mode saran: websearch, documents, code, focus, doc_questions"),
     q: str = Query("", description="Kueri pencarian teks langsung dari input bar"),
     limit: int = Query(6, ge=1, le=20, description="Batas maksimal saran yang dikembalikan"),
-    doc_id: Optional[int] = Query(None, description="ID Dokumen untuk rekomendasi pertanyaan spesifik"),
+    doc_id: Optional[str] = Query(None, description="ID Dokumen atau Judul Dokumen untuk rekomendasi pertanyaan spesifik"),
     current_user_npp: Optional[str] = Depends(get_current_user_npp),
 ):
     """

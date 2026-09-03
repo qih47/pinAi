@@ -324,14 +324,17 @@ def sanitize_history_for_rag(messages: List[Dict[str, Any]]) -> List[Dict[str, A
 
 
 def select_call2_module(routing: Dict[str, Any], has_rag_context: bool = False) -> str:
-    # 🚨 Prioritas 1: Jika request bersifat ambigu / bercabang, selalu prioritaskan ambiguous handler
-    # agar menyajikan kartu wizard / opsi klarifikasi interaktif alih-alih mengeksekusi langsung
-    if routing.get("is_ambiguous"):
-        return "ambiguous"
+    # 🎯 Jika sudah ditemukan rujukan dokumen konkret (RAG / Peraturan / Lampiran),
+    # utamakan menjawab langsung dengan RAG agar tidak menjebak pengguna dalam loop pertanyaan berulang!
     if has_rag_context:
         if routing.get("is_multi_document"):
             return "multi_document"   # dari "rag_multi_document"
         return "rag"                  # dari "rag_standard"
+
+    # Prioritas 2: Jika tidak ada dokumen pendukung dan permintaan benar-benar ambigu / butuh klarifikasi awal
+    if routing.get("is_ambiguous"):
+        return "ambiguous"
+
     if routing.get("is_coding"):
         return "coding"               # dari "coding_expert"
     if routing.get("need_analytic") or routing.get("requires_visual"):

@@ -110,6 +110,25 @@ class ModeHub:
         precheck["_session_uuid"] = session_uuid
         precheck["_visited_urls"] = visited_urls
 
+        # ── Ekstrak Context History untuk Multi-Turn Reasoning (berlaku untuk Preset maupun Call 1) ──
+        context_history_str = ""
+        if chat_history and len(chat_history) > 0:
+            import re
+            history_lines = []
+            recent_msgs = chat_history[-5:-1] if len(chat_history) > 1 else chat_history[:-1]
+            for m in recent_msgs:
+                role = getattr(m, 'role', None) or (m.get('role') if isinstance(m, dict) else 'user')
+                content = getattr(m, 'content', None) or (m.get('content') if isinstance(m, dict) else '')
+                if content and role:
+                    has_wizard = "```wizard" in content
+                    clean_content = re.sub(r'```(wizard|urlfetch)[\s\S]*?```', '', content).strip()
+                    if clean_content:
+                        short_text = clean_content[:300] + "..." if len(clean_content) > 300 else clean_content
+                        role_label = f"{role.upper()} (Klarifikasi Pilihan)" if (role.lower() == "assistant" and has_wizard) else role.upper()
+                        history_lines.append(f"{role_label}: {short_text}")
+            if history_lines:
+                context_history_str = "\n".join(history_lines)
+
         # ── Step 1.5: Intercept URLs (Web Reader) — deteksi dulu, fetch nanti paralel ─────
         urls_in_text = []
         try:
@@ -141,13 +160,15 @@ class ModeHub:
             logger.info(f"[MODE_HUB] ⚡ Bypassing Call 1 Router due to explicit preset hint selection. Forced Mode: {forced_mode}")
             forced_mode_clean = forced_mode.lower().strip()
 
-            # 🎯 JALUR PRESET ROUTING: Panggil e4b untuk deteksi ambiguitas + generate title (jika first_chat)
-            # Dipanggil di dalam bypass block tapi SEBELUM session_uuid block agar precheck selalu ter-update
+            # 🎯 JALUR PRESET ROUTING: Panggil e4b untuk deteksi ambiguitas, multi-turn queries, + generate title
             from backend.app.services.pipeline.call1_router import generate_call1_preset_routing
             preset_routing = await generate_call1_preset_routing(
                 user_message=user_message,
                 forced_mode=forced_mode_clean,
                 is_first_chat=is_first_chat,
+                context_history_str=context_history_str,
+                previous_topic=active_topic or precheck.get("active_topic"),
+                previous_subject=key_subject or precheck.get("key_subject"),
                 request=request,
             )
 
@@ -158,10 +179,18 @@ class ModeHub:
                 precheck["requires_visual"] = preset_routing["requires_visual"]
             if preset_routing.get("need_analytic"):
                 precheck["need_analytic"] = preset_routing["need_analytic"]
+            if preset_routing.get("queries"):
+                precheck["queries"] = preset_routing["queries"]
+            if preset_routing.get("query_judul"):
+                precheck["query_judul"] = preset_routing["query_judul"]
+            if preset_routing.get("active_topic"):
+                precheck["active_topic"] = preset_routing["active_topic"]
+            if preset_routing.get("key_subject"):
+                precheck["key_subject"] = preset_routing["key_subject"]
 
             if session_uuid:
                 from backend.app.services.chat.chat_history_service import chat_history_service
-                obs_dict = {"msg": f"Fast-Path Bypass Call 1 -> {forced_mode_clean.upper()}", "queries": [user_message]}
+                obs_dict = {"msg": f"Fast-Path Bypass Call 1 -> {forced_mode_clean.upper()}", "queries": precheck.get("queries", [user_message])}
                 asyncio.create_task(chat_history_service.save_agent_step(
                     session_id=session_uuid,
                     step_number=1,
@@ -181,6 +210,13 @@ class ModeHub:
                             "topic": forced_mode_clean.title(),
                             "key_subject": preset_title
                         }) + "\n"
+                elif preset_routing.get("active_topic") or preset_routing.get("key_subject"):
+                    yield json.dumps({
+                        "event_type": "topic_update",
+                        "topic": preset_routing.get("active_topic", forced_mode_clean.title()),
+                        "key_subject": preset_routing.get("key_subject", "")
+                    }) + "\n"
+
 
 
             # 1. Web Search Mode Bypass
@@ -228,7 +264,8 @@ class ModeHub:
                 yield format_sse(status="📚 Membuka arsip", status_key="DOCS_INIT", event_type=SSEEventType.STATUS)
                 precheck["need_rag"] = True
                 precheck["is_chitchat"] = False
-                precheck["queries"] = [user_message]
+                if not precheck.get("queries"):
+                    precheck["queries"] = [user_message]
 
                 # Jika terdapat context_isolation (misal user klik dokumen PKB/SOP dari hint):
                 # Langsung tembak ke Mode Focus (Context Isolation) agar tidak melebar ke RAG global!
@@ -518,24 +555,8 @@ class ModeHub:
         
         # Ekstrak 1 history pesan terakhir (pesan AI sebelumnya) untuk Call 1
         # ── Step 3: Fast-path Bypass atau Call 1 Router ─────────────────────────
-        context_history_str = ""
-        if chat_history and len(chat_history) > 0:
-            import re
-            history_lines = []
-            # Ambil hingga 4 pesan percakapan terakhir sebelum user_message saat ini
-            recent_msgs = chat_history[-5:-1] if len(chat_history) > 1 else chat_history[:-1]
-            for m in recent_msgs:
-                role = getattr(m, 'role', None) or (m.get('role') if isinstance(m, dict) else 'user')
-                content = getattr(m, 'content', None) or (m.get('content') if isinstance(m, dict) else '')
-                if content and role:
-                    has_wizard = "```wizard" in content
-                    clean_content = re.sub(r'```(wizard|urlfetch)[\s\S]*?```', '', content).strip()
-                    if clean_content:
-                        short_text = clean_content[:300] + "..." if len(clean_content) > 300 else clean_content
-                        role_label = f"{role.upper()} (Klarifikasi Pilihan)" if (role.lower() == "assistant" and has_wizard) else role.upper()
-                        history_lines.append(f"{role_label}: {short_text}")
-            if history_lines:
-                context_history_str = "\n".join(history_lines)
+        # context_history_str sudah diekstrak di awal eksekusi
+
 
         call1_start_t = datetime.now()
 

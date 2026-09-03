@@ -113,16 +113,44 @@ class ModeRedTeam:
 
         logger.info(f"[MODE_REDTEAM] Target file: {file_path}")
 
-        # 3. Fast Parallel OCR & Rendering via Document Intelligence
-        cache_key = session_uuid or file_path
-        yield format_sse(status="⚙️ Memindai & memproses klausul dokumen", event_type=SSEEventType.STATUS)
-        await asyncio.sleep(0.05)
+        # 3. Brain-First Check / Fast Parallel OCR & Rendering via Document Intelligence
+        doc_id_key = str(os.path.basename(file_path))
+        text_map = None
+        all_base64_images = None
+        total_pages = None
+        brain = None
 
-        text_map, all_base64_images, total_pages = await extract_and_ocr_document_async(file_path, cache_key=cache_key)
+        if session_uuid and current_user_npp:
+            from backend.app.services.session.session_brain_service import SessionBrainService
+            brain = SessionBrainService(current_user_npp, session_uuid)
+            cached_brain = brain.get_document(doc_id_key)
+            if cached_brain and "text_map" in cached_brain:
+                yield format_sse(status="🧠 Dari memori sesi", event_type=SSEEventType.STATUS)
+                await asyncio.sleep(0.01)
+                text_map = cached_brain["text_map"]
+                all_base64_images = cached_brain.get("images", [])
+                total_pages = cached_brain.get("total_pages", len(text_map))
+
+        if text_map is None:
+            yield format_sse(status="📄 Memuat dokumen", event_type=SSEEventType.STATUS)
+            await asyncio.sleep(0.01)
+            cache_key = session_uuid or file_path
+            text_map, all_base64_images, total_pages = await extract_and_ocr_document_async(file_path, cache_key=cache_key)
+
+            if brain:
+                await brain.save_document(doc_id_key, {
+                    "title": os.path.basename(file_path),
+                    "text_map": text_map,
+                    "images": all_base64_images,
+                    "total_pages": total_pages,
+                })
+                yield format_sse(status="💾 Menyimpan ke memori", event_type=SSEEventType.STATUS)
+                await asyncio.sleep(0.01)
 
         # 4. Two-Stage Context-Aware Reranking & Structural Continuity Engine
         yield format_sse(status=f"🔍 Menganalisis seluruh {total_pages} halaman dokumen", event_type=SSEEventType.STATUS)
         await asyncio.sleep(0.05)
+
 
         explicit_pages = extract_explicit_pages_from_query(user_message, total_pages)
         selected_pages, final_base64_images, final_extracted_text = await two_stage_rerank_cluster_async(

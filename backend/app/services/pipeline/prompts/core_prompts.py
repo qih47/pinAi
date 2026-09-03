@@ -311,37 +311,34 @@ CALL1_PRESET_PROMPT_TEMPLATE = """Kamu adalah asisten analisis cepat jalur prese
 MODE PRESET AKTIF: {{ forced_mode }}
 PESAN PENGGUNA: {{ user_message }}
 FIRST CHAT: {{ is_first_chat }}
+{% if context_history_str %}
+RIWAYAT PERCAKAPAN SEBELUMNYA:
+{{ context_history_str }}
+{% endif %}
+{% if previous_topic %}
+TOPIK SEBELUMNYA: {{ previous_topic }} ({{ previous_subject }})
+{% endif %}
 
 TUGAS:
-1. Analisis apakah pesan pengguna AMBIGU atau terlalu umum untuk dieksekusi di mode {{ forced_mode }}.
-   - Ambigu = tidak ada spesifikasi cukup (teknologi/stack, topik, tujuan, data konkret, penerima, dll).
-   - Contoh ambigu: "buatkan aplikasi", "buat diagram", "tulis surat", "bikin grafik".
-   - Contoh TIDAK ambigu: "buatkan landing page React dengan Tailwind", "diagram alur rekrutmen pegawai", "surat izin dinas ke Jakarta untuk Budi".
-2. Tentukan apakah pesan membutuhkan output visual (diagram/grafik/chart).
-3. Tentukan apakah pesan membutuhkan analisis data/statistik.
-4. Jika FIRST CHAT = true, buatkan judul percakapan ringkas 2-4 kata.
+1. PENALARAN MULTI-TURN & QUERY REWRITING (MUTLAK):
+   - Jika pesan pengguna berupa pertanyaan lanjutan atau pertanyaan eliptis yang bergantung pada obrolan sebelumnya (contoh: "tahapannya apa", "persyaratannya apa saja?", "bagaimana mekanismenya?", "siapa yang tanda tangan?"):
+     WAJIB sertakan field `"queries"` yang menggabungkan subjek/topik dari riwayat percakapan menjadi kalimat pencarian mandiri (standalone) yang lengkap!
+     Contoh riwayat membahas rekrutmen pegawai, lalu user tanya "persyaratannya apa saja?":
+     -> "queries": ["persyaratan rekrutmen pegawai pt pindad", "syarat seleksi penerimaan karyawan"]
+     -> "query_judul": ["Rekrutmen", "Seleksi", "Pemenuhan Kebutuhan Tenaga Kerja"]
+     -> "key_subject": "Persyaratan Rekrutmen Pegawai"
+   - Jika first_chat atau pesan sudah mandiri:
+     -> "queries": ["{{ user_message }}"]
+2. Analisis apakah pesan pengguna AMBIGU atau terlalu umum untuk dieksekusi di mode {{ forced_mode }}.
+   - PENTING: Jika ada riwayat percakapan sebelumnya dan pesan merujuk ke topik yang sudah dibahas, pesan tersebut TIDAK AMBIGU!
+3. Tentukan apakah pesan membutuhkan output visual (diagram/grafik/chart) -> "requires_visual": true.
+4. Tentukan apakah pesan membutuhkan analisis data/statistik -> "need_analytic": true.
+5. Jika FIRST CHAT = true, buatkan judul percakapan ringkas 2-4 kata -> "session_title": "...".
 
 ATURAN OUTPUT JSON (WAJIB DIIKUTI):
 - Kembalikan JSON murni tanpa markdown/backtick.
-- HANYA sertakan field yang bernilai TRUE atau non-null. Field yang FALSE tidak perlu ditulis.
+- HANYA sertakan field yang bernilai TRUE, array non-kosong, atau string non-null. Field yang FALSE tidak perlu ditulis.
 - Jika FIRST CHAT = false, JANGAN sertakan field session_title.
-- Judul DILARANG generik: "Salam", "Obrolan Baru", "Tanya", "Bantuan", "N/A".
-
-CONTOH OUTPUT:
-• Pesan ambigu, first_chat=true:
-  {"session_title": "Membuat Aplikasi Todo", "is_ambiguous": true}
-
-• Pesan ambigu, first_chat=false:
-  {"is_ambiguous": true}
-
-• Pesan jelas + butuh visual, first_chat=true:
-  {"session_title": "Grafik Penjualan 2024", "requires_visual": true}
-
-• Pesan jelas + perlu analitik data:
-  {"need_analytic": true}
-
-• Pesan jelas, first_chat=false → kembalikan JSON kosong:
-  {}
 
 OUTPUT JSON:
 """
@@ -349,16 +346,27 @@ OUTPUT JSON:
 prompt_manager.register_default(
     name="CALL1_PRESET_PROMPT",
     template_str=CALL1_PRESET_PROMPT_TEMPLATE,
-    description="Prompt ringan jalur preset (bypass) untuk routing parameter: is_ambiguous, requires_visual, need_analytic, session_title (conditional). < 400ms."
+    description="Prompt jalur preset dengan multi-turn awareness, query rewriting, ambiguitas, dan visual/analytic flag."
 )
 
-def build_call1_preset_prompt(user_message: str, forced_mode: str, is_first_chat: bool) -> str:
+def build_call1_preset_prompt(
+    user_message: str,
+    forced_mode: str,
+    is_first_chat: bool,
+    context_history_str: str = "",
+    previous_topic: Optional[str] = None,
+    previous_subject: Optional[str] = None,
+) -> str:
     return prompt_manager.render(
         name="CALL1_PRESET_PROMPT",
         user_message=user_message,
         forced_mode=forced_mode,
         is_first_chat="true" if is_first_chat else "false",
+        context_history_str=context_history_str,
+        previous_topic=previous_topic or "",
+        previous_subject=previous_subject or "",
     )
+
 
 # --- Backward-compat alias (tidak digunakan lagi, dipertahankan agar import lama tidak error) ---
 CALL1_PRESET_TITLE_PROMPT_TEMPLATE = CALL1_PRESET_PROMPT_TEMPLATE

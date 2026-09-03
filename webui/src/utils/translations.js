@@ -551,9 +551,16 @@ export const translations = {
       CHART_READY: "✨ Grafik siap",
       CODE_INIT: "💻 Menyiapkan kode...",
       DOCS_INIT: "📚 Membuka arsip...",
-      MAIL_INIT: "✉️ Menyusun surat..."
+      MAIL_INIT: "✉️ Menyusun surat...",
+      BRAIN_HIT: "🧠 Dari memori sesi",
+      BRAIN_SAVE: "💾 Menyimpan ke memori",
+      DOC_LOADING: "📄 Memuat dokumen",
+      DOC_READING_SELECTED: "📄 Membaca pasal terpilih",
+      DOC_OCR_RUNNING: "🔬 Dokumen scan, OCR dijalankan",
+      DOC_READING_TEXT: "📖 Membaca teks dokumen"
     }
   },
+
   en: {
     sidebar: {
       newChat: "New Chat",
@@ -1108,10 +1115,17 @@ export const translations = {
       CHART_READY: "✨ Chart ready",
       CODE_INIT: "💻 Preparing workspace...",
       DOCS_INIT: "📚 Accessing library...",
-      MAIL_INIT: "✉️ Drafting letter..."
+      MAIL_INIT: "✉️ Drafting letter...",
+      BRAIN_HIT: "🧠 From session memory",
+      BRAIN_SAVE: "💾 Saving to memory",
+      DOC_LOADING: "📄 Loading document",
+      DOC_READING_SELECTED: "📄 Reading selected clauses",
+      DOC_OCR_RUNNING: "🔬 Scanned document, running OCR",
+      DOC_READING_TEXT: "📖 Reading document text"
     }
   }
 };
+
 
 /**
  * Resolves any SSE status message (whether raw text, key object, or legacy string)
@@ -1140,6 +1154,14 @@ export function resolveStatusMessage(statusInput, language = 'id') {
   if (sseDict[statusInput]) {
     return sseDict[statusInput];
   }
+
+  // 2B. Direct match for new Brain & Document short-circuit status strings
+  if (statusInput === "🧠 Dari memori sesi") return sseDict.BRAIN_HIT || statusInput;
+  if (statusInput === "💾 Menyimpan ke memori") return sseDict.BRAIN_SAVE || statusInput;
+  if (statusInput === "📄 Memuat dokumen") return sseDict.DOC_LOADING || statusInput;
+  if (statusInput === "📄 Membaca pasal terpilih") return sseDict.DOC_READING_SELECTED || statusInput;
+  if (statusInput === "🔬 Dokumen scan, OCR dijalankan") return sseDict.DOC_OCR_RUNNING || statusInput;
+  if (statusInput === "📖 Membaca teks dokumen") return sseDict.DOC_READING_TEXT || statusInput;
 
   // 3. Pattern / Regex matching for dynamic legacy string statuses
   const mDocsFound = statusInput.match(/^✨ Menemukan (\d+) dokumen$/);
