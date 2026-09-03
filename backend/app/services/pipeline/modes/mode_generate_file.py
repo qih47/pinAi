@@ -30,27 +30,25 @@ _RE_OPEN_TAG   = re.compile(r'<(create_file|edit_file)\s+filename=["\']?([^"\'>\
 _RE_CLOSE_TAGS = re.compile(r'</(create_file|edit_file)\s*>', re.IGNORECASE)
 
 
+from backend.app.services.tools.artifact_generator import (
+    sanitize_filename as _tool_sanitize_filename,
+    write_artifact as _tool_write_artifact,
+)
+
+
 def _sanitize_filename(filename: str) -> str:
-    basename = os.path.basename(filename)
-    safe = re.sub(r"[^\w.\-]", "_", basename)
-    if not safe or safe.startswith("."):
-        safe = f"generated_{safe}"
-    return safe[:128]
+    """Sanitasi nama file via tool sentral artifact_generator."""
+    return _tool_sanitize_filename(filename)
 
 
 async def _write_file_to_disk(filename: str, content: str, current_user_npp: str, session_id: str) -> Path:
-    from backend.app.core.paths import get_account_session_dir
-    account_artifacts_dir = get_account_session_dir(current_user_npp, session_id, "artifacts")
-    safe_name = _sanitize_filename(filename)
-    target_path = account_artifacts_dir / safe_name
-
-    loop = asyncio.get_event_loop()
-    await loop.run_in_executor(
-        None,
-        lambda: target_path.write_text(content, encoding="utf-8")
+    """Tulis file artefak via tool sentral artifact_generator (terintegrasi manifest Brain)."""
+    return await _tool_write_artifact(
+        filename=filename,
+        content=content,
+        npp=current_user_npp,
+        session_id=session_id
     )
-    logger.info(f"[GENERATE_FILE] File written to disk: {target_path}")
-    return target_path
 
 
 class InterceptorParser:

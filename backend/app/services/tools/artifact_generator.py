@@ -93,6 +93,17 @@ async def write_artifact(
 
     await asyncio.to_thread(_write)
     logger.info(f"[ARTIFACT_GEN] ✅ Ditulis: {output_path}")
+
+    # Catat ke manifest Brain sesi secara otomatis
+    try:
+        from backend.app.services.session.session_brain_service import SessionBrainService
+        brain = SessionBrainService(npp, session_id)
+        size_bytes = len(content.encode("utf-8"))
+        rel_path = f"accounts/{npp}/{session_id}/brain/artifacts/{safe_fn}"
+        brain.save_artifact_manifest(safe_fn, rel_path, size_bytes)
+    except Exception as e:
+        logger.warning(f"[ARTIFACT_GEN] Gagal update manifest brain: {e}")
+
     return output_path
 
 

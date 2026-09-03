@@ -220,10 +220,20 @@ export function useChatLogic({ isGuest,
   };
 
   const handleDownloadArtifact = async (filename, file_path, code) => {
-    if (code) {
-      const blob = new Blob([code], { type: 'text/plain;charset=utf-8' });
+    const triggerDownload = (contentStr) => {
+      const blob = new Blob([contentStr], { type: 'text/plain;charset=utf-8' });
       const url = URL.createObjectURL(blob);
-      const a = document.createElement('a'); a.href = url; a.download = filename; a.click(); URL.revokeObjectURL(url);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename || 'download.txt';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    };
+
+    if (code) {
+      triggerDownload(code);
       return;
     }
     try {
@@ -233,9 +243,7 @@ export function useChatLogic({ isGuest,
       const res = await fetch(`${API_BASE}/api/chat/artifacts/read?filename=${encodeURIComponent(file_path || filename)}&session_id=${encodeURIComponent(activeSessionId)}`, { headers });
       if (!res.ok) throw new Error("Gagal mengambil file");
       const text = await res.text();
-      const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a'); a.href = url; a.download = filename; a.click(); URL.revokeObjectURL(url);
+      triggerDownload(text);
     } catch (err) {
       toast.error(tToast.downloadFileFail || `Gagal mendownload ${filename}`);
     }

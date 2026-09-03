@@ -55,12 +55,29 @@ class SessionBrainService:
         return self.brain_dir / "documents"
 
     @property
+    def artifacts_dir(self) -> Path:
+        return self.brain_dir / "artifacts"
+
+    @property
     def manifest_path(self) -> Path:
         return self.brain_dir / "manifest.json"
 
     def _ensure_dirs(self) -> None:
         """Buat semua folder brain jika belum ada."""
         self.documents_dir.mkdir(parents=True, exist_ok=True)
+        self.artifacts_dir.mkdir(parents=True, exist_ok=True)
+
+    def save_artifact_manifest(self, filename: str, relative_path: str, size_bytes: int = 0) -> None:
+        """Catat artefak baru ke dalam manifest.json."""
+        manifest = self.get_manifest()
+        if not manifest.get("created_at"):
+            manifest["created_at"] = datetime.datetime.now().isoformat()
+        manifest.setdefault("artifacts", {})[filename] = {
+            "path": relative_path,
+            "saved_at": datetime.datetime.now().isoformat(),
+            "size": size_bytes
+        }
+        self._save_manifest(manifest)
 
     # ─── Manifest ─────────────────────────────────────────────────────────────
     def get_manifest(self) -> Dict[str, Any]:

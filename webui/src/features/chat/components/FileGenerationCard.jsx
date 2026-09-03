@@ -114,8 +114,10 @@ export default function FileGenerationCard({
       const a = document.createElement('a');
       a.href = url;
       a.download = filename || 'file.txt';
+      document.body.appendChild(a);
       a.click();
-      URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
     }
   };
 
