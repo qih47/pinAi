@@ -322,7 +322,11 @@ def _validate_and_normalize_routing(
     routing["is_multi_document"] = bool(routing_json.get("is_multi_document", False))
     routing["is_multi_turn_task"] = bool(routing_json.get("is_multi_turn_task", False))
     routing["requires_visual"] = bool(routing_json.get("requires_visual", False)) or bool(precheck.get("requires_visual", False))
-    routing["is_map_query"] = bool(routing_json.get("is_map_query", False))
+    routing["is_map_query"] = bool(routing_json.get("is_map_query", False)) or bool(precheck.get("is_map_query", False))
+    if routing["is_map_query"]:
+        routing["need_rag"] = False
+        routing["query_judul"] = []
+        logger.info("[CALL1] 🌍 is_map_query detected -> overriding need_rag=False")
     
     raw_chunk_ids = routing_json.get("session_chunk_ids", [])
     if isinstance(raw_chunk_ids, list):
@@ -640,7 +644,13 @@ def _validate_and_normalize_routing(
         web_keywords = ["berita", "kabar", "terkini", "hari ini", "terbaru", "cuaca besok", "cuaca 7 hari", "saham", "kurs", "presiden", "juara", "pilkada", "gempa"]
         map_keywords = ["lokasi", "alamat", "dimana", "peta", "gedung", "divisi", "turen", "bandung"]
         
-        if any(k in user_text for k in visual_keywords) or precheck.get("requires_visual"):
+        # 0. Prioritaskan Map / Location query
+        if any(k in user_text for k in ["lokasi", "alamat", "dimana", "di mana", "koordinat", "peta", "letak pabrik"]) or precheck.get("is_map_query"):
+            routing["is_map_query"] = True
+            routing["need_rag"] = False
+            routing["query_judul"] = []
+            logger.info("[CALL1] 🛡️ Guard: Auto-activated is_map_query (location intent takes precedence)")
+        elif any(k in user_text for k in visual_keywords) or precheck.get("requires_visual"):
             routing["requires_visual"] = True
             logger.info("[CALL1] 🛡️ Guard: Auto-activated requires_visual (visual/chart intent detected)")
         elif any(k in user_text for k in file_keywords):
@@ -659,9 +669,6 @@ def _validate_and_normalize_routing(
                 routing["query_judul"] = [routing.get("key_subject") or user_message]
                 routing["queries"] = build_rule_based_queries(user_message, routing.get("key_subject"), routing.get("active_topic"))
             logger.info(f"[CALL1] 🛡️ Guard: Auto-activated need_rag | query_judul={routing['query_judul']}")
-        elif any(k in user_text for k in map_keywords):
-            routing["is_map_query"] = True
-            logger.info("[CALL1] 🛡️ Guard: Auto-activated is_map_query (map intent detected)")
         elif any(k in user_text for k in web_keywords):
             routing["is_web_search"] = True
             if not routing.get("queries"):

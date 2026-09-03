@@ -16,8 +16,9 @@ def detect_precheck(user_message: str, chat_mode: str, has_attachment: bool, use
 
     is_coding = any(kw in msg_lower for kw in _CODING_KEYWORDS)
     is_greeting = any(kw in msg_lower for kw in _GREETING_KEYWORDS)
-    is_public_web = any(kw in msg_lower for kw in _PUBLIC_WEB_KEYWORDS)
-    is_doc_query = any(kw in msg_lower for kw in _DOC_KEYWORDS) and not is_public_web
+    _MAP_KEYWORDS = ["lokasi", "alamat", "dimana", "di mana", "koordinat", "peta", "letak pabrik", "kantor pusat", "fasilitas divisi"]
+    is_map_query = any(kw in msg_lower for kw in _MAP_KEYWORDS)
+    is_doc_query = any(kw in msg_lower for kw in _DOC_KEYWORDS) and not is_public_web and not is_map_query
     
     _EMAIL_KEYWORDS = ["kirim email", "buat email", "draft email", "balas email", "email ke", "draf email"]
     is_generate_email = any(kw in msg_lower for kw in _EMAIL_KEYWORDS)
@@ -137,6 +138,7 @@ def detect_precheck(user_message: str, chat_mode: str, has_attachment: bool, use
         "word_count": word_count,
         "requires_visual": requires_visual,
         "is_generate_email": is_generate_email,
+        "is_map_query": is_map_query,
         "_user_message": user_message
     }
 

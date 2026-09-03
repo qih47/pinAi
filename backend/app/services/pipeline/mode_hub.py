@@ -866,8 +866,10 @@ class ModeHub:
             
             coords = await geocode_osm(target_location)
             if coords:
-                map_context = f"\n\n[TOOL: GEOCODING_RESULT]\nHasil pencarian lokasi untuk '{target_location}':\nLatitude: {coords['lat']}\nLongitude: {coords['lng']}\nAlamat Terdaftar: {coords['name']}\n\nINSTRUKSI KHUSUS: Gunakan koordinat ini di dalam JSON ```map yang akan kamu hasilkan. Selain memuntahkan JSON, berikan narasi singkat yang ramah dan antusias yang mengatakan 'Ini dia lokasi yang Boss cari beserta koordinatnya!'. DILARANG KERAS meminta maaf atau mengatakan keterbatasan data, karena data ini sudah sangat cukup untuk merender peta visual di sistem frontend!"
+                division_info = f"\nDivisi/Fasilitas: {coords['division']}" if coords.get("division") else ""
+                map_context = f"\n\n[TOOL: GEOCODING_RESULT]\nHasil pencarian lokasi untuk '{target_location}':\nLatitude: {coords['lat']}\nLongitude: {coords['lng']}\nAlamat Terdaftar: {coords['name']}{division_info}\n\nINSTRUKSI KHUSUS: Gunakan informasi ini untuk menjawab pertanyaan pengguna dengan lengkap, informatif, dan ramah. Sebutkan alamat lengkap, pembagian divisi/fasilitas yang ada di sana, dan koordinat GPS presisi."
                 precheck["_session_chunks_text"] = precheck.get("_session_chunks_text", "") + map_context
+                precheck["need_rag"] = False
                 
                 if session_uuid:
                     from backend.app.services.chat.chat_history_service import chat_history_service
@@ -936,7 +938,7 @@ class ModeHub:
             else:
                 # Gunakan precheck (bukan routing_data) agar override URL context (need_rag=False)
                 # tidak tertimpa oleh nilai raw dari routing_data
-                need_rag = precheck.get("need_rag", False)
+                need_rag = precheck.get("need_rag", False) and not precheck.get("is_map_query", False)
                 if need_rag and not is_guest:
                     mode = "documents"
                 else:

@@ -83,11 +83,28 @@ class SyntheticTrainingService:
                 
             await update_progress("RUNNING", 30, f"Generating synthetic queries using LLM for '{doc_data['judul'][:30]}...'")
             
+            # Ekstrak substansi isi dokumen fisik via document_resolver + unified_extractor
+            doc_excerpt = ""
+            try:
+                from backend.app.services.tools.document_resolver import find_valid_pdf_file
+                from backend.app.services.tools.unified_extractor import extract_document
+                valid_pdf = find_valid_pdf_file(dokumen_id)
+                if valid_pdf:
+                    extracted_doc = await extract_document(valid_pdf)
+                    if extracted_doc and extracted_doc.pages:
+                        sample_pages = [p.text for p in extracted_doc.pages[:3] if p.text]
+                        doc_excerpt = "\n\n".join(sample_pages)[:2500]
+                        logger.info(f"[SYNTHETIC] 📄 Berhasil mengekstrak {len(doc_excerpt)} karakter dari PDF untuk pengayaan pertanyaan")
+            except Exception as extract_err:
+                logger.warning(f"[SYNTHETIC] Ekstraksi PDF opsional dilewati: {extract_err}")
+
+            substance_block = f"\nKUTIPAN SUBSTANSI/PASAL DOKUMEN:\n{doc_excerpt}" if doc_excerpt else ""
+
             prompt = f"""Kamu adalah ahli sistem pencarian RAG (Retrieval-Augmented Generation).
-Berdasarkan metadata dokumen Surat Keputusan / Peraturan berikut:
+Berdasarkan metadata dan substansi dokumen Surat Keputusan / Peraturan berikut:
 JUDUL: {doc_data['judul']}
 TAG: {doc_data['tag']}
-ISI/RINGKASAN: {doc_data['isi_berita']}
+ISI/RINGKASAN: {doc_data['isi_berita']}{substance_block}
 
 TUGAS:
 Buatkan daftar pertanyaan sebanyak-banyaknya (sebanyak mungkin) yang mungkin ditanyakan oleh pengguna (karyawan) jika mereka mencari informasi yang ada di dalam dokumen ini. 

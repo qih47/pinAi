@@ -1,16 +1,66 @@
+import re
 import httpx
 import logging
 from typing import Optional, Dict, Any
 
 logger = logging.getLogger("CAKRA_GEOCODING")
 
-async def geocode_osm(address: str) -> Optional[Dict[str, float]]:
+# Cache lokasi korporat PT Pindad untuk resolusi instan tanpa dependensi jaringan
+PINDAD_LOCATIONS = {
+    "bandung": {
+        "lat": -6.9189,
+        "lng": 107.6338,
+        "name": "PT Pindad (Persero) Kantor Pusat Bandung, Jl. Gatot Subroto No. 517, Bandung",
+        "division": "Kantor Pusat, Divisi Senjata, Divisi Kendaraan Khusus, Divisi Alat Berat",
+    },
+    "turen": {
+        "lat": -8.1728,
+        "lng": 112.7092,
+        "name": "PT Pindad (Persero) Divisi Munisi Turen, Jl. Panglima Sudirman No. 1, Turen, Malang, Jawa Timur",
+        "division": "Divisi Munisi",
+    },
+    "malang": {
+        "lat": -8.1728,
+        "lng": 112.7092,
+        "name": "PT Pindad (Persero) Divisi Munisi Turen, Malang, Jawa Timur",
+        "division": "Divisi Munisi",
+    },
+    "subang": {
+        "lat": -6.5683,
+        "lng": 107.7594,
+        "name": "PT Pindad Fasilitas Uji Coba & Gudang Terpadu Subang, Jawa Barat",
+        "division": "Fasilitas Pengujian & Gudang Munisi",
+    },
+    "jakarta": {
+        "lat": -6.2146,
+        "lng": 106.8451,
+        "name": "PT Pindad Kantor Perwakilan Jakarta",
+        "division": "Kantor Perwakilan & Hubungan Kelembagaan",
+    },
+}
+
+
+async def geocode_osm(address: str) -> Optional[Dict[str, Any]]:
     """
-    Mencari kordinat Latitude dan Longitude berdasarkan alamat menggunakan Nominatim (OpenStreetMap).
-    Tanpa API Key, gratis, batasan 1 request / detik.
+    Mencari kordinat Latitude dan Longitude berdasarkan alamat menggunakan Nominatim (OpenStreetMap)
+    dengan cache lokasi internal PT Pindad untuk respon cepat dan andal.
     """
     if not address or len(address.strip()) < 3:
         return None
+
+    clean_addr = address.strip().lower()
+
+    # 1. Cek Cache Korporat PT Pindad (Instan & Offline)
+    for key, loc in PINDAD_LOCATIONS.items():
+        if key in clean_addr or (f"pindad {key}" in clean_addr) or (key in clean_addr and "pindad" in clean_addr):
+            logger.info(f"[GEOCODING] ⚡ Corporate Cache HIT for '{address}': {loc['name']}")
+            return {
+                "lat": loc["lat"],
+                "lng": loc["lng"],
+                "name": loc["name"],
+                "division": loc.get("division"),
+                "source": "pindad_corporate_cache"
+            }
 
     try:
         logger.info(f"[GEOCODING] Melacak koordinat untuk: '{address}' via Nominatim OSM")

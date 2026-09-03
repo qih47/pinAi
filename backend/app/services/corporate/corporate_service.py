@@ -99,24 +99,28 @@ async def analyze_email_threat(email_content: str) -> str:
 
 
 async def generate_nota_dinas(instruction: str) -> str:
-    """Generate Nota Dinas text body using Gemma4."""
+    """Generate Nota Dinas text body using Gemma4 terintegrasi tool Persuratan."""
+    from backend.app.services.tools.persuratan import _today_indonesian, _generate_draft_number
     prompt = build_nota_dinas_prompt(instruction)
     body = await generate_text_response(settings.MODEL_PERSONA, prompt, temperature=0.2)
     
+    tgl = _today_indonesian()
+    no_draft = _generate_draft_number("nota_dinas")
+
     dummy_nota = f"""
 <div style="font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; background: white; padding: 40px; color: black; border: 1px solid #ccc; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
     <div style="text-align: center; border-bottom: 2px solid black; padding-bottom: 10px; margin-bottom: 20px;">
         <h2 style="margin: 0; font-size: 18px;">PT PINDAD (PERSERO)</h2>
-        <p style="margin: 5px 0 0 0; font-size: 14px;">NOTA DINAS</p>
+        <p style="margin: 5px 0 0 0; font-size: 14px; font-weight: bold;">NOTA DINAS</p>
     </div>
     
     <table style="width: 100%; font-size: 14px; margin-bottom: 20px;">
-        <tr><td style="width: 15%;">Nomor</td><td>: ND-___/CAKRA/2026</td></tr>
-        <tr><td>Kepada</td><td>: Yth. Manager Terkait</td></tr>
-        <tr><td>Dari</td><td>: Divisi Pemohon</td></tr>
-        <tr><td>Tanggal</td><td>: 06 Juli 2026</td></tr>
+        <tr><td style="width: 15%;">Nomor</td><td>: {no_draft}</td></tr>
+        <tr><td>Kepada</td><td>: Yth. Pejabat / Manager Terkait</td></tr>
+        <tr><td>Dari</td><td>: Pemohon / Unit Kerja Pengusul</td></tr>
+        <tr><td>Tanggal</td><td>: {tgl}</td></tr>
         <tr><td>Sifat</td><td>: Biasa</td></tr>
-        <tr><td>Perihal</td><td>: Permohonan Resmi</td></tr>
+        <tr><td>Perihal</td><td>: {instruction[:60]}...</td></tr>
     </table>
     
     <div style="font-size: 14px; line-height: 1.6; text-align: justify; white-space: pre-wrap;">
@@ -127,7 +131,7 @@ async def generate_nota_dinas(instruction: str) -> str:
         <p>Hormat kami,</p>
         <br><br><br>
         <p><strong>( ______________________ )</strong></p>
-        <p>Manager Divisi</p>
+        <p>Pejabat Berwenang</p>
     </div>
 </div>
 """
