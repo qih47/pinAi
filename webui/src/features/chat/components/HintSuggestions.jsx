@@ -15,7 +15,8 @@ export default function HintSuggestions({
   isStreaming = false,
   isGuest = false,
   language = "id",
-  isMobile = false
+  isMobile = false,
+  isUpward = false
 }) {
   const [suggestions, setSuggestions] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -24,7 +25,10 @@ export default function HintSuggestions({
   const debounceTimerRef = useRef(null);
 
   const activeIsolatedDocId = useChatStore(state => state.activeIsolatedDocId);
+  const activeIsolatedTitle = useChatStore(state => state.activeIsolatedTitle);
+  const chatMode = useChatStore(state => state.chatMode);
   const setContextIsolation = useChatStore(state => state.setContextIsolation);
+  const activeWizard = useChatStore(state => state.activeWizard);
 
   const tHints = translations[language]?.chat?.hints || translations.id.chat.hints;
 
@@ -151,38 +155,65 @@ export default function HintSuggestions({
 
     if (isDocMode && !selectedDoc) {
       // 🚀 STEP 1 -> STEP 2: Lock Document & Transition to Synthetic Questions
-      const docId = item.doc_id || item.id || item.id_berita || item.title;
+      const docId = item.id_berita || item.doc_id || item.id || item.title;
       const docTitle = item.title;
 
-      // Lock context isolation UI
-      if (activeModeTag === "focus") {
-        setContextIsolation(docId, docTitle, "focus");
-      } else {
-        setContextIsolation(docId, docTitle, "auto");
-      }
+      const docMeta = {
+        nomor: item.nomor || "",
+        tanggal: item.tanggal || "",
+        total_pages: item.total_pages || "",
+        category: item.category || "Regulasi",
+        filename: item.filename || null
+      };
+
+      // Simpan konteks isolasi ke store agar handleSubmit (teks manual) maupun onSelectHint selalu tahu dokumen terpilih
+      setContextIsolation(docId, docTitle, activeModeTag || "documents", docMeta);
 
       // Transition to Step 2 without auto-sending
-      setSelectedDoc({ ...item, doc_id: docId, title: docTitle });
+      setSelectedDoc({
+        ...item,
+        doc_id: docId,
+        id_berita: item.id_berita || docId,
+        id: item.id || docId,
+        title: docTitle,
+        ...docMeta
+      });
     } else {
       // 🎯 STEP 2 or Regular Modes: Send question / prompt directly!
-      const finalDocId = selectedDoc?.doc_id || selectedDoc?.id || item.doc_id;
+      const finalDocId = selectedDoc?.id_berita || selectedDoc?.doc_id || selectedDoc?.id || item.id_berita || item.doc_id || item.id;
       const finalDocTitle = selectedDoc?.title || item.title;
+      const finalIdBerita = selectedDoc?.id_berita || item.id_berita || finalDocId;
+      const finalNomor = selectedDoc?.nomor || item.nomor || "";
+      const finalTanggal = selectedDoc?.tanggal || item.tanggal || "";
+      const finalTotalPages = selectedDoc?.total_pages || item.total_pages || "";
+      const finalCategory = selectedDoc?.category || item.category || "Regulasi";
+      const finalFilename = selectedDoc?.filename || item.filename || null;
 
       onSelectHint(item.title, activeModeTag, {
         ...item,
+        ...(selectedDoc || {}),
         doc_id: finalDocId,
+        id_berita: finalIdBerita,
+        id: finalIdBerita,
+        title: finalDocTitle,
         doc_title: finalDocTitle,
+        nomor: finalNomor,
+        tanggal: finalTanggal,
+        total_pages: finalTotalPages,
+        category: finalCategory,
+        filename: finalFilename,
         isolated_doc_id: finalDocId
       });
     }
   };
 
-  // If streaming or if there are no hints and no default actions to show, return null
-  if (isStreaming) return null;
+  // For downward (welcome screen), return null if streaming or wizard
+  if (!isUpward && (isStreaming || activeWizard)) return null;
+  if (isUpward && !activeModeTag) return null;
   if (activeModeTag && suggestions.length === 0 && !selectedDoc) return null;
 
   return (
-    <div className="w-full flex flex-col items-center justify-center gap-1 mt-2 mb-1 px-1 select-none">
+    <div className={`w-full flex flex-col items-center justify-center gap-1 select-none ${isUpward ? "mb-1" : "mt-2 mb-1 px-1"}`}>
       {/* 💫 Dynamic Micro-Animation Keyframes */}
       <style>{`
         @keyframes cakraSpringBounce {
@@ -215,11 +246,17 @@ export default function HintSuggestions({
             opacity: 1;
             transform: translateY(0) scale(1);
           }
+        .no-scrollbar::-webkit-scrollbar {
+          display: none;
+        }
+        .no-scrollbar {
+          -ms-overflow-style: none;
+          scrollbar-width: none;
         }
       `}</style>
 
       {/* 🧭 STATE 2: BARIS OPSI UTAMA DENGAN SPRING BOUNCE ANIMATION */}
-      {!activeModeTag && !input.trim() && (
+      {!isUpward && !activeModeTag && !input.trim() && (
         <div className="flex flex-col items-center justify-center gap-1.5 w-full">
           {/* Baris 1: 3 Tombol Berjejer Alami dengan Lebar Dinamis (Proporsional Sesuai Panjang Teks) */}
           <div className="flex flex-nowrap items-center justify-center gap-1.5 sm:gap-2.5 w-full max-w-full px-1">
@@ -372,7 +409,18 @@ export default function HintSuggestions({
 
       {/* 💡 STATE 3: DYNAMIC RECOMENDATION HINTS (STEP 1 & STEP 2) */}
       {activeModeTag && (
-        <div className="flex flex-col gap-1 w-full mt-1">
+        <div
+          className={`flex flex-col gap-0.5 w-full no-scrollbar ${
+            isUpward
+              ? "bg-transparent border-0 shadow-none"
+              : "mt-1"
+          }`}
+          style={{
+            overflow: "visible",
+            scrollbarWidth: "none",
+            msOverflowStyle: "none",
+          }}
+        >
           {/* Breadcrumb Header jika sedang di STEP 2 (Memilih Pertanyaan Dokumen) */}
           {selectedDoc && (
             <div className="flex items-center justify-between px-3 py-1 mb-0.5 rounded-lg bg-indigo-500/10 border border-indigo-500/20 text-xs animate-fadeIn">

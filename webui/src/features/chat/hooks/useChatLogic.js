@@ -1019,6 +1019,31 @@ export function useChatLogic({ isGuest,
     }
 
     const activeModeTag = useChatStore.getState().activeModeTag;
+    const activeIsolatedDocId = useChatStore.getState().activeIsolatedDocId;
+    const activeIsolatedTitle = useChatStore.getState().activeIsolatedTitle;
+    const activeIsolatedMeta = useChatStore.getState().activeIsolatedMeta;
+
+    const streamOptions = { forced_mode: activeModeTag, bypass_router: Boolean(activeModeTag) };
+    if ((activeModeTag === 'documents' || activeModeTag === 'focus' || chatModeRef.current === 'focus' || chatModeRef.current === 'documents') && activeIsolatedDocId) {
+      streamOptions.isolated_doc_id = activeIsolatedDocId;
+      streamOptions.doc_title = activeIsolatedTitle;
+      streamOptions.hint_source = {
+        id: String(activeIsolatedDocId),
+        dokumen_id: String(activeIsolatedDocId),
+        id_berita: activeIsolatedDocId,
+        title: activeIsolatedTitle || "Dokumen Rujukan",
+        document_title: activeIsolatedTitle || "Dokumen Rujukan",
+        nomor: (activeIsolatedMeta?.nomor && activeIsolatedMeta?.nomor !== 'N/A' && activeIsolatedMeta?.nomor !== 'No Regulasi ----') ? activeIsolatedMeta.nomor : "",
+        tanggal: activeIsolatedMeta?.tanggal || "",
+        total_pages: activeIsolatedMeta?.total_pages || "",
+        category: activeIsolatedMeta?.category || "Regulasi",
+        jenis: activeIsolatedMeta?.category || "Regulasi",
+        filename: activeIsolatedMeta?.filename || null,
+        file_path: activeIsolatedMeta?.file_path || (activeIsolatedMeta?.filename ? `file_peraturan/${activeIsolatedMeta.filename}` : null),
+        score: 1.0,
+        score_label: "HINT_DOCUMENT_SELECTED"
+      };
+    }
 
     // PERBAIKAN UTAMA: Meneruskan data berkas yang berhasil diunggah langsung ke fungsi sendMessage
     sendMessage(
@@ -1035,7 +1060,7 @@ export function useChatLogic({ isGuest,
       chatModeRef.current, // PARAMETER MODE: 'auto' | 'documents' (untuk dikirim ke backend)
       isThinkingModeRef.current, // PARAMETER THINKING: true/false
       toast,
-      { forced_mode: activeModeTag, bypass_router: Boolean(activeModeTag) }
+      streamOptions
     );
 
     sessionStorage.removeItem("cakra_draft_new");
@@ -1064,13 +1089,37 @@ export function useChatLogic({ isGuest,
     if (!hintText.trim() || isStreaming || isUploadingFile) return;
 
     const streamOptions = { bypass_router: true, forced_mode: targetMode };
-    if (hintItem && (hintItem.doc_id || hintItem.id_berita || hintItem.filename)) {
-      const docId = hintItem.doc_id || hintItem.id_berita || hintItem.filename;
+    const isDocOrFocus = targetMode === 'documents' || targetMode === 'focus' || targetMode === 'audit';
+
+    if (hintItem && (hintItem.doc_id || hintItem.id_berita || hintItem.id || hintItem.filename || hintItem.title)) {
+      const docId = hintItem.id_berita || hintItem.doc_id || hintItem.id || hintItem.filename;
+      const docTitle = hintItem.title || hintItem.doc_title || "Dokumen Rujukan";
       streamOptions.isolated_doc_id = docId;
-      streamOptions.doc_title = hintItem.title;
+      streamOptions.doc_title = docTitle;
+
+      // 📚 JIKA PIL DOKUMEN / FOCUS: Wajibkan dokumen terpilih menjadi dokumen rujukan (sources / citations)
+      if (isDocOrFocus) {
+        streamOptions.hint_source = {
+          id: String(docId),
+          dokumen_id: String(docId),
+          id_berita: docId,
+          title: docTitle,
+          document_title: docTitle,
+          nomor: (hintItem.nomor && hintItem.nomor !== 'N/A' && hintItem.nomor !== 'No Regulasi ----') ? hintItem.nomor : "",
+          tanggal: hintItem.tanggal || "",
+          total_pages: hintItem.total_pages || "",
+          category: hintItem.category || "Regulasi",
+          jenis: hintItem.category || "Regulasi",
+          filename: hintItem.filename || null,
+          file_path: hintItem.file_path || (hintItem.filename ? `file_peraturan/${hintItem.filename}` : null),
+          score: 1.0,
+          score_label: "HINT_DOCUMENT_SELECTED"
+        };
+      }
+
       // Hanya aktifkan persistent context isolation UI jika targetMode adalah focus / audit
       if (targetMode === 'focus' || targetMode === 'audit') {
-        useChatStore.getState().setContextIsolation(docId, hintItem.title);
+        useChatStore.getState().setContextIsolation(docId, docTitle, targetMode);
       }
     }
 

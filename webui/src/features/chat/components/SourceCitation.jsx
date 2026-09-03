@@ -148,9 +148,10 @@ const SourceCitation = ({ sources, darkMode, theme, language = 'id', onPreview, 
     ) && (currentChatMode === 'focus' || currentChatMode === 'auto');
 
     if (isThisActive) {
-      useChatStore.getState().setContextIsolation(null, null, 'auto');
+      useChatStore.getState().setContextIsolation(null, null, 'focus');
+      useChatStore.getState().setActiveModeTag('focus');
     } else {
-      useChatStore.getState().setContextIsolation(docId, docTitle, 'focus');
+      useChatStore.getState().setContextIsolation(docId, docTitle, 'focus', source);
     }
   };
 
@@ -165,9 +166,10 @@ const SourceCitation = ({ sources, darkMode, theme, language = 'id', onPreview, 
     ) && currentChatMode === 'compliance';
 
     if (isThisActive) {
-      useChatStore.getState().setContextIsolation(null, null, 'auto');
+      useChatStore.getState().setContextIsolation(null, null, 'compliance');
+      useChatStore.getState().setActiveModeTag('compliance');
     } else {
-      useChatStore.getState().setContextIsolation(docId, docTitle, 'compliance');
+      useChatStore.getState().setContextIsolation(docId, docTitle, 'compliance', source);
     }
   };
 
@@ -182,9 +184,10 @@ const SourceCitation = ({ sources, darkMode, theme, language = 'id', onPreview, 
     ) && currentChatMode === 'redteam';
 
     if (isThisActive) {
-      useChatStore.getState().setContextIsolation(null, null, 'auto');
+      useChatStore.getState().setContextIsolation(null, null, 'redteam');
+      useChatStore.getState().setActiveModeTag('redteam');
     } else {
-      useChatStore.getState().setContextIsolation(docId, docTitle, 'redteam');
+      useChatStore.getState().setContextIsolation(docId, docTitle, 'redteam', source);
     }
   };
 
@@ -298,8 +301,15 @@ const SourceCitation = ({ sources, darkMode, theme, language = 'id', onPreview, 
       {sources.map((src, idx) => {
         const title = src.title || src.filename || src.name || 'Dokumen';
         const docId = src.id || src.dokumen_id;
-        const regNomor = src.nomor || 'No Regulasi ----';
-        const page = src.page || src.page_number || src.halaman;
+        const regNomor = (src.nomor && src.nomor !== 'N/A' && src.nomor !== 'No Regulasi ----') ? src.nomor : '';
+        const rawPage = src.page || src.page_number || src.halaman;
+        const formattedPages = Array.isArray(rawPage)
+          ? (rawPage.some(p => p === 0) ? rawPage.map(p => p + 1) : rawPage)
+          : rawPage;
+        const pageText = Array.isArray(formattedPages)
+          ? (formattedPages.length > 1 ? `${formattedPages[0]}-${formattedPages[formattedPages.length - 1]}` : (formattedPages[0] !== undefined ? formattedPages[0] : ''))
+          : formattedPages;
+        const page = pageText;
         const isHovered = hoveredIndex === idx;
 
         const isCurrentlyIsolated = activeIsolatedDocId && (
@@ -317,7 +327,7 @@ const SourceCitation = ({ sources, darkMode, theme, language = 'id', onPreview, 
             key={`source-card-${idx}`}
             onMouseEnter={() => setHoveredIndex(idx)}
             onMouseLeave={() => setHoveredIndex(null)}
-            style={cardStyle(isHovered, isCurrentlyIsolated)}
+            style={cardStyle(isHovered, isCurrentlyIsolated && (currentChatMode === 'focus' || currentChatMode === 'compliance' || currentChatMode === 'redteam'))}
           >
             {/* Tombol External Link Portal */}
             <button
@@ -381,9 +391,15 @@ const SourceCitation = ({ sources, darkMode, theme, language = 'id', onPreview, 
                     fontWeight: 700,
                     textTransform: 'uppercase'
                   }}>
-                    {src.jenis || 'Regulasi'}
+                    {src.jenis || src.category || 'Regulasi'}
                   </span>
-                  <span>{regNomor} {src.total_pages ? `• ${src.total_pages} ${t.pages}` : (page ? `• ${t.pageAbbrev} ${page}` : '')}</span>
+                  {(regNomor || src.tanggal || src.total_pages || page) && (
+                    <span>
+                      {regNomor ? regNomor : (src.tanggal || '')}
+                      {(regNomor || src.tanggal) && (src.total_pages || page) ? ' • ' : ''}
+                      {src.total_pages ? `${src.total_pages} ${t.pages}` : (page ? `${t.pageAbbrev} ${page}` : '')}
+                    </span>
+                  )}
                 </span>
 
                 {/* Tampilkan Daftar BAB/Pasal jika ada */}

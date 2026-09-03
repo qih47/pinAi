@@ -450,8 +450,8 @@ export default function ChatPage({ isGuest,
           >
             <div
               style={{
-                flex: 1,
-                minHeight: 0,
+                position: "absolute",
+                inset: 0,
                 opacity: showWelcome && !corporateMode ? 0 : 1,
                 transition: "opacity 0.2s ease",
                 pointerEvents: showWelcome && !corporateMode ? "none" : "auto",
@@ -525,8 +525,8 @@ export default function ChatPage({ isGuest,
                 <div
                   style={{
                     width: "100%",
-                    maxWidth: "700px",
-                    padding: isMobile ? "0 16px" : "0 20px",
+                    maxWidth: "816px",
+                    padding: isMobile ? "0 16px" : "0 24px",
                     marginTop: "0px",
                     pointerEvents: "auto",
                     boxSizing: "border-box",

@@ -96,7 +96,7 @@ export async function performStream(set, get, messagesToSend, assistantMessage, 
                     messages: messagesToSend,
                     chatMode: chatMode || get().chatMode || 'auto',
                     thinking: isThinkingMode !== undefined ? isThinkingMode : get().isThinkingMode,
-                    isolatedDocId,
+                    isolatedDocId: streamOptions.isolated_doc_id || streamOptions.isolatedDocId || isolatedDocId,
                     attachmentPaths,
                     npp,
                     editIndex,
@@ -185,10 +185,34 @@ export async function performStream(set, get, messagesToSend, assistantMessage, 
                     },
                     onSources: (sources) => {
                         console.log('📚 [SSE] Received sources:', sources);
+                        let finalSources = Array.isArray(sources) ? [...sources] : [];
+
+                        // 📚 MERGE DOKUMEN RUJUKAN dari hint jika ada streamOptions.hint_source
+                        if (streamOptions?.hint_source) {
+                            const hintSrc = streamOptions.hint_source;
+                            const existingIdx = finalSources.findIndex(s => 
+                                (hintSrc.id && (String(s.id) === String(hintSrc.id) || String(s.dokumen_id) === String(hintSrc.id) || String(s.id_berita) === String(hintSrc.id))) ||
+                                (hintSrc.title && s.title && s.title.trim().toLowerCase() === hintSrc.title.trim().toLowerCase())
+                            );
+                            if (existingIdx !== -1) {
+                                finalSources[existingIdx] = {
+                                    ...hintSrc,
+                                    ...finalSources[existingIdx],
+                                    nomor: finalSources[existingIdx].nomor || hintSrc.nomor || "",
+                                    tanggal: finalSources[existingIdx].tanggal || hintSrc.tanggal || "",
+                                    total_pages: finalSources[existingIdx].total_pages || hintSrc.total_pages || "",
+                                    category: finalSources[existingIdx].category || hintSrc.category || "Regulasi",
+                                    jenis: finalSources[existingIdx].jenis || hintSrc.jenis || "Regulasi",
+                                };
+                            } else {
+                                finalSources = [hintSrc, ...finalSources];
+                            }
+                        }
+
                         const updatedAssistantMsg = {
                             ...assistantMessage,
-                            sources: sources,
-                            citations: sources
+                            sources: finalSources,
+                            citations: finalSources
                         };
                         const currentMessages = [...(get().activeStreams[activeSessionUuid]?.messages || get().messages)];
                         const idxToUpdate = targetAssistantIdx !== null ? targetAssistantIdx : currentMessages.length - 1;
@@ -415,6 +439,36 @@ export async function performStream(set, get, messagesToSend, assistantMessage, 
                     },
                     onDone: (data) => {
                         assistantMessage = { ...assistantMessage, isStreaming: false, isThinking: false };
+
+                        // 📚 MERGE DOKUMEN RUJUKAN dari hint di akhir stream jika belum terdaftar
+                        if (streamOptions?.hint_source) {
+                            const hintSrc = streamOptions.hint_source;
+                            let currentSources = assistantMessage.sources || assistantMessage.citations || [];
+                            if (!Array.isArray(currentSources)) currentSources = [];
+
+                            const existingIdx = currentSources.findIndex(s => 
+                                (hintSrc.id && (String(s.id) === String(hintSrc.id) || String(s.dokumen_id) === String(hintSrc.id) || String(s.id_berita) === String(hintSrc.id))) ||
+                                (hintSrc.title && s.title && s.title.trim().toLowerCase() === hintSrc.title.trim().toLowerCase())
+                            );
+                            if (existingIdx !== -1) {
+                                currentSources[existingIdx] = {
+                                    ...hintSrc,
+                                    ...currentSources[existingIdx],
+                                    nomor: currentSources[existingIdx].nomor || hintSrc.nomor || "",
+                                    tanggal: currentSources[existingIdx].tanggal || hintSrc.tanggal || "",
+                                    total_pages: currentSources[existingIdx].total_pages || hintSrc.total_pages || "",
+                                    category: currentSources[existingIdx].category || hintSrc.category || "Regulasi",
+                                    jenis: currentSources[existingIdx].jenis || hintSrc.jenis || "Regulasi",
+                                };
+                            } else {
+                                currentSources = [hintSrc, ...currentSources];
+                            }
+                            assistantMessage = {
+                                ...assistantMessage,
+                                sources: currentSources,
+                                citations: currentSources
+                            };
+                        }
 
                         // --- INTERCEPT SHORT/TRUNCATED RESPONSE ---
                         const cleanContent = (assistantMessage.content || '').trim();

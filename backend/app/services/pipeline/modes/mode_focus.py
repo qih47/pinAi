@@ -60,6 +60,9 @@ class ModeFocus:
         filename = None
         pg_doc_id = None
         db_file_path = None
+        doc_nomor = context_isolation.get("nomor", "") if (context_isolation and isinstance(context_isolation, dict)) else ""
+        doc_tanggal = context_isolation.get("tanggal", "") if (context_isolation and isinstance(context_isolation, dict)) else ""
+        doc_jenis = context_isolation.get("category", "Regulasi") if (context_isolation and isinstance(context_isolation, dict)) else "Regulasi"
 
         if isinstance(isolated_doc_id, str) and isolated_doc_id.lower().endswith(".pdf"):
             filename = isolated_doc_id
@@ -69,21 +72,30 @@ class ModeFocus:
             try:
                 async with get_db() as pg_conn:
                     doc_row = None
+                    pg_select = """
+                        SELECT d.id, d.judul, d.filename, COALESCE(d.nomor, '') as nomor,
+                               COALESCE(d.tanggal::text, '') as tanggal, COALESCE(j.nama, 'Regulasi') as jenis
+                        FROM dokumen d
+                        LEFT JOIN jenis_dokumen j ON d.id_jenis = j.id
+                    """
                     if str(isolated_doc_id).isdigit():
                         doc_row = await pg_conn.fetchrow(
-                            "SELECT id, judul, filename FROM dokumen WHERE id = $1", 
+                            f"{pg_select} WHERE d.id = $1", 
                             int(isolated_doc_id)
                         )
                     if not doc_row and isinstance(isolated_doc_id, str):
                         doc_row = await pg_conn.fetchrow(
-                            "SELECT id, judul, filename FROM dokumen WHERE filename = $1 OR judul ILIKE $1 LIMIT 1",
+                            f"{pg_select} WHERE d.filename = $1 OR d.judul ILIKE $1 LIMIT 1",
                             isolated_doc_id
                         )
                     if doc_row:
                         pg_doc_id = doc_row["id"]
                         filename = doc_row["filename"]
                         doc_title = doc_title or doc_row["judul"] or filename
-                        logger.info(f"[MODE_FOCUS] Resolved from PG dokumen: id={pg_doc_id}, filename={filename}")
+                        doc_nomor = doc_row.get("nomor") or doc_nomor
+                        doc_tanggal = doc_row.get("tanggal") or doc_tanggal
+                        doc_jenis = doc_row.get("jenis") or doc_jenis
+                        logger.info(f"[MODE_FOCUS] Resolved from PG dokumen: id={pg_doc_id}, filename={filename}, nomor={doc_nomor}")
             except Exception as e:
                 logger.warning(f"[MODE_FOCUS] PG query error: {e}")
 
@@ -93,7 +105,8 @@ class ModeFocus:
                 async with get_peraturan_db() as conn:
                     async with conn.cursor() as cur:
                         query = """
-                            SELECT judul, COALESCE(NULLIF(gambar, ''), NULLIF(gambar2, ''), NULLIF(gambar3, '')) AS filename 
+                            SELECT judul, COALESCE(NULLIF(gambar, ''), NULLIF(gambar2, ''), NULLIF(gambar3, '')) AS filename,
+                                   COALESCE(nomor, '') as nomor, COALESCE(tgl_berita, '') as tgl_berita, COALESCE(tag, 'Regulasi') as tag
                             FROM berita 
                             WHERE id_berita = %s
                         """
@@ -102,7 +115,10 @@ class ModeFocus:
                         if row and row[1]:
                             doc_title = doc_title or row[0]
                             filename = row[1]
-                            logger.info(f"[MODE_FOCUS] Resolved from MySQL berita: filename={filename}")
+                            doc_nomor = row[2] or doc_nomor
+                            doc_tanggal = str(row[3]) if row[3] else doc_tanggal
+                            doc_jenis = row[4] or doc_jenis
+                            logger.info(f"[MODE_FOCUS] Resolved from MySQL berita: filename={filename}, nomor={doc_nomor}")
             except Exception as e:
                 logger.error(f"[MODE_FOCUS] MySQL Error: {e}")
 
@@ -282,12 +298,19 @@ class ModeFocus:
             buffer += chunk
             yield chunk
 
-        # Format sources json eksklusif
+        # Format sources json eksklusif dengan nomor, tanggal, dan total_pages
+        from backend.app.services.search.suggestion_service import _count_pdf_pages
+        total_p = _count_pdf_pages(filename) if filename else None
+
         sources_list = [{
             "id": isolated_doc_id or pg_doc_id,
             "title": doc_title or filename or "Dokumen Rujukan",
             "filename": filename or doc_title,
-            "halaman": selected_pages
+            "nomor": doc_nomor or "",
+            "tanggal": doc_tanggal or "",
+            "category": doc_jenis or "Regulasi",
+            "jenis": doc_jenis or "Regulasi",
+            "total_pages": total_p or (len(selected_pages) if selected_pages else 1),
+            "halaman": [p + 1 for p in selected_pages] if selected_pages else None
         }]
-        sources_tag = f"\n\n<sources_json>{json.dumps(sources_list)}</sources_json>"
-        yield sources_tag
+        yield format_sse("", "", False, sources=sources_list, event_type=SSEEventType.SOURCES)

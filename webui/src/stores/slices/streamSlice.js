@@ -97,11 +97,11 @@ export const createStreamSlice = (set, get) => ({
         const targetFiles = directUploadedFiles !== null ? directUploadedFiles : get().stagedAttachments;
         const attachmentMeta = normalizeAttachments(targetFiles);
 
-        const currentIsolatedDocId = get().activeIsolatedDocId;
+        const currentIsolatedDocId = options?.isolated_doc_id || options?.isolatedDocId || get().activeIsolatedDocId;
         const currentChatMode = get().chatMode;
         
         let effectiveChatMode = chatMode;
-        if (currentIsolatedDocId) {
+        if (currentIsolatedDocId && currentChatMode !== 'documents' && options?.forced_mode !== 'documents') {
             effectiveChatMode = currentChatMode === 'compliance' ? 'compliance' : 'focus';
         }
 
@@ -178,6 +178,12 @@ export const createStreamSlice = (set, get) => ({
         );
 
         set({ stagedAttachments: [] });
+
+        // Untuk mode 'documents', isolasi dokumen spesifik HANYA berlaku untuk 1 turn awal ini.
+        // Setelah stream selesai dikirim & diterima, bersihkan activeIsolatedDocId agar chat berikutnya masuk ke RAG umum.
+        if (get().activeModeTag === 'documents' || options?.forced_mode === 'documents') {
+            get().setContextIsolation(null, null, 'documents');
+        }
     },
 
     editAndRegenerate: async (index, newContent, toast = null) => {

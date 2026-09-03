@@ -29,6 +29,7 @@ export const createChatSlice = (set, get) => ({
             stagedAttachments: [],
             activeIsolatedDocId: null,
             activeIsolatedTitle: null,
+            activeIsolatedMeta: null,
             activeModeTag: null,
             artifacts: [],  // ← Reset artifacts saat session baru
             isSplitScreen: false,
@@ -41,12 +42,19 @@ export const createChatSlice = (set, get) => ({
         });
     },
 
-    setContextIsolation: (docId, docTitle, mode = null) => {
-        set((state) => ({
-            activeIsolatedDocId: docId || null,
-            activeIsolatedTitle: docTitle || null,
-            chatMode: mode ? mode : (docId ? (state.chatMode === 'compliance' || state.chatMode === 'redteam' ? state.chatMode : 'focus') : 'auto')
-        }));
+    setContextIsolation: (docId, docTitle, mode = null, meta = null) => {
+        set((state) => {
+            const newChatMode = mode ? mode : (docId ? (state.chatMode === 'compliance' || state.chatMode === 'redteam' ? state.chatMode : 'focus') : 'auto');
+            return {
+                activeIsolatedDocId: docId || null,
+                activeIsolatedTitle: docTitle || null,
+                activeIsolatedMeta: meta || null,
+                chatMode: newChatMode,
+                activeModeTag: (newChatMode === 'focus' || newChatMode === 'compliance' || newChatMode === 'redteam')
+                    ? 'focus'
+                    : (newChatMode === 'documents' ? 'documents' : (docId ? state.activeModeTag : null))
+            };
+        });
     },
 
     setSplitScreen: (isSplit, url = null) => {

@@ -6,6 +6,7 @@ import SessionList from "./Sidebar/SessionList";
 import SidebarFooter from "./Sidebar/SidebarFooter";
 import SearchModal from "./modals/SearchModal";
 import SettingsModal from "./SettingsModal";
+import { translations } from "@/utils/translations";
 
 const Sidebar = ({
   clearChat,
@@ -42,6 +43,7 @@ const Sidebar = ({
   const [isDeletingId, setIsDeletingId] = useState(null);
   const [isSearchModalOpen, setIsSearchModalOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+  const [isSidebarScrolled, setIsSidebarScrolled] = useState(false);
 
   const pinChat = useChatStore((state) => state.pinChat);
   const renameChat = useChatStore((state) => state.renameChat);
@@ -50,6 +52,7 @@ const Sidebar = ({
 
   const profileName = userData?.fullname || userData?.name || "Pegawai Pindad";
   const profileDivisi = userData?.divisi || "Pegawai Resmi";
+  const t = translations[language]?.sidebar || translations.id.sidebar;
 
   useEffect(() => {
     const handleKeyDown = (e) => {
@@ -182,31 +185,64 @@ const Sidebar = ({
         language={language}
       />
 
-      <SessionList
-        isOpen={isOpen}
-        chatHistory={chatHistory}
-        setChatHistory={setChatHistory}
-        currentSessionId={currentSessionId}
-        loadChatSession={loadChatSession}
-        theme={theme}
-        darkMode={darkMode}
-        pinChat={pinChat}
-        renameChat={renameChat}
-        deleteChat={deleteChat}
-        menuRef={menuRef}
-        activeMenuId={activeMenuId}
-        setActiveMenuId={setActiveMenuId}
-        sessionSearchQuery={sessionSearchQuery}
-        setSessionSearchQuery={setSessionSearchQuery}
-        sidebarSearchInputRef={sidebarSearchInputRef}
-        confirmDelete={confirmDelete}
-        isDeletingId={isDeletingId}
-        language={language}
-        showDocumentList={showDocumentList}
-        setShowDocumentList={setShowDocumentList}
-        userData={userData}
-        navigate={navigate}
-      />
+      {/* ── SCROLL CONTAINER WRAPPER WITH TOP & BOTTOM FADE ── */}
+      <div className="flex-1 min-h-0 relative flex flex-col overflow-hidden">
+        {/* 🌟 TOP FADE OVERLAY: Memudar halus di batas atas scroll */}
+        <div
+          style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            right: 0,
+            height: "36px",
+            background: `linear-gradient(to bottom, ${darkMode ? "#1E1E22" : (theme?.sidebarBg || "#F7F8FC")} 0%, ${darkMode ? "rgba(30,30,34,0.8)" : "rgba(247,248,252,0.8)"} 45%, transparent 100%)`,
+            pointerEvents: "none",
+            zIndex: 10,
+            transition: "background 0.2s ease",
+          }}
+        />
+
+        <SessionList
+          isOpen={isOpen}
+          chatHistory={chatHistory}
+          setChatHistory={setChatHistory}
+          currentSessionId={currentSessionId}
+          loadChatSession={loadChatSession}
+          theme={theme}
+          darkMode={darkMode}
+          pinChat={pinChat}
+          renameChat={renameChat}
+          deleteChat={deleteChat}
+          menuRef={menuRef}
+          activeMenuId={activeMenuId}
+          setActiveMenuId={setActiveMenuId}
+          sessionSearchQuery={sessionSearchQuery}
+          setSessionSearchQuery={setSessionSearchQuery}
+          sidebarSearchInputRef={sidebarSearchInputRef}
+          confirmDelete={confirmDelete}
+          isDeletingId={isDeletingId}
+          language={language}
+          showDocumentList={showDocumentList}
+          setShowDocumentList={setShowDocumentList}
+          userData={userData}
+          navigate={navigate}
+        />
+
+        {/* 🌟 BOTTOM FADE OVERLAY FOR SIDEBAR */}
+        <div
+          style={{
+            position: "absolute",
+            bottom: 0,
+            left: 0,
+            right: 0,
+            height: "48px",
+            background: `linear-gradient(to top, ${darkMode ? "#1E1E22" : (theme?.sidebarBg || "#F7F8FC")} 0%, ${darkMode ? "rgba(30,30,34,0.92)" : "rgba(247,248,252,0.92)"} 25%, ${darkMode ? "rgba(30,30,34,0.55)" : "rgba(247,248,252,0.55)"} 60%, ${darkMode ? "rgba(30,30,34,0.15)" : "rgba(247,248,252,0.15)"} 85%, transparent 100%)`,
+            pointerEvents: "none",
+            zIndex: 10,
+            transition: "background 0.2s ease",
+          }}
+        />
+      </div>
 
       <SidebarFooter
         isOpen={isOpen}

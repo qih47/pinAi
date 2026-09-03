@@ -52,6 +52,7 @@ export default function ChatArea({
   hasSidebar = false,
 }) {
   const virtuosoRef = useRef(null);
+  const activeModeTag = useChatStore(state => state.activeModeTag);
 
   // scrollParent via useState — set saat isLoading=true (Virtuoso belum ada)
   // sehingga ketika isLoading=false, Virtuoso mount langsung dengan scrollParent yang benar.
@@ -134,41 +135,65 @@ export default function ChatArea({
 
   const t = translations[language]?.chatArea || translations.id.chatArea;
 
-  const FooterComponent = useCallback(() => (
-    <>
-      {isStreaming && lastAssistantIndex === -1 && (
-        <div style={{ ...styles.assistantRow, padding: '12px 0' }}>
-          <div style={styles.assistantMessageWrapper}>
-            <div style={styles.assistantHeader}>
-              <div style={styles.avatarWrap}>
-                <img
-                  src={cakraLogo}
-                  alt="CAKRA"
-                  style={{ width: 25, height: 25, borderRadius: 8, objectFit: 'cover', background: 'transparent', animation: 'cakraSpin 0.7s linear infinite' }}
-                />
-                <span style={{ ...styles.statusDot, background: '#ef4444', borderColor: theme.mainBg }} />
+  const FooterComponent = useCallback(() => {
+    const spacerHeight = activeModeTag ? 310 : 170;
+    return (
+      <>
+        {isStreaming && lastAssistantIndex === -1 && (
+          <div style={{ ...styles.assistantRow, padding: '12px 0' }}>
+            <div style={styles.assistantMessageWrapper}>
+              <div style={styles.assistantHeader}>
+                <div style={styles.avatarWrap}>
+                  <img
+                    src={cakraLogo}
+                    alt="CAKRA"
+                    style={{ width: 25, height: 25, borderRadius: 8, objectFit: 'cover', background: 'transparent', animation: 'cakraSpin 0.7s linear infinite' }}
+                  />
+                  <span style={{ ...styles.statusDot, background: '#ef4444', borderColor: theme.mainBg }} />
+                </div>
+                <span style={{ ...styles.thinkingInline, color: theme.secondaryText, marginLeft: 10 }}>
+                  {resolveStatusMessage(currentThinking, language) || t.thinking}
+                </span>
               </div>
-              <span style={{ ...styles.thinkingInline, color: theme.secondaryText, marginLeft: 10 }}>
-                {resolveStatusMessage(currentThinking, language) || t.thinking}
-              </span>
+              <div style={styles.assistantContent} />
             </div>
-            <div style={styles.assistantContent} />
           </div>
-        </div>
-      )}
-      {/* Spacer bawah lega (150px) agar batas bawah jelas & tombol aksi tidak pernah nembus/tenggelam di balik kotak input */}
-      <div style={{ height: '150px', width: '100%', flexShrink: 0, overflowAnchor: 'auto' }} />
-    </>
-  ), [isStreaming, lastAssistantIndex, currentThinking, theme.mainBg, theme.secondaryText, language]);
+        )}
+        {/* Spacer bawah lega agar batas bawah tembus sampai bawah & bubble terakhir tidak tertutup input area */}
+        <div style={{ height: `${spacerHeight}px`, width: '100%', flexShrink: 0, overflowAnchor: 'auto' }} />
+      </>
+    );
+  }, [isStreaming, lastAssistantIndex, currentThinking, theme.mainBg, theme.secondaryText, language, activeModeTag]);
 
   return (
     <div style={{ flex: 1, minHeight: 0, position: 'relative', display: 'flex', flexDirection: 'column', width: '100%' }}>
+      {/* 🌟 TOP FADE OVERLAY: Efek transparan memudar halus di bagian atas seperti di bagian bawah */}
+      <div
+        style={{
+          position: "absolute",
+          top: 0,
+          left: 0,
+          right: 0,
+          height: "92px",
+          background: `linear-gradient(to bottom, ${theme.inputAreaBg || (darkMode ? '#151517' : '#ffffff')} 0%, ${darkMode ? 'rgba(21,21,23,0.92)' : 'rgba(255,255,255,0.92)'} 28%, ${darkMode ? 'rgba(21,21,23,0.6)' : 'rgba(255,255,255,0.6)'} 58%, ${darkMode ? 'rgba(21,21,23,0.15)' : 'rgba(255,255,255,0.15)'} 82%, transparent 100%)`,
+          pointerEvents: "none",
+          zIndex: 20,
+          transition: "background 0.2s ease",
+        }}
+      />
       <div
         ref={messagesContainerRef}
-        style={{ ...styles.scrollArea, overflowY: 'auto', position: 'relative', flex: 1, overflowAnchor: 'none' }}
+        style={{
+          ...styles.scrollArea,
+          overflowY: 'auto',
+          position: 'relative',
+          flex: 1,
+          overflowAnchor: 'none',
+          overscrollBehaviorY: 'contain',
+        }}
         className="custom-scrollbar chat-main-scroll"
       >
-      <div style={styles.chatInner}>
+      <div style={{ ...styles.chatInner, paddingTop: '20px' }}>
         {isLoading ? (
           <div style={{ animation: 'fadeSlideIn 0.2s ease-out' }}>
             <SkeletonChat />
@@ -199,7 +224,6 @@ export default function ChatArea({
               atBottomStateChange={(atBottom) => {
                 if (onAtBottomChange) onAtBottomChange(atBottom);
               }}
-              alignToBottom={true}
               followOutput={(isAtBottom) => {
                 return isAtBottom ? 'auto' : false;
               }}

@@ -70,7 +70,8 @@ export default function SessionList({
   showDocumentList,
   setShowDocumentList,
   userData,
-  navigate
+  navigate,
+  onScroll,
 }) {
   const location = useLocation();
   const t = translations[language]?.sidebar || translations.id.sidebar;
@@ -139,20 +140,24 @@ export default function SessionList({
 
   return (
     <div
-      className="flex-1 overflow-y-auto overflow-x-hidden px-2 space-y-0.5"
+      onScroll={onScroll}
+      className="flex-1 overflow-y-auto overflow-x-hidden px-2 space-y-0.5 custom-scrollbar"
       style={{
         scrollbarWidth: "thin",
+        overscrollBehaviorY: "contain",
+        paddingTop: "30px",
+        paddingBottom: "24px",
       }}
     >
-
       {/* ── MENUS THAT SCROLL ALONG WITH CHATS ── */}
       <div className={`space-y-0 mb-4 px-1 ${!isOpen ? 'flex flex-col items-center' : ''}`}>
-        {/* ── CORPORATE TOOLS SECTION ── */}
+        {/* ── CORPORATE TOOLS SECTION (REGULASI) ── */}
         <div className={`pt-0.5 pb-1 transition-all duration-300 ${!isOpen ? "opacity-0 h-0 overflow-hidden" : "opacity-100 h-auto"}`}>
-          <p className="text-[10px] font-bold tracking-widest uppercase" style={{ color: theme?.secondaryText || "#9ca3af", paddingLeft: "12px" }}>
+          <p className="text-[10px] font-bold tracking-widest uppercase" style={{ color: darkMode ? "#cbd5e1" : "#4b5563", paddingLeft: "12px" }}>
             {t.regulation}
           </p>
         </div>
+
         {/* ── TOMBOL: DOCUMENTS (DULU EMOJI 📄, SEKARANG SVG) ── */}
         <button
           onClick={() => setShowDocumentList(!showDocumentList)}

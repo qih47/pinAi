@@ -1,7 +1,27 @@
+import os
 import logging
 from typing import List, Dict, Any, Optional
 
 logger = logging.getLogger("CAKRA_SUGGESTIONS")
+
+def _count_pdf_pages(filename: str) -> str:
+    if not filename:
+        return ""
+    candidates = [
+        os.path.join("/home/qisthi/pinAi/file_peraturan", filename),
+        os.path.join("/home/qisthi/pinAi/backend/data/file_peraturan", filename),
+    ]
+    for p in candidates:
+        if os.path.exists(p):
+            try:
+                import fitz
+                doc = fitz.open(p)
+                cnt = len(doc)
+                doc.close()
+                return str(cnt) if cnt > 0 else ""
+            except Exception:
+                pass
+    return ""
 
 # Default curated suggestions for Web Search and Code
 DEFAULT_WEB_SUGGESTIONS = [
@@ -126,13 +146,30 @@ class SuggestionService:
         questions = []
         clean_title = doc_title.replace(".pdf", "").replace(".docx", "").replace(".txt", "").strip()
 
-        # 1. Coba ambil dari rag_document_questions (Synthetic QA yang tersimpan di PostgreSQL)
+        doc_nomor = ""
+        doc_tanggal = ""
+        doc_pages = ""
+        doc_filename = ""
+
+        # 1. Coba ambil metadata dokumen dan rag_document_questions (Synthetic QA di PostgreSQL)
         if doc_id:
             try:
                 from backend.app.core import database
                 pool = database.db_pool
                 if pool:
                     async with pool.acquire() as conn:
+                        drow = await conn.fetchrow(
+                            "SELECT nomor, tanggal::text, filename FROM dokumen WHERE id = $1",
+                            doc_id
+                        )
+                        if drow:
+                            doc_nomor = (drow["nomor"] or "").strip()
+                            if doc_nomor in ["N/A", "No Regulasi ----"]:
+                                doc_nomor = ""
+                            doc_tanggal = (drow["tanggal"] or "").strip()
+                            doc_filename = (drow["filename"] or "").strip()
+                            doc_pages = _count_pdf_pages(doc_filename)
+
                         rows = await conn.fetch(
                             """
                             SELECT generated_question 
@@ -150,6 +187,12 @@ class SuggestionService:
                                     "title": q_text,
                                     "category": "Pertanyaan Dokumen",
                                     "doc_id": doc_id,
+                                    "id_berita": doc_id,
+                                    "id": doc_id,
+                                    "nomor": doc_nomor,
+                                    "tanggal": doc_tanggal,
+                                    "total_pages": doc_pages,
+                                    "filename": doc_filename,
                                     "source": "synthetic_qa"
                                 })
             except Exception as e:
@@ -170,6 +213,12 @@ class SuggestionService:
                     "title": q_title,
                     "category": cat,
                     "doc_id": doc_id,
+                    "id_berita": doc_id,
+                    "id": doc_id,
+                    "nomor": doc_nomor,
+                    "tanggal": doc_tanggal,
+                    "total_pages": doc_pages,
+                    "filename": doc_filename,
                     "source": "template"
                 })
 
@@ -195,11 +244,14 @@ class SuggestionService:
                 async with pool.acquire() as conn:
                     if query:
                         search_pattern = f"%{query}%"
-                        # 1. Cari di tabel dokumen / regulasi (PostgreSQL schema: d.judul, d.filename, d.nomor, j.nama)
+                        # 1. Cari di tabel dokumen / regulasi (PostgreSQL schema: d.judul, d.filename, d.nomor, j.nama, d.tanggal)
                         sql = """
                             SELECT DISTINCT COALESCE(d.judul, d.filename, 'Dokumen Tanpa Judul') as title,
                                    COALESCE(j.nama, 'Regulasi') as category,
                                    d.id as doc_id,
+                                   COALESCE(d.nomor, '') as nomor,
+                                   COALESCE(d.tanggal::text, '') as tanggal,
+                                   COALESCE(d.filename, '') as filename,
                                    'dokumen' as source
                             FROM dokumen d
                             LEFT JOIN jenis_dokumen j ON d.id_jenis = j.id
@@ -209,10 +261,21 @@ class SuggestionService:
                         """
                         rows = await conn.fetch(sql, search_pattern, limit)
                         for r in rows:
+                            fname = r["filename"] or ""
+                            pages = _count_pdf_pages(fname)
+                            nomor_clean = (r["nomor"] or "").strip()
+                            if nomor_clean in ["N/A", "No Regulasi ----"]:
+                                nomor_clean = ""
                             suggestions.append({
                                 "title": r["title"].strip(),
                                 "category": r["category"],
                                 "doc_id": r["doc_id"],
+                                "id_berita": r["doc_id"],
+                                "id": r["doc_id"],
+                                "nomor": nomor_clean,
+                                "tanggal": (r["tanggal"] or "").strip(),
+                                "total_pages": pages,
+                                "filename": fname,
                                 "source": r["source"]
                             })
                     else:
@@ -221,6 +284,9 @@ class SuggestionService:
                             SELECT DISTINCT COALESCE(d.judul, d.filename, 'Dokumen Tanpa Judul') as title,
                                    COALESCE(j.nama, 'Regulasi') as category,
                                    d.id as doc_id,
+                                   COALESCE(d.nomor, '') as nomor,
+                                   COALESCE(d.tanggal::text, '') as tanggal,
+                                   COALESCE(d.filename, '') as filename,
                                    'dokumen' as source
                             FROM dokumen d
                             LEFT JOIN jenis_dokumen j ON d.id_jenis = j.id
@@ -229,10 +295,21 @@ class SuggestionService:
                         """
                         rows = await conn.fetch(sql, limit)
                         for r in rows:
+                            fname = r["filename"] or ""
+                            pages = _count_pdf_pages(fname)
+                            nomor_clean = (r["nomor"] or "").strip()
+                            if nomor_clean in ["N/A", "No Regulasi ----"]:
+                                nomor_clean = ""
                             suggestions.append({
                                 "title": r["title"].strip(),
                                 "category": r["category"],
                                 "doc_id": r["doc_id"],
+                                "id_berita": r["doc_id"],
+                                "id": r["doc_id"],
+                                "nomor": nomor_clean,
+                                "tanggal": (r["tanggal"] or "").strip(),
+                                "total_pages": pages,
+                                "filename": fname,
                                 "source": r["source"]
                             })
         except Exception as e:

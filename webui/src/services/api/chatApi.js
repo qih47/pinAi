@@ -201,7 +201,21 @@ export async function streamChat(
 
       for (const line of lines) {
         const cleanedLine = line.trim();
-        if (!cleanedLine) continue;
+        // 🛡️ Intercept raw <sources_json> tags if emitted directly by LLM or handler
+        if (cleanedLine.includes("<sources_json>")) {
+          try {
+            const start = cleanedLine.indexOf("<sources_json>") + "<sources_json>".length;
+            const end = cleanedLine.indexOf("</sources_json>");
+            const jsonStr = end !== -1 ? cleanedLine.substring(start, end) : cleanedLine.substring(start);
+            const parsedSources = JSON.parse(jsonStr.trim());
+            if (Array.isArray(parsedSources) && onSources) {
+              onSources(parsedSources);
+            }
+          } catch (e) {
+            console.debug("[SSE] Raw sources_json parse handled:", e);
+          }
+          continue;
+        }
 
         try {
           const parsedData = JSON.parse(cleanedLine);

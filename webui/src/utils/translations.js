@@ -158,7 +158,11 @@ export const translations = {
         more: "Lainnya",
         less: "Tutup",
         moreTitle: "Tampilkan opsi lainnya",
-        lessTitle: "Sembunyikan opsi tambahan"
+        lessTitle: "Sembunyikan opsi tambahan",
+        hideHint: "Sembunyikan hint",
+        showHint: "Munculkan hint",
+        hideHintTitle: "Klik untuk menyembunyikan hint",
+        showHintTitle: "Klik untuk memunculkan hint"
       }
     },
     searchModal: {
@@ -709,7 +713,11 @@ export const translations = {
         more: "More",
         less: "Less",
         moreTitle: "Show more options",
-        lessTitle: "Hide extra options"
+        lessTitle: "Hide extra options",
+        hideHint: "Hide hint",
+        showHint: "Show hint",
+        hideHintTitle: "Click to hide hints",
+        showHintTitle: "Click to show hints"
       }
     },
     searchModal: {

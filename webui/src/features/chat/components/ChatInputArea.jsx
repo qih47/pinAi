@@ -54,6 +54,8 @@ export default function ChatInputArea({
   language
 }) {
   const [isAttachmentMenuOpen, setIsAttachmentMenuOpen] = useState(false);
+  const [isHintsCollapsed, setIsHintsCollapsed] = useState(false);
+  const [isPillHovered, setIsPillHovered] = useState(false);
   const attachmentMenuRef = useRef(null);
   const t = translations[language]?.chatInput || translations.id.chatInput;
   const tHints = translations[language]?.chat?.hints || translations.id.chat.hints;
@@ -61,61 +63,120 @@ export default function ChatInputArea({
   const activeWizard = useChatStore(state => state.activeWizard);
   const activeModeTag = useChatStore(state => state.activeModeTag);
   const setActiveModeTag = useChatStore(state => state.setActiveModeTag);
+  const activeIsolatedDocId = useChatStore(state => state.activeIsolatedDocId);
+
+  // Auto-expand hints whenever activeModeTag changes
+  useEffect(() => {
+    if (activeModeTag) {
+      setIsHintsCollapsed(false);
+    }
+  }, [activeModeTag]);
+
+  const isBannerActive = Boolean((activeIsolatedTitle || activeIsolatedDocId) && (chatMode === 'focus' || chatMode === 'compliance' || chatMode === 'redteam'));
+  const shouldShowHints = Boolean(!showWelcome && messages && messages.length > 0 && activeModeTag && !isHintsCollapsed && !activeWizard && !isBannerActive && !isStreaming);
+
+  const [hintsMounted, setHintsMounted] = useState(shouldShowHints);
+  const [isHintsExiting, setIsHintsExiting] = useState(false);
+
+  useEffect(() => {
+    if (shouldShowHints) {
+      setHintsMounted(true);
+      setIsHintsExiting(false);
+    } else if (hintsMounted) {
+      setIsHintsExiting(true);
+      const timer = setTimeout(() => {
+        setHintsMounted(false);
+        setIsHintsExiting(false);
+      }, 200);
+      return () => clearTimeout(timer);
+    }
+  }, [shouldShowHints, hintsMounted]);
 
   // Pada mode mobile, selalu gunakan layout bertingkat (textarea di atas, buttons di bawah)
   // Pada mode desktop, tetap responsif mengikuti state isMultiLine
   const showMultilineLayout = isMobile || isMultiLine;
 
-  const renderActiveModePill = () => {
+  const renderFloatingActiveModePillBadge = () => {
     const effectiveTag = activeModeTag || (chatMode && chatMode !== 'auto' && chatMode !== 'flash' && chatMode !== 'guest' ? chatMode : null);
     if (!effectiveTag) return null;
+
+    // Teks dinamis saat di-hover (apabila chat aktif dan ada hint)
+    const canToggleHints = !showWelcome && messages && messages.length > 0 && Boolean(activeModeTag);
+    let displayLabel = effectiveTag === "code"
+      ? tHints.code
+      : effectiveTag === "websearch"
+        ? (tHints.websearchTag || "Web search")
+        : effectiveTag === "documents"
+          ? tHints.documents
+          : effectiveTag === "diagram"
+            ? tHints.diagram
+            : effectiveTag === "chart"
+              ? tHints.chart
+              : effectiveTag === "create_file"
+                ? tHints.createFile
+                : effectiveTag === "smart_mail"
+                  ? tHints.smartMail
+                  : tHints.focus;
+
+    if (canToggleHints && isPillHovered) {
+      displayLabel = isHintsCollapsed
+        ? (tHints.showHint || "Munculkan hint")
+        : (tHints.hideHint || "Hide hint");
+    }
+
     return (
       <div
+        onClick={() => {
+          if (canToggleHints) {
+            setIsHintsCollapsed(prev => !prev);
+          }
+        }}
+        onMouseEnter={() => setIsPillHovered(true)}
+        onMouseLeave={() => setIsPillHovered(false)}
         style={{
           display: "inline-flex",
           alignItems: "center",
-          gap: "7px",
+          gap: "6px",
           padding: "4px 10px",
           borderRadius: "10px",
-          fontSize: "13px",
+          fontSize: "12px",
           fontWeight: "500",
-          background: darkMode ? "#1f1f23" : "#e5e7eb",
+          background: darkMode
+            ? isPillHovered && canToggleHints
+              ? "rgba(50, 50, 58, 0.98)"
+              : "rgba(35, 35, 42, 0.95)"
+            : isPillHovered && canToggleHints
+              ? "rgba(220, 224, 230, 0.98)"
+              : "rgba(235, 238, 242, 0.95)",
+          border: darkMode
+            ? "1px solid rgba(255, 255, 255, 0.14)"
+            : "1px solid rgba(0, 0, 0, 0.10)",
           color: darkMode ? "#ffffff" : "#111827",
           flexShrink: 0,
           userSelect: "none",
           alignSelf: "center",
+          cursor: canToggleHints ? "pointer" : "default",
+          transition: "all 0.18s cubic-bezier(0.4, 0, 0.2, 1)",
           marginLeft: "2px",
-          marginRight: "2px"
+          marginRight: "2px",
         }}
+        title={canToggleHints ? (isHintsCollapsed ? (tHints.showHintTitle || "Klik untuk memunculkan hint") : (tHints.hideHintTitle || "Klik untuk menyembunyikan hint")) : undefined}
       >
-        {effectiveTag === "code" && <Code2 size={15} className="opacity-90 flex-shrink-0" />}
-        {effectiveTag === "websearch" && <Globe size={15} className="opacity-90 flex-shrink-0" />}
-        {effectiveTag === "documents" && <FileText size={15} className="opacity-90 flex-shrink-0" />}
-        {effectiveTag === "diagram" && <Workflow size={15} className="opacity-90 flex-shrink-0" />}
-        {effectiveTag === "chart" && <BarChart3 size={15} className="opacity-90 flex-shrink-0" />}
-        {effectiveTag === "create_file" && <FilePlus size={15} className="opacity-90 flex-shrink-0" />}
-        {effectiveTag === "smart_mail" && <Mail size={15} className="opacity-90 flex-shrink-0" />}
-        {effectiveTag === "focus" && <Target size={15} className="opacity-90 flex-shrink-0" />}
-        <span style={{ letterSpacing: "0.01em" }}>
-          {effectiveTag === "code"
-            ? tHints.code
-            : effectiveTag === "websearch"
-              ? (tHints.websearchTag || "Web search")
-              : effectiveTag === "documents"
-                ? tHints.documents
-                : effectiveTag === "diagram"
-                  ? tHints.diagram
-                  : effectiveTag === "chart"
-                    ? tHints.chart
-                    : effectiveTag === "create_file"
-                      ? tHints.createFile
-                      : effectiveTag === "smart_mail"
-                        ? tHints.smartMail
-                        : tHints.focus}
+        {effectiveTag === "code" && <Code2 size={14} className="opacity-90 flex-shrink-0" />}
+        {effectiveTag === "websearch" && <Globe size={14} className="opacity-90 flex-shrink-0" />}
+        {effectiveTag === "documents" && <FileText size={14} className="opacity-90 flex-shrink-0" />}
+        {effectiveTag === "diagram" && <Workflow size={14} className="opacity-90 flex-shrink-0" />}
+        {effectiveTag === "chart" && <BarChart3 size={14} className="opacity-90 flex-shrink-0" />}
+        {effectiveTag === "create_file" && <FilePlus size={14} className="opacity-90 flex-shrink-0" />}
+        {effectiveTag === "smart_mail" && <Mail size={14} className="opacity-90 flex-shrink-0" />}
+        {effectiveTag === "focus" && <Target size={14} className="opacity-90 flex-shrink-0" />}
+        <span style={{ letterSpacing: "0.01em", transition: "opacity 0.15s ease" }}>
+          {displayLabel}
         </span>
         <button
           type="button"
-          onClick={() => {
+          onClick={(e) => {
+            e.stopPropagation();
             setActiveModeTag(null);
             if (chatMode && chatMode !== 'auto') {
               handleChatModeChange('auto');
@@ -131,13 +192,13 @@ export default function ChatInputArea({
             alignItems: "center",
             opacity: 0.7,
             transition: "opacity 0.2s",
-            marginLeft: "2px"
+            marginLeft: "3px"
           }}
           onMouseEnter={(e) => (e.currentTarget.style.opacity = 1)}
           onMouseLeave={(e) => (e.currentTarget.style.opacity = 0.7)}
           title="Hapus mode"
         >
-          <X size={14} />
+          <X size={13} />
         </button>
       </div>
     );
@@ -161,36 +222,36 @@ export default function ChatInputArea({
     }
   }, [isAttachmentMenuOpen]);
 
+  const isDockedBottom = isBottom && !showWelcome;
+
   return (
     <div
       style={{
         ...styles.inputArea,
-        background: isBottom
-          ? `linear-gradient(to bottom, transparent 0%, ${theme.inputAreaBg} 30%)`
+        background: isDockedBottom
+          ? `linear-gradient(to bottom, transparent 0%, ${darkMode ? 'rgba(21,21,23,0.35)' : 'rgba(255,255,255,0.35)'} 12%, ${darkMode ? 'rgba(21,21,23,0.88)' : 'rgba(255,255,255,0.88)'} 30%, ${theme.inputAreaBg || (darkMode ? '#151517' : '#ffffff')} 58%, ${theme.inputAreaBg || (darkMode ? '#151517' : '#ffffff')} 100%)`
           : "transparent",
-        position: isBottom ? "relative" : "absolute",
-        bottom: isBottom ? undefined : "10%",
-        left: isBottom ? undefined : "0",
-        right: isBottom ? undefined : "0",
-        marginLeft: isBottom ? undefined : "auto",
-        marginRight: isBottom ? undefined : "auto",
+        position: isDockedBottom ? "absolute" : "relative",
+        bottom: isDockedBottom ? 0 : undefined,
+        left: isDockedBottom ? 0 : undefined,
+        right: isDockedBottom ? 0 : undefined,
+        marginLeft: isDockedBottom ? undefined : "auto",
+        marginRight: isDockedBottom ? undefined : "auto",
         width: "100%",
-        maxWidth: isBottom ? undefined : "700px",
-        padding: isBottom
+        maxWidth: undefined,
+        padding: isDockedBottom
           ? isMobile
-            ? "8px 16px 16px"
-            : "8px 24px 16px"
-          : isMobile
-            ? "0 16px"
-            : "0 20px",
-        marginTop: isBottom ? undefined : undefined,
+            ? "10px 16px 16px"
+            : "14px 24px 16px"
+          : "0",
+        marginTop: isDockedBottom ? undefined : undefined,
         flexShrink: 0,
-        zIndex: isBottom ? undefined : 11,
-        pointerEvents: "auto",
+        zIndex: isDockedBottom ? 11 : undefined,
+        pointerEvents: isDockedBottom ? "none" : "auto",
         boxSizing: "border-box",
       }}
     >
-      <div style={{ ...styles.inputContainer, width: "100%", boxSizing: "border-box" }}>
+      <div style={{ ...styles.inputContainer, width: "100%", boxSizing: "border-box", pointerEvents: "auto" }}>
 
         <ScrollBottomButton
           isBottom={isBottom}
@@ -224,6 +285,51 @@ export default function ChatInputArea({
               messageIndex={activeWizard.messageIndex}
               darkMode={darkMode}
               language={language}
+            />
+          </div>
+        )}
+
+        {/* Keyframe Slide Down Exit */}
+        <style>{`
+          @keyframes cakraSlideDownExit {
+            0% {
+              opacity: 1;
+              transform: translateY(0);
+            }
+            100% {
+              opacity: 0;
+              transform: translateY(14px);
+            }
+          }
+        `}</style>
+
+        {/* 💡 UPWARD HINT SUGGESTIONS DI ATAS TEXT INPUT (Spring Bounce saat muncul, Slide Down saat hide) */}
+        {hintsMounted && (
+          <div
+            className="w-full mb-1.5 no-scrollbar"
+            style={{
+              paddingLeft: isMobile ? "6px" : "10px",
+              paddingRight: isMobile ? "6px" : "10px",
+              animation: isHintsExiting ? "cakraSlideDownExit 0.2s cubic-bezier(0.4, 0, 0.2, 1) forwards" : undefined,
+              pointerEvents: isHintsExiting ? "none" : "auto",
+              overflow: "visible",
+              scrollbarWidth: "none",
+              msOverflowStyle: "none",
+            }}
+          >
+            <HintSuggestions
+              input={input}
+              setInput={setInput}
+              activeModeTag={activeModeTag}
+              setActiveModeTag={setActiveModeTag}
+              onSelectHint={handleSelectHint}
+              darkMode={darkMode}
+              theme={theme}
+              isStreaming={isStreaming}
+              isGuest={isGuest}
+              language={language}
+              isMobile={isMobile}
+              isUpward={true}
             />
           </div>
         )}
@@ -310,8 +416,8 @@ export default function ChatInputArea({
               </div>
             )}
 
-            {/* 🏷️ ACTIVE MODE PILL DI DALAM INPUT AREA (Hanya saat desktop single line) */}
-            {!showMultilineLayout && renderActiveModePill()}
+            {/* 🏷️ ACTIVE MODE PILL DI DALAM INPUT AREA (Desktop single line) */}
+            {!showMultilineLayout && renderFloatingActiveModePillBadge()}
 
             <textarea
               ref={textareaRef}
@@ -415,7 +521,7 @@ export default function ChatInputArea({
                 paddingTop: isMobile ? "4px" : "2px",
               }}
             >
-              {/* Kiri: Plus + Preset Pill saat multiline */}
+              {/* Kiri: Plus Button + Preset Pill saat multiline */}
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
                 <div className="cakra-plus-trigger" style={{ display: 'flex', gap: '4px' }}>
                   <PlusButton
@@ -427,8 +533,7 @@ export default function ChatInputArea({
                     language={language}
                   />
                 </div>
-
-                {showMultilineLayout && renderActiveModePill()}
+                {showMultilineLayout && renderFloatingActiveModePillBadge()}
               </div>
 
               {/* Kanan: Auto + Send */}
@@ -529,6 +634,7 @@ export default function ChatInputArea({
             isGuest={isGuest}
             language={language}
             isMobile={isMobile}
+            isUpward={false}
           />
         )}
 

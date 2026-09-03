@@ -218,5 +218,4 @@ class ModeRedTeam:
             "filename": filename,
             "halaman": [p + 1 for p in selected_pages]
         }]
-        sources_tag = f"\n\n<sources_json>{json.dumps(sources_list)}</sources_json>"
-        yield sources_tag
+        yield format_sse("", "", False, sources=sources_list, event_type=SSEEventType.SOURCES)

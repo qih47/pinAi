@@ -4,28 +4,32 @@ import { useChatStore } from "../../../../stores/chatStore";
 import { translations } from "../../../../utils/translations";
 
 export default function IsolatedDocBanner({
-  activeIsolatedTitle,
+  activeIsolatedTitle: propTitle,
   setContextIsolation,
   darkMode,
-  chatMode,
+  chatMode: propChatMode,
   language = "id"
 }) {
   const activeIsolatedDocId = useChatStore((state) => state.activeIsolatedDocId);
+  const storeTitle = useChatStore((state) => state.activeIsolatedTitle);
+  const storeChatMode = useChatStore((state) => state.chatMode);
+
+  const activeIsolatedTitle = storeTitle || propTitle;
+  const currentChatMode = storeChatMode || propChatMode;
+
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef(null);
   const hoverTimeoutRef = useRef(null);
 
   const tGlobal = translations[language]?.chat?.isolatedBanner || translations.id.chat.isolatedBanner;
 
-  const activeModeTag = useChatStore((state) => state.activeModeTag);
-
   if (!activeIsolatedTitle) return null;
-  // Sembunyikan banner FOCUS jika dalam mode Document Search (baik saat pilih dokumen maupun sesudah kirim chat)
-  if (activeModeTag === 'documents' || chatMode === 'documents' || (chatMode !== 'focus' && chatMode !== 'compliance' && chatMode !== 'redteam')) {
+  // Banner hanya tampil jika mode yang aktif adalah salah satu dari 3 mode isolasi dokumen (focus, compliance, redteam)
+  if (currentChatMode !== 'focus' && currentChatMode !== 'compliance' && currentChatMode !== 'redteam') {
     return null;
   }
 
-  const currentMode = chatMode === 'compliance' ? 'compliance' : chatMode === 'redteam' ? 'redteam' : 'focus';
+  const currentMode = currentChatMode === 'compliance' ? 'compliance' : currentChatMode === 'redteam' ? 'redteam' : 'focus';
 
   const modes = [
     {
@@ -230,7 +234,10 @@ export default function IsolatedDocBanner({
       <button
         type="button"
         title={tGlobal.closeTitle}
-        onClick={() => setContextIsolation(null, null, 'auto')}
+        onClick={() => {
+          setContextIsolation(null, null, 'focus');
+          useChatStore.getState().setActiveModeTag('focus');
+        }}
         style={{
           display: "flex",
           alignItems: "center",
