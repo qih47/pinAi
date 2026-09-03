@@ -142,6 +142,9 @@ class SessionBrainService:
             "saved_at": data["_brain_saved_at"],
             "total_pages": data.get("total_pages", 0),
             "title": data.get("title", ""),
+            "nomor": data.get("nomor", ""),
+            "jenis": data.get("jenis", ""),
+            "tanggal": data.get("tanggal", ""),
         }
         self._save_manifest(manifest)
 

@@ -41,6 +41,14 @@ DEFAULT_CODE_SUGGESTIONS = [
 ]
 
 # ── PUBLIC / GUEST PRESETS (Bebas dari SOP/HR/Dokumen Internal Perusahaan) ───
+GUEST_DOCUMENT_SUGGESTIONS = [
+    {"title": "Profil Perusahaan PT Pindad dan Portofolio Produk Pertahanan", "category": "Profil", "source": "dokumen"},
+    {"title": "Katalog Produk Alutsista dan Senjata Standar Militer", "category": "Katalog", "source": "dokumen"},
+    {"title": "Informasi Publik dan Sejarah Perkembangan Industri Hankam", "category": "Informasi Publik", "source": "dokumen"},
+    {"title": "Pedoman Tata Kelola dan Keterbukaan Informasi Perusahaan", "category": "Tata Kelola", "source": "dokumen"},
+    {"title": "Siaran Pers dan Publikasi Resmi PT Pindad", "category": "Publikasi", "source": "dokumen"},
+]
+
 GUEST_DIAGRAM_SUGGESTIONS = [
     {"title": "Diagram alur proses kerja mesin 4-tak pada kendaraan taktis", "category": "Teknik Mesin", "source": "diagram"},
     {"title": "Flowchart algoritma pencarian biner (Binary Search) dan Sorting", "category": "Algoritma", "source": "diagram"},

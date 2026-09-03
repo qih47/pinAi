@@ -200,7 +200,15 @@ export async function streamChat(
       streamBuffer = lines.pop();
 
       for (const line of lines) {
-        const cleanedLine = line.trim();
+        let cleanedLine = line.trim();
+        if (!cleanedLine) continue;
+
+        // 🛡️ Normalisasi format SSE standar: buang prefix "data:" jika ada
+        if (cleanedLine.startsWith("data:")) {
+          cleanedLine = cleanedLine.replace(/^data:\s*/, "").trim();
+        }
+        if (!cleanedLine) continue;
+
         // 🛡️ Intercept raw <sources_json> tags if emitted directly by LLM or handler
         if (cleanedLine.includes("<sources_json>")) {
           try {

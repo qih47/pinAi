@@ -122,25 +122,9 @@ class ModeFocus:
             except Exception as e:
                 logger.error(f"[MODE_FOCUS] MySQL Error: {e}")
 
-        # 2. Cari Lokasi Fisik File di Disk
-        file_path = None
-        candidate_paths = []
-        if db_file_path:
-            candidate_paths.append(db_file_path)
-            candidate_paths.append(os.path.join(BASE_DIR, db_file_path.lstrip("/")))
-        if filename:
-            candidate_paths.extend([
-                os.path.join(FILE_PERATURAN_DIR, filename),
-                os.path.join(DOCUMENTS_DIR, filename),
-                os.path.join(UPLOAD_DIR, filename),
-                os.path.join(BASE_DIR, "file_peraturan", filename),
-                os.path.join(BASE_DIR, filename),
-            ])
-
-        for path in candidate_paths:
-            if path and os.path.exists(path):
-                file_path = path
-                break
+        # 2. Cari Lokasi Fisik File di Disk via DocumentResolver Global
+        from backend.app.services.tools.document_resolver import find_valid_pdf_file
+        file_path = find_valid_pdf_file(filename, None, None, db_file_path=db_file_path)
 
         # 3. Ekstrak Teks Dokumen
         selected_pages = [0]
@@ -150,53 +134,118 @@ class ModeFocus:
         # Skenario A: File fisik ditemukan di disk -> Jalankan Document Intelligence & OCR
         if file_path and os.path.exists(file_path):
             logger.info(f"[MODE_FOCUS] Processing physical file: {file_path}")
-            cache_key = session_uuid or file_path
-            yield format_sse(status=f"⚙️ Memindai isi {doc_title or filename or 'dokumen'}", event_type=SSEEventType.STATUS)
-            await asyncio.sleep(0.05)
+            doc_id_key = str(pg_doc_id or isolated_doc_id or os.path.basename(file_path))
 
-            text_map, all_base64_images, total_pages = await extract_and_ocr_document_async(file_path, cache_key=cache_key)
+            text_map = None
+            all_base64_images = None
+            total_pages = None
+            brain = None
+
+            if session_uuid and current_user_npp:
+                from backend.app.services.session.session_brain_service import SessionBrainService
+                brain = SessionBrainService(current_user_npp, session_uuid)
+                cached_brain = brain.get_document(doc_id_key)
+                if cached_brain and "text_map" in cached_brain:
+                    yield format_sse(status="🧠 Dari memori sesi", status_key="BRAIN_HIT", event_type=SSEEventType.STATUS)
+                    await asyncio.sleep(0.35)
+                    text_map = cached_brain["text_map"]
+                    all_base64_images = cached_brain.get("images", [])
+                    total_pages = cached_brain.get("total_pages", len(text_map))
+
+            if text_map is None:
+                yield format_sse(status="📄 Memuat dokumen", status_key="DOC_LOADING", event_type=SSEEventType.STATUS)
+                await asyncio.sleep(0.2)
+                cache_key = session_uuid or file_path
+                text_map, all_base64_images, total_pages = await extract_and_ocr_document_async(file_path, cache_key=cache_key)
+
+                if brain:
+                    await brain.save_document(doc_id_key, {
+                        "title": doc_title or filename or "Dokumen Rujukan",
+                        "nomor": doc_nomor,
+                        "jenis": doc_jenis,
+                        "tanggal": doc_tanggal,
+                        "filename": filename,
+                        "text_map": text_map,
+                        "images": all_base64_images,
+                        "total_pages": total_pages,
+                    })
+                    yield format_sse(status="💾 Menyimpan ke memori", status_key="BRAIN_SAVE", event_type=SSEEventType.STATUS)
+                    await asyncio.sleep(0.35)
+
 
             yield format_sse(status=f"🔍 Menganalisis {total_pages} halaman dokumen rujukan", event_type=SSEEventType.STATUS)
             await asyncio.sleep(0.05)
+
 
             explicit_pages = extract_explicit_pages_from_query(user_message, total_pages)
             selected_pages, final_base64_images, final_extracted_text = await two_stage_rerank_cluster_async(
                 user_message=user_message,
                 text_map=text_map,
-                all_base64_images=all_base64_images,
-                total_pages=total_pages,
+                all_images=all_base64_images,
                 explicit_pages=explicit_pages,
-                top_k_seeds=4
+                enable_dynamic_window=True,
+                enable_cross_encoder=True
             )
 
         # Skenario B: File fisik tidak di disk, tapi chunk teks sudah ada di PostgreSQL dokumen_chunk
         elif pg_doc_id or isolated_doc_id:
             logger.info(f"[MODE_FOCUS] File physical not found, fetching direct chunks from dokumen_chunk for doc_id={pg_doc_id or isolated_doc_id}")
-            yield format_sse(status="📂 Mengambil teks utuh dari arsip dokumen", event_type=SSEEventType.STATUS)
-            await asyncio.sleep(0.05)
+            doc_id_key = str(pg_doc_id or isolated_doc_id)
+            brain = None
+            if session_uuid and current_user_npp:
+                from backend.app.services.session.session_brain_service import SessionBrainService
+                brain = SessionBrainService(current_user_npp, session_uuid)
+                cached_brain = brain.get_document(doc_id_key)
+                if cached_brain and "text_map" in cached_brain:
+                    yield format_sse(status="🧠 Dari memori sesi", status_key="BRAIN_HIT", event_type=SSEEventType.STATUS)
+                    await asyncio.sleep(0.35)
+                    text_map = cached_brain["text_map"]
+                    final_extracted_text = "\n\n---\n\n".join(item["text"] for item in text_map)
+                    selected_pages = [item.get("page_num", 0) for item in text_map[:5]]
+                    total_pages = cached_brain.get("total_pages", len(text_map))
 
-            try:
-                async with get_db() as pg_conn:
-                    target_id = pg_doc_id if pg_doc_id else (int(isolated_doc_id) if str(isolated_doc_id).isdigit() else None)
-                    if target_id:
-                        c_rows = await pg_conn.fetch(
-                            "SELECT chunk_id, content, COALESCE(NULLIF(NULLIF(page_number, '0'), ''), '1') as page_number FROM dokumen_chunk WHERE dokumen_id = $1 ORDER BY chunk_id ASC LIMIT 30",
-                            target_id
-                        )
-                        if c_rows:
-                            final_extracted_text = "\n\n---\n\n".join(r["content"] for r in c_rows)
-                            parsed_pages = []
-                            for r in c_rows:
-                                try:
-                                    p_val = int(r["page_number"])
-                                    p_0 = max(0, p_val - 1)
-                                    if p_0 not in parsed_pages:
-                                        parsed_pages.append(p_0)
-                                except (ValueError, TypeError):
-                                    pass
-                            selected_pages = parsed_pages[:5] if parsed_pages else [0]
-            except Exception as e:
-                logger.error(f"[MODE_FOCUS] Error fetching PG chunks: {e}")
+            if not final_extracted_text:
+                yield format_sse(status="📂 Mengambil teks utuh dari arsip dokumen", event_type=SSEEventType.STATUS)
+                await asyncio.sleep(0.05)
+
+                try:
+                    async with get_db() as pg_conn:
+                        target_id = pg_doc_id if pg_doc_id else (int(isolated_doc_id) if str(isolated_doc_id).isdigit() else None)
+                        if target_id:
+                            c_rows = await pg_conn.fetch(
+                                "SELECT chunk_id, content, COALESCE(NULLIF(NULLIF(page_number, '0'), ''), '1') as page_number FROM dokumen_chunk WHERE dokumen_id = $1 ORDER BY chunk_id ASC LIMIT 50",
+                                target_id
+                            )
+                            if c_rows:
+                                text_map = []
+                                parsed_pages = []
+                                for idx, r in enumerate(c_rows):
+                                    try:
+                                        p_val = int(r["page_number"])
+                                        p_0 = max(0, p_val - 1) if p_val > 1 else idx
+                                        text_map.append({"page_num": p_0, "text": r["content"]})
+                                        if p_0 not in parsed_pages:
+                                            parsed_pages.append(p_0)
+                                    except (ValueError, TypeError):
+                                        text_map.append({"page_num": idx, "text": r["content"]})
+                                final_extracted_text = "\n\n---\n\n".join(r["content"] for r in c_rows)
+                                selected_pages = parsed_pages[:5] if parsed_pages else [0]
+                                total_pages = len(text_map)
+
+                                if brain:
+                                    await brain.save_document(doc_id_key, {
+                                        "title": doc_title or filename or "Dokumen Rujukan",
+                                        "nomor": doc_nomor,
+                                        "jenis": doc_jenis,
+                                        "tanggal": doc_tanggal,
+                                        "filename": filename,
+                                        "text_map": text_map,
+                                        "total_pages": total_pages,
+                                    })
+                                    yield format_sse(status="💾 Menyimpan ke memori", status_key="BRAIN_SAVE", event_type=SSEEventType.STATUS)
+                                    await asyncio.sleep(0.2)
+                except Exception as e:
+                    logger.error(f"[MODE_FOCUS] Error fetching PG chunks: {e}")
 
         # Skenario C: Dokumen benar-benar tidak ditemukan -> Fallback ke RAG global
         if not final_extracted_text and not file_path:

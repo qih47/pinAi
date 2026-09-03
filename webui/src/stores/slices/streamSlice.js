@@ -113,6 +113,8 @@ export const createStreamSlice = (set, get) => ({
             mode: effectiveChatMode,
             isThinkingMode: isThinkingMode,
             thinking: isThinkingMode,
+            isolatedDocId: currentIsolatedDocId || null,
+            streamOptions: options || {},
             ...(attachmentMeta.length > 0 ? { attachments: attachmentMeta } : {}),
         };
         const updatedMessages = [...get().messages, userMessage];
@@ -298,6 +300,23 @@ export const createStreamSlice = (set, get) => ({
             .map((file) => file.file_path)
             .filter(Boolean);
 
+        const msgStreamOptions = editedMsg?.streamOptions || {};
+        const savedIsolatedDocId = msgStreamOptions.isolated_doc_id || 
+                                   msgStreamOptions.isolatedDocId || 
+                                   editedMsg?.isolatedDocId || 
+                                   get().activeIsolatedDocId || 
+                                   null;
+
+        const regenerationOptions = {
+            ...msgStreamOptions,
+            isolated_doc_id: savedIsolatedDocId,
+            isolatedDocId: savedIsolatedDocId,
+            forced_mode: msgStreamOptions.forced_mode || msgStreamOptions.forcedMode || (savedIsolatedDocId ? 'documents' : effectiveChatMode),
+            forcedMode: msgStreamOptions.forced_mode || msgStreamOptions.forcedMode || (savedIsolatedDocId ? 'documents' : effectiveChatMode),
+            bypass_router: msgStreamOptions.bypass_router !== undefined ? msgStreamOptions.bypass_router : Boolean(savedIsolatedDocId),
+            bypassRouter: msgStreamOptions.bypassRouter !== undefined ? msgStreamOptions.bypassRouter : Boolean(savedIsolatedDocId),
+        };
+
         await performStream(
             set,
             get,
@@ -305,13 +324,14 @@ export const createStreamSlice = (set, get) => ({
             assistantMessage,
             sessionUuid,
             npp,
-            currentIsolatedDocId,
+            savedIsolatedDocId,
             currentAttachmentPaths,
             effectiveChatMode,
             effectiveThinkingMode,
             toast,
             index + 1, // targetAssistantIdx
-            index      // 🔥 editIndex
+            index,     // 🔥 editIndex
+            regenerationOptions
         );
     }
 });

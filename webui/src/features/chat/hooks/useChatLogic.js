@@ -1117,10 +1117,11 @@ export function useChatLogic({ isGuest,
         };
       }
 
-      // Hanya aktifkan persistent context isolation UI jika targetMode adalah focus / audit
-      if (targetMode === 'focus' || targetMode === 'audit') {
+      // Aktifkan persistent context isolation UI jika targetMode adalah focus / audit / documents
+      if (targetMode === 'focus' || targetMode === 'audit' || targetMode === 'documents') {
         useChatStore.getState().setContextIsolation(docId, docTitle, targetMode);
       }
+
     }
 
     sendMessage(

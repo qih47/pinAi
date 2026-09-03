@@ -18,25 +18,50 @@ PERATURAN_DIR = "/home/qisthi/pinAi/file_peraturan"
 
 
 # ─── PDF File Resolver ───────────────────────────────────────────────────────
-def find_valid_pdf_file(gambar: Any, gambar2: Any, gambar3: Any) -> Optional[str]:
+def find_valid_pdf_file(
+    gambar: Any = None,
+    gambar2: Any = None,
+    gambar3: Any = None,
+    db_file_path: Optional[str] = None
+) -> Optional[str]:
     """
-    Mencari file PDF yang valid dari kolom attachment regulasi.
-    Memeriksa gambar → gambar2 → gambar3 secara berurutan.
-
-    Identik dengan _find_valid_pdf_file() di peraturan_service.py.
-    Dipindahkan ke sini agar bisa dipakai semua mode tanpa circular import.
+    Mencari file PDF yang valid dari kolom attachment regulasi atau path database.
+    Memeriksa db_file_path → gambar → gambar2 → gambar3 di berbagai direktori valid.
 
     Returns:
         Path absolut ke file PDF yang ditemukan, atau None.
     """
+    from backend.app.core.paths import BASE_DIR, FILE_PERATURAN_DIR, UPLOAD_DIR, DOCUMENTS_DIR
+
+    candidate_dirs = [
+        FILE_PERATURAN_DIR,
+        PERATURAN_DIR,
+        DOCUMENTS_DIR,
+        UPLOAD_DIR,
+        os.path.join(BASE_DIR, "file_peraturan"),
+        BASE_DIR,
+    ]
+
+    if db_file_path and isinstance(db_file_path, str):
+        if os.path.exists(db_file_path) and os.path.isfile(db_file_path):
+            return db_file_path
+        relative_path = os.path.join(BASE_DIR, db_file_path.lstrip("/"))
+        if os.path.exists(relative_path) and os.path.isfile(relative_path):
+            return relative_path
+
     for file_name in [gambar, gambar2, gambar3]:
-        if file_name and isinstance(file_name, str) and file_name.lower().endswith(".pdf"):
-            abs_path = os.path.join(PERATURAN_DIR, file_name)
-            if os.path.exists(abs_path):
-                logger.debug(f"[RESOLVER] PDF ditemukan: {abs_path}")
-                return abs_path
+        if file_name and isinstance(file_name, str):
+            clean_name = os.path.basename(file_name.strip())
+            for d in candidate_dirs:
+                if not d:
+                    continue
+                p = os.path.join(d, clean_name)
+                if os.path.exists(p) and os.path.isfile(p):
+                    logger.debug(f"[RESOLVER] PDF ditemukan: {p}")
+                    return p
     logger.debug("[RESOLVER] Tidak ada PDF valid di attachment regulasi.")
     return None
+
 
 
 # ─── Status Berlaku Resolver ─────────────────────────────────────────────────

@@ -397,7 +397,7 @@ const SourceCitation = ({ sources, darkMode, theme, language = 'id', onPreview, 
                     <span>
                       {regNomor ? regNomor : (src.tanggal || '')}
                       {(regNomor || src.tanggal) && (src.total_pages || page) ? ' • ' : ''}
-                      {src.total_pages ? `${src.total_pages} ${t.pages}` : (page ? `${t.pageAbbrev} ${page}` : '')}
+                      {src.total_pages ? `${src.total_pages} ${t.pages}` : (page ? (page.includes(',') && page.split(',').length > 3 ? `${page.split(',').length} ${t.pages}` : `${t.pageAbbrev} ${page}`) : '')}
                     </span>
                   )}
                 </span>

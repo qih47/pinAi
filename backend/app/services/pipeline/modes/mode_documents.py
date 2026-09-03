@@ -9,6 +9,7 @@ from fastapi import Request
 from backend.app.api.schemas.chat_schemas import ChatMessageSchema
 from backend.app.services.pipeline.sse_validation import format_sse, SSEEventType
 from backend.app.core.config import settings
+from backend.app.core.database import get_db
 from backend.app.core.paths import FILE_PERATURAN_DIR
 from backend.app.core.llm_client import stream_ollama_chat
 from backend.app.services.peraturan_service import _find_valid_pdf_file
@@ -86,11 +87,99 @@ class ModeDocuments:
             # ─────────────────────────────────────────────────────────────────
             # TIER 1: Progressive Document Stepper & Global Page-Level Reranking
             # ─────────────────────────────────────────────────────────────────
-            yield format_sse(status="🔍 Menelusuri regulasi", event_type=SSEEventType.STATUS)
-            logger.info(f"[MODE_DOCUMENTS] [TIER 1] Fetching candidate documents for query_judul: {query_judul_list}")
-            
-            candidate_docs = await get_candidate_documents_metadata(user_message, query_judul_list, rag_queries=rag_queries)
-            
+            # 1A. Brain-First Check: Cek ketersediaan dokumen di Memori Sesi (Brain)
+            brain = None
+            session_brain_docs = []
+            if session_uuid and current_user_npp:
+                from backend.app.services.session.session_brain_service import SessionBrainService
+                brain = SessionBrainService(current_user_npp, session_uuid)
+                session_brain_docs = brain.list_documents()
+
+            candidate_docs = []
+
+            # 🧠 BRAIN-FIRST SHORTCUT:
+            # Jika sesi ini SUDAH memiliki dokumen aktif di Brain dari percakapan sebelumnya,
+            # LANGSUNG gunakan dokumen Brain tersebut dan SKIP GLOBAL RAG SEARCH!
+            # Jangan lagi mengambil 5 dokumen acak lain dari MySQL yang bikin prompt bengkak (noise)!
+            if session_brain_docs:
+                yield format_sse(status="🧠 Mengakses dokumen dari memori sesi", event_type=SSEEventType.STATUS)
+                manifest_data = brain.get_manifest().get("documents", {}) if brain else {}
+                
+                # Tentukan dokumen mana yang menjadi fokus:
+                # Jika ada context_isolation pilih dokumen itu, jika tidak ambil dokumen aktif terakhir
+                iso_id = ""
+                if context_isolation and isinstance(context_isolation, dict):
+                    iso_id = str(context_isolation.get("isolated_doc_id") or context_isolation.get("id_dokumen") or "")
+                
+                selected_b_items = []
+                for b_item in reversed(session_brain_docs):
+                    b_id = str(b_item.get("id") or b_item.get("doc_id")) if isinstance(b_item, dict) else str(b_item)
+                    if iso_id:
+                        if b_id == iso_id:
+                            selected_b_items = [b_item]
+                            break
+                    else:
+                        selected_b_items.append(b_item)
+                        if len(selected_b_items) >= 2:  # Maksimal 2 dokumen aktif sesi jika tanpa isolasi
+                            break
+
+                if not selected_b_items and session_brain_docs:
+                    selected_b_items = [session_brain_docs[-1]]
+
+                for b_item in selected_b_items:
+                    b_id = str(b_item.get("id") or b_item.get("doc_id")) if isinstance(b_item, dict) else str(b_item)
+                    m_info = manifest_data.get(b_id, {})
+                    full_b_doc = brain.get_document(b_id) if brain else None
+                    doc_title = m_info.get("title") or (full_b_doc.get("title") if full_b_doc else "") or f"Dokumen {b_id}"
+                    doc_nomor = m_info.get("nomor") or (full_b_doc.get("nomor") if full_b_doc else "")
+                    doc_jenis = m_info.get("jenis") or (full_b_doc.get("jenis") if full_b_doc else "")
+                    doc_tanggal = m_info.get("tanggal") or (full_b_doc.get("tanggal") if full_b_doc else "")
+
+                    # Lookup PostgreSQL jika nomor atau jenis belum tersimpan di Brain
+                    if (not doc_nomor or not doc_jenis or doc_jenis == "Regulasi") and str(b_id).isdigit():
+                        try:
+                            async with get_db() as pg_conn:
+                                d_row = await pg_conn.fetchrow(
+                                    """SELECT d.judul, COALESCE(d.nomor, '') as nomor, 
+                                              COALESCE(j.nama, 'Regulasi') as jenis,
+                                              COALESCE(d.tanggal::text, '') as tanggal
+                                       FROM dokumen d
+                                       LEFT JOIN jenis_dokumen j ON d.id_jenis = j.id
+                                       WHERE d.id = $1""",
+                                    int(b_id)
+                                )
+                                if d_row:
+                                    doc_nomor = d_row["nomor"] or doc_nomor
+                                    doc_jenis = d_row["jenis"] or doc_jenis
+                                    doc_tanggal = d_row["tanggal"] or doc_tanggal
+                                    if not doc_title or doc_title.startswith("Dokumen "):
+                                        doc_title = d_row["judul"]
+                        except Exception as e:
+                            logger.warning(f"[MODE_DOCUMENTS] DB metadata lookup for doc {b_id}: {e}")
+
+                    candidate_docs.append({
+                        "id": int(b_id) if b_id.isdigit() else b_id,
+                        "noper": doc_nomor or doc_title,
+                        "judul": doc_title,
+                        "status_berlaku": "Berlaku",
+                        "score": 1.50,
+                        "valid_file": (full_b_doc.get("file_path") if full_b_doc else "") or "",
+                        "filename": (full_b_doc.get("filename") if full_b_doc else "") or f"doc_{b_id}.pdf",
+                        "file_path": (full_b_doc.get("file_path") if full_b_doc else "") or "",
+                        "tanggal": doc_tanggal or (m_info.get("saved_at", "")[:10] if m_info.get("saved_at") else ""),
+                        "mencabut": "",
+                        "jenis": doc_jenis or "SKEP",
+                        "total_pages": m_info.get("total_pages") or (full_b_doc.get("total_pages", 1) if full_b_doc else 1),
+                        "is_supplementary": False,
+                        "_from_session_brain": True
+                    })
+                    logger.info(f"[MODE_DOCUMENTS] 🧠 [BRAIN-HIT] Dokumen aktif sesi {b_id} ('{doc_title}', {doc_nomor}) ditemukan di Brain. SKIP GLOBAL RAG!")
+            else:
+                yield format_sse(status="🔍 Menelusuri regulasi", event_type=SSEEventType.STATUS)
+                logger.info(f"[MODE_DOCUMENTS] [TIER 1] No Brain doc, fetching candidate documents for query_judul: {query_judul_list}")
+                candidate_docs = await get_candidate_documents_metadata(user_message, query_judul_list, rag_queries=rag_queries) or []
+
+
             if candidate_docs:
                 # ── SPLIT: Aktif/Terbaru (Full PDF Read) vs Historis (Ringkasan Saja) ──────
                 # Kandidat sudah diurutkan: berlaku + terbaru di atas (dari scoring peraturan_service)
@@ -126,12 +215,6 @@ class ModeDocuments:
                 all_source_metadata = []
                 doc_text_maps = {}  # doc_id -> list of {"page_num": int, "text": str}
                 
-                # 1A. Brain-First Check: Cek ketersediaan dokumen di Memori Sesi (Brain)
-                brain = None
-                if session_uuid and current_user_npp:
-                    from backend.app.services.session.session_brain_service import SessionBrainService
-                    brain = SessionBrainService(current_user_npp, session_uuid)
-
                 cached_docs = {}
                 uncached_docs = []
                 for doc in full_read_docs:
@@ -145,30 +228,29 @@ class ModeDocuments:
 
                 # Emit status cerdas tanpa kedipan berulang-ulang
                 if cached_docs and not uncached_docs:
-                    yield format_sse(status="🧠 Dari memori sesi", event_type=SSEEventType.STATUS)
+                    yield format_sse(status="🧠 Dari memori sesi", status_key="BRAIN_HIT", event_type=SSEEventType.STATUS)
                     await asyncio.sleep(0.4)
                 elif cached_docs and uncached_docs:
-                    yield format_sse(status="🧠 Dari memori sesi", event_type=SSEEventType.STATUS)
+                    yield format_sse(status="🧠 Dari memori sesi", status_key="BRAIN_HIT", event_type=SSEEventType.STATUS)
                     await asyncio.sleep(0.35)
-                    yield format_sse(status="📄 Memuat dokumen", event_type=SSEEventType.STATUS)
+                    yield format_sse(status="📄 Memuat dokumen", status_key="DOC_LOADING", event_type=SSEEventType.STATUS)
                     await asyncio.sleep(0.2)
                 else:
-                    yield format_sse(status="📄 Memuat dokumen", event_type=SSEEventType.STATUS)
+                    yield format_sse(status="📄 Memuat dokumen", status_key="DOC_LOADING", event_type=SSEEventType.STATUS)
                     await asyncio.sleep(0.2)
 
                 newly_saved_count = 0
                 for doc in full_read_docs:
-                    valid_file = doc.get("valid_file")
-                    if not valid_file or not os.path.exists(valid_file):
-                        continue
-                        
-                    doc_id = doc["id"]
+                    doc_id = doc.get("id")
                     doc_id_key = str(doc_id)
+                    valid_file = doc.get("valid_file") or ""
 
                     if doc_id in cached_docs:
                         text_map = cached_docs[doc_id]["text_map"]
                         page_count = cached_docs[doc_id].get("total_pages", len(text_map))
                     else:
+                        if not valid_file or not os.path.exists(valid_file):
+                            continue
                         cache_key = f"doc_{doc_id}"
                         text_map, _, page_count = await extract_and_ocr_document_async(valid_file, cache_key=cache_key)
                         if brain:
@@ -182,47 +264,57 @@ class ModeDocuments:
                     doc_text_maps[doc_id] = text_map
 
 
+
                     
-                    for item in text_map:
-                        p_num = item["page_num"] + 1  # 1-based page number
-                        p_text = item["text"]
+                    for idx, item in enumerate(text_map):
+                        p_val = item.get("page_num", 0)
+                        p_num = (p_val + 1) if p_val > 0 else (idx + 1)
+                        p_text = item.get("text", "")
                         global_page_pool.append({
                             "page_num": p_num,
-                            "page_index": item["page_num"],
+                            "page_index": idx,
                             "text": p_text,
-                            "doc_id": doc["id"],
-                            "doc_title": doc["judul"],
-                            "doc_noper": doc["noper"],
-                            "doc_status": doc["status_berlaku"],
-                            "doc_tanggal": doc["tanggal"],
-                            "doc_mencabut": doc["mencabut"],
+                            "doc_id": doc.get("id"),
+                            "doc_title": doc.get("judul", ""),
+                            "doc_noper": doc.get("noper", ""),
+                            "doc_status": doc.get("status_berlaku", "Berlaku"),
+                            "doc_tanggal": doc.get("tanggal", ""),
+                            "doc_mencabut": doc.get("mencabut", ""),
                             "valid_file": valid_file,
-                            "filename": doc["filename"],
-                            "file_path": doc["file_path"],
-                            "jenis": doc["jenis"]
+                            "filename": doc.get("filename", ""),
+                            "file_path": doc.get("file_path", valid_file),
+                            "jenis": doc.get("jenis", "Regulasi")
                         })
                         
+                    # Hindari duplikasi judul di nomor regulasi:
+                    clean_nomor = doc.get("nomor") or doc.get("noper", "")
+                    if clean_nomor and clean_nomor.strip().lower() == str(doc.get("judul", "")).strip().lower():
+                        clean_nomor = ""
+
+                    final_total_pages = page_count if page_count > 0 else (len(text_map) if len(text_map) > 0 else 1)
+                    is_brain_compact = bool(doc.get("_from_session_brain") and len(text_map) <= 30)
+
                     all_source_metadata.append({
-                        "id": doc["id"],
-                        "title": doc["judul"],
-                        "document_title": doc["judul"],
-                        "filename": doc["filename"],
-                        "file_path": doc["file_path"],
-                        "jenis": doc["jenis"],
-                        "nomor": doc["noper"],
-                        "page_number": "1",
-                        "total_pages": str(page_count) if page_count > 0 else "",
-                        "cache_hit": False,
-                        "score_label": "HYBRID_RERANKER",
-                        "score": doc["score"],
-                        "raw_judul": doc["judul"],
+                        "id": doc.get("id"),
+                        "title": doc.get("judul", ""),
+                        "document_title": doc.get("judul", ""),
+                        "filename": doc.get("filename", ""),
+                        "file_path": doc.get("file_path", valid_file),
+                        "jenis": doc.get("jenis", "SKEP" if clean_nomor.lower().startswith("skep") else "Regulasi"),
+                        "nomor": clean_nomor,
+                        "page_number": "" if is_brain_compact else "1",
+                        "total_pages": str(final_total_pages),
+                        "cache_hit": bool(doc.get("_from_session_brain")),
+                        "score_label": "BRAIN_SESSION_ACTIVE" if doc.get("_from_session_brain") else "HYBRID_RERANKER",
+                        "score": doc.get("score", 1.0),
+                        "raw_judul": doc.get("judul", ""),
                         "raw_tag": doc.get("raw_tag", ""),
                         "raw_isi": doc.get("raw_isi", ""),
                         "tgl_obs": doc.get("tgl_obs", "")
                     })
 
                 if newly_saved_count > 0:
-                    yield format_sse(status="💾 Menyimpan ke memori", event_type=SSEEventType.STATUS)
+                    yield format_sse(status="💾 Menyimpan ke memori", status_key="BRAIN_SAVE", event_type=SSEEventType.STATUS)
                     await asyncio.sleep(0.35)
                 
                 # 1B. Historical docs — TIDAK baca PDF, buat daftar ringkas saja
@@ -242,23 +334,24 @@ class ModeDocuments:
                     historical_summary_lines.append(hist_line)
                     # Tambahkan ke source metadata juga (untuk kartu sumber di UI)
                     all_source_metadata.append({
-                        "id": doc["id"],
-                        "title": doc["judul"],
-                        "document_title": doc["judul"],
+                        "id": doc.get("id"),
+                        "title": doc.get("judul", ""),
+                        "document_title": doc.get("judul", ""),
                         "filename": doc.get("filename"),
                         "file_path": doc.get("file_path"),
-                        "jenis": doc["jenis"],
-                        "nomor": doc["noper"],
+                        "jenis": doc.get("jenis", "Regulasi"),
+                        "nomor": doc.get("noper", ""),
                         "page_number": "1",
                         "total_pages": "",
                         "cache_hit": False,
                         "score_label": "HISTORICAL_REF",
-                        "score": doc["score"],
-                        "raw_judul": doc["judul"],
+                        "score": doc.get("score", 0.5),
+                        "raw_judul": doc.get("judul", ""),
                         "raw_tag": doc.get("raw_tag", ""),
                         "raw_isi": doc.get("raw_isi", ""),
                         "tgl_obs": doc.get("tgl_obs", "")
                     })
+
                 
                 if historical_summary_lines:
                     logger.info(f"[MODE_DOCUMENTS] 📋 {len(historical_summary_lines)} historical docs → ringkasan saja (skip PDF read)")
@@ -305,13 +398,24 @@ class ModeDocuments:
                         connected_pages_per_doc[d_id] = expanded_indices
                         logger.info(f"[MODE_DOCUMENTS] Doc {d_id} Expanded Pages: {expanded_indices} (from seeds: {seed_indices})")
                     
+                    # 🧠 ADAPTIVE BRAIN-FIRST FULL INCLUSION:
+                    # Untuk dokumen aktif sesi dari Brain yang berukuran <= 30 halaman,
+                    # sertakan seluruh halamannya secara utuh agar tidak ada pasal/syarat yang tertinggal!
+                    for doc in full_read_docs:
+                        d_id = doc.get("id")
+                        t_map = doc_text_maps.get(d_id, [])
+                        if doc.get("_from_session_brain") and len(t_map) <= 30:
+                            connected_pages_per_doc[d_id] = list(range(len(t_map)))
+                            logger.info(f"[MODE_DOCUMENTS] 🧠 [BRAIN-FULL] Doc {d_id} has {len(t_map)} pages (<= 30) -> Injected 100% full document context!")
+                    
                     # Grouping summary untuk SSE status
                     summary_parts = []
                     for doc in full_read_docs:
-                        d_id = doc["id"]
+                        d_id = doc.get("id")
                         if d_id in connected_pages_per_doc:
                             p_nums = [str(p + 1) for p in connected_pages_per_doc[d_id]]
-                            short_t = doc["judul"][:28] + ("..." if len(doc["judul"]) > 28 else "")
+                            d_jud = doc.get("judul", "")
+                            short_t = d_jud[:28] + ("..." if len(d_jud) > 28 else "")
                             summary_parts.append(f"{short_t} (Hal {', '.join(p_nums)})")
                         
                     sse_summary = " & ".join(summary_parts)
@@ -321,7 +425,7 @@ class ModeDocuments:
                     # Susun judul_context dari Connected Pages yang utuh dan tidak terpotong
                     context_blocks = []
                     for doc in full_read_docs:
-                        d_id = doc["id"]
+                        d_id = doc.get("id")
                         if d_id not in connected_pages_per_doc:
                             continue
                         
@@ -334,11 +438,11 @@ class ModeDocuments:
                             doc_page_texts.append(f"[HALAMAN {p_idx + 1}]\n{page_text}")
                         
                         meta_header = (
-                            f"--- DOKUMEN: {doc['judul']} (HALAMAN TERHUBUNG: {', '.join(str(p+1) for p in p_indices)}) ---\n"
-                            f"Status Berlaku: {doc['status_berlaku']}\n"
-                            f"Tanggal Terbit: {doc['tanggal']}\n"
-                            f"Nomor Regulasi: {doc['noper']}\n"
-                            f"Mencabut: {doc['mencabut']}\n"
+                            f"--- DOKUMEN: {doc.get('judul', '')} (HALAMAN TERHUBUNG: {', '.join(str(p+1) for p in p_indices)}) ---\n"
+                            f"Status Berlaku: {doc.get('status_berlaku', 'Berlaku')}\n"
+                            f"Tanggal Terbit: {doc.get('tanggal', '-')}\n"
+                            f"Nomor Regulasi: {doc.get('noper', '-')}\n"
+                            f"Mencabut: {doc.get('mencabut', '-')}\n"
                         )
                         full_doc_content = "\n\n".join(doc_page_texts)
                         context_blocks.append(f"{meta_header}Isi Halaman:\n{full_doc_content}\n-------------------")
@@ -365,7 +469,13 @@ class ModeDocuments:
                         s_id = src["id"]
                         if s_id in connected_pages_per_doc:
                             p_nums = [str(p + 1) for p in connected_pages_per_doc[s_id]]
-                            src["page_number"] = ", ".join(p_nums)
+                            tot = int(src.get("total_pages") or len(p_nums) or 1)
+                            # Jika halaman terhubung mencakup sebagian besar/seluruh dokumen atau dari Brain:
+                            if len(p_nums) >= tot or len(p_nums) > 3 or src.get("cache_hit") or src.get("_from_session_brain"):
+                                src["page_number"] = ""
+                                src["total_pages"] = str(tot)
+                            else:
+                                src["page_number"] = ", ".join(p_nums)
                             
             # Hitung skor tertinggi dari Tier 1
             max_tier1_score = max([s.get('score', s.get('similarity', 0.0)) for s in judul_sources]) if judul_sources else 0.0
@@ -882,7 +992,15 @@ class ModeDocuments:
                                     _page_results = await asyncio.gather(*_tasks, return_exceptions=True)
                                     for _src, _n in zip(final_sources, _page_results):
                                         n_pages = _n if isinstance(_n, int) else 0
-                                        _src["total_pages"] = str(n_pages) if n_pages > 0 else ""
+                                        if n_pages > 0:
+                                            _src["total_pages"] = str(n_pages)
+                                        # Pertahankan nilai total_pages sebelumnya (misal dari Brain/PG) jika ada
+                                        elif not _src.get("total_pages"):
+                                            _src["total_pages"] = ""
+                                        
+                                        # Jika total_pages ada, pastikan page_number tidak lagi menampilkan deretan Hal 1, 2, ...
+                                        if _src.get("total_pages"):
+                                            _src["page_number"] = ""
                                     logger.info(f"[MODE_DOCUMENTS] ✅ total_pages dihitung untuk {len(final_sources)} dokumen terpilih Gemma")
                                 
                                 yield format_sse("", "", False, sources=final_sources, event_type=SSEEventType.SOURCES)

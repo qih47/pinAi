@@ -98,13 +98,12 @@ class ModeCompliance:
                 yield chunk
             return
 
-        # 2. Resolve File Path (pinAi/file_peraturan)
-        file_path = os.path.join(BASE_DIR, "file_peraturan", filename)
-        if not os.path.exists(file_path):
-            file_path = os.path.join(BASE_DIR, filename)
+        # 2. Resolve File Path via DocumentResolver
+        from backend.app.services.tools.document_resolver import find_valid_pdf_file
+        file_path = find_valid_pdf_file(filename)
             
-        if not os.path.exists(file_path):
-            async for chunk in fallback_to_rag(f"File physical path not found: {file_path}"):
+        if not file_path or not os.path.exists(file_path):
+            async for chunk in fallback_to_rag(f"File physical path not found: {filename}"):
                 yield chunk
             return
 
@@ -122,14 +121,14 @@ class ModeCompliance:
             brain = SessionBrainService(current_user_npp, session_uuid)
             cached_brain = brain.get_document(doc_id_key)
             if cached_brain and "text_map" in cached_brain:
-                yield format_sse(status="🧠 Dari memori sesi", event_type=SSEEventType.STATUS)
+                yield format_sse(status="🧠 Dari memori sesi", status_key="BRAIN_HIT", event_type=SSEEventType.STATUS)
                 await asyncio.sleep(0.01)
                 text_map = cached_brain["text_map"]
                 all_base64_images = cached_brain.get("images", [])
                 total_pages = cached_brain.get("total_pages", len(text_map))
 
         if text_map is None:
-            yield format_sse(status="📄 Memuat dokumen", event_type=SSEEventType.STATUS)
+            yield format_sse(status="📄 Memuat dokumen", status_key="DOC_LOADING", event_type=SSEEventType.STATUS)
             await asyncio.sleep(0.01)
             cache_key = session_uuid or file_path
             text_map, all_base64_images, total_pages = await extract_and_ocr_document_async(file_path, cache_key=cache_key)
@@ -141,8 +140,9 @@ class ModeCompliance:
                     "images": all_base64_images,
                     "total_pages": total_pages,
                 })
-                yield format_sse(status="💾 Menyimpan ke memori", event_type=SSEEventType.STATUS)
+                yield format_sse(status="💾 Menyimpan ke memori", status_key="BRAIN_SAVE", event_type=SSEEventType.STATUS)
                 await asyncio.sleep(0.01)
+
 
         # 4. Two-Stage Context-Aware Reranking & Structural Continuity Engine
         yield format_sse(status=f"🔍 Menganalisis seluruh {total_pages} halaman regulasi", event_type=SSEEventType.STATUS)

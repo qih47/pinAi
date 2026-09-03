@@ -217,6 +217,29 @@ async def _sequential_pipeline_generator(
             else:
                 cleaned_history.append(msg)
 
+        # 🧠 RESTORE ISOLATED DOC FROM SESSION BRAIN:
+        # Jika client tidak mengirimkan payload.isolated_doc_id (misalnya tombol Regenerate atau follow-up chat),
+        # periksa apakah sesi ini memiliki dokumen aktif di Brain. Jika ada, pulihkan secara otomatis!
+        active_isolated_doc_id = payload.isolated_doc_id
+        if not active_isolated_doc_id and payload.session_uuid and current_user_npp:
+            try:
+                from backend.app.services.session.session_brain_service import SessionBrainService
+                brain_srv = SessionBrainService(current_user_npp, payload.session_uuid)
+                brain_docs = brain_srv.list_documents()
+                if brain_docs:
+                    last_doc = brain_docs[-1]
+                    active_isolated_doc_id = str(last_doc.get("id") or last_doc.get("doc_id") or last_doc)
+                    logger.info(f"[PIPELINE] 🧠 Brain Auto-Restored active isolated_doc_id={active_isolated_doc_id} for session {payload.session_uuid}")
+            except Exception as e:
+                logger.warning(f"[PIPELINE] Gagal auto-restore isolated_doc dari brain: {e}")
+
+        active_forced_mode = getattr(payload, 'forced_mode', None)
+        active_bypass_router = bool(getattr(payload, 'bypass_router', False))
+        if active_isolated_doc_id and not active_forced_mode:
+            active_forced_mode = "documents"
+            active_bypass_router = True
+            logger.info(f"[PIPELINE] ⚡ Auto-activating bypass_router & forced_mode='documents' for Brain isolated doc {active_isolated_doc_id}")
+
         agentic_engine = mode_hub.execute(
             request=request,
             user_message=user_message,
@@ -224,7 +247,7 @@ async def _sequential_pipeline_generator(
             chat_mode=chat_mode,
             is_thinking=payload.thinking if hasattr(payload, 'thinking') else True,
             attachments=formatted_attachments,
-            context_isolation={"isolated_doc_id": payload.isolated_doc_id} if payload.isolated_doc_id else None,
+            context_isolation={"isolated_doc_id": active_isolated_doc_id} if active_isolated_doc_id else None,
             employee_name=employee_name,
             current_user_npp=current_user_npp,
             session_uuid=payload.session_uuid,
@@ -232,8 +255,8 @@ async def _sequential_pipeline_generator(
             active_topic=getattr(payload, 'active_topic', None),
             key_subject=getattr(payload, 'key_subject', None),
             client_context=getattr(payload, 'client_context', None),
-            forced_mode=getattr(payload, 'forced_mode', None),
-            bypass_router=bool(getattr(payload, 'bypass_router', False)),
+            forced_mode=active_forced_mode,
+            bypass_router=active_bypass_router,
         )
 
 
