@@ -229,6 +229,20 @@ async def serve_uploads(file_path: str, request: Request):
 async def serve_accounts(file_path: str, request: Request, current_user_npp: Optional[str] = Depends(get_current_user_npp)):
     abs_path = os.path.join(ACCOUNTS_DIR, file_path)
     if not os.path.exists(abs_path):
+        # Smart Resolver: toleransi path dengan atau tanpa "brain/"
+        parts = Path(file_path).parts
+        # Kasus 1: Request lama tanpa "brain" (accounts/npp/session/images/... -> accounts/npp/session/brain/images/...)
+        if len(parts) >= 3 and parts[2] != "brain":
+            alt_parts = list(parts[:2]) + ["brain"] + list(parts[2:])
+            alt_path = os.path.join(ACCOUNTS_DIR, *alt_parts)
+            if os.path.exists(alt_path):
+                return FileResponse(alt_path)
+        # Kasus 2: Request baru dengan "brain" tapi file fisik masih di lokasi lama (accounts/npp/session/brain/images/... -> accounts/npp/session/images/...)
+        elif len(parts) >= 4 and parts[2] == "brain":
+            alt_parts = list(parts[:2]) + list(parts[3:])
+            alt_path = os.path.join(ACCOUNTS_DIR, *alt_parts)
+            if os.path.exists(alt_path):
+                return FileResponse(alt_path)
         raise HTTPException(status_code=404, detail="File tidak ditemukan")
     return FileResponse(abs_path)
 

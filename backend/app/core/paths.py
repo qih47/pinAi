@@ -31,7 +31,7 @@ def get_account_dir(npp: str, category: str) -> Path:
     return account_path
 
 def get_account_session_dir(npp: str, session_id: str, category: str) -> Path:
-    """Mendapatkan path untuk penyimpanan berbasis sesi chat per akun"""
+    """Mendapatkan path untuk penyimpanan berbasis sesi chat per akun di dalam folder brain/"""
     safe_npp = "".join(c if c.isalnum() else "_" for c in str(npp)).strip("_")
     if not safe_npp:
         safe_npp = "guest"
@@ -39,7 +39,7 @@ def get_account_session_dir(npp: str, session_id: str, category: str) -> Path:
     safe_session = "".join(c if c.isalnum() or c == "-" else "_" for c in str(session_id)).strip("_")
     safe_category = "".join(c if c.isalnum() else "_" for c in str(category)).strip("_")
     
-    account_session_path = Path(ACCOUNTS_DIR) / safe_npp / safe_session / safe_category
+    account_session_path = Path(ACCOUNTS_DIR) / safe_npp / safe_session / "brain" / safe_category
     account_session_path.mkdir(parents=True, exist_ok=True)
     return account_session_path
 

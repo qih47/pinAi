@@ -42,6 +42,17 @@ async def read_artifact_file(
     target_dir = get_account_session_dir(current_user_npp, session_id, "artifacts")
     target = target_dir / safe_name
 
+    # Fallback ke path legacy (tanpa brain/) jika file belum ada di brain/artifacts
+    if not target.exists() or not target.is_file():
+        from backend.app.core.paths import ACCOUNTS_DIR
+        safe_npp = "".join(c if c.isalnum() else "_" for c in str(current_user_npp)).strip("_") or "guest"
+        safe_sess = "".join(c if c.isalnum() or c == "-" else "_" for c in str(session_id)).strip("_")
+        legacy_dir = Path(ACCOUNTS_DIR) / safe_npp / safe_sess / "artifacts"
+        legacy_target = legacy_dir / safe_name
+        if legacy_target.exists() and legacy_target.is_file():
+            target = legacy_target
+            target_dir = legacy_dir
+
     # Verifikasi file berada di dalam direktori yang diizinkan
     try:
         target.resolve().relative_to(target_dir.resolve())
@@ -67,19 +78,30 @@ async def download_all_artifacts(
 ):
     """
     Mengunduh semua file artifact dalam suatu sesi sebagai file ZIP.
+    Mendukung file di brain/artifacts/ dan legacy artifacts/.
     """
     target_dir = get_account_session_dir(current_user_npp, session_id, "artifacts")
-    
-    if not target_dir.exists() or not target_dir.is_dir():
-        raise HTTPException(status_code=404, detail="Tidak ada artifact pada sesi ini.")
+    from backend.app.core.paths import ACCOUNTS_DIR
+    safe_npp = "".join(c if c.isalnum() else "_" for c in str(current_user_npp)).strip("_") or "guest"
+    safe_sess = "".join(c if c.isalnum() or c == "-" else "_" for c in str(session_id)).strip("_")
+    legacy_dir = Path(ACCOUNTS_DIR) / safe_npp / safe_sess / "artifacts"
+
+    folders_to_scan = [target_dir]
+    if legacy_dir.exists() and legacy_dir.is_dir() and legacy_dir.resolve() != target_dir.resolve():
+        folders_to_scan.append(legacy_dir)
 
     zip_buffer = io.BytesIO()
     file_count = 0
+    seen_filenames = set()
     with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
-        for f in target_dir.glob("*.*"):
-            if f.is_file():
-                zip_file.write(f, f.name)
-                file_count += 1
+        for folder in folders_to_scan:
+            if not folder.exists() or not folder.is_dir():
+                continue
+            for f in folder.glob("*.*"):
+                if f.is_file() and f.name not in seen_filenames:
+                    seen_filenames.add(f.name)
+                    zip_file.write(f, f.name)
+                    file_count += 1
                 
     if file_count == 0:
         raise HTTPException(status_code=404, detail="Tidak ada file yang bisa didownload.")

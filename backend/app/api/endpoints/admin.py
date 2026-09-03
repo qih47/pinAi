@@ -279,20 +279,25 @@ async def admin_list_artifacts(
                     continue
                 session_id = session_dir.name
                 
-                artifact_folder = session_dir / "artifacts"
-                if not artifact_folder.exists() or not artifact_folder.is_dir():
-                    continue
-                    
-                for file_path in artifact_folder.iterdir():
-                    if file_path.is_file():
-                        stat = file_path.stat()
-                        artifacts_list.append({
-                            "npp": npp,
-                            "session_id": session_id,
-                            "filename": file_path.name,
-                            "size": stat.st_size,
-                            "created_at": datetime.fromtimestamp(stat.st_mtime).isoformat()
-                        })
+                folders_to_check = [
+                    session_dir / "brain" / "artifacts",
+                    session_dir / "artifacts",
+                ]
+                seen_files = set()
+                for artifact_folder in folders_to_check:
+                    if not artifact_folder.exists() or not artifact_folder.is_dir():
+                        continue
+                    for file_path in artifact_folder.iterdir():
+                        if file_path.is_file() and file_path.name not in seen_files:
+                            seen_files.add(file_path.name)
+                            stat = file_path.stat()
+                            artifacts_list.append({
+                                "npp": npp,
+                                "session_id": session_id,
+                                "filename": file_path.name,
+                                "size": stat.st_size,
+                                "created_at": datetime.fromtimestamp(stat.st_mtime).isoformat()
+                            })
                         
         # Urutkan berdasarkan waktu pembuatan terbaru
         artifacts_list.sort(key=lambda x: x["created_at"], reverse=True)
@@ -320,7 +325,9 @@ async def admin_read_artifact(
     if not safe_name or safe_name.startswith(".") or "/" in safe_name or "\\" in safe_name:
         raise HTTPException(status_code=400, detail="Nama file tidak valid.")
         
-    target = Path(ACCOUNTS_DIR) / str(npp) / str(session_id) / "artifacts" / safe_name
+    target = Path(ACCOUNTS_DIR) / str(npp) / str(session_id) / "brain" / "artifacts" / safe_name
+    if not target.exists() or not target.is_file():
+        target = Path(ACCOUNTS_DIR) / str(npp) / str(session_id) / "artifacts" / safe_name
     
     if not target.exists() or not target.is_file():
         raise HTTPException(status_code=404, detail="Artifact tidak ditemukan.")
@@ -345,7 +352,9 @@ async def admin_download_artifact(
     if not safe_name or safe_name.startswith(".") or "/" in safe_name or "\\" in safe_name:
         raise HTTPException(status_code=400, detail="Nama file tidak valid.")
         
-    target = Path(ACCOUNTS_DIR) / str(npp) / str(session_id) / "artifacts" / safe_name
+    target = Path(ACCOUNTS_DIR) / str(npp) / str(session_id) / "brain" / "artifacts" / safe_name
+    if not target.exists() or not target.is_file():
+        target = Path(ACCOUNTS_DIR) / str(npp) / str(session_id) / "artifacts" / safe_name
     
     if not target.exists() or not target.is_file():
         raise HTTPException(status_code=404, detail="Artifact tidak ditemukan.")
@@ -382,15 +391,21 @@ async def admin_download_all_artifacts(
             if not npp_dir.is_dir(): continue
             for session_dir in npp_dir.iterdir():
                 if not session_dir.is_dir(): continue
-                artifact_folder = session_dir / "artifacts"
-                if not artifact_folder.exists() or not artifact_folder.is_dir(): continue
-                
-                for file_path in artifact_folder.iterdir():
-                    if file_path.is_file():
-                        # Create an organized path in the zip: npp/session_id/filename
-                        arcname = f"{npp_dir.name}/{session_dir.name}/{file_path.name}"
-                        zip_file.write(file_path, arcname)
-                        file_count += 1
+                folders_to_check = [
+                    session_dir / "brain" / "artifacts",
+                    session_dir / "artifacts",
+                ]
+                seen_session_files = set()
+                for artifact_folder in folders_to_check:
+                    if not artifact_folder.exists() or not artifact_folder.is_dir(): continue
+                    for file_path in artifact_folder.iterdir():
+                        if file_path.is_file() and file_path.name not in seen_session_files:
+                            seen_session_files.add(file_path.name)
+                            # Create an organized path in the zip: npp/session_id/filename
+                            arcname = f"{npp_dir.name}/{session_dir.name}/{file_path.name}"
+                            zip_file.write(file_path, arcname)
+                            file_count += 1
+
                         
     if file_count == 0:
         raise HTTPException(status_code=404, detail="Tidak ada file yang bisa didownload.")

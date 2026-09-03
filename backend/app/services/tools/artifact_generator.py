@@ -82,10 +82,8 @@ async def write_artifact(
     if artifacts_base_dir:
         target_dir = Path(artifacts_base_dir)
     else:
-        # Backward compatible: belum pakai brain/ — itu untuk Step 2
-        safe_npp = re.sub(r'[^\w\-]', '_', str(npp))
-        safe_session = re.sub(r'[^\w\-]', '_', str(session_id))
-        target_dir = Path(f"/home/qisthi/pinAi/accounts/{safe_npp}/{safe_session}/artifacts")
+        from backend.app.core.paths import get_account_session_dir
+        target_dir = get_account_session_dir(npp, session_id, "artifacts")
 
     target_dir.mkdir(parents=True, exist_ok=True)
     output_path = target_dir / safe_fn
@@ -109,9 +107,10 @@ def get_mime_type(filename: str) -> str:
 def get_relative_artifact_path(npp: str, session_id: str, filename: str) -> str:
     """
     Hasilkan path relatif artefak untuk disimpan di metadata/DB.
-    Format: accounts/{npp}/{session}/artifacts/{filename}
+    Format: accounts/{npp}/{session}/brain/artifacts/{filename}
     """
     safe_npp = re.sub(r'[^\w\-]', '_', str(npp))
     safe_session = re.sub(r'[^\w\-]', '_', str(session_id))
     safe_fn = sanitize_filename(filename)
-    return f"accounts/{safe_npp}/{safe_session}/artifacts/{safe_fn}"
+    return f"accounts/{safe_npp}/{safe_session}/brain/artifacts/{safe_fn}"
+
