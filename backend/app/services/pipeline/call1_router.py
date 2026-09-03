@@ -423,21 +423,27 @@ def _validate_and_normalize_routing(
     else:
         routing["tone_hint"] = "casual"
 
+    from backend.app.services.web_tools.url_reader import is_incidental_url
+
     fetch_urls = routing_json.get("fetch_urls", [])
     if isinstance(fetch_urls, list):
         routing["fetch_urls"] = [
             str(u).strip() for u in fetch_urls 
             if isinstance(u, str) and (u.strip().startswith("http://") or u.strip().startswith("https://"))
+            and not is_incidental_url(str(u).strip(), user_message)
         ]
     elif isinstance(fetch_urls, str) and (fetch_urls.strip().startswith("http://") or fetch_urls.strip().startswith("https://")):
-        routing["fetch_urls"] = [fetch_urls.strip()]
+        clean_u = fetch_urls.strip()
+        routing["fetch_urls"] = [clean_u] if not is_incidental_url(clean_u, user_message) else []
     else:
         routing["fetch_urls"] = []
 
-    # Fallback jika model lupa menyertakan fetch_urls tapi ada URL/domain di pesan user
+    # Fallback jika model lupa menyertakan fetch_urls tapi ada URL/domain valid di pesan user
     if not routing["fetch_urls"] and precheck.get("_detected_urls"):
-        routing["fetch_urls"] = precheck.get("_detected_urls")
-        logger.info(f"[CALL1] Auto-populated fetch_urls from precheck detected URLs: {routing['fetch_urls']}")
+        valid_detected = [u for u in precheck.get("_detected_urls") if not is_incidental_url(u, user_message)]
+        if valid_detected:
+            routing["fetch_urls"] = valid_detected
+            logger.info(f"[CALL1] Auto-populated fetch_urls from precheck detected URLs: {routing['fetch_urls']}")
 
     # Jika user memberikan URL untuk dibaca langsung, prioritaskan URL Reader daripada DuckDuckGo Web Search
     if routing["fetch_urls"]:
@@ -684,62 +690,147 @@ def _validate_and_normalize_routing(
 
 
 def _build_fallback_routing(precheck: Dict[str, Any]) -> Dict[str, Any]:
-    """Fallback routing berdasarkan rule-based precheck."""
+    """
+    Fallback routing komprehensif (Safety Net) berbasis rule-based & sinyal precheck.
+    Mengawal seluruh 15 fitur CAKRA AI agar tetap berfungsi optimal jika LLM Call 1
+    mengalami timeout, beban antrean GPU, atau format parsing error.
+    """
     from backend.app.services.pipeline.modes.mode_utils import build_rule_based_queries
+    from backend.app.services.web_tools.url_reader import is_incidental_url
 
-    need_rag_hint = precheck.get("need_rag_hint")
-    user_message = precheck.get("_user_message", "")
+    user_message = (precheck.get("_user_message") or "").strip()
+    user_lower = user_message.lower()
+    is_guest = bool(precheck.get("is_guest", False))
 
-    detected_urls = precheck.get("_detected_urls", [])
-    if need_rag_hint is True:
-        queries = build_rule_based_queries(user_message)
-        return {
-            "need_rag": True,
-            "queries": queries,
-            "query_judul": [user_message],
-            "fetch_urls": detected_urls,
-            "is_web_search": False,
-            "search_tags": [],
-            "context_snippets": [],
-            "is_coding": False,
-            "is_generate_file": False,
-            "is_generate_email": False,
-            "needs_code_analysis": False,
-            "need_analytic": False,
-            "is_self_correction": False,
-            "is_ambiguous": False,
-            "is_multi_document": False,
-            "is_multi_turn_task": False,
-            "task_list": [],
-            "pronoun": precheck.get("pronoun", "unknown"),
-            "tone_hint": "formal",
-            "detected_language": "id",
-            "is_chitchat": False,
-        }
-    else:
-        return {
-            "need_rag": False,
-            "queries": [],
-            "query_judul": [],
-            "fetch_urls": detected_urls,
-            "is_web_search": False,
-            "search_tags": [],
-            "context_snippets": [],
-            "is_coding": precheck.get("is_coding", False),
-            "is_generate_file": False,
-            "is_generate_email": False,
-            "needs_code_analysis": False,
-            "need_analytic": False,
-            "is_self_correction": False,
-            "is_ambiguous": False,
-            "is_multi_document": False,
-            "is_multi_turn_task": False,
-            "task_list": [],
-            "pronoun": precheck.get("pronoun", "unknown"),
-            "tone_hint": "formal",
-            "detected_language": "id",
-            "is_chitchat": precheck.get("is_chitchat", False),
-        }
+    # 1. Bersihkan detected URLs dari URL insidental / error log
+    raw_detected = precheck.get("_detected_urls", [])
+    valid_detected_urls = [u for u in raw_detected if not is_incidental_url(u, user_message)]
+
+    # 2. Inisialisasi skema lengkap 15 kapabilitas
+    fallback = {
+        "active_topic": str(precheck.get("previous_topic") or "Obrolan Cakra AI").strip(),
+        "key_subject": str(precheck.get("previous_subject") or user_message[:50]).strip(),
+        "need_rag": False,
+        "queries": [],
+        "query_judul": [],
+        "search_tags": [],
+        "context_snippets": [],
+        "fetch_urls": valid_detected_urls,
+        "is_web_search": False,
+        "is_coding": bool(precheck.get("is_coding", False)),
+        "is_generate_file": bool(precheck.get("is_generate_file", False)),
+        "is_generate_email": bool(precheck.get("is_generate_email", False)),
+        "needs_code_analysis": False,
+        "need_analytic": bool(precheck.get("need_analytic", False)),
+        "is_self_correction": False,
+        "is_ambiguous": bool(precheck.get("is_ambiguous", False)),
+        "is_troubleshooting": bool(precheck.get("is_troubleshooting", False)),
+        "is_comparative": bool(precheck.get("is_comparative", False)),
+        "has_actionable_workflow": bool(precheck.get("has_actionable_workflow", False)),
+        "is_deep_research": bool(precheck.get("is_deep_research", False)),
+        "is_security_critical": bool(precheck.get("is_security_critical", False)),
+        "requires_visual": bool(precheck.get("requires_visual", False)),
+        "is_map_query": bool(precheck.get("is_map_query", False)),
+        "is_chitchat": bool(precheck.get("is_chitchat", False) or precheck.get("is_greeting", False)),
+        "is_multi_document": False,
+        "is_multi_turn_task": False,
+        "task_list": [],
+        "pronoun": precheck.get("pronoun", "unknown"),
+        "tone_hint": precheck.get("tone_hint", "formal"),
+        "detected_language": "id",
+        "session_title": None,
+    }
+
+    # 3. Sinyal Keyword Safety Net untuk 15 Fitur:
+    # A. Visualisasi & Bagan Alir
+    visual_kws = ["diagram", "flowchart", "grafik", "chart", "bagan alir", "visualisasi", "gantt", "kurva", "plot"]
+    if any(k in user_lower for k in visual_kws):
+        fallback["requires_visual"] = True
+
+    # B. Pembuatan File Fisik
+    file_kws = ["buatkan file", "bikin file", "ekspor", "export", "unduh excel", "unduh word", ".xlsx", ".docx", ".pdf"]
+    if any(k in user_lower for k in file_kws):
+        fallback["is_generate_file"] = True
+
+    # C. Persuratan Dinas & Email
+    email_kws = ["buatkan email", "draf email", "nota dinas", "surat dinas", "surat tugas", "memo dinas"]
+    if any(k in user_lower for k in email_kws):
+        fallback["is_generate_email"] = True
+
+    # D. Troubleshooting & Error
+    trouble_kws = ["error", "bug", "gagal", "crash", "traceback", "kenapa tidak bisa", "tidak connect", "timeout", "econnrefused"]
+    if any(k in user_lower for k in trouble_kws):
+        fallback["is_troubleshooting"] = True
+
+    # E. Komparasi / Perbandingan
+    comp_kws = ["bandingkan", "perbedaan", "vs", "komparasi", "kelebihan dan kekurangan", "pilih mana", "lebih bagus mana"]
+    if any(k in user_lower for k in comp_kws):
+        fallback["is_comparative"] = True
+
+    # F. Workflow & SOP Actionable
+    sop_kws = ["sop", "prosedur", "tahapan", "alur pengajuan", "syarat izin", "langkah-langkah", "tata cara"]
+    if any(k in user_lower for k in sop_kws):
+        fallback["has_actionable_workflow"] = True
+
+    # G. Deep Research / Enterprise Architecture
+    research_kws = ["analisis mendalam", "kajian", "studi kelayakan", "arsitektur sistem", "evaluasi komprehensif"]
+    if any(k in user_lower for k in research_kws):
+        fallback["is_deep_research"] = True
+
+    # H. Security Critical
+    sec_kws = ["keamanan", "enkripsi", "jwt", "otentikasi", "vulnerability", "hardening", "owasp", "bcrypt", "password hash"]
+    if any(k in user_lower for k in sec_kws):
+        fallback["is_security_critical"] = True
+
+    # I. Map / Lokasi
+    map_kws = ["lokasi", "alamat", "dimana gedung", "peta", "turen", "bandung", "fasilitas pindad"]
+    if any(k in user_lower for k in map_kws):
+        fallback["is_map_query"] = True
+
+    # J. Deteksi Ambiguitas (Pesan umum ringkas tanpa detail)
+    ambiguous_prompts = [
+        "aturan cuti", "soal cuti", "prosedur mutasi", "buatkan surat dinas", "bikin nota dinas",
+        "diagram alur", "bikin aplikasi", "buatkan web", "aplikasi error", "sistem down"
+    ]
+    if any(p in user_lower for p in ambiguous_prompts) and len(user_message.split()) <= 4:
+        fallback["is_ambiguous"] = True
+
+    # K. Dokumen & Regulasi Internal (RAG)
+    rag_kws = [
+        "skep", "sk", "sop", "pkb", "peraturan", "keputusan", "surat edaran", "direksi",
+        "pindad", "organisasi", "tata kerja", "otk", "cuti", "mutasi", "gaji", "tunjangan",
+        "alutsista", "senjata", "munisi", "kendaraan khusus", "anoa", "komodo", "ss2", "harimau"
+    ]
+    is_doc_intent = any(k in user_lower for k in rag_kws) or precheck.get("need_rag_hint") or precheck.get("is_doc_query")
+    if is_doc_intent and not is_guest and not fallback["is_ambiguous"]:
+        fallback["need_rag"] = True
+        fallback["query_judul"] = [user_message]
+        fallback["queries"] = build_rule_based_queries(user_message, fallback["key_subject"], fallback["active_topic"])
+        fallback["is_web_search"] = False
+
+    # L. Web Search & Web Reader
+    web_kws = ["berita", "kabar", "terkini", "hari ini", "terbaru", "cuaca besok", "cuaca 7 hari", "saham", "kurs"]
+    if any(k in user_lower for k in web_kws) and not fallback["need_rag"]:
+        fallback["is_web_search"] = True
+        fallback["queries"] = [user_message]
+
+    # M. Prioritas URL Reader atas Web Search
+    if fallback["fetch_urls"]:
+        fallback["is_web_search"] = False
+
+    # N. Chitchat & Sapaan
+    if any(kw in user_lower for kw in ["hai", "halo", "selamat pagi", "selamat siang", "terima kasih", "makasih", "semangat"]):
+        if not fallback["need_rag"] and not fallback["is_coding"] and not fallback["is_generate_file"]:
+            fallback["is_chitchat"] = True
+
+    # 4. Strict Guest Isolation Guard
+    if is_guest:
+        fallback["need_rag"] = False
+        fallback["query_judul"] = []
+        fallback["queries"] = []
+
+    logger.info(f"[CALL1] Fallback routing constructed successfully | need_rag={fallback['need_rag']} | is_coding={fallback['is_coding']} | is_ambiguous={fallback['is_ambiguous']} | requires_visual={fallback['requires_visual']}")
+    return fallback
 
 async def generate_call1_preset_routing(
     user_message: str,

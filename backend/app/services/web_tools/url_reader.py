@@ -22,25 +22,88 @@ _HTTP_HEADERS = {
 }
 
 
+_IGNORED_DOMAINS = {
+    "registry.npmjs.org", "pypi.org", "files.pythonhosted.org",
+    "repo.maven.apache.org", "rubygems.org", "crates.io",
+    "localhost", "127.0.0.1", "0.0.0.0", "example.com"
+}
+
+_PACKAGE_EXTENSIONS = (".tgz", ".whl", ".tar.gz", ".zip", ".bin", ".iso", ".gz")
+
+_ERROR_LOG_SIGNALS = (
+    "npm err!", "yarn error", "pnpm err", "pip error", "traceback (most recent call last)",
+    "stacktrace:", "exception in thread", "fatal error:", "failed to fetch",
+    "404 not found", "connection refused", "econnrefused", "etimedout", "err_connection",
+    "status code: 4", "status code: 5"
+)
+
+_EXPLICIT_READ_SIGNALS = (
+    "baca", "rangkum", "ringkas", "cek link", "buka web", "isi tautan", "kunjungi",
+    "analisis web", "baca ini", "ringkasan dari", "apa isi", "simpulkan"
+)
+
+
+def is_incidental_url(url: str, full_text: str = "") -> bool:
+    """
+    Memeriksa apakah URL adalah URL insidental (bagian dari error log, package manager registry,
+    atau snippet kode) yang tidak dimaksudkan untuk dibaca oleh URL Reader.
+    """
+    url_lower = url.lower()
+
+    # 1. Cek domain terabaikan (registry, localhost, dll)
+    for ign in _IGNORED_DOMAINS:
+        if ign in url_lower:
+            return True
+
+    # 2. Cek ekstensi file arsip/package
+    if any(url_lower.endswith(ext) for ext in _PACKAGE_EXTENSIONS):
+        return True
+
+    # 3. Jika ada full_text, periksa apakah berada di konteks error log
+    if full_text:
+        text_lower = full_text.lower()
+        has_error = any(sig in text_lower for sig in _ERROR_LOG_SIGNALS)
+        has_explicit_read = any(sig in text_lower for sig in _EXPLICIT_READ_SIGNALS)
+        if has_error and not has_explicit_read:
+            return True
+
+        # Cek apakah URL hanya muncul di dalam blok kode (```...```)
+        code_blocks = re.findall(r'```[\s\S]*?```', full_text)
+        if code_blocks:
+            url_in_code = any(url in cb or url.replace('https://', '') in cb or url.replace('http://', '') in cb for cb in code_blocks)
+            text_without_code = re.sub(r'```[\s\S]*?```', '', full_text)
+            url_outside_code = url in text_without_code or url.replace('https://', '') in text_without_code or url.replace('http://', '') in text_without_code
+            if url_in_code and not url_outside_code and not has_explicit_read:
+                return True
+
+    return False
+
+
 def extract_urls_from_text(text: str) -> List[str]:
     """
-    Ekstrak semua URL yang ada di dalam teks, termasuk domain tanpa http:// (misal pindad.com).
+    Ekstrak semua URL yang ada di dalam teks, menyaring URL insidental dari log error/koding.
     """
+    if not text:
+        return []
+
     url_pattern = re.compile(
         r'(?:https?://)?(?:www\.)?[-a-zA-Z0-9@:%_\+~#=]{1,256}\s*\.\s*(?:com|co\.id|id|org|net|gov|edu|mil)\b(?:[-a-zA-Z0-9()@:%_\+.~#?&//=]*)',
         re.IGNORECASE
     )
-    
+
     matches = url_pattern.findall(text)
-    
+
     valid_urls = []
     for match in matches:
         clean_match = match.replace(' ', '')
         if not clean_match.startswith('http://') and not clean_match.startswith('https://'):
-            valid_urls.append(f'https://{clean_match}')
+            url_to_check = f'https://{clean_match}'
         else:
-            valid_urls.append(clean_match)
-            
+            url_to_check = clean_match
+
+        if not is_incidental_url(url_to_check, text):
+            valid_urls.append(url_to_check)
+
     return valid_urls
 
 

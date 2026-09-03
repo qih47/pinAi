@@ -34,8 +34,11 @@ Fokus pemikiran untuk CODING: Analisis arsitektur, edge cases, dan struktur kode
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Permintaan koding pengguna masih bersifat umum atau memiliki beberapa alternatif stack/arsitektur/metode.
 TUGASMU:
-1. Berikan pengantar dan gambaran konsep/arsitektur teknis dasar secara ringkas (1-2 paragraf pendek).
-2. Di akhir jawaban, WAJIB sertakan blok ```wizard ``` berisi pilihan opsi stack / library / pendekatan teknis yang bisa dipilih oleh pengguna secara interaktif!
+1. Di BAGIAN PALING AWAL output respons, WAJIB sertakan blok ```wizard ``` berisi kartu opsi interaktif:
+   - 🎯 Prioritaskan 1-Step pertanyaan tegas (misal: "Pilih framework/stack teknologi yang ingin digunakan").
+   - Gunakan 2-Step (Step 1: Pilihan Stack/Fondasi, Step 2: Checklist Fitur) HANYA jika memang proyek aplikasi lengkap.
+   - 🚫 DILARANG memaksakan 3 langkah jika 1-2 pertanyaan sudah cukup!
+2. Setelah blok ```wizard ditutup, berikan pengantar ringkas dan gambaran konsep teknis (1-2 paragraf pendek).
 3. DILARANG mengetik ulang daftar opsi secara manual sebagai bullet point teks biasa, karena sistem UI otomatis merender kartu interaktif dari blok ```wizard tersebut.
 {% else %}
 Jawaban akhir WAJIB komprehensif dan panjang.

@@ -542,7 +542,7 @@ def get_module_config(module_name: str, precheck: Optional[Dict[str, Any]] = Non
         if precheck.get("is_deep_research"):
             cfg["num_predict"] = 8192
             cfg["temperature"] = 0.2
-        elif precheck.get("is_ambiguous") and module_name == "coding":
+        elif precheck.get("is_ambiguous") or module_name == "ambiguous":
             cfg["num_predict"] = 4096
 
     return cfg
