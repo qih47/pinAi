@@ -95,7 +95,9 @@ def extract_explicit_pages_from_query(query: str, total_pages: int) -> Set[int]:
 
 def expand_tri_window_context(seed_pages: List[int], text_map: List[Dict[str, Any]], total_pages: int) -> List[int]:
     """
-    Ekspansi jendela struktural Tri-Window (kiri dan kanan) untuk menghubungkan pasal yang terpotong.
+    Ekspansi jendela struktural Tri-Window [p-1, p, p+1] untuk menghubungkan pasal yang terpotong.
+    Setiap seed page selalu mengambil halaman sebelum (p-1) dan sesudah (p+1) agar alur kalimat,
+    pasal, ayat, dan tabel tidak terputus di tengah jalan.
     """
     if not seed_pages or not text_map:
         return seed_pages or []
@@ -104,53 +106,74 @@ def expand_tri_window_context(seed_pages: List[int], text_map: List[Dict[str, An
     for p in seed_pages:
         if p < 0 or p >= total_pages:
             continue
+        # 1. Halaman inti (seed)
         expanded_cluster.add(p)
         
-        # Analisis KIRI (Backward / Kepala):
+        # 2. Tri-Window KIRI (Backward): Selalu ambil halaman sebelum (p - 1)
         if p > 0:
             prev_p = p - 1
-            text_curr = text_map[p]["text"] if p < len(text_map) else ""
-            text_prev = text_map[prev_p]["text"] if prev_p < len(text_map) else ""
+            expanded_cluster.add(prev_p)
             
-            is_struct_back = StructuralContinuityDetector.detect_unclosed_list_backward(text_curr, text_prev)
-            is_catchword_prev = StructuralContinuityDetector.detect_catchword(text_prev)
-            if is_struct_back or is_catchword_prev:
-                expanded_cluster.add(prev_p)
-                logger.info(f"[DOC_INTEL] 🔗 Linked LEFT: Page {prev_p+1} (Head of Page {p+1}) | Struct: {is_struct_back}, Catchword: {is_catchword_prev}")
+            # Deep Extension jika terdeteksi list/catchword menyambung lebih jauh ke p-2
+            if prev_p > 0:
+                text_prev = text_map[prev_p]["text"] if prev_p < len(text_map) else ""
+                text_prev2 = text_map[prev_p - 1]["text"] if (prev_p - 1) < len(text_map) else ""
+                if StructuralContinuityDetector.detect_unclosed_list_backward(text_prev, text_prev2) or StructuralContinuityDetector.detect_catchword(text_prev2):
+                    expanded_cluster.add(prev_p - 1)
+                    logger.info(f"[DOC_INTEL] 🔗 Deep Linked LEFT: Page {prev_p} into cluster")
 
-        # Analisis KANAN (Forward / Ekor):
+        # 3. Tri-Window KANAN (Forward): Selalu ambil halaman sesudah (p + 1)
         if p + 1 < total_pages:
             next_p = p + 1
-            text_curr = text_map[p]["text"] if p < len(text_map) else ""
-            text_next = text_map[next_p]["text"] if next_p < len(text_map) else ""
+            expanded_cluster.add(next_p)
             
-            is_catchword_fwd = StructuralContinuityDetector.detect_catchword(text_curr)
-            is_struct_fwd = StructuralContinuityDetector.detect_unclosed_list_forward(text_curr, text_next)
-            if is_catchword_fwd or is_struct_fwd:
-                expanded_cluster.add(next_p)
-                logger.info(f"[DOC_INTEL] 🔗 Linked RIGHT: Page {next_p+1} (Tail of Page {p+1}) | Struct: {is_struct_fwd}, Catchword: {is_catchword_fwd}")
+            # Deep Extension jika terdeteksi list/catchword menyambung lebih jauh ke p+2
+            if next_p + 1 < total_pages:
+                text_next = text_map[next_p]["text"] if next_p < len(text_map) else ""
+                text_next2 = text_map[next_p + 1]["text"] if (next_p + 1) < len(text_map) else ""
+                if StructuralContinuityDetector.detect_unclosed_list_forward(text_next, text_next2) or StructuralContinuityDetector.detect_catchword(text_next):
+                    expanded_cluster.add(next_p + 1)
+                    logger.info(f"[DOC_INTEL] 🔗 Deep Linked RIGHT: Page {next_p + 2} into cluster")
                 
-    return sorted(list(expanded_cluster))
+    # 4. Gap-filling: Jika ada celah 1 halaman bolong di antara halaman yang terpilih, sambungkan!
+    sorted_pages = sorted(list(expanded_cluster))
+    bridged_cluster = set(sorted_pages)
+    for i in range(len(sorted_pages) - 1):
+        if sorted_pages[i + 1] - sorted_pages[i] == 2:
+            gap_page = sorted_pages[i] + 1
+            bridged_cluster.add(gap_page)
+            logger.info(f"[DOC_INTEL] 🌉 Gap-filling bridged Page {gap_page + 1} between Page {sorted_pages[i] + 1} and Page {sorted_pages[i + 1] + 1}")
+
+    result = sorted(list(bridged_cluster))
+    # Batasi maksimal 18 halaman per dokumen agar hemat token dan responsif
+    if len(result) > 18:
+        result = result[:18]
+        
+    return result
 
 
-def process_single_page_threadsafe(file_path: str, page_num: int) -> Tuple[Dict[str, Any], str]:
-    """Worker thread-safe untuk render gambar resolusi tinggi dan OCR jika diperlukan."""
+def process_single_page_threadsafe(file_path: str, page_num: int, render_images: bool = False) -> Tuple[Dict[str, Any], str]:
+    """Worker thread-safe: ekstrak teks digital secara instan, dan OCR hanya jika scan."""
     import pytesseract
     doc_thread = fitz.open(file_path)
     page = doc_thread.load_page(page_num)
     
-    # 1. Render Image Resolusi Tinggi (150 DPI)
-    pix = page.get_pixmap(dpi=150)
-    img_data = pix.tobytes("png")
-    encoded = base64.b64encode(img_data).decode("utf-8")
-
-    # 2. Extract Text Digital
+    # 1. Ekstrak teks digital langsung (super cepat ~1ms, zero CPU load)
     text = page.get_text("text").strip()
+    encoded = ""
     
-    # 3. Fast OCR Fallback jika halaman berupa scan/bagan diagram (< 40 karakter)
+    # 2. Render image hanya jika diminta secara eksplisit
+    if render_images:
+        pix = page.get_pixmap(dpi=120)
+        encoded = base64.b64encode(pix.tobytes("png")).decode("utf-8")
+
+    # 3. OCR fallback HANYA jika halaman berupa scan / gambar (< 40 karakter digital)
     if len(text) < 40:
         try:
-            img = Image.open(io.BytesIO(img_data))
+            import os
+            os.environ["OMP_THREAD_LIMIT"] = "1"
+            pix_ocr = page.get_pixmap(dpi=120)
+            img = Image.open(io.BytesIO(pix_ocr.tobytes("png")))
             ocr_text = pytesseract.image_to_string(img, lang='ind+eng')
             if ocr_text and ocr_text.strip():
                 text = ocr_text.strip()
@@ -161,11 +184,14 @@ def process_single_page_threadsafe(file_path: str, page_num: int) -> Tuple[Dict[
     return {"page_num": page_num, "text": text}, encoded
 
 
-async def extract_and_ocr_document_async(file_path: str, cache_key: Optional[str] = None) -> Tuple[List[Dict[str, Any]], List[str], int]:
+async def extract_and_ocr_document_async(
+    file_path: str,
+    cache_key: Optional[str] = None,
+    render_images: bool = False
+) -> Tuple[List[Dict[str, Any]], List[str], int]:
     """
-    Mengekstrak dan melakukan OCR paralel pada seluruh halaman dokumen PDF.
-    Mengembalikan (text_map, all_base64_images, total_pages).
-    Terintegrasi dengan Unified Extractor (dual L1/L2 cache) dengan fallback lokal.
+    Mengekstrak teks dokumen PDF secara efisien (dual L1/L2 cache).
+    Secara default render_images=False agar tidak membebani CPU/RAM server.
     """
     key_to_use = cache_key or file_path
     cached = get_document_cache(key_to_use)
@@ -179,7 +205,7 @@ async def extract_and_ocr_document_async(file_path: str, cache_key: Optional[str
     # Coba via Unified Extractor (dual-layer cache)
     try:
         from backend.app.services.tools.unified_extractor import extract_document
-        doc_obj = await extract_document(file_path, cache_key=key_to_use, render_images=True)
+        doc_obj = await extract_document(file_path, cache_key=key_to_use, render_images=render_images)
         t_map = doc_obj.to_text_map()
         imgs = doc_obj.base64_images
         set_document_cache(key_to_use, t_map, imgs)
@@ -193,8 +219,8 @@ async def extract_and_ocr_document_async(file_path: str, cache_key: Optional[str
     doc.close()
 
     def run_parallel_extraction():
-        with ThreadPoolExecutor(max_workers=8) as executor:
-            tasks = [executor.submit(process_single_page_threadsafe, file_path, p) for p in range(total_pages)]
+        with ThreadPoolExecutor(max_workers=4) as executor:
+            tasks = [executor.submit(process_single_page_threadsafe, file_path, p, render_images) for p in range(total_pages)]
             results = [t.result() for t in tasks]
         t_map = [r[0] for r in results]
         imgs = [r[1] for r in results]
@@ -203,7 +229,7 @@ async def extract_and_ocr_document_async(file_path: str, cache_key: Optional[str
     start_time = datetime.datetime.now()
     text_map, all_base64_images = await asyncio.to_thread(run_parallel_extraction)
     duration = (datetime.datetime.now() - start_time).total_seconds()
-    logger.info(f"[DOC_INTEL] ✅ Selesai proses & Parallel OCR {total_pages} halaman dalam {duration:.2f}s.")
+    logger.info(f"[DOC_INTEL] ✅ Selesai proses ekstraksi {total_pages} halaman dalam {duration:.2f}s.")
 
     set_document_cache(key_to_use, text_map, all_base64_images)
     return text_map, all_base64_images, total_pages
@@ -213,10 +239,12 @@ async def extract_and_ocr_document_async(file_path: str, cache_key: Optional[str
 async def two_stage_rerank_cluster_async(
     user_message: str,
     text_map: List[Dict[str, Any]],
-    all_base64_images: List[str],
-    total_pages: int,
+    all_base64_images: Optional[List[str]] = None,
+    total_pages: Optional[int] = None,
     explicit_pages: Optional[Set[int]] = None,
-    top_k_seeds: int = 4
+    top_k_seeds: int = 4,
+    all_images: Optional[List[str]] = None,
+    **kwargs: Any
 ) -> Tuple[List[int], List[str], str]:
     """
     Menjalankan Two-Stage Context-Aware Reranking & Structural Continuity Engine:
@@ -224,6 +252,10 @@ async def two_stage_rerank_cluster_async(
     2. Stage 2: Tri-Window Expansion [p-1, p, p+1] + Structural Continuity Validation.
     Mengembalikan (selected_pages, final_base64_images, final_extracted_text).
     """
+    images_list = all_base64_images if all_base64_images is not None else (all_images or [])
+    if total_pages is None:
+        total_pages = len(text_map) if text_map else (len(images_list) if images_list else 1)
+
     corpus_texts = [item["text"] if item["text"] else "[FULL IMAGE SCAN]" for item in text_map]
     
     # 1. BGE Reranker Scores
@@ -274,44 +306,10 @@ async def two_stage_rerank_cluster_async(
         logger.info(f"[DOC_INTEL] 🎯 Stage 1 Seeds: {[p+1 for p in seed_pages]}")
 
     # Stage 2: Tri-Window Structural & Semantic Boundary Analysis
-    expanded_cluster = set()
-    for p in seed_pages:
-        expanded_cluster.add(p)
-        
-        # Analisis KIRI (Backward / Kepala):
-        if p > 0:
-            prev_p = p - 1
-            text_curr = text_map[p]["text"]
-            text_prev = text_map[prev_p]["text"]
-            
-            is_struct_back = StructuralContinuityDetector.detect_unclosed_list_backward(text_curr, text_prev)
-            is_catchword_prev = StructuralContinuityDetector.detect_catchword(text_prev)
-            score_prev = next((x["score"] for x in page_scores if x["page_num"] == prev_p), 0.0)
-            score_curr = next((x["score"] for x in page_scores if x["page_num"] == p), 0.0)
-            
-            if is_struct_back or is_catchword_prev or (score_prev >= 0.505 and score_prev >= score_curr * 0.75):
-                expanded_cluster.add(prev_p)
-                logger.info(f"[DOC_INTEL] 🔗 Linked LEFT: Page {prev_p+1} (Head of Page {p+1}) | Struct: {is_struct_back}, Catchword: {is_catchword_prev}")
-
-        # Analisis KANAN (Forward / Ekor):
-        if p + 1 < total_pages:
-            next_p = p + 1
-            text_curr = text_map[p]["text"]
-            text_next = text_map[next_p]["text"]
-            
-            is_catchword_fwd = StructuralContinuityDetector.detect_catchword(text_curr)
-            is_struct_fwd = StructuralContinuityDetector.detect_unclosed_list_forward(text_curr, text_next)
-            score_next = next((x["score"] for x in page_scores if x["page_num"] == next_p), 0.0)
-            score_curr = next((x["score"] for x in page_scores if x["page_num"] == p), 0.0)
-            
-            if is_catchword_fwd or is_struct_fwd or (score_next >= 0.505 and score_next >= score_curr * 0.75):
-                expanded_cluster.add(next_p)
-                logger.info(f"[DOC_INTEL] 🔗 Linked RIGHT: Page {next_p+1} (Tail of Page {p+1}) | Struct: {is_struct_fwd}, Catchword: {is_catchword_fwd}")
-
-    selected_pages = sorted(list(expanded_cluster))
+    selected_pages = expand_tri_window_context(seed_pages, text_map, total_pages)
     logger.info(f"[DOC_INTEL] 📑 Final Connected Pages: {[p+1 for p in selected_pages]}")
     
-    final_base64_images = [all_base64_images[p] for p in selected_pages if p < len(all_base64_images)]
+    final_base64_images = [images_list[p] for p in selected_pages if p < len(images_list)]
     
     extracted_texts_list = []
     for p in selected_pages:

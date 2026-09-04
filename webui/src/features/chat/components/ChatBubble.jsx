@@ -802,7 +802,7 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
                                     onActivateIsolation={(source) => {
                                         const docId = source.id || source.dokumen_id;
                                         const docTitle = source.title || source.filename || source.name;
-                                        setContextIsolation(docId, docTitle);
+                                        setContextIsolation(docId, docTitle, null, source);
                                     }}
                                     onPreview={(source) => {
                                         const fileUrl = source.url || source.file_path;

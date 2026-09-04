@@ -99,26 +99,30 @@ class ModeFocus:
             except Exception as e:
                 logger.warning(f"[MODE_FOCUS] PG query error: {e}")
 
-        # 1.2 Coba Query MySQL berita jika belum ditemukan di PG
-        if not filename and isolated_doc_id:
+        # 1.2 Coba Query MySQL berita jika belum ditemukan di PG atau jika nomor masih kosong
+        if isolated_doc_id:
             try:
                 async with get_peraturan_db() as conn:
                     async with conn.cursor() as cur:
                         query = """
-                            SELECT judul, COALESCE(NULLIF(gambar, ''), NULLIF(gambar2, ''), NULLIF(gambar3, '')) AS filename,
-                                   COALESCE(nomor, '') as nomor, COALESCE(tgl_berita, '') as tgl_berita, COALESCE(tag, 'Regulasi') as tag
-                            FROM berita 
-                            WHERE id_berita = %s
+                            SELECT b.judul,
+                                   COALESCE(NULLIF(b.gambar, ''), NULLIF(b.gambar2, ''), NULLIF(b.gambar3, ''), NULLIF(b.linkper, '')) AS filename,
+                                   COALESCE(b.noper, '') as nomor,
+                                   COALESCE(b.tanggal, '') as tanggal,
+                                   COALESCE(k.nama_kategori, 'Regulasi') as jenis
+                            FROM berita b
+                            LEFT JOIN kategori k ON b.id_kategori = k.id_kategori
+                            WHERE b.id_berita = %s
                         """
                         await cur.execute(query, (isolated_doc_id,))
                         row = await cur.fetchone()
-                        if row and row[1]:
+                        if row:
                             doc_title = doc_title or row[0]
-                            filename = row[1]
-                            doc_nomor = row[2] or doc_nomor
-                            doc_tanggal = str(row[3]) if row[3] else doc_tanggal
-                            doc_jenis = row[4] or doc_jenis
-                            logger.info(f"[MODE_FOCUS] Resolved from MySQL berita: filename={filename}, nomor={doc_nomor}")
+                            filename = filename or row[1]
+                            doc_nomor = doc_nomor or row[2]
+                            doc_tanggal = doc_tanggal or (str(row[3]) if row[3] else "")
+                            doc_jenis = doc_jenis if doc_jenis and doc_jenis != "Regulasi" else (row[4] or doc_jenis)
+                            logger.info(f"[MODE_FOCUS] Resolved from MySQL berita: id={isolated_doc_id}, title='{doc_title}', nomor='{doc_nomor}', jenis='{doc_jenis}'")
             except Exception as e:
                 logger.error(f"[MODE_FOCUS] MySQL Error: {e}")
 
@@ -181,10 +185,10 @@ class ModeFocus:
             selected_pages, final_base64_images, final_extracted_text = await two_stage_rerank_cluster_async(
                 user_message=user_message,
                 text_map=text_map,
-                all_images=all_base64_images,
+                all_base64_images=all_base64_images,
+                total_pages=total_pages,
                 explicit_pages=explicit_pages,
-                enable_dynamic_window=True,
-                enable_cross_encoder=True
+                top_k_seeds=4
             )
 
         # Skenario B: File fisik tidak di disk, tapi chunk teks sudah ada di PostgreSQL dokumen_chunk
@@ -285,7 +289,10 @@ class ModeFocus:
             selected_pages=selected_pages,
             filename=doc_title or filename or "Dokumen Rujukan",
             extracted_text=final_extracted_text, 
-            is_scanned=False
+            is_scanned=False,
+            doc_nomor=doc_nomor,
+            doc_jenis=doc_jenis,
+            doc_tanggal=doc_tanggal
         )
         
         if precheck and precheck.get("requires_visual"):

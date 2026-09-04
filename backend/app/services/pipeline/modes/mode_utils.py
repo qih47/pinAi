@@ -643,20 +643,49 @@ GENERIC_SESSION_TITLES = {
     "obrolan", "percakapan", "obrolan santai", "salam pembuka", "new chat", "untitled"
 }
 
-def format_session_title(title_input: str, max_words: int = 5, max_chars: int = 40) -> str:
+def format_session_title(title_input: str, user_message: str = "", max_words: int = 5, max_chars: int = 40) -> str:
     """
-    Cleans and formats session titles naturally, preserving technical acronyms
-    and stripping conversational slang/fillers.
+    Cleans, formats, and enriches session titles naturally.
+    MUTLAK: DILARANG MENGHASILKAN JUDUL 1 KATA TUNGGAL!
+    Selalu menghasilkan judul 2-4 kata yang luwes, ekspresif, dan berkonteks.
     """
     if not title_input or not isinstance(title_input, str):
-        return "Obrolan Cakra AI"
+        title_input = user_message or "Obrolan Cakra AI"
 
     cleaned = title_input.strip().strip('"').strip("'").strip(".").strip("`")
-    
-    # 🚫 Jika judul hanya berisi satu kata sapaan generik atau N/A, fallback ke judul ramah
-    if cleaned.lower() in GENERIC_SESSION_TITLES:
-        return "Obrolan Cakra AI"
-    
+    lower_raw = cleaned.lower()
+    user_lower = (user_message or "").lower()
+
+    # 1. 🌅 Deteksi Khusus Sapaan / Salam / Pembuka Obrolan:
+    # Jika input atau user_message adalah salam/sapaan singkat, jadikan judul 2-4 kata yang luwes
+    combined_greet_text = f"{lower_raw} {user_lower}"
+    if any(w in combined_greet_text for w in ["pagi", "subuh", "morning"]):
+        if any(w in combined_greet_text for w in ["brother", "bro", "bray", "bre"]):
+            return "Sapaan Pagi Brother"
+        elif any(w in combined_greet_text for w in ["cuy", "kuy"]):
+            return "Sapaan Pagi Cuy"
+        elif any(w in combined_greet_text for w in ["bos", "boss"]):
+            return "Sapaan Pagi Bos"
+        return "Sapaan Pagi yang Akrab"
+    elif any(w in combined_greet_text for w in ["siang", "afternoon"]):
+        return "Sapaan Siang yang Akrab"
+    elif any(w in combined_greet_text for w in ["sore"]):
+        return "Sapaan Sore yang Hangat"
+    elif any(w in combined_greet_text for w in ["malam", "evening", "night"]):
+        return "Sapaan Malam yang Santai"
+    elif any(w in combined_greet_text for w in ["assalamualaikum", "assalam", "samlikum"]):
+        return "Salam & Sapaan Hangat"
+    elif any(w in combined_greet_text for w in ["halo", "hai", "helo", "hello", "hi "]):
+        if any(w in combined_greet_text for w in ["brother", "bro"]):
+            return "Sapaan Akrab Brother"
+        elif any(w in combined_greet_text for w in ["cuy"]):
+            return "Sapaan Akrab Cuy"
+        return "Sapaan Ramah & Santai"
+    elif any(w in combined_greet_text for w in ["semangat", "kerja"]):
+        return "Semangat Pagi Kerja"
+    elif any(w in combined_greet_text for w in ["terima kasih", "makasih", "thanks", "tq", "nuhun"]):
+        return "Apresiasi & Ucapan Terima Kasih"
+
     # Strip common leading command phrases
     for prefix in [
         "Buatkan format ", "Buatkan draft ", "Buatkan ", "Bikinin ", "Buat ", "Gambarkan ",
@@ -672,13 +701,13 @@ def format_session_title(title_input: str, max_words: int = 5, max_chars: int = 
     if not words:
         return "Obrolan Cakra AI"
 
-    # Filter leading and trailing filler words
+    # Filter leading and trailing filler words HANYA jika kata yang tersisa masih cukup banyak
     start_idx = 0
-    while start_idx < len(words) and words[start_idx].lower().strip(".,!?:;\"'") in _CONVERSATIONAL_FILLERS:
+    while len(words) - start_idx > 2 and words[start_idx].lower().strip(".,!?:;\"'") in _CONVERSATIONAL_FILLERS:
         start_idx += 1
 
     end_idx = len(words)
-    while end_idx > start_idx and words[end_idx - 1].lower().strip(".,!?:;\"'") in _CONVERSATIONAL_FILLERS:
+    while end_idx - start_idx > 2 and words[end_idx - 1].lower().strip(".,!?:;\"'") in _CONVERSATIONAL_FILLERS:
         end_idx -= 1
 
     trimmed_words = words[start_idx:end_idx] if start_idx < end_idx else words
@@ -702,7 +731,45 @@ def format_session_title(title_input: str, max_words: int = 5, max_chars: int = 
     result = " ".join(formatted_words).strip()
     if len(result) > max_chars:
         result = result[:max_chars].rsplit(" ", 1)[0]
-    return result if result and result.lower() not in GENERIC_SESSION_TITLES else "Obrolan Cakra AI"
+
+    # 🚨 ANTI-SINGLE-WORD ENRICHMENT ENGINE (MUTLAK):
+    # Jika hasil pemformatan HANYA berisi 1 KATA, sistem WAJIB memperkayanya jadi 2-3 kata yang luwes!
+    final_words = result.split()
+    if len(final_words) <= 1:
+        single_w = (final_words[0] if final_words else "Obrolan").strip(".,!?:;\"'")
+        single_lower = single_w.lower()
+        
+        # Sapaan / Panggilan
+        if single_lower in ["brother", "bro", "bray", "bre"]:
+            return "Sapaan Akrab Brother"
+        elif single_lower in ["cuy", "kuy", "ngab"]:
+            return "Sapaan Akrab Cuy"
+        elif single_lower in ["bos", "boss"]:
+            return "Sapaan Akrab Bos"
+        elif single_lower in ["pagi", "siang", "sore", "malam"]:
+            return f"Sapaan {single_w.capitalize()} yang Akrab"
+        elif single_lower in ["halo", "hai", "salam"]:
+            return "Sapaan Hangat & Akrab"
+        elif single_lower in ["cuti"]:
+            return "Konsultasi Aturan Cuti"
+        elif single_lower in ["gaji", "upah"]:
+            return "Ketentuan Penggajian Pegawai"
+        elif single_lower in ["karhutla", "kebakaran"]:
+            return "Informasi Bencana Karhutla"
+        elif single_lower in ["pindad"]:
+            return "Seputar Informasi PT Pindad"
+        elif single_lower in ["sop"]:
+            return "Prosedur Operasional SOP"
+        elif single_lower in ["pkb"]:
+            return "Regulasi PKB Perusahaan"
+        elif single_lower in ["skep", "sk"]:
+            return "Surat Keputusan SKEP Direksi"
+        elif single_lower in GENERIC_SESSION_TITLES or len(single_w) <= 3:
+            return "Obrolan Cakra AI"
+        else:
+            return f"Pembahasan {single_w.capitalize()}"
+
+    return result if result.lower() not in GENERIC_SESSION_TITLES else "Obrolan Cakra AI"
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

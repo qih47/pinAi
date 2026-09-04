@@ -11,7 +11,7 @@ Model: gemma4:31b (Single Model Architecture)
 import re
 import json
 import logging
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Tuple
 from fastapi import Request
 
 from backend.app.core.config import settings
@@ -114,6 +114,130 @@ def _sanitize_web_query(query: str, user_message: str = "") -> str:
 
     return cleaned.strip() or query.strip()
 
+
+_RAG_TITLE_STOPWORDS = {
+    "informasi", "berdasarkan", "terkait", "tentang", "mengenai", "aturan", "ketentuan",
+    "panduan", "prosedur", "pedoman", "soal", "kebijakan", "dokumen", "peraturan", "dan",
+    "yang", "di", "ke", "dari", "untuk", "pada", "dalam", "dengan", "adalah", "ini", "itu",
+    "pt", "persero", "pindad", "apakah", "bagaimana", "seperti", "atas", "oleh", "secara",
+    "sebagaimana", "dimaksud", "tersebut", "setiap", "semua", "bila", "jika", "maupun", "atau"
+}
+
+def _sanitize_rag_title_and_tags(
+    query_judul_raw: Any,
+    search_tags_raw: Any,
+    user_message: str = "",
+    key_subject: str = "",
+    active_topic: str = "",
+    need_rag: bool = False,
+) -> Tuple[List[str], List[str]]:
+    """
+    Sanitasi cerdas untuk query_judul dan search_tags:
+    1. Memecah kalimat naratif deskriptif menjadi array token judul target (misal: "Informasi Cuti dalam Dokumen PKB"
+       -> ["PKB", "Perjanjian Kerja Bersama", "Cuti"]).
+    2. Menjamin search_tags selalu terisi jika need_rag=True dengan mengekstrak tag kategori dari entitas dokumen & konteks.
+    """
+    if not need_rag:
+        return [], []
+
+    clean_titles: List[str] = []
+    
+    # 1. Normalisasi list raw titles
+    raw_list: List[str] = []
+    if isinstance(query_judul_raw, list):
+        for q in query_judul_raw:
+            if isinstance(q, str) and q.strip():
+                raw_list.append(q.strip())
+    elif isinstance(query_judul_raw, str) and query_judul_raw.strip():
+        raw_list.append(query_judul_raw.strip())
+        
+    for text in raw_list:
+        # Deteksi akronim dalam kurung (misal "(PKB)", "(SOP)")
+        parenthesized = re.findall(r'\(([A-Za-z0-9/_-]+)\)', text)
+        for p in parenthesized:
+            p_upper = p.upper()
+            if p_upper not in clean_titles:
+                clean_titles.append(p_upper)
+            if p_upper == "PKB" and "Perjanjian Kerja Bersama" not in clean_titles:
+                clean_titles.append("Perjanjian Kerja Bersama")
+
+        # Cek apakah text berupa kalimat deskriptif panjang (> 3 kata)
+        words = text.split()
+        if len(words) > 3:
+            # Ambil akronim berhuruf kapital mandiri
+            acronyms = re.findall(r'\b[A-Z0-9]{2,}\b', text)
+            for acr in acronyms:
+                if acr not in clean_titles:
+                    clean_titles.append(acr)
+                if acr == "PKB" and "Perjanjian Kerja Bersama" not in clean_titles:
+                    clean_titles.append("Perjanjian Kerja Bersama")
+            
+            # Ambil kata-kata substantif (bukan stopwords)
+            content_words = [
+                w.strip("(),.-;:") for w in words 
+                if len(w.strip("(),.-;:")) >= 3 and w.strip("(),.-;:").lower() not in _RAG_TITLE_STOPWORDS
+            ]
+            for cw in content_words:
+                cw_title = cw.title()
+                if cw_title not in clean_titles and cw.upper() not in clean_titles:
+                    clean_titles.append(cw_title)
+        else:
+            # Frasa ringkas <= 3 kata, masukkan langsung
+            clean_phrase = text.strip("(),.-;:")
+            if clean_phrase and clean_phrase not in clean_titles:
+                clean_titles.append(clean_phrase)
+
+    # 1B. Jika user_message menyebutkan dokumen regulasi utama tapi model lupa memasukkan ke query_judul
+    user_msg_lower = (user_message or "").lower()
+    if "pkb" in user_msg_lower or "perjanjian kerja bersama" in user_msg_lower:
+        if "PKB" not in clean_titles:
+            clean_titles.insert(0, "PKB")
+        if "Perjanjian Kerja Bersama" not in clean_titles:
+            clean_titles.append("Perjanjian Kerja Bersama")
+    if "sop" in user_msg_lower and "SOP" not in clean_titles:
+        clean_titles.insert(0, "SOP")
+    if "skep" in user_msg_lower and "SKEP" not in clean_titles:
+        clean_titles.insert(0, "SKEP")
+                
+    # 2. Sanitasi & auto-derivation search_tags
+    clean_tags: List[str] = []
+    if isinstance(search_tags_raw, list):
+        for t in search_tags_raw:
+            if isinstance(t, str) and t.strip():
+                tag_norm = t.strip().lower()
+                if tag_norm not in clean_tags and tag_norm not in _RAG_TITLE_STOPWORDS:
+                    clean_tags.append(tag_norm)
+    elif isinstance(search_tags_raw, str) and search_tags_raw.strip():
+        for t in search_tags_raw.split(","):
+            tag_norm = t.strip().lower()
+            if tag_norm and tag_norm not in clean_tags and tag_norm not in _RAG_TITLE_STOPWORDS:
+                clean_tags.append(tag_norm)
+
+    # Jika need_rag=True tapi search_tags kosong/sedikit, derive dari query_judul & konteks
+    if need_rag and len(clean_tags) < 2:
+        for title in clean_titles:
+            # Pecah setiap kata dari title untuk dijadikan tag mandiri (misal: "Perjanjian Kerja Bersama" -> "pkb")
+            for word in title.split():
+                w_low = word.strip("(),.-;:").lower()
+                if len(w_low) >= 3 and w_low not in _RAG_TITLE_STOPWORDS:
+                    if w_low not in clean_tags:
+                        clean_tags.append(w_low)
+            t_low = title.lower()
+            if len(t_low) >= 3 and t_low not in _RAG_TITLE_STOPWORDS:
+                if t_low not in clean_tags:
+                    clean_tags.append(t_low)
+                    
+        combined_ctx = f"{user_message} {key_subject} {active_topic}".lower()
+        common_corporate_tags = [
+            "pkb", "sop", "skep", "cuti", "lembur", "gaji", "tunjangan", "pensiun",
+            "mutasi", "promosi", "rekrutmen", "seragam", "k3", "disiplin", "sanksi",
+            "kontrak", "kepegawaian", "sdm", "peraturan", "fasilitas", "kesehatan"
+        ]
+        for ct in common_corporate_tags:
+            if ct in combined_ctx and ct not in clean_tags:
+                clean_tags.append(ct)
+
+    return clean_titles, clean_tags
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -310,10 +434,26 @@ def _validate_and_normalize_routing(
     routing["is_deep_research"] = bool(routing_json.get("is_deep_research", False))
     routing["is_security_critical"] = bool(routing_json.get("is_security_critical", False))
     routing["is_chitchat"] = bool(routing_json.get("is_chitchat", False))
-    # Deteksi cerdas: jika active_topic / key_subject menunjukkan sapaan/salam/cuaca/waktu, tandai is_chitchat = True
     topic_sub_text = f"{routing['active_topic']} {routing['key_subject']}".lower()
     user_msg_lower = (user_message or "").lower()
-    if not routing["need_rag"] and not routing["is_coding"] and not routing["is_generate_file"]:
+
+    # 🛡️ GREETING & CHITCHAT GATEKEEPER:
+    # Sapaan murni ("pagi brother", "halo cuy", "assalamualaikum", dll) BUKAN permintaan dokumen regulasi!
+    is_simple_greeting = (
+        bool(precheck.get("is_greeting"))
+        or bool(precheck.get("is_chitchat"))
+        or (any(kw in user_msg_lower for kw in ["halo", "hai", "pagi", "siang", "sore", "malam", "assalamualaikum", "sampurasun", "apa kabar"]) and len(user_message.split()) <= 4)
+    ) and not any(kw in user_msg_lower for kw in ["dokumen", "regulasi", "peraturan", "pkb", "sop", "skep", "pasal", "kebijakan", "surat", "cuti", "gaji", "tunjangan", "dinas", "kpi", "audit"])
+
+    # Deteksi cerdas: jika active_topic / key_subject menunjukkan sapaan/salam/cuaca/waktu, tandai is_chitchat = True
+    if is_simple_greeting:
+        routing["is_chitchat"] = True
+        routing["need_rag"] = False
+        routing["queries"] = []
+        routing["query_judul"] = []
+        routing["search_tags"] = []
+        logger.info("[CALL1] 💬 Simple greeting detected -> forcing need_rag=False, is_chitchat=True, clearing query_judul & search_tags")
+    elif not routing.get("need_rag") and not routing["is_coding"] and not routing["is_generate_file"]:
         if any(kw in topic_sub_text for kw in ["sapaan", "salam", "chitchat", "greeting", "kabar", "energi positif", "semangat pagi", "cuaca", "suhu", "waktu", "jam berapa", "tanggal berapa"]) or precheck.get("is_greeting") or precheck.get("is_chitchat"):
             routing["is_chitchat"] = True
 
@@ -321,7 +461,10 @@ def _validate_and_normalize_routing(
     is_future_forecast = any(kw in user_msg_lower for kw in ["7 hari", "minggu depan", "besok", "lusa", "forecast", "prakiraan", "seminggu", "prediksi", "chart", "grafik"])
     is_current_weather = ("cuaca" in topic_sub_text or "cuaca" in user_msg_lower or "suhu" in user_msg_lower) and not any(city in user_msg_lower for city in ["tokyo", "london", "new york", "paris", "singapore", "amerika", "eropa"]) and not is_future_forecast
 
-    routing["need_rag"] = bool(routing_json.get("need_rag", False))
+    if not is_simple_greeting:
+        routing["need_rag"] = bool(routing_json.get("need_rag", False))
+    else:
+        routing["need_rag"] = False
     routing["need_analytic"] = bool(routing_json.get("need_analytic", False))
     routing["is_self_correction"] = bool(routing_json.get("is_self_correction", False))
     routing["is_multi_document"] = bool(routing_json.get("is_multi_document", False))
@@ -522,7 +665,13 @@ def _validate_and_normalize_routing(
 
     # ── ATURAN STRICT MODE DOKUMEN (USER EXPLICIT INTENT OVERRIDE) ───────────
     # Jika user secara eksplisit memilih Mode Dokumen, pastikan need_rag selalu True dan web search False
-    is_explicit_doc_mode = precheck.get("chat_mode") in ["documents", "document", "global_chat"] or precheck.get("need_rag_hint") is True
+    # (PENTING: Jangan paksa jika user hanya sapaan santai, chitchat, atau koding)
+    is_explicit_doc_mode = (
+        (precheck.get("chat_mode") in ["documents", "document"] or precheck.get("need_rag_hint") is True)
+        and not routing.get("is_chitchat")
+        and not routing.get("is_coding")
+        and not is_simple_greeting
+    )
     if is_explicit_doc_mode and not routing["is_ambiguous"]:
         routing["need_rag"] = True
         routing["is_web_search"] = False
@@ -621,19 +770,20 @@ def _validate_and_normalize_routing(
     else:
         routing["queries"] = []
 
-    query_judul = routing.get("query_judul") or routing_json.get("query_judul", [])
-    if isinstance(query_judul, list):
-        routing["query_judul"] = [str(q).strip() for q in query_judul if isinstance(q, str) and q.strip()]
-    else:
-        routing["query_judul"] = [str(query_judul)] if query_judul else []
-        
-    logger.info(f"[CALL1] Extracted query_judul: {routing['query_judul']}")
+    raw_query_judul = routing.get("query_judul") or routing_json.get("query_judul", [])
+    raw_search_tags = routing.get("search_tags") or routing_json.get("search_tags", [])
 
-    search_tags = routing.get("search_tags") or routing_json.get("search_tags", [])
-    if isinstance(search_tags, list):
-        routing["search_tags"] = [str(t).strip() for t in search_tags if isinstance(t, str) and t.strip()]
-    else:
-        routing["search_tags"] = []
+    clean_qj, clean_st = _sanitize_rag_title_and_tags(
+        query_judul_raw=raw_query_judul,
+        search_tags_raw=raw_search_tags,
+        user_message=user_message,
+        key_subject=routing.get("key_subject", ""),
+        active_topic=routing.get("active_topic", ""),
+        need_rag=bool(routing.get("need_rag", False)),
+    )
+    routing["query_judul"] = clean_qj
+    routing["search_tags"] = clean_st
+    logger.info(f"[CALL1] Sanitized query_judul: {routing['query_judul']} | search_tags: {routing['search_tags']}")
 
     context_snippets = routing_json.get("context_snippets", [])
     if isinstance(context_snippets, list):
@@ -684,16 +834,16 @@ def _validate_and_normalize_routing(
     from backend.app.services.pipeline.modes.mode_utils import format_session_title, GENERIC_SESSION_TITLES
     session_title = routing_json.get("session_title")
     if isinstance(session_title, str) and session_title.strip() and session_title.strip().lower() not in GENERIC_SESSION_TITLES:
-        routing["session_title"] = format_session_title(session_title)
+        routing["session_title"] = format_session_title(session_title, user_message=user_message)
     elif is_first_chat:
         # Fallback bertingkat:
         # 1. Gunakan key_subject atau active_topic jika informatif
         subj = routing_json.get("key_subject") or routing_json.get("active_topic")
         if subj and subj.strip().lower() not in GENERIC_SESSION_TITLES:
-            routing["session_title"] = format_session_title(subj)
+            routing["session_title"] = format_session_title(subj, user_message=user_message)
         else:
             # 2. Format dari pesan pengguna agar judul langsung luwes di sidebar
-            formatted_user = format_session_title(user_message)
+            formatted_user = format_session_title(user_message, user_message=user_message)
             if formatted_user and formatted_user.strip().lower() not in GENERIC_SESSION_TITLES:
                 routing["session_title"] = formatted_user
             else:
@@ -1062,11 +1212,37 @@ async def generate_call1_preset_routing(
             if valid_q:
                 result["queries"] = valid_q
 
-        # Query judul
-        if res_json.get("query_judul") and isinstance(res_json["query_judul"], list):
-            valid_qj = [str(q).strip() for q in res_json["query_judul"] if str(q).strip()]
-            if valid_qj:
-                result["query_judul"] = valid_qj
+        # Query judul & search tags
+        raw_preset_qj = res_json.get("query_judul")
+        raw_preset_st = res_json.get("search_tags")
+        clean_qj, clean_st = _sanitize_rag_title_and_tags(
+            query_judul_raw=raw_preset_qj,
+            search_tags_raw=raw_preset_st,
+            user_message=user_message,
+            key_subject=res_json.get("key_subject", ""),
+            active_topic=res_json.get("active_topic", ""),
+            need_rag=forced_mode in ["documents", "document", "rag", "focus", "audit", "compliance"],
+        )
+        if clean_qj:
+            result["query_judul"] = clean_qj
+        if clean_st:
+            result["search_tags"] = clean_st
+        logger.info(f"[CALL1_PRESET_ROUTING] Sanitized query_judul: {result.get('query_judul', [])} | search_tags: {result.get('search_tags', [])}")
+
+        # Proteksi sapaan di preset:
+        user_msg_p_lower = user_message.lower()
+        is_preset_greeting = (
+            bool(precheck.get("is_greeting"))
+            or bool(precheck.get("is_chitchat"))
+            or (any(kw in user_msg_p_lower for kw in ["halo", "hai", "pagi", "siang", "sore", "malam", "assalamualaikum", "sampurasun", "apa kabar"]) and len(user_message.split()) <= 4)
+        ) and not any(kw in user_msg_p_lower for kw in ["dokumen", "regulasi", "peraturan", "pkb", "sop", "skep", "pasal", "kebijakan", "surat", "cuti", "gaji", "tunjangan", "dinas", "kpi", "audit"])
+        if is_preset_greeting:
+            result["is_chitchat"] = True
+            result["need_rag"] = False
+            result["queries"] = []
+            result["query_judul"] = []
+            result["search_tags"] = []
+            logger.info("[CALL1_PRESET_ROUTING] 💬 Greeting detected in preset mode -> forcing need_rag=False, is_chitchat=True")
 
         # Entity tracking
         if res_json.get("key_subject") and isinstance(res_json["key_subject"], str):

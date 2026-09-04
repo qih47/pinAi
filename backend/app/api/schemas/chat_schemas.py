@@ -33,9 +33,13 @@ class ChatStreamRequest(BaseModel):
     client_context: Optional[dict] = Field(None, description="Metadata lingkungan klien (lat, lon, timezone, waktu klien)")
     forced_mode: Optional[str] = Field(None, description="Mode paksa dari FE pill: websearch, documents, code, focus")
     bypass_router: Optional[bool] = Field(False, description="Flag untuk bypass Call 1 router langsung ke executor mode")
+    doc_title: Optional[str] = Field(None, description="Judul dokumen terisolasi dari FE")
+    hint_source: Optional[dict] = Field(None, description="Metadata sumber lengkap dokumen yang dipilih (nomor, judul, jenis, tanggal)")
+    context_isolation: Optional[dict] = Field(None, description="Objek isolasi konteks dari FE")
 
     class Config:
         from_attributes = True
+        extra = "allow"
 
 
 

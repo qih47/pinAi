@@ -48,7 +48,7 @@ export const createChatSlice = (set, get) => ({
             return {
                 activeIsolatedDocId: docId || null,
                 activeIsolatedTitle: docTitle || null,
-                activeIsolatedMeta: meta || null,
+                activeIsolatedMeta: meta !== null ? meta : (docId && docId === state.activeIsolatedDocId ? state.activeIsolatedMeta : null),
                 chatMode: newChatMode,
                 activeModeTag: (newChatMode === 'focus' || newChatMode === 'compliance' || newChatMode === 'redteam')
                     ? 'focus'

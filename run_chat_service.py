@@ -300,8 +300,8 @@ async def root():
         "port": 8001,
         "active_models": {
             "agentic_engine": settings.MODEL_PERSONA,
-            "vision": settings.MODEL_VISION,
-            "embedding": settings.MODEL_EMBEDDING,
+            "router_engine": getattr(settings, "MODEL_ROUTER", "gemma4:e4b"),
+            "embedding": getattr(settings, "MODEL_EMBEDDING", "mxbai-embed-large:latest"),
         }
     }
 

@@ -30,7 +30,7 @@ logger = logging.getLogger("CAKRA_UNIFIED_EXTRACTOR")
 CACHE_DIR = Path("/home/qisthi/pinAi/backend/uploads/.ocr_cache")
 CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
-MAX_WORKERS = 8          # Thread pool untuk OCR paralel
+MAX_WORKERS = 4          # Thread pool untuk ekstraksi PDF paralel terkontrol (cegah CPU starvation)
 OCR_SCAN_THRESHOLD = 40  # Karakter per halaman, di bawah ini = scan
 XLSX_MAX_ROWS = 500      # Batas baris tabel yang diekstrak ke teks
 
@@ -170,7 +170,7 @@ async def extract_document(
 def _process_pdf_page_sync(file_path: str, page_num: int, render: bool) -> ExtractedPage:
     """
     Worker thread-safe: ekstrak satu halaman PDF.
-    Digabungkan dari process_single_page_threadsafe (document_intelligence.py).
+    Ekstrak teks digital langsung (~1ms). OCR hanya dilakukan jika halaman berupa scan.
     """
     import fitz
     doc = fitz.open(file_path)
@@ -180,22 +180,28 @@ def _process_pdf_page_sync(file_path: str, page_num: int, render: bool) -> Extra
     is_scan = len(text) < OCR_SCAN_THRESHOLD
     b64_img = ""
 
-    if render or is_scan:
-        pix = page.get_pixmap(dpi=150)
+    # Hanya render base64 image jika render eksplisit diminta (misal mode visual)
+    if render:
+        pix = page.get_pixmap(dpi=120)
         img_bytes = pix.tobytes("png")
         b64_img = base64.b64encode(img_bytes).decode("utf-8")
 
-        if is_scan:
-            try:
-                import pytesseract
-                from PIL import Image
-                import io
-                img = Image.open(io.BytesIO(img_bytes))
-                ocr_text = pytesseract.image_to_string(img, lang="ind+eng")
-                if ocr_text.strip():
-                    text = ocr_text.strip()
-            except Exception as e:
-                logger.warning(f"[EXTRACTOR] OCR halaman {page_num+1} gagal: {e}")
+    # OCR hanya jika halaman scan (< OCR_SCAN_THRESHOLD karakter digital)
+    if is_scan:
+        try:
+            import pytesseract
+            from PIL import Image
+            import io
+            import os
+            os.environ["OMP_THREAD_LIMIT"] = "1"
+            
+            pix_ocr = page.get_pixmap(dpi=120)
+            img = Image.open(io.BytesIO(pix_ocr.tobytes("png")))
+            ocr_text = pytesseract.image_to_string(img, lang="ind+eng")
+            if ocr_text.strip():
+                text = ocr_text.strip()
+        except Exception as e:
+            logger.warning(f"[EXTRACTOR] OCR halaman {page_num+1} gagal: {e}")
 
     doc.close()
     return ExtractedPage(page_num=page_num, text=text, is_scan=is_scan, base64_image=b64_img)

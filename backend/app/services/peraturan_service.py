@@ -598,10 +598,11 @@ async def search_and_ocr_by_synthetic_qa(user_message: str) -> Tuple[str, List[D
 async def get_candidate_documents_metadata(
     user_message: str, 
     query_judul_list: List[str], 
-    rag_queries: Optional[List[str]] = None
+    rag_queries: Optional[List[str]] = None,
+    search_tags: Optional[List[str]] = None,
 ) -> List[Dict[str, Any]]:
     """
-    Mengambil daftar dokumen kandidat terbaik dari MySQL (Lexical Wadah) & pgvector (Semantic Isi) yang lolos scoring BGE.
+    Mengambil daftar dokumen kandidat terbaik dari MySQL (Lexical Wadah & Tag) & pgvector (Semantic Isi) yang lolos scoring BGE.
     Mengembalikan metadata lengkap dan path valid_file untuk diproses secara progresif.
     """
     if not user_message or not user_message.strip():
@@ -671,6 +672,23 @@ async def get_candidate_documents_metadata(
                                 await cur.execute("SELECT id_berita FROM berita WHERE judul LIKE %s OR tag LIKE %s OR noper LIKE %s LIMIT 10", (w_like, w_like, w_like))
                                 for row in await cur.fetchall():
                                     candidate_ids.add(row[0])
+
+        # ── STEP 2AA: Tag-based match dari search_tags ke kolom b.tag ──
+        if search_tags:
+            async with get_peraturan_db() as conn_my:
+                async with conn_my.cursor() as cur:
+                    for tag in search_tags:
+                        if not tag or not isinstance(tag, str) or not tag.strip():
+                            continue
+                        clean_tag = tag.strip().lower()
+                        if len(clean_tag) >= 2:
+                            tag_like = f"%{clean_tag}%"
+                            await cur.execute(
+                                "SELECT id_berita FROM berita WHERE tag LIKE %s OR judul LIKE %s LIMIT 15",
+                                (tag_like, tag_like)
+                            )
+                            for row in await cur.fetchall():
+                                candidate_ids.add(row[0])
         
         # ── STEP 2B: Fallback dari rag_queries dan user_message ──
         search_terms_set = set()
@@ -1080,9 +1098,15 @@ async def get_candidate_documents_metadata(
                         "latest_active": latest_active_info,
                     })
 
-                # 3. Otomatis tarik dan injeksikan dokumen penerus sah (pengganti) jika belum ada di candidate_docs
+                # 3. Otomatis tarik dan injeksikan dokumen penerus sah (pengganti) HANYA untuk kandidat relevan
+                # (mencegah dokumen acak dari regulasi obsolete membajak peringkat teratas)
                 existing_candidate_ids = {d["id"] for d in candidate_docs}
+                injected_successors = []
                 for doc in list(candidate_docs):
+                    # Hanya proses dokumen yang relevan (bukan supplementary dan score memadai)
+                    if doc.get("is_supplementary", False) or doc.get("score", 0.0) < 0.85:
+                        continue
+
                     l_act = doc.get("latest_active")
                     if l_act and l_act.get("id") and l_act["id"] not in existing_candidate_ids:
                         succ_id = l_act["id"]
@@ -1105,7 +1129,10 @@ async def get_candidate_documents_metadata(
                                 s_valid_file = _find_valid_pdf_file(s_g1, s_g2, s_g3)
                                 s_status_str = "Berlaku" if str(s_stat or "").strip().lower() not in ("obsolete", "batal") else "Tidak Berlaku"
                                 s_mencabut_display = _resolve_mencabut_text(s_mencabut, s_linkper, doc_map)
-                                candidate_docs.insert(0, {
+                                
+                                # Skor penerus diturunkan dari skor dokumen induk (+0.05 bonus keaktifan terbaru)
+                                inherited_score = min(1.40, doc.get("score", 1.0) + 0.05)
+                                injected_successors.append({
                                     "id": s_id,
                                     "id_berita": s_id,
                                     "judul": s_judul,
@@ -1119,7 +1146,7 @@ async def get_candidate_documents_metadata(
                                     "stataktif": s_stat,
                                     "status_berlaku": s_status_str,
                                     "mencabut": s_mencabut_display,
-                                    "score": 1.45,
+                                    "score": inherited_score,
                                     "jenis": s_kat or "Regulasi",
                                     "valid_file": s_valid_file,
                                     "filename": os.path.basename(s_valid_file) if s_valid_file else None,
@@ -1129,9 +1156,14 @@ async def get_candidate_documents_metadata(
                                     "is_supplementary": False,
                                     "latest_active": None,
                                 })
-                                logger.info(f"[PERATURAN_SERVICE_CANDIDATES] 🎯 Berhasil menginjeksikan dokumen pengganti sah: ID {s_id} ({s_noper} - {s_judul})")
+                                logger.info(f"[PERATURAN_SERVICE_CANDIDATES] 🎯 Berhasil menambahkan dokumen pengganti sah: ID {s_id} ({s_noper} - {s_judul}) | score={inherited_score:.3f}")
                         except Exception as _succ_err:
                             logger.warning(f"[PERATURAN_SERVICE_CANDIDATES] Gagal fetch dokumen penerus ID {succ_id}: {_succ_err}")
+
+                # Gabungkan dan urutkan kembali secara adil berdasarkan skor relevansi murni
+                if injected_successors:
+                    candidate_docs.extend(injected_successors)
+                    candidate_docs.sort(key=lambda d: d.get("score", 0.0), reverse=True)
 
             
         logger.info(

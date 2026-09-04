@@ -46,33 +46,55 @@ class ModeRedTeam:
         
         logger.info("[MODE_REDTEAM] Starting Red-Team Mode Execution")
         isolated_doc_id = None
+        doc_title = None
+        doc_nomor = ""
+        doc_tanggal = ""
+        doc_jenis = "Regulasi"
         if context_isolation and isinstance(context_isolation, dict):
-            isolated_doc_id = context_isolation.get("isolated_doc_id") or context_isolation.get("id_dokumen")
+            isolated_doc_id = context_isolation.get("isolated_doc_id") or context_isolation.get("id_dokumen") or context_isolation.get("doc_id")
+            doc_title = context_isolation.get("title") or context_isolation.get("doc_title")
+            doc_nomor = context_isolation.get("nomor", "")
+            doc_tanggal = context_isolation.get("tanggal", "")
+            doc_jenis = context_isolation.get("jenis") or context_isolation.get("category", "Regulasi")
         if not isolated_doc_id and routing_data and isinstance(routing_data, dict):
-            isolated_doc_id = routing_data.get("isolated_doc_id") or routing_data.get("id_dokumen")
+            isolated_doc_id = routing_data.get("isolated_doc_id") or routing_data.get("id_dokumen") or routing_data.get("doc_id")
+            doc_title = doc_title or routing_data.get("title") or routing_data.get("doc_title")
+            doc_nomor = doc_nomor or routing_data.get("nomor", "")
+            doc_tanggal = doc_tanggal or routing_data.get("tanggal", "")
+            doc_jenis = doc_jenis if doc_jenis and doc_jenis != "Regulasi" else routing_data.get("jenis", doc_jenis)
         if not isolated_doc_id and request and getattr(request, "isolated_doc_id", None):
             isolated_doc_id = request.isolated_doc_id
             
         yield format_sse(status="🕵️ Membedah dokumen sasaran", event_type=SSEEventType.STATUS)
         await asyncio.sleep(0.05)
 
-        # 1. Fetch Filename from Database or Direct Filename
+        # 1. Fetch Filename and Metadata from Database or Direct Filename
         filename = None
         if isinstance(isolated_doc_id, str) and isolated_doc_id.lower().endswith(".pdf"):
             filename = isolated_doc_id
-        elif isolated_doc_id:
+        if isolated_doc_id:
             try:
                 async with get_peraturan_db() as conn:
                     async with conn.cursor() as cur:
                         query = """
-                            SELECT COALESCE(NULLIF(gambar, ''), NULLIF(gambar2, ''), NULLIF(gambar3, '')) AS filename 
-                            FROM berita 
-                            WHERE id_berita = %s
+                            SELECT b.judul,
+                                   COALESCE(NULLIF(b.gambar, ''), NULLIF(b.gambar2, ''), NULLIF(b.gambar3, ''), NULLIF(b.linkper, '')) AS filename,
+                                   COALESCE(b.noper, '') as nomor,
+                                   COALESCE(b.tanggal, '') as tanggal,
+                                   COALESCE(k.nama_kategori, 'Regulasi') as jenis
+                            FROM berita b
+                            LEFT JOIN kategori k ON b.id_kategori = k.id_kategori
+                            WHERE b.id_berita = %s
                         """
                         await cur.execute(query, (isolated_doc_id,))
                         row = await cur.fetchone()
-                        if row and row[0]:
-                            filename = row[0]
+                        if row:
+                            doc_title = doc_title or row[0]
+                            filename = filename or row[1]
+                            doc_nomor = doc_nomor or row[2]
+                            doc_tanggal = doc_tanggal or (str(row[3]) if row[3] else "")
+                            doc_jenis = doc_jenis if doc_jenis and doc_jenis != "Regulasi" else (row[4] or doc_jenis)
+                            logger.info(f"[MODE_REDTEAM] Resolved from MySQL: id={isolated_doc_id}, title='{doc_title}', nomor='{doc_nomor}'")
             except Exception as e:
                 logger.error(f"[MODE_REDTEAM] DB Error: {e}")
                 
@@ -178,10 +200,13 @@ class ModeRedTeam:
             employee_name=employee_name,
             precheck=precheck,
             is_thinking=is_thinking,
-            filename=filename,
+            filename=doc_title or filename,
             extracted_text=final_extracted_text,
             user_topic=user_message,
-            selected_pages=selected_pages
+            selected_pages=selected_pages,
+            doc_nomor=doc_nomor,
+            doc_jenis=doc_jenis,
+            doc_tanggal=doc_tanggal
         )
 
         # Buat message payload: Kirim GAMBAR ASLI halaman terpilih ke Gemma Vision
@@ -242,8 +267,11 @@ class ModeRedTeam:
         # Format sources json
         sources_list = [{
             "id": isolated_doc_id,
-            "title": filename,
+            "title": doc_title or filename,
             "filename": filename,
+            "nomor": doc_nomor,
+            "tanggal": doc_tanggal,
+            "jenis": doc_jenis,
             "halaman": [p + 1 for p in selected_pages]
         }]
         yield format_sse("", "", False, sources=sources_list, event_type=SSEEventType.SOURCES)

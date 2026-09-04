@@ -195,6 +195,8 @@ class ModeHub:
                 precheck["queries"] = preset_routing["queries"]
             if preset_routing.get("query_judul"):
                 precheck["query_judul"] = preset_routing["query_judul"]
+            if preset_routing.get("search_tags"):
+                precheck["search_tags"] = preset_routing["search_tags"]
             if preset_routing.get("active_topic"):
                 precheck["active_topic"] = preset_routing["active_topic"]
             if preset_routing.get("key_subject"):
@@ -700,7 +702,7 @@ class ModeHub:
         # ── Update Session Title (Gemma 4 Native / Fallback) ────────────────────────
         if routing_data.get("session_title") and session_uuid:
             try:
-                new_title = format_session_title(routing_data["session_title"])
+                new_title = format_session_title(routing_data["session_title"], user_message=user_message)
                 from backend.app.services.chat.chat_history_service import chat_history_service
                 await chat_history_service.update_title_direct(session_uuid, new_title)
             except Exception as e:

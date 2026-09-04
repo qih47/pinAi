@@ -95,21 +95,51 @@ class ModeDocuments:
                 brain = SessionBrainService(current_user_npp, session_uuid)
                 session_brain_docs = brain.list_documents()
 
+            # 🧠 SMART RELEVANCE GATEKEEPER UNTUK SESSION BRAIN:
+            # Periksa apakah dokumen di Brain masih cocok dengan yang dicari pengguna saat ini.
+            # Jika user menanyakan regulasi baru (Topic Shift, misal di Brain ada Audit tapi user cari PKB/Cuti),
+            # JANGAN biarkan Brain membajak sesi, langsung turun ke Global Database RAG!
+            is_brain_relevant = True
+            iso_id = ""
+            if context_isolation and isinstance(context_isolation, dict):
+                iso_id = str(context_isolation.get("isolated_doc_id") or context_isolation.get("id_dokumen") or "")
+
+            if session_brain_docs and not iso_id:
+                manifest_data_preview = brain.get_manifest().get("documents", {}) if brain else {}
+                brain_tokens = []
+                for b_item in session_brain_docs:
+                    b_id = str(b_item.get("id") or b_item.get("doc_id")) if isinstance(b_item, dict) else str(b_item)
+                    m_info = manifest_data_preview.get(b_id, {}) if isinstance(manifest_data_preview, dict) else {}
+                    if isinstance(m_info, dict):
+                        brain_tokens.append(f"{m_info.get('title', '')} {m_info.get('nomor', '')}".lower())
+                    else:
+                        brain_tokens.append(str(m_info).lower())
+                brain_combined_text = " ".join(brain_tokens)
+
+                target_keywords = set()
+                for qj in query_judul_list:
+                    for word in str(qj or "").lower().split():
+                        if len(word) >= 3 and word not in ["dokumen", "peraturan", "terkait", "surat", "tentang", "mengenai", "nomor"]:
+                            target_keywords.add(word)
+                active_search_tags = routing_data.get("search_tags", [])
+                for tag in active_search_tags:
+                    for word in str(tag or "").lower().split():
+                        if len(word) >= 3:
+                            target_keywords.add(word)
+
+                if target_keywords:
+                    is_brain_relevant = any(kw in brain_combined_text for kw in target_keywords)
+                    if not is_brain_relevant:
+                        logger.info(
+                            f"[MODE_DOCUMENTS] 🔄 Brain docs mismatch: Brain has '{brain_combined_text[:80]}' "
+                            f"but user targets '{target_keywords}'. Falling back to Global RAG."
+                        )
+
             candidate_docs = []
 
-            # 🧠 BRAIN-FIRST SHORTCUT:
-            # Jika sesi ini SUDAH memiliki dokumen aktif di Brain dari percakapan sebelumnya,
-            # LANGSUNG gunakan dokumen Brain tersebut dan SKIP GLOBAL RAG SEARCH!
-            # Jangan lagi mengambil 5 dokumen acak lain dari MySQL yang bikin prompt bengkak (noise)!
-            if session_brain_docs:
+            if session_brain_docs and is_brain_relevant:
                 yield format_sse(status="🧠 Mengakses dokumen dari memori sesi", event_type=SSEEventType.STATUS)
                 manifest_data = brain.get_manifest().get("documents", {}) if brain else {}
-                
-                # Tentukan dokumen mana yang menjadi fokus:
-                # Jika ada context_isolation pilih dokumen itu, jika tidak ambil dokumen aktif terakhir
-                iso_id = ""
-                if context_isolation and isinstance(context_isolation, dict):
-                    iso_id = str(context_isolation.get("isolated_doc_id") or context_isolation.get("id_dokumen") or "")
                 
                 selected_b_items = []
                 for b_item in reversed(session_brain_docs):
@@ -134,50 +164,90 @@ class ModeDocuments:
                     doc_nomor = m_info.get("nomor") or (full_b_doc.get("nomor") if full_b_doc else "")
                     doc_jenis = m_info.get("jenis") or (full_b_doc.get("jenis") if full_b_doc else "")
                     doc_tanggal = m_info.get("tanggal") or (full_b_doc.get("tanggal") if full_b_doc else "")
+                    clean_file_path = m_info.get("file_path") or (full_b_doc.get("file_path") if full_b_doc else "")
+                    if clean_file_path and not os.path.exists(clean_file_path):
+                        clean_file_path = ""
 
-                    # Lookup PostgreSQL jika nomor atau jenis belum tersimpan di Brain
-                    if (not doc_nomor or not doc_jenis or doc_jenis == "Regulasi") and str(b_id).isdigit():
+                    # Lookup MySQL berita jika nomor, jenis, atau file_path belum tersimpan di Brain
+                    if (not doc_nomor or not doc_jenis or doc_jenis == "Regulasi" or not clean_file_path) and str(b_id).isdigit():
                         try:
-                            async with get_db() as pg_conn:
-                                d_row = await pg_conn.fetchrow(
-                                    """SELECT d.judul, COALESCE(d.nomor, '') as nomor, 
-                                              COALESCE(j.nama, 'Regulasi') as jenis,
-                                              COALESCE(d.tanggal::text, '') as tanggal
-                                       FROM dokumen d
-                                       LEFT JOIN jenis_dokumen j ON d.id_jenis = j.id
-                                       WHERE d.id = $1""",
-                                    int(b_id)
-                                )
-                                if d_row:
-                                    doc_nomor = d_row["nomor"] or doc_nomor
-                                    doc_jenis = d_row["jenis"] or doc_jenis
-                                    doc_tanggal = d_row["tanggal"] or doc_tanggal
-                                    if not doc_title or doc_title.startswith("Dokumen "):
-                                        doc_title = d_row["judul"]
-                        except Exception as e:
-                            logger.warning(f"[MODE_DOCUMENTS] DB metadata lookup for doc {b_id}: {e}")
+                            from backend.app.core.database import get_peraturan_db
+                            from backend.app.services.tools.document_resolver import find_valid_pdf_file
+                            async with get_peraturan_db() as conn_my:
+                                async with conn_my.cursor() as cur:
+                                    await cur.execute(
+                                        "SELECT b.noper, k.nama_kategori, b.tanggal, b.gambar, b.gambar2, b.gambar3, b.judul "
+                                        "FROM berita b "
+                                        "LEFT JOIN kategori k ON b.id_kategori = k.id_kategori "
+                                        "WHERE b.id_berita = %s LIMIT 1",
+                                        (int(b_id),)
+                                    )
+                                    row = await cur.fetchone()
+                                    if row:
+                                        doc_nomor = row[0] or doc_nomor or ""
+                                        doc_jenis = row[1] or doc_jenis or "SKEP"
+                                        doc_tanggal = str(row[2]) if row[2] else (doc_tanggal or "")
+                                        if not clean_file_path:
+                                            clean_file_path = find_valid_pdf_file(row[3], row[4], row[5]) or ""
+                                        if not doc_title or doc_title == f"Dokumen {b_id}":
+                                            doc_title = row[6] or doc_title
+                        except Exception as _e:
+                            logger.warning(f"[MODE_DOCUMENTS] Gagal lookup noper/jenis untuk id {b_id}: {_e}")
 
                     candidate_docs.append({
-                        "id": int(b_id) if b_id.isdigit() else b_id,
-                        "noper": doc_nomor or doc_title,
-                        "judul": doc_title,
+                        "id": b_id,
+                        "judul": doc_title or f"Dokumen {b_id}",
+                        "noper": doc_nomor or "",
+                        "nomor": doc_nomor or "",
+                        "score": 1.0,
                         "status_berlaku": "Berlaku",
-                        "score": 1.50,
-                        "valid_file": (full_b_doc.get("file_path") if full_b_doc else "") or "",
-                        "filename": (full_b_doc.get("filename") if full_b_doc else "") or f"doc_{b_id}.pdf",
-                        "file_path": (full_b_doc.get("file_path") if full_b_doc else "") or "",
-                        "tanggal": doc_tanggal or (m_info.get("saved_at", "")[:10] if m_info.get("saved_at") else ""),
+                        "valid_file": clean_file_path,
+                        "file_path": clean_file_path,
+                        "filename": os.path.basename(clean_file_path) if clean_file_path else "",
+                        "tanggal": doc_tanggal or "",
                         "mencabut": "",
                         "jenis": doc_jenis or "SKEP",
                         "total_pages": m_info.get("total_pages") or (full_b_doc.get("total_pages", 1) if full_b_doc else 1),
                         "is_supplementary": False,
                         "_from_session_brain": True
                     })
-                    logger.info(f"[MODE_DOCUMENTS] 🧠 [BRAIN-HIT] Dokumen aktif sesi {b_id} ('{doc_title}', {doc_nomor}) ditemukan di Brain. SKIP GLOBAL RAG!")
+                    logger.info(f"[MODE_DOCUMENTS] 🧠 [BRAIN-HIT] Dokumen aktif sesi {b_id} ('{doc_title}', {doc_nomor}) digunakan dari Brain.")
             else:
                 yield format_sse(status="🔍 Menelusuri regulasi", event_type=SSEEventType.STATUS)
-                logger.info(f"[MODE_DOCUMENTS] [TIER 1] No Brain doc, fetching candidate documents for query_judul: {query_judul_list}")
-                candidate_docs = await get_candidate_documents_metadata(user_message, query_judul_list, rag_queries=rag_queries) or []
+                search_tags = routing_data.get("search_tags", [])
+                logger.info(f"[MODE_DOCUMENTS] [TIER 1] Fetching candidate documents for query_judul: {query_judul_list} | search_tags: {search_tags}")
+                candidate_docs = await get_candidate_documents_metadata(user_message, query_judul_list, rag_queries=rag_queries, search_tags=search_tags) or []
+
+                # ⚡ CALL 1.1 CRAG VERIFIER (Fast-Path Quality Control):
+                from backend.app.services.pipeline.call1_crag_verifier import verify_retrieved_documents_crag, ENABLE_CALL1_1_CRAG
+                if candidate_docs and ENABLE_CALL1_1_CRAG:
+                    crag_eval = await verify_retrieved_documents_crag(
+                        user_query=user_message,
+                        target_judul_list=query_judul_list,
+                        target_tags=search_tags,
+                        candidate_docs=candidate_docs,
+                        request=request,
+                    )
+                    if not crag_eval.get("is_relevant"):
+                        logger.warning(
+                            f"[MODE_DOCUMENTS] ⚠️ Call 1.1 CRAG flagged candidates as NOT RELEVANT ({crag_eval.get('reason')}). "
+                            f"Running 1x targeted re-search with suggestions..."
+                        )
+                        yield format_sse(status="🔄 Menajamkan pencarian regulasi...", status_key="CRAG_RETRY", event_type=SSEEventType.STATUS)
+                        retry_qj = crag_eval.get("suggested_query_judul") or query_judul_list
+                        retry_tags = crag_eval.get("suggested_tags") or search_tags
+                        retry_queries = crag_eval.get("suggested_queries") or rag_queries
+                        retry_docs = await get_candidate_documents_metadata(
+                            user_message,
+                            retry_qj,
+                            rag_queries=retry_queries,
+                            search_tags=retry_tags
+                        )
+                        if retry_docs:
+                            candidate_docs = retry_docs
+                            logger.info(f"[MODE_DOCUMENTS] ✅ 1x Re-search found {len(candidate_docs)} new candidates.")
+                        else:
+                            logger.info("[MODE_DOCUMENTS] ℹ️ Re-search did not return new docs, retaining initial candidates.")
 
 
             if candidate_docs:
@@ -192,18 +262,18 @@ class ModeDocuments:
                     if is_supp:
                         historical_docs.append(doc)
                     elif status == "Berlaku" or len(full_read_docs) < 1:
-                        # Ambil dokumen aktif (atau minimal 1 dokumen) hingga maksimal 5 dokumen
-                        if len(full_read_docs) < 5:
+                        # Ambil dokumen aktif paling relevan (maksimal 2 dokumen utama untuk full read agar responsif dan hemat CPU)
+                        if len(full_read_docs) < 2:
                             full_read_docs.append(doc)
                         else:
                             historical_docs.append(doc)
                     else:
                         historical_docs.append(doc)
                 
-                # Jika tidak ada yang berstatus Berlaku sama sekali, ambil hingga 5 teratas yang bukan supplementary sebagai full_read
+                # Jika tidak ada yang berstatus Berlaku sama sekali, ambil hingga 2 teratas sebagai full_read
                 if not full_read_docs:
                     non_supp = [d for d in candidate_docs if not d.get("is_supplementary", False)]
-                    full_read_docs = non_supp[:5] if non_supp else candidate_docs[:3]
+                    full_read_docs = non_supp[:2] if non_supp else candidate_docs[:1]
                     historical_docs = [d for d in candidate_docs if d not in full_read_docs]
                 
                 doc_count = len(full_read_docs)
@@ -252,8 +322,8 @@ class ModeDocuments:
                         if not valid_file or not os.path.exists(valid_file):
                             continue
                         cache_key = f"doc_{doc_id}"
-                        text_map, _, page_count = await extract_and_ocr_document_async(valid_file, cache_key=cache_key)
-                        if brain:
+                        text_map, _, page_count = await extract_and_ocr_document_async(valid_file, cache_key=cache_key, render_images=False)
+                        if brain and should_run_rag and not is_chitchat_msg:
                             await brain.save_document(doc_id_key, {
                                 "title": doc.get("judul", ""),
                                 "text_map": text_map,
@@ -287,8 +357,8 @@ class ModeDocuments:
                         })
                         
                     # Hindari duplikasi judul di nomor regulasi:
-                    clean_nomor = doc.get("nomor") or doc.get("noper", "")
-                    if clean_nomor and clean_nomor.strip().lower() == str(doc.get("judul", "")).strip().lower():
+                    clean_nomor = str(doc.get("nomor") or doc.get("noper") or "").strip()
+                    if clean_nomor and clean_nomor.lower() == str(doc.get("judul", "")).strip().lower():
                         clean_nomor = ""
 
                     final_total_pages = page_count if page_count > 0 else (len(text_map) if len(text_map) > 0 else 1)
@@ -300,7 +370,7 @@ class ModeDocuments:
                         "document_title": doc.get("judul", ""),
                         "filename": doc.get("filename", ""),
                         "file_path": doc.get("file_path", valid_file),
-                        "jenis": doc.get("jenis", "SKEP" if clean_nomor.lower().startswith("skep") else "Regulasi"),
+                        "jenis": doc.get("jenis") or ("SKEP" if clean_nomor and clean_nomor.lower().startswith("skep") else "Regulasi"),
                         "nomor": clean_nomor,
                         "page_number": "" if is_brain_compact else "1",
                         "total_pages": str(final_total_pages),

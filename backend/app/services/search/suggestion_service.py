@@ -171,8 +171,8 @@ class SuggestionService:
 
         # 1. Coba ambil metadata dokumen dan rag_document_questions (Synthetic QA di PostgreSQL)
         try:
-            from backend.app.core import database
-            pool = database.db_pool
+            from backend.app.core.database import database
+            pool = getattr(database, "db_pool", None)
             if pool:
                 async with pool.acquire() as conn:
                     if numeric_doc_id is None and clean_title:
@@ -229,6 +229,41 @@ class SuggestionService:
                                 })
         except Exception as e:
             logger.warning(f"[SUGGESTIONS] Error querying rag_document_questions: {e}")
+
+        # 1b. Coba ambil metadata nomor dari MySQL berita jika belum ada
+        if not doc_nomor:
+            try:
+                from backend.app.core.database import get_peraturan_db, peraturan_pool
+                if peraturan_pool:
+                    async with get_peraturan_db() as p_conn:
+                        async with p_conn.cursor() as p_cur:
+                            if numeric_doc_id:
+                                await p_cur.execute(
+                                    "SELECT COALESCE(noper, ''), COALESCE(tanggal, ''), COALESCE(NULLIF(gambar, ''), NULLIF(gambar2, ''), NULLIF(gambar3, ''), NULLIF(linkper, '')) FROM berita WHERE id_berita = %s",
+                                    (numeric_doc_id,)
+                                )
+                                p_row = await p_cur.fetchone()
+                                if p_row:
+                                    doc_nomor = (p_row[0] or "").strip()
+                                    doc_tanggal = str(p_row[1] or "").strip()
+                                    doc_filename = doc_filename or (p_row[2] or "").strip()
+                                    if doc_nomor in ["N/A", "No Regulasi ----"]:
+                                        doc_nomor = ""
+                            elif clean_title:
+                                await p_cur.execute(
+                                    "SELECT id_berita, COALESCE(noper, ''), COALESCE(tanggal, ''), COALESCE(NULLIF(gambar, ''), NULLIF(gambar2, ''), NULLIF(gambar3, ''), NULLIF(linkper, '')) FROM berita WHERE judul LIKE %s LIMIT 1",
+                                    (f"%{clean_title}%",)
+                                )
+                                p_row = await p_cur.fetchone()
+                                if p_row:
+                                    numeric_doc_id = p_row[0]
+                                    doc_nomor = (p_row[1] or "").strip()
+                                    doc_tanggal = str(p_row[2] or "").strip()
+                                    doc_filename = doc_filename or (p_row[3] or "").strip()
+                                    if doc_nomor in ["N/A", "No Regulasi ----"]:
+                                        doc_nomor = ""
+            except Exception as e:
+                logger.warning(f"[SUGGESTIONS] MySQL doc metadata lookup error: {e}")
 
         # 2. Fallback: Template pertanyaan sintetis bermutu tinggi berbasis judul dokumen
         if not questions:
@@ -346,6 +381,61 @@ class SuggestionService:
                             })
         except Exception as e:
             logger.warning(f"[SUGGESTIONS] Database query fallback error: {e}")
+
+        # 2. Coba ambil dari MySQL berita (tabel peraturan resmi Pindad) jika PostgreSQL kosong
+        if not suggestions:
+            try:
+                from backend.app.core.database import get_peraturan_db, peraturan_pool
+                if peraturan_pool:
+                    async with get_peraturan_db() as p_conn:
+                        async with p_conn.cursor() as p_cur:
+                            if query:
+                                pattern = f"%{query}%"
+                                sql = """
+                                    SELECT b.id_berita, b.judul, COALESCE(b.noper, '') as nomor,
+                                           COALESCE(b.tanggal, '') as tanggal,
+                                           COALESCE(k.nama_kategori, 'Regulasi') as category,
+                                           COALESCE(NULLIF(b.gambar, ''), NULLIF(b.gambar2, ''), NULLIF(b.gambar3, ''), NULLIF(b.linkper, '')) AS filename
+                                    FROM berita b
+                                    LEFT JOIN kategori k ON b.id_kategori = k.id_kategori
+                                    WHERE (b.judul LIKE %s OR b.noper LIKE %s)
+                                    ORDER BY b.id_berita DESC
+                                    LIMIT %s
+                                """
+                                await p_cur.execute(sql, (pattern, pattern, limit))
+                            else:
+                                sql = """
+                                    SELECT b.id_berita, b.judul, COALESCE(b.noper, '') as nomor,
+                                           COALESCE(b.tanggal, '') as tanggal,
+                                           COALESCE(k.nama_kategori, 'Regulasi') as category,
+                                           COALESCE(NULLIF(b.gambar, ''), NULLIF(b.gambar2, ''), NULLIF(b.gambar3, ''), NULLIF(b.linkper, '')) AS filename
+                                    FROM berita b
+                                    LEFT JOIN kategori k ON b.id_kategori = k.id_kategori
+                                    ORDER BY b.id_berita DESC
+                                    LIMIT %s
+                                """
+                                await p_cur.execute(sql, (limit,))
+                            rows = await p_cur.fetchall()
+                            for r in rows:
+                                b_id, b_title, b_nomor, b_tgl, b_cat, b_fname = r
+                                nomor_clean = (b_nomor or "").strip()
+                                if nomor_clean in ["N/A", "No Regulasi ----"]:
+                                    nomor_clean = ""
+                                pages = _count_pdf_pages(b_fname or "")
+                                suggestions.append({
+                                    "title": (b_title or b_fname or "Dokumen Tanpa Judul").strip(),
+                                    "category": b_cat or "Regulasi",
+                                    "doc_id": b_id,
+                                    "id_berita": b_id,
+                                    "id": b_id,
+                                    "nomor": nomor_clean,
+                                    "tanggal": str(b_tgl or "").strip(),
+                                    "total_pages": pages,
+                                    "filename": b_fname or "",
+                                    "source": "dokumen"
+                                })
+            except Exception as e:
+                logger.warning(f"[SUGGESTIONS] MySQL berita suggestions lookup error: {e}")
 
         # Fallback default jika database kosong / offline
         if not suggestions:

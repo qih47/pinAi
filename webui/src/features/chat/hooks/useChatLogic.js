@@ -1032,7 +1032,7 @@ export function useChatLogic({ isGuest,
     const activeIsolatedMeta = useChatStore.getState().activeIsolatedMeta;
 
     const streamOptions = { forced_mode: activeModeTag, bypass_router: Boolean(activeModeTag) };
-    if ((activeModeTag === 'documents' || activeModeTag === 'focus' || chatModeRef.current === 'focus' || chatModeRef.current === 'documents') && activeIsolatedDocId) {
+    if (activeIsolatedDocId) {
       streamOptions.isolated_doc_id = activeIsolatedDocId;
       streamOptions.doc_title = activeIsolatedTitle;
       streamOptions.hint_source = {
@@ -1097,7 +1097,7 @@ export function useChatLogic({ isGuest,
     if (!hintText.trim() || isStreaming || isUploadingFile) return;
 
     const streamOptions = { bypass_router: true, forced_mode: targetMode };
-    const isDocOrFocus = targetMode === 'documents' || targetMode === 'focus' || targetMode === 'audit';
+    const isDocOrFocus = targetMode === 'documents' || targetMode === 'focus' || targetMode === 'audit' || targetMode === 'compliance' || targetMode === 'redteam';
 
     if (hintItem && (hintItem.doc_id || hintItem.id_berita || hintItem.id || hintItem.filename || hintItem.title)) {
       const docId = hintItem.id_berita || hintItem.doc_id || hintItem.id || hintItem.filename;
@@ -1105,7 +1105,7 @@ export function useChatLogic({ isGuest,
       streamOptions.isolated_doc_id = docId;
       streamOptions.doc_title = docTitle;
 
-      // 📚 JIKA PIL DOKUMEN / FOCUS: Wajibkan dokumen terpilih menjadi dokumen rujukan (sources / citations)
+      // 📚 JIKA PIL DOKUMEN / FOCUS / AUDIT: Wajibkan dokumen terpilih menjadi dokumen rujukan (sources / citations)
       if (isDocOrFocus) {
         streamOptions.hint_source = {
           id: String(docId),
@@ -1125,9 +1125,9 @@ export function useChatLogic({ isGuest,
         };
       }
 
-      // Aktifkan persistent context isolation UI jika targetMode adalah focus / audit / documents
-      if (targetMode === 'focus' || targetMode === 'audit' || targetMode === 'documents') {
-        useChatStore.getState().setContextIsolation(docId, docTitle, targetMode);
+      // Aktifkan persistent context isolation UI jika targetMode adalah focus / audit / documents / compliance / redteam
+      if (isDocOrFocus) {
+        useChatStore.getState().setContextIsolation(docId, docTitle, targetMode, streamOptions.hint_source);
       }
 
     }

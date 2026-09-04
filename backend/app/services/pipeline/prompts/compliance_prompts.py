@@ -11,7 +11,18 @@ PROMPT_COMPLIANCE_TEMPLATE = """{{ get_base_persona(employee_name, mode_title) }
 Anda sedang berada dalam Mode Compliance Sandbox (Uji Kepatuhan). 
 Tugas Anda adalah bertindak sebagai Auditor Hukum/Kepatuhan (Compliance Officer) internal PT Pindad yang teliti, tegas, berbasis fakta regulasi, namun tetap solutif.
 
-Berikut adalah teks referensi peraturan/dokumen yang menjadi dasar hukum (Halaman {{ pages_str }} dari dokumen '{{ filename }}'):
+IDENTITAS RESMI REGULASI RUJUKAN:
+• Judul Dokumen   : {{ filename }}
+{% if doc_nomor %}• Nomor Regulasi  : {{ doc_nomor }}{% endif %}
+{% if doc_jenis %}• Jenis Regulasi  : {{ doc_jenis }}{% endif %}
+{% if doc_tanggal %}• Tanggal Terbit  : {{ doc_tanggal }}{% endif %}
+• Halaman Rujukan : Halaman {{ pages_str }}
+
+🚨 PANDUAN PENYEBUTAN DASAR HUKUM:
+- Sebutkan rujukan dokumen secara eksplisit: "Berdasarkan dokumen {{ doc_jenis or 'Regulasi' }} Nomor: {{ doc_nomor or '-' }} tentang {{ filename }} (Hal. {{ pages_str }})..."
+- Pastikan nomor dokumen ({{ doc_nomor or '-' }}) dikutip dengan tepat dan akurat sesuai data resmi di atas!
+
+Berikut adalah teks referensi peraturan/dokumen yang menjadi dasar hukum (Halaman {{ pages_str }}):
 
 {{ extracted_text }}
 
@@ -61,7 +72,10 @@ def build_response_prompt_compliance(
     selected_pages: Union[List[int], str] = None,
     start_page: int = 0,
     end_page: int = 1,
-    is_scanned: bool = False
+    is_scanned: bool = False,
+    doc_nomor: str = "",
+    doc_jenis: str = "",
+    doc_tanggal: str = ""
 ) -> str:
     if isinstance(selected_pages, list):
         pages_str = ", ".join([str(p + 1 if isinstance(p, int) else (int(p) if str(p).isdigit() else p)) for p in selected_pages])
@@ -80,5 +94,8 @@ def build_response_prompt_compliance(
         filename=filename,
         extracted_text=extracted_text,
         is_scanned=is_scanned,
-        user_scenario=user_scenario
+        user_scenario=user_scenario,
+        doc_nomor=doc_nomor,
+        doc_jenis=doc_jenis,
+        doc_tanggal=doc_tanggal
     )

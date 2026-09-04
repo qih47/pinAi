@@ -225,7 +225,8 @@ const SourceCitation = ({ sources, darkMode, theme, language = 'id', onPreview, 
     alignItems: 'flex-start',
     gap: '8px',
     width: '100%',
-    marginBottom: '6px'
+    marginBottom: '6px',
+    paddingRight: '32px' // Ruang aman agar judul dan metadata tidak menabrak tombol portal di pojok kanan atas
   };
 
   const iconStyle = {
@@ -247,6 +248,7 @@ const SourceCitation = ({ sources, darkMode, theme, language = 'id', onPreview, 
     color: theme?.textColor || (darkMode ? '#e2e8f0' : '#1f2937'),
     whiteSpace: 'normal',
     wordBreak: 'break-word',
+    overflowWrap: 'break-word',
     lineHeight: '1.4'
   };
 

@@ -217,28 +217,38 @@ async def _sequential_pipeline_generator(
             else:
                 cleaned_history.append(msg)
 
-        # 🧠 RESTORE ISOLATED DOC FROM SESSION BRAIN:
-        # Jika client tidak mengirimkan payload.isolated_doc_id (misalnya tombol Regenerate atau follow-up chat),
-        # periksa apakah sesi ini memiliki dokumen aktif di Brain. Jika ada, pulihkan secara otomatis!
+        # 🧠 ISOLATED DOC HANDLING:
+        # Hanya aktifkan bypass_router & forced_mode='documents' jika client secara EKSPLISIT
+        # mengirimkan payload.isolated_doc_id (misalnya mode fokus per dokumen dari FE).
+        # Jangan pernah auto-force bypass router dari Brain agar Call 1 tetap bisa mengevaluasi mode lain (koding, web search, sapaan, dll).
         active_isolated_doc_id = payload.isolated_doc_id
-        if not active_isolated_doc_id and payload.session_uuid and current_user_npp:
-            try:
-                from backend.app.services.session.session_brain_service import SessionBrainService
-                brain_srv = SessionBrainService(current_user_npp, payload.session_uuid)
-                brain_docs = brain_srv.list_documents()
-                if brain_docs:
-                    last_doc = brain_docs[-1]
-                    active_isolated_doc_id = str(last_doc.get("id") or last_doc.get("doc_id") or last_doc)
-                    logger.info(f"[PIPELINE] 🧠 Brain Auto-Restored active isolated_doc_id={active_isolated_doc_id} for session {payload.session_uuid}")
-            except Exception as e:
-                logger.warning(f"[PIPELINE] Gagal auto-restore isolated_doc dari brain: {e}")
+        active_doc_title = getattr(payload, 'doc_title', None)
+        active_hint_source = getattr(payload, 'hint_source', None) or {}
+        raw_ctx_isolation = getattr(payload, 'context_isolation', None) or {}
 
         active_forced_mode = getattr(payload, 'forced_mode', None)
         active_bypass_router = bool(getattr(payload, 'bypass_router', False))
         if active_isolated_doc_id and not active_forced_mode:
             active_forced_mode = "documents"
             active_bypass_router = True
-            logger.info(f"[PIPELINE] ⚡ Auto-activating bypass_router & forced_mode='documents' for Brain isolated doc {active_isolated_doc_id}")
+            logger.info(f"[PIPELINE] ⚡ Client explicit isolated_doc_id={active_isolated_doc_id} -> activating bypass_router & forced_mode='documents'")
+
+        # Susun context_isolation lengkap dengan identitas resmi dokumen (nomor, jenis, tanggal, judul)
+        full_context_isolation = None
+        if active_isolated_doc_id or active_hint_source or raw_ctx_isolation:
+            full_context_isolation = {
+                "isolated_doc_id": active_isolated_doc_id or active_hint_source.get("id") or raw_ctx_isolation.get("isolated_doc_id"),
+                "id_dokumen": active_isolated_doc_id or active_hint_source.get("id"),
+                "doc_id": active_isolated_doc_id or active_hint_source.get("id"),
+                "title": active_doc_title or active_hint_source.get("title") or raw_ctx_isolation.get("title"),
+                "doc_title": active_doc_title or active_hint_source.get("title") or raw_ctx_isolation.get("title"),
+                "nomor": active_hint_source.get("nomor") or raw_ctx_isolation.get("nomor") or "",
+                "tanggal": active_hint_source.get("tanggal") or raw_ctx_isolation.get("tanggal") or "",
+                "jenis": active_hint_source.get("jenis") or active_hint_source.get("category") or raw_ctx_isolation.get("jenis") or "Regulasi",
+                "filename": active_hint_source.get("filename") or raw_ctx_isolation.get("filename"),
+                "file_path": active_hint_source.get("file_path") or raw_ctx_isolation.get("file_path"),
+            }
+            logger.info(f"[PIPELINE] 📑 Context Isolation Active: title='{full_context_isolation.get('title')}', nomor='{full_context_isolation.get('nomor')}', id={full_context_isolation.get('isolated_doc_id')}")
 
         agentic_engine = mode_hub.execute(
             request=request,
@@ -247,7 +257,7 @@ async def _sequential_pipeline_generator(
             chat_mode=chat_mode,
             is_thinking=payload.thinking if hasattr(payload, 'thinking') else True,
             attachments=formatted_attachments,
-            context_isolation={"isolated_doc_id": active_isolated_doc_id} if active_isolated_doc_id else None,
+            context_isolation=full_context_isolation,
             employee_name=employee_name,
             current_user_npp=current_user_npp,
             session_uuid=payload.session_uuid,
@@ -305,7 +315,7 @@ async def _sequential_pipeline_generator(
         full_response_text += " *Respons dihentikan*"
         # Biarkan eksekusi berlanjut ke bagian save DB di bawah
     except Exception as e:
-        logger.error(f"[AGENTIC] Error: {e}")
+        logger.error(f"[AGENTIC] Error: {e}", exc_info=True)
         error_msg = f"Gagal mengeksekusi pipeline: {str(e)}"
         yield format_sse(error_msg, "", False, event_type=SSEEventType.CHUNK)
         full_response_text = error_msg

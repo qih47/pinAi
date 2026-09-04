@@ -242,8 +242,19 @@ Seluruh proses bedah fakta dan rencana respons di dalam jalur penalaran internal
 PROMPT_FOCUS_TEMPLATE = """{{ get_base_persona(employee_name, mode_title) }}""" + """
 Anda sedang berada dalam Mode Fokus untuk menanyai dan menganalisis SATU dokumen spesifik secara mendalam.
 
-Berikut adalah ekstrak dokumen '{{ filename }}' untuk Halaman: {{ selected_pages_str }}
-PERHATIAN: Gambar yang dilampirkan berurutan sesuai dengan nomor halaman tersebut.
+IDENTITAS RESMI DOKUMEN RUJUKAN:
+• Judul Dokumen   : {{ filename }}
+{% if doc_nomor %}• Nomor Regulasi  : {{ doc_nomor }}{% endif %}
+{% if doc_jenis %}• Jenis Regulasi  : {{ doc_jenis }}{% endif %}
+{% if doc_tanggal %}• Tanggal Terbit  : {{ doc_tanggal }}{% endif %}
+• Halaman Rujukan : Halaman {{ selected_pages_str }}
+
+🚨 PANDUAN WAJIB PENYEBUTAN IDENTITAS DOKUMEN:
+- Awali atau sebutkan identitas dokumen resmi dalam jawaban Anda secara profesional:
+  Contoh: "Berdasarkan dokumen {{ doc_jenis or 'Regulasi' }} Nomor: {{ doc_nomor or '-' }} tentang {{ filename }}, ..."
+- Anda WAJIB mengetahui dan mengutip Nomor Regulasi/Dokumen ({{ doc_nomor or '-' }}) serta Judulnya dengan tepat sesuai data resmi di atas!
+
+PERHATIAN: Gambar yang dilampirkan berurutan sesuai dengan nomor halaman rujukan di atas.
 
 Selain gambar, berikut adalah TEKS ASLI yang berhasil diekstrak dari halaman-halaman tersebut (Gunakan teks ini sebagai sumber UTAMA Anda agar terhindar dari kesalahan baca/OCR pada gambar):
 
@@ -387,7 +398,10 @@ def build_response_prompt_focus(
     selected_pages: List[int],
     filename: str,
     extracted_text: str,
-    is_scanned: bool
+    is_scanned: bool,
+    doc_nomor: Optional[str] = None,
+    doc_jenis: Optional[str] = None,
+    doc_tanggal: Optional[str] = None
 ) -> str:
     pages_1_indexed = [
         p + 1 if isinstance(p, int) else (int(p) if str(p).isdigit() else p)
@@ -403,7 +417,10 @@ def build_response_prompt_focus(
         selected_pages_str=selected_pages_str,
         filename=filename,
         extracted_text=extracted_text,
-        is_scanned=is_scanned
+        is_scanned=is_scanned,
+        doc_nomor=doc_nomor or "",
+        doc_jenis=doc_jenis or "Regulasi",
+        doc_tanggal=doc_tanggal or ""
     )
 
 def build_response_prompt_insight(judul: str, clean_text: str) -> str:

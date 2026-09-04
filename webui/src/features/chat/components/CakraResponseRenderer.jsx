@@ -150,7 +150,6 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
 
     const wizardAnswers = useChatStore(state => state.wizardAnswers);
     const setActiveWizard = useChatStore(state => state.setActiveWizard);
-    const activeWizard = useChatStore(state => state.activeWizard);
 
     const { thinkingBlock, finalResponseBlock, wizardBlock, isWizardStreaming } = useMemo(() => {
         const thinking = thinkingContent || "";
@@ -621,17 +620,20 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
         }
     }), []);
 
-    // Sync wizard to dock in ChatInputArea when active
+    // Sync wizard to dock in ChatInputArea when active (hanya untuk pesan aktif terakhir)
     React.useEffect(() => {
-        if (wizardBlock && messageIndex !== null && messageIndex !== undefined) {
-            const hasAnswered = Boolean(wizardAnswers[messageIndex]);
-            if (!hasAnswered && (isLastMessage || isStreaming)) {
-                if (activeWizard?.messageIndex !== messageIndex || activeWizard?.data !== wizardBlock) {
-                    setActiveWizard({ messageIndex, data: wizardBlock });
-                }
-            }
+        if (!isLastMessage || !wizardBlock || messageIndex === null || messageIndex === undefined) {
+            return;
         }
-    }, [wizardBlock, messageIndex, isLastMessage, isStreaming, wizardAnswers, activeWizard?.messageIndex, activeWizard?.data, setActiveWizard]);
+        const state = useChatStore.getState();
+        const hasAnswered = Boolean(state.wizardAnswers?.[messageIndex]);
+        if (hasAnswered) return;
+
+        const currentActive = state.activeWizard;
+        if (currentActive?.messageIndex !== messageIndex || currentActive?.data !== wizardBlock) {
+            setActiveWizard({ messageIndex, data: wizardBlock });
+        }
+    }, [wizardBlock, messageIndex, isLastMessage, setActiveWizard]);
 
     // 🛠️ FIX AMAN: guard render kosong dipindah ke bawah useMemo agar
     // hooks tidak dipanggil secara kondisional (Rules of Hooks)

@@ -10,6 +10,17 @@ REDTEAM_SYSTEM_PROMPT = """{{ get_base_persona(employee_name, mode_title) }}""" 
 Anda sedang berada dalam Mode Bedah Celah Hukum (Red-Team Clause Analysis). 
 Tugas utama Anda adalah menginvestigasi, membedah, dan menganalisa pasal/klausul regulasi dari DUA SUDUT PANDANG EKSTREM yang saling bertentangan secara bersamaan (Auditor Hukum Ganda / Double Agent).
 
+IDENTITAS RESMI REGULASI RUJUKAN:
+• Judul Dokumen   : {{ filename }}
+{% if doc_nomor %}• Nomor Regulasi  : {{ doc_nomor }}{% endif %}
+{% if doc_jenis %}• Jenis Regulasi  : {{ doc_jenis }}{% endif %}
+{% if doc_tanggal %}• Tanggal Terbit  : {{ doc_tanggal }}{% endif %}
+• Halaman Rujukan : Halaman {{ pages_str }}
+
+🚨 PANDUAN PENYEBUTAN DASAR HUKUM:
+- Sebutkan rujukan dokumen secara jelas di awal: "Berdasarkan bedah dokumen {{ doc_jenis or 'Regulasi' }} Nomor: {{ doc_nomor or '-' }} tentang {{ filename }} (Hal. {{ pages_str }})..."
+- Pastikan nomor dokumen ({{ doc_nomor or '-' }}) dikutip dengan tepat dan akurat sesuai data resmi di atas!
+
 Berikut adalah teks referensi peraturan/dokumen yang menjadi dasar bedah celah (Halaman {{ pages_str }} dari dokumen '{{ filename }}'):
 
 {{ extracted_text }}
@@ -61,7 +72,10 @@ def build_redteam_system_prompt(
     extracted_text: str,
     user_topic: str,
     selected_pages: Union[List[int], str] = None,
-    rag_context: str = ""
+    rag_context: str = "",
+    doc_nomor: str = "",
+    doc_jenis: str = "",
+    doc_tanggal: str = ""
 ) -> str:
     if isinstance(selected_pages, list):
         pages_str = ", ".join([str(p + 1 if isinstance(p, int) else (int(p) if str(p).isdigit() else p)) for p in selected_pages])
@@ -80,5 +94,8 @@ def build_redteam_system_prompt(
         pages_str=pages_str,
         filename=filename,
         extracted_text=text_to_use,
-        user_topic=user_topic
+        user_topic=user_topic,
+        doc_nomor=doc_nomor,
+        doc_jenis=doc_jenis,
+        doc_tanggal=doc_tanggal
     )
