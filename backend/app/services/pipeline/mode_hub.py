@@ -857,7 +857,8 @@ class ModeHub:
                 logger.info("[MODE_HUB] URL fetch failed/empty → falling back to web search")
 
         # ── 🌍 Geocoding Tool Calling (Nominatim) ──────────────────────────────────
-        if routing_data.get("is_map_query"):
+        is_map = bool(routing_data.get("is_map_query")) or bool(precheck.get("is_map_query"))
+        if is_map:
             yield format_sse(status="🌍 Mencari koordinat peta", event_type=SSEEventType.STATUS)
             from backend.app.services.tools.geocoding import geocode_osm
             
@@ -938,7 +939,7 @@ class ModeHub:
             else:
                 # Gunakan precheck (bukan routing_data) agar override URL context (need_rag=False)
                 # tidak tertimpa oleh nilai raw dari routing_data
-                need_rag = precheck.get("need_rag", False) and not precheck.get("is_map_query", False)
+                need_rag = precheck.get("need_rag", False) and not (precheck.get("is_map_query", False) or routing_data.get("is_map_query", False))
                 if need_rag and not is_guest:
                     mode = "documents"
                 else:

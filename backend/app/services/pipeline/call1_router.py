@@ -496,7 +496,10 @@ def _validate_and_normalize_routing(
     routing["is_ambiguous"] = bool(routing.get("is_ambiguous") or routing_json.get("is_ambiguous", False))
     routing["is_multi_document"] = bool(routing_json.get("is_multi_document", False))
     routing["is_multi_turn_task"] = bool(routing_json.get("is_multi_turn_task", False))
-    routing["is_map_query"] = bool(routing_json.get("is_map_query", False))
+    routing["is_map_query"] = bool(routing.get("is_map_query", False)) or bool(routing_json.get("is_map_query", False)) or bool(precheck.get("is_map_query", False))
+    if routing["is_map_query"]:
+        routing["need_rag"] = False
+        routing["query_judul"] = []
 
     task_list = routing_json.get("task_list", [])
     if isinstance(task_list, list):

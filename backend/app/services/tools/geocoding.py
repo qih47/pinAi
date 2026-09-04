@@ -10,32 +10,30 @@ PINDAD_LOCATIONS = {
     "bandung": {
         "lat": -6.9189,
         "lng": 107.6338,
-        "name": "PT Pindad (Persero) Kantor Pusat Bandung, Jl. Gatot Subroto No. 517, Bandung",
+        "name": "PT Pindad (Persero) Kantor Pusat Bandung, Jl. Gatot Subroto No. 517, Bandung, Jawa Barat",
         "division": "Kantor Pusat, Divisi Senjata, Divisi Kendaraan Khusus, Divisi Alat Berat",
+        "keywords": ["bandung", "kantor pusat", "pusat", "headquarters", "gatot subroto", "senjata", "kendaraan khusus", "alat berat"]
     },
     "turen": {
         "lat": -8.1728,
         "lng": 112.7092,
         "name": "PT Pindad (Persero) Divisi Munisi Turen, Jl. Panglima Sudirman No. 1, Turen, Malang, Jawa Timur",
         "division": "Divisi Munisi",
-    },
-    "malang": {
-        "lat": -8.1728,
-        "lng": 112.7092,
-        "name": "PT Pindad (Persero) Divisi Munisi Turen, Malang, Jawa Timur",
-        "division": "Divisi Munisi",
+        "keywords": ["turen", "malang", "munisi", "amunisi", "peluru"]
     },
     "subang": {
         "lat": -6.5683,
         "lng": 107.7594,
         "name": "PT Pindad Fasilitas Uji Coba & Gudang Terpadu Subang, Jawa Barat",
         "division": "Fasilitas Pengujian & Gudang Munisi",
+        "keywords": ["subang", "uji coba", "gudang terpadu"]
     },
     "jakarta": {
         "lat": -6.2146,
         "lng": 106.8451,
         "name": "PT Pindad Kantor Perwakilan Jakarta",
         "division": "Kantor Perwakilan & Hubungan Kelembagaan",
+        "keywords": ["jakarta", "perwakilan"]
     },
 }
 
@@ -51,8 +49,8 @@ async def geocode_osm(address: str) -> Optional[Dict[str, Any]]:
     clean_addr = address.strip().lower()
 
     # 1. Cek Cache Korporat PT Pindad (Instan & Offline)
-    for key, loc in PINDAD_LOCATIONS.items():
-        if key in clean_addr or (f"pindad {key}" in clean_addr) or (key in clean_addr and "pindad" in clean_addr):
+    for loc_key, loc in PINDAD_LOCATIONS.items():
+        if any(kw in clean_addr for kw in loc.get("keywords", [loc_key])):
             logger.info(f"[GEOCODING] ⚡ Corporate Cache HIT for '{address}': {loc['name']}")
             return {
                 "lat": loc["lat"],
@@ -61,6 +59,18 @@ async def geocode_osm(address: str) -> Optional[Dict[str, Any]]:
                 "division": loc.get("division"),
                 "source": "pindad_corporate_cache"
             }
+
+    # Jika ada kata 'pindad' tapi tidak ada kata kunci spesifik lain -> default ke Kantor Pusat
+    if "pindad" in clean_addr:
+        loc = PINDAD_LOCATIONS["bandung"]
+        logger.info(f"[GEOCODING] ⚡ Corporate Default HIT (Pindad Headquarters) for '{address}'")
+        return {
+            "lat": loc["lat"],
+            "lng": loc["lng"],
+            "name": loc["name"],
+            "division": loc.get("division"),
+            "source": "pindad_corporate_cache"
+        }
 
     try:
         logger.info(f"[GEOCODING] Melacak koordinat untuk: '{address}' via Nominatim OSM")

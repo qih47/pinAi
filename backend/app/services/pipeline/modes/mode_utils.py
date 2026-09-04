@@ -16,6 +16,7 @@ def detect_precheck(user_message: str, chat_mode: str, has_attachment: bool, use
 
     is_coding = any(kw in msg_lower for kw in _CODING_KEYWORDS)
     is_greeting = any(kw in msg_lower for kw in _GREETING_KEYWORDS)
+    is_public_web = any(kw in msg_lower for kw in _PUBLIC_WEB_KEYWORDS)
     _MAP_KEYWORDS = ["lokasi", "alamat", "dimana", "di mana", "koordinat", "peta", "letak pabrik", "kantor pusat", "fasilitas divisi"]
     is_map_query = any(kw in msg_lower for kw in _MAP_KEYWORDS)
     is_doc_query = any(kw in msg_lower for kw in _DOC_KEYWORDS) and not is_public_web and not is_map_query
@@ -108,6 +109,9 @@ def detect_precheck(user_message: str, chat_mode: str, has_attachment: bool, use
         is_public_web = False
         is_chitchat = False
     elif is_public_web:
+        need_rag_hint = False
+        is_chitchat = False
+    elif is_map_query and not is_explicit_doc_mode:
         need_rag_hint = False
         is_chitchat = False
     elif has_attachment or is_doc_query:
