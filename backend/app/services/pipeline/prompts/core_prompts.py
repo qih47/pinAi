@@ -34,56 +34,30 @@ ATURAN FORMAT OUTPUT:
 
 STRUKTUR METADATA (WAJIB ADA DI SETIAP OUTPUT):
 {
-{% if is_first_chat %}  "session_title": "judul percakapan ringkas, luwes & natural 2-4 kata (WAJIB ADA di obrolan pertama, contoh: 'Sapaan & Tanya Kabar', 'Halaman Login PHP & CSS', 'Ketentuan Cuti PKB', 'Analisis Error Docker', 'Berita Pilkada Terkini')",
-{% endif %}  "active_topic": "nama topik besar (2-3 kata, contoh: Berita Terkini, Lokasi & Fasilitas, Film Horor, Frontend Web, Regulasi SDM)",
-  "key_subject": "subjek/entitas spesifik yang dibahas (2-5 kata, contoh: Berita NTT Hari Ini, Pabrik Munisi Turen, The Conjuring Universe, React Login Page, Cuti Tahunan PKB)",
-  "pronoun": "informal_gue_lo|formal_saya_anda|familiar_aku_kamu|unknown",
-  "tone_hint": "casual|formal|empathetic|empathetic_supportive|celebratory|direct_concise",
-  "detected_language": "id|en|mixed"
+{% if is_first_chat %}  "session_title": "judul percakapan ringkas, luwes & natural 2-4 kata (WAJIB ADA di obrolan pertama)",
+{% endif %}  "active_topic": "nama topik besar (2-3 kata)",
+  "key_subject": "subjek/entitas spesifik yang dibahas (2-5 kata)"
 }
 {% if is_first_chat %}
-🚨 PANDUAN PENTING & CONTOH PEMBUATAN `session_title` (WAJIB PADA CHAT PERTAMA):
+🚨 PANDUAN PEMBUATAN `session_title` (WAJIB PADA CHAT PERTAMA):
 • Letakkan `"session_title"` sebagai property PERTAMA di JSON output kamu!
-• Panjang judul: 2–4 kata yang ringkas, luwes, ekspresif, dan spesifik menggambarkan esensi pesan user.
-• 🚫 DILARANG membuat judul 1 kata kaku: "Salam", "Sapaan", "Tanya", "Bantuan", "Awal", "N/A".
-• 🚫 DILARANG membuat judul generik monoton: "Obrolan Baru", "Obrolan Cakra AI".
-
-CONTOH JUDUL YANG DIHARAPKAN BERDASARKAN BERBAGAI KEMUNGKINAN PESAN USER:
-1. Sapaan & Obrolan Santai (Chitchat):
-   - User: "halo cuy" / "hai cakra" → "session_title": "Sapaan Akrab"
-   - User: "selamat pagi cakra apa kabar" → "session_title": "Sapaan Pagi Hari"
-   - User: "bro capek banget kerjaan hari ini" → "session_title": "Curhat Beban Kerja"
-   - User: "menurut lo AI bakal gantiin programmer gak?" → "session_title": "Diskusi Masa Depan AI"
-2. Pencarian Dokumen & Regulasi Internal Pindad (RAG):
-   - User: "coba carikan dokumen internal terkait cuti" → "session_title": "Pencarian Dokumen Cuti"
-   - User: "aturan seragam dinas hari jumat apa ya" → "session_title": "Regulasi Seragam Dinas"
-   - User: "prosedur mutasi divisi di PKB gimana ketentuannya" → "session_title": "Prosedur Mutasi Divisi"
-   - User: "spesifikasi teknis panser anoa 6x6" → "session_title": "Spesifikasi Panser Anoa"
-3. Koding, Debugging & Troubleshooting (Code):
-   - User: "cuy coba benerin error code js gw" (atau ada lampiran file kode) → "session_title": "Memperbaiki Error Code JS"
-   - User: "tolong bikinin endpoint login jwt fastapi" → "session_title": "Pembuatan Endpoint Login JWT"
-   - User: "docker compose crash pas run postgres connection refused" → "session_title": "Troubleshooting Docker Postgres"
-   - User: "fungsi python kalkulator sederhana" → "session_title": "Fungsi Kalkulator Python"
-4. Pencarian Web & Berita Terkini (Web Search):
-   - User: "berita peluncuran maung pindad terbaru hari ini" → "session_title": "Berita Maung Pindad Terbaru"
-   - User: "siapa presiden terpilih amerika serikat" → "session_title": "Presiden Terpilih Amerika"
-   - User: "jadwal pertandingan timnas indonesia vs jepang" → "session_title": "Jadwal Timnas Indonesia"
-5. Administrasi, File & Surat Dinas:
-   - User: "bikinin draf surat izin dinas luar kota" → "session_title": "Draf Surat Izin Dinas"
-   - User: "buatkan tabel excel estimasi anggaran proyek 2026" → "session_title": "Estimasi Anggaran Proyek"
-6. Diagram, Flowchart & Visualisasi:
-   - User: "bikinin diagram alir proses rekrutmen pegawai" → "session_title": "Diagram Alir Rekrutmen"
-   - User: "buatkan bagan struktur organisasi divisi senjata" → "session_title": "Struktur Organisasi Senjata"
+• Panjang judul: 2–4 kata yang ringkas, luwes, ekspresif, dan spesifik menggambarkan esensi topik pesan user.
+• 🚫 DILARANG membuat judul 1 kata kaku ("Salam", "Tanya", "Bantuan") atau judul generik ("Obrolan Baru").
 {% endif %}
 
 DAFTAR KAPABILITAS SISTEM (MULTI-PARAMETER SYNERGY):
 Kamu bebas dan dianjurkan mengaktifkan SATU ATAU LEBIH PARAMETER SEKALIGUS jika kebutuhan user mencakup beberapa fitur:
 
-• `is_web_search`: true      → jika kebutuhan pengguna memenuhi salah satu dari 5 SPEKTRUM PENCARIAN WEB EKSTERNAL (sertakan `"queries": ["..."]`).
-• `need_rag`: true           → jika mencari info di dokumen internal, regulasi resmi (PKB, SKEP, SOP, Peraturan Direksi), atau data alutsista PT Pindad:
+• `is_web_search`: true      → jika kebutuhan pengguna adalah DATA DARI LUAR / DUNIA NYATA (peristiwa publik, bencana alam seperti karhutla/gempa/banjir, berita terkini nasional/global, riset online, verifikasi fakta) yang memenuhi 5 SPEKTRUM PENCARIAN WEB EKSTERNAL (sertakan `"queries": ["..."]`).
+• `need_rag`: true           → jika mencari info di DOKUMEN INTERNAL KORPORAT PT PINDAD (regulasi resmi SKEP/PKB/SOP/Perdir, aturan kerja, struktur organisasi internal, data alutsista buatan Pindad):
   - `query_judul`: ["..."]   → Target nama dokumen/wadah regulasi untuk pencarian file di MySQL (contoh: ["PKB", "Perjanjian Kerja Bersama"], ["SOP Mutasi Antar Divisi"], ["SKEP Seragam"]).
-  - `queries`: ["..."]       → Substansi/isi pertanyaan semantik murni untuk pencarian pasal di pgvector (contoh: user "carikan di PKB terkait cuti besar" -> query_judul: ["PKB", "Perjanjian Kerja Bersama"], queries: ["ketentuan cuti besar", "syarat cuti besar karyawan"]).
-• `requires_visual`: true     → jika pengguna meminta grafik/chart, flowchart/bagan alir proses, diagram arsitektur Mermaid, tabel interaktif datagrid, atau infografis.
+  - `queries`: ["..."]       → Substansi/isi pertanyaan semantik murni untuk pencarian pasal di pgvector.
+• `requires_visual`: true     → jika pengguna meminta representasi visual. WAJIB sertakan array sub-tipe yang relevan `"visual_types": ["mermaid" | "chart" | "gantt" | "datagrid" | "infographic"]`:
+  - "mermaid": diagram alur proses, flowchart, sequence diagram, atau arsitektur sistem.
+  - "chart": grafik data numerik, perbandingan angka, tren penjualan/produksi (bar, line, pie).
+  - "gantt": jadwal waktu, timeline proyek, roadmap bertahap, milestone.
+  - "datagrid": tabel data laporan berkolom.
+  - "infographic": ringkasan visual cuaca, status operasional, atau dasbor singkat.
 • `is_map_query`: true       → jika pengguna menanyakan lokasi fisik, titik koordinat, peta, alamat kantor cabang, atau divisi pabrik PT Pindad.
 • `is_self_correction`: true  → jika pengguna menyanggah/mendebat/mengoreksi jawaban AI sebelumnya ("salah", "bukan itu", "kapan tepatnya", "cek lagi") untuk memicu verifikasi fakta via web/RAG.
 • `is_coding`: true           → jika instruksi koding, perancangan skrip, query database SQL, struktur data, atau pembuatan komponen aplikasi.
@@ -94,58 +68,78 @@ Kamu bebas dan dianjurkan mengaktifkan SATU ATAU LEBIH PARAMETER SEKALIGUS jika 
 • `is_security_critical`: true → jika membahas otentikasi (JWT/OAuth), enkripsi, hashing kata sandi, sanitasi keamanan, atau proteksi data sensitif.
 • `is_generate_file`: true    → jika pengguna secara eksplisit meminta dibuatkan file fisik untuk diunduh (Excel .xlsx, Word .docx, dokumen .md, script .py/.js).
 • `is_generate_email`: true   → jika pengguna meminta dibuatkan draf email korporat atau naskah dinas.
-• `is_ambiguous`: true        → jika permintaan pengguna masih sangat umum, bercabang, atau belum memiliki spesifikasi kunci di domain apapun (regulasi internal, persuratan dinas, troubleshooting, visual/diagram, atau koding) sehingga memerlukan panduan opsi interaktif (wizard) sebelum dieksekusi.
+• `is_ambiguous`: true        → jika permintaan pengguna masih sangat umum, bercabang, belum memiliki spesifikasi kunci di domain apapun, atau router RAGU menentukan parameter (misal ragu antara Dokumen Internal RAG vs Data Luar Web Search vs Koding vs Visual). WAJIB sertakan `"ambiguity_reason": "alasan spesifik keraguan dan aspek yang perlu diklarifikasi"`.
 • `is_chitchat`: true         → jika obrolan santai, salam/sapaan, ungkapan terima kasih, cuaca/waktu saat ini, tanggapan opini, afirmasi, keluh kesah/curhat, refleksi obrolan lanjutan, candaan, atau pembahasan pengetahuan umum/pop culture (film, anime, sains dasar, sejarah) yang dapat dijawab mandiri dari pengetahuan internal model.
 • `fetch_urls`: ["https://..."] → jika pengguna memberikan link URL spesifik untuk dibaca langsung.
 
 🌟 CONTOH SINERGI MULTI-PARAMETER & SPARSE JSON (TIDAK ADA FALSE, TIDAK ADA NULL):
+• Berita Terkini, Peristiwa Publik & Bencana Alam (Data Dari Luar / Web):
+  User: "carikan informasi karhutla terbaru mau tau perkembangannya"
+  {"session_title": "Informasi Karhutla Terkini", "active_topic": "Bencana Lingkungan", "key_subject": "Perkembangan Karhutla", "is_web_search": true, "queries": ["perkembangan karhutla terbaru hari ini", "kondisi kebakaran hutan terkini"]}
+
+• Regulasi & Dokumen Internal PT Pindad (RAG Internal):
+  User: "bagaimana aturan cuti tahunan di PKB Pindad?"
+  {"session_title": "Aturan Cuti PKB", "active_topic": "Regulasi Kepegawaian", "key_subject": "Aturan Cuti Tahunan", "need_rag": true, "query_judul": ["PKB", "Perjanjian Kerja Bersama", "Cuti"], "queries": ["ketentuan hak cuti tahunan", "syarat izin cuti"]}
+
 • Tanya Cuaca Saat Ini / Sapaan Santai:
-  {"session_title": "Sapaan & Cuaca Hari Ini", "active_topic": "Cuaca & Waktu", "key_subject": "Kondisi Cuaca Hari Ini", "is_chitchat": true, "pronoun": "informal_gue_lo", "tone_hint": "casual", "detected_language": "id"}
+  {"session_title": "Sapaan & Cuaca Hari Ini", "active_topic": "Sapaan & Cuaca", "key_subject": "Kondisi Cuaca Hari Ini", "is_chitchat": true}
 
-• Opini / Afirmasi / Refleksi Diskusi Lanjutan (Contoh: "susah emang korupsi kalau pembuat aturannya korupsi"):
-  {"session_title": "Diskusi Regulasi Korupsi", "active_topic": "Pemberantasan Korupsi", "key_subject": "Refleksi Regulasi dan Korupsi", "is_chitchat": true, "pronoun": "informal_gue_lo", "tone_hint": "empathetic_supportive", "detected_language": "id"}
+• Opini / Afirmasi / Refleksi Percakapan:
+  {"session_title": "Diskusi & Refleksi", "active_topic": "Diskusi & Opini", "key_subject": "Refleksi Topik Terkait", "is_chitchat": true}
 
-• Tanya Film / Pop Culture / Pengetahuan Umum Mandiri (Contoh: "film spiderman ada apa aja?"):
-  {"session_title": "Waralaba Film Spider-Man", "active_topic": "Film & Sinema", "key_subject": "Waralaba Film Spider-Man", "is_chitchat": true, "pronoun": "informal_gue_lo", "tone_hint": "casual", "detected_language": "id"}
+• Pengetahuan Umum / Pop Culture / Sains / Ensiklopedia Mandiri:
+  {"session_title": "Informasi Pengetahuan Umum", "active_topic": "Pengetahuan Umum", "key_subject": "Topik Ensiklopedia Mandiri", "is_chitchat": true}
 
-• Prediksi Cuaca 7 Hari Ke Depan + Grafik (Kebutuhan Spektrum Data Dinamis):
-  {"session_title": "Prakiraan Cuaca Bandung", "active_topic": "Prakiraan Cuaca", "key_subject": "Prediksi Cuaca 7 Hari Bandung", "is_web_search": true, "requires_visual": true, "queries": ["prakiraan cuaca bandung 7 hari BMKG"], "pronoun": "informal_gue_lo", "tone_hint": "casual", "detected_language": "id"}
+• Prediksi Dinamis Masa Depan + Grafik Data:
+  {"session_title": "Prakiraan Cuaca Mingguan", "active_topic": "Prakiraan Dinamis", "key_subject": "Prediksi Tren Data", "is_web_search": true, "requires_visual": true, "visual_types": ["chart"], "queries": ["prakiraan cuaca kota BMKG"]}
 
-• Berita Terkini Daerah / Nasional (Kebutuhan Spektrum Berita Terkini):
-  {"session_title": "Kabar Berita Terkini NTT", "active_topic": "Berita Terkini", "key_subject": "Berita NTT Hari Ini", "is_web_search": true, "queries": ["berita terkini NTT hari ini", "kabar terbaru Nusa Tenggara Timur"], "pronoun": "informal_gue_lo", "tone_hint": "casual", "detected_language": "id"}
+• Berita Terkini & Kebijakan Teranyar:
+  {"session_title": "Kabar Berita Terkini", "active_topic": "Berita Terkini", "key_subject": "Perkembangan Berita Terbaru", "is_web_search": true, "queries": ["berita terkini hari ini", "perkembangan kebijakan terbaru"]}
 
-• Permintaan Validasi Fakta di Web (Contoh: "cek faktanya bener ga spider-man 4 udah syuting?"):
-  {"session_title": "Status Produksi Spider-Man 4", "active_topic": "Verifikasi Fakta", "key_subject": "Status Produksi Spider-Man 4", "is_web_search": true, "queries": ["syuting spider man 4 rilis produksi kabar terbaru"], "pronoun": "informal_gue_lo", "tone_hint": "casual", "detected_language": "id"}
+• Validasi Fakta Eksternal di Web:
+  {"session_title": "Verifikasi Fakta Informasi", "active_topic": "Verifikasi Fakta", "key_subject": "Validasi Fakta Publik", "is_web_search": true, "queries": ["verifikasi kebenaran informasi publik"]}
 
-• Tanya Lokasi Fisik / Peta:
-  {"session_title": "Lokasi Pabrik Munisi Turen", "active_topic": "Lokasi & Fasilitas", "key_subject": "Pabrik Munisi Pindad Turen Malang", "is_map_query": true, "pronoun": "informal_gue_lo", "tone_hint": "casual", "detected_language": "id"}
+• Pertanyaan Lokasi Fisik, Peta & Geografis:
+  {"session_title": "Lokasi Kantor & Fasilitas", "active_topic": "Lokasi & Fasilitas", "key_subject": "Letak Geografis Fasilitas", "is_map_query": true}
 
-• Debat / Sanggahan User (Self-Correction & Verifikasi):
-  {"session_title": "Klarifikasi Rilis Film", "active_topic": "Verifikasi Fakta", "key_subject": "Klarifikasi Tanggal Rilis Film", "is_self_correction": true, "is_web_search": true, "queries": ["tanggal rilis resmi The Conjuring 4"], "pronoun": "informal_gue_lo", "tone_hint": "casual", "detected_language": "id"}
+• Debat / Sanggahan Fakta Pengguna (Self-Correction & Verifikasi):
+  {"session_title": "Klarifikasi Kebenaran Fakta", "active_topic": "Verifikasi Fakta", "key_subject": "Klarifikasi dan Koreksi Data", "is_self_correction": true, "is_web_search": true, "queries": ["sumber fakta dan data resmi"]}
 
-• Alur Cuti PKB + Bagan Alir / Flowchart:
-  {"session_title": "Prosedur Cuti Tahunan PKB", "active_topic": "Regulasi SDM", "key_subject": "Alur Pengajuan Cuti PKB", "need_rag": true, "requires_visual": true, "queries": ["prosedur pengajuan cuti tahunan", "syarat cuti tahunan pegawai"], "query_judul": ["PKB", "Perjanjian Kerja Bersama"], "search_tags": ["cuti", "hrd", "izin"], "pronoun": "formal_saya_anda", "tone_hint": "formal", "detected_language": "id"}
+• Dokumen Regulasi Internal / SOP + Diagram Alur Proses:
+  {"session_title": "Prosedur Regulasi Internal", "active_topic": "Regulasi Internal", "key_subject": "Alur Prosedur dan Regulasi", "need_rag": true, "requires_visual": true, "visual_types": ["mermaid"], "queries": ["ketentuan prosedur operasional", "syarat regulasi internal"], "query_judul": ["PKB", "SOP", "Pedoman Kerja"], "search_tags": ["regulasi", "prosedur"]}
 
-• Debugging Error Koding:
-  {"session_title": "Penyelesaian Error CORS Axios", "active_topic": "Debugging API", "key_subject": "Error CORS Axios", "is_coding": true, "is_troubleshooting": true, "pronoun": "informal_gue_lo", "tone_hint": "casual", "detected_language": "id"}
+• Grafik Data Numerik / Perbandingan Angka:
+  {"session_title": "Grafik Tren Data", "active_topic": "Visualisasi Data", "key_subject": "Perbandingan Data Numerik", "requires_visual": true, "visual_types": ["chart"]}
 
-• Bikin Modul Auth Login Aman:
-  {"session_title": "Sistem Autentikasi JWT Bcrypt", "active_topic": "Backend Security", "key_subject": "Sistem Autentikasi JWT & Bcrypt", "is_coding": true, "is_security_critical": true, "pronoun": "informal_gue_lo", "tone_hint": "casual", "detected_language": "id"}
+• Jadwal Waktu / Timeline Proyek Bertahap:
+  {"session_title": "Jadwal Waktu Proyek", "active_topic": "Manajemen Waktu", "key_subject": "Timeline Milestone Proyek", "requires_visual": true, "visual_types": ["gantt"]}
 
-• Pertanyaan Koding Masih Umum (Butuh Opsi Stack/Fitur):
-  {"session_title": "Rancangan Aplikasi Manajemen Tugas", "active_topic": "Pengembangan Web", "key_subject": "Aplikasi Manajemen Tugas", "is_coding": true, "is_ambiguous": true, "pronoun": "informal_gue_lo", "tone_hint": "casual", "detected_language": "id"}
+• Tabel Data Laporan / Grid Berkolom:
+  {"session_title": "Tabel Rekapitulasi Data", "active_topic": "Rekapitulasi Data", "key_subject": "Tabel Data Berkolom", "requires_visual": true, "visual_types": ["datagrid"]}
 
-• Pertanyaan Regulasi/Aturan Terlalu Umum (Contoh: "aturan cuti gimana?", "soal mutasi"):
-  {"session_title": "Konsultasi Aturan Cuti Karyawan", "active_topic": "Regulasi SDM", "key_subject": "Ketentuan Cuti", "is_ambiguous": true, "pronoun": "formal_saya_anda", "tone_hint": "formal", "detected_language": "id"}
+• Debugging Error & Kendala Teknis:
+  {"session_title": "Diagnosa Error Teknis", "active_topic": "Debugging Teknis", "key_subject": "Penyelesaian Error Sistem", "is_coding": true, "is_troubleshooting": true}
 
-• Permintaan Draf Persuratan Dinas Tanpa Perihal Jelas (Contoh: "buatkan surat dinas", "bikin nota dinas"):
-  {"session_title": "Draf Persuratan Kedinasan", "active_topic": "Tata Naskah Dinas", "key_subject": "Nota Dinas", "is_ambiguous": true, "pronoun": "formal_saya_anda", "tone_hint": "formal", "detected_language": "id"}
+• Pengembangan Modul Otentikasi & Keamanan:
+  {"session_title": "Implementasi Autentikasi Aman", "active_topic": "Keamanan Perangkat Lunak", "key_subject": "Modul Autentikasi dan Proteksi", "is_coding": true, "is_security_critical": true}
 
-• Permintaan Visualisasi / Bagan Alir Belum Jelas Alurnya (Contoh: "bikinin diagram proses", "buat flowchart"):
-  {"session_title": "Diagram Alur Proses Bisnis", "active_topic": "Visualisasi Proses", "key_subject": "Diagram Alur", "requires_visual": true, "is_ambiguous": true, "pronoun": "informal_gue_lo", "tone_hint": "casual", "detected_language": "id"}
+• Pertanyaan Teknis / Koding Masih Umum (Butuh Opsi Stack/Fitur):
+  {"session_title": "Rancangan Solusi Aplikasi", "active_topic": "Arsitektur Perangkat Lunak", "key_subject": "Konsep Sistem Aplikasi", "is_coding": true, "is_ambiguous": true, "ambiguity_reason": "Perlu konfirmasi framework frontend/backend dan arsitektur aplikasi"}
 
-• Keluhan Error / Gangguan Sistem Tanpa Detail Gejala (Contoh: "sistem down", "aplikasi error"):
-  {"session_title": "Diagnosa Kendala Sistem", "active_topic": "Troubleshooting Sistem", "key_subject": "Kendala Sistem", "is_troubleshooting": true, "is_ambiguous": true, "pronoun": "informal_gue_lo", "tone_hint": "casual", "detected_language": "id"}
+• Pertanyaan Regulasi / Kebijakan Terlalu Umum (Butuh Pilihan Opsi):
+  {"session_title": "Konsultasi Regulasi Internal", "active_topic": "Regulasi Internal", "key_subject": "Ketentuan Kebijakan Umum", "is_ambiguous": true, "ambiguity_reason": "Perlu konfirmasi jenis regulasi spesifik yang ingin dicari (cuti, sanksi, atau mutasi)"}
+
+• Pertanyaan Ragu Antara Internal vs Data Luar (RAG vs Web Search):
+  {"session_title": "Klarifikasi Kebutuhan Data", "active_topic": "Pencarian Informasi", "key_subject": "Klarifikasi Informasi", "is_ambiguous": true, "ambiguity_reason": "Ragu apakah mencari arsip/SOP internal PT Pindad atau informasi berita/isu publik di internet"}
+
+• Permintaan Draf Persuratan Dinas Tanpa Perihal Jelas:
+  {"session_title": "Draf Persuratan Kedinasan", "active_topic": "Tata Naskah Dinas", "key_subject": "Penyusunan Naskah Dinas", "is_ambiguous": true, "ambiguity_reason": "Perlu konfirmasi jenis naskah dinas (nota dinas/memo) dan perihal pengajuannya"}
+
+• Permintaan Diagram Alur Tanpa Rincian Proses:
+  {"session_title": "Diagram Alur Proses", "active_topic": "Visualisasi Proses", "key_subject": "Diagram Alur Kerja", "requires_visual": true, "visual_types": ["mermaid"], "is_ambiguous": true, "ambiguity_reason": "Perlu konfirmasi proses bisnis atau sistem mana yang ingin divisualisasikan"}
+
+• Kendala Sistem Tanpa Detail Gejala:
+  {"session_title": "Diagnosa Kendala Sistem", "active_topic": "Troubleshooting Sistem", "key_subject": "Kendala Sistem Operasional", "is_troubleshooting": true, "is_ambiguous": true, "ambiguity_reason": "Perlu konfirmasi komponen atau jenis error spesifik yang dialami"}
 
 
 PANDUAN PENALARAN `active_topic` & `key_subject` (DYNAMIC CONTEXT & ENTITY TRACKING):
@@ -160,26 +154,49 @@ Jika pesan user saat ini adalah instruksi lanjutan yang SINGKAT (contoh: "cari d
 1. AI WAJIB merujuk ke Entitas/Subjek Inti sebelumnya.
 2. Gabungkan entitas lama dengan instruksi baru ke dalam `queries` yang SPESIFIK & PADAT (DILARANG query filler).
 
+🌐 PRINSIP UTAMA PEMISAHAN DOMAIN: DATA DARI LUAR (WEB SEARCH) VS DOKUMEN INTERNAL (RAG):
+Sebelum menentukan parameter routing, AI WAJIB menalar yurisdiksi topik pertanyaan: "Apakah subjek ini terjadi di dunia luar, atau tersimpan di arsip internal PT Pindad?"
+
+1. 🏢 YURISDIKSI RAG INTERNAL (EKSKLUSIF INTERNAL PT PINDAD):
+   - Database RAG HANYA DAN KHUSUS menyimpan dokumen internal resmi PT Pindad: Peraturan Direksi (SKEP), Surat Edaran (SE), Perjanjian Kerja Bersama (PKB), Prosedur Operasional Standar (SOP/IK), struktur organisasi divisi, alutsista buatan Pindad, dan kebijakan HR internal.
+   - 🚫 BATASAN MUTLAK RAG: Database RAG TIDAK MEMILIKI dokumen tentang bencana alam nasional, peristiwa berita publik, kebakaran hutan/lahan (karhutla), gempa, banjir, cuaca daerah, politik eksternal, atau kabar umum masyarakat.
+   - 🚫 DILARANG KERAS menyalakan `need_rag` untuk topik-topik peristiwa atau berita yang terjadi di dunia luar PT Pindad!
+
+2. 🌍 YURISDIKSI DATA DARI LUAR / WEB SEARCH (`is_web_search: true`):
+   - Gunakan `is_web_search: true` untuk segala topik yang membutuhkan DATA DARI LUAR (Dunia Nyata / Internet):
+     * Bencana alam, kondisi darurat lingkungan & cuaca (contoh: karhutla / kebakaran hutan lahan, gempa BMKG, erupsi, banjir).
+     * Berita, isu publik, dan perkembangan peristiwa mutakhir masyarakat (nasional maupun global).
+     * Perkembangan regulasi pemerintah publik (di luar aturan internal korporat Pindad).
+     * Informasi dinamis pasar, kurs, teknologi eksternal, atau penelusuran online eksplisit ("carikan info terbaru...", "cari di web", "googling", "riset online").
+   - 💡 ATURAN EKSEKUSI DATA LUAR:
+     * Aktifkan: `"is_web_search": true` dan buat array `"queries": ["..."]` kata kunci pencarian mandiri yang tajam.
+     * 🚫 DILARANG KERAS menyalakan `need_rag: true` atau mengisi `query_judul`!
+
+3. 🧠 YURISDIKSI PENGETAHUAN MANDIRI MODEL (`is_chitchat: true`):
+   - Pengetahuan sains, sejarah masa lalu, matematika, filosofi, pop culture/film, atau obrolan santai yang tidak membutuhkan update berita hari ini → dijawab mandiri via `is_chitchat: true` tanpa web dan tanpa RAG.
+
 🌐 PANDUAN FUNDAMENTAL `is_web_search` (PRINSIP UNIVERSAL SELF-RELIANCE FIRST):
 1. **UTAMAKAN PENGETAHUAN INTERNAL MODEL (SELF-RELIANCE FIRST):**
    - Model AI memiliki wawasan luas (film, pop culture, anime, sejarah, sains, coding, filsafat, logika umum).
    - 🚫 **DILARANG KERAS mengaktifkan `is_web_search` jika informasi sudah dapat dijawab secara mandiri dari pengetahuan internal model!**
 2. **HANYA AKTIFKAN `is_web_search: true` jika memenuhi salah satu dari 5 SPEKTRUM berikut:**
-   - **Spektrum 1: Perintah Penelusuran Eksplisit** ("cari di web", "googling", "browsing", "tolong riset online", "scrape link").
+   - **Spektrum 1: Perintah Penelusuran Eksplisit** ("cari di web", "googling", "browsing", "tolong riset online", "scrape link", "carikan informasi terbaru").
    - **Spektrum 2: Validasi & Verifikasi Fakta Eksternal** ("cek faktanya", "verifikasi bener ga", "cross-check", "cek berita resmi").
-   - **Spektrum 3: Berita Terkini & Informasi Mutakhir** ("berita hari ini", "kabar terkini", "update teranyar", "kondisi saat ini").
+   - **Spektrum 3: Berita Terkini & Informasi Mutakhir Dunia Luar** ("berita hari ini", "kabar terkini", "update teranyar", "kondisi saat ini", "perkembangan terbaru", kabar bencana alam).
    - **Spektrum 4: Data Dinamis & Real-Time Publik** ("prediksi cuaca 7 hari ke depan", "kurs rupiah/saham hari ini", "jadwal rilis/pertandingan mendatang").
    - **Spektrum 5: Koreksi / Sanggahan Pengguna** ("salah bro, coba cek lagi tahun berapa").
 3. **🚫 DILARANG KERAS mengaktifkan `is_web_search` untuk:**
-   - Pernyataan opini, afirmasi, refleksi obrolan (*"susah emang korupsi..."*), curhat, guyonan $\rightarrow$ **WAJIB `is_chitchat: true`**.
-   - Pengetahuan umum, pop culture, film, sinopsis, atau teori umum tanpa perintah eksplisit mencari di web $\rightarrow$ **WAJIB `is_chitchat: true`**.
+   - Pernyataan opini, afirmasi, refleksi obrolan (*"susah emang korupsi..."*), curhat, guyonan → **WAJIB `is_chitchat: true`**.
+   - Pengetahuan umum, pop culture, film, sinopsis, atau teori umum tanpa perintah eksplisit mencari di web → **WAJIB `is_chitchat: true`**.
    - Cuaca & waktu saat ini (dijawab via data Ambient Persona).
    - Regulasi internal PT Pindad (gunakan `need_rag`).
 
 
 PANDUAN PENALARAN PARAMETER `need_rag`, `query_judul` & `search_tags`:
 - Aktifkan `"need_rag": true` HANYA DAN KHUSUS JIKA pengguna menanyakan atau membahas topik yang memerlukan rujukan ke dokumen resmi, kebijakan internal, peraturan (SKEP/SE/PKB), SOP, spesifikasi teknis senjata/alutsista, atau data internal PT Pindad.
-- 🚫 DILARANG menyalakan `need_rag` untuk topik Pengetahuan Umum, Pop Culture, Film, Hiburan, atau Chitchat santai.
+- 🚫 DILARANG KERAS menyalakan `need_rag` untuk:
+  1. Peristiwa publik, berita terkini, bencana alam/lingkungan (seperti karhutla, gempa, cuaca daerah, banjir) → WAJIB gunakan Data Dari Luar (`is_web_search: true`)!
+  2. Pengetahuan Umum, Pop Culture, Film, Hiburan, atau Chitchat santai → WAJIB gunakan `is_chitchat: true`!
 - 🎯 ATURAN PEMISAHAN `query_judul` (SPLITTING RULE):
   - PECAH dan PISAHKAN setiap kata benda/istilah menjadi elemen array mandiri!
   - Masukkan singkatan asli: `"PKB"`.
@@ -195,24 +212,43 @@ PANDUAN PENALARAN PARAMETER `is_generate_file` VS DATA DUMMY / WIDGET CHAT:
   2. Pengguna meminta grafik visual (`requires_visual: true`), tabel interaktif (`datagrid`), diagram, atau infografis.
 
 PANDUAN PENALARAN PARAMETER `is_ambiguous` & MULTI-TURN WIZARD RESOLUTION:
-1. DETEKSI AMBIGUITAS UNIVERSAL (`is_ambiguous: true`):
-   Aktifkan `"is_ambiguous": true` jika permintaan pengguna terlalu umum, bercabang, atau belum memiliki spesifikasi kunci di domain APAPUN:
-   - Regulasi / Kebijakan: Menyebut aturan umum tanpa jenis spesifik (misal: "aturan cuti", "soal mutasi", "sanksi disiplin" ➔ butuh klarifikasi jenis cuti/versi aturan).
-   - Persuratan Dinas: Meminta draf surat/memo tanpa tujuan/perihal jelas (misal: "buatkan surat dinas", "bikin nota dinas" ➔ butuh klarifikasi perihal/keperluan surat).
-   - Visualisasi / Diagram: Meminta diagram/chart tanpa kejelasan alur proses (misal: "bikinin diagram proses", "buat flowchart" ➔ butuh klarifikasi alur proses/tipe diagram).
-   - Troubleshooting: Mengeluhkan error tanpa konteks atau log (misal: "aplikasi error", "sistem down" ➔ butuh klarifikasi komponen/gejala).
-   - Koding / Software: Meminta proyek aplikasi tanpa rincian tech stack atau modul (misal: "buatkan web e-commerce", "bikin aplikasi todo" ➔ butuh klarifikasi stack/fitur).
-   🚫 Saat `is_ambiguous: true`, JANGAN aktifkan `need_rag` atau `is_web_search`.
+1. DETEKSI AMBIGUITAS & KERAGUAN PARAMETER (`is_ambiguous: true`):
+   🚨 ATURAN KERAGUAN PARAMETER (PARAMETER UNCERTAINTY RULE):
+   Jika kamu RAGU mau memberikan parameter apa karena pesan pengguna mengambang, bermakna ganda, atau belum cukup informasi:
+   - Ragu antara Dokumen Internal PT Pindad (RAG) vs Berita Publik (Web Search) (misal: "data kebakaran", "aturan K3", "laporan pengadaan").
+   - Ragu format output (apakah butuh diagram visual, koding skrip, draf surat, atau penjelasan teks biasa).
+   - Permintaan terlalu umum tanpa spesifikasi kunci (misal: "aturan cuti", "soal mutasi", "bikinin aplikasi kasir", "ada error nih").
+   ➔ WAJIB AKTIFKAN: `"is_ambiguous": true`!
+   ➔ WAJIB SERTAKAN: `"ambiguity_reason": "<penjelasan singkat dan tajam mengapa ragu dan aspek apa yang perlu dipastikan ke user>"`!
+   🚫 DILARANG MENEBAK ASAL! Jangan memaksakan menyalakan `need_rag` atau `is_web_search` jika kamu ragu maksud pengguna! Saat `is_ambiguous: true`, JANGAN aktifkan `need_rag` atau `is_web_search`. Biarkan Call 2 memandu pengguna via kartu wizard.
 
-2. 🚨 RESOLUSI JAWABAN WIZARD / OPSI USER (MULTI-TURN WIZARD RESOLUTION):
-   Jika pada pesan saat ini atau konteks sebelumnya pengguna TELAH MENJAWAB WIZARD atau MEMILIH SALAH SATU OPSI (contoh: user klik/ketik "Cuti Tahunan", "Gunakan React + Tailwind", "Nota Dinas Pengadaan", "Flowchart SOP"):
-   AI WAJIB menganggap spesifikasi SUDAH LENGKAP ➔ OMIT `is_ambiguous` (JANGAN aktifkan is_ambiguous lagi).
-   Arahkan langsung secara kontekstual ke mode dan kapabilitas yang relevan:
-   - Jika opsi user terkait Regulasi / Dokumen (contoh: "Cuti Tahunan", "PKB 2024", "SOP Pengadaan") ➔ Aktifkan `need_rag: true`, susun `queries` dan `query_judul` spesifik!
-   - Jika opsi user terkait Persuratan Dinas (contoh: "Nota Dinas Pengadaan", "Surat Izin Dinas") ➔ Aktifkan `is_generate_email: true` atau `is_generate_file: true`!
-   - Jika opsi user terkait Visual / Diagram (contoh: "Flowchart SOP", "Sequence Diagram") ➔ Aktifkan `requires_visual: true`!
-   - Jika opsi user terkait Koding / Software (contoh: "React + Tailwind", "Fitur Otentikasi") ➔ Aktifkan `is_coding: true` dan/atau `is_generate_file: true`!
-   - Jika opsi user terkait Troubleshooting (contoh: "CORS Issue", "Koneksi Database Timeout") ➔ Aktifkan `is_troubleshooting: true`!
+2. 🚨 RESOLUSI JAWABAN WIZARD & SIKLUS UNIVERSAL DUA ARAH CALL 2 ➔ CALL 1:
+   Di riwayat percakapan, setiap respons asisten memuat tanda aksi: `[CALL2_ACTION: ...]`.
+   
+   • JIKA AKSI CALL 2 SEBELUMNYA ADALAH `[CALL2_ACTION: WIZARD_DITANYAKAN]`:
+     Dan pesan user saat ini adalah MEMILIH OPSI / MENJAWAB WIZARD (contoh: user klik/ketik "Cuti Tahunan", "React + Vite", "bikin chart pie", "opsi 1", "lanjutkan", "pakai postgres"):
+     ➔ INI BUKAN AMBIGU! JANGAN aktifkan `is_ambiguous`! Spesifikasi telah lengkap!
+     ➔ Arahkan langsung ke kapabilitas konkret yang relevan:
+        - Jika opsi terkait Visual / Grafik (contoh: "chart pie", "bar chart", "flowchart"):
+          Aktifkan `requires_visual: true`, `visual_types: ["chart"]` (atau `["mermaid"]`).
+        - Jika opsi terkait Regulasi / Dokumen (contoh: "Cuti Tahunan", "PKB 2024", "SOP"):
+          Aktifkan `need_rag: true`, susun `queries` dan `query_judul` spesifik.
+        - Jika opsi terkait Koding / Software (contoh: "React + Vite", "FastAPI"):
+          Aktifkan `is_coding: true`.
+        - Jika opsi terkait Persuratan Dinas (contoh: "Nota Dinas Pengadaan"):
+          Aktifkan `is_generate_email: true` atau `is_generate_file: true`.
+          
+   • JIKA AKSI CALL 2 SEBELUMNYA ADALAH `[CALL2_ACTION: VISUAL_DIBUAT]`:
+     Dan pesan user saat ini meminta revisi atau perubahan (contoh: "ganti warnanya", "ubah jadi bar", "potongan birunya ganti"):
+     ➔ Ini adalah kelanjutan visual: WAJIB aktifkan `requires_visual: true` dengan tipe terkait! JANGAN set is_ambiguous!
+
+   • JIKA AKSI CALL 2 SEBELUMNYA ADALAH `[CALL2_ACTION: KODE_FILE_DIBUAT]`:
+     Dan pesan user meminta revisi/penambahan (contoh: "tambah fitur login", "perbaiki error itu"):
+     ➔ Ini adalah kelanjutan koding: WAJIB aktifkan `is_coding: true`!
+
+   • JIKA AKSI CALL 2 SEBELUMNYA ADALAH `[CALL2_ACTION: CHITCHAT_DIJAWAB]`:
+     Dan user membalas santai (contoh: "semangat ya", "mantap bro", "haha iya"):
+     ➔ Ini adalah kelanjutan basa-basi: WAJIB aktifkan `is_chitchat: true`! JANGAN aktifkan need_rag atau is_web_search!
 
 PANDUAN PENALARAN PARAMETER `fetch_urls` VS `is_web_search`:
 - Prioritaskan URL Reader (`fetch_urls: ["https://..."]`) jika ada tautan URL spesifik yang ingin dibaca / dirangkum oleh pengguna (contoh: "baca https://ollama.com", "rangkum isi https://pindad.com") ➔ HILANGKAN `is_web_search` (matikan DuckDuckGo) agar langsung membaca halaman web tersebut secara presisi.
@@ -220,11 +256,6 @@ PANDUAN PENALARAN PARAMETER `fetch_urls` VS `is_web_search`:
   DILARANG KERAS memasukkan URL ke `fetch_urls` jika URL tersebut sekadar bagian dari log error (`npm ERR!`, stack trace, 404/500, pypi/npm registry, localhost) atau kode program.
   Untuk pesan error atau kendala teknis, aktifkan `is_troubleshooting: true` atau `is_coding: true`, BUKAN `fetch_urls`!
 
-PANDUAN PARAMETER `pronoun`:
-- "informal_gue_lo": gue/gw, lo/lu/lw, bro, cuy, gan, min, bang.
-- "formal_saya_anda": saya, anda, bapak, ibu, mohon, terima kasih baku.
-- "familiar_aku_kamu": aku, kamu, kita.
-- "unknown": kalimat pendek/netral.
 
 {% if need_rag_hint %}HINT: RAG WAJIB diaktifkan.{% endif %}
 {% if session_manifest_str %}
@@ -247,7 +278,7 @@ Topik: {{ previous_topic }}
 - Jika user mengajukan pertanyaan lanjutan dengan kata ganti/rujukan umum (contoh: "carikan jejeran filmnya apa aja?", "siapa sutradaranya?", "urutannya gimana?", "ada sanksinya ga?"):
   1. AI WAJIB merujuk SECARA EKSKLUSIF ke Entitas/Subjek Inti di atas (contoh: '{{ previous_subject or previous_topic }}').
   2. DILARANG KERAS mencari, mencampurkan, atau halusinasi entitas lain di luar entitas yang sedang dibahas!
-  3. Pengetahuan urutan film terkenal, trivia pop culture, sinopsis film adalah pengetahuan internal model → JANGAN AKTIFKAN `is_web_search` dan JANGAN AKTIFKAN `need_rag`. AI langsung menjawabnya secara cerdas dan lengkap.
+  3. Pengetahuan umum, ensiklopedia luas, sejarah, sains, seni, teknologi, trivia kultur, atau konsep umum adalah pengetahuan internal model → JANGAN AKTIFKAN `is_web_search` dan JANGAN AKTIFKAN `need_rag`. AI langsung menjawabnya secara mandiri, cerdas, dan lengkap.
 - 🚨 DEBAT / SANGGAHAN FAKTA DARI USER (SELF-CORRECTION):
   Jika user mendebat, menyanggah, atau menyalahkan jawaban AI ("salah bro", "bukan itu", "cek lagi tahun rilisnya", "koreksi"):
   WAJIB set `"is_self_correction": true` dan sertakan `"is_web_search": true` beserta `"queries": ["..."]` untuk verifikasi fakta akurat dari internet!
@@ -329,10 +360,24 @@ TUGAS:
      -> "key_subject": "Persyaratan Rekrutmen Pegawai"
    - Jika first_chat atau pesan sudah mandiri:
      -> "queries": ["{{ user_message }}"]
-2. Analisis apakah pesan pengguna AMBIGU atau terlalu umum untuk dieksekusi di mode {{ forced_mode }}.
+2. DETEKSI AMBIGUITAS & RESOLUSI WIZARD / SIKLUS CALL 2 (`"is_ambiguous": true`):
+   - Analisis apakah pesan pengguna AMBIGU, bercabang, atau router RAGU menentukan sub-fitur sebelum dieksekusi di mode {{ forced_mode }}. Jika ambigu, WAJIB sertakan: `"is_ambiguous": true` dan `"ambiguity_reason": "alasan spesifik keraguan dan aspek yang perlu diklarifikasi"`.
+   - 🚨 RESOLUSI WIZARD (MUTLAK): Jika di riwayat percakapan Call 2 sebelumnya menyajikan wizard `[CALL2_ACTION: WIZARD_DITANYAKAN]`, dan pesan pengguna saat ini adalah jawaban/pilihan opsi (contoh: "Cuti Tahunan", "bikin chart pie", "opsi 1", "lanjut"):
+     PESAN INI DEFINITIF TIDAK AMBIGU! JANGAN AKTIFKAN `is_ambiguous`!
+     Sebaliknya, gabungkan judul/topik wizard dan pilihan user ke dalam field `"queries"` atau aktifkan `"requires_visual": true` jika memilih jenis chart/visual!
+   - 🚨 KELANJUTAN VISUAL: Jika Call 2 sebelumnya `[CALL2_ACTION: VISUAL_DIBUAT]` dan user meminta perubahan warna/data/tampilan, aktifkan `"requires_visual": true`.
    - PENTING: Jika ada riwayat percakapan sebelumnya dan pesan merujuk ke topik yang sudah dibahas, pesan tersebut TIDAK AMBIGU!
-3. Tentukan apakah pesan membutuhkan output visual (diagram/grafik/chart) -> "requires_visual": true.
-4. Tentukan apakah pesan membutuhkan analisis data/statistik -> "need_analytic": true.
+3. DETEKSI VISUALISASI DINAMIS (`"requires_visual": true`):
+   - Jika pesan memerlukan representasi visual, sertakan array sub-tipe spesifik:
+     `"visual_types": ["mermaid" | "chart" | "gantt" | "datagrid" | "infographic" | "map"]`
+4. KAPABILITAS MODULAR TAMBAHAN (Hanya sertakan jika relevan dengan instruksi pengguna):
+   - `"need_analytic": true`        -> analisis data, kalkulasi numerik, atau statistik
+   - `"is_troubleshooting": true`  -> kendala teknis, stack trace, atau error
+   - `"is_comparative": true`      -> perbandingan 2+ opsi / produk / versi regulasi
+   - `"has_actionable_workflow": true` -> prosedur operasional SOP, checklist langkah kerja
+   - `"is_security_critical": true` -> proteksi data, otentikasi, enkripsi
+   - `"is_generate_file": true`    -> permintaan eksplisit membuat file fisik unduhan (.xlsx, .docx, .py, dll)
+   - `"is_map_query": true`        -> letak geografis, fasilitas pabrik, kantor, koordinat
 5. Jika FIRST CHAT = true, buatkan judul percakapan ringkas 2-4 kata -> "session_title": "...".
 
 ATURAN OUTPUT JSON (WAJIB DIIKUTI):
@@ -612,6 +657,110 @@ Contoh format WAJIB (array berisi latitude dan longitude numerik murni):
 ```
 """
 
+# ── 3.1 SUB-BLOK VISUAL MODULAR (Hanya ditempel sesuai visual_types Call 1) ───
+VISUAL_GUIDANCE_CHART = """[VISUALIZATION: GRAFIK DATA / CHART (STANDAR HINGGA ADVANCED)]
+Gunakan format markdown ```chart (JSON murni) untuk visualisasi data numerik (perbandingan, tren, komposisi, korelasi, distribusi).
+Sistem mendukung berbagai tipe chart sesuai kebutuhan pengguna:
+- Dasar: "bar" (batang), "line" (garis/tren), "pie" (lingkaran), "area" (luas bidang)
+- Lanjutan / Lanjut: "donut", "radar" (spider), "scatter" (sebar titik), "histogram", "heatmap", "funnel", "gauge"
+Contoh format:
+```chart
+{
+  "type": "bar", // bisa: bar, line, area, pie, donut, radar, scatter, histogram, heatmap, funnel, gauge
+  "title": "Judul Grafik",
+  "data": [
+    { "name": "Jan", "value": 100 },
+    { "name": "Feb", "value": 200 }
+  ],
+  "xAxisKey": "name",
+  "dataKeys": ["value"],
+  "colors": ["#10b981", "#3b82f6"]
+}
+```"""
+
+VISUAL_GUIDANCE_GANTT = """[VISUALIZATION: GANTT CHART / JADWAL PROYEK]
+Gunakan format markdown ```gantt (JSON array) untuk jadwal proyek teknis/detail.
+Contoh format:
+```gantt
+[
+  {"id": "1", "name": "Fase Analisis", "start": "2024-01-01", "end": "2024-01-14", "progress": 100, "dependencies": ""},
+  {"id": "2", "name": "Desain UI", "start": "2024-01-15", "end": "2024-01-20", "progress": 50, "dependencies": "1"}
+]
+```"""
+
+VISUAL_GUIDANCE_MAP = """[VISUALIZATION: PETA & GEOLOKASI]
+Gunakan format markdown ```map (JSON murni) jika user menanyakan lokasi fisik, fasilitas divisi, letak pabrik, atau koordinat GPS.
+Contoh format:
+```map
+{
+  "title": "Lokasi Fasilitas PT Pindad",
+  "center": [-6.9189, 107.6338],
+  "zoom": 15,
+  "markers": [
+    { "position": [-6.9189, 107.6338], "popup": "PT Pindad Kantor Pusat Bandung" }
+  ]
+}
+```"""
+
+VISUAL_GUIDANCE_FLOWCHART = """[VISUALIZATION: FLOWCHART XYFLOW]
+Gunakan format markdown ```flowchart jika user meminta skema node interaktif.
+Contoh format:
+```flowchart
+{
+  "title": "Arsitektur Sistem",
+  "nodes": [
+    { "id": "1", "position": { "x": 0, "y": 0 }, "data": { "label": "Client / User" }, "style": { "background": "#3b82f6", "color": "white", "borderRadius": "8px" } },
+    { "id": "2", "position": { "x": 0, "y": 100 }, "data": { "label": "API Gateway" }, "style": { "background": "#10b981", "color": "white" } }
+  ],
+  "edges": [
+    { "id": "e1-2", "source": "1", "target": "2", "label": "POST /api", "animated": true }
+  ]
+}
+```"""
+
+VISUAL_GUIDANCE_INFOGRAPHIC = """[VISUALIZATION: DYNAMIC INFOGRAPHIC]
+Gunakan format markdown ```infographic untuk menyajikan infografis visual tingkat tinggi:
+Layout Cuaca (layout: "weather"), Roadmap Proyek (layout: "timeline"), atau Prosedur SOP (layout: "steps")."""
+
+def build_modular_visual_guidance(visual_types: Optional[List[str]] = None) -> str:
+    """
+    Menyusun panduan visual secara modular berdasarkan visual_types yang diminta oleh Call 1.
+    Hanya menempelkan sub-blok yang relevan (Mermaid, Chart, Gantt, Datagrid, Map, atau Infographic).
+    Jika visual_types kosong, mengembalikan panduan lengkap untuk backward-compatibility.
+    """
+    from backend.app.services.pipeline.prompts.visual_prompts import VISUAL_SYSTEM_PROMPT
+
+    if not visual_types:
+        return VISUAL_CAPABILITIES_GUIDANCE + "\n\n" + VISUAL_SYSTEM_PROMPT
+
+    norm_types = [str(v).strip().lower() for v in visual_types if v]
+    blocks = []
+
+    if any(t in norm_types for t in ["mermaid", "flow", "diagram", "sequence", "arsitektur", "bagan"]):
+        blocks.append(VISUAL_SYSTEM_PROMPT)
+    if any(t in norm_types for t in [
+        "chart", "grafik", "bar", "pie", "line", "area", "donut", "donat", "radar",
+        "scatter", "histogram", "heatmap", "funnel", "gauge", "kurva", "tren", "trend",
+        "distribusi", "fluktuasi", "statistik", "metrik"
+    ]):
+        blocks.append(VISUAL_GUIDANCE_CHART)
+    if any(t in norm_types for t in ["gantt", "jadwal", "timeline", "roadmap"]):
+        blocks.append(VISUAL_GUIDANCE_GANTT)
+    if any(t in norm_types for t in ["datagrid", "grid", "tabel"]):
+        blocks.append(DATA_TABLES_AND_FORM_GUIDANCE)
+    if any(t in norm_types for t in ["map", "peta", "lokasi", "koordinat"]):
+        blocks.append(VISUAL_GUIDANCE_MAP)
+    if any(t in norm_types for t in ["infographic", "cuaca", "dashboard"]):
+        blocks.append(VISUAL_GUIDANCE_INFOGRAPHIC)
+    if any(t in norm_types for t in ["flowchart"]):
+        blocks.append(VISUAL_GUIDANCE_FLOWCHART)
+
+    if not blocks:
+        return VISUAL_CAPABILITIES_GUIDANCE + "\n\n" + VISUAL_SYSTEM_PROMPT
+
+    return "\n\n".join(blocks)
+
+
 # ── 4. INTERACTIVE WIZARD GUIDANCE (Multi-Versi / Ambiguity / Links) ───────────
 INTERACTIVE_WIZARD_GUIDANCE = """
 7. INTERACTIVE DECISION WIZARD & GUIDED CLARIFICATION (```wizard):
@@ -715,6 +864,22 @@ TUGAS UTAMA:
 3. Sematkan peringatan `> [!CAUTION]` untuk praktik-praktik yang rawan menimbulkan kerentanan keamanan.
 """
 
+# ── 10. DYNAMIC PROMPT BLOCKS REGISTRY (Modular Lego Blocks) ───────────────────
+DYNAMIC_PROMPT_BLOCKS = {
+    "wizard": INTERACTIVE_WIZARD_GUIDANCE,
+    "troubleshooting": TROUBLESHOOTING_GUIDANCE,
+    "comparative": COMPARATIVE_MATRIX_GUIDANCE,
+    "actionable_workflow": ACTIONABLE_WORKFLOW_GUIDANCE,
+    "deep_research": DEEP_RESEARCH_GUIDANCE,
+    "security_critical": SECURITY_CRITICAL_GUIDANCE,
+    "datagrid": DATA_TABLES_AND_FORM_GUIDANCE,
+    "chart": VISUAL_GUIDANCE_CHART,
+    "gantt": VISUAL_GUIDANCE_GANTT,
+    "map": VISUAL_GUIDANCE_MAP,
+    "flowchart": VISUAL_GUIDANCE_FLOWCHART,
+    "infographic": VISUAL_GUIDANCE_INFOGRAPHIC,
+}
+
 # Komposit untuk Backward Compatibility modul yang membutuhkan semua fitur
 COMMON_TONE_GUIDANCE = (
     CORE_TONE_AND_IDENTITY
@@ -740,6 +905,22 @@ Gunakan penalaran internal (native thinking) kamu untuk menganalisis apa yang ku
 
 ⚠️ BAHASA JALUR BERPIKIR (THINKING LANGUAGE):
 Seluruh perancangan opsi pertanyaan, pilihan teknologi, dan analisis konteks di dalam jalur penalaran internal WAJIB ditulis murni menggunakan BAHASA INDONESIA.
+{% endif %}
+
+{% if ambiguity_reason %}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🎯 FOKUS KERAGUAN DARI CALL 1 ROUTER (MENGAPA SISTEM RAGU):
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Call 1 Router ragu dalam menentukan parameter kapabilitas dengan alasan:
+"{{ ambiguity_reason }}"
+
+INSTRUKSI MUTLAK CALL 2 DALAM MENJAWAB:
+1. Pahami secara mendalam mengapa Call 1 ragu berdasarkan penjelasan di atas.
+2. Kartu ```wizard yang kamu rancang di bawah WAJIB secara presisi menanyakan dan menyelesaikan poin keraguan tersebut:
+   - Jika Call 1 ragu antara "Dokumen Internal PT Pindad (RAG)" vs "Data Eksternal Publik / Web Search", sajikan opsi pilihan pembeda kedua domain tersebut agar pengguna dapat menentukan langsung!
+   - Jika Call 1 ragu mengenai format/spesifikasi (koding vs diagram visual vs draf surat dinas), sajikan opsi format tersebut!
+3. Tuliskan teks pengantar singkat yang ramah dan sampaikan secara lugas bahwa kamu ingin mengonfirmasi kebutuhan spesifik pengguna agar jawaban yang diberikan akurat dan tepat sasaran.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 {% endif %}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -820,7 +1001,7 @@ CONTOH 3: Domain Koding & Pembuatan Aplikasi (Stepper 3-Step):
   "questions": [
     {
       "id": "target_project",
-      "question": "Lo mau fokus eksekusi project yang mana dulu nih, Brother?",
+      "question": "Mau fokus eksekusi proyek yang mana terlebih dahulu?",
       "is_multi_select": false,
       "options": [
         { "label": "Aplikasi Manajemen Tugas", "icon": "check-circle", "prompt": "Fokus buatkan Aplikasi Manajemen Tugas" },
@@ -932,6 +1113,7 @@ def build_response_prompt_ambiguous(
         pronoun=precheck.get("pronoun", "unknown"),
         tone_hint=precheck.get("tone_hint", "casual"),
         slang_mirror=precheck.get("slang_mirror"),
+        ambiguity_reason=precheck.get("ambiguity_reason", ""),
         is_thinking=is_thinking
     )
 
@@ -1224,6 +1406,6 @@ def build_web_search_prompt(
         pronoun=precheck.get("pronoun", "unknown")
     )
     if precheck and precheck.get("requires_visual") is True:
-        from backend.app.services.pipeline.prompts.visual_prompts import VISUAL_SYSTEM_PROMPT
-        prompt += "\n\n" + VISUAL_CAPABILITIES_GUIDANCE + "\n\n" + VISUAL_SYSTEM_PROMPT + "\n\n"
+        visual_types = precheck.get("visual_types", [])
+        prompt += "\n\n" + build_modular_visual_guidance(visual_types) + "\n\n"
     return prompt

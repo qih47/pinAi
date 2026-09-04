@@ -235,6 +235,7 @@ async def execute_call1_routing(
             is_first_chat=is_first_chat,
             user_message=user_message,
             is_guest=is_guest,
+            context_history_str=context_history_str,
         )
 
         logger.info(
@@ -255,6 +256,7 @@ def _validate_and_normalize_routing(
     is_first_chat: bool = False,
     user_message: str = "",
     is_guest: bool = False,
+    context_history_str: str = "",
 ) -> Dict[str, Any]:
     """Validasi dan normalize routing JSON dari Call 1."""
     is_guest = is_guest or precheck.get("is_guest", False)
@@ -277,6 +279,7 @@ def _validate_and_normalize_routing(
         "need_analytic": False,
         "is_self_correction": False,
         "is_ambiguous": False,
+        "ambiguity_reason": "",
         "is_multi_document": False,
         "is_multi_turn_task": False,
         "task_list": [],
@@ -284,6 +287,7 @@ def _validate_and_normalize_routing(
         "tone_hint": "casual",
         "detected_language": "id",
         "requires_visual": False,
+        "visual_types": [],
         "session_title": None,
         "is_chitchat": False,
         "is_map_query": False,
@@ -296,6 +300,7 @@ def _validate_and_normalize_routing(
     routing["active_topic"] = str(routing_json.get("active_topic") or precheck.get("previous_topic") or "Obrolan Umum").strip()
     routing["key_subject"] = str(routing_json.get("key_subject") or precheck.get("previous_subject") or "").strip()
     routing["is_ambiguous"] = bool(routing_json.get("is_ambiguous", False))
+    routing["ambiguity_reason"] = str(routing_json.get("ambiguity_reason") or "").strip()
     routing["is_generate_file"] = bool(routing_json.get("is_generate_file", False))
     routing["is_generate_email"] = bool(routing_json.get("is_generate_email", False))
     routing["is_coding"] = bool(routing_json.get("is_coding", False))
@@ -322,6 +327,61 @@ def _validate_and_normalize_routing(
     routing["is_multi_document"] = bool(routing_json.get("is_multi_document", False))
     routing["is_multi_turn_task"] = bool(routing_json.get("is_multi_turn_task", False))
     routing["requires_visual"] = bool(routing_json.get("requires_visual", False)) or bool(precheck.get("requires_visual", False))
+    
+    # Normalisasi visual_types (bisa string tunggal atau array)
+    raw_visual_types = routing_json.get("visual_types") or routing_json.get("visual_type") or precheck.get("visual_types") or precheck.get("visual_type") or []
+    if isinstance(raw_visual_types, str):
+        routing["visual_types"] = [raw_visual_types.strip().lower()]
+    elif isinstance(raw_visual_types, list):
+        routing["visual_types"] = [str(v).strip().lower() for v in raw_visual_types if v]
+    else:
+        routing["visual_types"] = []
+        
+    # Auto-detect visual_types jika requires_visual tapi visual_types belum terisi
+    if routing["requires_visual"] and not routing["visual_types"]:
+        user_lower = (user_message or "").lower()
+        # 1. Grafik Data Numerik & Statistik (Standard s/d Advance: bar, line, pie, radar, scatter, area, donut, histogram, heatmap, dll)
+        if any(w in user_lower for w in [
+            "grafik", "chart", "bar", "pie", "line", "garis", "kurva", "area", 
+            "donut", "donat", "radar", "scatter", "histogram", "heatmap", "funnel", 
+            "gauge", "tren", "trend", "distribusi", "fluktuasi", "statistik", "metrik"
+        ]):
+            routing["visual_types"].append("chart")
+            
+        # 2. Diagram Alur, Proses, Relasi & Arsitektur
+        if any(w in user_lower for w in [
+            "diagram", "alur", "flowchart", "arsitektur", "bagan", "sequence", 
+            "erd", "mindmap", "peta konsep", "hierarki", "hirarki", "skema"
+        ]):
+            routing["visual_types"].append("mermaid")
+            
+        # 3. Jadwal Waktu & Milestone
+        if any(w in user_lower for w in [
+            "jadwal", "timeline", "gantt", "roadmap", "milestone", "sprint", "tenggat", "jadwal proyek"
+        ]):
+            routing["visual_types"].append("gantt")
+            
+        # 4. Tabel Interaktif & Rekapitulasi Data
+        if any(w in user_lower for w in [
+            "tabel", "grid", "datagrid", "spreadsheet", "rekap data", "kolom"
+        ]):
+            routing["visual_types"].append("datagrid")
+            
+        # 5. Peta & Geografis
+        if any(w in user_lower for w in [
+            "peta", "map", "lokasi", "koordinat", "geografis", "denah", "posisi"
+        ]):
+            routing["visual_types"].append("map")
+            
+        # 6. Infografis & Ringkasan Visual
+        if any(w in user_lower for w in [
+            "infografis", "infographic", "dashboard", "ringkasan visual", "kpi"
+        ]):
+            routing["visual_types"].append("infographic")
+
+        if not routing["visual_types"]:
+            routing["visual_types"] = ["mermaid"]
+            
     routing["is_map_query"] = bool(routing_json.get("is_map_query", False)) or bool(precheck.get("is_map_query", False))
     if routing["is_map_query"]:
         routing["need_rag"] = False
@@ -367,6 +427,99 @@ def _validate_and_normalize_routing(
     else:
         routing["is_web_search"] = bool(routing_json.get("is_web_search", False))
 
+    # 🌐 Penyelarasan Yurisdiksi: Jika model memilih Data Luar (Web Search) tanpa mode dokumen internal eksplisit, prioritaskan Web Search
+    is_doc_mode = bool(precheck.get("need_rag_hint") or str(precheck.get("chat_mode", "")).lower().strip() in ["documents", "document", "global_chat"])
+    if routing["is_web_search"] and routing["need_rag"] and not is_doc_mode:
+        routing["need_rag"] = False
+        routing["query_judul"] = []
+        logger.info("[CALL1] 🌐 Resolving dual-intent conflict: is_web_search takes priority over need_rag for external data")
+
+    # ── 🔄 UNIVERSAL BIDIRECTIONAL CONTEXT SYNCHRONIZATION (CALL 2 ➔ CALL 1) ──
+    # Mengetahui profil tindakan Call 2 pada turn sebelumnya (wizard, visual, coding, chitchat, RAG)
+    is_replying_to_wizard = bool(
+        precheck.get("is_replying_to_wizard") 
+        or precheck.get("is_wizard_confirmation") 
+        or (context_history_str and "[CALL2_ACTION: WIZARD_DITANYAKAN]" in context_history_str)
+    )
+    has_prior_visual = bool(
+        precheck.get("has_prior_visual") 
+        or (context_history_str and "[CALL2_ACTION: VISUAL_DIBUAT]" in context_history_str)
+    )
+    has_prior_coding = bool(
+        precheck.get("has_prior_coding") 
+        or (context_history_str and "[CALL2_ACTION: KODE_FILE_DIBUAT]" in context_history_str)
+    )
+    has_prior_chitchat = bool(
+        precheck.get("has_prior_chitchat") 
+        or (context_history_str and "[CALL2_ACTION: CHITCHAT_DIJAWAB]" in context_history_str)
+    )
+
+    # 1. 🧙 Penanganan Konfirmasi Wizard:
+    if is_replying_to_wizard:
+        # 🛡️ ANTI-LOOP: User sedang menjawab pertanyaan wizard Call 2, TIDAK BOLEH ambigu lagi!
+        routing["is_ambiguous"] = False
+        logger.info("[CALL1] 🎯 Resolving Wizard Answer from Call 2 -> Overriding is_ambiguous=False")
+        
+        # Resolusi Domain Berdasarkan Jawaban User / Opsi Wizard:
+        # A. Visual / Grafik / Diagram (misal: "bikin chart pie", "bar chart", "flowchart")
+        if any(w in user_msg_lower for w in ["chart", "grafik", "pie", "bar", "line", "diagram", "mermaid", "datagrid", "tabel"]):
+            routing["requires_visual"] = True
+            if any(w in user_msg_lower for w in ["chart", "grafik", "pie", "bar", "line", "radar", "donut"]):
+                routing["visual_types"] = ["chart"]
+            elif any(w in user_msg_lower for w in ["diagram", "alur", "mermaid"]):
+                routing["visual_types"] = ["mermaid"]
+            routing["need_rag"] = False
+            routing["is_chitchat"] = False
+
+        # B. Regulasi / Dokumen Internal (misal: "cuti tahunan", "PKB 2024", "SOP")
+        elif any(w in user_msg_lower for w in ["cuti", "pkb", "sop", "sk", "peraturan", "tunjangan", "dinas", "pindad", "pegawai"]) or (precheck.get("last_wizard", {}).get("title", "").lower().find("cuti") != -1 or precheck.get("last_wizard", {}).get("title", "").lower().find("regulasi") != -1):
+            if not is_guest:
+                routing["need_rag"] = True
+                routing["is_chitchat"] = False
+                routing["is_web_search"] = False
+                if not routing.get("queries") or len(routing["queries"][0].split()) <= 2:
+                    wiz_title = precheck.get("last_wizard", {}).get("title", "")
+                    routing["queries"] = [f"{wiz_title} {user_message}".strip()]
+                if not routing.get("query_judul"):
+                    if "pkb" in user_msg_lower or "cuti" in user_msg_lower:
+                        routing["query_judul"] = ["PKB", "Cuti"]
+                    elif "sop" in user_msg_lower:
+                        routing["query_judul"] = ["SOP"]
+
+        # C. Koding / Tech Stack (misal: "react", "fastapi", "python")
+        elif any(w in user_msg_lower for w in ["react", "vue", "python", "fastapi", "sql", "koding", "script", "node", "nextjs"]):
+            routing["is_coding"] = True
+            routing["need_rag"] = False
+            routing["is_chitchat"] = False
+
+    # 2. 📊 Penanganan Kelanjutan Visual (Call 2 baru saja membuat visual):
+    if has_prior_visual and not routing["need_rag"]:
+        visual_mod_kw = ["warna", "ganti", "ubah", "potongan", "pie", "bar", "line", "tambah", "label", "tampilan", "judul", "chart", "grafik", "diagram"]
+        if any(w in user_msg_lower for w in visual_mod_kw) and len(user_message.split()) <= 15:
+            routing["requires_visual"] = True
+            routing["is_chitchat"] = False
+            if not routing["visual_types"]:
+                last_vt = precheck.get("last_visual_type") or "chart"
+                routing["visual_types"] = [last_vt]
+            logger.info(f"[CALL1] 📊 Continuous Visual Refinement detected -> requires_visual=True, visual_types={routing['visual_types']}")
+
+    # 3. 💻 Penanganan Kelanjutan Koding (Call 2 baru saja membuat kode/file):
+    if has_prior_coding and not routing["need_rag"]:
+        coding_cont_kw = ["tambah", "fitur", "fungsi", "error", "bug", "perbaiki", "lanjut", "jalankan", "file", "kode", "skrip", "refactor", "ubah fungsi"]
+        if any(w in user_msg_lower for w in coding_cont_kw) and len(user_message.split()) <= 15:
+            routing["is_coding"] = True
+            routing["is_chitchat"] = False
+            logger.info("[CALL1] 💻 Continuous Coding Refinement detected -> is_coding=True")
+
+    # 4. 💬 Penanganan Kelanjutan Basa-basi (Call 2 baru saja menjawab chitchat):
+    if has_prior_chitchat and not routing["need_rag"] and not routing["is_coding"] and not routing["requires_visual"]:
+        casual_ack_kw = ["mantap", "siap", "oke", "ok", "haha", "wkwk", "makasih", "terima kasih", "thanks", "tq", "sip", "semangat", "keren", "bener", "betul", "iya", "nice", "good"]
+        if any(w in user_msg_lower for w in casual_ack_kw) and len(user_message.split()) <= 10:
+            routing["is_chitchat"] = True
+            routing["is_web_search"] = False
+            routing["is_ambiguous"] = False
+            logger.info("[CALL1] 💬 Continuous Casual / Chitchat flow detected -> is_chitchat=True")
+
     # ── ATURAN STRICT MODE DOKUMEN (USER EXPLICIT INTENT OVERRIDE) ───────────
     # Jika user secara eksplisit memilih Mode Dokumen, pastikan need_rag selalu True dan web search False
     is_explicit_doc_mode = precheck.get("chat_mode") in ["documents", "document", "global_chat"] or precheck.get("need_rag_hint") is True
@@ -387,6 +540,7 @@ def _validate_and_normalize_routing(
         routing["query_judul"] = []
         routing["search_tags"] = []
         routing["is_web_search"] = False
+        logger.info(f"[CALL1] ❓ Ambiguity Gate activated -> reason: '{routing.get('ambiguity_reason')}'")
 
     # ── ATURAN STRICT MUTUAL EXCLUSION: need_rag VS is_web_search & is_coding ─────────────
     # need_rag (dokumen internal Pindad) dan is_web_search/is_coding DILARANG KERAS sama-sama aktif!
@@ -453,7 +607,7 @@ def _validate_and_normalize_routing(
     if routing["fetch_urls"]:
         routing["is_web_search"] = False
 
-    queries = routing_json.get("queries", [])
+    queries = routing.get("queries") or routing_json.get("queries", [])
     is_web_search = bool(routing.get("is_web_search", False))
     if isinstance(queries, list) and (routing.get("is_web_search") or routing.get("need_rag") or routing.get("is_self_correction")):
         cleaned_queries = [
@@ -467,7 +621,7 @@ def _validate_and_normalize_routing(
     else:
         routing["queries"] = []
 
-    query_judul = routing_json.get("query_judul", [])
+    query_judul = routing.get("query_judul") or routing_json.get("query_judul", [])
     if isinstance(query_judul, list):
         routing["query_judul"] = [str(q).strip() for q in query_judul if isinstance(q, str) and q.strip()]
     else:
@@ -475,7 +629,7 @@ def _validate_and_normalize_routing(
         
     logger.info(f"[CALL1] Extracted query_judul: {routing['query_judul']}")
 
-    search_tags = routing_json.get("search_tags", [])
+    search_tags = routing.get("search_tags") or routing_json.get("search_tags", [])
     if isinstance(search_tags, list):
         routing["search_tags"] = [str(t).strip() for t in search_tags if isinstance(t, str) and t.strip()]
     else:
@@ -487,15 +641,15 @@ def _validate_and_normalize_routing(
     else:
         routing["context_snippets"] = []
 
-    routing["is_coding"] = bool(routing_json.get("is_coding", False))
-    routing["is_generate_file"] = bool(routing_json.get("is_generate_file", False))
-    routing["is_generate_email"] = bool(routing_json.get("is_generate_email", False))
-    routing["needs_code_analysis"] = bool(routing_json.get("needs_code_analysis", False))
-    routing["need_analytic"] = bool(routing_json.get("need_analytic", False))
-    routing["is_self_correction"] = bool(routing_json.get("is_self_correction", False))
-    routing["is_ambiguous"] = bool(routing.get("is_ambiguous") or routing_json.get("is_ambiguous", False))
-    routing["is_multi_document"] = bool(routing_json.get("is_multi_document", False))
-    routing["is_multi_turn_task"] = bool(routing_json.get("is_multi_turn_task", False))
+    routing["is_coding"] = bool(routing.get("is_coding", False))
+    routing["is_generate_file"] = bool(routing.get("is_generate_file", False))
+    routing["is_generate_email"] = bool(routing.get("is_generate_email", False))
+    routing["needs_code_analysis"] = bool(routing.get("needs_code_analysis") or routing_json.get("needs_code_analysis", False))
+    routing["need_analytic"] = bool(routing.get("need_analytic", False))
+    routing["is_self_correction"] = bool(routing.get("is_self_correction", False))
+    routing["is_ambiguous"] = bool(routing.get("is_ambiguous", False))
+    routing["is_multi_document"] = bool(routing.get("is_multi_document", False))
+    routing["is_multi_turn_task"] = bool(routing.get("is_multi_turn_task", False))
     routing["is_map_query"] = bool(routing.get("is_map_query", False)) or bool(routing_json.get("is_map_query", False)) or bool(precheck.get("is_map_query", False))
     if routing["is_map_query"]:
         routing["need_rag"] = False
@@ -849,6 +1003,7 @@ async def generate_call1_preset_routing(
     context_history_str: str = "",
     previous_topic: Optional[str] = None,
     previous_subject: Optional[str] = None,
+    precheck: Optional[Dict[str, Any]] = None,
     request: Optional[Request] = None,
 ) -> Dict[str, Any]:
     """
@@ -919,19 +1074,100 @@ async def generate_call1_preset_routing(
         if res_json.get("active_topic") and isinstance(res_json["active_topic"], str):
             result["active_topic"] = res_json["active_topic"].strip()
 
-        # Ambiguity flag — jika user sudah memberikan instruksi detail / konfirmasi wizard / ada konteks sebelumnya, jangan tandai ambigu!
+        # Ambiguity flag & Universal Call 2 Synchronization:
+        precheck = precheck or {}
+        is_replying_to_wizard = precheck.get("is_replying_to_wizard") or precheck.get("is_wizard_confirmation") or ("[CALL2_ACTION: WIZARD_DITANYAKAN]" in context_history_str)
+        has_prior_visual = precheck.get("has_prior_visual") or ("[CALL2_ACTION: VISUAL_DIBUAT]" in context_history_str)
+        has_prior_coding = precheck.get("has_prior_coding") or ("[CALL2_ACTION: KODE_FILE_DIBUAT]" in context_history_str)
+        has_prior_chitchat = precheck.get("has_prior_chitchat") or ("[CALL2_ACTION: CHITCHAT_DIJAWAB]" in context_history_str)
         has_prior_context = bool(context_history_str and context_history_str.strip())
-        is_detailed_confirmation = any(user_message.strip().lower().startswith(kw) for kw in ["gunakan ", "pilih ", "fokus pada ", "rujuk "]) or len(user_message.strip()) > 50
-        if res_json.get("is_ambiguous") is True and not is_detailed_confirmation and not has_prior_context:
-            result["is_ambiguous"] = True
+        is_detailed_confirmation = any(user_message.strip().lower().startswith(kw) for kw in ["gunakan ", "pilih ", "fokus pada ", "rujuk ", "opsi ", "chart ", "buatkan ", "bikin "]) or len(user_message.strip()) > 40
 
-        # Visual flag
+        # Jika user merespon/mengonfirmasi pilihan wizard dari Call 2:
+        if is_replying_to_wizard:
+            # 🛡️ ANTI-LOOP: Jangan pernah tandai ambigu lagi saat user menjawab wizard!
+            result["is_ambiguous"] = False
+            logger.info("[CALL1_PRESET_ROUTING] 🎯 Resolving Wizard Answer from Call 2 -> Enforcing is_ambiguous=False")
+            
+            # Jika user menjawab chart/pie/bar di jalur preset:
+            user_lower_p = user_message.lower()
+            if any(w in user_lower_p for w in ["pie", "bar", "line", "chart", "grafik", "diagram"]):
+                result["requires_visual"] = True
+                if any(w in user_lower_p for w in ["pie", "bar", "line", "chart", "grafik"]):
+                    result["visual_types"] = ["chart"]
+                elif any(w in user_lower_p for w in ["diagram", "alur"]):
+                    result["visual_types"] = ["mermaid"]
+                    
+            # Rewriting query mandiri jika perlu
+            if precheck.get("last_wizard") and (not result.get("queries") or len(result["queries"][0].split()) <= 2):
+                wiz_title = precheck["last_wizard"].get("title", "")
+                result["queries"] = [f"{wiz_title} {user_message}".strip()]
+        elif res_json.get("is_ambiguous") is True and not is_detailed_confirmation and not has_prior_context:
+            result["is_ambiguous"] = True
+            result["ambiguity_reason"] = str(res_json.get("ambiguity_reason") or "").strip()
+            logger.info(f"[CALL1_PRESET_ROUTING] ❓ Ambiguity detected -> reason: '{result['ambiguity_reason']}'")
+        else:
+            result["is_ambiguous"] = False
+
+        # Kelanjutan visual refinement jika Call 2 sebelumnya telah membuat visual
+        user_lower_check = user_message.lower()
+        if has_prior_visual and any(w in user_lower_check for w in ["warna", "ganti", "ubah", "potongan", "pie", "bar", "chart", "grafik", "diagram"]):
+            result["requires_visual"] = True
+            if not result.get("visual_types"):
+                result["visual_types"] = [precheck.get("last_visual_type") or "chart"]
+
+        # Visual flag & sub-types
         if res_json.get("requires_visual") is True:
             result["requires_visual"] = True
+            raw_vt = res_json.get("visual_types") or res_json.get("visual_type") or []
+            if isinstance(raw_vt, str):
+                result["visual_types"] = [raw_vt.strip().lower()]
+            elif isinstance(raw_vt, list):
+                result["visual_types"] = [str(v).strip().lower() for v in raw_vt if v]
+            else:
+                result["visual_types"] = []
+                
+            # Auto-detect visual_types jika kosong
+            if not result["visual_types"]:
+                user_lower = user_message.lower()
+                if any(w in user_lower for w in [
+                    "grafik", "chart", "bar", "pie", "line", "garis", "kurva", "area", 
+                    "donut", "donat", "radar", "scatter", "histogram", "heatmap", "funnel", 
+                    "gauge", "tren", "trend", "distribusi", "fluktuasi", "statistik", "metrik"
+                ]):
+                    result["visual_types"].append("chart")
+                if any(w in user_lower for w in [
+                    "diagram", "alur", "flowchart", "arsitektur", "bagan", "sequence", 
+                    "erd", "mindmap", "peta konsep", "hierarki", "hirarki", "skema"
+                ]):
+                    result["visual_types"].append("mermaid")
+                if any(w in user_lower for w in [
+                    "jadwal", "timeline", "gantt", "roadmap", "milestone", "sprint", "tenggat", "jadwal proyek"
+                ]):
+                    result["visual_types"].append("gantt")
+                if any(w in user_lower for w in [
+                    "tabel", "grid", "datagrid", "spreadsheet", "rekap data", "kolom"
+                ]):
+                    result["visual_types"].append("datagrid")
+                if any(w in user_lower for w in [
+                    "peta", "map", "lokasi", "koordinat", "geografis", "denah", "posisi"
+                ]):
+                    result["visual_types"].append("map")
+                if any(w in user_lower for w in [
+                    "infografis", "infographic", "dashboard", "ringkasan visual", "kpi"
+                ]):
+                    result["visual_types"].append("infographic")
+                if not result["visual_types"]:
+                    result["visual_types"] = ["mermaid"]
 
-        # Analytic flag
-        if res_json.get("need_analytic") is True:
-            result["need_analytic"] = True
+        # Modular capability flags
+        for flag in [
+            "need_analytic", "is_troubleshooting", "is_comparative", 
+            "has_actionable_workflow", "is_security_critical", 
+            "is_generate_file", "is_map_query"
+        ]:
+            if res_json.get(flag) is True:
+                result[flag] = True
 
         # Session title — hanya jika first_chat
         if is_first_chat:

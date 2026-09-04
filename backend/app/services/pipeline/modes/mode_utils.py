@@ -1,5 +1,5 @@
 import logging
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 
 _CODING_KEYWORDS = ["import ", "export ", "const ", "async ", "await ", "function", "def ", "return ", "class ", "select ", "docker", "sql ", "query", "react", "python", "javascript", "coding", "koding", "usecontext", "usememo", "typescript", "golang", "kotlin", "flutter", "dart", "frontend", "backend", "jsx", "html", "css", "tailwind"]
 _GREETING_KEYWORDS = ["hai", "halo", "hello", "hi ", "apa kabar", "selamat pagi", "selamat siang", "selamat sore", "selamat malam", "assalamualaikum", "pagi", "siang", "malam", "thanks", "thank you", "terima kasih", "makasih", "ok", "oke", "siap", "tq", "nuhun", "suwun", "mantap", "sip"]
@@ -337,16 +337,15 @@ def select_call2_module(routing: Dict[str, Any], has_rag_context: bool = False) 
             return "multi_document"   # dari "rag_multi_document"
         return "rag"                  # dari "rag_standard"
 
-    # Prioritas 2: Jika tidak ada dokumen pendukung dan permintaan benar-benar ambigu / butuh klarifikasi awal
-    if routing.get("is_ambiguous"):
-        return "ambiguous"
-
+    # Prioritas Domain Spesifik (coding memiliki wizard bawaan sendiri)
     if routing.get("is_coding"):
         return "coding"               # dari "coding_expert"
     if routing.get("need_analytic") or routing.get("requires_visual"):
         return "analytic"             # visual / analytic expert
     if routing.get("is_self_correction"):
         return "self_correction"      # sudah benar
+    if routing.get("is_ambiguous"):
+        return "ambiguous"            # klarifikasi umum/regulasi
     if routing.get("is_chitchat") or routing.get("is_greeting"):
         return "chitchat"             # sudah benar
     topic_sub = f"{routing.get('active_topic', '')} {routing.get('key_subject', '')}".lower()
@@ -403,6 +402,7 @@ def build_call2_system_prompt(
             ACTIONABLE_WORKFLOW_GUIDANCE,
             DEEP_RESEARCH_GUIDANCE,
             SECURITY_CRITICAL_GUIDANCE,
+            VISUAL_GUIDANCE_MAP,
         )
 
         # 🛡️ STRICT ISOLATION GUARD: Jika need_rag=True, DILARANG KERAS mengutip koding atau web search masa lalu
@@ -424,27 +424,55 @@ def build_call2_system_prompt(
 
         # Injeksi Troubleshooting
         if precheck.get("is_troubleshooting"):
-            prompt += "\n\n" + TROUBLESHOOTING_GUIDANCE
+            if "TROUBLESHOOTING & ERROR DIAGNOSTIC" not in prompt:
+                prompt += "\n\n" + TROUBLESHOOTING_GUIDANCE
 
         # Injeksi Comparative Matrix
         if precheck.get("is_comparative"):
-            prompt += "\n\n" + COMPARATIVE_MATRIX_GUIDANCE
+            if "COMPARATIVE ANALYSIS & BENCHMARK" not in prompt:
+                prompt += "\n\n" + COMPARATIVE_MATRIX_GUIDANCE
 
         # Injeksi Actionable Workflow & SOP
         if precheck.get("has_actionable_workflow"):
-            prompt += "\n\n" + ACTIONABLE_WORKFLOW_GUIDANCE
+            if "ACTIONABLE WORKFLOW & SOP" not in prompt:
+                prompt += "\n\n" + ACTIONABLE_WORKFLOW_GUIDANCE
 
         # Injeksi Deep Research
         if precheck.get("is_deep_research"):
-            prompt += "\n\n" + DEEP_RESEARCH_GUIDANCE
+            if "DEEP RESEARCH & ENTERPRISE ARCHITECT" not in prompt:
+                prompt += "\n\n" + DEEP_RESEARCH_GUIDANCE
 
         # Injeksi Security Critical
         if precheck.get("is_security_critical"):
-            prompt += "\n\n" + SECURITY_CRITICAL_GUIDANCE
+            if "SECURITY CRITICAL & HARDENING" not in prompt:
+                prompt += "\n\n" + SECURITY_CRITICAL_GUIDANCE
 
-        # Injeksi Visual Capabilities (Chart, Mermaid, Gantt, Infografis)
+        # Injeksi Map & Fasilitas PT Pindad
+        if precheck.get("is_map_query"):
+            if "PETA & GEOLOKASI" not in prompt:
+                prompt += "\n\n" + VISUAL_GUIDANCE_MAP
+
+        # Injeksi Generate Email / Naskah Dinas
+        if precheck.get("is_generate_email"):
+            from backend.app.services.pipeline.prompts.email_prompts import EMAIL_SYSTEM_PROMPT
+            if "MODE SMART MAIL" not in prompt:
+                prompt += "\n\n" + EMAIL_SYSTEM_PROMPT
+
+        # Injeksi Pembuatan Berkas Fisik (Downloadable File)
+        if precheck.get("is_generate_file"):
+            prompt += (
+                "\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                "📁 PETUNJUK PEMBUATAN BERKAS FISIK (FILE GENERATION)\n"
+                "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                "Jika pengguna meminta file fisik untuk diunduh, buat file menggunakan tag khusus:\n"
+                '<create_file filename="nama_file.ext">\n...isi file murni...\n</create_file>\n'
+            )
+
+        # Injeksi Visual Capabilities Modular (Mermaid / Chart / Gantt / Datagrid / Map)
         if precheck.get("requires_visual") is True:
-            prompt += "\n\n" + VISUAL_CAPABILITIES_GUIDANCE + "\n\n" + VISUAL_SYSTEM_PROMPT + "\n\n"
+            from backend.app.services.pipeline.prompts.core_prompts import build_modular_visual_guidance
+            visual_types = precheck.get("visual_types", [])
+            prompt += "\n\n" + build_modular_visual_guidance(visual_types) + "\n\n"
 
     return prompt
 
@@ -675,4 +703,301 @@ def format_session_title(title_input: str, max_words: int = 5, max_chars: int = 
     if len(result) > max_chars:
         result = result[:max_chars].rsplit(" ", 1)[0]
     return result if result and result.lower() not in GENERIC_SESSION_TITLES else "Obrolan Cakra AI"
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# UNIVERSAL BIDIRECTIONAL CONTEXT SYNCHRONIZATION: CALL 1/PRESET ⇄ CALL 2
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def extract_call2_turn_context(content: str) -> Dict[str, Any]:
+    """
+    Menganalisis dan mengekstrak profil tindakan Call 2 (Generator/Persona) dari konten respons asisten.
+    Mendukung seluruh spektrum:
+      1. WIZARD_DITANYAKAN   - Menyajikan kuesioner interaktif ```wizard
+      2. VISUAL_DIBUAT       - Menghasilkan ```chart (pie/bar/line/dll), ```mermaid, ```datagrid, ```map, ```gantt
+      3. KODE_FILE_DIBUAT    - Menghasilkan kode program atau file fisik (<create_file)
+      4. REGULASI_DIJELASKAN - Menjelaskan pasal/regulasi internal (PKB/SOP/SKEP)
+      5. WEB_DIRANGKUM       - Merangkum hasil pencarian web DuckDuckGo
+      6. CHITCHAT_DIJAWAB    - Menjawab sapaan, basa-basi, atau obrolan santai
+    """
+    import json
+    import re
+
+    if not content or not isinstance(content, str):
+        return {
+            "action_type": "UNKNOWN",
+            "action_summary": "",
+            "clean_text": "",
+            "details": {}
+        }
+
+    details: Dict[str, Any] = {}
+    action_type = "CHITCHAT_DIJAWAB"
+    action_summaries: List[str] = []
+
+    # 1. 🧙 Deteksi WIZARD (Klarifikasi Interaktif)
+    wizard_match = re.search(r'```(?:wizard|interactive_options)\s*([\s\S]*?)```', content, flags=re.IGNORECASE)
+    if wizard_match:
+        action_type = "WIZARD_DITANYAKAN"
+        raw_wiz = wizard_match.group(1).strip()
+        wiz_title = "Klarifikasi Pilihan"
+        wiz_questions: List[str] = []
+        wiz_options: List[str] = []
+        try:
+            wiz_json = json.loads(raw_wiz)
+            if isinstance(wiz_json, dict):
+                wiz_title = wiz_json.get("title") or wiz_title
+                # Format 1: questions array
+                raw_q = wiz_json.get("questions") or []
+                if isinstance(raw_q, list):
+                    for q in raw_q:
+                        if isinstance(q, dict):
+                            if q.get("question"):
+                                wiz_questions.append(str(q["question"]))
+                            for opt in q.get("options", []):
+                                if isinstance(opt, dict):
+                                    lbl = opt.get("label") or opt.get("prompt") or opt.get("value")
+                                    if lbl:
+                                        wiz_options.append(str(lbl).strip())
+                                elif isinstance(opt, str):
+                                    wiz_options.append(opt.strip())
+                # Format 2: options directly at root
+                for opt in wiz_json.get("options", []):
+                    if isinstance(opt, dict):
+                        lbl = opt.get("label") or opt.get("prompt") or opt.get("value")
+                        if lbl:
+                            wiz_options.append(str(lbl).strip())
+                    elif isinstance(opt, str):
+                        wiz_options.append(opt.strip())
+        except Exception:
+            title_re = re.search(r'"title"\s*:\s*"([^"]+)"', raw_wiz)
+            if title_re:
+                wiz_title = title_re.group(1)
+            lbl_matches = re.findall(r'"label"\s*:\s*"([^"]+)"', raw_wiz)
+            if lbl_matches:
+                wiz_options.extend(lbl_matches)
+
+        details["wizard"] = {
+            "title": wiz_title,
+            "questions": wiz_questions,
+            "options": wiz_options
+        }
+        q_text = wiz_questions[0] if wiz_questions else "Silakan pilih salah satu opsi"
+        opt_text = ", ".join(f'"{o}"' for o in wiz_options[:6])
+        action_summaries.append(f'[CALL2_ACTION: WIZARD_DITANYAKAN]: Judul="{wiz_title}" | Pertanyaan="{q_text}" | Opsi=[{opt_text}]')
+
+    # 2. 📊 Deteksi VISUAL (Chart, Diagram Mermaid, Datagrid, Map, Gantt, Infographic)
+    # 2a. Chart.js (Grafik)
+    chart_match = re.search(r'```(?:chart|chartjs)\s*([\s\S]*?)```', content, flags=re.IGNORECASE)
+    if chart_match:
+        action_type = "VISUAL_DIBUAT"
+        chart_str = chart_match.group(1).strip()
+        chart_type = "grafik"
+        type_re = re.search(r'"type"\s*:\s*"([^"]+)"', chart_str)
+        if type_re:
+            chart_type = type_re.group(1).lower()
+        title_re = re.search(r'"title"\s*:\s*\{[^}]*"text"\s*:\s*"([^"]+)"', chart_str)
+        chart_title = title_re.group(1) if title_re else "Grafik Data"
+        details["visual"] = {"type": "chart", "sub_type": chart_type, "title": chart_title}
+        action_summaries.append(f'[CALL2_ACTION: VISUAL_DIBUAT]: Jenis="chart ({chart_type})" | Judul="{chart_title}"')
+
+    # 2b. Mermaid (Diagram)
+    mermaid_match = re.search(r'```mermaid\s*([\s\S]*?)```', content, flags=re.IGNORECASE)
+    if mermaid_match:
+        action_type = "VISUAL_DIBUAT"
+        mermaid_code = mermaid_match.group(1).strip()
+        first_line = mermaid_code.splitlines()[0].strip().lower() if mermaid_code else "diagram"
+        m_type = "flowchart"
+        for kw in ["sequencediagram", "classdiagram", "erdiagram", "gantt", "pie", "statediagram", "mindmap"]:
+            if kw in first_line:
+                m_type = kw
+                break
+        details["visual"] = {"type": "mermaid", "sub_type": m_type}
+        action_summaries.append(f'[CALL2_ACTION: VISUAL_DIBUAT]: Jenis="mermaid ({m_type})"')
+
+    # 2c. Datagrid (Tabel Interaktif)
+    if re.search(r'```(?:datagrid|table)\s*([\s\S]*?)```', content, flags=re.IGNORECASE):
+        action_type = "VISUAL_DIBUAT"
+        details["visual"] = {"type": "datagrid", "sub_type": "tabel"}
+        action_summaries.append('[CALL2_ACTION: VISUAL_DIBUAT]: Jenis="datagrid (tabel data)"')
+
+    # 2d. Map (Peta Lokasi)
+    if re.search(r'```(?:map|osm)\s*([\s\S]*?)```', content, flags=re.IGNORECASE):
+        action_type = "VISUAL_DIBUAT"
+        details["visual"] = {"type": "map", "sub_type": "peta"}
+        action_summaries.append('[CALL2_ACTION: VISUAL_DIBUAT]: Jenis="map (peta lokasi)"')
+
+    # 3. 💻 Deteksi KODE & GENERATE FILE
+    create_file_match = re.search(r'<create_file\s+filename="([^"]+)"', content)
+    if create_file_match:
+        action_type = "KODE_FILE_DIBUAT"
+        filename = create_file_match.group(1)
+        details["coding"] = {"file": filename}
+        action_summaries.append(f'[CALL2_ACTION: KODE_FILE_DIBUAT]: File="{filename}"')
+    else:
+        code_match = re.search(r'```(python|javascript|typescript|js|ts|jsx|tsx|html|css|sql|bash|sh|json|golang|go|rust|cpp|c|java)\b\s*([\s\S]*?)```', content, flags=re.IGNORECASE)
+        if code_match and not wizard_match and not chart_match:
+            action_type = "KODE_FILE_DIBUAT"
+            lang = code_match.group(1).lower()
+            details["coding"] = {"language": lang}
+            action_summaries.append(f'[CALL2_ACTION: KODE_FILE_DIBUAT]: Bahasa="{lang}"')
+
+    # 4. 📚 Deteksi REGULASI / DOKUMEN INTERNAL (RAG)
+    sources_match = re.search(r'<sources_json>([\s\S]*?)</sources_json>', content)
+    if sources_match:
+        action_type = "REGULASI_DIJELASKAN"
+        raw_sources = sources_match.group(1).strip()
+        doc_titles = []
+        try:
+            src_list = json.loads(raw_sources)
+            if isinstance(src_list, list):
+                for s in src_list:
+                    if isinstance(s, dict):
+                        t = s.get("title") or s.get("document_title") or s.get("filename")
+                        if t and t not in doc_titles:
+                            doc_titles.append(str(t))
+        except Exception:
+            pass
+        title_str = ", ".join(doc_titles[:3]) if doc_titles else "Regulasi Internal PT Pindad"
+        details["rag"] = {"documents": doc_titles}
+        action_summaries.append(f'[CALL2_ACTION: REGULASI_DIJELASKAN]: Dokumen="{title_str}"')
+    elif any(kw in content.lower() for kw in ["perjanjian kerja bersama", "pkb 2024", "sop pt pindad", "surat keputusan direksi", "skep/"]):
+        if action_type not in ["WIZARD_DITANYAKAN", "VISUAL_DIBUAT", "KODE_FILE_DIBUAT"]:
+            action_type = "REGULASI_DIJELASKAN"
+            action_summaries.append('[CALL2_ACTION: REGULASI_DIJELASKAN]: Regulasi & Kebijakan Internal')
+
+    # 5. 🌐 Deteksi HASIL PENCARIAN WEB
+    if re.search(r'```(?:websearch|urlfetch)\s*([\s\S]*?)```', content, flags=re.IGNORECASE) or "hasil penelusuran web" in content.lower():
+        if action_type not in ["WIZARD_DITANYAKAN", "VISUAL_DIBUAT", "KODE_FILE_DIBUAT"]:
+            action_type = "WEB_DIRANGKUM"
+            action_summaries.append('[CALL2_ACTION: WEB_DIRANGKUM]: Rangkuman Informasi Web Terkini')
+
+    # 6. 💬 Basa-basi / Chitchat Fallback
+    if not action_summaries:
+        action_type = "CHITCHAT_DIJAWAB"
+        action_summaries.append('[CALL2_ACTION: CHITCHAT_DIJAWAB]: Sapaan & Tanggapan Percakapan')
+
+    # Ekstrak teks bersih penjelasan Call 2 (tanpa kode, wizard, thought, atau JSON)
+    clean_text = content
+    clean_text = re.sub(r'<\|channel>thought.*?<channel\|>', '', clean_text, flags=re.DOTALL)
+    clean_text = re.sub(r'<sources_json>[\s\S]*?</sources_json>', '', clean_text)
+    clean_text = re.sub(r'```(?:wizard|interactive_options|chart|chartjs|mermaid|datagrid|map|gantt|infographic|websearch|urlfetch)[\s\S]*?```', '', clean_text, flags=re.IGNORECASE)
+    clean_text = re.sub(r'```[a-zA-Z0-9_-]*\s*[\s\S]*?```', '', clean_text)
+    clean_text = re.sub(r'<create_file[\s\S]*?</create_file>', '', clean_text)
+    clean_text = clean_text.strip()
+    short_clean = clean_text[:280] + "..." if len(clean_text) > 280 else clean_text
+
+    combined_summary = " ".join(action_summaries)
+    return {
+        "action_type": action_type,
+        "action_summary": combined_summary,
+        "clean_text": short_clean,
+        "details": details
+    }
+
+
+def build_call2_history_context(chat_history: List[Any], user_message: str = "") -> Tuple[str, Dict[str, Any]]:
+    """
+    Menyusun riwayat percakapan multi-turn yang disinkronkan secara dua arah antara Call 1/Preset dan Call 2.
+    Mengembalikan:
+      - context_history_str: String riwayat beranotasi lengkap untuk prompt Call 1 & Preset.
+      - last_call2_state: Metadata status tindakan Call 2 pada turn terakhir sebelum pesan user saat ini.
+    """
+    if not chat_history:
+        return "", {}
+
+    history_lines: List[str] = []
+    msgs_to_inspect = list(chat_history)
+    
+    # Jika pesan paling akhir di chat_history adalah pesan user saat ini (turn saat ini),
+    # buang elemen terakhir tersebut agar msgs_to_inspect merepresentasikan riwayat lampau
+    if msgs_to_inspect:
+        last_m = msgs_to_inspect[-1]
+        last_role = getattr(last_m, 'role', None) or (last_m.get('role') if isinstance(last_m, dict) else None)
+        last_content = getattr(last_m, 'content', None) or (last_m.get('content') if isinstance(last_m, dict) else None)
+        if last_role == "user" and (not user_message or last_content == user_message):
+            msgs_to_inspect = msgs_to_inspect[:-1]
+
+    recent_msgs = msgs_to_inspect[-6:] if len(msgs_to_inspect) > 6 else msgs_to_inspect
+    last_assistant_context: Optional[Dict[str, Any]] = None
+
+    for m in recent_msgs:
+        role = getattr(m, 'role', None) or (m.get('role') if isinstance(m, dict) else 'user')
+        content = getattr(m, 'content', None) or (m.get('content') if isinstance(m, dict) else '')
+        if not content or not role:
+            continue
+
+        role_lower = role.lower()
+        if role_lower == "assistant":
+            ctx = extract_call2_turn_context(content)
+            last_assistant_context = ctx
+            parts = []
+            if ctx["action_summary"]:
+                parts.append(ctx["action_summary"])
+            if ctx["clean_text"]:
+                parts.append(ctx["clean_text"])
+            asst_text = " | ".join(parts) if parts else "Respons sistem"
+            history_lines.append(f"ASSISTANT: {asst_text}")
+        elif role_lower == "user":
+            user_text = content[:250] + "..." if len(content) > 250 else content
+            history_lines.append(f"USER: {user_text}")
+
+    context_history_str = "\n".join(history_lines) if history_lines else ""
+
+    # Ekstrak state Call 2 terakhir untuk diinjeksikan ke precheck
+    last_call2_state: Dict[str, Any] = {}
+    if last_assistant_context:
+        action_type = last_assistant_context["action_type"]
+        details = last_assistant_context["details"]
+        last_call2_state["last_call2_action"] = action_type
+        last_call2_state["last_call2_summary"] = last_assistant_context["action_summary"]
+
+        # 1. Wizard state & check user answer
+        if action_type == "WIZARD_DITANYAKAN" and "wizard" in details:
+            wiz = details["wizard"]
+            last_call2_state["is_replying_to_wizard"] = True
+            last_call2_state["last_wizard"] = wiz
+            last_call2_state["last_wizard_options"] = wiz.get("options", [])
+            
+            # Cek apakah user_message mencocoki opsi atau merupakan afirmasi
+            if user_message:
+                u_clean = user_message.strip().lower()
+                matched_opt = None
+                for opt in wiz.get("options", []):
+                    opt_clean = opt.strip().lower()
+                    if opt_clean in u_clean or u_clean in opt_clean or any(word in opt_clean for word in u_clean.split() if len(word) > 3):
+                        matched_opt = opt
+                        break
+                
+                affirmative_kw = ["ya", "iya", "oke", "ok", "lanjut", "lanjutkan", "pilih", "opsi", "nomor", "setuju", "siap", "gas", "yang pertama", "yang kedua"]
+                is_affirmative = any(kw in u_clean for kw in affirmative_kw) or (matched_opt is not None)
+                if is_affirmative:
+                    last_call2_state["is_wizard_confirmation"] = True
+                    if matched_opt:
+                        last_call2_state["matched_wizard_option"] = matched_opt
+
+        # 2. Visual state
+        elif action_type == "VISUAL_DIBUAT" and "visual" in details:
+            last_call2_state["has_prior_visual"] = True
+            last_call2_state["last_visual"] = details["visual"]
+            last_call2_state["last_visual_type"] = details["visual"].get("type")
+            last_call2_state["last_visual_subtype"] = details["visual"].get("sub_type")
+
+        # 3. Coding state
+        elif action_type == "KODE_FILE_DIBUAT" and "coding" in details:
+            last_call2_state["has_prior_coding"] = True
+            last_call2_state["last_code"] = details["coding"]
+            last_call2_state["last_code_language"] = details["coding"].get("language")
+
+        # 4. RAG state
+        elif action_type == "REGULASI_DIJELASKAN" and "rag" in details:
+            last_call2_state["has_prior_rag"] = True
+            last_call2_state["last_rag"] = details["rag"]
+            last_call2_state["last_rag_docs"] = details["rag"].get("documents", [])
+
+        # 5. Chitchat state
+        elif action_type == "CHITCHAT_DIJAWAB":
+            last_call2_state["has_prior_chitchat"] = True
+
+    return context_history_str, last_call2_state
 

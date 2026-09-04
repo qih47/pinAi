@@ -110,24 +110,21 @@ class ModeHub:
         precheck["_session_uuid"] = session_uuid
         precheck["_visited_urls"] = visited_urls
 
-        # ── Ekstrak Context History untuk Multi-Turn Reasoning (berlaku untuk Preset maupun Call 1) ──
-        context_history_str = ""
-        if chat_history and len(chat_history) > 0:
-            import re
-            history_lines = []
-            recent_msgs = chat_history[-5:-1] if len(chat_history) > 1 else chat_history[:-1]
-            for m in recent_msgs:
-                role = getattr(m, 'role', None) or (m.get('role') if isinstance(m, dict) else 'user')
-                content = getattr(m, 'content', None) or (m.get('content') if isinstance(m, dict) else '')
-                if content and role:
-                    has_wizard = "```wizard" in content
-                    clean_content = re.sub(r'```(wizard|urlfetch)[\s\S]*?```', '', content).strip()
-                    if clean_content:
-                        short_text = clean_content[:300] + "..." if len(clean_content) > 300 else clean_content
-                        role_label = f"{role.upper()} (Klarifikasi Pilihan)" if (role.lower() == "assistant" and has_wizard) else role.upper()
-                        history_lines.append(f"{role_label}: {short_text}")
-            if history_lines:
-                context_history_str = "\n".join(history_lines)
+        # ── Ekstrak Context History untuk Multi-Turn Reasoning (Universal Call 1/Preset ⇄ Call 2 Sync) ──
+        from backend.app.services.pipeline.modes.mode_utils import build_call2_history_context
+        context_history_str, last_call2_state = build_call2_history_context(chat_history, user_message=user_message)
+        
+        # Inject state Call 2 terakhir ke precheck agar Preset dan Call 1 Utama mengetahui aksi Call 2 sebelumnya
+        if last_call2_state:
+            precheck.update(last_call2_state)
+            logger.info(
+                f"[MODE_HUB] 🔄 Universal Call 2 State Sync: action={last_call2_state.get('last_call2_action')} | "
+                f"replying_wizard={last_call2_state.get('is_replying_to_wizard')} | "
+                f"wizard_confirm={last_call2_state.get('is_wizard_confirmation')} | "
+                f"prior_visual={last_call2_state.get('has_prior_visual')} | "
+                f"prior_coding={last_call2_state.get('has_prior_coding')} | "
+                f"prior_chitchat={last_call2_state.get('has_prior_chitchat')}"
+            )
 
         # ── Step 1.5: Intercept URLs (Web Reader) — deteksi dulu, fetch nanti paralel ─────
         urls_in_text = []
@@ -169,6 +166,7 @@ class ModeHub:
                 context_history_str=context_history_str,
                 previous_topic=active_topic or precheck.get("active_topic"),
                 previous_subject=key_subject or precheck.get("key_subject"),
+                precheck=precheck,
                 request=request,
             )
 
@@ -177,8 +175,22 @@ class ModeHub:
                 precheck["is_ambiguous"] = True
             if preset_routing.get("requires_visual"):
                 precheck["requires_visual"] = preset_routing["requires_visual"]
+            if preset_routing.get("visual_types"):
+                precheck["visual_types"] = preset_routing["visual_types"]
             if preset_routing.get("need_analytic"):
                 precheck["need_analytic"] = preset_routing["need_analytic"]
+            if preset_routing.get("is_troubleshooting"):
+                precheck["is_troubleshooting"] = True
+            if preset_routing.get("is_comparative"):
+                precheck["is_comparative"] = True
+            if preset_routing.get("has_actionable_workflow"):
+                precheck["has_actionable_workflow"] = True
+            if preset_routing.get("is_security_critical"):
+                precheck["is_security_critical"] = True
+            if preset_routing.get("is_generate_file"):
+                precheck["is_generate_file"] = True
+            if preset_routing.get("is_map_query"):
+                precheck["is_map_query"] = True
             if preset_routing.get("queries"):
                 precheck["queries"] = preset_routing["queries"]
             if preset_routing.get("query_judul"):
