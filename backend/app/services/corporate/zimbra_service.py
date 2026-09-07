@@ -12,37 +12,108 @@ from email.mime.multipart import MIMEMultipart
 
 logger = logging.getLogger("CAKRA_ZIMBRA_SERVICE")
 
+def _select_imap_folder(mail: imaplib.IMAP4_SSL, folder: str) -> str:
+    """Memilih folder IMAP yang tepat, dengan fallback untuk variasi nama folder Zimbra."""
+    folder_lower = folder.strip().lower()
+    if folder_lower in ["sent", "sent items", "terkirim", "sent messages"]:
+        for candidate in ["Sent", "Sent Items", "Sent Messages", "INBOX.Sent"]:
+            try:
+                res, _ = mail.select(f'"{candidate}"' if " " in candidate else candidate)
+                if res == "OK":
+                    return candidate
+            except Exception:
+                continue
+        # Fallback: cari dari list folder IMAP
+        try:
+            res, folder_list = mail.list()
+            if res == "OK":
+                for f_info in folder_list:
+                    f_str = f_info.decode('utf-8', errors='ignore') if isinstance(f_info, bytes) else str(f_info)
+                    if "sent" in f_str.lower():
+                        folder_name = f_str.split(' "/" ')[-1].strip().strip('"')
+                        res_sel, _ = mail.select(f'"{folder_name}"' if " " in folder_name else folder_name)
+                        if res_sel == "OK":
+                            return folder_name
+        except Exception as e:
+            logger.warning(f"[ZIMBRA] Failed to inspect IMAP folders for sent: {e}")
+        return "Sent"
+    elif folder_lower in ["drafts", "draft", "draf"]:
+        for candidate in ["Drafts", "Draft", "INBOX.Drafts", "DRAFTS"]:
+            try:
+                res, _ = mail.select(f'"{candidate}"' if " " in candidate else candidate)
+                if res == "OK":
+                    return candidate
+            except Exception:
+                continue
+        try:
+            res, folder_list = mail.list()
+            if res == "OK":
+                for f_info in folder_list:
+                    f_str = f_info.decode('utf-8', errors='ignore') if isinstance(f_info, bytes) else str(f_info)
+                    if "draft" in f_str.lower():
+                        folder_name = f_str.split(' "/" ')[-1].strip().strip('"')
+                        res_sel, _ = mail.select(f'"{folder_name}"' if " " in folder_name else folder_name)
+                        if res_sel == "OK":
+                            return folder_name
+        except Exception as e:
+            logger.warning(f"[ZIMBRA] Failed to inspect IMAP folders for drafts: {e}")
+        return "Drafts"
+    else:
+        mail.select("INBOX")
+        return "INBOX"
+
 def get_text_from_email(msg):
     text_content = ""
     html_content = ""
     attachments_text = ""
-    
+    attachments = []
+    part_counter = 0
+
     if msg.is_multipart():
         for part in msg.walk():
             content_type = part.get_content_type()
-            content_disposition = str(part.get("Content-Disposition"))
+            content_disposition = str(part.get("Content-Disposition") or "")
+            raw_filename = part.get_filename()
             
-            # Handling attachments
-            if "attachment" in content_disposition:
-                filename = part.get_filename()
-                if filename and filename.lower().endswith(".pdf"):
-                    try:
-                        pdf_bytes = part.get_payload(decode=True)
-                        if pdf_bytes:
-                            reader = PyPDF2.PdfReader(io.BytesIO(pdf_bytes))
+            # Deteksi apakah part adalah file lampiran
+            is_attachment = "attachment" in content_disposition.lower() or bool(raw_filename)
+            
+            if is_attachment:
+                filename = decode_mime_header(raw_filename) if raw_filename else f"lampiran_{part_counter}"
+                try:
+                    payload_bytes = part.get_payload(decode=True)
+                    size_bytes = len(payload_bytes) if payload_bytes else 0
+                    size_kb = round(size_bytes / 1024, 1)
+                except Exception:
+                    payload_bytes = None
+                    size_kb = 0.0
+
+                attachments.append({
+                    "part_index": part_counter,
+                    "filename": filename,
+                    "content_type": content_type,
+                    "size_kb": size_kb
+                })
+
+                # Jika PDF atau TXT, ekstrak teksnya untuk LLM context
+                if payload_bytes:
+                    fn_lower = filename.lower()
+                    if fn_lower.endswith(".pdf"):
+                        try:
+                            reader = PyPDF2.PdfReader(io.BytesIO(payload_bytes))
                             pdf_text = f"\n\n--- LAMPIRAN: {filename} ---\n"
                             for page in reader.pages:
-                                pdf_text += page.extract_text() + "\n"
+                                pdf_text += (page.extract_text() or "") + "\n"
                             attachments_text += pdf_text
-                    except Exception as e:
-                        logger.warning(f"Failed to read PDF attachment {filename}: {e}")
-                elif filename and filename.lower().endswith(".txt"):
-                    try:
-                        txt_bytes = part.get_payload(decode=True)
-                        if txt_bytes:
-                            attachments_text += f"\n\n--- LAMPIRAN: {filename} ---\n" + txt_bytes.decode('utf-8', errors='ignore')
-                    except Exception as e:
-                        pass
+                        except Exception as e:
+                            logger.warning(f"Failed to read PDF attachment {filename}: {e}")
+                    elif fn_lower.endswith(".txt"):
+                        try:
+                            attachments_text += f"\n\n--- LAMPIRAN: {filename} ---\n" + payload_bytes.decode('utf-8', errors='ignore')
+                        except Exception:
+                            pass
+
+                part_counter += 1
                 continue
             
             try:
@@ -56,6 +127,7 @@ def get_text_from_email(msg):
                         html_content += decoded
             except Exception as e:
                 logger.warning(f"Failed to decode email part: {e}")
+            part_counter += 1
     else:
         try:
             payload = msg.get_payload(decode=True)
@@ -89,7 +161,7 @@ def get_text_from_email(msg):
     else:
         html_res = f"<div>{text_res.replace(chr(10), '<br>')}</div>"
         
-    return text_res, html_res
+    return text_res, html_res, attachments
 
 def decode_mime_header(header_value):
     if not header_value:
@@ -109,65 +181,93 @@ def decode_mime_header(header_value):
         logger.warning(f"Failed to decode header {header_value}: {e}")
         return str(header_value)
 
-def fetch_unread_emails(email_address: str, password: str, limit: int = 10) -> List[Dict[str, Any]]:
+def fetch_unread_emails(email_address: str, password: str, limit: int = 10, folder: str = "inbox") -> List[Dict[str, Any]]:
     """
-    Koneksi ke IMAP mail.pindad.com dan tarik email terbaru.
+    Koneksi ke IMAP mail.pindad.com dan tarik email terbaru menggunakan IMAP UID permanen.
+    Mendukung folder 'inbox' dan 'sent'.
     """
     imap_host = "mail.pindad.com"
     imap_port = 993
     
-    logger.info(f"[ZIMBRA] Connecting to {imap_host}:{imap_port} for {email_address}...")
+    logger.info(f"[ZIMBRA] Connecting to {imap_host}:{imap_port} for {email_address} (folder={folder})...")
     
     try:
         mail = imaplib.IMAP4_SSL(imap_host, imap_port)
         mail.login(email_address, password)
         
-        mail.select("inbox")
+        selected_folder = _select_imap_folder(mail, folder)
+        logger.info(f"[ZIMBRA] Selected mailbox folder: {selected_folder}")
         
-        # Cari email (bisa UNSEEN atau ALL). Kita ambil ALL tapi batasi jumlahnya saja agar ada data.
-        status, data = mail.search(None, "ALL")
+        # Cari email menggunakan UID permanen
+        status, data = mail.uid("search", None, "ALL")
         if status != "OK":
-            logger.error(f"[ZIMBRA] Failed to search inbox: {status}")
+            logger.error(f"[ZIMBRA] Failed to search mailbox: {status}")
             return []
             
-        email_ids = data[0].split()
-        
-        if not email_ids:
+        email_uids = data[0].split()
+        if not email_uids:
+            mail.logout()
             return []
             
         # Ambil `limit` email terakhir
-        latest_email_ids = email_ids[-limit:]
+        latest_email_uids = email_uids[-limit:]
         
         results = []
-        for e_id in reversed(latest_email_ids):
-            status, msg_data = mail.fetch(e_id, "(RFC822)")
-            if status != "OK":
+        for uid in reversed(latest_email_uids):
+            uid_str = uid.decode("utf-8")
+            status, msg_data = mail.uid("fetch", uid, "(RFC822 FLAGS)")
+            if status != "OK" or not msg_data:
                 continue
                 
+            flags_str = ""
+            msg = None
             for response_part in msg_data:
                 if isinstance(response_part, tuple):
                     msg = email.message_from_bytes(response_part[1])
-                    
-                    subject = decode_mime_header(msg.get("Subject"))
-                    sender = decode_mime_header(msg.get("From"))
-                    cc = decode_mime_header(msg.get("Cc"))
-                    date = msg.get("Date")
-                    
-                    content_text, content_html = get_text_from_email(msg)
-                    
-                    results.append({
-                        "id": e_id.decode("utf-8"),
-                        "sender": sender,
-                        "cc": cc,
-                        "subject": subject,
-                        "content": content_text, # Untuk LLM
-                        "content_html": content_html, # Untuk UI render
-                        "received_at": date,
-                        "priority": "🔴 Unread" if "UNSEEN" in str(mail.fetch(e_id, "(FLAGS)")[1]) else "🟢 Read"
-                    })
+                elif isinstance(response_part, bytes):
+                    flags_str += response_part.decode('utf-8', errors='ignore')
+            
+            if not msg:
+                continue
+                
+            subject = decode_mime_header(msg.get("Subject")) or "(Tanpa Subjek)"
+            sender = decode_mime_header(msg.get("From")) or ""
+            recipient = decode_mime_header(msg.get("To")) or ""
+            cc = decode_mime_header(msg.get("Cc")) or ""
+            date = msg.get("Date") or ""
+            
+            raw_msg_id = msg.get("Message-ID") or ""
+            clean_msg_id = raw_msg_id.strip().strip("<>").strip()
+            if not clean_msg_id:
+                clean_msg_id = f"uid_{uid_str}_{email_address}"
+                
+            content_text, content_html, attachments = get_text_from_email(msg)
+            
+            # Tentukan prioritas dasar
+            if folder.lower() in ["sent", "sent items", "terkirim"]:
+                priority = "📤 Sent"
+            else:
+                is_read = ("\\seen" in flags_str.lower())
+                priority = "🟢 Read" if is_read else "🔴 Unread"
+                
+            results.append({
+                "id": uid_str,
+                "uid": uid_str,
+                "message_id": clean_msg_id,
+                "sender": sender,
+                "recipient": recipient,
+                "cc": cc,
+                "subject": subject,
+                "content": content_text, # Untuk LLM
+                "content_html": content_html, # Untuk UI render
+                "received_at": date,
+                "priority": priority,
+                "folder": folder,
+                "attachments": attachments
+            })
                     
         mail.logout()
-        logger.info(f"[ZIMBRA] Successfully fetched {len(results)} emails.")
+        logger.info(f"[ZIMBRA] Successfully fetched {len(results)} emails from {selected_folder}.")
         return results
         
     except imaplib.IMAP4.error as e:
@@ -177,8 +277,73 @@ def fetch_unread_emails(email_address: str, password: str, limit: int = 10) -> L
         logger.error(f"[ZIMBRA] Unexpected error: {e}")
         raise Exception(f"Gagal mengambil email: {e}")
 
-def send_email_reply(email_address: str, password: str, to_address: str, subject: str, body: str, cc_address: str = None) -> bool:
-    """Mengirim balasan email menggunakan SMTP Zimbra."""
+def get_email_attachment_bytes(
+    email_address: str, 
+    password: str, 
+    uid: str, 
+    part_index: int, 
+    folder: str = "inbox"
+) -> Dict[str, Any]:
+    """
+    Mengambil file bytes lampiran asli secara on-demand berdasarkan UID dan part_index.
+    """
+    imap_host = "mail.pindad.com"
+    imap_port = 993
+    
+    mail = imaplib.IMAP4_SSL(imap_host, imap_port)
+    try:
+        mail.login(email_address, password)
+        _select_imap_folder(mail, folder)
+        
+        status, msg_data = mail.uid("fetch", uid.encode('utf-8'), "(RFC822)")
+        if status != "OK" or not msg_data:
+            raise ValueError(f"Email UID {uid} tidak ditemukan di IMAP")
+            
+        msg = None
+        for part in msg_data:
+            if isinstance(part, tuple):
+                msg = email.message_from_bytes(part[1])
+                break
+                
+        if not msg:
+            raise ValueError("Gagal membaca pesan email")
+            
+        part_counter = 0
+        for part in msg.walk():
+            content_disposition = str(part.get("Content-Disposition") or "")
+            raw_filename = part.get_filename()
+            is_attachment = "attachment" in content_disposition.lower() or bool(raw_filename)
+            
+            if is_attachment:
+                if part_counter == part_index:
+                    filename = decode_mime_header(raw_filename) if raw_filename else f"lampiran_{part_index}"
+                    content_type = part.get_content_type() or "application/octet-stream"
+                    payload_bytes = part.get_payload(decode=True)
+                    return {
+                        "filename": filename,
+                        "content_type": content_type,
+                        "data": payload_bytes or b""
+                    }
+                part_counter += 1
+                
+        raise ValueError(f"Lampiran index {part_index} tidak ditemukan pada email")
+    finally:
+        try:
+            mail.logout()
+        except Exception:
+            pass
+
+def send_email_reply(
+    email_address: str, 
+    password: str, 
+    to_address: str, 
+    subject: str, 
+    body: str, 
+    cc_address: str = None,
+    is_reply: bool = True,
+    attachments: list = None
+) -> bool:
+    """Mengirim email (balasan maupun pesan baru) menggunakan SMTP Zimbra."""
     smtp_host = "mail.pindad.com"
     
     msg = MIMEMultipart()
@@ -187,10 +352,13 @@ def send_email_reply(email_address: str, password: str, to_address: str, subject
     if cc_address:
         msg['Cc'] = cc_address
     
-    # Prepend Re: if not present, and preserve Fwd:
-    subj_lower = subject.lower()
-    if not subj_lower.startswith("re:") and not subj_lower.startswith("fwd:") and not subj_lower.startswith("fw:"):
-        msg['Subject'] = f"Re: {subject}"
+    # Prepend Re: hanya jika is_reply bernilai True
+    if is_reply:
+        subj_lower = subject.lower()
+        if not subj_lower.startswith("re:") and not subj_lower.startswith("fwd:") and not subj_lower.startswith("fw:"):
+            msg['Subject'] = f"Re: {subject}"
+        else:
+            msg['Subject'] = subject
     else:
         msg['Subject'] = subject
         
@@ -239,6 +407,30 @@ def send_email_reply(email_address: str, password: str, to_address: str, subject
     
     msg_alt.attach(MIMEText(body, 'plain'))
     msg_alt.attach(MIMEText(html_body, 'html'))
+    
+    # Sisipkan file lampiran jika ada
+    if attachments:
+        from email.mime.base import MIMEBase
+        from email import encoders
+        import base64
+        for att in attachments:
+            fname = att.get("filename", "attachment")
+            fbytes = att.get("content_bytes")
+            if not fbytes and att.get("content_base64"):
+                b64_str = att["content_base64"]
+                if "," in b64_str:
+                    b64_str = b64_str.split(",", 1)[1]
+                try:
+                    fbytes = base64.b64decode(b64_str)
+                except Exception as e_b64:
+                    logger.warning(f"[ZIMBRA] Failed to decode base64 attachment {fname}: {e_b64}")
+                    continue
+            if fbytes:
+                part = MIMEBase("application", "octet-stream")
+                part.set_payload(fbytes)
+                encoders.encode_base64(part)
+                part.add_header("Content-Disposition", f'attachment; filename="{fname}"')
+                msg.attach(part)
     
     destinations = [to_address]
     if cc_address:

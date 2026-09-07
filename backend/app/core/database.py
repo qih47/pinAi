@@ -67,6 +67,8 @@ async def init_db_pool():
                 await _create_training_jobs_table(conn)
                 await _create_user_settings_table(conn)
                 await _create_user_integrations_table(conn)
+                await _create_corporate_email_triage_table(conn)
+                await _create_corporate_email_drafts_table(conn)
             except asyncpg.exceptions.InsufficientPrivilegeError as e:
                 logger.warning(f"⚠️ [DB_MIGRATION] Izin ditolak untuk memodifikasi schema public. Minta admin untuk jalankan DDL secara manual: {e}")
             except Exception as e:
@@ -319,6 +321,45 @@ async def _create_user_integrations_table(conn):
             cloud_password VARCHAR(255),
             updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
         );
+    """)
+
+async def _create_corporate_email_triage_table(conn):
+    """
+    Create table for storing and caching Smart Mail triage status to prevent re-triage.
+    """
+    await conn.execute("""
+        CREATE TABLE IF NOT EXISTS corporate_email_triage (
+            id SERIAL PRIMARY KEY,
+            user_email VARCHAR(255) NOT NULL,
+            message_id VARCHAR(512) NOT NULL,
+            imap_uid VARCHAR(128),
+            subject TEXT,
+            sender VARCHAR(255),
+            priority VARCHAR(50) NOT NULL,
+            threat_reason TEXT,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            UNIQUE(user_email, message_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_email_triage_user_msg ON corporate_email_triage(user_email, message_id);
+    """)
+
+async def _create_corporate_email_drafts_table(conn):
+    """
+    Tabel penyimpanan Draf Email Pengguna (Simpan Draf)
+    """
+    await conn.execute("""
+        CREATE TABLE IF NOT EXISTS corporate_email_drafts (
+            id SERIAL PRIMARY KEY,
+            user_email VARCHAR(255) NOT NULL,
+            to_recipients TEXT,
+            cc_recipients TEXT,
+            subject TEXT,
+            body TEXT,
+            attachments JSONB DEFAULT '[]'::jsonb,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        );
+        CREATE INDEX IF NOT EXISTS idx_email_drafts_user ON corporate_email_drafts(user_email, updated_at DESC);
     """)
 
 async def _update_users_onboarding_columns(conn):
