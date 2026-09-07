@@ -106,7 +106,7 @@ def _set_l2(cache_key: str, doc: ExtractedDocument) -> None:
 async def extract_document(
     file_path: str,
     cache_key: Optional[str] = None,
-    render_images: bool = False,
+    render_images: bool = True,
     use_cache: bool = True,
 ) -> ExtractedDocument:
     """
@@ -126,12 +126,12 @@ async def extract_document(
     if use_cache:
         # L1 check
         hit = _get_l1(key)
-        if hit:
+        if hit and (not render_images or hit.base64_images):
             logger.info(f"[EXTRACTOR] ⚡ L1 Cache HIT: {os.path.basename(file_path)}")
             return hit
         # L2 check
         hit = _get_l2(key)
-        if hit:
+        if hit and (not render_images or hit.base64_images):
             logger.info(f"[EXTRACTOR] ⚡ L2 Cache HIT: {os.path.basename(file_path)}")
             return hit
 
@@ -158,7 +158,7 @@ async def extract_document(
     doc.extraction_seconds = (datetime.datetime.now() - t0).total_seconds()
     logger.info(
         f"[EXTRACTOR] ✅ Selesai: {os.path.basename(file_path)} | "
-        f"{doc.total_pages} halaman | {doc.extraction_seconds:.2f}s"
+        f"{doc.total_pages} halaman | {len(doc.base64_images)} gambar | {doc.extraction_seconds:.2f}s"
     )
 
     _set_l1(key, doc)
@@ -180,9 +180,9 @@ def _process_pdf_page_sync(file_path: str, page_num: int, render: bool) -> Extra
     is_scan = len(text) < OCR_SCAN_THRESHOLD
     b64_img = ""
 
-    # Hanya render base64 image jika render eksplisit diminta (misal mode visual)
+    # Render base64 image halaman PDF untuk visualisasi VLM (DPI 130 untuk ketajaman membaca tabel scan)
     if render:
-        pix = page.get_pixmap(dpi=120)
+        pix = page.get_pixmap(dpi=130)
         img_bytes = pix.tobytes("png")
         b64_img = base64.b64encode(img_bytes).decode("utf-8")
 
@@ -207,7 +207,7 @@ def _process_pdf_page_sync(file_path: str, page_num: int, render: bool) -> Extra
     return ExtractedPage(page_num=page_num, text=text, is_scan=is_scan, base64_image=b64_img)
 
 
-async def _extract_pdf(file_path: str, render_images: bool = False) -> ExtractedDocument:
+async def _extract_pdf(file_path: str, render_images: bool = True) -> ExtractedDocument:
     """Ekstrak seluruh halaman PDF secara paralel."""
     import fitz
     doc_meta = fitz.open(file_path)
@@ -226,7 +226,8 @@ async def _extract_pdf(file_path: str, render_images: bool = False) -> Extracted
     pages.sort(key=lambda p: p.page_num)
 
     full_text = "\n".join(p.text for p in pages if p.text)
-    b64_images = [p.base64_image for p in pages if p.base64_image]
+    # 1-to-1 index mapping agar index halaman cocok sempurna
+    b64_images = [p.base64_image for p in pages]
     is_scanned = sum(1 for p in pages if p.is_scan) > total_pages * 0.5
 
     return ExtractedDocument(

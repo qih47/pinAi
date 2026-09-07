@@ -251,6 +251,8 @@ async def stream_ollama_chat(
     emp_match = re.search(r'Nama\s*/\s*Panggilan Pilihan Pegawai:\s*\*\*([^\*]+)\*\*', system_content) or re.search(r'Pegawai yang kamu layani:\s*\*\*([^\*]+)\*\*', system_content)
     emp_name_log = emp_match.group(1).strip() if emp_match else "Pegawai"
 
+    image_count = sum(len(m.get("images", [])) for m in messages if isinstance(m.get("images"), list))
+
     logger.info(
         f"\n"
         f"╔═══════════════════════════════════════════════════════════════════════════════╗\n"
@@ -262,6 +264,7 @@ async def stream_ollama_chat(
         f"║ 📊 Total Payload    : {total_chars:,} chars (~{total_chars//4:,} est. tokens) | {len(messages)} messages ║\n"
         f"║   ├─ System Prompt  : {system_chars:,} chars (~{system_chars//4:,} tokens) [RAG: {'✅' if has_rag else '❌'} | Web: {'✅' if has_web else '❌'} | Mem: {'✅' if has_mem else '❌'}] ║\n"
         f"║   ├─ History Context: {len(history_messages)} turns ({history_chars:,} chars | ~{history_chars//4:,} tokens) ║\n"
+        f"║   ├─ Visual Images  : {image_count} visual page images injected to Gemma Vision      ║\n"
         f"║   └─ User Prompt    : \"{current_query[:55].strip()}...\" ({query_chars:,} chars) ║\n"
         f"╠═══════════════════════════════════════════════════════════════════════════════╣\n"
         f"║ 📜 [RAW SYSTEM PROMPT CONTENT ({system_chars:,} chars)]:                      ║\n"

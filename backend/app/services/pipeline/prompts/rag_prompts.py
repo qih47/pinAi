@@ -254,14 +254,18 @@ IDENTITAS RESMI DOKUMEN RUJUKAN:
   Contoh: "Berdasarkan dokumen {{ doc_jenis or 'Regulasi' }} Nomor: {{ doc_nomor or '-' }} tentang {{ filename }}, ..."
 - Anda WAJIB mengetahui dan mengutip Nomor Regulasi/Dokumen ({{ doc_nomor or '-' }}) serta Judulnya dengan tepat sesuai data resmi di atas!
 
-PERHATIAN: Gambar yang dilampirkan berurutan sesuai dengan nomor halaman rujukan di atas.
+PERHATIAN: Gambar visual halaman dokumen dilampirkan berurutan sesuai dengan nomor halaman rujukan di atas.
 
-Selain gambar, berikut adalah TEKS ASLI yang berhasil diekstrak dari halaman-halaman tersebut (Gunakan teks ini sebagai sumber UTAMA Anda agar terhindar dari kesalahan baca/OCR pada gambar):
+PANDUAN PEMBACAAN DOKUMEN & GAMBAR:
+- Jika pesan ini disertai gambar visual halaman dokumen (terutama pada dokumen scan, tabel, formulir, atau bagan), amati dan baca langsung detail visualnya secara teliti (angka persentase, nominal, dan isi kolom tabel).
+- Teks hasil ekstraksi di bawah ini disediakan sebagai pendamping. Apabila teks ekstraksi/OCR terlihat terpotong, berantakan, atau angka tabelnya hilang, UTAMAKAN fakta visual yang terlihat nyata pada gambar halaman asli!
+
+TEKS HASIL EKSTRAKSI HALAMAN RUJUKAN:
 
 {% if not is_scanned %}
 {{ extracted_text }}
 {% else %}
-[DOKUMEN INI ADALAH HASIL SCAN TANPA TEKS NATIVE. ANDA HARUS MEMBACA GAMBAR UNTUK MENJAWAB]
+[DOKUMEN INI ADALAH HASIL SCAN. ANDA WAJIB MEMBACA GAMBAR VISUAL TERLAMPIR UNTUK MEMASTIKAN AKURASI ISI TABEL & PASAL]
 {% endif %}
 
 TUGAS UTAMA ANDA:

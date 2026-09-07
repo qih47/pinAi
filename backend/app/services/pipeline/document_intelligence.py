@@ -152,8 +152,8 @@ def expand_tri_window_context(seed_pages: List[int], text_map: List[Dict[str, An
     return result
 
 
-def process_single_page_threadsafe(file_path: str, page_num: int, render_images: bool = False) -> Tuple[Dict[str, Any], str]:
-    """Worker thread-safe: ekstrak teks digital secara instan, dan OCR hanya jika scan."""
+def process_single_page_threadsafe(file_path: str, page_num: int, render_images: bool = True) -> Tuple[Dict[str, Any], str]:
+    """Worker thread-safe: ekstrak teks digital secara instan, dan render gambar halaman untuk VLM."""
     import pytesseract
     doc_thread = fitz.open(file_path)
     page = doc_thread.load_page(page_num)
@@ -162,9 +162,9 @@ def process_single_page_threadsafe(file_path: str, page_num: int, render_images:
     text = page.get_text("text").strip()
     encoded = ""
     
-    # 2. Render image hanya jika diminta secara eksplisit
+    # 2. Render image halaman untuk Call 2 Vision (DPI 130 untuk ketajaman tabel scan)
     if render_images:
-        pix = page.get_pixmap(dpi=120)
+        pix = page.get_pixmap(dpi=130)
         encoded = base64.b64encode(pix.tobytes("png")).decode("utf-8")
 
     # 3. OCR fallback HANYA jika halaman berupa scan / gambar (< 40 karakter digital)
@@ -187,17 +187,17 @@ def process_single_page_threadsafe(file_path: str, page_num: int, render_images:
 async def extract_and_ocr_document_async(
     file_path: str,
     cache_key: Optional[str] = None,
-    render_images: bool = False
+    render_images: bool = True
 ) -> Tuple[List[Dict[str, Any]], List[str], int]:
     """
-    Mengekstrak teks dokumen PDF secara efisien (dual L1/L2 cache).
-    Secara default render_images=False agar tidak membebani CPU/RAM server.
+    Mengekstrak teks dokumen PDF dan merender gambar setiap halaman (dual L1/L2 cache).
+    Setiap halaman menghasilkan teks (mapping pencarian) dan gambar (injeksi ke Call 2).
     """
     key_to_use = cache_key or file_path
     cached = get_document_cache(key_to_use)
-    if cached:
-        logger.info(f"[DOC_INTEL] 🚀 Cache Hit for document: {file_path}")
-        return cached["text_map"], cached["images"], len(cached["text_map"])
+    if cached and (not render_images or cached.get("images")):
+        logger.info(f"[DOC_INTEL] 🚀 Cache Hit for document: {file_path} ({len(cached.get('images', []))} images)")
+        return cached["text_map"], cached.get("images", []), len(cached["text_map"])
 
     if not os.path.exists(file_path):
         raise FileNotFoundError(f"Document file not found at: {file_path}")
@@ -209,7 +209,7 @@ async def extract_and_ocr_document_async(
         t_map = doc_obj.to_text_map()
         imgs = doc_obj.base64_images
         set_document_cache(key_to_use, t_map, imgs)
-        logger.info(f"[DOC_INTEL] ✅ Ekstraksi selesai via Unified Extractor ({doc_obj.total_pages} hal, {doc_obj.extraction_seconds:.2f}s)")
+        logger.info(f"[DOC_INTEL] ✅ Ekstraksi selesai via Unified Extractor ({doc_obj.total_pages} hal, {len(imgs)} images, {doc_obj.extraction_seconds:.2f}s)")
         return t_map, imgs, doc_obj.total_pages
     except Exception as ue_err:
         logger.warning(f"[DOC_INTEL] Unified Extractor fallback: {ue_err} → menjalankan fallback lokal...")
@@ -229,7 +229,7 @@ async def extract_and_ocr_document_async(
     start_time = datetime.datetime.now()
     text_map, all_base64_images = await asyncio.to_thread(run_parallel_extraction)
     duration = (datetime.datetime.now() - start_time).total_seconds()
-    logger.info(f"[DOC_INTEL] ✅ Selesai proses ekstraksi {total_pages} halaman dalam {duration:.2f}s.")
+    logger.info(f"[DOC_INTEL] ✅ Selesai proses ekstraksi {total_pages} halaman ({len(all_base64_images)} images) dalam {duration:.2f}s.")
 
     set_document_cache(key_to_use, text_map, all_base64_images)
     return text_map, all_base64_images, total_pages
@@ -309,11 +309,30 @@ async def two_stage_rerank_cluster_async(
     selected_pages = expand_tri_window_context(seed_pages, text_map, total_pages)
     logger.info(f"[DOC_INTEL] 📑 Final Connected Pages: {[p+1 for p in selected_pages]}")
     
-    final_base64_images = [images_list[p] for p in selected_pages if p < len(images_list)]
+    file_path = kwargs.get("file_path")
+    final_base64_images = []
+    for p in selected_pages:
+        img = None
+        if p < len(images_list) and images_list[p] and len(images_list[p]) > 50:
+            img = images_list[p]
+        elif file_path and os.path.exists(file_path):
+            # On-the-fly fallback rendering langsung dari PDF jika di memory belum ada gambar halaman p
+            try:
+                doc_fb = fitz.open(file_path)
+                if 0 <= p < len(doc_fb):
+                    pix_fb = doc_fb[p].get_pixmap(dpi=130)
+                    img = base64.b64encode(pix_fb.tobytes("png")).decode("utf-8")
+                doc_fb.close()
+            except Exception as _e_render:
+                logger.warning(f"[DOC_INTEL] On-the-fly render failed for page {p+1}: {_e_render}")
+        if img:
+            final_base64_images.append(img)
+            
+    logger.info(f"[DOC_INTEL] 🖼️ Captured {len(final_base64_images)}/{len(selected_pages)} visual images for Call 2 payload")
     
     extracted_texts_list = []
     for p in selected_pages:
-        t = text_map[p]["text"]
+        t = text_map[p]["text"] if p < len(text_map) else ""
         if t.strip():
             extracted_texts_list.append(f"--- TEKS / KONTEN HALAMAN {p+1} ---\n{t}\n")
         else:

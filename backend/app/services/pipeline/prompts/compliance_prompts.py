@@ -21,6 +21,7 @@ IDENTITAS RESMI REGULASI RUJUKAN:
 🚨 PANDUAN PENYEBUTAN DASAR HUKUM:
 - Sebutkan rujukan dokumen secara eksplisit: "Berdasarkan dokumen {{ doc_jenis or 'Regulasi' }} Nomor: {{ doc_nomor or '-' }} tentang {{ filename }} (Hal. {{ pages_str }})..."
 - Pastikan nomor dokumen ({{ doc_nomor or '-' }}) dikutip dengan tepat dan akurat sesuai data resmi di atas!
+- Jika dokumen disertai gambar halaman asli (terutama dokumen scan, tabel wewenang, batasan biaya), periksa detail visualnya langsung pada gambar untuk menjamin ketepatan 100%.
 
 Berikut adalah teks referensi peraturan/dokumen yang menjadi dasar hukum (Halaman {{ pages_str }}):
 

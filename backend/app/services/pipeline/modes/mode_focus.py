@@ -160,7 +160,7 @@ class ModeFocus:
                 yield format_sse(status="📄 Memuat dokumen", status_key="DOC_LOADING", event_type=SSEEventType.STATUS)
                 await asyncio.sleep(0.2)
                 cache_key = session_uuid or file_path
-                text_map, all_base64_images, total_pages = await extract_and_ocr_document_async(file_path, cache_key=cache_key)
+                text_map, all_base64_images, total_pages = await extract_and_ocr_document_async(file_path, cache_key=cache_key, render_images=True)
 
                 if brain:
                     await brain.save_document(doc_id_key, {
@@ -188,7 +188,8 @@ class ModeFocus:
                 all_base64_images=all_base64_images,
                 total_pages=total_pages,
                 explicit_pages=explicit_pages,
-                top_k_seeds=4
+                top_k_seeds=4,
+                file_path=file_path
             )
 
         # Skenario B: File fisik tidak di disk, tapi chunk teks sudah ada di PostgreSQL dokumen_chunk
@@ -299,10 +300,13 @@ class ModeFocus:
             from backend.app.services.pipeline.prompts.visual_prompts import VISUAL_SYSTEM_PROMPT
             system_prompt += "\n\n" + VISUAL_SYSTEM_PROMPT + "\n\n"
 
-        # Buat message payload: Kirim GAMBAR ASLI halaman terpilih ke Gemma Vision jika ada
+        # Buat message payload: Kirim GAMBAR ASLI seluruh halaman terpilih ke Gemma Vision (hingga 12 halaman)
         user_payload = {"role": "user", "content": user_message}
         if final_base64_images:
-            user_payload["images"] = final_base64_images[:4]
+            valid_images = [img for img in final_base64_images if img and len(img) > 100]
+            if valid_images:
+                user_payload["images"] = valid_images[:12]
+                logger.info(f"[MODE_FOCUS] 🖼️ Injected {len(user_payload['images'])} page images into Call 2 (Gemma Vision)")
             
         current_messages = [{"role": "system", "content": system_prompt}] + messages_dict + [user_payload]
 
