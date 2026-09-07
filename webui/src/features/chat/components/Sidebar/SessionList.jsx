@@ -262,11 +262,24 @@ export default function SessionList({
         */}
 
 
-        {/* ── TOMBOL: ANALYTICS (HANYA UNTUK 06652) ── */}
-        {userData?.npp === '06652' && (
+        {/* ── TOMBOL: ANALYTICS (UNTUK ADMIN & SUPERADMIN) ── */}
+        {(['ADMIN', 'SUPERADMIN'].includes((userData?.role || JSON.parse(localStorage.getItem('cakra_user') || '{}')?.role || '').toUpperCase()) || userData?.npp === '06652') && (
           <a
-            href={import.meta.env.VITE_ANALYTICS_URL || `${window.location.protocol}//${window.location.hostname}:5174/analytics`}
-            onClick={() => setActiveMenuId?.(null)}
+            href="#"
+            onClick={(e) => {
+              e.preventDefault();
+              setActiveMenuId?.(null);
+              const token = localStorage.getItem('cakra_token');
+              const base = import.meta.env.VITE_ANALYTICS_URL || `${window.location.protocol}//${window.location.hostname}:5174/analytics`;
+              try {
+                const url = new URL(base, window.location.origin);
+                if (token) url.searchParams.set('token', token);
+                if (userData?.npp) url.searchParams.set('npp', userData.npp);
+                window.location.href = url.toString();
+              } catch (err) {
+                window.location.href = base;
+              }
+            }}
             className={`flex items-center transition-all group overflow-hidden text-[14px] ${location.pathname === '/analytics'
               ? "bg-blue-500/10 text-blue-500 font-semibold border-l-2 border-blue-500 rounded-r-full"
               : `rounded-full font-medium ${darkMode ? 'hover:bg-white/5' : 'hover:bg-gray-200/50'}`

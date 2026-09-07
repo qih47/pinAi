@@ -419,3 +419,234 @@ async def admin_download_all_artifacts(
         headers={"Content-Disposition": f"attachment; filename=all_cakra_artifacts.zip"}
     )
 
+
+# =========================================================================================
+# OPSI 5: USER MANAGEMENT & HRIS SYNCHRONIZATION
+# =========================================================================================
+from pydantic import BaseModel, Field
+from backend.app.services.admin.user_management_service import UserManagementService
+
+
+class CreateManualUserPayload(BaseModel):
+    npp: str = Field(..., description="ID / NPP Unik untuk user non-resmi")
+    fullname: str = Field(..., description="Nama lengkap user")
+    divisi: Optional[str] = Field("Mitra / Non-Tetap", description="Divisi / Unit / Instansi")
+    role: str = Field("USER", description="Role: USER, TRAINER, ADMIN, SUPERADMIN")
+    password: str = Field(..., min_length=6, description="Password minimal 6 karakter")
+    email: Optional[str] = Field(None, description="Email user (opsional)")
+
+
+class ImportHrisUserPayload(BaseModel):
+    npp: str = Field(..., description="NPP Karyawan dari HRIS DB")
+    role: str = Field("USER", description="Role awal yang diberikan di CAKRA")
+
+
+class UpdateUserRolePayload(BaseModel):
+    role: str = Field(..., description="Role baru: USER, TRAINER, ADMIN, SUPERADMIN")
+
+
+class ResetUserPasswordPayload(BaseModel):
+    password: str = Field(..., min_length=6, description="Password baru minimal 6 karakter")
+
+
+@router.get("/users")
+async def get_users_endpoint(
+    page: int = 1,
+    page_size: int = 15,
+    search: str = "",
+    role: str = "",
+    type: str = "",
+    current_user_npp: Optional[str] = Depends(get_current_user_npp),
+):
+    """
+    Mengambil daftar pengguna yang terdaftar di ragdb.users lengkap dengan statistik
+    dan pagination.
+    """
+    if not current_user_npp:
+        raise HTTPException(status_code=401, detail="Login required for admin functions")
+
+    try:
+        data = await UserManagementService.get_users_list(
+            page=page,
+            page_size=page_size,
+            search=search,
+            role_filter=role,
+            type_filter=type,
+        )
+        return {"status": "success", "data": data}
+    except Exception as e:
+        logger.error(f"❌ [ADMIN] Error get_users_endpoint: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/users/manual")
+async def create_manual_user_endpoint(
+    payload: CreateManualUserPayload,
+    current_user_npp: Optional[str] = Depends(get_current_user_npp),
+):
+    """
+    Menambahkan user non-resmi/non-tetap langsung ke ragdb.users dengan password bcrypt.
+    """
+    if not current_user_npp:
+        raise HTTPException(status_code=401, detail="Login required for admin functions")
+
+    try:
+        user = await UserManagementService.create_manual_user(
+            npp=payload.npp,
+            fullname=payload.fullname,
+            divisi=payload.divisi or "Mitra / Non-Tetap",
+            role=payload.role,
+            password=payload.password,
+            email=payload.email,
+        )
+        return {
+            "status": "success",
+            "message": f"Pengguna manual '{payload.fullname}' ({payload.npp}) berhasil ditambahkan ke CAKRA.",
+            "data": user,
+        }
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+    except Exception as e:
+        logger.error(f"❌ [ADMIN] Error create_manual_user_endpoint: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/users/hris-search")
+async def search_hris_users_endpoint(
+    q: str = "",
+    limit: int = 25,
+    current_user_npp: Optional[str] = Depends(get_current_user_npp),
+):
+    """
+    Pencarian personil resmi di hris_db (MURNI SELECT / Read-Only).
+    Menampilkan apakah personil sudah di-import ke ragdb atau belum.
+    """
+    if not current_user_npp:
+        raise HTTPException(status_code=401, detail="Login required for admin functions")
+
+    try:
+        results = await UserManagementService.search_hris_employees(
+            search_query=q,
+            limit=limit,
+        )
+        return {"status": "success", "data": results}
+    except Exception as e:
+        logger.error(f"❌ [ADMIN] Error search_hris_users_endpoint: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/users/import-hris")
+async def import_hris_user_endpoint(
+    payload: ImportHrisUserPayload,
+    current_user_npp: Optional[str] = Depends(get_current_user_npp),
+):
+    """
+    Mengimpor / menyinkronkan data karyawan dari hris_db ke ragdb.users.
+    """
+    if not current_user_npp:
+        raise HTTPException(status_code=401, detail="Login required for admin functions")
+
+    try:
+        user = await UserManagementService.import_hris_employee(
+            npp=payload.npp,
+            initial_role=payload.role,
+        )
+        return {
+            "status": "success",
+            "message": f"Karyawan HRIS '{user['fullname']}' ({payload.npp}) berhasil disinkronkan ke CAKRA.",
+            "data": user,
+        }
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+    except Exception as e:
+        logger.error(f"❌ [ADMIN] Error import_hris_user_endpoint: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.put("/users/{npp}/role")
+async def update_user_role_endpoint(
+    npp: str,
+    payload: UpdateUserRolePayload,
+    current_user_npp: Optional[str] = Depends(get_current_user_npp),
+):
+    """
+    Mengubah role pengguna di ragdb.users.
+    """
+    if not current_user_npp:
+        raise HTTPException(status_code=401, detail="Login required for admin functions")
+
+    try:
+        result = await UserManagementService.update_user_role(
+            npp=npp,
+            new_role=payload.role,
+            current_admin_npp=current_user_npp,
+        )
+        return {
+            "status": "success",
+            "message": f"Role pengguna {npp} berhasil diubah menjadi {payload.role.upper()}.",
+            "data": result,
+        }
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+    except Exception as e:
+        logger.error(f"❌ [ADMIN] Error update_user_role_endpoint: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.put("/users/{npp}/password")
+async def reset_user_password_endpoint(
+    npp: str,
+    payload: ResetUserPasswordPayload,
+    current_user_npp: Optional[str] = Depends(get_current_user_npp),
+):
+    """
+    Mereset password pengguna di ragdb.users dengan bcrypt hash baru.
+    """
+    if not current_user_npp:
+        raise HTTPException(status_code=401, detail="Login required for admin functions")
+
+    try:
+        result = await UserManagementService.reset_user_password(
+            npp=npp,
+            new_password=payload.password,
+        )
+        return {
+            "status": "success",
+            "message": f"Password pengguna {npp} berhasil di-reset.",
+            "data": result,
+        }
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+    except Exception as e:
+        logger.error(f"❌ [ADMIN] Error reset_user_password_endpoint: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/users/{npp}")
+async def delete_user_endpoint(
+    npp: str,
+    current_user_npp: Optional[str] = Depends(get_current_user_npp),
+):
+    """
+    Menghapus akun pengguna dari ragdb.users dan mencabut sesi aktifnya.
+    TIDAK MENYENTUH HRIS DB.
+    """
+    if not current_user_npp:
+        raise HTTPException(status_code=401, detail="Login required for admin functions")
+
+    try:
+        result = await UserManagementService.delete_user(
+            npp=npp,
+            current_admin_npp=current_user_npp,
+        )
+        return {
+            "status": "success",
+            "message": f"Pengguna {npp} berhasil dihapus dari CAKRA.",
+            "data": result,
+        }
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+    except Exception as e:
+        logger.error(f"❌ [ADMIN] Error delete_user_endpoint: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+

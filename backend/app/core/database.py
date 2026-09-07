@@ -69,6 +69,7 @@ async def init_db_pool():
                 await _create_user_integrations_table(conn)
                 await _create_corporate_email_triage_table(conn)
                 await _create_corporate_email_drafts_table(conn)
+                await _create_user_account_types_table(conn)
             except asyncpg.exceptions.InsufficientPrivilegeError as e:
                 logger.warning(f"⚠️ [DB_MIGRATION] Izin ditolak untuk memodifikasi schema public. Minta admin untuk jalankan DDL secara manual: {e}")
             except Exception as e:
@@ -373,6 +374,19 @@ async def _update_users_onboarding_columns(conn):
         ADD COLUMN IF NOT EXISTS theme_preference VARCHAR(20) DEFAULT 'dark',
         ADD COLUMN IF NOT EXISTS communication_style VARCHAR(30) DEFAULT 'formal_saya_anda',
         ADD COLUMN IF NOT EXISTS preferred_name VARCHAR(100);
+    """)
+
+async def _create_user_account_types_table(conn):
+    """
+    Tabel penyimpan metadata tipe akun pengguna (MANUAL vs HRIS).
+    """
+    await conn.execute("""
+        CREATE TABLE IF NOT EXISTS user_account_types (
+            npp VARCHAR(50) PRIMARY KEY,
+            account_type VARCHAR(20) NOT NULL DEFAULT 'MANUAL',
+            created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        );
+        CREATE INDEX IF NOT EXISTS idx_user_account_type ON user_account_types(account_type);
     """)
 
 async def get_continuation_state(session_uuid: str) -> dict:

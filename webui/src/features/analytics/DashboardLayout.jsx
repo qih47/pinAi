@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useChatStore } from '../../stores/chatStore';
-import { Activity, ShieldAlert, FileText, Settings, LogOut, Hexagon, Wrench, Database, ChevronLeft, ChevronRight, FileSearch, Code2, Archive, Key, Brain } from 'lucide-react';
+import { Activity, ShieldAlert, FileText, Settings, LogOut, Hexagon, Wrench, Database, ChevronLeft, ChevronRight, FileSearch, Code2, Archive, Key, Brain, Users } from 'lucide-react';
 import { LiveTerminal } from './components/LiveTerminal';
 import { RequestLatencyChart } from './components/RequestLatencyChart';
 import { AgenticRadar } from './components/AgenticRadar';
@@ -25,6 +25,7 @@ import ArtifactVault from '../admin/components/ArtifactVault';
 import ApiManagement from '../admin/components/ApiManagement';
 import DeepLearningTab from '../admin/components/DeepLearningTab';
 import SyntheticQATab from '../admin/components/SyntheticQATab';
+import UserManagementTab from '../admin/components/UserManagementTab';
 import { useChatAuthStore } from '../../stores/authStore';
 
 export const DashboardLayout = () => {
@@ -79,6 +80,7 @@ export const DashboardLayout = () => {
           <NavItem icon={<Archive />} label="Artifact Vault" active={activeTab === 'artifacts'} onClick={() => setActiveTab('artifacts')} isExpanded={isSidebarExpanded} />
           <NavItem icon={<FileSearch />} label="OCR Sandbox" active={activeTab === 'ocr'} onClick={() => setActiveTab('ocr')} isExpanded={isSidebarExpanded} />
           <NavItem icon={<Wrench />} label="Operations" active={activeTab === 'operations'} onClick={() => setActiveTab('operations')} isExpanded={isSidebarExpanded} />
+          <NavItem icon={<Users />} label="User Management" active={activeTab === 'users'} onClick={() => setActiveTab('users')} isExpanded={isSidebarExpanded} />
           <NavItem icon={<FileText />} label="Logs" active={activeTab === 'logs'} onClick={() => setActiveTab('logs')} isExpanded={isSidebarExpanded} />
           <NavItem icon={<Database />} label="Session Audit" active={activeTab === 'audit'} onClick={() => setActiveTab('audit')} isExpanded={isSidebarExpanded} />
           <NavItem icon={<Settings />} label="Settings" active={activeTab === 'settings'} onClick={() => setActiveTab('settings')} isExpanded={isSidebarExpanded} />
@@ -260,7 +262,12 @@ export const DashboardLayout = () => {
                 <ArtifactVault />
               </div>
             )}
-            {!['overview', 'knowledge', 'training', 'security', 'operations', 'settings', 'logs', 'audit', 'ocr', 'prompts', 'artifacts'].includes(activeTab) && (
+            {activeTab === 'users' && (
+              <div className="flex-1 flex flex-col min-h-0 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                <UserManagementTab />
+              </div>
+            )}
+            {!['overview', 'knowledge', 'training', 'security', 'operations', 'settings', 'logs', 'audit', 'ocr', 'prompts', 'artifacts', 'users'].includes(activeTab) && (
               <div className="flex-1 flex items-center justify-center rounded-xl border border-dashed border-gray-800 bg-[#0B0F19]/50 min-h-[500px]">
                 <div className="text-center flex flex-col items-center">
                   <Wrench className="w-12 h-12 text-gray-700 mb-4 animate-[spin_6s_linear_infinite]" />

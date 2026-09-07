@@ -42,31 +42,41 @@ async def get_current_user_npp(
             return row['owner_npp']
 
     # 1. Cek Header NPP, Query Param, atau Bearer Token
+    def _is_valid_npp(val: Optional[str]) -> bool:
+        if not val or not val.strip():
+            return False
+        clean = val.strip()
+        if clean.lower() in {"undefined", "null", "none", "nan", ""}:
+            return False
+        if clean in _GUEST_NPP_PLACEHOLDERS:
+            return False
+        return True
+
     npp_clean = None
-    if x_npp_header and x_npp_header.strip():
+    if _is_valid_npp(x_npp_header):
         npp_clean = x_npp_header.strip()
     else:
         query_npp = request.query_params.get("npp")
-        if query_npp and query_npp.strip():
+        if _is_valid_npp(query_npp):
             npp_clean = query_npp.strip()
 
-    # 1b. Fallback: Cek Bearer Session Token jika NPP belum ada di header
+    # 1b. Fallback: Cek Bearer Session Token jika NPP belum valid di header
     if not npp_clean and authorization and authorization.startswith("Bearer "):
         token = authorization.replace("Bearer ", "").strip()
-        if token:
+        if token and token.lower() not in {"undefined", "null", "none", ""}:
             try:
                 async with get_db() as conn:
                     session_row = await conn.fetchrow(
                         "SELECT npp FROM session_login WHERE session_token = $1 AND is_login = TRUE AND expires_at > NOW()",
                         token
                     )
-                    if session_row and session_row["npp"]:
+                    if session_row and session_row["npp"] and _is_valid_npp(session_row["npp"]):
                         npp_clean = session_row["npp"]
                         logger.info(f"[AUTH] Resolved NPP '{npp_clean}' from Bearer session token.")
             except Exception as e:
                 logger.error(f"[AUTH] Failed to resolve session token: {e}")
 
-    if not npp_clean or npp_clean in _GUEST_NPP_PLACEHOLDERS:
+    if not npp_clean or not _is_valid_npp(npp_clean):
         return None
 
     # 2. VALIDASI KE DATABASE LOKAL / BYPASS / HRIS

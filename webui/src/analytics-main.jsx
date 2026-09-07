@@ -15,6 +15,22 @@ function AnalyticsApp() {
   useEffect(() => {
     const initializeAuth = async () => {
       try {
+        // Tangkap token & user dari query param jika diarahkan dari Chat Portal (port 5173)
+        const params = new URLSearchParams(window.location.search);
+        const urlToken = params.get('token');
+        const urlNpp = params.get('npp');
+        if (urlToken && urlToken !== 'undefined' && urlToken !== 'null') {
+          localStorage.setItem('cakra_token', urlToken);
+          if (urlNpp && urlNpp !== 'undefined' && urlNpp !== 'null') {
+            const cur = JSON.parse(localStorage.getItem('cakra_user') || '{}');
+            localStorage.setItem('cakra_user', JSON.stringify({ ...cur, npp: urlNpp, username: urlNpp }));
+          }
+          params.delete('token');
+          params.delete('npp');
+          const cleanQuery = params.toString() ? `?${params.toString()}` : '';
+          window.history.replaceState({}, document.title, window.location.pathname + cleanQuery);
+        }
+
         await checkSession();
       } catch (e) {
         console.error("Gagal menginisiasi session awal:", e);

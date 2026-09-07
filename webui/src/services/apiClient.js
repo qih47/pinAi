@@ -19,14 +19,22 @@ const apiClient = axios.create({
 apiClient.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('cakra_token');
-    const user = JSON.parse(localStorage.getItem('cakra_user') || 'null');
+    let user = null;
+    try {
+      const rawUser = localStorage.getItem('cakra_user');
+      if (rawUser && rawUser !== 'undefined' && rawUser !== 'null') {
+        user = JSON.parse(rawUser);
+      }
+    } catch (e) {
+      user = null;
+    }
 
-    if (token) {
-      config.headers['Authorization'] = `Bearer ${token}`;
+    if (token && token !== 'undefined' && token !== 'null' && token.trim()) {
+      config.headers['Authorization'] = `Bearer ${token.trim()}`;
     }
     
-    if (user && user.npp) {
-      config.headers['X-NPP-Header'] = user.npp;
+    if (user && user.npp && user.npp !== 'undefined' && user.npp !== 'null' && String(user.npp).trim()) {
+      config.headers['X-NPP-Header'] = String(user.npp).trim();
     }
 
     // W12: Auto-inject unique X-Request-ID per request for backend tracing
