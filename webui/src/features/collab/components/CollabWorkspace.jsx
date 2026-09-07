@@ -13,15 +13,19 @@ import {
   Search,
   MessageSquare,
   Clock,
-  Menu
+  Menu,
+  Layers
 } from 'lucide-react';
 import { collabApi } from '../services/collabApi';
 import { useCollabStream } from '../hooks/useCollabStream';
 import CollabChatArea from './CollabChatArea';
-import CollabInputArea from './CollabInputArea';
+import CollabChatInputArea from './CollabChatInputArea';
 import CollabDocumentPad from './CollabDocumentPad';
 import CreateRoomModal from './CreateRoomModal';
 import InviteMemberModal from './InviteMemberModal';
+import CollabAvatar from './CollabAvatar';
+import PreviewImageModal from '../../chat/components/modals/PreviewImageModal';
+import NextcloudModal from '../../chat/components/NextcloudModal';
 
 export const CollabWorkspace = ({
   theme,
@@ -29,7 +33,10 @@ export const CollabWorkspace = ({
   userData,
   language,
   isMobile,
-  toggleSidebar
+  toggleSidebar,
+  onOpenArtifact,
+  toggleRightSidebar,
+  showRightSidebar
 }) => {
   const { roomId } = useParams();
   const navigate = useNavigate();
@@ -67,6 +74,7 @@ export const CollabWorkspace = ({
   // Modals
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isInviteOpen, setIsInviteOpen] = useState(false);
+  const [previewImage, setPreviewImage] = useState(null);
 
   // Load Rooms list
   const loadRooms = useCallback(async () => {
@@ -120,16 +128,29 @@ export const CollabWorkspace = ({
     };
   }, [roomId]);
 
-  // Map NPP to Member Info
+  // Map NPP and Name to Member Info
   const membersMap = useMemo(() => {
     const map = {};
     if (roomDetail?.members) {
       roomDetail.members.forEach((m) => {
-        map[m.npp] = m;
+        if (m.npp) {
+          map[m.npp] = m;
+          map[String(m.npp).trim()] = m;
+          map[String(m.npp).trim().toLowerCase()] = m;
+        }
+        if (m.name) {
+          map[m.name] = m;
+          map[String(m.name).trim()] = m;
+          map[String(m.name).trim().toLowerCase()] = m;
+        }
       });
     }
     return map;
   }, [roomDetail]);
+
+  // State Streaming Real-time CAKRA
+  const [streamingCakra, setStreamingCakra] = useState(null);
+  const [cakraThinkingPhase, setCakraThinkingPhase] = useState('');
 
   // SSE Stream Event Handlers
   const handleNewMessage = useCallback((msg) => {
@@ -137,6 +158,48 @@ export const CollabWorkspace = ({
       if (prev.some((m) => m.id === msg.id)) return prev;
       return [...prev, msg];
     });
+  }, []);
+
+  const handleCakraStreamStart = useCallback((payload) => {
+    setStreamingCakra({
+      id: payload.message_id,
+      sender_type: 'CAKRA',
+      sender_name: 'CAKRA AI Teammate',
+      message_text: '',
+      interjection_type: payload.interjection_type || 'EXPLICIT_MENTION',
+      created_at: new Date().toISOString()
+    });
+    setCakraThinkingPhase('CAKRA sedang berpikir...');
+  }, []);
+
+  const handleCakraStreamChunk = useCallback((payload) => {
+    setStreamingCakra((prev) => {
+      if (!prev) {
+        return {
+          id: payload.message_id,
+          sender_type: 'CAKRA',
+          sender_name: 'CAKRA AI Teammate',
+          message_text: payload.chunk || '',
+          created_at: new Date().toISOString()
+        };
+      }
+      return {
+        ...prev,
+        message_text: (prev.message_text || '') + (payload.chunk || '')
+      };
+    });
+    setCakraThinkingPhase('CAKRA sedang menyusun respon...');
+  }, []);
+
+  const handleCakraStreamEnd = useCallback((payload) => {
+    setStreamingCakra(null);
+    setCakraThinkingPhase('');
+    if (payload.message) {
+      setMessages((prev) => {
+        if (prev.some((m) => m.id === payload.message.id)) return prev;
+        return [...prev, payload.message];
+      });
+    }
   }, []);
 
   const handleTyping = useCallback((typing) => {
@@ -149,6 +212,13 @@ export const CollabWorkspace = ({
     }
   }, []);
 
+  const handleMessageEdited = useCallback((editedMsg) => {
+    if (!editedMsg?.id) return;
+    setMessages((prev) =>
+      prev.map((m) => (m.id === editedMsg.id ? { ...m, ...editedMsg } : m))
+    );
+  }, []);
+
   const handleMembersUpdated = useCallback(() => {
     if (roomId) {
       collabApi.getRoomDetail(roomId).then(setRoomDetail).catch(console.error);
@@ -159,16 +229,43 @@ export const CollabWorkspace = ({
   const { isConnected } = useCollabStream({
     roomId,
     onNewMessage: handleNewMessage,
+    onMessageEdited: handleMessageEdited,
     onTyping: handleTyping,
     onDocumentUpdated: handleDocumentUpdated,
-    onMembersUpdated: handleMembersUpdated
+    onMembersUpdated: handleMembersUpdated,
+    onCakraStreamStart: handleCakraStreamStart,
+    onCakraStreamChunk: handleCakraStreamChunk,
+    onCakraStreamEnd: handleCakraStreamEnd
   });
 
-  // Action: Kirim Pesan
-  const handleSendMessage = async (text) => {
-    if (!roomId || !text.trim()) return;
+  // Action: Broadcast Mengetik
+  const handleTypingChange = useCallback((isTyping) => {
+    if (roomId) {
+      collabApi.sendTypingStatus(roomId, isTyping);
+    }
+  }, [roomId]);
+
+  // Action: Edit Pesan Sendiri
+  const handleEditMessage = async (messageId, newText) => {
+    if (!roomId || !messageId || !newText?.trim()) return;
     try {
-      await collabApi.sendMessage(roomId, text);
+      // Update optimistik di state lokal
+      setMessages((prev) =>
+        prev.map((m) => (m.id === messageId ? { ...m, message_text: newText.trim() } : m))
+      );
+      await collabApi.editMessage(roomId, messageId, newText.trim());
+    } catch (err) {
+      console.error('Failed to edit message:', err);
+      // Rollback jika gagal
+      collabApi.getMessages(roomId).then(setMessages).catch(console.error);
+    }
+  };
+
+  // Action: Kirim Pesan (Mendukung Teks, Lampiran File/Gambar, dan Mode Presets)
+  const handleSendMessage = async (text, attachments = [], mode = null) => {
+    if (!roomId || (!text?.trim() && attachments.length === 0)) return;
+    try {
+      await collabApi.sendMessage(roomId, text, attachments, mode);
     } catch (err) {
       console.error('Failed to send message:', err);
       alert('Gagal mengirim pesan ke ruang diskusi.');
@@ -309,8 +406,8 @@ export const CollabWorkspace = ({
                 </h2>
 
                 <p className="text-xs sm:text-sm leading-relaxed mb-6" style={{ color: secondaryTextColor }}>
-                  Buat ruang obrolan kerja untuk merumuskan konsep, menyusun draf Surat Edaran (SE), 
-                  atau mendiskusikan aturan perusahaan bersama tim Anda dan CAKRA AI Teammate.
+                  Buat ruang kolaborasi untuk membahas proyek, koordinasi kerja tim, 
+                  brainstorming ide, atau pemecahan masalah bersama rekan kerja dan CAKRA AI Teammate.
                 </p>
 
                 <button
@@ -364,7 +461,7 @@ export const CollabWorkspace = ({
                           className="text-xs line-clamp-2 mb-4 leading-relaxed"
                           style={{ color: secondaryTextColor }}
                         >
-                          {room.topic || 'Pembahasan draf dan regulasi tim.'}
+                          {room.topic || 'Ruang diskusi dan kolaborasi tim.'}
                         </p>
                       </div>
 
@@ -397,37 +494,15 @@ export const CollabWorkspace = ({
         <div className="h-full flex flex-col overflow-hidden" style={{ background: pageBg }}>
           {/* Top Header Ruangan */}
           <div
-            className="h-14 px-4 border-b flex items-center justify-between shrink-0"
+            className="h-14 px-4 flex items-center justify-between shrink-0"
             style={{
-              background: pageBg,
-              borderColor: borderColor
+              background: pageBg
             }}
           >
             <div className="flex items-center gap-3 min-w-0">
-              <button
-                onClick={() => navigate('/collab')}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors hover:bg-white/5"
-                style={{ color: secondaryTextColor }}
-                title="Kembali ke Daftar Ruang"
-              >
-                <ArrowLeft size={16} />
-                <span className="hidden sm:inline">Semua Ruang</span>
-              </button>
-
-              <div className="h-4 w-px hidden sm:block" style={{ background: borderColor }} />
-
               <div className="min-w-0">
                 <h2 className="text-sm font-bold truncate flex items-center gap-2" style={{ color: textColor }}>
                   <span>{roomDetail?.name || 'Ruang Diskusi'}</span>
-                  {isConnected ? (
-                    <span className="flex items-center gap-1 text-[10px] font-normal text-emerald-400 bg-emerald-950/60 px-2 py-0.5 rounded-full border border-emerald-800/60" title="Terhubung Real-time">
-                      <Wifi size={10} /> Live
-                    </span>
-                  ) : (
-                    <span className="flex items-center gap-1 text-[10px] font-normal text-amber-400 bg-amber-950/60 px-2 py-0.5 rounded-full border border-amber-800/60">
-                      <WifiOff size={10} /> Reconnecting
-                    </span>
-                  )}
                 </h2>
                 {roomDetail?.topic && (
                   <p className="text-[11px] truncate max-w-md" style={{ color: secondaryTextColor }}>
@@ -442,21 +517,19 @@ export const CollabWorkspace = ({
               {/* Avatar Stack Anggota */}
               <div className="flex -space-x-2 overflow-hidden items-center mr-1">
                 {roomDetail?.members?.slice(0, 4).map((m) => (
-                  <div
+                  <CollabAvatar
                     key={m.npp}
-                    className="inline-block h-7 w-7 rounded-full text-teal-400 font-bold text-[10px] flex items-center justify-center border"
-                    style={{
-                      background: darkMode ? '#222226' : '#e5e7eb',
-                      borderColor: borderColor
-                    }}
-                    title={`${m.name} (${m.divisi})`}
-                  >
-                    {m.name.charAt(0).toUpperCase()}
-                  </div>
+                    npp={m.npp}
+                    name={m.name}
+                    photoUrl={m.profile_photo_url}
+                    size="w-7 h-7"
+                    className="inline-block ring-2 ring-neutral-900"
+                    title={`${m.name} (${m.divisi || 'PT Pindad'})`}
+                  />
                 ))}
                 {(roomDetail?.members?.length || 0) > 4 && (
                   <div
-                    className="h-7 w-7 rounded-full font-medium text-[10px] flex items-center justify-center border"
+                    className="h-7 w-7 rounded-full font-medium text-[10px] flex items-center justify-center border ring-2 ring-neutral-900"
                     style={{
                       background: darkMode ? '#222226' : '#e5e7eb',
                       borderColor: borderColor,
@@ -496,11 +569,32 @@ export const CollabWorkspace = ({
                   borderColor: borderColor,
                   color: textColor
                 } : {}}
-                title="Buka / Tutup Panel Draf Dokumen"
+                title="Buka / Tutup Panel Catatan Bersama & Notulen"
               >
                 <FileText size={14} className="text-teal-400" />
-                <span className="hidden sm:inline">Draf Dokumen</span>
+                <span className="hidden sm:inline">Catatan Tim</span>
               </button>
+
+              {/* Toggle Artifacts & Berkas Sesi */}
+              {toggleRightSidebar && (
+                <button
+                  onClick={toggleRightSidebar}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all ${
+                    showRightSidebar
+                      ? 'bg-indigo-500/20 text-indigo-300 border-indigo-500/40 shadow-sm'
+                      : 'hover:bg-white/5'
+                  }`}
+                  style={!showRightSidebar ? {
+                    background: darkMode ? '#1e1e20' : '#f3f4f6',
+                    borderColor: borderColor,
+                    color: textColor
+                  } : {}}
+                  title="Buka / Tutup Workspace Artifacts & Berkas Sesi"
+                >
+                  <Layers size={14} className={showRightSidebar ? 'text-indigo-400' : 'text-indigo-400/80'} />
+                  <span className="hidden sm:inline">Artifacts</span>
+                </button>
+              )}
             </div>
           </div>
 
@@ -518,18 +612,28 @@ export const CollabWorkspace = ({
                   currentNpp={currentNpp}
                   membersMap={membersMap}
                   typingStatus={typingStatus}
-                  onApplyToDocument={handleApplyToDocument}
+                  streamingCakra={streamingCakra}
+                  cakraThinkingPhase={cakraThinkingPhase}
                   darkMode={darkMode}
                   theme={theme}
+                  language={language}
+                  onApplyToDocument={handleApplyToDocument}
+                  setPreviewImage={setPreviewImage}
+                  onOpenArtifact={onOpenArtifact}
+                  onEditMessage={handleEditMessage}
                 />
               )}
 
-              {/* Input Chat Tim dengan Mention @cakra */}
-              <CollabInputArea
+              {/* Input Chat Tim Persis ChatPage Utama (Kapsul Melayang Elevated, Plus, Attachment, Voice, Send, Disclaimer) */}
+              <CollabChatInputArea
                 onSendMessage={handleSendMessage}
+                onTypingChange={handleTypingChange}
                 members={roomDetail?.members || []}
+                isSending={false}
                 darkMode={darkMode}
                 theme={theme}
+                isMobile={isMobile}
+                language={language}
               />
             </div>
 
@@ -579,6 +683,31 @@ export const CollabWorkspace = ({
           theme={theme}
         />
       )}
+
+      {/* 🖼️ IMAGE PREVIEW MODAL */}
+      <PreviewImageModal
+        previewImage={previewImage}
+        onClose={() => setPreviewImage(null)}
+      />
+
+      {/* ☁️ NEXTCLOUD MODAL */}
+      <NextcloudModal
+        darkMode={darkMode}
+        language={language}
+        onFileSelect={(files) => {
+          if (Array.isArray(files) && files.length > 0) {
+            // Forward files to send
+            const formatted = files.map(f => ({
+              name: f.name,
+              size: f.size,
+              type: f.type,
+              file_obj: f.file_obj || f,
+              preview: f.preview || null
+            }));
+            handleSendMessage('', formatted);
+          }
+        }}
+      />
     </div>
   );
 };

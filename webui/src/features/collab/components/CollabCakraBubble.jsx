@@ -1,6 +1,7 @@
 import React, { memo, useState } from 'react';
-import { Bot, Sparkles, Copy, Check, FileText, ArrowRight } from 'lucide-react';
+import { Sparkles, Copy, Check } from 'lucide-react';
 import CakraResponseRenderer from '../../chat/components/CakraResponseRenderer';
+import cakraLogo from '../../../assets/cakra.png';
 
 const formatTime = (isoString) => {
   if (!isoString) return '';
@@ -12,8 +13,15 @@ const formatTime = (isoString) => {
   }
 };
 
-const CollabCakraBubble = ({ message, onApplyToDocument, darkMode = true, theme }) => {
+const CollabCakraBubble = ({
+  message,
+  isActive = false,
+  thinkingPhase = '',
+  darkMode = true,
+  theme
+}) => {
   const [copied, setCopied] = useState(false);
+  const [isHovered, setIsHovered] = useState(false);
   const timeStr = formatTime(message.created_at);
 
   const handleCopy = () => {
@@ -26,121 +34,147 @@ const CollabCakraBubble = ({ message, onApplyToDocument, darkMode = true, theme 
   const isProactive = message.interjection_type === 'PROACTIVE_SUGGESTION';
   const isMention = message.is_mention || message.interjection_type === 'EXPLICIT_MENTION';
   const isWelcome = message.interjection_type === 'WELCOME';
+  const textColor = theme?.textColor || (darkMode ? '#e2e8f0' : '#1f2937');
   const secondaryTextColor = theme?.secondaryText || (darkMode ? '#94a3b8' : '#6b7280');
-  const borderColor = theme?.borderColor || (darkMode ? '#2a2a2d' : '#e5e7eb');
-  const bubbleBg = darkMode ? '#18181b' : '#ffffff';
-  const buttonBg = darkMode ? '#222226' : '#f3f4f6';
+
+  const displayThought = thinkingPhase || "CAKRA sedang berpikir";
 
   return (
-    <div className="flex items-start gap-3 mb-5 px-4 group">
-      {/* Avatar CAKRA */}
-      <div className="relative shrink-0">
-        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-teal-500 via-cyan-600 to-emerald-700 flex items-center justify-center text-white shadow-lg shadow-teal-500/20 border border-teal-400/40">
-          <Bot size={20} className="text-white animate-pulse" />
+    <div
+      className="assistant-chat-row flex flex-col mb-7 group"
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+      style={{
+        padding: '0 4px',
+        animation: 'fadeInUp 0.3s ease-out'
+      }}
+    >
+      {/* ── Header CAKRA (Identik dengan ChatBubble ChatPage Utama) ── */}
+      <div className="flex items-center gap-2 mb-2">
+        <div className="relative shrink-0 flex items-center justify-center">
+          <img
+            src={cakraLogo}
+            alt="CAKRA"
+            style={{
+              width: 25,
+              height: 25,
+              borderRadius: 8,
+              objectFit: 'cover',
+              background: 'transparent',
+              animation: isActive ? 'cakraSpin 0.7s linear infinite' : 'none',
+              transform: isActive ? undefined : 'rotate(0deg)',
+            }}
+          />
+          {isActive && (
+            <span
+              className="absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full border"
+              style={{
+                background: '#10b981',
+                borderColor: darkMode ? '#151517' : '#ffffff'
+              }}
+            />
+          )}
         </div>
-        <span
-          className="absolute -bottom-1 -right-1 flex h-3.5 w-3.5 items-center justify-center rounded-full border"
-          style={{ background: darkMode ? '#151517' : '#ffffff', borderColor: borderColor }}
-        >
-          <span className="h-2 w-2 rounded-full bg-emerald-400"></span>
-        </span>
+
+        {/* Status Shimmer Saat Streaming atau Nama CAKRA */}
+        {isActive ? (
+          <div className="flex items-center gap-1.5 ml-1">
+            <span
+              className="text-[13px] italic font-medium"
+              style={{
+                background: 'linear-gradient(90deg, #94a3b8 0%, #38bdf8 50%, #94a3b8 100%)',
+                backgroundSize: '200% 100%',
+                WebkitBackgroundClip: 'text',
+                WebkitTextFillColor: 'transparent',
+                animation: 'shimmerFlow 1.2s linear infinite'
+              }}
+            >
+              {displayThought}
+            </span>
+            <span className="flex items-center gap-0.5 text-sky-400 font-bold animate-pulse text-xs">
+              ...
+            </span>
+          </div>
+        ) : (
+          <div className="flex items-center gap-2 ml-1">
+            <span
+              className="text-[13.5px] font-semibold tracking-wide"
+              style={{ color: textColor }}
+            >
+              CAKRA
+            </span>
+
+            {isProactive && (
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20 font-medium">
+                💡 Masukan Proaktif
+              </span>
+            )}
+
+            {isMention && (
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-teal-500/10 text-teal-400 border border-teal-500/20 font-medium">
+                🎯 Respons @cakra
+              </span>
+            )}
+
+            {isWelcome && (
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 font-medium">
+                👋 Tim Kolaborasi
+              </span>
+            )}
+
+            <span className="text-[11px]" style={{ color: secondaryTextColor }}>
+              {timeStr}
+            </span>
+          </div>
+        )}
       </div>
 
-      <div className="max-w-[85%] sm:max-w-[75%] flex flex-col items-start w-full">
-        {/* Header Badges */}
-        <div className="flex items-center gap-2 mb-1.5 px-1 flex-wrap">
-          <span className="text-xs font-bold text-teal-400 tracking-wide">CAKRA</span>
-          
-          <span className="text-[10px] px-2 py-0.5 rounded-full bg-teal-950/80 text-teal-300 border border-teal-700/60 font-medium flex items-center gap-1">
-            <Sparkles size={10} className="text-teal-300" />
-            AI Teammate
-          </span>
-
-          {isProactive && (
-            <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-950/70 text-amber-300 border border-amber-700/50 font-medium">
-              💡 Masukan Proaktif
-            </span>
-          )}
-
-          {isMention && (
-            <span className="text-[10px] px-2 py-0.5 rounded-full bg-cyan-950/70 text-cyan-300 border border-cyan-700/50 font-medium">
-              🎯 Respons @cakra
-            </span>
-          )}
-
-          {isWelcome && (
-            <span className="text-[10px] px-2 py-0.5 rounded-full bg-indigo-950/70 text-indigo-300 border border-indigo-700/50 font-medium">
-              👋 Selamat Datang
-            </span>
-          )}
-
-          <span className="text-[11px]" style={{ color: secondaryTextColor }}>{timeStr}</span>
+      {/* ── Konten Jawaban Mengalir Natural (Tanpa Kotak Border Kaku) ── */}
+      <div
+        className="assistant-content-container"
+        style={{
+          paddingLeft: 33,
+          paddingRight: 10,
+          wordBreak: 'break-word',
+          color: textColor
+        }}
+      >
+        <div className="text-[15px] leading-relaxed">
+          <CakraResponseRenderer
+            rawContent={message.message_text || ''}
+            isStreaming={isActive}
+            darkMode={darkMode}
+            theme={theme}
+          />
         </div>
 
-        {/* Bubble Box */}
-        <div
-          className="w-full rounded-2xl rounded-tl-sm px-5 py-3.5 shadow-xl border relative"
-          style={{
-            background: bubbleBg,
-            borderColor: darkMode ? 'rgba(20, 184, 166, 0.3)' : 'rgba(13, 148, 136, 0.4)',
-            color: theme?.textColor || (darkMode ? '#f1f5f9' : '#1f2937')
-          }}
-        >
-          <div className="text-[14.5px] leading-relaxed">
-            <CakraResponseRenderer
-              content={message.message_text}
-              isStreaming={false}
-              darkMode={darkMode}
-              theme={theme}
-            />
-          </div>
-
-          {/* Action Footer */}
-          <div
-            className="mt-3 pt-2.5 border-t flex items-center justify-between text-xs flex-wrap gap-2"
-            style={{ borderColor: borderColor }}
-          >
-            <div className="flex items-center gap-2">
-              <button
-                onClick={handleCopy}
-                className="flex items-center gap-1.5 px-2.5 py-1 rounded-md transition-colors border"
-                style={{
-                  background: buttonBg,
-                  borderColor: borderColor,
-                  color: theme?.textColor || (darkMode ? '#cbd5e1' : '#334155')
-                }}
-              >
-                {copied ? (
-                  <>
-                    <Check size={13} className="text-emerald-400" />
-                    <span className="text-emerald-400 font-medium">Tersalin</span>
-                  </>
-                ) : (
-                  <>
-                    <Copy size={13} />
-                    <span>Salin</span>
-                  </>
-                )}
-              </button>
-
-              {onApplyToDocument && (
-                <button
-                  onClick={() => onApplyToDocument(message.message_text)}
-                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-teal-950/80 hover:bg-teal-900/90 text-teal-300 hover:text-teal-200 transition-colors border border-teal-700/60"
-                  title="Salin dan terapkan ke Document Pad"
-                >
-                  <FileText size={13} />
-                  <span>Kirim ke Dokumen</span>
-                  <ArrowRight size={12} />
-                </button>
+        {/* Tombol Aksi Minimalis Bawah (Copy) */}
+        {!isActive && message.message_text && (
+          <div className="mt-2.5 flex items-center gap-2">
+            <button
+              onClick={handleCopy}
+              className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs transition-opacity hover:opacity-100"
+              style={{
+                color: secondaryTextColor,
+                background: darkMode ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)',
+                opacity: isHovered || copied ? 1 : 0.6
+              }}
+              title="Salin jawaban"
+            >
+              {copied ? (
+                <>
+                  <Check size={12} className="text-emerald-400" />
+                  <span className="text-emerald-400 text-[11px] font-medium">Tersalin</span>
+                </>
+              ) : (
+                <>
+                  <Copy size={12} />
+                  <span className="text-[11px]">Salin</span>
+                </>
               )}
-            </div>
-
-            <span className="text-[11px] italic" style={{ color: secondaryTextColor }}>
-              Didukung model regulasi Pindad
-            </span>
+            </button>
           </div>
-        </div>
+        )}
       </div>
     </div>
   );

@@ -75,13 +75,16 @@ class CollabBroadcastManager:
             except Exception as e:
                 logger.warning(f"⚠️ [COLLAB_SSE] Failed to enqueue event to listener: {e}")
 
-    async def send_typing(self, room_id: str, sender: str, is_typing: bool):
+    async def send_typing(self, room_id: str, sender: str, is_typing: bool, sender_npp: str = "", photo_url: Optional[str] = None):
         """
         Broadcast indikator mengetik.
         """
         await self.broadcast(room_id, {
             "type": "typing",
             "sender": sender,
+            "sender_npp": sender_npp,
+            "photo_url": photo_url,
+            "profile_photo_url": photo_url,
             "is_typing": is_typing
         })
 

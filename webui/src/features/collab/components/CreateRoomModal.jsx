@@ -112,7 +112,7 @@ const CreateRoomModal = ({ isOpen, onClose, onRoomCreated, darkMode = true, them
             </div>
             <div>
               <h2 className="text-base font-bold" style={{ color: textColor }}>Buat Ruang Diskusi Tim</h2>
-              <p className="text-xs" style={{ color: secondaryTextColor }}>Kolaborasi perumusan dokumen bersama rekan kerja & CAKRA</p>
+              <p className="text-xs" style={{ color: secondaryTextColor }}>Ruang kolaborasi dan diskusi bersama rekan kerja & CAKRA</p>
             </div>
           </div>
 
@@ -142,7 +142,7 @@ const CreateRoomModal = ({ isOpen, onClose, onRoomCreated, darkMode = true, them
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="Contoh: Pokja Perumusan SE Jam Kerja 2026"
+              placeholder="Contoh: Koordinasi Proyek, Evaluasi Tim, Brainstorming Ide"
               className="w-full px-3.5 py-2.5 border rounded-xl text-sm focus:outline-none focus:ring-1 focus:ring-teal-500 transition-all"
               style={{
                 background: inputBg,

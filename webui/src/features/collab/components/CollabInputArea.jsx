@@ -1,31 +1,55 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { Send, Bot, AtSign, Sparkles } from 'lucide-react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { ArrowUp, Bot, Sparkles, AtSign, Paperclip } from 'lucide-react';
+import cakraLogo from '../../../assets/cakra.png';
 
-const CollabInputArea = ({ onSendMessage, members = [], isSending, darkMode = true, theme }) => {
+const CollabInputArea = ({
+  onSendMessage,
+  onTypingChange,
+  members = [],
+  isSending = false,
+  darkMode = true,
+  theme
+}) => {
   const [text, setText] = useState('');
-  const [mentionQuery, setMentionQuery] = useState(null); // null if not mentioning, or string after @
+  const [mentionQuery, setMentionQuery] = useState(null);
   const [mentionIndex, setMentionIndex] = useState(0);
   const textareaRef = useRef(null);
+  const typingTimeoutRef = useRef(null);
 
-  const pageBg = theme?.mainBg || (darkMode ? '#151517' : '#ffffff');
-  const borderColor = theme?.borderColor || (darkMode ? '#2a2a2d' : '#e5e7eb');
-  const inputBg = darkMode ? '#1e1e20' : '#f3f4f6';
+  const borderColor = theme?.borderColor || (darkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)');
+  const inputBg = darkMode ? '#1e1e21' : '#ffffff';
   const textColor = theme?.textColor || (darkMode ? '#e2e8f0' : '#1f2937');
   const secondaryTextColor = theme?.secondaryText || (darkMode ? '#94a3b8' : '#6b7280');
 
-  // Daftar opsi mention: Cakra + anggota tim
+  // Auto-resize textarea
+  useEffect(() => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+      const newHeight = Math.min(textareaRef.current.scrollHeight, 160);
+      textareaRef.current.style.height = `${Math.max(newHeight, 24)}px`;
+    }
+  }, [text]);
+
+  // Handle typing broadcast throttled
+  const notifyTyping = useCallback((isTyping) => {
+    if (onTypingChange) {
+      onTypingChange(isTyping);
+    }
+  }, [onTypingChange]);
+
+  // Daftar opsi mention: CAKRA + anggota tim
   const mentionOptions = [
     {
       id: 'cakra',
       name: 'cakra',
       displayName: 'CAKRA (AI Teammate)',
-      description: 'Panggil CAKRA untuk klarifikasi regulasi atau draf SE',
+      description: 'Panggil CAKRA untuk membantu diskusi tim',
       isAi: true
     },
     ...members.map((m) => ({
       id: m.npp,
-      name: m.name.replace(/\s+/g, ''),
-      displayName: `${m.name} (${m.divisi || 'Pindad'})`,
+      name: (m.name || m.npp).replace(/\s+/g, ''),
+      displayName: `${m.name} (${m.divisi || 'PT Pindad'})`,
       description: `NPP: ${m.npp}`,
       isAi: false
     }))
@@ -38,18 +62,28 @@ const CollabInputArea = ({ onSendMessage, members = [], isSending, darkMode = tr
       )
     : [];
 
-  // Handle perubahan text dan deteksi '@'
   const handleTextChange = (e) => {
     const val = e.target.value;
     setText(val);
 
+    // Kirim sinyal typing
+    if (val.trim()) {
+      notifyTyping(true);
+      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+      typingTimeoutRef.current = setTimeout(() => {
+        notifyTyping(false);
+      }, 2500);
+    } else {
+      notifyTyping(false);
+    }
+
+    // Deteksi karakter '@'
     const cursorPos = e.target.selectionStart;
     const textBeforeCursor = val.slice(0, cursorPos);
     const lastAt = textBeforeCursor.lastIndexOf('@');
 
     if (lastAt !== -1) {
       const query = textBeforeCursor.slice(lastAt + 1);
-      // Hanya aktif jika query tidak mengandung spasi
       if (!/\s/.test(query)) {
         setMentionQuery(query);
         setMentionIndex(0);
@@ -111,139 +145,161 @@ const CollabInputArea = ({ onSendMessage, members = [], isSending, darkMode = tr
 
   const handleSubmit = () => {
     if (!text.trim() || isSending) return;
+    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+    notifyTyping(false);
     onSendMessage(text.trim());
     setText('');
     setMentionQuery(null);
   };
 
-  return (
-    <div
-      className="relative p-3 sm:p-4 border-t"
-      style={{
-        background: pageBg,
-        borderColor: borderColor
-      }}
-    >
-      {/* Pop-up Mention Suggestions */}
-      {mentionQuery !== null && filteredMentions.length > 0 && (
-        <div
-          className="absolute bottom-full left-4 right-4 sm:left-6 sm:right-auto sm:w-80 mb-2 rounded-xl border shadow-2xl overflow-hidden z-50"
-          style={{
-            background: darkMode ? '#1c1c1f' : '#ffffff',
-            borderColor: borderColor
-          }}
-        >
-          <div
-            className="px-3 py-2 border-b text-[11px] font-semibold flex items-center gap-1.5"
-            style={{
-              background: pageBg,
-              borderColor: borderColor,
-              color: secondaryTextColor
-            }}
-          >
-            <AtSign size={12} className="text-teal-400" />
-            <span>Sebut Anggota Tim atau CAKRA</span>
-          </div>
-          <div className="max-h-48 overflow-y-auto py-1">
-            {filteredMentions.map((opt, idx) => (
-              <button
-                key={opt.id}
-                type="button"
-                onClick={() => insertMention(opt)}
-                className={`w-full text-left px-3 py-2 flex items-center gap-2.5 transition-colors ${
-                  idx === mentionIndex ? 'bg-teal-500/20 text-white' : 'hover:bg-white/5'
-                }`}
-                style={{ color: textColor }}
-              >
-                {opt.isAi ? (
-                  <div className="w-6 h-6 rounded-md bg-teal-500/20 text-teal-300 border border-teal-500/40 flex items-center justify-center shrink-0">
-                    <Bot size={14} />
-                  </div>
-                ) : (
-                  <div
-                    className="w-6 h-6 rounded-md border flex items-center justify-center text-xs font-bold shrink-0"
-                    style={{
-                      background: inputBg,
-                      borderColor: borderColor,
-                      color: textColor
-                    }}
-                  >
-                    {opt.name.charAt(0).toUpperCase()}
-                  </div>
-                )}
-                <div className="min-w-0 flex-1">
-                  <div className="text-xs font-medium truncate flex items-center gap-1.5">
-                    <span>{opt.displayName}</span>
-                    {opt.isAi && (
-                      <span className="text-[9px] px-1 rounded bg-teal-950 text-teal-400 border border-teal-800">
-                        AI
-                      </span>
-                    )}
-                  </div>
-                  <div className="text-[10px] truncate" style={{ color: secondaryTextColor }}>{opt.description}</div>
-                </div>
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
+  const quickMentionCakra = () => {
+    if (text.includes('@cakra')) return;
+    const separator = text.length > 0 && !text.endsWith(' ') ? ' ' : '';
+    setText((prev) => `${prev}${separator}@cakra `);
+    textareaRef.current?.focus();
+  };
 
-      {/* Input Box */}
+  return (
+    <div className="w-full shrink-0 px-3 sm:px-6 pb-4 pt-1 flex flex-col items-center">
+      {/* ── Wadah Terpusat Maksimal 816px (Identik dengan ChatInputArea Utama) ── */}
       <div
-        className="flex items-end gap-2 border rounded-2xl px-3.5 py-2.5 transition-all shadow-inner focus-within:border-teal-500/60 focus-within:ring-1 focus-within:ring-teal-500/30"
+        className="w-full relative flex flex-col"
         style={{
-          background: inputBg,
-          borderColor: borderColor
+          maxWidth: '816px',
+          boxSizing: 'border-box'
         }}
       >
-        <button
-          type="button"
-          onClick={() => {
-            setText((prev) => prev + '@cakra ');
-            if (textareaRef.current) textareaRef.current.focus();
-          }}
-          className="p-1.5 text-teal-400 hover:text-teal-300 rounded-lg hover:bg-teal-500/10 transition-colors shrink-0 mb-0.5"
-          title="Panggil @cakra"
-        >
-          <Bot size={18} />
-        </button>
+        {/* Pop-up Mention Suggestions */}
+        {mentionQuery !== null && filteredMentions.length > 0 && (
+          <div
+            className="absolute bottom-full left-4 right-4 sm:left-6 sm:right-auto sm:w-80 mb-2 rounded-2xl border shadow-2xl overflow-hidden z-50 animate-fadeInUp"
+            style={{
+              background: darkMode ? '#1b1b1e' : '#ffffff',
+              borderColor: borderColor
+            }}
+          >
+            <div
+              className="px-3.5 py-2 border-b text-[11px] font-semibold flex items-center gap-1.5"
+              style={{
+                background: darkMode ? '#151518' : '#f8fafc',
+                borderColor: borderColor,
+                color: secondaryTextColor
+              }}
+            >
+              <AtSign size={12} className="text-teal-400" />
+              <span>Pilih Anggota Tim atau CAKRA</span>
+            </div>
+            <div className="max-h-48 overflow-y-auto py-1 custom-scrollbar">
+              {filteredMentions.map((opt, idx) => (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() => insertMention(opt)}
+                  className={`w-full text-left px-3.5 py-2 flex items-center gap-2.5 transition-colors ${
+                    idx === mentionIndex
+                      ? 'bg-teal-500/20 text-teal-300'
+                      : 'hover:bg-white/5'
+                  }`}
+                  style={{ color: textColor }}
+                >
+                  {opt.isAi ? (
+                    <div className="w-6 h-6 rounded-lg bg-teal-500/10 flex items-center justify-center p-0.5 shrink-0 border border-teal-500/20">
+                      <img src={cakraLogo} alt="CAKRA" className="w-full h-full object-contain" />
+                    </div>
+                  ) : (
+                    <div
+                      className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 border border-white/10 bg-gradient-to-br from-teal-600 to-emerald-700 text-white"
+                    >
+                      {opt.name.charAt(0).toUpperCase()}
+                    </div>
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <div className="text-xs font-semibold truncate flex items-center gap-1.5">
+                      <span>{opt.displayName}</span>
+                      {opt.isAi && (
+                        <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-teal-950 text-teal-300 border border-teal-700/60 font-medium">
+                          AI
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-[10px] truncate" style={{ color: secondaryTextColor }}>
+                      {opt.description}
+                    </div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
-        <textarea
-          ref={textareaRef}
-          value={text}
-          onChange={handleTextChange}
-          onKeyDown={handleKeyDown}
-          placeholder="Ketik pesan diskusi... (Gunakan @cakra untuk meminta tanggapan AI)"
-          rows={1}
-          className="flex-1 bg-transparent border-0 text-sm focus:outline-none focus:ring-0 resize-none max-h-32 py-1 leading-relaxed"
+        {/* Kapsul Melayang Elevated Input (Kloning Bentuk ChatInputArea Utama) */}
+        <div
+          className="w-full rounded-3xl p-2 sm:p-2.5 transition-all flex flex-col shadow-xl"
           style={{
-            minHeight: '24px',
-            color: textColor
+            background: inputBg,
+            border: `1px solid ${borderColor}`,
+            boxShadow: darkMode
+              ? '0 8px 30px rgba(0, 0, 0, 0.35)'
+              : '0 8px 24px rgba(0, 0, 0, 0.06)'
           }}
-        />
-
-        <button
-          type="button"
-          onClick={handleSubmit}
-          disabled={!text.trim() || isSending}
-          className={`p-2 rounded-lg transition-all shrink-0 mb-0.5 ${
-            text.trim() && !isSending
-              ? 'bg-gradient-to-r from-teal-500 to-emerald-600 text-white shadow-md shadow-teal-950/40 hover:brightness-110'
-              : 'opacity-50 cursor-not-allowed border'
-          }`}
-          style={(!text.trim() || isSending) ? { background: pageBg, borderColor: borderColor, color: secondaryTextColor } : {}}
-          title="Kirim pesan"
         >
-          <Send size={16} />
-        </button>
-      </div>
+          <div className="flex items-end gap-2 px-2">
+            {/* Tombol Mention Cepat @cakra */}
+            <button
+              type="button"
+              onClick={quickMentionCakra}
+              className="mb-1 px-2.5 py-1 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all border shrink-0"
+              style={{
+                background: text.includes('@cakra') ? 'rgba(20, 184, 166, 0.15)' : 'transparent',
+                borderColor: text.includes('@cakra') ? 'rgba(20, 184, 166, 0.4)' : borderColor,
+                color: text.includes('@cakra') ? '#2dd4bf' : secondaryTextColor
+              }}
+              title="Panggil CAKRA AI Teammate"
+            >
+              <img src={cakraLogo} alt="CAKRA" className="w-3.5 h-3.5 object-contain" />
+              <span>@cakra</span>
+            </button>
 
-      <div className="flex items-center justify-between mt-1.5 px-1 text-[11px]" style={{ color: secondaryTextColor }}>
-        <span>Tekan <b>Enter</b> untuk kirim, <b>Shift+Enter</b> untuk baris baru</span>
-        <span className="flex items-center gap-1 text-teal-500/80">
-          <Sparkles size={11} />
-          CAKRA menyimak otomatis
-        </span>
+            {/* Textarea Auto-Expanding */}
+            <textarea
+              ref={textareaRef}
+              value={text}
+              onChange={handleTextChange}
+              onKeyDown={handleKeyDown}
+              rows={1}
+              placeholder="Ketik pesan diskusi... (Gunakan @cakra untuk bantuan AI)"
+              className="flex-1 bg-transparent border-0 outline-none resize-none py-1.5 px-1 text-[14px] leading-relaxed custom-scrollbar placeholder:text-neutral-500"
+              style={{
+                color: textColor,
+                maxHeight: '160px'
+              }}
+            />
+
+            {/* Tombol Kirim (Send Button) */}
+            <button
+              type="button"
+              onClick={handleSubmit}
+              disabled={!text.trim() || isSending}
+              className={`mb-0.5 w-9 h-9 rounded-full flex items-center justify-center shrink-0 transition-all ${
+                text.trim() && !isSending
+                  ? 'bg-teal-600 hover:bg-teal-500 text-white shadow-md shadow-teal-600/30'
+                  : 'bg-neutral-800/40 text-neutral-500 cursor-not-allowed'
+              }`}
+              title="Kirim pesan (Enter)"
+            >
+              <ArrowUp size={18} strokeWidth={2.5} />
+            </button>
+          </div>
+        </div>
+
+        {/* Footer Info Keyboard Shortcut Tipis Bawah */}
+        <div className="flex items-center justify-between px-3 mt-1.5 text-[11px]" style={{ color: secondaryTextColor }}>
+          <span>Tekan <strong>Enter</strong> untuk kirim, <strong>Shift+Enter</strong> untuk baris baru</span>
+          <span className="flex items-center gap-1 opacity-75 text-[10px]">
+            <Sparkles size={10} className="text-teal-400" />
+            CAKRA menyimak diskusi
+          </span>
+        </div>
       </div>
     </div>
   );

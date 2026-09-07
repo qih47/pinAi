@@ -7,9 +7,13 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 export const useCollabStream = ({
   roomId,
   onNewMessage,
+  onMessageEdited,
   onTyping,
   onDocumentUpdated,
-  onMembersUpdated
+  onMembersUpdated,
+  onCakraStreamStart,
+  onCakraStreamChunk,
+  onCakraStreamEnd
 }) => {
   const [isConnected, setIsConnected] = useState(false);
   const eventSourceRef = useRef(null);
@@ -47,6 +51,26 @@ export const useCollabStream = ({
             case 'new_message':
               if (payload.message && onNewMessage) {
                 onNewMessage(payload.message);
+              }
+              break;
+            case 'message_edited':
+              if (payload.message && onMessageEdited) {
+                onMessageEdited(payload.message);
+              }
+              break;
+            case 'cakra_stream_start':
+              if (onCakraStreamStart) {
+                onCakraStreamStart(payload);
+              }
+              break;
+            case 'cakra_stream_chunk':
+              if (onCakraStreamChunk) {
+                onCakraStreamChunk(payload);
+              }
+              break;
+            case 'cakra_stream_end':
+              if (onCakraStreamEnd) {
+                onCakraStreamEnd(payload);
               }
               break;
             case 'typing':

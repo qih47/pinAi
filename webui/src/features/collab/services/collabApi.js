@@ -50,13 +50,33 @@ export const collabApi = {
     return res.data?.messages || [];
   },
 
-  // Kirim pesan obrolan tim baru
-  sendMessage: async (roomId, messageText, attachments = []) => {
+  // Kirim pesan obrolan tim baru (dengan dukungan lampiran & mode preset)
+  sendMessage: async (roomId, messageText, attachments = [], mode = null) => {
     const res = await apiClient.post(`/collab/rooms/${roomId}/messages`, {
       message_text: messageText,
-      attachments
+      attachments,
+      mode: mode || undefined
     });
     return res.data?.message;
+  },
+
+  // Edit pesan milik sendiri
+  editMessage: async (roomId, messageId, messageText) => {
+    const res = await apiClient.put(`/collab/rooms/${roomId}/messages/${messageId}`, {
+      message_text: messageText
+    });
+    return res.data?.message;
+  },
+
+  // Kirim status mengetik real-time
+  sendTypingStatus: async (roomId, isTyping) => {
+    try {
+      await apiClient.post(`/collab/rooms/${roomId}/typing`, {
+        is_typing: isTyping
+      });
+    } catch (e) {
+      // Non-blocking error
+    }
   },
 
   // Cari personil untuk diundang

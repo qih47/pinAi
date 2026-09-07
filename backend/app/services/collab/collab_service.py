@@ -128,9 +128,8 @@ class CollabService:
                 # 4. Insert initial welcome message from CAKRA
                 welcome_text = (
                     f"Halo rekan-rekan! Selamat datang di ruang diskusi **{name}**.\n\n"
-                    f"Saya **CAKRA (AI Teammate)** siap mendampingi tim dalam membahas agenda *{topic or 'regulasi dan dokumen kerja'}*. "
-                    "Anda dapat berdiskusi bebas dengan tim, menyusun draf di panel dokumen samping, "
-                    "atau memanggil saya kapan saja dengan menyebut **@cakra**."
+                    f"Saya **CAKRA (AI Teammate)** siap mendampingi tim dalam membahas agenda *{topic or 'diskusi dan koordinasi kerja'}*. "
+                    "Silakan berdiskusi bebas bersama tim, dan panggil saya kapan saja dengan menyebut **@cakra** jika memerlukan masukan, analisis, atau bantuan."
                 )
                 await conn.execute(
                     """
@@ -304,6 +303,7 @@ class CollabService:
         sender_name: str,
         message_text: str,
         attachments: Optional[List[Dict[str, Any]]] = None,
+        mode: Optional[str] = None,
         request: Optional[Any] = None
     ) -> Dict[str, Any]:
         """
@@ -313,7 +313,8 @@ class CollabService:
         attachments = attachments or []
         attachments_json = json.dumps(attachments)
         msg_id = str(uuid.uuid4())
-        is_mention = bool(re.search(r"@cakra\b", message_text, re.IGNORECASE))
+        # Deteksi apakah ada mention @cakra atau panggil cakra secara langsung
+        is_mention = bool(re.search(r"\b@?cakra\b", message_text, re.IGNORECASE))
 
         async with get_db() as conn:
             row = await conn.fetchrow(
@@ -349,6 +350,7 @@ class CollabService:
                 room_id=room_id,
                 trigger_message=msg_dict,
                 is_mention=is_mention,
+                mode=mode,
                 request=request
             )
         )
@@ -356,10 +358,63 @@ class CollabService:
         return msg_dict
 
     @staticmethod
+    async def edit_message(room_id: str, message_id: str, npp: str, new_text: str) -> Dict[str, Any]:
+        """
+        Mengedit pesan milik sendiri di ruang diskusi dan membroadcast perubahan via SSE.
+        """
+        async with get_db() as conn:
+            msg = await conn.fetchrow(
+                "SELECT id, sender_npp, sender_type FROM collab_messages WHERE id = $1 AND room_id = $2",
+                uuid.UUID(message_id), uuid.UUID(room_id)
+            )
+            if not msg:
+                raise ValueError("Pesan tidak ditemukan.")
+            if str(msg["sender_npp"]).strip() != str(npp).strip():
+                raise PermissionError("Anda hanya dapat mengedit pesan milik Anda sendiri.")
+
+            row = await conn.fetchrow(
+                """
+                UPDATE collab_messages
+                SET message_text = $1
+                WHERE id = $2 AND room_id = $3
+                RETURNING id::text, room_id::text, sender_type, sender_npp, sender_name, message_text, is_mention, interjection_type, attachments, created_at
+                """,
+                new_text, uuid.UUID(message_id), uuid.UUID(room_id)
+            )
+
+        msg_dict = dict(row)
+        msg_dict["created_at"] = msg_dict["created_at"].isoformat() if msg_dict.get("created_at") else ""
+        if isinstance(msg_dict.get("attachments"), str):
+            try:
+                msg_dict["attachments"] = json.loads(msg_dict["attachments"])
+            except Exception:
+                pass
+
+        await collab_broadcast_manager.broadcast(room_id, {
+            "type": "message_edited",
+            "message": msg_dict
+        })
+        return msg_dict
+
+    @staticmethod
+    async def broadcast_typing(room_id: str, npp: str, user_name: str, is_typing: bool, photo_url: Optional[str] = None):
+        """
+        Menyebarkan indikator mengetik dari pengguna ke seluruh anggota ruangan.
+        """
+        await collab_broadcast_manager.send_typing(
+            room_id=room_id,
+            sender=user_name,
+            sender_npp=npp,
+            photo_url=photo_url,
+            is_typing=is_typing
+        )
+
+    @staticmethod
     async def _handle_ai_teammate_trigger(
         room_id: str,
         trigger_message: Dict[str, Any],
         is_mention: bool,
+        mode: Optional[str] = None,
         request: Optional[Any] = None
     ):
         """
@@ -374,10 +429,10 @@ class CollabService:
                 if not room:
                     return
 
-                # Ambil 15 riwayat pesan terakhir
+                # Ambil 15 riwayat pesan terakhir beserta lampiran
                 rows = await conn.fetch(
                     """
-                    SELECT sender_type, sender_npp, sender_name, message_text, is_mention, created_at
+                    SELECT sender_type, sender_npp, sender_name, message_text, is_mention, attachments, created_at
                     FROM collab_messages
                     WHERE room_id = $1
                     ORDER BY created_at DESC
@@ -385,19 +440,54 @@ class CollabService:
                     """,
                     uuid.UUID(room_id)
                 )
-                recent_messages = [dict(r) for r in reversed(rows)]
+                recent_messages = []
+                for r in reversed(rows):
+                    item = dict(r)
+                    if isinstance(item.get("attachments"), str):
+                        try:
+                            item["attachments"] = json.loads(item["attachments"])
+                        except Exception:
+                            item["attachments"] = []
+                    recent_messages.append(item)
+
+            # 1. Ekstrak rujukan dokumen aktif jika ada di lampiran pesan pemicu
+            context_doc = None
+            for att in trigger_message.get("attachments") or []:
+                if isinstance(att, dict) and att.get("type") == "context_doc":
+                    context_doc = att
+                    break
+
+            # 2. Jika tidak ada di pesan pemicu (misal rekan kerja lain yang menyuruh: "coba cakra bedah pointnya dulu"),
+            # cari rujukan dokumen aktif dari pesan-pesan sebelumnya dalam ruangan diskusi
+            if not context_doc:
+                for msg in reversed(recent_messages):
+                    msg_atts = msg.get("attachments")
+                    if isinstance(msg_atts, list):
+                        for att in msg_atts:
+                            if isinstance(att, dict) and att.get("type") == "context_doc":
+                                context_doc = att
+                                break
+                    if context_doc:
+                        break
 
             mode_collab = ModeCollab()
-            should_intervene = False
-            interjection_type = "EXPLICIT_MENTION" if is_mention else None
-
-            if is_mention:
-                should_intervene = True
+            # Di ruang Collab, tag dokumen atau tag mode yang dikirim rekan kerja
+            # tidak memaksa CAKRA langsung membalas jika pesan ditujukan ke sesama tim tanpa @cakra.
+            should_intervene = is_mention
+            if mode:
+                interjection_type = f"MODE_{mode.upper()}"
+            elif is_mention:
+                interjection_type = "EXPLICIT_MENTION"
             else:
-                # Silent evaluation oleh model ringan gemma4:e4b
+                interjection_type = None
+
+            # Jika bukan mention langsung atau perintah ke CAKRA, evaluasi apakah butuh intervensi proaktif (diskusi kerja/regulasi)
+            if not should_intervene:
+                # Obrolan umum/santai antar personil ("makan siang yuk", "halo bro", "siap nanti ya"):
+                # CAKRA diam dan tidak mengganggu kecuali dimention/dipanggil langsung.
                 eval_ok, eval_reason = await mode_collab.should_intervene(
                     recent_messages=recent_messages,
-                    room_topic=room["topic"]
+                    room_topic=room["topic"] or ""
                 )
                 if eval_ok:
                     should_intervene = True
@@ -406,10 +496,16 @@ class CollabService:
             if not should_intervene:
                 return
 
-            # 1. Kirim typing indicator dari CAKRA
-            await collab_broadcast_manager.send_typing(room_id, sender="CAKRA AI Teammate", is_typing=True)
+            cakra_msg_id = str(uuid.uuid4())
 
-            # 2. Stream & kumpulkan respons dari CAKRA
+            # 1. Kirim stream start dari CAKRA
+            await collab_broadcast_manager.broadcast(room_id, {
+                "type": "cakra_stream_start",
+                "message_id": cakra_msg_id,
+                "interjection_type": interjection_type or "EXPLICIT_MENTION"
+            })
+
+            # 2. Stream & kumpulkan respons dari CAKRA token-by-token secara real-time
             full_response_text = ""
             async for chunk in mode_collab.generate_response(
                 room_name=room["name"],
@@ -418,16 +514,22 @@ class CollabService:
                 recent_messages=recent_messages,
                 is_mention=is_mention,
                 interjection_type=interjection_type or "EXPLICIT_MENTION",
+                mode=mode,
+                context_doc=context_doc,
                 request=request
             ):
                 full_response_text += chunk
+                await collab_broadcast_manager.broadcast(room_id, {
+                    "type": "cakra_stream_chunk",
+                    "message_id": cakra_msg_id,
+                    "chunk": chunk
+                })
 
             clean_response = full_response_text.strip()
             if not clean_response:
                 clean_response = "Saya sedang menyimak diskusi tim. Silakan lanjutkan atau mention @cakra jika butuh bantuan formulasi aturan."
 
             # 3. Simpan respons CAKRA ke collab_messages
-            cakra_msg_id = str(uuid.uuid4())
             async with get_db() as conn:
                 cakra_row = await conn.fetchrow(
                     """
@@ -446,13 +548,16 @@ class CollabService:
             cakra_dict["created_at"] = cakra_dict["created_at"].isoformat()
             cakra_dict["attachments"] = []
 
-            # 4. Hentikan typing indicator & broadcast pesan CAKRA
-            await collab_broadcast_manager.send_typing(room_id, sender="CAKRA AI Teammate", is_typing=False)
+            # 4. Broadcast akhir streaming dan pesan final
+            await collab_broadcast_manager.broadcast(room_id, {
+                "type": "cakra_stream_end",
+                "message": cakra_dict
+            })
             await collab_broadcast_manager.broadcast(room_id, {
                 "type": "new_message",
                 "message": cakra_dict
             })
-            logger.info(f"✅ [COLLAB_AI] Response sent to room {room_id} ({interjection_type})")
+            logger.info(f"✅ [COLLAB_AI] Response streamed to room {room_id} ({interjection_type})")
 
         except Exception as e:
             logger.error(f"❌ [COLLAB_AI] Error in AI teammate background handler: {e}")

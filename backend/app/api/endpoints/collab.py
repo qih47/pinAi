@@ -39,6 +39,15 @@ class InviteMembersRequest(BaseModel):
 class SendMessageRequest(BaseModel):
     message_text: str
     attachments: Optional[List[Dict[str, Any]]] = []
+    mode: Optional[str] = None
+
+
+class EditMessageRequest(BaseModel):
+    message_text: str
+
+
+class TypingStatusRequest(BaseModel):
+    is_typing: bool
 
 
 @router.get("/rooms", tags=["Collab"])
@@ -178,12 +187,69 @@ async def send_message(
             sender_name=sender_name,
             message_text=payload.message_text.strip(),
             attachments=payload.attachments,
+            mode=payload.mode,
             request=request
         )
         return {"status": "success", "message": message}
     except Exception as e:
         logger.error(f"[COLLAB_API] Error posting message: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.put("/rooms/{room_id}/messages/{message_id}", tags=["Collab"])
+async def edit_message(
+    room_id: str,
+    message_id: str,
+    payload: EditMessageRequest,
+    current_user_npp: str = Depends(get_current_user_npp)
+):
+    """Mengedit pesan yang telah dikirim pengguna di ruang diskusi."""
+    if not current_user_npp or current_user_npp == "GUEST":
+        raise HTTPException(status_code=401, detail="Sesi login tidak valid.")
+    if not payload.message_text.strip():
+        raise HTTPException(status_code=400, detail="Isi pesan tidak boleh kosong.")
+    try:
+        updated = await CollabService.edit_message(
+            room_id=room_id,
+            message_id=message_id,
+            npp=current_user_npp,
+            new_text=payload.message_text.strip()
+        )
+        return {"status": "success", "message": updated}
+    except PermissionError as pe:
+        raise HTTPException(status_code=403, detail=str(pe))
+    except ValueError as ve:
+        raise HTTPException(status_code=404, detail=str(ve))
+    except Exception as e:
+        logger.error(f"[COLLAB_API] Error editing message: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/rooms/{room_id}/typing", tags=["Collab"])
+async def set_typing_status(
+    room_id: str,
+    payload: TypingStatusRequest,
+    current_user_npp: str = Depends(get_current_user_npp)
+):
+    """Mengirim event indikator mengetik real-time ke ruangan."""
+    if not current_user_npp or current_user_npp == "GUEST":
+        raise HTTPException(status_code=401, detail="Sesi login tidak valid.")
+    sender_name = current_user_npp
+    photo_url = None
+    try:
+        async with get_db() as conn:
+            user_row = await conn.fetchrow(
+                "SELECT preferred_name, fullname, profile_photo_url FROM users WHERE npp = $1",
+                current_user_npp
+            )
+            if user_row:
+                sender_name = user_row["preferred_name"] or user_row["fullname"] or current_user_npp
+                photo_url = user_row["profile_photo_url"] or ""
+    except Exception:
+        pass
+
+    await CollabService.broadcast_typing(room_id, current_user_npp, sender_name, payload.is_typing, photo_url)
+    return {"status": "success"}
 
 
 @router.get("/rooms/{room_id}/stream", tags=["Collab"])

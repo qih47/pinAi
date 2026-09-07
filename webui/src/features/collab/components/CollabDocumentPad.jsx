@@ -1,32 +1,19 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { FileText, Save, Check, Copy, Download, X, Sparkles, RefreshCw } from 'lucide-react';
 
-const SE_TEMPLATE = `# SURAT EDARAN DIREKSI PT PINDAD
-Nomor: SE /     /       / 2026
+const DISCUSSION_TEMPLATE = `# Catatan Diskusi Tim
+Topik: [Topik Bahasan]
+Tanggal: 
 
-TENTANG
-[PERIHAL SURAT EDARAN]
+## 1. Poin Pembahasan
+- ...
 
-A. LATAR BELAKANG
-1. ...
-2. ...
+## 2. Kesimpulan & Keputusan Bersama
+- ...
 
-B. DASAR HUKUM / MENGINGAT
-1. Undang-Undang Nomor 19 Tahun 2003 tentang Badan Usaha Milik Negara;
-2. Perjanjian Kerja Bersama (PKB) PT Pindad yang berlaku;
-3. Surat Keputusan Direksi PT Pindad Nomor ...
-
-C. KETENTUAN DAN PETUNJUK PELAKSANAAN
-1. ...
-2. ...
-
-D. KETENTUAN PENUTUP
-Surat Edaran ini berlaku sejak tanggal ditetapkan dengan ketentuan apabila di kemudian hari terdapat kekeliruan, akan diadakan perbaikan sebagaimana mestinya.
-
-Ditetapkan di : Bandung
-Pada tanggal  : 
-
-DIREKSI PT PINDAD
+## 3. Tindak Lanjut (Action Items)
+- [ ] Tugas 1 (PIC: ...)
+- [ ] Tugas 2 (PIC: ...)
 `;
 
 const CollabDocumentPad = ({
@@ -73,10 +60,10 @@ const CollabDocumentPad = ({
   };
 
   const handleInsertTemplate = () => {
-    if (content.trim() && !window.confirm('Timpa isi draf saat ini dengan Template Resmi Surat Edaran?')) {
+    if (content.trim() && !window.confirm('Gunakan format Template Notulen & Poin Diskusi?')) {
       return;
     }
-    setContent(SE_TEMPLATE);
+    setContent(DISCUSSION_TEMPLATE);
     setIsDirty(true);
   };
 
@@ -85,7 +72,7 @@ const CollabDocumentPad = ({
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.setAttribute('download', `Draf_Dokumen_Tim_${Date.now()}.md`);
+    link.setAttribute('download', `Catatan_Diskusi_Tim_${Date.now()}.md`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -114,12 +101,12 @@ const CollabDocumentPad = ({
           </div>
           <div>
             <h3 className="text-sm font-semibold flex items-center gap-2" style={{ color: textColor }}>
-              Document Pad
+              Catatan Tim
               {isDirty && (
                 <span className="h-2 w-2 rounded-full bg-amber-400" title="Ada perubahan belum disimpan" />
               )}
             </h3>
-            <p className="text-[11px]" style={{ color: secondaryTextColor }}>Draf kolaboratif tim & formulasi regulasi</p>
+            <p className="text-[11px]" style={{ color: secondaryTextColor }}>Notulen, ringkasan, dan poin kesepakatan bersama</p>
           </div>
         </div>
 
@@ -152,7 +139,7 @@ const CollabDocumentPad = ({
               onClick={onClose}
               className="p-1.5 rounded-lg hover:bg-white/5 transition-colors"
               style={{ color: secondaryTextColor }}
-              title="Tutup Panel Dokumen"
+              title="Tutup Panel Catatan"
             >
               <X size={16} />
             </button>
@@ -177,10 +164,10 @@ const CollabDocumentPad = ({
               background: buttonBg,
               borderColor: borderColor
             }}
-            title="Gunakan format Surat Edaran baku"
+            title="Gunakan format notulen & tindak lanjut"
           >
             <Sparkles size={12} />
-            <span>Format SE Baku</span>
+            <span>Template Notulen</span>
           </button>
         </div>
 
@@ -189,7 +176,7 @@ const CollabDocumentPad = ({
             onClick={handleCopy}
             className="flex items-center gap-1 px-2 py-1 rounded hover:bg-white/5 transition-colors"
             style={{ color: secondaryTextColor }}
-            title="Salin seluruh isi dokumen"
+            title="Salin seluruh isi catatan"
           >
             {copied ? <Check size={13} className="text-emerald-400" /> : <Copy size={13} />}
             <span>Salin</span>
@@ -199,7 +186,7 @@ const CollabDocumentPad = ({
             onClick={handleDownload}
             className="flex items-center gap-1 px-2 py-1 rounded hover:bg-white/5 transition-colors"
             style={{ color: secondaryTextColor }}
-            title="Unduh draf (.md)"
+            title="Unduh catatan (.md)"
           >
             <Download size={13} />
             <span>Export</span>
@@ -215,7 +202,7 @@ const CollabDocumentPad = ({
         <textarea
           value={content}
           onChange={handleChange}
-          placeholder="Mulai tulis atau susun draf Surat Edaran, SK, atau aturan bersama di sini. Anda juga dapat meminta CAKRA merumuskan draf lewat chat..."
+          placeholder="Tulis notulen rapat, catatan bersama, poin kesepakatan, atau daftar tugas di sini..."
           className="w-full h-full resize-none bg-transparent border-0 text-sm font-mono leading-relaxed focus:outline-none focus:ring-0 custom-scrollbar"
           style={{ color: textColor }}
           spellCheck={false}

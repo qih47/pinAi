@@ -42,7 +42,7 @@ export default function ChatPage({ isGuest,
   const tGlobal = translations[language] || translations.id;
 
   React.useEffect(() => {
-    if (corporateMode) {
+    if (corporateMode && corporateMode !== 'collab') {
       setShowRightSidebar(false);
     }
   }, [corporateMode, setShowRightSidebar]);
@@ -385,7 +385,7 @@ export default function ChatPage({ isGuest,
             )}
 
             {/* 📁 TOMBOL SESSION FILES (Dipindah ke kanan Search) */}
-            {messages.length > 0 && (
+            {(messages.length > 0 || corporateMode === 'collab') && (
               <button
                 onClick={toggleRightSidebar}
                 style={{
@@ -463,7 +463,19 @@ export default function ChatPage({ isGuest,
               {corporateMode === 'mail' && <EmailTriageTab theme={theme} darkMode={darkMode} userData={currentUserData} language={language} isMobile={isMobile} toggleSidebar={() => setSidebarOpen(!sidebarOpen)} />}
               {corporateMode === 'notadinas' && <DocumentGeneratorTab theme={theme} darkMode={darkMode} userData={currentUserData} language={language} />}
               {corporateMode === 'vendor' && <VendorAnalyzerTab theme={theme} darkMode={darkMode} userData={currentUserData} language={language} />}
-              {corporateMode === 'collab' && <CollabWorkspace theme={theme} darkMode={darkMode} userData={currentUserData} language={language} isMobile={isMobile} toggleSidebar={() => setSidebarOpen(!sidebarOpen)} />}
+              {corporateMode === 'collab' && (
+                <CollabWorkspace
+                  theme={theme}
+                  darkMode={darkMode}
+                  userData={currentUserData}
+                  language={language}
+                  isMobile={isMobile}
+                  toggleSidebar={() => setSidebarOpen(!sidebarOpen)}
+                  onOpenArtifact={handleOpenArtifact}
+                  toggleRightSidebar={toggleRightSidebar}
+                  showRightSidebar={showRightSidebar}
+                />
+              )}
 
               {!corporateMode && (
                 <>
