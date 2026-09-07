@@ -4,7 +4,7 @@ import { isToday, isYesterday, isThisWeek, isThisMonth } from "date-fns";
 import { translations } from "../../../../utils/translations";
 import { useSessionTitle } from "../../../../hooks/useSessionTitle";
 import { useChatStore } from "../../../../stores/chatStore";
-import { FileText, Mail, FileSignature, BarChart3, Activity, MessageSquare, Pin, PinOff, MoreVertical, Edit, Trash2 } from "lucide-react";
+import { FileText, Mail, FileSignature, BarChart3, Activity, MessageSquare, Pin, PinOff, MoreVertical, Edit, Trash2, Users2 } from "lucide-react";
 
 const TypewriterTitle = ({ text, onDone }) => {
   const [displayedText, setDisplayedText] = React.useState("");
@@ -190,6 +190,29 @@ export default function SessionList({
             {t.corporateTools}
           </p>
         </div>
+
+        {/* 👥 Diskusi Tim (Collab Space) */}
+        <Link
+          to="/collab"
+          onClick={() => setActiveMenuId?.(null)}
+          className={`flex items-center transition-all group overflow-hidden text-[14px] ${location.pathname.startsWith('/collab')
+            ? "bg-teal-500/10 text-teal-400 font-semibold border-l-2 border-teal-500 rounded-r-full"
+            : `rounded-full font-medium ${darkMode ? 'hover:bg-white/5' : 'hover:bg-gray-200/50'}`
+            }`}
+          style={{
+            padding: isOpen ? "8px 12px" : "8px",
+            width: isOpen ? "100%" : "auto",
+            gap: isOpen ? "12px" : "0",
+          }}
+          title="Diskusi Tim"
+        >
+          <span className="h-5 w-5 flex items-center justify-center flex-shrink-0">
+            <Users2 size={18} strokeWidth={2} className="group-hover:text-teal-400 transition-colors" style={{ color: location.pathname.startsWith('/collab') ? "currentColor" : (theme?.iconColor || "currentColor") }} />
+          </span>
+          <span className={`whitespace-nowrap transition-opacity duration-300 ${!isOpen ? "hidden" : "opacity-100"}`} style={{ color: location.pathname.startsWith('/collab') ? '' : theme?.textColor }}>
+            Diskusi Tim
+          </span>
+        </Link>
 
         {/* 1. Smart Mail */}
         <Link

@@ -190,6 +190,15 @@ function AppContent() {
           path="/chat/:sessionId"
           element={<SessionRouteWrapper isGuest={false} />}
         />
+        {/* 👥 Mega Fitur: CAKRA Collab Space (Diskusi Tim & AI Teammate Workspace) */}
+        <Route
+          path="/collab"
+          element={<SessionRouteWrapper isGuest={false} corporateMode="collab" />}
+        />
+        <Route
+          path="/collab/:roomId"
+          element={<SessionRouteWrapper isGuest={false} corporateMode="collab" />}
+        />
         <Route
           path="/corporate/mail"
           element={<SessionRouteWrapper isGuest={false} corporateMode="mail" />}

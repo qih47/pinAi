@@ -70,6 +70,7 @@ async def init_db_pool():
                 await _create_corporate_email_triage_table(conn)
                 await _create_corporate_email_drafts_table(conn)
                 await _create_user_account_types_table(conn)
+                await _create_collab_tables(conn)
             except asyncpg.exceptions.InsufficientPrivilegeError as e:
                 logger.warning(f"⚠️ [DB_MIGRATION] Izin ditolak untuk memodifikasi schema public. Minta admin untuk jalankan DDL secara manual: {e}")
             except Exception as e:
@@ -387,6 +388,53 @@ async def _create_user_account_types_table(conn):
             created_at TIMESTAMPTZ NOT NULL DEFAULT now()
         );
         CREATE INDEX IF NOT EXISTS idx_user_account_type ON user_account_types(account_type);
+    """)
+
+async def _create_collab_tables(conn):
+    """
+    Membuat tabel-tabel khusus Collab Space (Diskusi Tim & AI Teammate):
+    - collab_rooms (Master Ruang Diskusi Tim & Draf SE)
+    - collab_room_members (Anggota Tim yang diundang)
+    - collab_messages (Pesan Obrolan Multi-User & Respon Cakra Teammate)
+    """
+    await conn.execute("""
+        CREATE TABLE IF NOT EXISTS collab_rooms (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            name VARCHAR(255) NOT NULL,
+            topic TEXT,
+            document_content TEXT DEFAULT '',
+            created_by VARCHAR(50) REFERENCES users(npp) ON DELETE SET NULL,
+            is_active BOOLEAN DEFAULT TRUE,
+            created_at TIMESTAMPTZ DEFAULT NOW(),
+            updated_at TIMESTAMPTZ DEFAULT NOW()
+        );
+        CREATE INDEX IF NOT EXISTS idx_collab_rooms_created ON collab_rooms(created_at DESC);
+
+        CREATE TABLE IF NOT EXISTS collab_room_members (
+            id SERIAL PRIMARY KEY,
+            room_id UUID REFERENCES collab_rooms(id) ON DELETE CASCADE,
+            npp VARCHAR(50) REFERENCES users(npp) ON DELETE CASCADE,
+            role_in_room VARCHAR(20) DEFAULT 'MEMBER',
+            last_read_at TIMESTAMPTZ DEFAULT NOW(),
+            joined_at TIMESTAMPTZ DEFAULT NOW(),
+            UNIQUE(room_id, npp)
+        );
+        CREATE INDEX IF NOT EXISTS idx_collab_members_user ON collab_room_members(npp);
+        CREATE INDEX IF NOT EXISTS idx_collab_members_room ON collab_room_members(room_id);
+
+        CREATE TABLE IF NOT EXISTS collab_messages (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            room_id UUID REFERENCES collab_rooms(id) ON DELETE CASCADE,
+            sender_type VARCHAR(20) NOT NULL,
+            sender_npp VARCHAR(50),
+            sender_name VARCHAR(255) NOT NULL,
+            message_text TEXT NOT NULL,
+            is_mention BOOLEAN DEFAULT FALSE,
+            interjection_type VARCHAR(30),
+            attachments JSONB DEFAULT '[]'::jsonb,
+            created_at TIMESTAMPTZ DEFAULT NOW()
+        );
+        CREATE INDEX IF NOT EXISTS idx_collab_messages_room_time ON collab_messages(room_id, created_at ASC);
     """)
 
 async def get_continuation_state(session_uuid: str) -> dict:

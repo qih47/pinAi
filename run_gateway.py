@@ -60,6 +60,7 @@ SSE_PATHS = [
     "/api/analytics/logs/stream",
     "/api/analytics/metrics/stream",
     "/api/chat/stream",
+    "/api/collab/rooms",
 ]
 
 # ─── Shared httpx Client (persistent connection pool) ────────────────────────

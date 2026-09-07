@@ -16,6 +16,7 @@ from backend.app.services.pipeline.modes.mode_focus import ModeFocus
 from backend.app.services.pipeline.modes.mode_compliance import ModeCompliance
 from backend.app.services.pipeline.modes.mode_redteam import ModeRedTeam
 from backend.app.services.pipeline.modes.mode_email import ModeEmail
+from backend.app.services.pipeline.modes.mode_collab import ModeCollab
 
 from backend.app.services.pipeline.modes.mode_utils import detect_precheck, format_session_title
 from backend.app.services.pipeline.call1_router import execute_call1_routing
@@ -40,7 +41,8 @@ class ModeHub:
             "focus": ModeFocus(),
             "compliance": ModeCompliance(),
             "redteam": ModeRedTeam(),
-            "email": ModeEmail()
+            "email": ModeEmail(),
+            "collab": ModeCollab()
         }
 
     async def execute(
