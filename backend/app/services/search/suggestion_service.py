@@ -171,7 +171,7 @@ class SuggestionService:
 
         # 1. Coba ambil metadata dokumen dan rag_document_questions (Synthetic QA di PostgreSQL)
         try:
-            from backend.app.core.database import database
+            from backend.app.core import database
             pool = getattr(database, "db_pool", None)
             if pool:
                 async with pool.acquire() as conn:

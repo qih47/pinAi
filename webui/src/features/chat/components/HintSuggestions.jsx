@@ -421,8 +421,8 @@ export default function HintSuggestions({
             msOverflowStyle: "none",
           }}
         >
-          {/* Breadcrumb Header jika sedang di STEP 2 (Memilih Pertanyaan Dokumen) */}
-          {selectedDoc && (
+          {/* Breadcrumb Header jika sedang di STEP 2 (Memilih Pertanyaan Dokumen) - Tetap di atas hanya saat FirstChat (!isUpward) */}
+          {selectedDoc && !isUpward && (
             <div className="flex items-center justify-between px-3 py-1 mb-0.5 rounded-lg bg-indigo-500/10 border border-indigo-500/20 text-xs animate-fadeIn">
               <div className="flex items-center gap-1.5 text-indigo-300 overflow-hidden font-medium">
                 <HelpCircle size={13} className="text-indigo-400 flex-shrink-0" />
@@ -476,6 +476,25 @@ export default function HintSuggestions({
               )}
             </button>
           ))}
+
+          {/* Saat isUpward (kondisi layout chat sudah ke bawah): Tag Rekomendasi Pertanyaan di PALING BAWAH */}
+          {selectedDoc && isUpward && (
+            <div className="flex items-center justify-between px-3 py-1 mt-1 rounded-lg bg-indigo-500/10 border border-indigo-500/20 text-xs animate-fadeIn">
+              <div className="flex items-center gap-1.5 text-indigo-300 overflow-hidden font-medium">
+                <HelpCircle size={13} className="text-indigo-400 flex-shrink-0" />
+                <span className="truncate">Rekomendasi Pertanyaan: <strong className="text-white">{selectedDoc.title}</strong></span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedDoc(null)}
+                className="flex items-center gap-1 text-[11px] text-gray-400 hover:text-white px-1.5 py-0.5 rounded hover:bg-white/10 transition-colors flex-shrink-0 ml-2"
+                title="Pilih dokumen lain"
+              >
+                <ArrowLeft size={11} />
+                <span>Ganti Dokumen</span>
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>
