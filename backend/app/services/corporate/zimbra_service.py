@@ -9,6 +9,12 @@ import io
 import PyPDF2
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from email.mime.base import MIMEBase
+from email import encoders
+import base64
+import re
+import urllib.parse
+import html
 
 logger = logging.getLogger("CAKRA_ZIMBRA_SERVICE")
 
@@ -67,15 +73,42 @@ def get_text_from_email(msg):
     html_content = ""
     attachments_text = ""
     attachments = []
+    inline_images = {}
     part_counter = 0
 
     if msg.is_multipart():
         for part in msg.walk():
-            content_type = part.get_content_type()
+            content_type = (part.get_content_type() or "").lower()
             content_disposition = str(part.get("Content-Disposition") or "")
             raw_filename = part.get_filename()
+            content_id = str(part.get("Content-ID") or "").strip()
             
-            # Deteksi apakah part adalah file lampiran
+            # 1. Deteksi apakah part adalah gambar inline / embedded CID (seperti logo/tanda tangan)
+            if content_type.startswith("image/"):
+                try:
+                    payload_bytes = part.get_payload(decode=True)
+                    if payload_bytes:
+                        b64_img = base64.b64encode(payload_bytes).decode('ascii')
+                        data_uri = f"data:{content_type};base64,{b64_img}"
+                        
+                        if content_id:
+                            clean_cid = content_id.strip().strip("<>").strip()
+                            inline_images[clean_cid] = data_uri
+                            inline_images[f"<{clean_cid}>"] = data_uri
+                            inline_images[content_id] = data_uri
+                            
+                        if raw_filename:
+                            fn = decode_mime_header(raw_filename)
+                            inline_images[raw_filename] = data_uri
+                            inline_images[fn] = data_uri
+                            
+                        # Jika bagian ini memiliki Content-ID atau bertipe inline, jangan jadikan file attachment terpisah
+                        if content_id or "inline" in content_disposition.lower():
+                            continue
+                except Exception as e:
+                    logger.warning(f"Gagal memproses inline image part: {e}")
+
+            # 2. Deteksi apakah part adalah file lampiran dokumen biasa
             is_attachment = "attachment" in content_disposition.lower() or bool(raw_filename)
             
             if is_attachment:
@@ -116,6 +149,7 @@ def get_text_from_email(msg):
                 part_counter += 1
                 continue
             
+            # 3. Konten Text / HTML
             try:
                 payload = part.get_payload(decode=True)
                 if payload:
@@ -141,6 +175,29 @@ def get_text_from_email(msg):
         except Exception as e:
             logger.warning(f"Failed to decode single email: {e}")
             
+    # Gantikan seluruh referensi cid: dengan data URI base64
+    if inline_images and html_content:
+        for cid_key, data_uri in inline_images.items():
+            if not cid_key:
+                continue
+            html_content = html_content.replace(f"cid:{cid_key}", data_uri)
+            html_content = html_content.replace(f"cid:<{cid_key}>", data_uri)
+            html_content = html_content.replace(f"cid:&lt;{cid_key}&gt;", data_uri)
+            quoted_key = urllib.parse.quote(cid_key)
+            if quoted_key != cid_key:
+                html_content = html_content.replace(f"cid:{quoted_key}", data_uri)
+                
+        def _cid_replacer(match):
+            cid_raw = match.group(1).strip().strip("<>").strip()
+            cid_decoded = html.unescape(cid_raw)
+            if cid_decoded in inline_images:
+                return f'src="{inline_images[cid_decoded]}"'
+            if cid_raw in inline_images:
+                return f'src="{inline_images[cid_raw]}"'
+            return match.group(0)
+
+        html_content = re.sub(r'src=["\']cid:([^"\']+)["\']', _cid_replacer, html_content, flags=re.IGNORECASE)
+
     text_res = ""
     html_res = ""
     
@@ -310,8 +367,15 @@ def get_email_attachment_bytes(
             
         part_counter = 0
         for part in msg.walk():
+            content_type = (part.get_content_type() or "").lower()
             content_disposition = str(part.get("Content-Disposition") or "")
             raw_filename = part.get_filename()
+            content_id = str(part.get("Content-ID") or "").strip()
+
+            # Lewati inline images agar part_index tetap konsisten
+            if content_type.startswith("image/") and (content_id or "inline" in content_disposition.lower()):
+                continue
+
             is_attachment = "attachment" in content_disposition.lower() or bool(raw_filename)
             
             if is_attachment:

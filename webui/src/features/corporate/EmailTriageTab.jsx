@@ -78,8 +78,14 @@ export default function EmailTriageTab({ theme, darkMode, userData, language, is
     !unlockedSpamEmails.has(selectedEmail.id)
   );
 
+  // Reply Attachments & Formatting States
+  const [replyAttachments, setReplyAttachments] = useState([]);
+  const [isDraggingReplyAttachment, setIsDraggingReplyAttachment] = useState(false);
+  const replyFileInputRef = useRef(null);
+  const replyTextareaRef = useRef(null);
+
   // Resize logic
-  const [draftHeight, setDraftHeight] = useState(350);
+  const [draftHeight, setDraftHeight] = useState(390);
   const [isResizing, setIsResizing] = useState(false);
   const startYRef = useRef(0);
   const startHeightRef = useRef(0);
@@ -374,11 +380,13 @@ export default function EmailTriageTab({ theme, darkMode, userData, language, is
         to: finalTo,
         cc: finalCc,
         subject: finalSubject,
-        body: finalBody
+        body: finalBody,
+        attachments: replyAttachments
       });
       
       if (response.data.status === 'success') {
         setSendSuccess(true);
+        setReplyAttachments([]);
         setTimeout(() => setSendSuccess(false), 3000);
       } else {
         alert("Gagal mengirim email: " + response.data.message);
@@ -554,6 +562,102 @@ export default function EmailTriageTab({ theme, darkMode, userData, language, is
       textarea.focus();
       textarea.setSelectionRange(start + cursorOffset, start + cursorOffset);
     }, 50);
+  };
+
+  const applyReplyFormatting = (type) => {
+    const textarea = replyTextareaRef.current;
+    if (!textarea) return;
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const text = textarea.value;
+    const selectedText = text.substring(start, end);
+
+    let replacement = '';
+    let cursorOffset = 0;
+
+    switch (type) {
+      case 'bold':
+        replacement = `**${selectedText || 'teks tebal'}**`;
+        cursorOffset = selectedText ? replacement.length : 2;
+        break;
+      case 'italic':
+        replacement = `*${selectedText || 'teks miring'}*`;
+        cursorOffset = selectedText ? replacement.length : 1;
+        break;
+      case 'underline':
+        replacement = `<u>${selectedText || 'teks garis bawah'}</u>`;
+        cursorOffset = selectedText ? replacement.length : 3;
+        break;
+      case 'strikethrough':
+        replacement = `~~${selectedText || 'teks coret'}~~`;
+        cursorOffset = selectedText ? replacement.length : 2;
+        break;
+      case 'clear':
+        replacement = selectedText.replace(/[*_~`#<>]/g, '');
+        cursorOffset = replacement.length;
+        break;
+      case 'bullet':
+        replacement = `\n- ${selectedText || 'poin list'}\n`;
+        cursorOffset = replacement.length;
+        break;
+      case 'number':
+        replacement = `\n1. ${selectedText || 'poin berurutan'}\n`;
+        cursorOffset = replacement.length;
+        break;
+      case 'quote':
+        replacement = `\n> ${selectedText || 'kutipan'}\n`;
+        cursorOffset = replacement.length;
+        break;
+      case 'code':
+        replacement = `\`${selectedText || 'kode'}\``;
+        cursorOffset = selectedText ? replacement.length : 1;
+        break;
+      case 'link':
+        const url = prompt("Masukkan URL tautan:", "https://");
+        if (url) {
+          replacement = `[${selectedText || 'Teks Tautan'}](${url})`;
+          cursorOffset = replacement.length;
+        } else {
+          return;
+        }
+        break;
+      default:
+        return;
+    }
+
+    const newDraft = text.substring(0, start) + replacement + text.substring(end);
+    setDraftContent(newDraft);
+    setTimeout(() => {
+      textarea.focus();
+      textarea.setSelectionRange(start + cursorOffset, start + cursorOffset);
+    }, 50);
+  };
+
+  const handleReplyFileSelect = (files) => {
+    if (!files || files.length === 0) return;
+    Array.from(files).forEach(file => {
+      if (file.size > 15 * 1024 * 1024) {
+        alert(`File ${file.name} melebihi batas ukuran maksimal 15MB.`);
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = () => {
+        setReplyAttachments(prev => [
+          ...prev,
+          {
+            filename: file.name,
+            size: file.size,
+            content_base64: reader.result,
+            content_type: file.type || 'application/octet-stream'
+          }
+        ]);
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const handleRemoveReplyAttachment = (index) => {
+    setReplyAttachments(prev => prev.filter((_, idx) => idx !== index));
   };
 
   const handleGenerateComposeAi = async (toneOverride) => {
@@ -1007,6 +1111,7 @@ export default function EmailTriageTab({ theme, darkMode, userData, language, is
                         setSelectedEmail(email); 
                         setDraftContent(""); 
                         setInstruction(""); 
+                        setReplyAttachments([]);
                         if (isMobile) {
                           setMobileView('detail');
                         }
@@ -1229,7 +1334,8 @@ export default function EmailTriageTab({ theme, darkMode, userData, language, is
                       }}
                       dangerouslySetInnerHTML={{ 
                         __html: DOMPurify.sanitize(selectedEmail.content_html || selectedEmail.content, {
-                          ADD_ATTR: ['target']
+                          ADD_ATTR: ['target'],
+                          ADD_DATA_URI_TAGS: ['img']
                         })
                       }}
                     />
@@ -1293,23 +1399,24 @@ export default function EmailTriageTab({ theme, darkMode, userData, language, is
               {/* AI Draft Area */}
               <div style={{ 
                 height: isMobile ? 'auto' : `${draftHeight}px`, 
-                minHeight: isMobile ? '260px' : undefined,
+                minHeight: isMobile ? '280px' : undefined,
                 flexShrink: 0, 
-                background: darkMode ? 'rgba(59, 130, 246, 0.1)' : '#F0F9FF', 
+                background: darkMode ? 'rgba(59, 130, 246, 0.08)' : '#F0F9FF', 
                 borderRadius: '12px', 
-                padding: isMobile ? '14px' : '20px', 
+                padding: isMobile ? '12px' : '14px 18px', 
                 border: `1px solid ${darkMode ? 'rgba(59, 130, 246, 0.3)' : '#bae6fd'}`, 
                 display: 'flex', 
                 flexDirection: 'column',
                 marginTop: isMobile ? '12px' : 0
               }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '8px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <Bot size={20} style={{ color: darkMode ? '#60A5FA' : '#2563EB' }} />
+                {/* 1. Baris Judul & Opsi Teruskan/Reply All */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap', gap: '8px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <Bot size={18} style={{ color: darkMode ? '#60A5FA' : '#2563EB' }} />
                     <span style={{ fontWeight: '600', fontSize: isMobile ? '13px' : '14px', color: darkMode ? '#60A5FA' : '#2563EB' }}>Draf Balasan Resmi CAKRA</span>
                   </div>
                   
-                  <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
+                  <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
                     {!isForwarding && selectedEmail?.cc && (
                       <label style={{ fontSize: '12px', display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', color: theme.secondaryText }}>
                         <input type="checkbox" checked={replyAll} onChange={(e) => setReplyAll(e.target.checked)} />
@@ -1342,52 +1449,315 @@ export default function EmailTriageTab({ theme, darkMode, userData, language, is
                     )}
                   </div>
                 </div>
-                
-                <div style={{ display: 'flex', gap: '6px', marginBottom: '10px', flexWrap: 'wrap' }}>
-                  {quickActions.map(action => (
+
+                {/* 2. Attachment Bar (Kiri) & Quick Actions Pilihan Balasan (Kanan) */}
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: '4px 2px',
+                  marginBottom: '6px',
+                  flexWrap: 'wrap',
+                  gap: '8px'
+                }}>
+                  {/* Sisi Kiri: Tombol Attach + Tip + Chips Lampiran */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                    <input
+                      type="file"
+                      ref={replyFileInputRef}
+                      multiple
+                      style={{ display: 'none' }}
+                      onChange={(e) => {
+                        if (e.target.files && e.target.files.length > 0) {
+                          handleReplyFileSelect(e.target.files);
+                          e.target.value = '';
+                        }
+                      }}
+                    />
                     <button
-                      key={action.label}
-                      onClick={() => {
-                        setInstruction(action.prompt);
-                        handleGenerate(action.prompt);
-                      }}
-                      disabled={isGenerating}
+                      type="button"
+                      onClick={() => replyFileInputRef.current?.click()}
                       style={{
-                        background: darkMode ? '#374151' : '#E5E7EB',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        padding: '4px 10px',
+                        borderRadius: '6px',
+                        border: `1px solid ${theme.borderColor}`,
+                        background: darkMode ? '#27272a' : '#f3f4f6',
                         color: theme.textColor,
-                        border: 'none',
-                        padding: '5px 10px',
-                        borderRadius: '14px',
                         fontSize: '11px',
-                        cursor: isGenerating ? 'not-allowed' : 'pointer',
-                        transition: 'all 0.2s ease',
-                        opacity: isGenerating ? 0.5 : 1
+                        fontWeight: '600',
+                        cursor: 'pointer',
+                        transition: 'all 0.15s ease'
                       }}
+                      onMouseEnter={(e) => e.currentTarget.style.background = darkMode ? '#3f3f46' : '#e5e7eb'}
+                      onMouseLeave={(e) => e.currentTarget.style.background = darkMode ? '#27272a' : '#f3f4f6'}
                     >
-                      {action.label}
+                      <Paperclip size={12} />
+                      <span>Attach</span>
+                      <ChevronDown size={11} />
                     </button>
-                  ))}
+                    <span style={{ fontSize: '11px', color: theme.secondaryText, fontStyle: 'italic' }}>
+                      Tip: drag and drop files from your desktop to add attachments to this message.
+                    </span>
+
+                    {/* Chips File Terlampir */}
+                    {replyAttachments.length > 0 && (
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                        {replyAttachments.map((att, idx) => (
+                          <div
+                            key={idx}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                              padding: '2px 8px',
+                              borderRadius: '6px',
+                              background: darkMode ? 'rgba(59, 130, 246, 0.15)' : '#eff6ff',
+                              border: `1px solid ${darkMode ? 'rgba(59, 130, 246, 0.35)' : '#bfdbfe'}`,
+                              fontSize: '11px',
+                              color: theme.textColor
+                            }}
+                          >
+                            <FileText size={11} className="text-blue-500" />
+                            <span style={{ maxWidth: '140px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={att.filename}>
+                              {att.filename}
+                            </span>
+                            <span style={{ fontSize: '10px', color: theme.secondaryText }}>
+                              ({Math.round(att.size / 1024)} KB)
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveReplyAttachment(idx)}
+                              style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: '1px', display: 'flex', color: theme.secondaryText }}
+                              title="Hapus lampiran"
+                            >
+                              <X size={11} />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Sisi Kanan: Pilihan Balasan Sopan, Ringkas, Setujui, Tolak Halus */}
+                  <div style={{ display: 'flex', gap: '4px', alignItems: 'center', flexWrap: 'wrap' }}>
+                    {quickActions.map(action => (
+                      <button
+                        key={action.label}
+                        onClick={() => {
+                          setInstruction(action.prompt);
+                          handleGenerate(action.prompt);
+                        }}
+                        disabled={isGenerating}
+                        style={{
+                          background: darkMode ? '#374151' : '#E5E7EB',
+                          color: theme.textColor,
+                          border: 'none',
+                          padding: '4px 8px',
+                          borderRadius: '12px',
+                          fontSize: '11px',
+                          cursor: isGenerating ? 'not-allowed' : 'pointer',
+                          transition: 'all 0.2s ease',
+                          opacity: isGenerating ? 0.5 : 1
+                        }}
+                      >
+                        {action.label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
 
-                <textarea 
-                  style={{ 
-                    width: '100%', 
-                    flex: 1,
-                    minHeight: isMobile ? '100px' : '120px', 
-                    background: darkMode ? '#2A2A2D' : 'white', 
-                    border: `1px solid ${theme.borderColor}`,
-                    borderRadius: '8px',
-                    padding: '10px',
-                    color: theme.textColor,
-                    fontSize: '13px',
-                    resize: 'none',
-                    outline: 'none'
-                  }}
-                  value={draftContent}
-                  onChange={(e) => setDraftContent(e.target.value)}
-                />
+                {/* 3. Formatting Toolbar (Tersambung langsung dengan Textarea) */}
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '3px',
+                  flexWrap: 'wrap',
+                  padding: '4px 8px',
+                  background: darkMode ? '#222226' : '#f8fafc',
+                  border: `1px solid ${theme.borderColor}`,
+                  borderRadius: '8px 8px 0 0',
+                  borderBottom: 'none'
+                }}>
+                  <select
+                    onChange={(e) => {
+                      if (replyTextareaRef.current) {
+                        replyTextareaRef.current.style.fontFamily = e.target.value;
+                      }
+                    }}
+                    style={{
+                      background: darkMode ? '#27272a' : 'white',
+                      border: `1px solid ${theme.borderColor}`,
+                      borderRadius: '4px',
+                      padding: '2px 5px',
+                      fontSize: '11px',
+                      color: theme.textColor,
+                      outline: 'none',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <option value="sans-serif">Sans Serif</option>
+                    <option value="serif">Serif</option>
+                    <option value="monospace">Monospace</option>
+                  </select>
+
+                  <select
+                    onChange={(e) => {
+                      if (replyTextareaRef.current) {
+                        replyTextareaRef.current.style.fontSize = e.target.value;
+                      }
+                    }}
+                    defaultValue="13px"
+                    style={{
+                      background: darkMode ? '#27272a' : 'white',
+                      border: `1px solid ${theme.borderColor}`,
+                      borderRadius: '4px',
+                      padding: '2px 5px',
+                      fontSize: '11px',
+                      color: theme.textColor,
+                      outline: 'none',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <option value="11px">10pt</option>
+                    <option value="13px">12pt</option>
+                    <option value="15px">14pt</option>
+                    <option value="18px">18pt</option>
+                  </select>
+
+                  <div style={{ width: '1px', height: '16px', background: theme.borderColor, margin: '0 3px' }} />
+
+                  <button 
+                    type="button" 
+                    onClick={() => applyReplyFormatting('bold')} 
+                    title="Tebal (Bold)" 
+                    style={{ background: 'transparent', border: `1px solid ${theme.borderColor}`, borderRadius: '4px', padding: '3px 5px', cursor: 'pointer', color: theme.textColor, display: 'flex' }}
+                  >
+                    <Bold size={12} />
+                  </button>
+                  <button 
+                    type="button" 
+                    onClick={() => applyReplyFormatting('italic')} 
+                    title="Miring (Italic)" 
+                    style={{ background: 'transparent', border: `1px solid ${theme.borderColor}`, borderRadius: '4px', padding: '3px 5px', cursor: 'pointer', color: theme.textColor, display: 'flex' }}
+                  >
+                    <Italic size={12} />
+                  </button>
+                  <button 
+                    type="button" 
+                    onClick={() => applyReplyFormatting('underline')} 
+                    title="Garis Bawah (Underline)" 
+                    style={{ background: 'transparent', border: `1px solid ${theme.borderColor}`, borderRadius: '4px', padding: '3px 5px', cursor: 'pointer', color: theme.textColor, display: 'flex' }}
+                  >
+                    <Underline size={12} />
+                  </button>
+                  <button 
+                    type="button" 
+                    onClick={() => applyReplyFormatting('strikethrough')} 
+                    title="Coret (Strikethrough)" 
+                    style={{ background: 'transparent', border: `1px solid ${theme.borderColor}`, borderRadius: '4px', padding: '3px 5px', cursor: 'pointer', color: theme.textColor, display: 'flex' }}
+                  >
+                    <Strikethrough size={12} />
+                  </button>
+                  <button 
+                    type="button" 
+                    onClick={() => applyReplyFormatting('clear')} 
+                    title="Hapus Pemformatan" 
+                    style={{ background: 'transparent', border: `1px solid ${theme.borderColor}`, borderRadius: '4px', padding: '2px 5px', cursor: 'pointer', color: theme.textColor, fontSize: '11px', fontWeight: 'bold' }}
+                  >
+                    T<span style={{ fontSize: '9px' }}>x</span>
+                  </button>
+
+                  <div style={{ width: '1px', height: '16px', background: theme.borderColor, margin: '0 3px' }} />
+
+                  <button 
+                    type="button" 
+                    onClick={() => applyReplyFormatting('bullet')} 
+                    title="Bullet List" 
+                    style={{ background: 'transparent', border: `1px solid ${theme.borderColor}`, borderRadius: '4px', padding: '3px 5px', cursor: 'pointer', color: theme.textColor, display: 'flex' }}
+                  >
+                    <List size={12} />
+                  </button>
+                  <button 
+                    type="button" 
+                    onClick={() => applyReplyFormatting('number')} 
+                    title="Numbered List" 
+                    style={{ background: 'transparent', border: `1px solid ${theme.borderColor}`, borderRadius: '4px', padding: '3px 5px', cursor: 'pointer', color: theme.textColor, display: 'flex' }}
+                  >
+                    <ListOrdered size={12} />
+                  </button>
+                  <button 
+                    type="button" 
+                    onClick={() => applyReplyFormatting('quote')} 
+                    title="Kutipan (Quote)" 
+                    style={{ background: 'transparent', border: `1px solid ${theme.borderColor}`, borderRadius: '4px', padding: '3px 5px', cursor: 'pointer', color: theme.textColor, display: 'flex' }}
+                  >
+                    <Quote size={12} />
+                  </button>
+                  <button 
+                    type="button" 
+                    onClick={() => applyReplyFormatting('code')} 
+                    title="Kode / Monospace" 
+                    style={{ background: 'transparent', border: `1px solid ${theme.borderColor}`, borderRadius: '4px', padding: '3px 5px', cursor: 'pointer', color: theme.textColor, display: 'flex' }}
+                  >
+                    <Code size={12} />
+                  </button>
+                  <button 
+                    type="button" 
+                    onClick={() => applyReplyFormatting('link')} 
+                    title="Sisipkan Tautan (Link)" 
+                    style={{ background: 'transparent', border: `1px solid ${theme.borderColor}`, borderRadius: '4px', padding: '3px 5px', cursor: 'pointer', color: theme.textColor, display: 'flex' }}
+                  >
+                    <Link2 size={12} />
+                  </button>
+                </div>
+
+                {/* 4. Textarea Terintegrasi dengan Dropzone */}
+                <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
+                  <textarea 
+                    ref={replyTextareaRef}
+                    placeholder="Isi draf balasan pesan atau seret file lampiran ke sini..."
+                    style={{ 
+                      width: '100%', 
+                      flex: 1,
+                      minHeight: isMobile ? '90px' : '110px', 
+                      background: darkMode ? '#27272A' : '#FAFAFA', 
+                      border: `1px solid ${isDraggingReplyAttachment ? '#3B82F6' : theme.borderColor}`,
+                      borderTop: 'none',
+                      borderRadius: '0 0 8px 8px',
+                      padding: '10px 12px',
+                      color: theme.textColor,
+                      fontSize: '13px',
+                      lineHeight: '1.6',
+                      resize: 'none',
+                      outline: 'none',
+                      boxShadow: isDraggingReplyAttachment ? '0 0 0 2px rgba(59, 130, 246, 0.25)' : 'none',
+                      transition: 'border 0.2s ease'
+                    }}
+                    value={draftContent}
+                    onChange={(e) => setDraftContent(e.target.value)}
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      setIsDraggingReplyAttachment(true);
+                    }}
+                    onDragLeave={(e) => {
+                      e.preventDefault();
+                      setIsDraggingReplyAttachment(false);
+                    }}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      setIsDraggingReplyAttachment(false);
+                      if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                        handleReplyFileSelect(e.dataTransfer.files);
+                      }
+                    }}
+                  />
+                </div>
                 
-                <div style={{ display: 'flex', gap: '8px', marginTop: '10px', alignItems: 'center', flexWrap: isMobile ? 'wrap' : 'nowrap' }}>
+                {/* 5. Baris Kontrol Bawah (Instruksi, Generate, Kirim) */}
+                <div style={{ display: 'flex', gap: '8px', marginTop: '8px', alignItems: 'center', flexWrap: isMobile ? 'wrap' : 'nowrap' }}>
                   <input 
                     type="text" 
                     placeholder="Instruksi tambahan (Opsional)..."
@@ -1452,7 +1822,7 @@ export default function EmailTriageTab({ theme, darkMode, userData, language, is
                 </div>
                 
                 {sendSuccess && (
-                  <div style={{ color: '#10B981', fontSize: '12px', marginTop: '8px', textAlign: 'right', fontWeight: 'bold' }}>
+                  <div style={{ color: '#10B981', fontSize: '12px', marginTop: '6px', textAlign: 'right', fontWeight: 'bold' }}>
                     ✅ Email Berhasil Dikirim ke Zimbra!
                   </div>
                 )}
