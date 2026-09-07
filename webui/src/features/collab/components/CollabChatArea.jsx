@@ -230,22 +230,31 @@ const CollabChatArea = ({
           </>
         )}
 
-        {/* Indikator Mengetik Rekan Kerja (Typing Indicator) */}
-        {typingStatus?.is_typing && String(typingStatus?.sender_npp) !== String(currentNpp) && (() => {
+        {/* Indikator Mengetik Rekan Kerja / CAKRA (Typing Indicator) */}
+        {typingStatus?.is_typing && !streamingCakra && String(typingStatus?.sender_npp) !== String(currentNpp) && (() => {
           const nppKey = typingStatus.sender_npp ? String(typingStatus.sender_npp).trim() : '';
           const senderKey = typingStatus.sender ? String(typingStatus.sender).trim().toLowerCase() : '';
-          const typingMember = membersMap[nppKey] || membersMap[senderKey] || membersMap[typingStatus.sender] || {};
-          const senderName = typingStatus.sender || typingMember.name || typingMember.nama || 'Rekan';
-          const senderPhoto = typingStatus.photo_url || typingStatus.profile_photo_url || typingMember.profile_photo_url || typingMember.photo_url || null;
+          const isCakra = nppKey === 'CAKRA' || senderKey.includes('cakra');
+          const typingMember = isCakra
+            ? { name: 'CAKRA', photo_url: cakraLogo }
+            : (membersMap[nppKey] || membersMap[senderKey] || membersMap[typingStatus.sender] || {});
+          const senderName = isCakra ? 'CAKRA' : (typingStatus.sender || typingMember.name || typingMember.nama || 'Rekan');
+          const senderPhoto = isCakra ? cakraLogo : (typingStatus.photo_url || typingStatus.profile_photo_url || typingMember.profile_photo_url || typingMember.photo_url || null);
           return (
             <div className="flex items-center gap-2.5 px-3 py-2 mb-2 animate-fadeInUp">
-              <CollabAvatar
-                npp={typingStatus.sender_npp || typingMember.npp}
-                name={senderName}
-                photoUrl={senderPhoto}
-                size="w-[24px] h-[24px]"
-                className="!w-[24px] !h-[24px] !rounded-full shadow-sm shrink-0 overflow-hidden text-[9px]"
-              />
+              {isCakra ? (
+                <div className="w-[24px] h-[24px] rounded-full overflow-hidden flex items-center justify-center p-0.5 bg-teal-500/10 border border-teal-500/20 shrink-0">
+                  <img src={cakraLogo} alt="CAKRA" className="w-full h-full object-contain" />
+                </div>
+              ) : (
+                <CollabAvatar
+                  npp={typingStatus.sender_npp || typingMember.npp}
+                  name={senderName}
+                  photoUrl={senderPhoto}
+                  size="w-[24px] h-[24px]"
+                  className="!w-[24px] !h-[24px] !rounded-full shadow-sm shrink-0 overflow-hidden text-[9px]"
+                />
+              )}
               <div className="flex items-center gap-2 text-xs" style={{ color: secondaryTextColor }}>
                 <span>
                   <strong style={{ color: textColor }}>{senderName}</strong> sedang mengetik

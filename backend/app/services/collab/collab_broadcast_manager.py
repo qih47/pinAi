@@ -8,7 +8,7 @@ indikator mengetik (typing), dan pembaruan dokumen real-time di Collab Space.
 import asyncio
 import json
 import logging
-from typing import Dict, Set, AsyncGenerator, Any
+from typing import Dict, Set, AsyncGenerator, Any, Optional
 
 logger = logging.getLogger("COLLAB_BROADCAST")
 

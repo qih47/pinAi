@@ -25,7 +25,7 @@ from backend.app.core.logging_setup import setup_root_logger
 from backend.app.utils.request_logging import RequestIDLoggingMiddleware, setup_request_id_logging
 from backend.app.utils.security_firewall import security_firewall_dependency
 
-setup_root_logger()
+setup_root_logger(service_name="analytics_service")
 setup_request_id_logging()
 logger = logging.getLogger("CAKRA_ANALYTICS_SERVICE")
 

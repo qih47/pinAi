@@ -34,7 +34,7 @@ from backend.app.utils.token_expiry import setup_token_expiry_migration
 from backend.app.utils.vector_index import setup_hnsw_index, optimize_vector_search
 from backend.app.utils.security_firewall import security_firewall_dependency
 
-setup_root_logger()
+setup_root_logger(service_name="chat_service")
 setup_request_id_logging()
 logger = logging.getLogger("CAKRA_CHAT_SERVICE")
 

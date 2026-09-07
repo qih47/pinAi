@@ -219,6 +219,78 @@ class CollabService:
         return {"status": "success", "document_content": document_content}
 
     @staticmethod
+    async def summarize_room(room_id: str, npp: str) -> Dict[str, Any]:
+        """
+        Menyusun notulensi cerdas otomatis dari seluruh percakapan tim di ruangan
+        dan memperbarui document_content di collab_rooms secara rapi & profesional.
+        """
+        async with get_db() as conn:
+            # 1. Ambil detail room
+            room_row = await conn.fetchrow(
+                "SELECT id::text, name, topic FROM collab_rooms WHERE id = $1",
+                uuid.UUID(room_id)
+            )
+            if not room_row:
+                raise ValueError("Ruang diskusi tidak ditemukan.")
+
+            # 2. Ambil daftar anggota
+            member_rows = await conn.fetch(
+                """
+                SELECT m.npp, u.name, u.divisi
+                FROM collab_room_members m
+                LEFT JOIN users u ON m.npp = u.npp
+                WHERE m.room_id = $1
+                """,
+                uuid.UUID(room_id)
+            )
+            members = [dict(r) for r in member_rows]
+
+            # 3. Ambil riwayat chat
+            msg_rows = await conn.fetch(
+                """
+                SELECT id::text, sender_type, sender_npp, sender_name, message_text, created_at
+                FROM collab_messages
+                WHERE room_id = $1
+                ORDER BY created_at ASC
+                LIMIT 100
+                """,
+                uuid.UUID(room_id)
+            )
+            messages = [dict(r) for r in msg_rows]
+
+        # 4. Generate Notulensi via ModeCollab
+        mode_collab_inst = ModeCollab()
+        notulensi_content = await mode_collab_inst.generate_notulensi(
+            room_name=room_row["name"],
+            room_topic=room_row["topic"] or "",
+            members=members,
+            messages=messages
+        )
+
+        # 5. Simpan notulensi ke database
+        async with get_db() as conn:
+            await conn.execute(
+                """
+                UPDATE collab_rooms 
+                SET document_content = $1, updated_at = NOW() 
+                WHERE id = $2
+                """,
+                notulensi_content, uuid.UUID(room_id)
+            )
+
+        # 6. Broadcast SSE document_updated ke seluruh anggota
+        await collab_broadcast_manager.broadcast(room_id, {
+            "type": "document_updated",
+            "document_content": notulensi_content,
+            "updated_by": "CAKRA AI (Notulensi Otomatis)"
+        })
+
+        return {
+            "status": "success",
+            "document_content": notulensi_content
+        }
+
+    @staticmethod
     async def invite_members(room_id: str, requester_npp: str, npps_to_invite: List[str]) -> Dict[str, Any]:
         """
         Menambahkan anggota baru ke dalam ruang diskusi.
@@ -429,10 +501,25 @@ class CollabService:
                 if not room:
                     return
 
+                # Ambil daftar anggota tim di ruangan untuk Team Awareness
+                members_rows = await conn.fetch(
+                    """
+                    SELECT m.npp, COALESCE(u.preferred_name, u.fullname, m.npp) as name, u.divisi
+                    FROM collab_room_members m
+                    LEFT JOIN users u ON m.npp = u.npp
+                    WHERE m.room_id = $1
+                    """,
+                    uuid.UUID(room_id)
+                )
+                team_members = [
+                    {"npp": m["npp"], "name": m["name"], "divisi": m["divisi"] or "PT Pindad"}
+                    for m in members_rows
+                ]
+
                 # Ambil 15 riwayat pesan terakhir beserta lampiran
                 rows = await conn.fetch(
                     """
-                    SELECT sender_type, sender_npp, sender_name, message_text, is_mention, attachments, created_at
+                    SELECT id::text, sender_type, sender_npp, sender_name, message_text, is_mention, attachments, created_at
                     FROM collab_messages
                     WHERE room_id = $1
                     ORDER BY created_at DESC
@@ -481,31 +568,134 @@ class CollabService:
             else:
                 interjection_type = None
 
-            # Jika bukan mention langsung atau perintah ke CAKRA, evaluasi apakah butuh intervensi proaktif (diskusi kerja/regulasi)
-            if not should_intervene:
-                # Obrolan umum/santai antar personil ("makan siang yuk", "halo bro", "siap nanti ya"):
-                # CAKRA diam dan tidak mengganggu kecuali dimention/dipanggil langsung.
-                eval_ok, eval_reason = await mode_collab.should_intervene(
-                    recent_messages=recent_messages,
-                    room_topic=room["topic"] or ""
-                )
+            # Jika bukan mention langsung atau perintah ke CAKRA, evaluasi Call 1 apakah butuh intervensi proaktif
+            eval_ok, eval_reason, routing_data = await mode_collab.should_intervene(
+                recent_messages=recent_messages,
+                room_topic=room["topic"] or "",
+                is_mention=is_mention
+            )
+            is_followup = len(recent_messages) >= 2 and recent_messages[-2].get("sender_type") == "CAKRA"
+            if is_mention:
+                should_intervene = True
+            else:
+                should_intervene = eval_ok
                 if eval_ok:
-                    should_intervene = True
-                    interjection_type = "PROACTIVE_SUGGESTION"
+                    if is_followup:
+                        interjection_type = "CONVERSATIONAL_FOLLOWUP"
+                    else:
+                        interjection_type = "PROACTIVE_SUGGESTION"
 
             if not should_intervene:
                 return
 
+            # 3. CAKRA memutuskan akan merespons:
+            # Tampilkan indikator mengetik terlebih dahulu (belum membuat bubble kosong)
+            await collab_broadcast_manager.send_typing(
+                room_id=room_id,
+                sender="CAKRA AI Teammate",
+                sender_npp="CAKRA",
+                is_typing=True
+            )
+
+            # 4. Jeda natural (human conversational pacing 1.2 detik)
+            await asyncio.sleep(1.2)
+
+            # 5. Pengecekan Balapan (Chat Race / Pre-emption Check)
+            # Cek apakah selama jeda tersebut ada pesan baru dari anggota tim lain
+            trigger_msg_id = uuid.UUID(trigger_message["id"])
+            async with get_db() as conn:
+                newer_rows = await conn.fetch(
+                    """
+                    SELECT id::text, sender_type, sender_npp, sender_name, message_text, is_mention, attachments, created_at
+                    FROM collab_messages
+                    WHERE room_id = $1 
+                      AND created_at > (SELECT created_at FROM collab_messages WHERE id = $2)
+                      AND id != $2
+                    ORDER BY created_at ASC
+                    """,
+                    uuid.UUID(room_id), trigger_msg_id
+                )
+
+            if newer_rows:
+                # Ada pesan tim baru yang mendahului respon CAKRA!
+                for nr in newer_rows:
+                    item_nr = dict(nr)
+                    if isinstance(item_nr.get("attachments"), str):
+                        try:
+                            item_nr["attachments"] = json.loads(item_nr["attachments"])
+                        except Exception:
+                            item_nr["attachments"] = []
+                    recent_messages.append(item_nr)
+
+                last_new_msg = newer_rows[-1]
+                last_new_text = last_new_msg.get("message_text", "")
+                is_last_mention = bool(re.search(r"\b@?cakra\b", last_new_text, re.IGNORECASE))
+
+                # Jika pesan terbaru tidak memanggil CAKRA secara langsung,
+                # evaluasi ulang apakah respon CAKRA masih diperlukan atau tim sudah menjawab/berganti topik
+                if not is_last_mention and interjection_type in ["PROACTIVE_SUGGESTION", "CONVERSATIONAL_FOLLOWUP"]:
+                    re_eval_ok, re_reason, re_routing = await mode_collab.should_intervene(
+                        recent_messages=recent_messages,
+                        room_topic=room["topic"] or "",
+                        is_mention=False
+                    )
+                    if not re_eval_ok:
+                        logger.info(f"[COLLAB_AI] Pre-empted by teammate message in room {room_id}. CAKRA yields floor and stays silent.")
+                        await collab_broadcast_manager.send_typing(
+                            room_id=room_id,
+                            sender="CAKRA AI Teammate",
+                            sender_npp="CAKRA",
+                            is_typing=False
+                        )
+                        return
+                    else:
+                        eval_reason = re_reason
+                        routing_data = re_routing
+
+            # 6. Pencarian RAG Otomatis jika topik membutuhkan rujukan dokumen internal PT Pindad
+            rag_context = ""
+            rag_sources = []
+            if routing_data.get("need_rag") or (mode and mode.lower() in ["documents", "document"]):
+                try:
+                    from backend.app.services.rag.rag_service import rag_service
+                    rag_queries = routing_data.get("queries") or []
+                    rag_judul = routing_data.get("query_judul") or []
+                    if rag_queries:
+                        rag_query_str = " ".join(rag_queries)
+                    elif rag_judul:
+                        rag_query_str = " ".join(rag_judul)
+                    else:
+                        rag_query_str = trigger_message.get("message_text", "")
+
+                    clean_rag_query = re.sub(r"@cakra\b", "", rag_query_str, flags=re.IGNORECASE).strip()
+                    if clean_rag_query:
+                        logger.info(f"[COLLAB_RAG] 🔍 Menjalankan RAG hybrid search untuk tim: '{clean_rag_query}'")
+                        rag_context, rag_sources = await rag_service.assemble_powerful_context(
+                            query=clean_rag_query,
+                            limit=3
+                        )
+                        logger.info(f"[COLLAB_RAG] ✨ RAG context berhasil disiapkan (chars={len(rag_context)}, docs={len(rag_sources)})")
+                except Exception as rag_err:
+                    logger.warning(f"[COLLAB_RAG] Gagal mengambil konteks RAG: {rag_err}")
+
+            # 7. Hentikan status mengetik tepat saat streaming bubble dimulai
+            await collab_broadcast_manager.send_typing(
+                room_id=room_id,
+                sender="CAKRA AI Teammate",
+                sender_npp="CAKRA",
+                is_typing=False
+            )
+
             cakra_msg_id = str(uuid.uuid4())
 
-            # 1. Kirim stream start dari CAKRA
+            # 8. Kirim stream start dari CAKRA
             await collab_broadcast_manager.broadcast(room_id, {
                 "type": "cakra_stream_start",
                 "message_id": cakra_msg_id,
                 "interjection_type": interjection_type or "EXPLICIT_MENTION"
             })
 
-            # 2. Stream & kumpulkan respons dari CAKRA token-by-token secara real-time
+            # 9. Stream & kumpulkan respons dari CAKRA token-by-token secara real-time
             full_response_text = ""
             async for chunk in mode_collab.generate_response(
                 room_name=room["name"],
@@ -516,6 +706,10 @@ class CollabService:
                 interjection_type=interjection_type or "EXPLICIT_MENTION",
                 mode=mode,
                 context_doc=context_doc,
+                members=team_members,
+                rag_context=rag_context,
+                rag_sources=rag_sources,
+                eval_reason=eval_reason,
                 request=request
             ):
                 full_response_text += chunk
@@ -529,24 +723,36 @@ class CollabService:
             if not clean_response:
                 clean_response = "Saya sedang menyimak diskusi tim. Silakan lanjutkan atau mention @cakra jika butuh bantuan formulasi aturan."
 
-            # 3. Simpan respons CAKRA ke collab_messages
+            # 10. Susun lampiran sumber rujukan RAG jika ada
+            final_attachments = []
+            if rag_sources:
+                for src in rag_sources[:3]:
+                    final_attachments.append({
+                        "type": "rag_source",
+                        "title": src.get("title", "Dokumen Internal Pindad"),
+                        "page": src.get("page", 1),
+                        "score": src.get("score", 0.0)
+                    })
+            attachments_json = json.dumps(final_attachments)
+
+            # 11. Simpan respons CAKRA ke collab_messages
             async with get_db() as conn:
                 cakra_row = await conn.fetchrow(
                     """
                     INSERT INTO collab_messages (
                         id, room_id, sender_type, sender_npp, sender_name,
-                        message_text, is_mention, interjection_type, created_at
+                        message_text, is_mention, interjection_type, attachments, created_at
                     )
-                    VALUES ($1, $2, 'CAKRA', NULL, 'CAKRA AI Teammate', $3, $4, $5, NOW())
+                    VALUES ($1, $2, 'CAKRA', NULL, 'CAKRA AI Teammate', $3, $4, $5, $6::jsonb, NOW())
                     RETURNING id::text, room_id::text, sender_type, sender_npp, sender_name, message_text, is_mention, interjection_type, attachments, created_at
                     """,
-                    uuid.UUID(cakra_msg_id), uuid.UUID(room_id), clean_response, is_mention, interjection_type
+                    uuid.UUID(cakra_msg_id), uuid.UUID(room_id), clean_response, is_mention, interjection_type, attachments_json
                 )
                 await conn.execute("UPDATE collab_rooms SET updated_at = NOW() WHERE id = $1", uuid.UUID(room_id))
 
             cakra_dict = dict(cakra_row)
             cakra_dict["created_at"] = cakra_dict["created_at"].isoformat()
-            cakra_dict["attachments"] = []
+            cakra_dict["attachments"] = final_attachments
 
             # 4. Broadcast akhir streaming dan pesan final
             await collab_broadcast_manager.broadcast(room_id, {

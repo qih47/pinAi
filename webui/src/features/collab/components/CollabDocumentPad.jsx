@@ -1,24 +1,44 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { FileText, Save, Check, Copy, Download, X, Sparkles, RefreshCw } from 'lucide-react';
+import { 
+  FileText, 
+  Save, 
+  Check, 
+  Copy, 
+  Download, 
+  X, 
+  Sparkles, 
+  RefreshCw, 
+  Edit3, 
+  Eye,
+  Trash2,
+  Loader2 
+} from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 const DISCUSSION_TEMPLATE = `# Catatan Diskusi Tim
-Topik: [Topik Bahasan]
-Tanggal: 
+**Topik:** [Topik Bahasan]  
+**Tanggal:** [Hari, DD Bulan YYYY]  
+
+---
 
 ## 1. Poin Pembahasan
-- ...
+- Pembahasan mengenai penyesuaian klausul aturan kerja
+- Evaluasi draf dan masukan dari anggota tim
 
 ## 2. Kesimpulan & Keputusan Bersama
-- ...
+- **Keputusan 1:** Menyetujui revisi pada pasal operasional
+- **Keputusan 2:** Meminta verifikasi rujukan regulasi dari CAKRA AI
 
 ## 3. Tindak Lanjut (Action Items)
-- [ ] Tugas 1 (PIC: ...)
-- [ ] Tugas 2 (PIC: ...)
+- [ ] Finalisasi draf naskah (PIC: Mas Hendra)
+- [ ] Verifikasi kepatuhan PKB & SE (PIC: Qisthi)
 `;
 
 const CollabDocumentPad = ({
   documentContent,
   onSave,
+  onSummarize,
   onClose,
   isSaving,
   roomTopic,
@@ -28,17 +48,24 @@ const CollabDocumentPad = ({
   const [content, setContent] = useState(documentContent || '');
   const [isDirty, setIsDirty] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [isSummarizing, setIsSummarizing] = useState(false);
+  // Default to preview mode if there is content, otherwise edit mode
+  const [viewMode, setViewMode] = useState(documentContent && documentContent.trim() ? 'preview' : 'edit');
 
-  const pageBg = theme?.mainBg || (darkMode ? '#151517' : '#ffffff');
-  const borderColor = theme?.borderColor || (darkMode ? '#2a2a2d' : '#e5e7eb');
-  const textColor = theme?.textColor || (darkMode ? '#e2e8f0' : '#1f2937');
-  const secondaryTextColor = theme?.secondaryText || (darkMode ? '#94a3b8' : '#6b7280');
-  const editorBg = theme?.mainBg || (darkMode ? '#151517' : '#ffffff');
-  const buttonBg = darkMode ? '#1e1e20' : '#f3f4f6';
+  const pageBg = theme?.mainBg || (darkMode ? '#131315' : '#ffffff');
+  const editorBg = theme?.mainBg || (darkMode ? '#131315' : '#ffffff');
+  const textColor = theme?.textColor || (darkMode ? '#e4e4e7' : '#1f2937');
+  const secondaryTextColor = theme?.secondaryText || (darkMode ? '#a1a1aa' : '#6b7280');
+  
+  // Pembatas halus & seamless tanpa garis putih tebal/mencolok
+  const subtleBorder = darkMode ? 'rgba(255, 255, 255, 0.06)' : 'rgba(0, 0, 0, 0.08)';
 
   useEffect(() => {
     setContent(documentContent || '');
     setIsDirty(false);
+    if (documentContent && documentContent.trim() && viewMode !== 'edit') {
+      setViewMode('preview');
+    }
   }, [documentContent]);
 
   const handleChange = (e) => {
@@ -65,6 +92,51 @@ const CollabDocumentPad = ({
     }
     setContent(DISCUSSION_TEMPLATE);
     setIsDirty(true);
+    setViewMode('preview');
+  };
+
+  // Bersihkan teks atau paragraf yang berulang (deduplikasi cerdas)
+  const handleDeduplicate = () => {
+    if (!content.trim()) return;
+    const paragraphs = content.split(/\n\s*\n/);
+    const seen = new Set();
+    const unique = [];
+    for (const p of paragraphs) {
+      const normalized = p.trim().toLowerCase();
+      if (normalized && !seen.has(normalized)) {
+        seen.add(normalized);
+        unique.push(p.trim());
+      }
+    }
+    const cleaned = unique.join('\n\n');
+    setContent(cleaned);
+    setIsDirty(true);
+    if (onSave) onSave(cleaned);
+    alert('Duplikasi berhasil dibersihkan!');
+  };
+
+  // Kosongkan seluruh catatan
+  const handleClear = () => {
+    if (!content.trim()) return;
+    if (window.confirm('Kosongkan seluruh isi Catatan Tim untuk memulai draf baru?')) {
+      setContent('');
+      setIsDirty(true);
+      if (onSave) onSave('');
+    }
+  };
+
+  // Rangkum otomatis obrolan menjadi Notulensi Resmi via CAKRA AI
+  const handleSummarize = async () => {
+    if (!onSummarize) return;
+    try {
+      setIsSummarizing(true);
+      await onSummarize();
+      setViewMode('preview');
+    } catch (err) {
+      console.error('Failed to summarize:', err);
+    } finally {
+      setIsSummarizing(false);
+    }
   };
 
   const handleDownload = () => {
@@ -80,46 +152,46 @@ const CollabDocumentPad = ({
 
   return (
     <div
-      className="h-full flex flex-col border-l shadow-2xl"
+      className="h-full flex flex-col shadow-2xl overflow-hidden select-text"
       style={{
         background: editorBg,
-        borderColor: borderColor,
         color: textColor
       }}
     >
       {/* Header Pad */}
       <div
-        className="p-4 border-b flex items-center justify-between"
+        className="px-4 py-3 flex items-center justify-between"
         style={{
           background: pageBg,
-          borderColor: borderColor
+          borderBottom: `1px solid ${subtleBorder}`
         }}
       >
-        <div className="flex items-center gap-2">
-          <div className="p-1.5 rounded-lg bg-teal-500/20 text-teal-400 border border-teal-500/30">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <div className="p-1.5 rounded-lg bg-teal-500/15 text-teal-400 border border-teal-500/25 shrink-0">
             <FileText size={16} />
           </div>
-          <div>
-            <h3 className="text-sm font-semibold flex items-center gap-2" style={{ color: textColor }}>
-              Catatan Tim
+          <div className="min-w-0">
+            <h3 className="text-sm font-semibold flex items-center gap-2 truncate" style={{ color: textColor }}>
+              <span>Catatan Tim</span>
               {isDirty && (
-                <span className="h-2 w-2 rounded-full bg-amber-400" title="Ada perubahan belum disimpan" />
+                <span className="h-2 w-2 rounded-full bg-amber-400 shrink-0" title="Ada perubahan belum disimpan" />
               )}
             </h3>
-            <p className="text-[11px]" style={{ color: secondaryTextColor }}>Notulen, ringkasan, dan poin kesepakatan bersama</p>
+            <p className="text-[11px] truncate" style={{ color: secondaryTextColor }}>
+              Notulen, ringkasan, dan draf bersama
+            </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-2 shrink-0">
           <button
             onClick={handleSave}
             disabled={!isDirty || isSaving}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
               isDirty
                 ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-md shadow-emerald-950/40'
-                : 'opacity-50 cursor-not-allowed border'
+                : 'opacity-40 cursor-not-allowed bg-white/[0.03] text-zinc-400'
             }`}
-            style={!isDirty ? { borderColor: borderColor, color: secondaryTextColor } : {}}
           >
             {isSaving ? (
               <>
@@ -137,8 +209,7 @@ const CollabDocumentPad = ({
           {onClose && (
             <button
               onClick={onClose}
-              className="p-1.5 rounded-lg hover:bg-white/5 transition-colors"
-              style={{ color: secondaryTextColor }}
+              className="p-1.5 rounded-lg hover:bg-white/10 transition-colors text-zinc-400 hover:text-zinc-200"
               title="Tutup Panel Catatan"
             >
               <X size={16} />
@@ -149,77 +220,234 @@ const CollabDocumentPad = ({
 
       {/* Toolbar */}
       <div
-        className="px-4 py-2 border-b flex items-center justify-between text-xs flex-wrap gap-2"
+        className="px-4 py-2 flex items-center justify-between text-xs flex-wrap gap-2"
         style={{
           background: pageBg,
-          borderColor: borderColor,
+          borderBottom: `1px solid ${subtleBorder}`,
           color: secondaryTextColor
         }}
       >
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 flex-wrap">
+          {/* Switch Edit / Preview Mode */}
+          <div className="flex items-center p-0.5 rounded-lg bg-black/30 border border-white/[0.06]">
+            <button
+              type="button"
+              onClick={() => setViewMode('edit')}
+              className={`flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium transition-all ${
+                viewMode === 'edit'
+                  ? 'bg-teal-500/20 text-teal-300 shadow-sm border border-teal-500/30'
+                  : 'text-zinc-400 hover:text-zinc-200'
+              }`}
+              title="Edit teks catatan secara langsung"
+            >
+              <Edit3 size={12} />
+              <span>Edit</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode('preview')}
+              className={`flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium transition-all ${
+                viewMode === 'preview'
+                  ? 'bg-teal-500/20 text-teal-300 shadow-sm border border-teal-500/30'
+                  : 'text-zinc-400 hover:text-zinc-200'
+              }`}
+              title="Lihat hasil format Markdown (tebal, miring, list, tabel)"
+            >
+              <Eye size={12} />
+              <span>Pratinjau</span>
+            </button>
+          </div>
+
+          {/* Tombol Buat Notulensi Otomatis via AI */}
+          {onSummarize && (
+            <button
+              type="button"
+              onClick={handleSummarize}
+              disabled={isSummarizing}
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-teal-500/30 bg-teal-500/15 hover:bg-teal-500/25 text-teal-300 transition-all text-[11px] font-medium disabled:opacity-50 shadow-sm"
+              title="Rangkum seluruh obrolan tim di ruangan ini menjadi Notulensi Resmi & Tindak Lanjut via CAKRA AI"
+            >
+              {isSummarizing ? (
+                <Loader2 size={12} className="animate-spin text-teal-400" />
+              ) : (
+                <Sparkles size={12} className="text-teal-400" />
+              )}
+              <span>{isSummarizing ? 'Menyusun Notulen...' : 'Rangkum AI'}</span>
+            </button>
+          )}
+
           <button
+            type="button"
             onClick={handleInsertTemplate}
-            className="flex items-center gap-1 px-2.5 py-1 rounded border transition-colors hover:border-teal-500 text-teal-400"
-            style={{
-              background: buttonBg,
-              borderColor: borderColor
-            }}
-            title="Gunakan format notulen & tindak lanjut"
+            className="flex items-center gap-1 px-2 py-1 rounded-lg border border-white/10 hover:bg-white/5 text-zinc-300 transition-colors text-[11px] font-medium"
+            title="Gunakan format template notulen standar"
           >
-            <Sparkles size={12} />
-            <span>Template Notulen</span>
+            <span>Template</span>
           </button>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1">
+          {/* Bersihkan Duplikasi Teks */}
+          {content.trim() && (
+            <button
+              type="button"
+              onClick={handleDeduplicate}
+              className="flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-amber-500/10 text-zinc-400 hover:text-amber-300 transition-colors text-[11px]"
+              title="Hapus paragraf atau teks yang terduplikasi secara otomatis"
+            >
+              <RefreshCw size={12} />
+              <span className="hidden xl:inline">Bersihkan Duplikat</span>
+            </button>
+          )}
+
           <button
+            type="button"
             onClick={handleCopy}
-            className="flex items-center gap-1 px-2 py-1 rounded hover:bg-white/5 transition-colors"
-            style={{ color: secondaryTextColor }}
+            className="flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-white/5 transition-colors text-zinc-300"
             title="Salin seluruh isi catatan"
           >
             {copied ? <Check size={13} className="text-emerald-400" /> : <Copy size={13} />}
-            <span>Salin</span>
+            <span className="text-[11px]">{copied ? 'Tersalin' : 'Salin'}</span>
           </button>
 
           <button
+            type="button"
             onClick={handleDownload}
-            className="flex items-center gap-1 px-2 py-1 rounded hover:bg-white/5 transition-colors"
-            style={{ color: secondaryTextColor }}
+            className="flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-white/5 transition-colors text-zinc-300"
             title="Unduh catatan (.md)"
           >
             <Download size={13} />
-            <span>Export</span>
+            <span className="text-[11px]">Export</span>
           </button>
+
+          {/* Kosongkan Catatan */}
+          {content.trim() && (
+            <button
+              type="button"
+              onClick={handleClear}
+              className="flex items-center gap-1 px-1.5 py-1 rounded-lg hover:bg-rose-500/10 text-zinc-400 hover:text-rose-400 transition-colors"
+              title="Kosongkan seluruh isi catatan untuk membuat draf baru"
+            >
+              <Trash2 size={13} />
+            </button>
+          )}
         </div>
       </div>
 
-      {/* Textarea Editor */}
-      <div
-        className="flex-1 p-4 flex flex-col min-h-0"
-        style={{ background: editorBg }}
-      >
-        <textarea
-          value={content}
-          onChange={handleChange}
-          placeholder="Tulis notulen rapat, catatan bersama, poin kesepakatan, atau daftar tugas di sini..."
-          className="w-full h-full resize-none bg-transparent border-0 text-sm font-mono leading-relaxed focus:outline-none focus:ring-0 custom-scrollbar"
-          style={{ color: textColor }}
-          spellCheck={false}
-        />
+      {/* Konten Catatan: Edit Mode vs Preview Mode */}
+      <div className="flex-1 flex flex-col min-h-0 overflow-hidden" style={{ background: editorBg }}>
+        {viewMode === 'edit' ? (
+          <div className="flex-1 p-4 flex flex-col min-h-0">
+            <textarea
+              value={content}
+              onChange={handleChange}
+              placeholder="Tulis notulen rapat, catatan bersama, poin kesepakatan, atau draf regulasi di sini... (Mendukung format Markdown: **tebal**, *miring*, ## judul, - poin)"
+              className="w-full h-full resize-none bg-transparent border-0 text-sm font-sans leading-relaxed focus:outline-none focus:ring-0 custom-scrollbar placeholder:text-zinc-600"
+              style={{ color: textColor }}
+              spellCheck={false}
+              autoFocus
+            />
+          </div>
+        ) : (
+          <div 
+            className="flex-1 p-5 overflow-y-auto custom-scrollbar select-text text-sm leading-relaxed"
+            onDoubleClick={() => setViewMode('edit')}
+            title="Klik ganda di area ini untuk beralih ke mode edit"
+          >
+            {content.trim() ? (
+              <div className="prose prose-invert max-w-none space-y-3">
+                <ReactMarkdown
+                  remarkPlugins={[remarkGfm]}
+                  components={{
+                    h1: ({ node, ...props }) => (
+                      <h1 className="text-lg font-bold text-teal-400 pb-2 mb-3 border-b border-white/[0.08]" {...props} />
+                    ),
+                    h2: ({ node, ...props }) => (
+                      <h2 className="text-base font-semibold text-zinc-100 mt-4 mb-2 flex items-center gap-2" {...props} />
+                    ),
+                    h3: ({ node, ...props }) => (
+                      <h3 className="text-sm font-semibold text-zinc-200 mt-3 mb-1" {...props} />
+                    ),
+                    p: ({ node, ...props }) => (
+                      <p className="mb-2.5 text-zinc-300 leading-relaxed text-sm" {...props} />
+                    ),
+                    ul: ({ node, ...props }) => (
+                      <ul className="list-disc pl-5 mb-3 space-y-1 text-zinc-300 text-sm" {...props} />
+                    ),
+                    ol: ({ node, ...props }) => (
+                      <ol className="list-decimal pl-5 mb-3 space-y-1 text-zinc-300 text-sm" {...props} />
+                    ),
+                    li: ({ node, ...props }) => (
+                      <li className="text-zinc-300 leading-normal" {...props} />
+                    ),
+                    strong: ({ node, ...props }) => (
+                      <strong className="font-semibold text-teal-300" {...props} />
+                    ),
+                    em: ({ node, ...props }) => (
+                      <em className="italic text-zinc-200" {...props} />
+                    ),
+                    code: ({ node, inline, ...props }) => inline ? (
+                      <code className="px-1.5 py-0.5 rounded bg-white/10 text-teal-300 font-mono text-xs" {...props} />
+                    ) : (
+                      <code className="block p-3 rounded-lg bg-black/40 text-zinc-200 font-mono text-xs overflow-x-auto border border-white/[0.06] my-2" {...props} />
+                    ),
+                    blockquote: ({ node, ...props }) => (
+                      <blockquote className="pl-3.5 border-l-2 border-teal-500/50 italic text-zinc-400 my-2.5 bg-teal-500/[0.03] py-1 rounded-r" {...props} />
+                    ),
+                    input: ({ node, ...props }) => (
+                      <input type="checkbox" className="mr-2 rounded border-white/20 text-teal-500 pointer-events-none accent-teal-500" {...props} />
+                    ),
+                    hr: () => <hr className="my-4 border-white/[0.08]" />,
+                    table: ({ node, ...props }) => (
+                      <div className="overflow-x-auto my-3 rounded-lg border border-white/[0.06]">
+                        <table className="min-w-full text-xs divide-y divide-white/[0.06]" {...props} />
+                      </div>
+                    ),
+                    th: ({ node, ...props }) => (
+                      <th className="px-3 py-2 text-left font-semibold text-zinc-200 bg-white/[0.04]" {...props} />
+                    ),
+                    td: ({ node, ...props }) => (
+                      <td className="px-3 py-2 text-zinc-300 border-t border-white/[0.04]" {...props} />
+                    )
+                  }}
+                >
+                  {content}
+                </ReactMarkdown>
+              </div>
+            ) : (
+              <div className="h-full flex flex-col items-center justify-center text-center p-6 text-zinc-500">
+                <FileText size={36} className="mb-2.5 opacity-25 text-teal-400" />
+                <p className="text-xs text-zinc-400">Catatan tim masih kosong.</p>
+                <button
+                  onClick={() => setViewMode('edit')}
+                  className="mt-3 px-3.5 py-1.5 rounded-lg bg-teal-500/10 text-teal-300 hover:bg-teal-500/20 text-xs border border-teal-500/30 transition-all"
+                >
+                  Mulai Menulis
+                </button>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Footer Info */}
       <div
-        className="px-4 py-2 border-t text-[11px] flex items-center justify-between"
+        className="px-4 py-2 text-[11px] flex items-center justify-between"
         style={{
           background: pageBg,
-          borderColor: borderColor,
+          borderTop: `1px solid ${subtleBorder}`,
           color: secondaryTextColor
         }}
       >
-        <span>{content.split(/\s+/).filter(Boolean).length} kata</span>
-        <span>{isDirty ? 'Perubahan belum disimpan' : 'Semua perubahan tersimpan'}</span>
+        <div className="flex items-center gap-2">
+          <span>{content.split(/\s+/).filter(Boolean).length} kata</span>
+          {viewMode === 'preview' && content.trim() && (
+            <span className="text-[10px] text-zinc-500 hidden sm:inline">• Klik ganda untuk edit</span>
+          )}
+        </div>
+        <span className={isDirty ? 'text-amber-400 font-medium' : 'text-zinc-500'}>
+          {isDirty ? 'Perubahan belum disimpan' : 'Semua perubahan tersimpan'}
+        </span>
       </div>
     </div>
   );

@@ -37,14 +37,28 @@ class ModeCollab:
     async def should_intervene(
         self,
         recent_messages: List[Dict[str, Any]],
-        room_topic: Optional[str] = None
-    ) -> Tuple[bool, str]:
+        room_topic: Optional[str] = None,
+        is_mention: bool = False
+    ) -> Tuple[bool, str, Dict[str, Any]]:
         """
-        Mengevaluasi apakah CAKRA perlu nimbrung secara proaktif pada percakapan tim.
-        Menggunakan model router ringan (gemma4:e4b) untuk menghemat VRAM dan komputasi.
+        Mengevaluasi apakah CAKRA perlu merespons percakapan tim (proaktif atau karena mention)
+        SERTA mengekstrak parameter pencarian dokumen regulasi (RAG).
+        Menggunakan model router ringan (gemma4:e4b).
         """
-        if not recent_messages or len(recent_messages) < 2:
-            return False, ""
+        default_routing = {
+            "need_rag": False,
+            "queries": [],
+            "query_judul": [],
+            "search_tags": []
+        }
+
+        if not recent_messages:
+            return is_mention, "No recent messages", default_routing
+
+        # Deteksi apakah pesan saat ini adalah kelanjutan / respon balik langsung terhadap pernyataan CAKRA sebelumnya
+        is_followup_to_cakra = False
+        if len(recent_messages) >= 2 and recent_messages[-2].get("sender_type") == "CAKRA":
+            is_followup_to_cakra = True
 
         # Format 5-8 pesan terakhir
         transcript_lines = []
@@ -57,30 +71,40 @@ class ModeCollab:
             else:
                 transcript_lines.append(f"[{sender}]: {text}")
 
-        # Jangan nimbrung jika pesan terakhir sudah dari CAKRA
+        # Jangan nimbrung jika pesan terakhir sudah dari CAKRA dan tidak ada mention baru
         last_sender_type = recent_messages[-1].get("sender_type", "USER")
-        if last_sender_type == "CAKRA":
-            return False, ""
+        if last_sender_type == "CAKRA" and not is_mention:
+            return False, "Pesan terakhir sudah dari CAKRA", default_routing
 
-        # Filter cepat: Jika hanya obrolan umum/santai antar personil tanpa mention cakra,
-        # CAKRA WAJIB DIAM dan tidak mengganggu.
+        # Filter cepat: Jika hanya obrolan umum/santai antar personil tanpa mention cakra
+        # (Kecuali jika ini adalah respon balik langsung ke CAKRA, maka jangan disupresi)
         last_text = recent_messages[-1].get("message_text", "").strip().lower()
         casual_banter = [
             "makan siang yuk", "makan yuk", "makan dulu", "makan siang", "ngopi dulu", "ngopi yuk",
             "halo bro", "siap nanti ya", "nanti ya", "duluan ya", "rehat dulu", "istirahat dulu",
             "otw", "gas", "siap bro", "oke bro", "ok bro", "sip bro"
         ]
-        if any(cb in last_text for cb in casual_banter) or (
+        if not is_mention and not is_followup_to_cakra and (any(cb in last_text for cb in casual_banter) or (
             len(last_text) < 15 and last_text in ["ya", "iya", "siap", "ok", "oke", "sip", "mantap", "noted", "makasih", "terima kasih", "halo"]
-        ):
+        )):
             logger.info(f"[COLLAB_EVAL] Obrolan santai/basa-basi umum antar personil ('{last_text}'), CAKRA diam dan tidak mengganggu.")
-            return False, ""
+            return False, "Obrolan santai antar rekan kerja", default_routing
+
+        if is_mention:
+            dialog_status = "YA (DIPANGGIL / DIMENTION LANGSUNG OLEH ANGGOTA TIM)"
+        elif is_followup_to_cakra:
+            dialog_status = "YA (REKAN TIM MERESPON / MENGONFIRMASI LANGSUNG PERNYATAAN CAKRA SEBELUMNYA)"
+        else:
+            dialog_status = "TIDAK (DISKUSI TIM BEBAS ANTAR REKAN)"
 
         transcript_str = "\n".join(transcript_lines)
         eval_prompt = (
-            f"Topik Ruang Diskusi: {room_topic or 'Umum / Diskusi Kerja'}\n\n"
+            f"Topik Ruang Diskusi: {room_topic or 'Umum / Diskusi Kerja'}\n"
+            f"Status Keterlibatan Langsung CAKRA: {dialog_status}\n\n"
             f"Transkrip Percakapan Terbaru:\n{transcript_str}\n\n"
-            f"Berdasarkan transkrip di atas, apakah tim sedang membuka diskusi dokumen/regulasi/topik kerja substantif sehingga CAKRA perlu nimbrung?"
+            f"Berdasarkan transkrip di atas:\n"
+            f"1. Apakah CAKRA perlu menanggapi? (Jika mention langsung ATAU respon/konfirmasi atas ucapan CAKRA = WAJIB true; jika diskusi bebas antar rekan = nilai apakah substantif/butuh masukan)\n"
+            f"2. Apakah topik memerlukan pencarian DOKUMEN REGULASI INTERNAL PT PINDAD (RAG) seperti PKB, SE, SOP, SK, aturan kerja, hak karyawan, atau data teknis internal? Tentukan need_rag, queries, query_judul, dan search_tags."
         )
 
         messages = [
@@ -88,21 +112,32 @@ class ModeCollab:
             {"role": "user", "content": eval_prompt}
         ]
 
+        router_ctx = getattr(settings, "NUM_CTX_ROUTER", 4096)
         try:
             res = await generate_json_response(
                 model_name=self.router_model,
                 messages=messages,
-                temperature=0.1,
-                num_ctx=2048,
-                timeout=10.0
+                temperature=0.0,
+                top_p=0.1,
+                top_k=1,
+                keep_alive=-1,
+                num_ctx=router_ctx,
+                timeout=60.0
             )
-            should_intervene = bool(res.get("should_intervene", False))
+            should_intervene = bool(res.get("should_intervene", False)) or is_mention
             reason = str(res.get("reason", ""))
-            logger.info(f"[COLLAB_EVAL] should_intervene={should_intervene}, reason='{reason}'")
-            return should_intervene, reason
+            need_rag = bool(res.get("need_rag", False))
+            routing_dict = {
+                "need_rag": need_rag,
+                "queries": res.get("queries", []) if isinstance(res.get("queries"), list) else [],
+                "query_judul": res.get("query_judul", []) if isinstance(res.get("query_judul"), list) else [],
+                "search_tags": res.get("search_tags", []) if isinstance(res.get("search_tags"), list) else []
+            }
+            logger.info(f"[COLLAB_EVAL] should_intervene={should_intervene}, need_rag={need_rag}, reason='{reason}'")
+            return should_intervene, reason, routing_dict
         except Exception as e:
             logger.warning(f"[COLLAB_EVAL] Evaluasi intervensi gagal/timeout: {e}")
-            return False, ""
+            return is_mention, f"Fallback: {e}", default_routing
 
     async def generate_response(
         self,
@@ -114,21 +149,63 @@ class ModeCollab:
         interjection_type: str = "EXPLICIT_MENTION",
         mode: Optional[str] = None,
         context_doc: Optional[Dict[str, Any]] = None,
+        members: Optional[List[Dict[str, Any]]] = None,
+        rag_context: Optional[str] = None,
+        rag_sources: Optional[List[Dict[str, Any]]] = None,
+        eval_reason: Optional[str] = None,
         request: Optional[Any] = None
     ) -> AsyncGenerator[str, None]:
         """
         Menghasilkan respons CAKRA sebagai AI Teammate secara streaming.
         """
+        # Format anggota tim di ruangan untuk Team Awareness
+        members_str = ""
+        if members:
+            member_names = [f"{m.get('name', 'Anggota')} ({m.get('divisi', 'PT Pindad')})" for m in members]
+            members_str = ", ".join(member_names)
+
         # Susun System Context
         system_context = (
             f"{COLLAB_TEAMMATE_SYSTEM_PROMPT}\n\n"
             f"--- KONTEKS RUANG DISKUSI SAAT INI ---\n"
             f"Nama Ruang: {room_name}\n"
-            f"Topik / Agenda: {room_topic or 'Perumusan Konsep & Regulasi'}\n\n"
-            f"--- DRAF DOKUMEN KERJA SAAT INI (DOCUMENT PAD) ---\n"
+            f"Topik / Agenda: {room_topic or 'Perumusan Konsep & Regulasi'}\n"
+        )
+        if members_str:
+            system_context += f"Anggota Tim di Ruangan Ini: {members_str}\n"
+
+        # Sinkronisasi Call 1 -> Call 2: Teruskan hasil evaluasi batin Call 1 ke System Context Call 2
+        if eval_reason:
+            system_context += (
+                f"\n--- EVALUASI INTERVENSI TIM (CALL 1) ---\n"
+                f"Tujuan Respon: {eval_reason}\n"
+                f"-----------------------------------------\n"
+            )
+
+        if interjection_type == "CONVERSATIONAL_FOLLOWUP":
+            system_context += (
+                "\nCatatan Situasi: Rekan tim sedang merespons atau mengonfirmasi pernyataan/candaan Anda sebelumnya. "
+                "Berikan tanggapan penutup atau balasan hangat yang santai, akrab, dan bersahabat (cukup 1 hingga 2 kalimat pendek yang asyik). Jangan kaku!\n"
+            )
+
+        system_context += (
+            f"\n--- DRAF DOKUMEN KERJA SAAT INI (DOCUMENT PAD) ---\n"
             f"{document_content.strip() if document_content and document_content.strip() else '(Draf dokumen belum diisi oleh tim)'}\n"
             f"---------------------------------------------------\n\n"
         )
+
+        # Integrasi Rujukan RAG (Jika ditemukan dari pencarian regulasi internal)
+        if rag_context and rag_context.strip():
+            system_context += (
+                f"\n--- RUJUKAN DOKUMEN REGULASI INTERNAL PT PINDAD (HASIL PENCARIAN RAG RESMI) ---\n"
+                f"{rag_context.strip()}\n"
+                f"---------------------------------------------------------------------------------\n"
+                f"Panduan Penggunaan Rujukan RAG:\n"
+                f"- Teks di atas adalah kutipan resmi hasil pencarian RAG dari database dokumen/regulasi PT Pindad.\n"
+                f"- Tanggapan Anda WAJIB berbasiskan data pasal, aturan, atau klausul di atas.\n"
+                f"- DILARANG BERHALUSINASI atau mengarang aturan baru di luar dokumen yang tertera.\n"
+                f"- Sebutkan nama dokumen atau nomor pasal terkait secara natural agar rekan tim mendapatkan kepastian regulasi.\n\n"
+            )
 
         # Integrasi Rujukan Dokumen Aktif (Jika rekan tim melampirkan context tag dokumen)
         if context_doc:
@@ -246,7 +323,7 @@ class ModeCollab:
                 "Catatan: Anda dipanggil/dimention secara langsung oleh rekan tim."
             )
 
-        # Cek apakah pesan user terakhir bernada santai / ajakan makan / sapaan
+        # Cek intensitas permintaan (apakah user meminta detail atau sekadar berdiskusi santai)
         last_user_msg = ""
         for m in reversed(recent_messages):
             if m.get("sender_type") == "USER":
@@ -254,11 +331,27 @@ class ModeCollab:
                 break
 
         is_casual_topic = any(kw in last_user_msg for kw in ["makan siang", "makan", "ngopi", "halo bro", "rehat", "istirahat", "stay"])
+        is_requesting_detail = any(kw in last_user_msg for kw in [
+            "detail", "jelasin", "jelaskan", "kenapa", "alasannya", "bedah", "poin-poin", "poinnya",
+            "uraikan", "jabarkan", "buatkan", "draf", "tulis kode", "bikin", "rincian", "komprehensif"
+        ])
+
         if is_casual_topic:
             system_context += (
                 "\nInstruksi Khusus Obrolan Santai: Rekan tim menyapa atau mengajak santai (seperti makan siang, ngopi, istirahat). "
-                "Tanggapi dengan sangat santai, akrab, dan bersahabat seperti kawan kantor yang asyik. "
-                "Contoh respons: 'Santai aja bro, pada makan siang dulu, gw stay di sini nemenin ruangan.' atau 'Siap bro, selamat makan siang duluan rekan-rekan! Gw standby di sini jaga draf kita.' Jangan kaku atau formal!"
+                "Tanggapi dengan santai, akrab, dan bersahabat seperti kawan kantor yang asyik dengan kata ganti aku-kamu. "
+                "Contoh respons: 'Santai aja bro, pada makan siang dulu, aku stay di sini nemenin ruangan.' atau 'Siap, selamat makan siang duluan rekan-rekan! Aku standby di sini jaga draf kerjaan kita.' DILARANG gunakan gw-elo!\n"
+            )
+        elif is_requesting_detail:
+            system_context += (
+                "\n[PANDUAN PANJANG RESPONS]: Rekan tim secara eksplisit meminta elaborasi mendalam, alasan detail, rincian, atau bedah dokumen. "
+                "Berikan analisis yang lengkap, komprehensif, terstruktur, berbasis data dan poin-poin yang mendalam.\n"
+            )
+        else:
+            system_context += (
+                "\n[PANDUAN PANJANG RESPONS]: Diskusi tim sedang berlangsung normal atau bertukar pikiran singkat. "
+                "Berikan tanggapan yang SINGKAT, PADAT, DAN TO-THE-POINT (cukup 1 hingga 3 kalimat saja) layaknya rekan kerja yang sedang mengobrol di ruang obrolan. "
+                "JANGAN membuat esai panjang, ringkasan berlebihan, atau format kaku, kecuali nanti diminta detail lebih lanjut oleh rekan tim.\n"
             )
 
         messages = [{"role": "system", "content": system_context}]
@@ -324,3 +417,98 @@ class ModeCollab:
         except Exception as e:
             logger.error(f"[COLLAB_GEN] Streaming response gagal: {e}")
             yield f"Mohon maaf rekan-rekan, terjadi kendala teknis saat memproses respons: {str(e)}"
+
+    async def generate_notulensi(
+        self,
+        room_name: str,
+        room_topic: str,
+        members: List[Dict[str, Any]],
+        messages: List[Dict[str, Any]]
+    ) -> str:
+        """
+        Merangkum seluruh riwayat obrolan tim menjadi Notulensi Rapat & Diskusi resmi.
+        """
+        member_names = [f"{m.get('name', 'Anggota')} ({m.get('divisi', 'PT Pindad')})" for m in members] if members else ["Anggota Tim"]
+        members_str = ", ".join(member_names)
+
+        chat_lines = []
+        for m in messages:
+            sender = m.get("sender_name") or m.get("sender_npp") or "Peserta"
+            text = (m.get("message_text") or "").strip()
+            if not text:
+                continue
+            clean_text = " ".join(text.split())
+            chat_lines.append(f"[{sender}]: {clean_text}")
+
+        transcript = "\n".join(chat_lines[-60:]) if chat_lines else "(Belum ada obrolan)"
+
+        prompt = f"""Anda adalah Notulis & Sekretaris Eksekutif Cerdas PT Pindad.
+Tugas Anda adalah merangkum obrolan tim di bawah ini menjadi DRAF NOTULENSI RAPAT & KESEPAKATAN TIM yang rapi, profesional, terstruktur, dan objektif.
+
+INFORMASI RUANG DISKUSI:
+- Nama Ruang: {room_name}
+- Agenda / Topik: {room_topic or 'Diskusi & Koordinasi Tim'}
+- Peserta: {members_str}
+
+RIWAYAT PERCAKAPAN TIM:
+\"\"\"
+{transcript}
+\"\"\"
+
+PANDUAN PENYUSUNAN NOTULENSI:
+1. Format wajib Markdown terstruktur rapi:
+# 📋 Notulensi Diskusi Tim: {room_name}
+**Topik:** {room_topic or 'Koordinasi Kerja'}  
+**Peserta:** {members_str}  
+
+---
+
+## 1. Ringkasan Eksekutif
+(Sajikan 2-3 kalimat ringkas intisari pertemuan/diskusi)
+
+## 2. Poin-Poin Utama Pembahasan
+- (Rangkum topik, usulan, dan pandangan penting yang dibahas)
+- (Abaikan sapaan basa-basi santai seperti ajakan makan siang/ngopi)
+
+## 3. Keputusan & Kesepakatan Bersama
+- (Poin keputusan atau konsensus yang disepakati)
+
+## 4. Tindak Lanjut (Action Items)
+- [ ] (Tugas atau tindak lanjut konkret beserta PIC jika ada)
+
+2. Tulis dalam Bahasa Indonesia formal, lugas, dan profesional.
+3. JANGAN menduplikasi kalimat atau teks yang sama berulang kali.
+4. JANGAN mengarang obrolan yang tidak terjadi. Langsung hasilkan naskah Notulensi Markdown tanpa kalimat pengantar atau basa-basi percakapan."""
+
+        system_msg = {"role": "system", "content": "Anda adalah Notulis Eksekutif profesional PT Pindad yang ahli menyusun notulensi rapat berkualitas tinggi."}
+        user_msg = {"role": "user", "content": prompt}
+
+        full_response = []
+        try:
+            async for raw_chunk in stream_ollama_chat(
+                model_name=self.persona_model,
+                messages=[system_msg, user_msg],
+                temperature=0.2,
+                num_ctx=getattr(settings, "NUM_CTX_CORE", 16384),
+                is_thinking=False
+            ):
+                if not raw_chunk:
+                    continue
+                for line in str(raw_chunk).splitlines():
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        parsed = json.loads(line)
+                        text_piece = parsed.get("chunk", "")
+                        if text_piece:
+                            full_response.append(text_piece)
+                    except Exception:
+                        pass
+        except Exception as e:
+            logger.error(f"[NOTULENSI_ERROR] Failed to generate notulensi: {e}")
+            return f"# 📋 Notulensi Diskusi Tim: {room_name}\n\n**Topik:** {room_topic}\n\nGagal membuat notulensi otomatis: {str(e)}"
+
+        result = "".join(full_response).strip()
+        return result or f"# 📋 Notulensi Diskusi Tim: {room_name}\n\n(Belum cukup data obrolan untuk menyusun notulensi rapat)"
+

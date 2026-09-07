@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   Users2,
@@ -59,6 +59,9 @@ export const CollabWorkspace = ({
   const secondaryTextColor = theme?.secondaryText || (darkMode ? '#94a3b8' : '#6b7280');
   const inputBg = theme?.inputBg || (darkMode ? '#1e1e20' : '#f3f4f6');
 
+  // Pembatas halus & seamless tanpa garis putih tebal
+  const subtleBorder = darkMode ? 'rgba(255, 255, 255, 0.06)' : 'rgba(0, 0, 0, 0.08)';
+
   // State
   const [rooms, setRooms] = useState([]);
   const [roomDetail, setRoomDetail] = useState(null);
@@ -70,6 +73,58 @@ export const CollabWorkspace = ({
   const [isLoadingRooms, setIsLoadingRooms] = useState(true);
   const [isLoadingChat, setIsLoadingChat] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+
+  // Resizable Document Pad Width
+  const [padWidth, setPadWidth] = useState(() => {
+    try {
+      const saved = localStorage.getItem('collab_pad_width');
+      return saved ? Math.max(340, Math.min(950, parseInt(saved, 10))) : 460;
+    } catch {
+      return 460;
+    }
+  });
+  const isResizingPad = useRef(false);
+
+  const handleMouseMovePad = useCallback((e) => {
+    if (!isResizingPad.current) return;
+    const newWidth = window.innerWidth - e.clientX;
+    const minW = 340;
+    const maxW = Math.min(950, Math.floor(window.innerWidth * 0.75));
+    if (newWidth >= minW && newWidth <= maxW) {
+      setPadWidth(newWidth);
+    }
+  }, []);
+
+  const stopResizingPad = useCallback(() => {
+    if (!isResizingPad.current) return;
+    isResizingPad.current = false;
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+    document.removeEventListener('mousemove', handleMouseMovePad);
+    document.removeEventListener('mouseup', stopResizingPad);
+    try {
+      setPadWidth((currentW) => {
+        localStorage.setItem('collab_pad_width', currentW.toString());
+        return currentW;
+      });
+    } catch {}
+  }, [handleMouseMovePad]);
+
+  const startResizingPad = useCallback((e) => {
+    e.preventDefault();
+    isResizingPad.current = true;
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    document.addEventListener('mousemove', handleMouseMovePad);
+    document.addEventListener('mouseup', stopResizingPad);
+  }, [handleMouseMovePad, stopResizingPad]);
+
+  useEffect(() => {
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMovePad);
+      document.removeEventListener('mouseup', stopResizingPad);
+    };
+  }, [handleMouseMovePad, stopResizingPad]);
 
   // Modals
   const [isCreateOpen, setIsCreateOpen] = useState(false);
@@ -287,12 +342,44 @@ export const CollabWorkspace = ({
     }
   };
 
-  // Action: Salin respons Cakra ke Document Pad
+  // Action: Salin respons Cakra ke Document Pad dengan pencegahan duplikasi
   const handleApplyToDocument = (text) => {
-    const updated = documentContent ? `${documentContent}\n\n${text}` : text;
+    if (!text?.trim()) return;
+    const cleanText = text.trim();
+
+    // Pencegahan duplikasi: jika teks sudah ada di dalam dokumen, jangan duplikasi
+    if (documentContent && documentContent.includes(cleanText)) {
+      alert('Poin atau respons ini sudah ada di dalam Catatan Tim.');
+      setIsPadOpen(true);
+      return;
+    }
+
+    const timeStamp = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+    const updated = documentContent && documentContent.trim()
+      ? `${documentContent.trim()}\n\n---\n**Tambahan (${timeStamp} WIB):**\n${cleanText}`
+      : cleanText;
+
     setDocumentContent(updated);
     setIsPadOpen(true);
     handleSaveDocument(updated);
+  };
+
+  // Action: Rangkum otomatis obrolan tim menjadi Notulensi Resmi via CAKRA AI
+  const handleSummarizeRoom = async () => {
+    if (!roomId) return;
+    try {
+      setIsSavingDoc(true);
+      const res = await collabApi.summarizeRoom(roomId);
+      if (res?.document_content) {
+        setDocumentContent(res.document_content);
+        setIsPadOpen(true);
+      }
+    } catch (err) {
+      console.error('Failed to summarize room:', err);
+      alert('Gagal menyusun notulensi otomatis: ' + (err.response?.data?.detail || err.message));
+    } finally {
+      setIsSavingDoc(false);
+    }
   };
 
   // Filtered rooms for lobby search
@@ -637,15 +724,30 @@ export const CollabWorkspace = ({
               />
             </div>
 
-            {/* Document Pad Samping (Collapsible) */}
+            {/* Document Pad Samping (Collapsible & Resizable ke Kiri) */}
             {isPadOpen && (
               <div
-                className="w-[380px] lg:w-[440px] shrink-0 border-l h-full animate-in slide-in-from-right duration-200"
-                style={{ borderColor: borderColor }}
+                className="relative shrink-0 h-full animate-in slide-in-from-right duration-200"
+                style={{
+                  width: `${padWidth}px`,
+                  borderLeft: `1px solid ${subtleBorder}`
+                }}
               >
+                {/* Drag Handle to Resize to the Left */}
+                {!isMobile && (
+                  <div
+                    onMouseDown={startResizingPad}
+                    className="absolute -left-1.5 top-0 bottom-0 w-3 cursor-col-resize z-30 group flex items-center justify-center transition-colors"
+                    title="Geser ke kiri untuk memperbesar, ke kanan untuk memperkecil"
+                  >
+                    <div className="w-[3px] h-12 rounded-full bg-white/10 group-hover:bg-teal-500/80 group-active:bg-teal-400 group-hover:h-20 transition-all duration-150" />
+                  </div>
+                )}
                 <CollabDocumentPad
+                  roomId={roomId}
                   documentContent={documentContent}
                   onSave={handleSaveDocument}
+                  onSummarize={handleSummarizeRoom}
                   onClose={() => setIsPadOpen(false)}
                   isSaving={isSavingDoc}
                   roomTopic={roomDetail?.topic}

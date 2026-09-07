@@ -65,12 +65,17 @@ class AnalyticJSONFormatter(logging.Formatter):
         return json.dumps(log_obj)
 
 
-def setup_root_logger():
+def setup_root_logger(service_name: str | None = None):
     """
     Konfigurasi sistem logging terpusat untuk CAKRA AI dengan arsitektur Dual-Output.
     Output dialirkan ke:
     1. StreamHandler: Teks estetik untuk developer (dibaca di terminal).
     2. RotatingFileHandler: Format JSONL murni untuk kebutuhan analitik server.
+    3. RotatingFileHandler (opsional): Plain text ke logs/services/{service_name}.log
+       agar monitor.sh dapat membaca log saat service dijalankan langsung dari terminal.
+    Args:
+        service_name: Nama service (misal: "chat_service", "gateway", dll.).
+            Jika diset, akan membuat file log plain text di logs/services/{service_name}.log.
     """
     # Ambil root logger sistem
     root_logger = logging.getLogger()
@@ -109,10 +114,34 @@ def setup_root_logger():
     file_handler.addFilter(req_filter)
     root_logger.addHandler(file_handler)
 
+    # 3. HANDLER 3 (OPSIONAL): SERVICE PLAIN TEXT FILE - untuk monitor.sh
+    # Dibuat hanya jika service_name diberikan — memungkinkan monitoring via monitor.sh
+    # bahkan ketika service dijalankan langsung dari terminal (bukan via start_services.sh)
+    if service_name:
+        services_log_dir = os.path.join(LOGS_DIR, "services")
+        os.makedirs(services_log_dir, exist_ok=True)
+        service_log_path = os.path.join(services_log_dir, f"{service_name}.log")
+        service_file_format = logging.Formatter(
+            fmt="%(asctime)s | %(name)s | %(levelname)s | %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S"
+        )
+        service_file_handler = RotatingFileHandler(
+            filename=service_log_path,
+            maxBytes=20 * 1024 * 1024,  # 20 MB
+            backupCount=3,
+            encoding="utf-8"
+        )
+        service_file_handler.setFormatter(service_file_format)
+        service_file_handler.setLevel(logging.INFO)
+        service_file_handler.addFilter(req_filter)
+        root_logger.addHandler(service_file_handler)
+
     # Matikan log bising dari library pihak ketiga (Uvicorn / HTTPX / asyncpg)
     logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
     logging.getLogger("httpx").setLevel(logging.WARNING)
     logging.getLogger("httpcore").setLevel(logging.WARNING)
 
     root_logger.info(f"[LOGGING] Analytic Logging system initialized. Log file: {log_file_path}")
+    if service_name:
+        root_logger.info(f"[LOGGING] Service log file: logs/services/{service_name}.log")
     return root_logger

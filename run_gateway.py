@@ -24,7 +24,7 @@ for path in [ROOT_DIR]:
 from backend.app.core.logging_setup import setup_root_logger
 from backend.app.utils.request_logging import setup_request_id_logging
 
-setup_root_logger()
+setup_root_logger(service_name="gateway")
 setup_request_id_logging()
 logger = logging.getLogger("CAKRA_GATEWAY")
 

@@ -118,6 +118,25 @@ async def update_document(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.post("/rooms/{room_id}/summarize", tags=["Collab"])
+async def summarize_room(
+    room_id: str,
+    current_user_npp: str = Depends(get_current_user_npp)
+):
+    """Menyusun notulensi & ringkasan eksekutif otomatis dari obrolan tim via CAKRA AI."""
+    if not current_user_npp or current_user_npp == "GUEST":
+        raise HTTPException(status_code=401, detail="Sesi login tidak valid.")
+    try:
+        result = await CollabService.summarize_room(room_id, current_user_npp)
+        return result
+    except ValueError as ve:
+        raise HTTPException(status_code=404, detail=str(ve))
+    except Exception as e:
+        logger.error(f"[COLLAB_API] Error summarizing room: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+
 @router.post("/rooms/{room_id}/invite", tags=["Collab"])
 async def invite_members(
     room_id: str,

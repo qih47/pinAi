@@ -93,6 +93,12 @@ export default function CollabChatNavigator({
     }
   };
 
+  const unhoveredGap = useMemo(() => {
+    if (userMessages.length <= 15) return 4;
+    if (userMessages.length <= 25) return 3;
+    return 2;
+  }, [userMessages.length]);
+
   return (
     <div
       onMouseEnter={() => setIsHovered(true)}
@@ -110,12 +116,12 @@ export default function CollabChatNavigator({
       }}
     >
       <div
-        className="custom-scrollbar"
+        className="no-scrollbar"
         style={{
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'flex-end',
-          gap: isHovered ? '6px' : '4px',
+          gap: isHovered ? '6px' : `${unhoveredGap}px`,
           padding: isHovered ? '10px 12px' : '8px 6px',
           borderRadius: isHovered ? '16px' : '999px',
           background: darkMode
@@ -127,7 +133,9 @@ export default function CollabChatNavigator({
             ? (darkMode ? '0 12px 30px rgba(0, 0, 0, 0.45)' : '0 12px 30px rgba(0, 0, 0, 0.1)')
             : '0 4px 12px rgba(0, 0, 0, 0.08)',
           maxHeight: '440px',
-          overflowY: 'auto',
+          overflowY: isHovered ? 'auto' : 'hidden',
+          scrollbarWidth: 'none',
+          msOverflowStyle: 'none',
           transition: 'all 0.22s cubic-bezier(0.16, 1, 0.3, 1)',
         }}
       >

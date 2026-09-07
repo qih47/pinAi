@@ -36,6 +36,12 @@ export const collabApi = {
     return res.data;
   },
 
+  // Rangkum seluruh obrolan tim menjadi Notulensi Resmi otomatis via CAKRA AI
+  summarizeRoom: async (roomId) => {
+    const res = await apiClient.post(`/collab/rooms/${roomId}/summarize`);
+    return res.data;
+  },
+
   // Undang anggota baru
   inviteMembers: async (roomId, npps) => {
     const res = await apiClient.post(`/collab/rooms/${roomId}/invite`, {
