@@ -758,8 +758,8 @@ class CollabService:
         attachments = attachments or []
         attachments_json = json.dumps(attachments)
         msg_id = str(uuid.uuid4())
-        # Deteksi apakah ada mention @cakra atau panggil cakra secara langsung
-        is_mention = bool(re.search(r"\b@?cakra\b", message_text, re.IGNORECASE))
+        # Deteksi apakah ada mention @cakra atau panggil cakra / cak secara langsung
+        is_mention = bool(re.search(r"\b@?(?:cakra|cak)\b", message_text, re.IGNORECASE))
 
         async with get_db() as conn:
             membership = await conn.fetchrow(
@@ -1094,7 +1094,7 @@ class CollabService:
 
                 last_new_msg = newer_rows[-1]
                 last_new_text = last_new_msg.get("message_text", "")
-                is_last_mention = bool(re.search(r"\b@?cakra\b", last_new_text, re.IGNORECASE))
+                is_last_mention = bool(re.search(r"\b@?(?:cakra|cak)\b", last_new_text, re.IGNORECASE))
 
                 # Jika pesan terbaru tidak memanggil CAKRA secara langsung,
                 # evaluasi ulang apakah respon CAKRA masih diperlukan atau tim sudah menjawab/berganti topik
