@@ -7,6 +7,7 @@ import cakraLogo from '../../../assets/cakra.png';
 import { styles } from '../chatPage.styles';
 import { translations, resolveStatusMessage } from '../../../utils/translations';
 import { useChatStore } from '../../../stores/chatStore';
+import DateDivider, { formatDateDivider, shouldShowDateDivider } from '../../../components/ui/DateDivider';
 
 const SkeletonChat = () => (
   <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', width: '100%', padding: '12px 0' }}>
@@ -53,6 +54,8 @@ export default function ChatArea({
 }) {
   const virtuosoRef = useRef(null);
   const activeModeTag = useChatStore(state => state.activeModeTag);
+  const messagesRef = useRef(messages);
+  messagesRef.current = messages;
 
   // scrollParent via useState — set saat isLoading=true (Virtuoso belum ada)
   // sehingga ketika isLoading=false, Virtuoso mount langsung dengan scrollParent yang benar.
@@ -113,25 +116,40 @@ export default function ChatArea({
     prevMsgLenRef.current = messages.length;
   }, [isLoading, messages.length, messagesContainerRef]);
 
-  const itemContent = useCallback((idx, msg) => (
-    <ChatBubble
-      idx={idx}
-      msg={msg}
-      darkMode={darkMode}
-      theme={theme}
-      isThinking={isThinking}
-      isStreamingText={isStreamingText}
-      sendMessage={sendMessage}
-      searchQuery={searchQuery}
-      isLastMessage={idx === messages.length - 1}
-      onFileClick={onFileClick}
-      setPreviewImage={setPreviewImage}
-      onOpenArtifact={onOpenArtifact}
-      handleDownloadAllArtifacts={handleDownloadAllArtifacts}
-      handleDownloadArtifact={handleDownloadArtifact}
-      language={language}
-    />
-  ), [darkMode, theme, isThinking, isStreamingText, sendMessage, searchQuery, messages.length, onFileClick, setPreviewImage, onOpenArtifact, handleDownloadAllArtifacts, handleDownloadArtifact, language]);
+  const itemContent = useCallback((idx, msg) => {
+    const prevMsg = idx > 0 ? messagesRef.current?.[idx - 1] : null;
+    const showDateDivider = shouldShowDateDivider(msg, prevMsg);
+    const dateText = showDateDivider ? formatDateDivider(msg?.created_at || msg?.timestamp, language) : '';
+
+    return (
+      <div key={msg.id || idx} style={{ width: '100%' }}>
+        {showDateDivider && (
+          <DateDivider
+            dateText={dateText}
+            darkMode={darkMode}
+            theme={theme}
+          />
+        )}
+        <ChatBubble
+          idx={idx}
+          msg={msg}
+          darkMode={darkMode}
+          theme={theme}
+          isThinking={isThinking}
+          isStreamingText={isStreamingText}
+          sendMessage={sendMessage}
+          searchQuery={searchQuery}
+          isLastMessage={idx === messages.length - 1}
+          onFileClick={onFileClick}
+          setPreviewImage={setPreviewImage}
+          onOpenArtifact={onOpenArtifact}
+          handleDownloadAllArtifacts={handleDownloadAllArtifacts}
+          handleDownloadArtifact={handleDownloadArtifact}
+          language={language}
+        />
+      </div>
+    );
+  }, [darkMode, theme, isThinking, isStreamingText, sendMessage, searchQuery, messages.length, onFileClick, setPreviewImage, onOpenArtifact, handleDownloadAllArtifacts, handleDownloadArtifact, language]);
 
   const t = translations[language]?.chatArea || translations.id.chatArea;
 

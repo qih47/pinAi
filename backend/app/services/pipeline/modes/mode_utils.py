@@ -24,10 +24,27 @@ def detect_precheck(user_message: str, chat_mode: str, has_attachment: bool, use
     _EMAIL_KEYWORDS = ["kirim email", "buat email", "draft email", "balas email", "email ke", "draf email"]
     is_generate_email = any(kw in msg_lower for kw in _EMAIL_KEYWORDS)
     
+    _DOCWRITER_KEYWORDS = [
+        "buka editor", "buka dokumen editor", "buka editornya", "buka dokumen writer",
+        "dokumen writer", "dokumen editor", "document writer", "document editor",
+        "draft surat", "draf surat", "draft skep", "draf skep", "draft se", "draf se",
+        "draft memo", "draf memo", "draft nota dinas", "draf nota dinas",
+        "draft surat edaran", "draf surat edaran", "draft surat keputusan", "draf surat keputusan",
+        "siapkan draft", "siapkan draf", "buatkan draft", "buatkan draf", "bikin draft", "bikin draf",
+        "buat draft", "buat draf", "tulis draft", "tulis draf", "susun draft", "susun draf",
+        "tampilkan editor", "editor naskah", "editor dokumen"
+    ]
+    import re
+
+    is_open_editor = bool(re.search(r'\b(buka|open|tampil(kan)?|muncul(kan)?|akses)\b.{0,25}\b(editor|writer|studio)\b', msg_lower))
+    is_doc_draft = (
+        (any(kw in msg_lower for kw in ["surat edaran", "skep", "nota dinas", "surat keputusan", "naskah dinas"]) and any(v in msg_lower for v in ["draft", "draf", "siapkan", "buatkan", "susun", "bikin", "buka", "buat", "tulis"]))
+        or bool(re.search(r'\b(draft|draf|buatkan|siapkan|bikin|susun)\b.{0,20}\b(se|skep|surat)\b', msg_lower))
+    )
+    is_docwriter = any(kw in msg_lower for kw in _DOCWRITER_KEYWORDS) or is_doc_draft or is_open_editor
+
     _VISUAL_KEYWORDS = ["visual", "diagram", "alur", "flowchart", "grafik", "bagan"]
     requires_visual = any(kw in msg_lower for kw in _VISUAL_KEYWORDS)
-
-    import re
 
     # Strict word-boundary regex untuk deteksi kata ganti eksplisit
     has_explicit_gue_lo = bool(re.search(r'\b(gue|gw|gua|lo|lu|elu)\b', msg_lower))
@@ -92,6 +109,10 @@ def detect_precheck(user_message: str, chat_mode: str, has_attachment: bool, use
         is_greeting = True
         is_chitchat = True
         has_instruction = False
+    elif is_docwriter:
+        is_greeting = False
+        is_chitchat = False
+        has_instruction = True
     elif has_instruction:
         is_greeting = False
         is_chitchat = False
@@ -142,6 +163,7 @@ def detect_precheck(user_message: str, chat_mode: str, has_attachment: bool, use
         "word_count": word_count,
         "requires_visual": requires_visual,
         "is_generate_email": is_generate_email,
+        "is_docwriter": is_docwriter,
         "is_map_query": is_map_query,
         "_user_message": user_message
     }
@@ -344,6 +366,8 @@ def select_call2_module(routing: Dict[str, Any], has_rag_context: bool = False) 
         return "analytic"             # visual / analytic expert
     if routing.get("is_self_correction"):
         return "self_correction"      # sudah benar
+    if routing.get("is_docwriter"):
+        return "general_expert"       # dokumen writer / editor
     if routing.get("is_ambiguous"):
         return "ambiguous"            # klarifikasi umum/regulasi
     if routing.get("is_chitchat") or routing.get("is_greeting"):
@@ -457,6 +481,18 @@ def build_call2_system_prompt(
             from backend.app.services.pipeline.prompts.email_prompts import EMAIL_SYSTEM_PROMPT
             if "MODE SMART MAIL" not in prompt:
                 prompt += "\n\n" + EMAIL_SYSTEM_PROMPT
+
+        # Injeksi Dokumen Writer & Editor (Tool Global BUMN)
+        user_msg_check = (precheck.get("_user_message") or "").lower()
+        if (
+            precheck.get("is_docwriter")
+            or any(kw in user_msg_check for kw in [
+                "buka editor", "editor", "writer", "surat edaran", "skep", "nota dinas", "draf", "draft"
+            ])
+        ):
+            from backend.app.services.pipeline.prompts.core_prompts import DOCUMENT_WRITER_GUIDANCE
+            if "DOCUMENT WRITER & EDITOR" not in prompt:
+                prompt += "\n\n" + DOCUMENT_WRITER_GUIDANCE
 
         # Injeksi Pembuatan Berkas Fisik (Downloadable File)
         if precheck.get("is_generate_file"):

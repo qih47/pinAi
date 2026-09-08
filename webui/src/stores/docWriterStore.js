@@ -17,6 +17,8 @@ export const useDocWriterStore = create((set, get) => ({
   isLoadingTemplates: false,
   isExporting: false,
   activePatchSection: null, // { sectionId, timestamp }
+  isTemplateModalOpen: false,
+  setTemplateModalOpen: (val) => set({ isTemplateModalOpen: Boolean(val) }),
 
   openWriter: (templateId = null, initialTitle = null, initialContent = null) => {
     const currentDoc = get().activeDocument;

@@ -77,9 +77,9 @@ export const defaultTemplates = {
 
   template_se: {
     id: 'template_se',
-    name: 'Surat Edaran Direksi (SE)',
-    title: 'Surat Edaran Direksi Pedoman',
-    description: 'Format Surat Edaran Direksi PT Pindad untuk petunjuk pelaksanaan kebijakan, tata tertib, dan instruksi operasional.',
+    name: 'Surat Edaran (SE)',
+    title: 'Surat Edaran Pedoman',
+    description: 'Format Surat Edaran PT Pindad untuk petunjuk pelaksanaan kebijakan, tata tertib, dan instruksi operasional.',
     html: `
       <div data-section="kop" style="text-align: center; margin-bottom: 20px;">
         <h2 style="margin: 0; font-size: 15pt; font-weight: bold;">PT PINDAD (PERSERO)</h2>
@@ -88,7 +88,7 @@ export const defaultTemplates = {
       </div>
 
       <div data-section="judul" style="text-align: center; margin-bottom: 24px;">
-        <h3 style="margin: 0; font-size: 13pt; font-weight: bold; text-decoration: underline;">SURAT EDARAN DIREKSI</h3>
+        <h3 style="margin: 0; font-size: 13pt; font-weight: bold; text-decoration: underline;">SURAT EDARAN</h3>
         <p style="margin: 4px 0 0 0; font-size: 11pt;">NOMOR : SE / &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; / PINDAD / 2026</p>
         <p style="margin: 8px 0 0 0; font-size: 11pt; font-weight: bold;">TENTANG</p>
         <p style="margin: 4px 0 0 0; font-size: 11pt; font-weight: bold; text-transform: uppercase;">PANDUAN STANDARDISASI PENGEMBANGAN APLIKASI & KEAMANAN SISTEM</p>
@@ -131,9 +131,9 @@ export const defaultTemplates = {
         <table style="width: 280px; margin-left: auto; border: 0; text-align: left;">
           <tr><td>Dikeluarkan di</td><td>: Bandung</td></tr>
           <tr><td>Pada tanggal</td><td>: &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 2026</td></tr>
-          <tr><td colspan="2" style="padding-top: 8px; font-weight: bold;">DIREKSI PT PINDAD</td></tr>
+          <tr><td colspan="2" style="padding-top: 8px; font-weight: bold;">PT PINDAD (PERSERO)</td></tr>
           <tr><td colspan="2" style="height: 50px;"></td></tr>
-          <tr><td colspan="2" style="font-weight: bold; text-decoration: underline;">DIREKTUR TEKNOLOGI & PENGEMBANGAN</td></tr>
+          <tr><td colspan="2" style="font-weight: bold; text-decoration: underline;">KEPALA DIVISI / PEJABAT BERWENANG</td></tr>
         </table>
       </div>
     `

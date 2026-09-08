@@ -463,7 +463,7 @@ export const translations = {
       openEditor: "Dokumen Editor",
       closeEditor: "Tutup Dokumen Editor",
       skepTemplate: "Surat Keputusan Direksi (SKEP)",
-      seTemplate: "Surat Edaran Direksi (SE)",
+      seTemplate: "Surat Edaran (SE)",
       memoTemplate: "Nota Dinas / Memo Internal",
       blankTemplate: "Lembar Dokumen Kosong",
       exportDocx: "Unduh .DOCX",

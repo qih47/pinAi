@@ -17,6 +17,7 @@ import {
     Loader2
 } from 'lucide-react';
 import { useChatStore } from '../../../stores/chatStore';
+import { useDocWriterStore } from '../../../stores/docWriterStore';
 import { getUploadUrl, fetchAllDocuments } from '../../../services/endpoints';
 import { translations } from '../../../utils/translations';
 
@@ -60,6 +61,7 @@ export default function DocumentMinimapPill({
 
     const isSplitScreen = useChatStore(state => state.isSplitScreen);
     const setSplitScreen = useChatStore(state => state.setSplitScreen);
+    const isTemplateModalOpen = useDocWriterStore(state => state.isTemplateModalOpen);
     const setContextIsolation = useChatStore(state => state.setContextIsolation);
     const activeIsolatedDocId = useChatStore(state => state.activeIsolatedDocId);
     const chatMode = useChatStore(state => state.chatMode || 'auto');
@@ -210,8 +212,8 @@ export default function DocumentMinimapPill({
         };
     }, [activeActionDoc, isOpen, isMobile]);
 
-    // Jika tidak ada dokumen di sesi ini atau Document Interrogator sedang terbuka (isSplitScreen), jangan tampilkan minimap pill
-    if (sessionDocs.length === 0 || isSplitScreen) return null;
+    // Jika tidak ada dokumen di sesi ini, Document Interrogator sedang terbuka, atau Template Modal terbuka, jangan tampilkan minimap pill
+    if (sessionDocs.length === 0 || isSplitScreen || isTemplateModalOpen) return null;
 
     // ── 4. Handle Hover Main Container ──
     const handleMouseEnter = () => {

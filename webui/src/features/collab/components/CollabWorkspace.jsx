@@ -44,6 +44,8 @@ export const CollabWorkspace = ({
   userData,
   language = 'id',
   isMobile,
+  sidebarOpen,
+  setSidebarOpen,
   toggleSidebar,
   onOpenArtifact,
   toggleRightSidebar,
@@ -90,6 +92,23 @@ export const CollabWorkspace = ({
   const [isLoadingChat, setIsLoadingChat] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [autoNotedMessageIds, setAutoNotedMessageIds] = useState(new Set());
+
+  const wasSidebarOpenForPadRef = useRef(false);
+
+  // ── Auto-collapse left sidebar when Collab Document Pad is open ──
+  useEffect(() => {
+    if (isPadOpen) {
+      if (sidebarOpen && !isMobile) {
+        wasSidebarOpenForPadRef.current = true;
+        setSidebarOpen?.(false);
+      }
+    } else {
+      if (wasSidebarOpenForPadRef.current && !isMobile) {
+        setSidebarOpen?.(true);
+        wasSidebarOpenForPadRef.current = false;
+      }
+    }
+  }, [isPadOpen, isMobile, setSidebarOpen]);
 
   // Resizable Document Pad Width
   const [padWidth, setPadWidth] = useState(() => {
@@ -311,6 +330,12 @@ export const CollabWorkspace = ({
     return () => {
       isMounted = false;
     };
+  }, [roomId]);
+
+  // ── Auto-close Collab Pad & Document Studio saat beralih ruangan ──
+  useEffect(() => {
+    setIsPadOpen(false);
+    useDocWriterStore.getState().closeWriter();
   }, [roomId]);
 
   // Map NPP and Name to Member Info

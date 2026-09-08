@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { useLocation } from "react-router-dom";
 import cakraLogo from "../../assets/cakra.png";
 import { styles } from "./chatPage.styles";
 import ChatArea from "./components/ChatArea";
@@ -39,11 +40,34 @@ export default function ChatPage({ isGuest,
     activeIsolatedDocId, activeIsolatedTitle, activeSessionId, artifactContent, artifacts, authUser, baselineHeightRef, bottomRef, chatHistory, chatMode, chatModeRef, currentIsLoggedIn, currentThinking, currentUserData, darkMode, defaultGetGreeting, detectLang, docContent, docSearchQuery, documents, documentsTotal, fetchDocumentsList, fileInputRef, handleChatModeChange, handleClearChat, handleDownloadAllArtifacts, handleDownloadArtifact, handleDragLeave, handleDragOver, handleDrop, handleFileChange, handleFileClick, handleKeyDown, handleOpenArtifact, handlePaste, handleSubmit, handleSelectHint, handleThinkingModeChange, hasSidebar, input, inputShake, isArtifactLoading, isAuthenticated, isDocLoading, isDragOver, isEmptyChat, isLoading, isLoadingDocuments, isMobile, isMultiLine, isResizingRightSidebar, isStreaming, isStreamingText, isThinking, isThinkingMode, isThinkingModeRef, isUploadingFile, lastAssistantIndex, lastLoadedSessionRef, language, loadChatSession, logout, mainMarginLeft, mainMarginRight, messageSearchInputRef, messages, messagesContainerRef, msgSearchQuery, navigate, previewArtifact, previewDoc, previewImage, removeFilePreview, rightSidebarWidth, selectedFiles, selectedMode, sessionAttachments, setChatHistory, setChatMode, setContextIsolation, setDarkMode, setDocContent, setDocSearchQuery, setInput, setIsArtifactLoading, setIsDocLoading, setIsDragOver, setIsMobile, setIsMultiLine, setIsThinkingMode, setIsUploadingFile, setLanguage, setMsgSearchQuery, setPreviewArtifact, setPreviewDoc, setPreviewImage, setRightSidebarWidth, setSelectedFiles, setSelectedMode, setShowDocumentList, setShowMsgSearch, setShowRightSidebar, setShowScrollBottom, setSidebarOpen, setStagedAttachments, showDocumentList, showMsgSearch, showRightSidebar, showScrollBottom, showWelcome, sidebarOpen, singleLineWidthRef, stagedAttachments, startResizingRightSidebar, storeChatMode, textareaRef, theme, toast, toggleRightSidebar, triggerLogout, validateFile, wasLeftSidebarOpenRef
   } = chatLogic;
   const { themeSetting } = chatLogic;
+  const location = useLocation();
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const { isDocWriterOpen, toggleDocWriter } = useDocWriterStore((state) => ({
     isDocWriterOpen: state.isOpen,
     toggleDocWriter: state.toggleWriter
   }));
+
+  const wasLeftSidebarOpenForDocWriterRef = React.useRef(false);
+
+  // ── Auto-collapse left sidebar when Document Writer editor is open (in main chat & collab) ──
+  React.useEffect(() => {
+    if (isDocWriterOpen) {
+      if (sidebarOpen && !isMobile) {
+        wasLeftSidebarOpenForDocWriterRef.current = true;
+        setSidebarOpen(false);
+      }
+    } else {
+      if (wasLeftSidebarOpenForDocWriterRef.current && !isMobile) {
+        setSidebarOpen(true);
+        wasLeftSidebarOpenForDocWriterRef.current = false;
+      }
+    }
+  }, [isDocWriterOpen, isMobile, setSidebarOpen]);
+
+  // ── Auto-close Document Studio saat beralih sesi chat atau ke menu lain ──
+  React.useEffect(() => {
+    useDocWriterStore.getState().closeWriter();
+  }, [activeSessionId, corporateMode, showDocumentList, location.pathname]);
 
   const t = translations[language]?.chatPage || translations.id.chatPage;
   const tGlobal = translations[language] || translations.id;
@@ -510,6 +534,8 @@ export default function ChatPage({ isGuest,
                   userData={currentUserData}
                   language={language}
                   isMobile={isMobile}
+                  sidebarOpen={sidebarOpen}
+                  setSidebarOpen={setSidebarOpen}
                   toggleSidebar={() => setSidebarOpen(!sidebarOpen)}
                   onOpenArtifact={handleOpenArtifact}
                   toggleRightSidebar={toggleRightSidebar}

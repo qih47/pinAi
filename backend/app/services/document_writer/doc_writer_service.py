@@ -56,11 +56,11 @@ class DocWriterService:
             },
             {
                 "id": "template_se",
-                "name": "Surat Edaran Direksi (SE)",
+                "name": "Surat Edaran (SE)",
                 "category": "Pengumuman & Kebijakan",
-                "description": "Format Surat Edaran Direksi PT Pindad untuk petunjuk pelaksanaan kebijakan atau instruksi operasional.",
+                "description": "Format Surat Edaran PT Pindad untuk petunjuk pelaksanaan kebijakan atau instruksi operasional.",
                 "icon": "ScrollText",
-                "default_title": "SURAT EDARAN DIREKSI PT PINDAD",
+                "default_title": "SURAT EDARAN PT PINDAD",
                 "default_number": "SE/     /PINDAD/2026",
                 "sections": [
                     {"id": "kop", "label": "Kop Surat", "type": "header"},

@@ -13,11 +13,12 @@ const DocWriterWorkspace = ({ darkMode = true, theme, isMobile = false }) => {
     setSplitWidth,
     activeDocument,
     setDocumentTitle,
-    activeTemplateId
+    activeTemplateId,
+    isTemplateModalOpen,
+    setTemplateModalOpen
   } = useDocWriterStore();
 
   const [editorInstance, setEditorInstance] = useState(null);
-  const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [tempTitle, setTempTitle] = useState(activeDocument?.title || '');
   const [isFullScreen, setIsFullScreen] = useState(false);
@@ -165,7 +166,7 @@ const DocWriterWorkspace = ({ darkMode = true, theme, isMobile = false }) => {
         {/* ── Toolbar Pita Ribbon ── */}
         <DocWriterToolbar
           editor={editorInstance}
-          onOpenTemplates={() => setIsTemplateModalOpen(true)}
+          onOpenTemplates={() => setTemplateModalOpen(true)}
           darkMode={darkMode}
           theme={theme}
         />
@@ -193,7 +194,7 @@ const DocWriterWorkspace = ({ darkMode = true, theme, isMobile = false }) => {
       {/* ── Modal Pilihan Template ── */}
       <TemplateSelectorModal
         isOpen={isTemplateModalOpen}
-        onClose={() => setIsTemplateModalOpen(false)}
+        onClose={() => setTemplateModalOpen(false)}
         darkMode={darkMode}
         theme={theme}
       />

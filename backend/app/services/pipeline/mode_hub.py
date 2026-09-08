@@ -947,6 +947,9 @@ class ModeHub:
         elif routing_data.get("is_generate_email") and not is_guest and not routing_data.get("is_ambiguous"):
             logger.info("[MODE_HUB] is_generate_email=True detected & not ambiguous → routing to EMAIL mode")
             mode = "email"
+        elif (routing_data.get("is_docwriter") or precheck.get("is_docwriter")) and not is_guest:
+            logger.info("[MODE_HUB] is_docwriter=True detected → routing to FLASH mode for Document Writer")
+            mode = "flash"
         elif mode == "auto":
             # Jika is_ambiguous True, pastikan masuk flash mode untuk klarifikasi wizard
             if routing_data.get("is_ambiguous"):

@@ -400,6 +400,7 @@ def _validate_and_normalize_routing(
         "is_security_critical": False,
         "is_generate_file": False,  # MODE GENERATE FILE: True jika user meminta dibuatkan file
         "is_generate_email": False, # MODE EMAIL: True jika user meminta dibuatkan email
+        "is_docwriter": False,      # MODE DOC WRITER: True jika user meminta draf naskah dinas atau buka editor
         "need_analytic": False,
         "is_self_correction": False,
         "is_ambiguous": False,
@@ -421,12 +422,14 @@ def _validate_and_normalize_routing(
     }
 
     routing = {**default_routing, **routing_json}
+    routing["_user_message"] = user_message
     routing["active_topic"] = str(routing_json.get("active_topic") or precheck.get("previous_topic") or "Obrolan Umum").strip()
     routing["key_subject"] = str(routing_json.get("key_subject") or precheck.get("previous_subject") or "").strip()
     routing["is_ambiguous"] = bool(routing_json.get("is_ambiguous", False))
     routing["ambiguity_reason"] = str(routing_json.get("ambiguity_reason") or "").strip()
     routing["is_generate_file"] = bool(routing_json.get("is_generate_file", False))
     routing["is_generate_email"] = bool(routing_json.get("is_generate_email", False))
+    routing["is_docwriter"] = bool(routing_json.get("is_docwriter", False)) or bool(precheck.get("is_docwriter", False))
     routing["is_coding"] = bool(routing_json.get("is_coding", False))
     routing["is_troubleshooting"] = bool(routing_json.get("is_troubleshooting", False))
     routing["is_comparative"] = bool(routing_json.get("is_comparative", False))
@@ -679,6 +682,30 @@ def _validate_and_normalize_routing(
         if not routing.get("queries"):
             routing["queries"] = [user_message]
         logger.info(f"[CALL1] 📚 Explicit Document Mode enforced: need_rag=True, queries={routing['queries']}")
+
+    # ── ATURAN DOKUMEN WRITER & DRAF NASKAH DINAS (OVERRIDE AMBIGUOUS) ─────────
+    # Jika pengguna meminta membuka editor atau membuat draf naskah dinas resmi (SE, SKEP, Memo),
+    # pastikan BUKAN ambigu dan jangan pernah di-gate oleh wizard!
+    is_docwriter_intent = bool(
+        routing.get("is_docwriter")
+        or precheck.get("is_docwriter")
+        or re.search(r'\b(buka|open|tampil(kan)?|muncul(kan)?|akses)\b.{0,25}\b(editor|writer|studio)\b', user_msg_lower)
+        or (any(kw in user_msg_lower for kw in ["surat edaran", "skep", "nota dinas", "surat keputusan", "naskah dinas"]) and any(v in user_msg_lower for v in ["draft", "draf", "siapkan", "buatkan", "susun", "bikin", "buka", "buat", "tulis"]))
+        or bool(re.search(r'\b(draft|draf|buatkan|siapkan|bikin|susun)\b.{0,20}\b(se|skep|surat)\b', user_msg_lower))
+        or any(kw in user_msg_lower for kw in [
+            "buka editor", "buka dokumen editor", "buka editornya", "buka dokumen writer",
+            "dokumen writer", "dokumen editor", "draft surat", "draf surat", "draft skep", "draf skep",
+            "draft se", "draf se", "draft memo", "draf memo", "draft nota dinas", "draf nota dinas",
+            "draft surat edaran", "draf surat edaran", "siapkan draft", "siapkan draf",
+            "buatkan draft", "buatkan draf", "susun draft", "susun draf"
+        ])
+    )
+    if is_docwriter_intent:
+        routing["is_docwriter"] = True
+        routing["is_ambiguous"] = False
+        routing["is_chitchat"] = False
+        routing["is_greeting"] = False
+        logger.info("[CALL1] 📄 Document Writer intent enforced -> is_docwriter=True & is_ambiguous=False")
 
     # ── ATURAN STRICT AMBIGUOUS GATE ──────────────────────────────────────────
     # Jika is_ambiguous True, paksa need_rag = False dan kosongkan search queries/web search
@@ -1282,7 +1309,12 @@ async def generate_call1_preset_routing(
             result["is_ambiguous"] = True
             result["ambiguity_reason"] = str(res_json.get("ambiguity_reason") or "").strip()
             logger.info(f"[CALL1_PRESET_ROUTING] ❓ Ambiguity detected -> reason: '{result['ambiguity_reason']}'")
-        else:
+        if (
+            precheck.get("is_docwriter")
+            or re.search(r'\b(buka|open|tampil(kan)?|muncul(kan)?|akses)\b.{0,25}\b(editor|writer|studio)\b', user_message.lower())
+            or any(kw in user_message.lower() for kw in ["buka editor", "dokumen writer", "dokumen editor", "draft surat", "draf surat", "draft skep", "draf skep", "draft se", "draf se", "draft memo", "draf memo", "draft nota dinas", "draf nota dinas", "siapkan draft", "siapkan draf", "buatkan draft", "buatkan draf"])
+        ):
+            result["is_docwriter"] = True
             result["is_ambiguous"] = False
 
         # Kelanjutan visual refinement jika Call 2 sebelumnya telah membuat visual

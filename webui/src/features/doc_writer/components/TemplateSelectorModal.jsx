@@ -1,4 +1,5 @@
 import React, { useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { X, FileCheck2, ScrollText, Mail, FileText, Check, AlertCircle } from 'lucide-react';
 import { useDocWriterStore } from '../../../stores/docWriterStore';
 import { defaultTemplates } from '../templates/defaultTemplates';
@@ -39,8 +40,8 @@ const TemplateSelectorModal = ({ isOpen, onClose, darkMode = true, theme }) => {
     onClose();
   };
 
-  return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fadeIn">
+  const modalContent = (
+    <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fadeIn">
       <div
         className="w-full max-w-2xl rounded-xl shadow-2xl border flex flex-col overflow-hidden animate-scaleUp"
         style={{
@@ -160,6 +161,8 @@ const TemplateSelectorModal = ({ isOpen, onClose, darkMode = true, theme }) => {
       </div>
     </div>
   );
+
+  return typeof document !== 'undefined' ? createPortal(modalContent, document.body) : modalContent;
 };
 
 export default TemplateSelectorModal;

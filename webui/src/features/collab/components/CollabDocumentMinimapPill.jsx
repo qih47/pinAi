@@ -9,6 +9,7 @@ import {
     ChevronRight
 } from 'lucide-react';
 import { useChatStore } from '../../../stores/chatStore';
+import { useDocWriterStore } from '../../../stores/docWriterStore';
 import { getUploadUrl } from '../../../services/endpoints';
 import { translations } from '../../../utils/translations';
 
@@ -33,6 +34,7 @@ export default function CollabDocumentMinimapPill({
 
     const isSplitScreen = useChatStore(state => state.isSplitScreen);
     const setSplitScreen = useChatStore(state => state.setSplitScreen);
+    const isTemplateModalOpen = useDocWriterStore(state => state.isTemplateModalOpen);
 
     // ── 1. Ekstrak Semua Dokumen Rujukan Unik dari Obrolan Collab ──
     const sessionDocs = useMemo(() => {
@@ -212,6 +214,10 @@ export default function CollabDocumentMinimapPill({
         return { label: 'REGULASI', color: 'bg-zinc-500/15 text-zinc-300 border-zinc-500/30' };
     };
 
+    if (!sessionDocs || sessionDocs.length === 0 || isSplitScreen || isTemplateModalOpen) {
+        return null;
+    }
+
     return (
         <div
             ref={containerRef}
@@ -222,7 +228,7 @@ export default function CollabDocumentMinimapPill({
                 left: '16px',
                 top: '50%',
                 transform: 'translateY(-50%)',
-                zIndex: 40,
+                zIndex: 30,
                 display: 'flex',
                 alignItems: 'center',
             }}

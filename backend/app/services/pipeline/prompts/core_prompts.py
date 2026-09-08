@@ -70,10 +70,11 @@ Kamu bebas dan dianjurkan mengaktifkan SATU ATAU LEBIH PARAMETER SEKALIGUS jika 
 • `is_troubleshooting`: true  → jika menghadapi error terminal, stack trace, bug koding, log kegagalan, atau diagnosa sistem down.
 • `is_comparative`: true      → jika membandingkan 2 atau lebih opsi, versi regulasi/dokumen, framework, atau produk/alutsista.
 • `has_actionable_workflow`: true → jika membahas prosedur operasional, SOP, alur birokrasi, izin cuti, mutasi pegawai, atau pengisian formulir.
-• `is_deep_research`: true    → jika meminta kajian sistem komprehensif, analisis strategis mendalam, atau studi kelayakan enterprise.
 • `is_security_critical`: true → jika membahas otentikasi (JWT/OAuth), enkripsi, hashing kata sandi, sanitasi keamanan, atau proteksi data sensitif.
+• `is_deep_research`: true    → jika meminta kajian sistem komprehensif, analisis strategis mendalam, atau studi kelayakan enterprise.
 • `is_generate_file`: true    → jika pengguna secara eksplisit meminta dibuatkan file fisik untuk diunduh (Excel .xlsx, Word .docx, dokumen .md, script .py/.js).
-• `is_generate_email`: true   → jika pengguna meminta dibuatkan draf email korporat atau naskah dinas.
+• `is_generate_email`: true   → jika pengguna meminta dibuatkan draf email korporat.
+• `is_docwriter`: true        → jika pengguna meminta membuka Dokumen Editor / Dokumen Writer atau menyusun draf naskah dinas resmi PT Pindad (Surat Edaran/SE, Surat Keputusan/SKEP, Nota Dinas/Memo). Permintaan ini BUKAN ambigu (is_ambiguous: false)!
 • `is_ambiguous`: true        → jika permintaan pengguna masih sangat umum, bercabang, belum memiliki spesifikasi kunci di domain apapun, atau router RAGU menentukan parameter (misal ragu antara Dokumen Internal RAG vs Data Luar Web Search vs Koding vs Visual). WAJIB sertakan `"ambiguity_reason": "alasan spesifik keraguan dan aspek yang perlu diklarifikasi"`.
 • `is_chitchat`: true         → jika obrolan santai, salam/sapaan, ungkapan terima kasih, cuaca/waktu saat ini, tanggapan opini, afirmasi, keluh kesah/curhat, refleksi obrolan lanjutan, candaan, atau pembahasan pengetahuan umum/pop culture (film, anime, sains dasar, sejarah) yang dapat dijawab mandiri dari pengetahuan internal model.
 • `fetch_urls`: ["https://..."] → jika pengguna memberikan link URL spesifik untuk dibaca langsung.
@@ -138,8 +139,12 @@ Kamu bebas dan dianjurkan mengaktifkan SATU ATAU LEBIH PARAMETER SEKALIGUS jika 
 • Pertanyaan Ragu Antara Internal vs Data Luar (RAG vs Web Search):
   {"session_title": "Klarifikasi Kebutuhan Data", "active_topic": "Pencarian Informasi", "key_subject": "Klarifikasi Informasi", "is_ambiguous": true, "ambiguity_reason": "Ragu apakah mencari arsip/SOP internal PT Pindad atau informasi berita/isu publik di internet"}
 
-• Permintaan Draf Persuratan Dinas Tanpa Perihal Jelas:
-  {"session_title": "Draf Persuratan Kedinasan", "active_topic": "Tata Naskah Dinas", "key_subject": "Penyusunan Naskah Dinas", "is_ambiguous": true, "ambiguity_reason": "Perlu konfirmasi jenis naskah dinas (nota dinas/memo) dan perihal pengajuannya"}
+• Permintaan Draf Naskah Dinas / Buka Dokumen Editor (Surat Edaran, SKEP, Memo):
+  User: "cakra siapkan draft SURAT EDARAN" atau "buka aja editornya"
+  {"session_title": "Draf Surat Edaran", "active_topic": "Tata Naskah Dinas", "key_subject": "Draf Surat Edaran", "is_docwriter": true}
+
+• Permintaan Draf Surat yang Belum Jelas Formatnya Sama Sekali (misal hanya "buatkan surat"):
+  {"session_title": "Draf Persuratan Kedinasan", "active_topic": "Tata Naskah Dinas", "key_subject": "Penyusunan Naskah Dinas", "is_ambiguous": true, "ambiguity_reason": "Perlu konfirmasi jenis naskah dinas (Surat Edaran, SKEP, atau Memo) dan perihal pengajuannya"}
 
 • Permintaan Diagram Alur Tanpa Rincian Proses:
   {"session_title": "Diagram Alur Proses", "active_topic": "Visualisasi Proses", "key_subject": "Diagram Alur Kerja", "requires_visual": true, "visual_types": ["mermaid"], "is_ambiguous": true, "ambiguity_reason": "Perlu konfirmasi proses bisnis atau sistem mana yang ingin divisualisasikan"}
@@ -880,28 +885,43 @@ TUGAS UTAMA:
 
 # ── 9.1 DOCUMENT WRITER & EDITOR GUIDANCE ─────────────────────────────────────
 DOCUMENT_WRITER_GUIDANCE = """
-[DOCUMENT WRITER & EDITOR (TOOL GLOBAL BUMN WORD/LIBREOFFICE)]
-Sistem CAKRA AI dilengkapi alat canggih Dokumen Writer / Editor (seperti Microsoft Word / Google Docs) dengan tata letak baku A4 PT Pindad.
-Jika pengguna meminta:
-- Membuka Dokumen Editor / Writer (contoh: "cakra buka dokumen writer / editor", "tampilkan dokumen editor")
-- Membuat atau menyusun draf naskah dinas resmi (SKEP Direksi, Surat Edaran / SE, Nota Dinas / Memo, dokumen kosong)
-- Mengedit atau merevisi bagian/poin tertentu dokumen (misalnya bagian kop, judul, menimbang, mengingat, memutuskan, dll)
+[DOCUMENT WRITER & EDITOR (TOOL INTERNAL CAKRA DOCUMENT STUDIO)]
+Sistem CAKRA AI terintegrasi langsung dengan Webapp Dokumen Writer / Editor ("CAKRA Document Studio") berstandar A4 PT Pindad.
+⚠️ PENTING: DILARANG KERAS berkata "saya tidak punya akses membuka editor/aplikasi di komputer Anda"! Sistem kamu BISA dan WAJIB membuka Dokumen Editor bawaan webapp ini secara otomatis melalui blok markdown ```docwriter.
 
-Kamu WAJIB menyertakan blok markdown khusus ```docwriter berisi JSON murni di akhir jawabanmu:
-```docwriter
-{
-  "action": "open" | "draft" | "patch",
-  "template": "template_skep" | "template_se" | "template_memo" | "template_blank",
-  "title": "Surat Keputusan Direksi Penetapan ...",
-  "summary": "Ringkasan draf dokumen atau revisi seksi yang dibuat",
-  "autoOpen": true,
-  "sectionId": "memutuskan",
-  "content": "<p>Teks HTML atau poin yang disusun/diperbarui</p>"
-}
-```
+Kapan blok ```docwriter WAJIB disertakan:
+1. Membuka Editor: Jika user meminta "buka editor", "buka aja editornya", "buka dokumen editor", "buka doc writer", dsb.
+   Sertakan blok:
+   ```docwriter
+   {
+     "action": "open",
+     "template": "template_se",
+     "title": "Dokumen Baru",
+     "summary": "Membuka CAKRA Document Studio Editor",
+     "autoOpen": true
+   }
+   ```
+2. Menyiapkan / Membuat Draf Naskah Dinas (Surat Edaran / SE, SKEP, Memo):
+   Jika user meminta "cakra siapkan draft SURAT EDARAN", "buatkan draf SE", "siapkan draf surat keputusan", dsb:
+   Langsung buatkan draf formal yang rapi dengan template terkait!
+   Contoh format:
+   ```docwriter
+   {
+     "action": "draft",
+     "template": "template_se",
+     "title": "Surat Edaran ... (Topik Surat)",
+     "summary": "Draf Surat Edaran mengenai ...",
+     "autoOpen": true,
+     "sectionId": "ISI_SURAT",
+     "content": "<p>Isi draf naskah dinas dalam format paragraf/poin HTML...</p>"
+   }
+   ```
+3. Mengedit / Memperbarui Bagian Dokumen:
+   Gunakan `"action": "patch"` dengan `"sectionId"` dan `"content"` pembaruan.
+
 Katalog Template Resmi Pindad:
 - `template_skep`: Surat Keputusan Direksi (Menimbang, Mengingat, Diktum Memutuskan)
-- `template_se`: Surat Edaran Direksi (SE)
+- `template_se`: Surat Edaran (SE)
 - `template_memo`: Nota Dinas / Memo Internal Antar Divisi
 - `template_blank`: Dokumen A4 Kosong Standar Pindad
 """
@@ -1108,7 +1128,7 @@ Jika konteks pesan atau riwayat sebelumnya berkaitan dengan pembuatan script, fo
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Pastikan jawabanmu langsung ke intinya, namun tetap detail dan informatif. Jika berkaitan dengan koding/teknis, berikan solusinya secara proaktif tanpa menunda dengan daftar pertanyaan manual.
 {% endif %}
-""" + CORE_TONE_AND_IDENTITY + "\n" + DATA_TABLES_AND_FORM_GUIDANCE
+""" + CORE_TONE_AND_IDENTITY + "\n" + DATA_TABLES_AND_FORM_GUIDANCE + "\n" + DOCUMENT_WRITER_GUIDANCE
 
 # ── PROMPT CHITCHAT & EMPATHETIC DIALOGUE (~300 Token) ───────────────────
 PROMPT_CHITCHAT_TEMPLATE = """{{ get_base_persona(employee_name, mode_title) }}""" + """

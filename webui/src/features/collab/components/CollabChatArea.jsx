@@ -6,21 +6,7 @@ import CollabDocumentMinimapPill from './CollabDocumentMinimapPill';
 import CollabChatNavigator from './CollabChatNavigator';
 import cakraLogo from '../../../assets/cakra.png';
 import { translations } from '../../../utils/translations';
-
-const formatDateDivider = (isoString, language = 'id') => {
-  if (!isoString) return '';
-  try {
-    const d = new Date(isoString);
-    return d.toLocaleDateString(language === 'en' ? 'en-US' : 'id-ID', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric'
-    });
-  } catch (e) {
-    return '';
-  }
-};
+import DateDivider, { formatDateDivider, shouldShowDateDivider } from '../../../components/ui/DateDivider';
 
 const CollabChatArea = ({
   messages = [],
@@ -90,8 +76,6 @@ const CollabChatArea = ({
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, typingStatus, streamingCakra]);
-
-  let lastDate = '';
 
   const t = translations[language]?.collab || translations.id.collab;
   const secondaryTextColor = theme?.secondaryText || (darkMode ? '#94a3b8' : '#6b7280');
@@ -178,11 +162,9 @@ const CollabChatArea = ({
           ) : (
             <>
               {messages.map((msg, idx) => {
-                const msgDate = formatDateDivider(msg.created_at, language);
-                const showDateDivider = msgDate && msgDate !== lastDate;
-                if (showDateDivider) {
-                  lastDate = msgDate;
-                }
+                const prevMsg = idx > 0 ? messages[idx - 1] : null;
+                const showDateDivider = shouldShowDateDivider(msg, prevMsg);
+                const msgDate = showDateDivider ? formatDateDivider(msg.created_at || msg.timestamp, language) : '';
 
                 const isMe =
                   msg.sender_type === 'USER' &&
@@ -192,18 +174,11 @@ const CollabChatArea = ({
                 return (
                   <div key={msg.id || idx} data-msg-index={idx} id={`collab-msg-${msg.id || idx}`} className="w-full">
                     {showDateDivider && (
-                      <div className="flex items-center justify-center my-6">
-                        <div
-                          className="px-3.5 py-1 rounded-full border text-[11px] font-medium shadow-sm"
-                          style={{
-                            background: darkMode ? '#1e1e20' : '#f3f4f6',
-                            borderColor: borderColor,
-                            color: secondaryTextColor
-                          }}
-                        >
-                          {msgDate}
-                        </div>
-                      </div>
+                      <DateDivider
+                        dateText={msgDate}
+                        darkMode={darkMode}
+                        theme={theme}
+                      />
                     )}
 
                     {msg.sender_type === 'CAKRA' ? (
