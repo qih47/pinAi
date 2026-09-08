@@ -946,32 +946,12 @@ export const CollabWorkspace = ({
             }}
           >
             <div className="flex items-center gap-2 min-w-0">
-              {/* Tombol Balik ke Daftar Ruang */}
-              <button
-                type="button"
-                onClick={() => navigate('/collab')}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-medium transition-colors hover:bg-white/5 cursor-pointer shrink-0"
-                style={{ color: secondaryTextColor }}
-                title={language === 'en' ? 'Back to All Rooms' : 'Kembali ke Semua Ruang'}
-              >
-                <ArrowLeft size={16} />
-                <span className="hidden sm:inline">{language === 'en' ? 'All Rooms' : 'Semua Ruang'}</span>
-              </button>
 
-              {/* Tombol Toggle Sidebar Kiri */}
-              {toggleSidebar && (
-                <button
-                  type="button"
-                  onClick={toggleSidebar}
-                  className="p-1.5 rounded-lg transition-colors hover:bg-white/5 cursor-pointer shrink-0"
-                  style={{ color: secondaryTextColor }}
-                  title="Menu Sidebar"
-                >
-                  <Menu size={16} />
-                </button>
-              )}
 
-              <div className="h-4 w-px hidden sm:block shrink-0" style={{ background: borderColor }} />
+
+
+
+
 
               <div className="min-w-0">
                 <h2 className="text-sm font-bold truncate flex items-center gap-2" style={{ color: textColor }}>
