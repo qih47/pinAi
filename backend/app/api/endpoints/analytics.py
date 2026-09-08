@@ -27,7 +27,8 @@ from backend.app.services.analytics_service import (
     get_quality_metrics,
     get_agent_steps,
     get_security_threat_score,
-    get_query_clusters
+    get_query_clusters,
+    get_all_users_with_activity
 )
 from backend.app.services.security_service import get_recent_security_logs
 from backend.app.services.hardware_service import get_hardware_telemetry
@@ -147,6 +148,28 @@ async def session_history(session_uuid: str):
     history = await get_session_chat_history(session_uuid)
     attachments = await get_session_attachments(session_uuid)
     return {"status": "success", "history": history, "attachments": attachments}
+
+
+@router.get("/chat-explorer")
+async def chat_explorer(
+    search: str = "",
+    filter_type: str = "all",
+    sort_by: str = "last_active",
+    limit: int = 50,
+    offset: int = 0
+):
+    """
+    Chat Explorer: Daftar semua pengguna CAKRA (registered + guest) beserta statistik chat.
+    Digunakan oleh admin dashboard untuk monitoring aktivitas user secara menyeluruh.
+    """
+    result = await get_all_users_with_activity(
+        search=search,
+        filter_type=filter_type,
+        sort_by=sort_by,
+        limit=limit,
+        offset=offset
+    )
+    return {"status": "success", **result}
 
 @router.get("/quality")
 async def quality_metrics():

@@ -295,6 +295,121 @@ async def get_user_sessions(npp: str) -> List[Dict[str, Any]]:
         return []
 
 
+async def get_all_users_with_activity(
+    search: str = "",
+    filter_type: str = "all",  # "all" | "registered" | "guest"
+    sort_by: str = "last_active",  # "last_active" | "total_sessions" | "name"
+    limit: int = 100,
+    offset: int = 0
+) -> Dict[str, Any]:
+    """
+    Chat Explorer: Ambil daftar semua user (NPP + guest) beserta statistik aktivitas chat mereka.
+    Dipakai di menu Chat Explorer pada admin dashboard.
+    """
+    if database.db_pool is None:
+        return {"users": [], "total": 0}
+    try:
+        async with database.db_pool.acquire() as conn:
+            # ── Registered Users ──────────────────────────────────────────────
+            registered_query = """
+                SELECT
+                    cs.npp,
+                    COALESCE(u.fullname, cs.npp)    AS display_name,
+                    NULL::text                       AS jabatan,
+                    COALESCE(u.divisi, '')           AS divisi,
+                    COUNT(cs.id)                     AS total_sessions,
+                    SUM(CASE WHEN cs.is_deleted = false THEN 1 ELSE 0 END) AS active_sessions,
+                    MAX(cs.started_at)               AS last_active,
+                    MIN(cs.started_at)               AS first_active,
+                    false                            AS is_guest
+                FROM chat_sessions cs
+                LEFT JOIN users u ON cs.npp = u.npp
+                WHERE cs.npp IS NOT NULL
+                  AND cs.npp != ''
+                  AND UPPER(cs.npp) != 'GUEST'
+                GROUP BY cs.npp, u.fullname, u.divisi
+            """
+
+            # ── Guest Users ───────────────────────────────────────────────────
+            guest_query = """
+                SELECT
+                    COALESCE(NULLIF(cs.npp, ''), 'GUEST') AS npp,
+                    COALESCE(NULLIF(cs.npp, ''), 'Guest') AS display_name,
+                    NULL::text                            AS jabatan,
+                    NULL::text                            AS divisi,
+                    COUNT(cs.id)                          AS total_sessions,
+                    SUM(CASE WHEN cs.is_deleted = false THEN 1 ELSE 0 END) AS active_sessions,
+                    MAX(cs.started_at)                    AS last_active,
+                    MIN(cs.started_at)                    AS first_active,
+                    true                                  AS is_guest
+                FROM chat_sessions cs
+                WHERE cs.npp IS NULL
+                   OR cs.npp = ''
+                   OR UPPER(cs.npp) = 'GUEST'
+                   OR cs.npp ~* '^guest'
+                GROUP BY cs.npp
+            """
+
+            # Gabungkan berdasarkan filter
+            if filter_type == "registered":
+                union_query = registered_query
+            elif filter_type == "guest":
+                union_query = guest_query
+            else:
+                union_query = f"({registered_query}) UNION ALL ({guest_query})"
+
+            # Wrap untuk search + sort + pagination
+            params = []
+            param_idx = 1
+
+            if search:
+                search_val = f"%{search.lower()}%"
+                search_clause = f"WHERE LOWER(display_name) LIKE ${param_idx} OR LOWER(npp) LIKE ${param_idx + 1}"
+                params.extend([search_val, search_val])
+                param_idx += 2
+            else:
+                search_clause = ""
+
+            sort_map = {
+                "last_active": "last_active DESC NULLS LAST",
+                "total_sessions": "total_sessions DESC",
+                "name": "display_name ASC NULLS LAST",
+            }
+            order_clause = sort_map.get(sort_by, "last_active DESC NULLS LAST")
+
+            full_query = f"""
+                WITH combined AS ({union_query})
+                SELECT *, COUNT(*) OVER() AS total_count
+                FROM combined
+                {search_clause}
+                ORDER BY {order_clause}
+                LIMIT ${param_idx} OFFSET ${param_idx + 1}
+            """
+            params.extend([limit, offset])
+
+            rows = await conn.fetch(full_query, *params)
+            total = rows[0]["total_count"] if rows else 0
+
+            users = []
+            for r in rows:
+                users.append({
+                    "npp": r["npp"] or "GUEST",
+                    "display_name": r["display_name"] or r["npp"] or "Unknown",
+                    "divisi": r["divisi"] or None,
+                    "total_sessions": int(r["total_sessions"]),
+                    "active_sessions": int(r["active_sessions"]),
+                    "last_active": r["last_active"].isoformat() if r["last_active"] else None,
+                    "first_active": r["first_active"].isoformat() if r["first_active"] else None,
+                    "is_guest": r["is_guest"],
+                })
+
+            return {"users": users, "total": int(total)}
+    except Exception as e:
+        logger.error(f"Failed to fetch all users with activity: {e}")
+        return {"users": [], "total": 0}
+
+
+
 async def get_session_chat_history(session_uuid: str) -> List[Dict[str, Any]]:
     """Fetch chat messages for a specific session for God Mode audit"""
     if database.db_pool is None:
