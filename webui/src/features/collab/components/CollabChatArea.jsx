@@ -5,12 +5,13 @@ import CollabAvatar from './CollabAvatar';
 import CollabDocumentMinimapPill from './CollabDocumentMinimapPill';
 import CollabChatNavigator from './CollabChatNavigator';
 import cakraLogo from '../../../assets/cakra.png';
+import { translations } from '../../../utils/translations';
 
-const formatDateDivider = (isoString) => {
+const formatDateDivider = (isoString, language = 'id') => {
   if (!isoString) return '';
   try {
     const d = new Date(isoString);
-    return d.toLocaleDateString('id-ID', {
+    return d.toLocaleDateString(language === 'en' ? 'en-US' : 'id-ID', {
       weekday: 'long',
       year: 'numeric',
       month: 'long',
@@ -31,16 +32,20 @@ const CollabChatArea = ({
   darkMode = true,
   theme,
   language = 'id',
+  autoNotedMessageIds = new Set(),
   onApplyToDocument,
   onFileClick,
   setPreviewImage,
   onOpenArtifact,
   handleDownloadArtifact,
   handleDownloadAllArtifacts,
-  onEditMessage
+  onEditMessage,
+  scrollContainerRef: externalScrollRef,
+  onAtBottomChange
 }) => {
   const bottomRef = useRef(null);
-  const scrollContainerRef = useRef(null);
+  const internalScrollRef = useRef(null);
+  const scrollContainerRef = externalScrollRef || internalScrollRef;
 
   const handleNavigate = useCallback((index) => {
     const targetMsg = messages[index];
@@ -57,7 +62,24 @@ const CollabChatArea = ({
         behavior: 'smooth'
       });
     }
-  }, [messages]);
+  }, [messages, scrollContainerRef]);
+
+  useEffect(() => {
+    const el = scrollContainerRef.current;
+    if (!el) return;
+
+    const handleScroll = () => {
+      const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
+      const isAtBottom = distance < 100;
+      if (onAtBottomChange) {
+        onAtBottomChange(isAtBottom);
+      }
+    };
+
+    handleScroll();
+    el.addEventListener('scroll', handleScroll, { passive: true });
+    return () => el.removeEventListener('scroll', handleScroll);
+  }, [scrollContainerRef, onAtBottomChange, messages.length]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -65,6 +87,7 @@ const CollabChatArea = ({
 
   let lastDate = '';
 
+  const t = translations[language]?.collab || translations.id.collab;
   const secondaryTextColor = theme?.secondaryText || (darkMode ? '#94a3b8' : '#6b7280');
   const textColor = theme?.textColor || (darkMode ? '#e2e8f0' : '#1f2937');
   const borderColor = theme?.borderColor || (darkMode ? '#2a2a2d' : '#e5e7eb');
@@ -115,6 +138,7 @@ const CollabChatArea = ({
         messages={messages}
         darkMode={darkMode}
         theme={theme}
+        language={language}
         onNavigate={handleNavigate}
         scrollContainerRef={scrollContainerRef}
       />
@@ -139,16 +163,16 @@ const CollabChatArea = ({
                 <img src={cakraLogo} alt="CAKRA" className="w-full h-full object-contain" />
               </div>
               <h3 className="text-base font-semibold mb-1" style={{ color: textColor }}>
-                Ruang Diskusi Tim
+                {t.chatAreaTitle}
               </h3>
               <p className="text-xs max-w-md leading-relaxed" style={{ color: secondaryTextColor }}>
-                Mulai obrolan bersama tim Anda. CAKRA siap mendampingi diskusi, koordinasi kerja, dan membantu memberikan masukan terbaik saat dipanggil dengan mention <strong>@cakra</strong>.
+                {t.chatAreaEmptyDesc}
               </p>
             </div>
           ) : (
             <>
               {messages.map((msg, idx) => {
-                const msgDate = formatDateDivider(msg.created_at);
+                const msgDate = formatDateDivider(msg.created_at, language);
                 const showDateDivider = msgDate && msgDate !== lastDate;
                 if (showDateDivider) {
                   lastDate = msgDate;
@@ -184,6 +208,7 @@ const CollabChatArea = ({
                         darkMode={darkMode}
                         theme={theme}
                         language={language}
+                        isAutoNoted={autoNotedMessageIds?.has?.(msg.id)}
                         isLastMessage={idx === messages.length - 1}
                         onApplyToDocument={onApplyToDocument}
                         onFileClick={onFileClick}
@@ -200,8 +225,10 @@ const CollabChatArea = ({
                         darkMode={darkMode}
                         theme={theme}
                         language={language}
+                        isAutoNoted={autoNotedMessageIds?.has?.(msg.id)}
                         setPreviewImage={setPreviewImage}
                         onEditMessage={onEditMessage}
+                        onApplyToDocument={onApplyToDocument}
                       />
                     )}
                   </div>
@@ -230,34 +257,28 @@ const CollabChatArea = ({
           </>
         )}
 
-        {/* Indikator Mengetik Rekan Kerja / CAKRA (Typing Indicator) */}
+        {/* Indikator Mengetik Rekan Kerja (Typing Indicator) - Eksklusif Rekan Manusia */}
         {typingStatus?.is_typing && !streamingCakra && String(typingStatus?.sender_npp) !== String(currentNpp) && (() => {
           const nppKey = typingStatus.sender_npp ? String(typingStatus.sender_npp).trim() : '';
           const senderKey = typingStatus.sender ? String(typingStatus.sender).trim().toLowerCase() : '';
           const isCakra = nppKey === 'CAKRA' || senderKey.includes('cakra');
-          const typingMember = isCakra
-            ? { name: 'CAKRA', photo_url: cakraLogo }
-            : (membersMap[nppKey] || membersMap[senderKey] || membersMap[typingStatus.sender] || {});
-          const senderName = isCakra ? 'CAKRA' : (typingStatus.sender || typingMember.name || typingMember.nama || 'Rekan');
-          const senderPhoto = isCakra ? cakraLogo : (typingStatus.photo_url || typingStatus.profile_photo_url || typingMember.profile_photo_url || typingMember.photo_url || null);
+          // 🛡️ CAKRA AI memiliki transisi langsung di dalam bubble, tidak pernah muncul di baris bawah agar tidak dobel
+          if (isCakra) return null;
+          const typingMember = membersMap[nppKey] || membersMap[senderKey] || membersMap[typingStatus.sender] || {};
+          const senderName = typingStatus.sender || typingMember.name || typingMember.nama || 'Rekan';
+          const senderPhoto = typingStatus.photo_url || typingStatus.profile_photo_url || typingMember.profile_photo_url || typingMember.photo_url || null;
           return (
             <div className="flex items-center gap-2.5 px-3 py-2 mb-2 animate-fadeInUp">
-              {isCakra ? (
-                <div className="w-[24px] h-[24px] rounded-full overflow-hidden flex items-center justify-center p-0.5 bg-teal-500/10 border border-teal-500/20 shrink-0">
-                  <img src={cakraLogo} alt="CAKRA" className="w-full h-full object-contain" />
-                </div>
-              ) : (
-                <CollabAvatar
-                  npp={typingStatus.sender_npp || typingMember.npp}
-                  name={senderName}
-                  photoUrl={senderPhoto}
-                  size="w-[24px] h-[24px]"
-                  className="!w-[24px] !h-[24px] !rounded-full shadow-sm shrink-0 overflow-hidden text-[9px]"
-                />
-              )}
+              <CollabAvatar
+                npp={typingStatus.sender_npp || typingMember.npp}
+                name={senderName}
+                photoUrl={senderPhoto}
+                size="w-[24px] h-[24px]"
+                className="!w-[24px] !h-[24px] !rounded-full shadow-sm shrink-0 overflow-hidden text-[9px]"
+              />
               <div className="flex items-center gap-2 text-xs" style={{ color: secondaryTextColor }}>
                 <span>
-                  <strong style={{ color: textColor }}>{senderName}</strong> sedang mengetik
+                  <strong style={{ color: textColor }}>{senderName}</strong> {t.isTyping || 'sedang mengetik'}
                 </span>
                 <div className="inline-flex gap-1 items-center">
                   <span className="w-1.5 h-1.5 rounded-full bg-teal-400 animate-bounce" style={{ animationDelay: '0ms' }} />

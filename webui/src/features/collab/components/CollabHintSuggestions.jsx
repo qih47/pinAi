@@ -144,8 +144,8 @@ export default function CollabHintSuggestions({
         <Tag size={12} className="text-teal-400 shrink-0" />
         <span>
           {isDocMode
-            ? "Pilih dokumen untuk dijadikan rujukan diskusi tim:"
-            : "Rekomendasi instruksi diskusi tim:"}
+            ? (language === "en" ? "Select document as team discussion reference:" : "Pilih dokumen untuk dijadikan rujukan diskusi tim:")
+            : (language === "en" ? "Recommended team discussion prompts:" : "Rekomendasi instruksi diskusi tim:")}
         </span>
       </div>
 
@@ -178,7 +178,7 @@ export default function CollabHintSuggestions({
 
             <div className="flex items-center gap-1.5 opacity-60 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all shrink-0">
               <span className="text-[10px] hidden sm:inline text-teal-400 font-medium">
-                {isDocMode ? "Jadikan Rujukan" : "Pilih"}
+                {isDocMode ? (language === "en" ? "Set as Reference" : "Jadikan Rujukan") : (language === "en" ? "Select" : "Pilih")}
               </span>
               <ArrowUpRight
                 size={13}

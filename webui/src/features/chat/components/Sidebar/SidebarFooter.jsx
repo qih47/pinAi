@@ -195,7 +195,7 @@ export default function SidebarFooter({
           className="hover:text-blue-500 ml-auto absolute right-3 top-0 bottom-0 my-auto h-fit p-1 transition-colors"
           style={{ color: theme?.iconColor || "#9ca3af" }}
           onClick={() => setShowLogoutPopup(!showLogoutPopup)}
-          title="Pengaturan & Akun"
+          title={language === 'en' ? 'Settings & Account' : 'Pengaturan & Akun'}
         >
           <svg
             xmlns="http://www.w3.org/2000/svg"

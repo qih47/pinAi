@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { X, Users, Search, Plus, Check, Loader2, Sparkles } from 'lucide-react';
 import { collabApi } from '../services/collabApi';
+import { translations } from '../../../utils/translations';
 
-const CreateRoomModal = ({ isOpen, onClose, onRoomCreated, darkMode = true, theme }) => {
+const CreateRoomModal = ({ isOpen, onClose, onRoomCreated, darkMode = true, theme, language = 'id' }) => {
+  const t = translations[language]?.collab || translations.id.collab;
   const [name, setName] = useState('');
   const [topic, setTopic] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
@@ -55,7 +57,7 @@ const CreateRoomModal = ({ isOpen, onClose, onRoomCreated, darkMode = true, them
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!name.trim()) {
-      setError('Nama ruang diskusi wajib diisi.');
+      setError(t.roomNameRequired || 'Nama ruang diskusi wajib diisi.');
       return;
     }
 
@@ -71,7 +73,7 @@ const CreateRoomModal = ({ isOpen, onClose, onRoomCreated, darkMode = true, them
       onRoomCreated(room);
       handleClose();
     } catch (err) {
-      setError(err?.response?.data?.detail || 'Gagal membuat ruang diskusi.');
+      setError(err?.response?.data?.detail || t.roomCreateFailed || 'Gagal membuat ruang diskusi.');
     } finally {
       setIsSubmitting(false);
     }
@@ -111,8 +113,8 @@ const CreateRoomModal = ({ isOpen, onClose, onRoomCreated, darkMode = true, them
               <Users size={18} />
             </div>
             <div>
-              <h2 className="text-base font-bold" style={{ color: textColor }}>Buat Ruang Diskusi Tim</h2>
-              <p className="text-xs" style={{ color: secondaryTextColor }}>Ruang kolaborasi dan diskusi bersama rekan kerja & CAKRA</p>
+              <h2 className="text-base font-bold" style={{ color: textColor }}>{t.createRoomModalTitle}</h2>
+              <p className="text-xs" style={{ color: secondaryTextColor }}>{t.createRoomModalSubtitle}</p>
             </div>
           </div>
 
@@ -136,13 +138,13 @@ const CreateRoomModal = ({ isOpen, onClose, onRoomCreated, darkMode = true, them
           {/* Nama Ruangan */}
           <div>
             <label className="block text-xs font-semibold mb-1.5" style={{ color: textColor }}>
-              Nama Ruang Diskusi <span className="text-rose-400">*</span>
+              {t.roomNameLabel} <span className="text-rose-400">*</span>
             </label>
             <input
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="Contoh: Koordinasi Proyek, Evaluasi Tim, Brainstorming Ide"
+              placeholder={t.roomNamePlaceholder}
               className="w-full px-3.5 py-2.5 border rounded-xl text-sm focus:outline-none focus:ring-1 focus:ring-teal-500 transition-all"
               style={{
                 background: inputBg,
@@ -156,12 +158,12 @@ const CreateRoomModal = ({ isOpen, onClose, onRoomCreated, darkMode = true, them
           {/* Topik / Agenda */}
           <div>
             <label className="block text-xs font-semibold mb-1.5" style={{ color: textColor }}>
-              Topik / Agenda Utama
+              {t.topicLabel}
             </label>
             <textarea
               value={topic}
               onChange={(e) => setTopic(e.target.value)}
-              placeholder="Jelaskan secara singkat fokus pembahasan tim..."
+              placeholder={t.topicPlaceholder}
               rows={2}
               className="w-full px-3.5 py-2 border rounded-xl text-sm focus:outline-none focus:ring-1 focus:ring-teal-500 transition-all resize-none"
               style={{
@@ -176,11 +178,11 @@ const CreateRoomModal = ({ isOpen, onClose, onRoomCreated, darkMode = true, them
           <div>
             <div className="flex items-center justify-between mb-1.5">
               <label className="text-xs font-semibold" style={{ color: textColor }}>
-                Undang Anggota Tim ({selectedMembers.length})
+                {t.inviteMembersLabel} ({selectedMembers.length})
               </label>
               <span className="text-[11px] text-teal-400 font-medium flex items-center gap-1">
                 <Sparkles size={11} />
-                CAKRA otomatis menjadi anggota tim
+                {t.cakraAutoMember}
               </span>
             </div>
 
@@ -217,7 +219,7 @@ const CreateRoomModal = ({ isOpen, onClose, onRoomCreated, darkMode = true, them
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Cari nama atau NPP personil Pindad..."
+                placeholder={t.searchPersonInputPlaceholder}
                 className="w-full pl-9 pr-4 py-2 border rounded-xl text-xs focus:outline-none focus:border-teal-500 transition-all"
                 style={{
                   background: inputBg,
@@ -272,12 +274,12 @@ const CreateRoomModal = ({ isOpen, onClose, onRoomCreated, darkMode = true, them
                         {isSelected ? (
                           <>
                             <Check size={12} />
-                            <span>Dipilih</span>
+                            <span>{t.selected}</span>
                           </>
                         ) : (
                           <>
                             <Plus size={12} />
-                            <span>Pilih</span>
+                            <span>{t.select}</span>
                           </>
                         )}
                       </button>
@@ -303,7 +305,7 @@ const CreateRoomModal = ({ isOpen, onClose, onRoomCreated, darkMode = true, them
             className="px-4 py-2 rounded-xl text-xs font-semibold hover:bg-white/5 transition-colors"
             style={{ color: secondaryTextColor }}
           >
-            Batal
+            {t.cancel}
           </button>
           <button
             type="button"
@@ -316,7 +318,7 @@ const CreateRoomModal = ({ isOpen, onClose, onRoomCreated, darkMode = true, them
             }`}
             style={(!name.trim() || isSubmitting) ? { background: inputBg, borderColor: borderColor, color: secondaryTextColor } : {}}
           >
-            {isSubmitting ? 'Membuat Ruangan...' : 'Buat Ruang Diskusi'}
+            {isSubmitting ? t.creating : t.createBtn}
           </button>
         </div>
       </div>

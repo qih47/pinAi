@@ -319,14 +319,52 @@ export default function DocumentMinimapPill({
         }
     };
 
-    // Helper kategori badge dokumen Pindad
-    const getDocBadge = (title = '') => {
-        const lower = title.toLowerCase();
-        if (lower.includes('pkb')) return { label: 'PKB Pindad', color: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30' };
-        if (lower.includes('sop') || lower.includes('prosedur')) return { label: 'SOP', color: 'bg-blue-500/15 text-blue-300 border-blue-500/30' };
-        if (lower.includes('sk') || lower.includes('direksi') || lower.includes('keputusan')) return { label: 'SK Direksi', color: 'bg-amber-500/15 text-amber-300 border-amber-500/30' };
-        if (lower.includes('se') || lower.includes('edaran')) return { label: 'Surat Edaran', color: 'bg-purple-500/15 text-purple-300 border-purple-500/30' };
-        return { label: 'Regulasi', color: 'bg-zinc-500/15 text-zinc-300 border-zinc-500/30' };
+    // Helper kategori & format badge dokumen Pindad
+    const getDocBadge = (docOrTitle, fallbackDoc = null) => {
+        const doc = (typeof docOrTitle === 'object' && docOrTitle !== null) 
+            ? docOrTitle 
+            : (fallbackDoc || {});
+        const rawTitle = typeof docOrTitle === 'string' ? docOrTitle : (doc.title || doc.filename || doc.name || '');
+        const lower = rawTitle.toLowerCase();
+        const explicitJenis = doc.jenis || doc.category;
+
+        // 1. Deteksi Format File Presentasi / Slide
+        if (/\.(pptx?|ppsx?|key)$/i.test(lower) || lower.includes('slide') || lower.includes('presentasi')) {
+            return { label: 'SLIDE', color: 'bg-amber-500/15 text-amber-300 border-amber-500/30' };
+        }
+
+        // 2. Deteksi Format Spreadsheet / Excel
+        if (/\.(xlsx?|csv|ods)$/i.test(lower) || lower.includes('spreadsheet') || lower.includes('rekapitulasi')) {
+            return { label: 'EXCEL', color: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30' };
+        }
+
+        // 3. Deteksi Format Word / Dokumen Teks
+        if (/\.(docx?|rtf|odt|txt)$/i.test(lower)) {
+            return { label: 'WORD', color: 'bg-blue-500/15 text-blue-300 border-blue-500/30' };
+        }
+
+        // 4. Deteksi Gambar
+        if (/\.(png|jpe?g|webp|gif|bmp|svg)$/i.test(lower)) {
+            return { label: 'GAMBAR', color: 'bg-cyan-500/15 text-cyan-300 border-cyan-500/30' };
+        }
+
+        // 5. Jika memiliki jenis/kategori resmi dari database
+        if (explicitJenis && explicitJenis !== 'Regulasi' && explicitJenis !== 'Dokumen') {
+            return { label: explicitJenis, color: 'bg-indigo-500/15 text-indigo-300 border-indigo-500/30' };
+        }
+
+        // 6. Deteksi Regulasi Resmi Pindad dengan Batas Kata (Word Boundary) yang Ketat
+        if (/\bpkb\b/i.test(lower)) return { label: 'PKB Pindad', color: 'bg-teal-500/15 text-teal-300 border-teal-500/30' };
+        if (/\bsop\b|\bprosedur\b/i.test(lower)) return { label: 'SOP', color: 'bg-blue-500/15 text-blue-300 border-blue-500/30' };
+        if (/\b(sk|skep)\b|\bdireksi\b|\bkeputusan\b/i.test(lower)) return { label: 'SK Direksi', color: 'bg-amber-500/15 text-amber-300 border-amber-500/30' };
+        if (/\bse\b|\bedaran\b/i.test(lower)) return { label: 'Surat Edaran', color: 'bg-purple-500/15 text-purple-300 border-purple-500/30' };
+
+        // 7. Format PDF standar
+        if (lower.endsWith('.pdf')) {
+            return { label: 'PDF', color: 'bg-rose-500/15 text-rose-300 border-rose-500/30' };
+        }
+
+        return { label: 'REGULASI', color: 'bg-zinc-500/15 text-zinc-300 border-zinc-500/30' };
     };
 
     // ── 8. Render Portal 4 Mode Action Popup Menu ──
@@ -614,7 +652,7 @@ export default function DocumentMinimapPill({
                                     const isComplianceActive = isDocIsolated && chatMode === 'compliance';
                                     const isRedTeamActive = isDocIsolated && chatMode === 'redteam';
 
-                                    const badge = getDocBadge(doc.title);
+                                    const badge = getDocBadge(doc);
                                     const isActionActive = activeActionDoc?.rawKey === doc.rawKey;
 
                                     return (
@@ -779,7 +817,7 @@ export default function DocumentMinimapPill({
                                             globalDocs.map((gDoc, gIdx) => {
                                                 const docId = gDoc.id || gDoc.dokumen_id || gDoc.doc_id;
                                                 const docTitle = gDoc.title || gDoc.filename || gDoc.name;
-                                                const badge = getDocBadge(gDoc.title);
+                                                const badge = getDocBadge(gDoc);
                                                 const isActionActive = activeActionDoc?.rawKey === gDoc.rawKey;
 
                                                 const isDocIsolated = activeIsolatedDocId && (

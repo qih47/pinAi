@@ -40,8 +40,21 @@ class SessionRepository:
             query = """
                 SELECT session_uuid, judul, is_pinned, started_at 
                 FROM chat_sessions 
-                WHERE npp = $1 AND is_deleted = FALSE 
+                WHERE npp = $1 AND is_deleted = FALSE AND (is_archived = FALSE OR is_archived IS NULL)
                 ORDER BY is_pinned DESC, started_at DESC;
+            """
+            rows = await conn.fetch(query, npp)
+            return [dict(r) for r in rows]
+
+    async def get_user_archived_sessions(self, npp: str) -> List[Dict[str, Any]]:
+        """Mengambil semua sesi chat yang diarsipkan milik pegawai tertentu"""
+        logger.debug(f"[CHAT_HISTORY] Fetching archived sessions for NPP: {npp}")
+        async with get_db() as conn:
+            query = """
+                SELECT session_uuid, judul, is_pinned, started_at, is_archived
+                FROM chat_sessions 
+                WHERE npp = $1 AND is_deleted = FALSE AND is_archived = TRUE
+                ORDER BY started_at DESC;
             """
             rows = await conn.fetch(query, npp)
             return [dict(r) for r in rows]
@@ -74,6 +87,19 @@ class SessionRepository:
             await conn.execute(
                 "UPDATE chat_sessions SET is_pinned = $1 WHERE session_uuid = $2",
                 pin_status,
+                session_uuid,
+            )
+            return True
+
+    async def toggle_archive_session(self, session_uuid: str, archive_status: bool) -> bool:
+        """Fitur Sidebar: Mengarsipkan atau membatalkan arsip sesi obrolan"""
+        logger.info(
+            f"[CHAT_HISTORY] Toggling ARCHIVE for session {session_uuid[:8]}: {archive_status}"
+        )
+        async with get_db() as conn:
+            await conn.execute(
+                "UPDATE chat_sessions SET is_archived = $1 WHERE session_uuid = $2",
+                archive_status,
                 session_uuid,
             )
             return True

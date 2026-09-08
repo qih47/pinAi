@@ -1,8 +1,10 @@
-import React, { useState, useEffect } from 'react';
-import { X, UserPlus, Search, Check, Loader2 } from 'lucide-react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { X, UserPlus, Search, Check, Loader2, Clock, RotateCcw } from 'lucide-react';
 import { collabApi } from '../services/collabApi';
+import { translations } from '../../../utils/translations';
 
-const InviteMemberModal = ({ isOpen, onClose, roomId, currentMembers = [], onMembersInvited, darkMode = true, theme }) => {
+const InviteMemberModal = ({ isOpen, onClose, roomId, currentMembers = [], onMembersInvited, darkMode = true, theme, language = 'id' }) => {
+  const t = translations[language]?.collab || translations.id.collab;
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [invitingNpp, setInvitingNpp] = useState(null);
@@ -18,7 +20,13 @@ const InviteMemberModal = ({ isOpen, onClose, roomId, currentMembers = [], onMem
   const textColor = theme?.textColor || (darkMode ? '#e2e8f0' : '#1f2937');
   const secondaryTextColor = theme?.secondaryText || (darkMode ? '#94a3b8' : '#6b7280');
 
-  const currentNppSet = new Set(currentMembers.map((m) => m.npp));
+  const memberMap = useMemo(() => {
+    const map = new Map();
+    currentMembers.forEach((m) => {
+      map.set(m.npp, m);
+    });
+    return map;
+  }, [currentMembers]);
 
   useEffect(() => {
     if (!searchQuery.trim() || searchQuery.trim().length < 2) {
@@ -51,7 +59,7 @@ const InviteMemberModal = ({ isOpen, onClose, roomId, currentMembers = [], onMem
       setInvitedNpps((prev) => new Set([...prev, person.npp]));
       if (onMembersInvited) onMembersInvited();
     } catch (err) {
-      setError(err?.response?.data?.detail || 'Gagal mengundang anggota.');
+      setError(err?.response?.data?.detail || t.inviteFailed || 'Gagal mengundang anggota.');
     } finally {
       setInvitingNpp(null);
     }
@@ -88,7 +96,7 @@ const InviteMemberModal = ({ isOpen, onClose, roomId, currentMembers = [], onMem
             <div className="p-1.5 rounded-lg bg-teal-500/10 text-teal-400 border border-teal-500/20">
               <UserPlus size={16} />
             </div>
-            <h2 className="text-sm font-bold" style={{ color: textColor }}>Undang Rekan Kerja</h2>
+            <h2 className="text-sm font-bold" style={{ color: textColor }}>{t.inviteModalTitle}</h2>
           </div>
 
           <button
@@ -114,7 +122,7 @@ const InviteMemberModal = ({ isOpen, onClose, roomId, currentMembers = [], onMem
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Ketik nama atau NPP..."
+              placeholder={t.searchMemberInput}
               className="w-full pl-8 pr-4 py-2 border rounded-xl text-xs focus:outline-none focus:border-teal-500 transition-all"
               style={{
                 background: inputBg,
@@ -138,11 +146,15 @@ const InviteMemberModal = ({ isOpen, onClose, roomId, currentMembers = [], onMem
           >
             {searchResults.length === 0 ? (
               <div className="p-4 text-center text-xs" style={{ color: secondaryTextColor }}>
-                {searchQuery.trim().length >= 2 ? 'Tidak ada personil ditemukan' : 'Cari personil untuk ditambahkan ke ruang diskusi'}
+                {searchQuery.trim().length >= 2 ? t.noPersonFound : t.searchPersonPrompt}
               </div>
             ) : (
               searchResults.map((person) => {
-                const isAlreadyMember = currentNppSet.has(person.npp) || invitedNpps.has(person.npp);
+                const existingMember = memberMap.get(person.npp);
+                const isNewlyInvited = invitedNpps.has(person.npp);
+                const isAccepted = existingMember?.status === 'ACCEPTED';
+                const isPending = existingMember?.status === 'PENDING' || isNewlyInvited;
+                const isRejected = existingMember?.status === 'REJECTED' && !isNewlyInvited;
                 const isInvitingThis = invitingNpp === person.npp;
 
                 return (
@@ -154,9 +166,19 @@ const InviteMemberModal = ({ isOpen, onClose, roomId, currentMembers = [], onMem
                     <div className="min-w-0 pr-3">
                       <div className="text-xs font-semibold flex items-center gap-2" style={{ color: textColor }}>
                         <span className="truncate">{person.name}</span>
-                        {isAlreadyMember && (
+                        {isAccepted && (
                           <span className="text-[10px] text-teal-400 font-normal">
-                            {invitedNpps.has(person.npp) ? '✓ Baru Ditambahkan' : '(Sudah Bergabung)'}
+                            {t.alreadyJoined}
+                          </span>
+                        )}
+                        {isPending && (
+                          <span className="text-[10px] text-amber-400 font-normal">
+                            {isNewlyInvited ? t.inviteSent : t.pendingAcc}
+                          </span>
+                        )}
+                        {isRejected && (
+                          <span className="text-[10px] text-rose-400 font-normal">
+                            {t.rejectedInvite}
                           </span>
                         )}
                       </div>
@@ -165,7 +187,7 @@ const InviteMemberModal = ({ isOpen, onClose, roomId, currentMembers = [], onMem
                       </div>
                     </div>
 
-                    {isAlreadyMember ? (
+                    {isAccepted ? (
                       <span
                         className="shrink-0 flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-medium border"
                         style={{
@@ -175,7 +197,14 @@ const InviteMemberModal = ({ isOpen, onClose, roomId, currentMembers = [], onMem
                         }}
                       >
                         <Check size={12} className="text-teal-400" />
-                        <span>Bergabung</span>
+                        <span>{t.statusJoined}</span>
+                      </span>
+                    ) : isPending ? (
+                      <span
+                        className="shrink-0 flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-medium border text-amber-400 border-amber-500/20 bg-amber-500/10"
+                      >
+                        <Clock size={12} />
+                        <span>{t.statusPending}</span>
                       </span>
                     ) : (
                       <button
@@ -185,18 +214,25 @@ const InviteMemberModal = ({ isOpen, onClose, roomId, currentMembers = [], onMem
                         className={`shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all shadow-sm ${
                           isInvitingThis
                             ? 'bg-teal-600/50 text-teal-200 cursor-wait'
+                            : isRejected
+                            ? 'bg-amber-600 hover:bg-amber-500 text-white hover:scale-[1.02]'
                             : 'bg-teal-600 hover:bg-teal-500 text-white hover:scale-[1.02]'
                         }`}
                       >
                         {isInvitingThis ? (
                           <>
                             <Loader2 size={12} className="animate-spin" />
-                            <span>Mengundang...</span>
+                            <span>{t.inviting}</span>
+                          </>
+                        ) : isRejected ? (
+                          <>
+                            <RotateCcw size={13} />
+                            <span>{t.reInvite}</span>
                           </>
                         ) : (
                           <>
                             <UserPlus size={13} />
-                            <span>Undang</span>
+                            <span>{t.invite}</span>
                           </>
                         )}
                       </button>
@@ -222,7 +258,7 @@ const InviteMemberModal = ({ isOpen, onClose, roomId, currentMembers = [], onMem
             className="px-4 py-1.5 rounded-lg text-xs font-semibold hover:bg-white/5 transition-colors"
             style={{ color: secondaryTextColor }}
           >
-            Selesai
+            {t.finish}
           </button>
         </div>
       </div>

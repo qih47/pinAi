@@ -8,7 +8,7 @@ Rute API untuk Collab Space (Diskusi Tim & AI Teammate).
 
 import logging
 from typing import List, Optional, Dict, Any
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, UploadFile, File
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
@@ -16,6 +16,8 @@ from backend.app.api.dependencies.auth import get_current_user_npp
 from backend.app.services.collab.collab_service import CollabService
 from backend.app.services.collab.collab_broadcast_manager import collab_broadcast_manager
 from backend.app.core.database import get_db
+from backend.app.utils.upload_validator import UploadValidationError
+from backend.app.utils.security_firewall import check_rate_limit
 
 logger = logging.getLogger("COLLAB_API")
 router = APIRouter()
@@ -32,6 +34,11 @@ class UpdateDocumentRequest(BaseModel):
     document_content: str
 
 
+class AppendDocumentRequest(BaseModel):
+    text: str
+    sender_name: Optional[str] = None
+
+
 class InviteMembersRequest(BaseModel):
     npps: List[str]
 
@@ -46,20 +53,104 @@ class EditMessageRequest(BaseModel):
     message_text: str
 
 
+class RenameRoomRequest(BaseModel):
+    name: str
+
+
 class TypingStatusRequest(BaseModel):
     is_typing: bool
 
 
+class RespondInvitationRequest(BaseModel):
+    action: str  # 'accept' | 'reject'
+
+
 @router.get("/rooms", tags=["Collab"])
-async def get_my_rooms(current_user_npp: str = Depends(get_current_user_npp)):
+async def get_my_rooms(
+    is_archived: bool = Query(False),
+    current_user_npp: str = Depends(get_current_user_npp)
+):
     """Mengambil daftar ruang diskusi tim milik user."""
     if not current_user_npp or current_user_npp == "GUEST":
         raise HTTPException(status_code=401, detail="Sesi login tidak valid.")
     try:
-        rooms = await CollabService.get_user_rooms(current_user_npp)
+        rooms = await CollabService.get_user_rooms(current_user_npp, is_archived=is_archived)
         return {"status": "success", "rooms": rooms}
     except Exception as e:
         logger.error(f"[COLLAB_API] Error fetching rooms: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/rooms/invitations", tags=["Collab"])
+async def get_my_invitations(current_user_npp: str = Depends(get_current_user_npp)):
+    """Mengambil daftar undangan ruang diskusi yang berstatus PENDING."""
+    if not current_user_npp or current_user_npp == "GUEST":
+        raise HTTPException(status_code=401, detail="Sesi login tidak valid.")
+    try:
+        invitations = await CollabService.get_pending_invitations(current_user_npp)
+        return {"status": "success", "invitations": invitations}
+    except Exception as e:
+        logger.error(f"[COLLAB_API] Error fetching invitations: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/rooms/invitations/count", tags=["Collab"])
+async def get_invitations_count(current_user_npp: str = Depends(get_current_user_npp)):
+    """Mengambil jumlah badge notifikasi undangan pending."""
+    if not current_user_npp or current_user_npp == "GUEST":
+        raise HTTPException(status_code=401, detail="Sesi login tidak valid.")
+    try:
+        count = await CollabService.get_invitations_count(current_user_npp)
+        return {"status": "success", "count": count}
+    except Exception as e:
+        logger.error(f"[COLLAB_API] Error counting invitations: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/rooms/unread/count", tags=["Collab"])
+async def get_total_unread_count(current_user_npp: str = Depends(get_current_user_npp)):
+    """Mengambil total jumlah pesan belum dibaca di seluruh ruang kolaborasi."""
+    if not current_user_npp or current_user_npp == "GUEST":
+        raise HTTPException(status_code=401, detail="Sesi login tidak valid.")
+    try:
+        count = await CollabService.get_total_unread_count(current_user_npp)
+        return {"status": "success", "unread_count": count}
+    except Exception as e:
+        logger.error(f"[COLLAB_API] Error counting unread messages: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.put("/rooms/{room_id}/read", tags=["Collab"])
+async def mark_room_as_read(room_id: str, current_user_npp: str = Depends(get_current_user_npp)):
+    """Menandai pesan di ruang diskusi sudah dibaca."""
+    if not current_user_npp or current_user_npp == "GUEST":
+        raise HTTPException(status_code=401, detail="Sesi login tidak valid.")
+    try:
+        result = await CollabService.mark_room_read(room_id, current_user_npp)
+        return result
+    except Exception as e:
+        logger.error(f"[COLLAB_API] Error marking room as read: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.put("/rooms/{room_id}/invitations/respond", tags=["Collab"])
+async def respond_to_invitation(
+    room_id: str,
+    payload: RespondInvitationRequest,
+    current_user_npp: str = Depends(get_current_user_npp)
+):
+    """Merespons undangan ruang diskusi: terima ('accept') atau tolak ('reject')."""
+    if not current_user_npp or current_user_npp == "GUEST":
+        raise HTTPException(status_code=401, detail="Sesi login tidak valid.")
+    try:
+        result = await CollabService.respond_invitation(room_id, current_user_npp, payload.action)
+        return result
+    except PermissionError as pe:
+        raise HTTPException(status_code=403, detail=str(pe))
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+    except Exception as e:
+        logger.error(f"[COLLAB_API] Error responding to invitation: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -101,6 +192,59 @@ async def get_room_detail(room_id: str, current_user_npp: str = Depends(get_curr
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.put("/rooms/{room_id}/title", tags=["Collab"])
+async def rename_room_title(
+    room_id: str,
+    payload: RenameRoomRequest,
+    current_user_npp: str = Depends(get_current_user_npp)
+):
+    """Mengubah nama/judul ruang diskusi."""
+    if not current_user_npp or current_user_npp == "GUEST":
+        raise HTTPException(status_code=401, detail="Sesi login tidak valid.")
+    if not payload.name.strip():
+        raise HTTPException(status_code=400, detail="Nama ruangan tidak boleh kosong.")
+    try:
+        await CollabService.rename_room(room_id, payload.name, current_user_npp)
+        return {"status": "success", "message": "Judul ruang diskusi berhasil diubah."}
+    except Exception as e:
+        logger.error(f"[COLLAB_API] Error renaming room: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.put("/rooms/{room_id}/archive", tags=["Collab"])
+async def archive_room(
+    room_id: str,
+    is_archived: bool = Query(True),
+    current_user_npp: str = Depends(get_current_user_npp)
+):
+    """Mengarsipkan atau membatalkan arsip ruang diskusi."""
+    if not current_user_npp or current_user_npp == "GUEST":
+        raise HTTPException(status_code=401, detail="Sesi login tidak valid.")
+    try:
+        await CollabService.archive_room(room_id, is_archived, current_user_npp)
+        msg = "Ruang diskusi berhasil diarsipkan." if is_archived else "Ruang diskusi berhasil dipulihkan."
+        return {"status": "success", "message": msg}
+    except Exception as e:
+        logger.error(f"[COLLAB_API] Error archiving room: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/rooms/{room_id}", tags=["Collab"])
+async def delete_room(
+    room_id: str,
+    current_user_npp: str = Depends(get_current_user_npp)
+):
+    """Menghapus ruang diskusi tim secara permanen."""
+    if not current_user_npp or current_user_npp == "GUEST":
+        raise HTTPException(status_code=401, detail="Sesi login tidak valid.")
+    try:
+        await CollabService.delete_room(room_id, current_user_npp)
+        return {"status": "success", "message": "Ruang diskusi berhasil dihapus."}
+    except Exception as e:
+        logger.error(f"[COLLAB_API] Error deleting room: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.put("/rooms/{room_id}/document", tags=["Collab"])
 async def update_document(
     room_id: str,
@@ -115,6 +259,28 @@ async def update_document(
         return result
     except Exception as e:
         logger.error(f"[COLLAB_API] Error updating document: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/rooms/{room_id}/document/append", tags=["Collab"])
+async def append_to_document(
+    room_id: str,
+    payload: AppendDocumentRequest,
+    current_user_npp: str = Depends(get_current_user_npp)
+):
+    """Menambahkan poin catatan baru (addition) ke dokumen secara atomic di database."""
+    if not current_user_npp or current_user_npp == "GUEST":
+        raise HTTPException(status_code=401, detail="Sesi login tidak valid.")
+    try:
+        result = await CollabService.append_to_document(
+            room_id,
+            current_user_npp,
+            payload.text,
+            payload.sender_name
+        )
+        return result
+    except Exception as e:
+        logger.error(f"[COLLAB_API] Error appending to document: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -173,6 +339,37 @@ async def get_messages(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.post("/rooms/{room_id}/upload", tags=["Collab"])
+async def upload_room_attachments(
+    room_id: str,
+    files: List[UploadFile] = File(...),
+    request: Request = None,
+    current_user_npp: str = Depends(get_current_user_npp)
+):
+    """Mengunggah berkas fisik lampiran ke ruang diskusi tim (Collab)."""
+    if not current_user_npp or current_user_npp == "GUEST":
+        raise HTTPException(status_code=401, detail="Sesi login tidak valid.")
+
+    client_ip = request.client.host if request and request.client else "unknown"
+    if not check_rate_limit(client_ip, "upload"):
+        raise HTTPException(status_code=429, detail="Terlalu banyak request upload. Mohon tunggu sejenak.")
+
+    try:
+        attachments = await CollabService.save_attachments(
+            room_id=room_id,
+            sender_npp=current_user_npp,
+            files=files
+        )
+        return {"status": "success", "attachments": attachments}
+    except PermissionError as pe:
+        raise HTTPException(status_code=403, detail=str(pe))
+    except UploadValidationError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+    except Exception as e:
+        logger.error(f"[COLLAB_API] Error uploading attachments: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Gagal mengunggah berkas: {e}")
+
+
 @router.post("/rooms/{room_id}/messages", tags=["Collab"])
 async def send_message(
     room_id: str,
@@ -183,8 +380,10 @@ async def send_message(
     """Mengirim pesan baru ke ruang diskusi tim."""
     if not current_user_npp or current_user_npp == "GUEST":
         raise HTTPException(status_code=401, detail="Sesi login tidak valid.")
-    if not payload.message_text.strip():
-        raise HTTPException(status_code=400, detail="Isi pesan tidak boleh kosong.")
+
+    message_text = (payload.message_text or "").strip()
+    if not message_text and not payload.attachments:
+        raise HTTPException(status_code=400, detail="Isi pesan atau lampiran tidak boleh kosong.")
 
     # Ambil nama pengirim dari database
     sender_name = current_user_npp
@@ -204,7 +403,7 @@ async def send_message(
             room_id=room_id,
             sender_npp=current_user_npp,
             sender_name=sender_name,
-            message_text=payload.message_text.strip(),
+            message_text=message_text,
             attachments=payload.attachments,
             mode=payload.mode,
             request=request

@@ -1,6 +1,7 @@
 import React from "react";
+import { Link, useLocation } from "react-router-dom";
 import SessionExpiryStatus from "../../../../components/SessionExpiryStatus";
-import { Plus, Search } from "lucide-react";
+import { Plus, Search, Archive } from "lucide-react";
 import { translations } from "../../../../utils/translations";
 
 export default function SidebarHeader({
@@ -18,8 +19,10 @@ export default function SidebarHeader({
   userData,
   navigate,
   setIsSearchModalOpen,
-  language
+  language,
+  setActiveMenuId,
 }) {
+  const location = useLocation();
   const t = translations[language]?.sidebar || translations.id.sidebar;
 
   return (
@@ -104,6 +107,32 @@ export default function SidebarHeader({
             {t.newChat}
           </span>
         </button>
+
+        {/* ── TOMBOL: ARSIP ── */}
+        <Link
+          to="/archive"
+          onClick={() => setActiveMenuId?.(null)}
+          className={`flex items-center transition-all group overflow-hidden text-[14px] ${location.pathname === '/archive'
+            ? "bg-amber-500/10 text-amber-500 font-semibold border-l-2 border-amber-500 rounded-r-full"
+            : `rounded-full font-medium ${darkMode ? 'hover:bg-gray-800' : 'hover:bg-gray-200'}`
+            }`}
+          style={{
+            padding: isOpen ? "8px 12px" : "8px",
+            width: isOpen ? "100%" : "auto",
+            gap: isOpen ? "12px" : "0",
+          }}
+          title={t.archive || "Arsip"}
+        >
+          <span className="h-5 w-5 flex items-center justify-center flex-shrink-0">
+            <Archive size={18} strokeWidth={2} className="group-hover:text-amber-500 transition-colors" style={{ color: location.pathname === '/archive' ? "currentColor" : (theme?.iconColor || "currentColor") }} />
+          </span>
+          <span
+            className={`font-semibold whitespace-nowrap transition-opacity duration-300 ${!isOpen ? "hidden" : "opacity-100"}`}
+            style={{ color: location.pathname === '/archive' ? '' : theme?.textColor }}
+          >
+            {t.archive || "Arsip"}
+          </span>
+        </Link>
 
         {/* ── TOMBOL: SEARCH (CTRL+K) ── */}
         <button

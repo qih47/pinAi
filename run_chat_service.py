@@ -237,6 +237,15 @@ async def get_system_models_status():
 async def serve_uploads(file_path: str, request: Request):
     abs_path = os.path.join(UPLOAD_DIR, file_path)
     if not os.path.exists(abs_path):
+        from pathlib import Path
+        parts = Path(file_path).parts
+        # Fallback untuk collab uploads yang tersimpan di Room Brain SSOT
+        if len(parts) >= 3 and parts[0] == "collab":
+            room_id = parts[1]
+            filename = parts[2]
+            for match in Path(ACCOUNTS_DIR).glob(f"*/collab/{room_id}/brain/images/{filename}"):
+                if match.exists():
+                    return FileResponse(str(match))
         raise HTTPException(status_code=404, detail="File tidak ditemukan")
     return FileResponse(abs_path)
 

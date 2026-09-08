@@ -12,7 +12,9 @@ export {
   pinSession,
   renameSession,
   deleteSession,
-  assignSession
+  assignSession,
+  archiveSession,
+  getArchivedSessions
 } from './api/sessionApi';
 
 export {

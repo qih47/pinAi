@@ -11,6 +11,7 @@ export default function CollabChatNavigator({
   onNavigate,
   darkMode = true,
   theme = {},
+  language = 'id',
   scrollContainerRef
 }) {
   const [isHovered, setIsHovered] = useState(false);
@@ -79,7 +80,12 @@ export default function CollabChatNavigator({
     };
   }, [scrollContainerRef]);
 
-  if (userMessages.length < 3 || isSplitScreen) return null;
+  // ── 4. Gap Dinamis Mini-Map (Harus dipanggil sebelum early return sesuai aturan hooks React) ──
+  const unhoveredGap = useMemo(() => {
+    if (userMessages.length <= 15) return 4;
+    if (userMessages.length <= 25) return 3;
+    return 2;
+  }, [userMessages.length]);
 
   const handleDotClick = (originalIndex) => {
     setClickedIndex(originalIndex);
@@ -93,11 +99,7 @@ export default function CollabChatNavigator({
     }
   };
 
-  const unhoveredGap = useMemo(() => {
-    if (userMessages.length <= 15) return 4;
-    if (userMessages.length <= 25) return 3;
-    return 2;
-  }, [userMessages.length]);
+  if (userMessages.length < 3 || isSplitScreen) return null;
 
   return (
     <div
@@ -203,7 +205,7 @@ export default function CollabChatNavigator({
                     className="text-[11px] truncate leading-tight"
                     style={{ color: darkMode ? '#a1a1aa' : '#64748b' }}
                   >
-                    {textPreview || '(Pesan dokumen/lampiran)'}
+                    {textPreview || (language === 'en' ? '(Document/attachment message)' : '(Pesan dokumen/lampiran)')}
                   </div>
                 </div>
               )}

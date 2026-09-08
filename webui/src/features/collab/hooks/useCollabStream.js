@@ -11,9 +11,11 @@ export const useCollabStream = ({
   onTyping,
   onDocumentUpdated,
   onMembersUpdated,
+  onAutoNoteAdded,
   onCakraStreamStart,
   onCakraStreamChunk,
-  onCakraStreamEnd
+  onCakraStreamEnd,
+  onCakraThinkingPhase
 }) => {
   const [isConnected, setIsConnected] = useState(false);
   const eventSourceRef = useRef(null);
@@ -68,6 +70,11 @@ export const useCollabStream = ({
                 onCakraStreamChunk(payload);
               }
               break;
+            case 'cakra_thinking_phase':
+              if (onCakraThinkingPhase) {
+                onCakraThinkingPhase(payload);
+              }
+              break;
             case 'cakra_stream_end':
               if (onCakraStreamEnd) {
                 onCakraStreamEnd(payload);
@@ -86,6 +93,11 @@ export const useCollabStream = ({
             case 'members_updated':
               if (onMembersUpdated) {
                 onMembersUpdated(payload);
+              }
+              break;
+            case 'auto_note_added':
+              if (onAutoNoteAdded) {
+                onAutoNoteAdded(payload);
               }
               break;
             default:
@@ -109,7 +121,7 @@ export const useCollabStream = ({
     } catch (err) {
       console.error('[COLLAB_SSE] Connection initialization error:', err);
     }
-  }, [roomId, onNewMessage, onTyping, onDocumentUpdated, onMembersUpdated]);
+  }, [roomId, onNewMessage, onTyping, onDocumentUpdated, onMembersUpdated, onCakraThinkingPhase]);
 
   useEffect(() => {
     connect();

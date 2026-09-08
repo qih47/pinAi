@@ -4,7 +4,8 @@ import { isToday, isYesterday, isThisWeek, isThisMonth } from "date-fns";
 import { translations } from "../../../../utils/translations";
 import { useSessionTitle } from "../../../../hooks/useSessionTitle";
 import { useChatStore } from "../../../../stores/chatStore";
-import { FileText, Mail, FileSignature, BarChart3, Activity, MessageSquare, Pin, PinOff, MoreVertical, Edit, Trash2, Users2 } from "lucide-react";
+import { useCollabStore } from "../../../../stores/collabStore";
+import { FileText, Mail, FileSignature, BarChart3, Activity, MessageSquare, Pin, PinOff, MoreVertical, Edit, Trash2, Users2, Archive } from "lucide-react";
 
 const TypewriterTitle = ({ text, onDone }) => {
   const [displayedText, setDisplayedText] = React.useState("");
@@ -58,6 +59,8 @@ export default function SessionList({
   pinChat,
   renameChat,
   deleteChat,
+  archiveChat,
+  confirmArchive,
   menuRef,
   activeMenuId,
   setActiveMenuId,
@@ -83,6 +86,21 @@ export default function SessionList({
   const animatedTitles = React.useRef(new Set());
 
   const activeStreams = useChatStore((state) => state.activeStreams || {});
+  const invitationCount = useCollabStore((state) => state.invitationCount);
+  const unreadCount = useCollabStore((state) => state.unreadCount);
+  const fetchInvitationsCount = useCollabStore((state) => state.fetchInvitationsCount);
+  const fetchUnreadCount = useCollabStore((state) => state.fetchUnreadCount);
+
+  useEffect(() => {
+    fetchInvitationsCount();
+    fetchUnreadCount();
+    const timer = setInterval(() => {
+      fetchInvitationsCount();
+      fetchUnreadCount();
+    }, 15000);
+    return () => clearInterval(timer);
+  }, [fetchInvitationsCount, fetchUnreadCount]);
+
   const { isTitleGenerating } = useSessionTitle(
     chatHistory,
     setChatHistory,
@@ -135,6 +153,23 @@ export default function SessionList({
       }
     } catch (err) {
       console.error("Gagal rename chat:", err);
+    }
+  };
+
+  const handleArchiveChat = (e, sessionUuid, title) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setActiveMenuId(null);
+    if (confirmArchive) {
+      confirmArchive(e, sessionUuid, title);
+    } else if (archiveChat) {
+      archiveChat(sessionUuid, true).then(() => {
+        if (setChatHistory) {
+          setChatHistory((prev) => prev.filter((item) => item.session_uuid !== sessionUuid));
+        }
+      }).catch((err) => {
+        console.error("Gagal arsipkan chat:", err);
+      });
     }
   };
 
@@ -204,13 +239,34 @@ export default function SessionList({
             width: isOpen ? "100%" : "auto",
             gap: isOpen ? "12px" : "0",
           }}
-          title="Diskusi Tim"
+          title={t.teamDiscussion || "Diskusi Tim"}
         >
-          <span className="h-5 w-5 flex items-center justify-center flex-shrink-0">
+          <span className="h-5 w-5 flex items-center justify-center flex-shrink-0 relative">
             <Users2 size={18} strokeWidth={2} className="group-hover:text-teal-400 transition-colors" style={{ color: location.pathname.startsWith('/collab') ? "currentColor" : (theme?.iconColor || "currentColor") }} />
+            {!isOpen && (invitationCount > 0 || unreadCount > 0) && (
+              <span className={`absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full ring-2 ring-slate-900 animate-pulse ${invitationCount > 0 ? 'bg-rose-500' : 'bg-teal-400'}`} />
+            )}
           </span>
-          <span className={`whitespace-nowrap transition-opacity duration-300 ${!isOpen ? "hidden" : "opacity-100"}`} style={{ color: location.pathname.startsWith('/collab') ? '' : theme?.textColor }}>
-            Diskusi Tim
+          <span className={`whitespace-nowrap transition-opacity duration-300 flex-1 flex items-center justify-between ${!isOpen ? "hidden" : "opacity-100"}`} style={{ color: location.pathname.startsWith('/collab') ? '' : theme?.textColor }}>
+            <span>{t.teamDiscussion || "Diskusi Tim"}</span>
+            <div className="ml-auto flex items-center gap-1.5">
+              {unreadCount > 0 && (
+                <span
+                  title={`${unreadCount} ${t.newMessages || 'pesan baru'}`}
+                  className="inline-flex items-center justify-center min-w-[20px] h-[20px] px-1.5 text-[10px] font-bold leading-none text-white bg-teal-600 rounded-full shadow-sm"
+                >
+                  {unreadCount > 99 ? '99+' : unreadCount}
+                </span>
+              )}
+              {invitationCount > 0 && (
+                <span
+                  title={`${invitationCount} ${t.pendingInvitations || 'undangan menunggu konfirmasi'}`}
+                  className="inline-flex items-center justify-center min-w-[20px] h-[20px] px-1.5 text-[10px] font-bold leading-none text-white bg-rose-500 rounded-full shadow-sm animate-pulse"
+                >
+                  {invitationCount > 99 ? '99+' : invitationCount}
+                </span>
+              )}
+            </div>
           </span>
         </Link>
 
@@ -631,7 +687,16 @@ export default function SessionList({
                             <Edit size={14} strokeWidth={2.5} className="opacity-60" />
                           </button>
 
-                          {/* 🔥 DROPDOWN ITEM 3: HAPUS (SVG VECTOR) */}
+                          {/* 🔥 DROPDOWN ITEM 3: ARSIP (SVG VECTOR) */}
+                          <button
+                            onClick={(e) => handleArchiveChat(e, chat.session_uuid, chat.judul)}
+                            className={`w-full text-left px-3 py-2 flex justify-between items-center ${darkMode ? "hover:bg-gray-700 text-gray-200" : "hover:bg-gray-100"}`}
+                          >
+                            <span>{t.archiveChat || t.archive || "Arsipkan"}</span>
+                            <Archive size={14} strokeWidth={2.5} className="opacity-60" />
+                          </button>
+
+                          {/* 🔥 DROPDOWN ITEM 4: HAPUS (SVG VECTOR) */}
                           <button
                             onClick={(e) => { e.preventDefault(); confirmDelete(e, chat.session_uuid); }}
                             className={`w-full text-left px-3 py-2 text-red-600 flex justify-between items-center font-semibold ${darkMode ? "hover:bg-red-900/20" : "hover:bg-red-50"}`}

@@ -317,7 +317,7 @@ export default function EmailTriageTab({ theme, darkMode, userData, language, is
       window.URL.revokeObjectURL(blobUrl);
     } catch (err) {
       console.error("Gagal mengunduh lampiran:", err);
-      alert("Gagal mengunduh file lampiran dari server Zimbra.");
+      alert(t.failDownloadAttachment || (language === 'en' ? "Failed to download attachment file from Zimbra server." : "Gagal mengunduh file lampiran dari server Zimbra."));
     }
   };
 
@@ -355,7 +355,7 @@ export default function EmailTriageTab({ theme, darkMode, userData, language, is
 
     if (isForwarding) {
       if (!forwardTo) {
-        alert("Silakan isi alamat email tujuan forward.");
+        alert(t.fillForwardRecipient || "Silakan isi alamat email tujuan forward.");
         setIsSending(false);
         return;
       }
@@ -389,21 +389,21 @@ export default function EmailTriageTab({ theme, darkMode, userData, language, is
         setReplyAttachments([]);
         setTimeout(() => setSendSuccess(false), 3000);
       } else {
-        alert("Gagal mengirim email: " + response.data.message);
+        alert((t.failSendEmail || "Gagal mengirim email: ") + response.data.message);
       }
     } catch (error) {
       console.error("Gagal send", error);
-      alert("Koneksi gagal saat mengirim email.");
+      alert(t.connectionFailed || "Koneksi gagal saat mengirim email.");
     } finally {
       setIsSending(false);
     }
   };
 
   const composeToneOptions = [
-    { id: 'formal', label: '👔 Formal Korporat' },
-    { id: 'concise', label: '⚡ Ringkas & Tegas' },
-    { id: 'polite', label: '🤝 Santun & Kolaboratif' },
-    { id: 'announcement', label: '📢 Pengumuman Resmi' }
+    { id: 'formal', label: language === 'en' ? '👔 Corporate Formal' : '👔 Formal Korporat' },
+    { id: 'concise', label: language === 'en' ? '⚡ Concise & Direct' : '⚡ Ringkas & Tegas' },
+    { id: 'polite', label: language === 'en' ? '🤝 Polite & Collaborative' : '🤝 Santun & Kolaboratif' },
+    { id: 'announcement', label: language === 'en' ? '📢 Official Announcement' : '📢 Pengumuman Resmi' }
   ];
 
   const handleOpenDraftInComposer = (draft) => {
@@ -420,7 +420,7 @@ export default function EmailTriageTab({ theme, darkMode, userData, language, is
 
   const handleDeleteDraft = async (e, draftId) => {
     e.stopPropagation();
-    if (!confirm("Hapus draf email ini?")) return;
+    if (!confirm(t.confirmDeleteDraft || "Hapus draf email ini?")) return;
     try {
       const token = localStorage.getItem('cakra_token') || '';
       await apiClient.delete(`/corporate/emails/drafts/${draftId}?token=${encodeURIComponent(token)}`);
@@ -430,13 +430,13 @@ export default function EmailTriageTab({ theme, darkMode, userData, language, is
       }
     } catch (err) {
       console.error("Gagal hapus draf:", err);
-      alert("Gagal menghapus draf email.");
+      alert(t.failDeleteDraft || "Gagal menghapus draf email.");
     }
   };
 
   const handleSaveDraft = async () => {
     if (!composeTo.trim() && !composeSubject.trim() && !composeBody.trim()) {
-      alert("Draf masih kosong. Isi setidaknya penerima, subjek, atau isi pesan.");
+      alert(t.emptyDraftNotice || "Draf masih kosong. Isi setidaknya penerima, subjek, atau isi pesan.");
       return;
     }
     setIsSavingDraft(true);
@@ -455,14 +455,14 @@ export default function EmailTriageTab({ theme, darkMode, userData, language, is
         const savedData = res.data.data;
         setCurrentDraftId(savedData.id);
         addOrUpdateZimbraDraft(savedData);
-        setComposeStatusMsg({ type: 'success', text: '💾 Draf berhasil disimpan!' });
+        setComposeStatusMsg({ type: 'success', text: t.draftSavedStatus || '💾 Draf berhasil disimpan!' });
         setTimeout(() => setComposeStatusMsg({ type: '', text: '' }), 3000);
       } else {
-        setComposeStatusMsg({ type: 'error', text: 'Gagal menyimpan draf: ' + (res.data?.message || '') });
+        setComposeStatusMsg({ type: 'error', text: (t.draftSaveFail || 'Gagal menyimpan draf: ') + (res.data?.message || '') });
       }
     } catch (err) {
       console.error("Gagal simpan draf:", err);
-      setComposeStatusMsg({ type: 'error', text: 'Koneksi gagal saat menyimpan draf.' });
+      setComposeStatusMsg({ type: 'error', text: t.draftSaveConnFail || 'Koneksi gagal saat menyimpan draf.' });
     } finally {
       setIsSavingDraft(false);
     }
@@ -472,7 +472,7 @@ export default function EmailTriageTab({ theme, darkMode, userData, language, is
     if (!files || files.length === 0) return;
     Array.from(files).forEach(file => {
       if (file.size > 15 * 1024 * 1024) {
-        alert(`File ${file.name} melebihi batas ukuran maksimal 15MB.`);
+        alert(`File ${file.name} ${t.fileSizeExceeded || 'melebihi batas ukuran maksimal 15MB.'}`);
         return;
       }
       const reader = new FileReader();
@@ -637,7 +637,7 @@ export default function EmailTriageTab({ theme, darkMode, userData, language, is
     if (!files || files.length === 0) return;
     Array.from(files).forEach(file => {
       if (file.size > 15 * 1024 * 1024) {
-        alert(`File ${file.name} melebihi batas ukuran maksimal 15MB.`);
+        alert(`File ${file.name} ${t.fileSizeExceeded || 'melebihi batas ukuran maksimal 15MB.'}`);
         return;
       }
       const reader = new FileReader();
@@ -662,7 +662,7 @@ export default function EmailTriageTab({ theme, darkMode, userData, language, is
 
   const handleGenerateComposeAi = async (toneOverride) => {
     if (!composeAiPrompt.trim()) {
-      alert("Silakan masukkan instruksi atau poin pesan yang ingin dibuat oleh AI.");
+      alert(t.enterAiPromptNotice || "Silakan masukkan instruksi atau poin pesan yang ingin dibuat oleh AI.");
       return;
     }
     const toneToUse = toneOverride || composeTone;
@@ -680,11 +680,11 @@ export default function EmailTriageTab({ theme, darkMode, userData, language, is
           setComposeSubject(res.data.data.subject);
         }
         setComposeBody(res.data.data.body || '');
-        setComposeStatusMsg({ type: 'success', text: '✨ Draf pesan berhasil dibuat oleh AI!' });
+        setComposeStatusMsg({ type: 'success', text: t.aiDraftSuccess || '✨ Draf pesan berhasil dibuat oleh AI!' });
       }
     } catch (err) {
       console.error("Gagal generate compose AI", err);
-      setComposeStatusMsg({ type: 'error', text: 'Gagal membuat draf dengan AI. Silakan coba lagi.' });
+      setComposeStatusMsg({ type: 'error', text: t.aiDraftFail || 'Gagal membuat draf dengan AI. Silakan coba lagi.' });
     } finally {
       setIsGeneratingCompose(false);
     }
@@ -692,15 +692,15 @@ export default function EmailTriageTab({ theme, darkMode, userData, language, is
 
   const handleSendCompose = async () => {
     if (!composeTo.trim()) {
-      alert("Alamat penerima (Kepada) wajib diisi.");
+      alert(t.recipientRequired || "Alamat penerima (Kepada) wajib diisi.");
       return;
     }
     if (!composeSubject.trim()) {
-      alert("Subjek email wajib diisi.");
+      alert(t.subjectRequired || "Subjek email wajib diisi.");
       return;
     }
     if (!composeBody.trim()) {
-      alert("Isi pesan email tidak boleh kosong.");
+      alert(t.bodyRequired || "Isi pesan email tidak boleh kosong.");
       return;
     }
     setIsSendingCompose(true);
@@ -749,10 +749,10 @@ export default function EmailTriageTab({ theme, darkMode, userData, language, is
   };
 
   const quickActions = [
-    { label: "✨ Lebih Sopan", prompt: "Ubah draft ini menjadi jauh lebih sopan, formal, dan berterima kasih." },
-    { label: "⚡ Ringkas & Tegas", prompt: "Buat draft ini menjadi sangat singkat, to the point, dan tegas." },
-    { label: "✅ Setujui", prompt: "Buat balasan yang menyetujui permintaan/penawaran di email ini dengan baik." },
-    { label: "❌ Tolak Halus", prompt: "Buat balasan yang menolak permintaan/penawaran ini dengan sangat halus karena alasan anggaran/SOP." }
+    { label: language === 'en' ? "✨ More Polite" : "✨ Lebih Sopan", prompt: language === 'en' ? "Make this draft much more polite, formal, and appreciative." : "Ubah draft ini menjadi jauh lebih sopan, formal, dan berterima kasih." },
+    { label: language === 'en' ? "⚡ Concise & Direct" : "⚡ Ringkas & Tegas", prompt: language === 'en' ? "Make this draft very brief, to the point, and assertive." : "Buat draft ini menjadi sangat singkat, to the point, dan tegas." },
+    { label: language === 'en' ? "✅ Approve" : "✅ Setujui", prompt: language === 'en' ? "Write a polite reply approving the request/proposal in this email." : "Buat balasan yang menyetujui permintaan/penawaran di email ini dengan baik." },
+    { label: language === 'en' ? "❌ Polite Decline" : "❌ Tolak Halus", prompt: language === 'en' ? "Write a polite decline due to budget/SOP constraints." : "Buat balasan yang menolak permintaan/penawaran ini dengan sangat halus karena alasan anggaran/SOP." }
   ];
 
   return (
@@ -778,14 +778,14 @@ export default function EmailTriageTab({ theme, darkMode, userData, language, is
                   padding: "6px",
                   borderRadius: "8px",
                 }}
-                title="Menu Sidebar"
+                title={t.menuSidebar || (language === 'en' ? "Sidebar Menu" : "Menu Sidebar")}
               >
                 <PanelLeft size={22} />
               </button>
             )}
           </div>
           <div style={{ fontSize: '13px', background: darkMode ? '#2A2A2D' : '#F3F4F6', padding: '5px 12px', borderRadius: '20px', color: theme.secondaryText, marginRight: isMobile ? '0' : '24px' }}>
-            Kotak Masuk: <strong style={{ color: theme.textColor }}>{userEmail}</strong>
+            {t.inboxUser || (language === 'en' ? 'Inbox:' : 'Kotak Masuk:')} <strong style={{ color: theme.textColor }}>{userEmail}</strong>
           </div>
         </div>
       ) : isMobile && toggleSidebar && (
@@ -840,16 +840,16 @@ export default function EmailTriageTab({ theme, darkMode, userData, language, is
                 {isLoadingEmails ? (
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '16px' }}>
                     <div className="spinner" style={{ width: '32px', height: '32px', border: `3px solid ${darkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'}`, borderTopColor: '#3B82F6', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
-                    <p style={{ color: theme.secondaryText, fontSize: '14px', fontWeight: 500 }}>Menyambungkan...</p>
+                    <p style={{ color: theme.secondaryText, fontSize: '14px', fontWeight: 500 }}>{t.connecting || (language === 'en' ? 'Connecting...' : 'Menyambungkan...')}</p>
                     <style>{`@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`}</style>
                   </div>
                 ) : (
                   <div style={{ marginTop: '20px', display: 'flex', flexDirection: 'column', gap: '12px', alignItems: 'center' }}>
                     <p style={{ fontSize: '14px', textAlign: 'center', color: theme.textColor, fontWeight: 'bold' }}>
-                      Koneksi Smart Mail Terputus atau Gagal
+                      {t.connectionFailedTitle || (language === 'en' ? 'Smart Mail Connection Lost or Failed' : 'Koneksi Smart Mail Terputus atau Gagal')}
                     </p>
                     <p style={{ fontSize: '12px', textAlign: 'center', color: theme.secondaryText }}>
-                      Silakan buka menu <strong>Pengaturan &gt; Akun</strong> untuk menyambungkan ulang atau memperbarui kredensial Anda. 
+                      {t.connectionFailedDesc || (language === 'en' ? 'Please go to Settings > Account to reconnect or update your credentials.' : 'Silakan buka menu Pengaturan > Akun untuk menyambungkan ulang atau memperbarui kredensial Anda.')}
                     </p>
                     <button 
                       onClick={() => fetchEmails()} 
@@ -870,7 +870,7 @@ export default function EmailTriageTab({ theme, darkMode, userData, language, is
                       }}
                     >
                       <RefreshCw size={16} className={isLoadingEmails ? "spin" : ""} />
-                      Coba Lagi
+                      {t.retry || (language === 'en' ? 'Try Again' : 'Coba Lagi')}
                     </button>
                   </div>
                 )}
@@ -918,7 +918,7 @@ export default function EmailTriageTab({ theme, darkMode, userData, language, is
                   }}
                 >
                   <PenSquare size={16} />
-                  <span>Tulis Pesan Baru</span>
+                  <span>{t.composeNew || "Tulis Pesan Baru"}</span>
                 </button>
 
                 {/* Tab Switcher: 3 Kolom Compact (Masuk, Terkirim, Draf) */}
@@ -953,10 +953,10 @@ export default function EmailTriageTab({ theme, darkMode, userData, language, is
                       background: activeFolder === 'inbox' ? '#3B82F6' : 'transparent',
                       color: activeFolder === 'inbox' ? 'white' : (darkMode ? '#9ca3af' : '#4b5563')
                     }}
-                    title="Kotak Masuk"
+                    title={t.inbox || "Kotak Masuk"}
                   >
                     <Inbox size={13} />
-                    <span>Masuk</span>
+                    <span>{t.inboxShort || "Masuk"}</span>
                   </button>
                   <button
                     type="button"
@@ -980,10 +980,10 @@ export default function EmailTriageTab({ theme, darkMode, userData, language, is
                       background: activeFolder === 'sent' ? '#3B82F6' : 'transparent',
                       color: activeFolder === 'sent' ? 'white' : (darkMode ? '#9ca3af' : '#4b5563')
                     }}
-                    title="Pesan Terkirim"
+                    title={t.sent || "Pesan Terkirim"}
                   >
                     <SendHorizontal size={13} />
-                    <span>Terkirim</span>
+                    <span>{t.sentShort || "Terkirim"}</span>
                   </button>
                   <button
                     type="button"
@@ -1007,10 +1007,10 @@ export default function EmailTriageTab({ theme, darkMode, userData, language, is
                       background: activeFolder === 'drafts' ? '#3B82F6' : 'transparent',
                       color: activeFolder === 'drafts' ? 'white' : (darkMode ? '#9ca3af' : '#4b5563')
                     }}
-                    title="Draf Tersimpan"
+                    title={t.drafts || "Draf Tersimpan"}
                   >
                     <FileText size={13} />
-                    <span>Draf</span>
+                    <span>{t.draftsShort || "Draf"}</span>
                     {zimbraDraftEmails.length > 0 && (
                       <span style={{ 
                         fontSize: '9px', 
@@ -1027,10 +1027,10 @@ export default function EmailTriageTab({ theme, darkMode, userData, language, is
 
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', paddingLeft: '4px', paddingRight: '4px' }}>
                   <span style={{ fontSize: '0.85rem', fontWeight: '600', color: theme.secondaryText }}>
-                    {activeFolder === 'sent' ? 'Pesan Terkirim (Zimbra)' : activeFolder === 'drafts' ? 'Draf Tersimpan' : 'Kotak Masuk (Zimbra)'}
+                    {activeFolder === 'sent' ? (t.sentZimbra || 'Pesan Terkirim (Zimbra)') : activeFolder === 'drafts' ? (t.draftsZimbra || 'Draf Tersimpan') : (t.inboxZimbra || 'Kotak Masuk (Zimbra)')}
                   </span>
                   <div style={{ display: 'flex', gap: '8px' }}>
-                    <button onClick={() => fetchEmails(true, activeFolder)} disabled={isLoadingEmails} title="Refresh" style={{ background: 'transparent', border: 'none', cursor: isLoadingEmails ? 'not-allowed' : 'pointer', opacity: isLoadingEmails ? 0.5 : 1, display: 'flex', alignItems: 'center', color: theme.textColor }}>
+                    <button onClick={() => fetchEmails(true, activeFolder)} disabled={isLoadingEmails} title={t.refresh || "Refresh"} style={{ background: 'transparent', border: 'none', cursor: isLoadingEmails ? 'not-allowed' : 'pointer', opacity: isLoadingEmails ? 0.5 : 1, display: 'flex', alignItems: 'center', color: theme.textColor }}>
                       <RefreshCw size={16} className={isLoadingEmails ? "spin" : ""} />
                     </button>
                   </div>
@@ -1038,7 +1038,7 @@ export default function EmailTriageTab({ theme, darkMode, userData, language, is
                 
                 <div style={{ flex: 1, overflowY: 'auto', paddingRight: '8px' }}>
                 {isLoadingEmails && (activeFolder === 'sent' ? zimbraSentEmails.length === 0 : activeFolder === 'drafts' ? zimbraDraftEmails.length === 0 : zimbraEmails.length === 0) ? (
-                  <div style={{ textAlign: 'center', padding: '20px', color: theme.secondaryText }}>Menyinkronkan data...</div>
+                  <div style={{ textAlign: 'center', padding: '20px', color: theme.secondaryText }}>{t.syncingData || "Menyinkronkan data..."}</div>
                 ) : errorMsg ? (
                   <div style={{ padding: '12px', background: darkMode ? '#3f1a1a' : '#fee2e2', color: '#ef4444', borderRadius: '8px', fontSize: '12px' }}>
                     {errorMsg}
@@ -1046,7 +1046,7 @@ export default function EmailTriageTab({ theme, darkMode, userData, language, is
                 ) : activeFolder === 'drafts' ? (
                   zimbraDraftEmails.length === 0 ? (
                     <div style={{ textAlign: 'center', padding: '20px', color: theme.secondaryText }}>
-                      Belum ada draf tersimpan.
+                      {t.noDrafts || "Belum ada draf tersimpan."}
                     </div>
                   ) : (
                     zimbraDraftEmails.map((draft) => (
@@ -1076,22 +1076,22 @@ export default function EmailTriageTab({ theme, darkMode, userData, language, is
                             fontSize: '10px', fontWeight: 'bold', padding: '1px 6px', borderRadius: '4px',
                             color: '#F59E0B', background: 'rgba(245, 158, 11, 0.12)'
                           }}>
-                            📝 Draf
+                            📝 {t.draftsShort || 'Draf'}
                           </span>
                           <button
                             type="button"
                             onClick={(e) => handleDeleteDraft(e, draft.id)}
-                            title="Hapus Draf"
+                            title={t.deleteDraft || "Hapus Draf"}
                             style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: theme.secondaryText, padding: '2px' }}
                           >
                             <Trash2 size={13} className="hover:text-red-500" />
                           </button>
                         </div>
                         <div style={{ fontWeight: '600', fontSize: '13px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: selectedEmail?.id === draft.id ? theme.textColor : theme.secondaryText }}>
-                          {draft.subject || '(Tanpa Subjek)'}
+                          {draft.subject || (t.noSubject || '(Tanpa Subjek)')}
                         </div>
                         <div style={{ fontSize: '11px', color: theme.secondaryText, marginTop: '2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                          Kepada: {draft.to || '(Tanpa Penerima)'}
+                          {t.toLabel || 'Kepada:'} {draft.to || (t.noRecipient || '(Tanpa Penerima)')}
                         </div>
                         <div style={{ fontSize: '10px', color: theme.secondaryText, marginTop: '4px', opacity: 0.75 }}>
                           {formatRelativeDate(draft.updated_at)}
@@ -1101,7 +1101,7 @@ export default function EmailTriageTab({ theme, darkMode, userData, language, is
                   )
                 ) : (activeFolder === 'sent' ? zimbraSentEmails.length === 0 : zimbraEmails.length === 0) ? (
                   <div style={{ textAlign: 'center', padding: '20px', color: theme.secondaryText }}>
-                    {activeFolder === 'sent' ? 'Belum ada email terkirim.' : 'Tidak ada email masuk.'}
+                    {activeFolder === 'sent' ? (t.noSent || 'Belum ada email terkirim.') : (t.noInbox || 'Tidak ada email masuk.')}
                   </div>
                 ) : (
                   (activeFolder === 'sent' ? zimbraSentEmails : zimbraEmails).map((email) => (
@@ -1160,7 +1160,7 @@ export default function EmailTriageTab({ theme, darkMode, userData, language, is
                       </div>
                       <div style={{ fontWeight: '600', fontSize: '14px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: selectedEmail?.id === email.id ? theme.textColor : theme.secondaryText }}>{email.subject}</div>
                       <div style={{ fontSize: '12px', color: theme.secondaryText, marginTop: '4px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                        {activeFolder === 'sent' ? `Kepada: ${email.recipient || '(Tanpa Penerima)'}` : (email.sender || 'Pindad System')}
+                        {activeFolder === 'sent' ? `${t.toLabel || 'Kepada:'} ${email.recipient || (t.noRecipient || '(Tanpa Penerima)')}` : (email.sender || 'Pindad System')}
                       </div>
                       <div style={{ fontSize: '10px', color: theme.secondaryText, marginTop: '4px', opacity: 0.8 }}>
                         {formatRelativeDate(email.received_at)}
@@ -1198,7 +1198,7 @@ export default function EmailTriageTab({ theme, darkMode, userData, language, is
                 }}
               >
                 <ArrowLeft size={16} />
-                <span>Kembali ke Daftar Email</span>
+                <span>{t.backToEmailList || (language === 'en' ? 'Back to Email List' : 'Kembali ke Daftar Email')}</span>
               </button>
             )}
 
@@ -1209,7 +1209,7 @@ export default function EmailTriageTab({ theme, darkMode, userData, language, is
                   <h3 style={{ fontSize: isMobile ? '1.1rem' : '1.2rem', fontWeight: 'bold', marginBottom: '8px' }}>{selectedEmail.subject}</h3>
                   <div style={{ fontSize: '12px', color: theme.secondaryText, marginBottom: '16px' }}>
                     <div>
-                      {formatRelativeDate(selectedEmail.received_at)} - {activeFolder === 'sent' ? `Kepada: ${selectedEmail.recipient || '-'}` : selectedEmail.sender}
+                      {formatRelativeDate(selectedEmail.received_at)} - {activeFolder === 'sent' ? `${t.toLabel || 'Kepada:'} ${selectedEmail.recipient || '-'}` : selectedEmail.sender}
                     </div>
                     {selectedEmail.cc && <div style={{ marginTop: '4px', fontStyle: 'italic' }}>CC: {selectedEmail.cc}</div>}
                   </div>
@@ -1225,7 +1225,7 @@ export default function EmailTriageTab({ theme, darkMode, userData, language, is
                     }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: '600', marginBottom: '10px', color: theme.textColor }}>
                         <Paperclip size={14} className="text-blue-500" />
-                        <span>Dokumen Lampiran ({selectedEmail.attachments.length})</span>
+                        <span>{t.attachedDocuments || (language === 'en' ? 'Attached Documents' : 'Dokumen Lampiran')} ({selectedEmail.attachments.length})</span>
                       </div>
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
                         {selectedEmail.attachments.map((att, idx) => (
@@ -1268,7 +1268,7 @@ export default function EmailTriageTab({ theme, darkMode, userData, language, is
                                 marginLeft: '6px',
                                 transition: 'background 0.15s ease'
                               }}
-                              title={`Unduh ${att.filename}`}
+                              title={`${t.downloadAttachmentTitle || 'Unduh'} ${att.filename}`}
                             >
                               <Download size={14} />
                             </button>
@@ -1281,24 +1281,24 @@ export default function EmailTriageTab({ theme, darkMode, userData, language, is
                 {isSelectedEmailQuarantined ? (
                   <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: darkMode ? 'rgba(239, 68, 68, 0.05)' : 'rgba(239, 68, 68, 0.05)', border: '1px solid #ef4444', borderRadius: '12px', padding: '32px', textAlign: 'center' }}>
                     <ShieldAlert size={64} color="#ef4444" style={{ marginBottom: '16px' }} />
-                    <h2 style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#ef4444', marginBottom: '12px' }}>Karantina Keamanan</h2>
+                    <h2 style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#ef4444', marginBottom: '12px' }}>{t.quarantineSecurityTitle || (language === 'en' ? 'Security Quarantine' : 'Karantina Keamanan')}</h2>
                     <p style={{ color: theme.secondaryText, marginBottom: '24px', maxWidth: '400px' }}>
-                      Email ini diindikasi sebagai SPAM, SCAM, atau Phishing berbahaya. CAKRA telah mengunci tautan dan konten aslinya.
+                      {t.quarantinedDesc || (language === 'en' ? 'This email was automatically quarantined for your account security.' : 'Email ini diindikasi sebagai SPAM, SCAM, atau Phishing berbahaya. CAKRA telah mengunci tautan dan konten aslinya.')}
                     </p>
                     
                     <div style={{ background: darkMode ? '#18181A' : 'white', border: `1px solid ${darkMode ? '#ef444433' : '#ef444455'}`, padding: '16px', borderRadius: '8px', marginBottom: '24px', width: '100%', maxWidth: '500px', textAlign: 'left' }}>
                       <div style={{ fontWeight: 'bold', color: '#ef4444', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <Bot size={16} /> Analisis Ancaman (AI SOC)
+                        <Bot size={16} /> {t.threatAnalysis || 'Analisis Ancaman AI'}
                       </div>
                       <div style={{ fontSize: '14px', color: theme.textColor, lineHeight: '1.5' }}>
-                        {isAnalyzingThreat && !threatAnalysis[selectedEmail.id] ? "Memeriksa taktik rekayasa sosial..." : (threatAnalysis[selectedEmail.id] || "Tidak ada detail lanjutan.")}
+                        {isAnalyzingThreat && !threatAnalysis[selectedEmail.id] ? (t.checkingSocialEngineering || (language === 'en' ? 'Checking social engineering tactics...' : 'Memeriksa taktik rekayasa sosial...')) : (threatAnalysis[selectedEmail.id] || (t.noFurtherDetails || (language === 'en' ? 'No further details.' : 'Tidak ada detail lanjutan.')))}
                       </div>
                     </div>
 
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px', width: '100%', maxWidth: '300px' }}>
                       <input 
-                        type="password"
-                        placeholder="Masukkan password Zimbra"
+                        type="password" 
+                        placeholder={t.enterZimbraPassword || (language === 'en' ? 'Enter Zimbra password' : 'Masukkan password Zimbra')}
                         value={unlockPasswordInput}
                         onChange={(e) => setUnlockPasswordInput(e.target.value)}
                         style={{ width: '100%', padding: '10px 14px', borderRadius: '6px', background: darkMode ? '#18181A' : 'white', border: `1px solid ${theme.borderColor}`, color: theme.textColor, outline: 'none' }}
@@ -1309,12 +1309,12 @@ export default function EmailTriageTab({ theme, darkMode, userData, language, is
                             setUnlockedSpamEmails(prev => new Set(prev).add(selectedEmail.id));
                             setUnlockPasswordInput("");
                           } else {
-                            alert("Password Zimbra salah!");
+                            alert(t.wrongZimbraPassword || "Password Zimbra salah!");
                           }
                         }}
                         style={{ width: '100%', padding: '10px 16px', background: '#ef4444', color: 'white', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
                       >
-                        <Key size={16} /> Buka Karantina (Risiko Pribadi)
+                        <Key size={16} /> {t.unlockQuarantine || (language === 'en' ? 'Unlock Quarantine (Personal Risk)' : 'Buka Karantina (Risiko Pribadi)')}
                       </button>
                     </div>
                   </div>
@@ -1364,7 +1364,7 @@ export default function EmailTriageTab({ theme, darkMode, userData, language, is
                 )}
               </>
             ) : (
-              <div style={{ color: theme.secondaryText, textAlign: 'center', marginTop: '20px' }}>Pilih email untuk membaca dan melihat detailnya.</div>
+              <div style={{ color: theme.secondaryText, textAlign: 'center', marginTop: '20px' }}>{t.selectEmailToRead || (language === 'en' ? 'Select an email to read and view details.' : 'Pilih email untuk membaca dan melihat detailnya.')}</div>
             )}
           </div>
 
@@ -1413,7 +1413,7 @@ export default function EmailTriageTab({ theme, darkMode, userData, language, is
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap', gap: '8px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                     <Bot size={18} style={{ color: darkMode ? '#60A5FA' : '#2563EB' }} />
-                    <span style={{ fontWeight: '600', fontSize: isMobile ? '13px' : '14px', color: darkMode ? '#60A5FA' : '#2563EB' }}>Draf Balasan Resmi CAKRA</span>
+                    <span style={{ fontWeight: '600', fontSize: isMobile ? '13px' : '14px', color: darkMode ? '#60A5FA' : '#2563EB' }}>{t.officialDraftTitle || (language === 'en' ? 'CAKRA Official Reply Draft' : 'Draf Balasan Resmi CAKRA')}</span>
                   </div>
                   
                   <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
@@ -1426,13 +1426,13 @@ export default function EmailTriageTab({ theme, darkMode, userData, language, is
                     
                     <label style={{ fontSize: '12px', display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', color: isForwarding ? '#10B981' : theme.secondaryText, fontWeight: isForwarding ? 'bold' : 'normal' }}>
                       <input type="checkbox" checked={isForwarding} onChange={(e) => setIsForwarding(e.target.checked)} />
-                      Teruskan (Forward)
+                      {t.forwardOption || (language === 'en' ? 'Forward' : 'Teruskan (Forward)')}
                     </label>
                     
                     {isForwarding && (
                       <input 
                         type="email" 
-                        placeholder="Email tujuan..." 
+                        placeholder={t.forwardRecipientPlaceholder || (language === 'en' ? 'Destination email...' : 'Email tujuan...')} 
                         value={forwardTo}
                         onChange={(e) => setForwardTo(e.target.value)}
                         style={{
@@ -1499,7 +1499,7 @@ export default function EmailTriageTab({ theme, darkMode, userData, language, is
                       <ChevronDown size={11} />
                     </button>
                     <span style={{ fontSize: '11px', color: theme.secondaryText, fontStyle: 'italic' }}>
-                      Tip: drag and drop files from your desktop to add attachments to this message.
+                      {t.dragDropTip || (language === 'en' ? 'Tip: drag and drop files from your desktop to add attachments to this message.' : 'Tip: geser dan lepas berkas dari desktop untuk melampirkan ke pesan ini.')}
                     </span>
 
                     {/* Chips File Terlampir */}
@@ -1531,7 +1531,7 @@ export default function EmailTriageTab({ theme, darkMode, userData, language, is
                               type="button"
                               onClick={() => handleRemoveReplyAttachment(idx)}
                               style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: '1px', display: 'flex', color: theme.secondaryText }}
-                              title="Hapus lampiran"
+                              title={t.removeAttachment || (language === 'en' ? 'Remove attachment' : 'Hapus lampiran')}
                             >
                               <X size={11} />
                             </button>
@@ -1760,7 +1760,7 @@ export default function EmailTriageTab({ theme, darkMode, userData, language, is
                 <div style={{ display: 'flex', gap: '8px', marginTop: '8px', alignItems: 'center', flexWrap: isMobile ? 'wrap' : 'nowrap' }}>
                   <input 
                     type="text" 
-                    placeholder="Instruksi tambahan (Opsional)..."
+                    placeholder={t.additionalInstructionPlaceholder || (language === 'en' ? 'Additional instructions (Optional)...' : 'Instruksi tambahan (Opsional)...')}
                     value={instruction}
                     onChange={(e) => setInstruction(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && handleGenerate()}
@@ -1778,7 +1778,7 @@ export default function EmailTriageTab({ theme, darkMode, userData, language, is
                     }}
                   />
                   <button 
-                    onClick={() => handleGenerate()}
+                    onClick={() => handleGenerate()} 
                     disabled={isGenerating}
                     style={{ 
                       flex: isMobile ? 1 : undefined,
@@ -1794,7 +1794,7 @@ export default function EmailTriageTab({ theme, darkMode, userData, language, is
                       textAlign: 'center'
                     }}
                   >
-                    {isGenerating ? 'Loading...' : 'Generate'}
+                    {isGenerating ? (t.loadingBtn || 'Loading...') : (t.generateBtn || 'Generate')}
                   </button>
                   <button
                     onClick={handleSendEmail}
@@ -1817,13 +1817,13 @@ export default function EmailTriageTab({ theme, darkMode, userData, language, is
                     }}
                   >
                     {isForwarding ? <ForwardIcon size={14} /> : <Send size={14} />}
-                    {isSending ? 'Mengirim...' : (isForwarding ? 'Kirim Forward' : 'Kirim Reply')}
+                    {isSending ? (t.sending || 'Mengirim...') : (isForwarding ? (t.sendForward || (language === 'en' ? 'Send Forward' : 'Kirim Forward')) : (t.sendReply || (language === 'en' ? 'Send Reply' : 'Kirim Reply')))}
                   </button>
                 </div>
                 
                 {sendSuccess && (
                   <div style={{ color: '#10B981', fontSize: '12px', marginTop: '6px', textAlign: 'right', fontWeight: 'bold' }}>
-                    ✅ Email Berhasil Dikirim ke Zimbra!
+                    ✅ {t.emailSentZimbra || (language === 'en' ? 'Email Successfully Sent to Zimbra!' : 'Email Berhasil Dikirim ke Zimbra!')}
                   </div>
                 )}
               </div>
@@ -1888,7 +1888,7 @@ export default function EmailTriageTab({ theme, darkMode, userData, language, is
                 </div>
                 <div>
                   <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 'bold' }}>
-                    {currentDraftId ? 'Lanjutkan Edit Draf' : 'Tulis Pesan Baru'}
+                    {currentDraftId ? (t.continueDraft || 'Lanjutkan Edit Draf') : (t.composeNew || 'Tulis Pesan Baru')}
                   </h3>
                   <span style={{ fontSize: '11px', color: theme.secondaryText }}>Smart Mail Zimbra PT Pindad (Persero)</span>
                 </div>
@@ -1916,7 +1916,7 @@ export default function EmailTriageTab({ theme, darkMode, userData, language, is
             <div style={{ padding: '16px 22px', overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: '10px' }}>
               {/* Field Kepada (To) & CC Toggle */}
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <span style={{ width: '64px', fontSize: '13px', fontWeight: '600', color: theme.secondaryText }}>Kepada:</span>
+                <span style={{ width: '64px', fontSize: '13px', fontWeight: '600', color: theme.secondaryText }}>{t.toLabel || 'Kepada:'}</span>
                 <input
                   type="text"
                   placeholder="rekan@pindad.com, mitra@perusahaan.com"
@@ -1955,7 +1955,7 @@ export default function EmailTriageTab({ theme, darkMode, userData, language, is
               {/* Field CC (Optional) */}
               {showCcField && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <span style={{ width: '64px', fontSize: '13px', fontWeight: '600', color: theme.secondaryText }}>CC:</span>
+                  <span style={{ width: '64px', fontSize: '13px', fontWeight: '600', color: theme.secondaryText }}>{t.cc || 'CC:'}</span>
                   <input
                     type="text"
                     placeholder="atasan@pindad.com, manager@pindad.com"
@@ -1976,7 +1976,7 @@ export default function EmailTriageTab({ theme, darkMode, userData, language, is
                     type="button"
                     onClick={() => { setShowCcField(false); setComposeCc(""); }}
                     style={{ background: 'transparent', border: 'none', color: theme.secondaryText, cursor: 'pointer', padding: '4px' }}
-                    title="Hapus CC"
+                    title={language === 'en' ? "Remove CC" : "Hapus CC"}
                   >
                     <X size={14} />
                   </button>
@@ -1985,10 +1985,10 @@ export default function EmailTriageTab({ theme, darkMode, userData, language, is
 
               {/* Field Subjek */}
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <span style={{ width: '64px', fontSize: '13px', fontWeight: '600', color: theme.secondaryText }}>Subjek:</span>
+                <span style={{ width: '64px', fontSize: '13px', fontWeight: '600', color: theme.secondaryText }}>{t.subject || 'Subjek:'}</span>
                 <input
                   type="text"
-                  placeholder="Subjek pesan..."
+                  placeholder={t.subjectPlaceholder || "Subjek pesan..."}
                   value={composeSubject}
                   onChange={(e) => setComposeSubject(e.target.value)}
                   style={{
@@ -2050,7 +2050,7 @@ export default function EmailTriageTab({ theme, darkMode, userData, language, is
                 <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                   <input
                     type="text"
-                    placeholder="Tuliskan poin/instruksi pesan (misal: Rapat evaluasi teknis sistem hari Kamis jam 09.00 WIB)..."
+                    placeholder={t.aiPromptPlaceholder || "Tuliskan poin/instruksi pesan..."}
                     value={composeAiPrompt}
                     onChange={(e) => setComposeAiPrompt(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && handleGenerateComposeAi()}
@@ -2086,7 +2086,7 @@ export default function EmailTriageTab({ theme, darkMode, userData, language, is
                     }}
                   >
                     <Sparkles size={13} className={isGeneratingCompose ? "spin" : ""} />
-                    <span>{isGeneratingCompose ? 'Membuat Draf...' : 'Buat dengan AI'}</span>
+                    <span>{isGeneratingCompose ? (t.generatingDraft || 'Membuat Draf...') : (t.aiComposeBtn || 'Buat dengan AI')}</span>
                   </button>
                 </div>
               </div>
@@ -2132,7 +2132,7 @@ export default function EmailTriageTab({ theme, darkMode, userData, language, is
                   <ChevronDown size={12} />
                 </button>
                 <span style={{ fontSize: '11px', color: theme.secondaryText, fontStyle: 'italic' }}>
-                  Tip: drag and drop files from your desktop to add attachments to this message.
+                  {t.dragDropTip || (language === 'en' ? 'Tip: drag and drop files from your desktop to add attachments to this message.' : 'Tip: geser dan lepas berkas dari desktop untuk melampirkan ke pesan ini.')}
                 </span>
               </div>
 
@@ -2404,7 +2404,7 @@ export default function EmailTriageTab({ theme, darkMode, userData, language, is
                     cursor: (isSendingCompose || isSavingDraft) ? 'not-allowed' : 'pointer'
                   }}
                 >
-                  Batal
+                  {t.cancel || "Batal"}
                 </button>
                 <button
                   type="button"
@@ -2425,7 +2425,7 @@ export default function EmailTriageTab({ theme, darkMode, userData, language, is
                   }}
                 >
                   <Save size={14} className={isSavingDraft ? "spin" : ""} />
-                  <span>{isSavingDraft ? 'Menyimpan...' : 'Simpan Draf'}</span>
+                  <span>{isSavingDraft ? (t.saving || 'Menyimpan...') : (t.saveDraft || 'Simpan Draf')}</span>
                 </button>
                 <button
                   type="button"
@@ -2447,7 +2447,7 @@ export default function EmailTriageTab({ theme, darkMode, userData, language, is
                   }}
                 >
                   <Send size={14} />
-                  <span>{isSendingCompose ? 'Mengirim...' : 'Kirim Email'}</span>
+                  <span>{isSendingCompose ? (t.sending || 'Mengirim...') : (t.sendEmail || t.send || 'Kirim Email')}</span>
                 </button>
               </div>
             </div>

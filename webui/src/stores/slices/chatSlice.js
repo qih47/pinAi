@@ -328,5 +328,15 @@ export const createChatSlice = (set, get) => ({
             console.error("❌ [STORE DELETE ERROR]:", err);
             return { status: "error" };
         }
+    },
+
+    archiveChat: async (sessionUuid, isArchived = true) => {
+        try {
+            const result = await endpoints.archiveSession(sessionUuid, isArchived);
+            return result;
+        } catch (err) {
+            console.error("❌ [STORE ARCHIVE ERROR]:", err);
+            return { status: "error" };
+        }
     }
 });

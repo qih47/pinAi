@@ -19,6 +19,15 @@ async def get_history_sessions(
     sessions = await chat_history_service.get_user_sessions(current_user_npp)
     return {"status": "success", "data": sessions}
 
+@router.get("/sessions/archived")
+async def get_archived_chat_sessions(
+    current_user_npp: Optional[str] = Depends(get_current_user_npp),
+):
+    if not current_user_npp:
+        return {"status": "success", "data": []}
+    sessions = await chat_history_service.get_user_archived_sessions(current_user_npp)
+    return {"status": "success", "data": sessions}
+
 @router.get("/sessions/{session_uuid}")
 async def get_chat_session(
     session_uuid: str,
@@ -68,6 +77,14 @@ async def pin_chat_session(session_uuid: str, is_pinned: bool = Query(...)):
     if not success:
         raise HTTPException(status_code=500, detail="Gagal merubah status sematan.")
     return {"status": "success", "message": "Status sematan berhasil diperbarui!"}
+
+
+@router.put("/sessions/{session_uuid}/archive")
+async def archive_chat_session(session_uuid: str, is_archived: bool = Query(True)):
+    success = await chat_history_service.toggle_archive_session(session_uuid, is_archived)
+    if not success:
+        raise HTTPException(status_code=500, detail="Gagal merubah status arsip.")
+    return {"status": "success", "message": "Status arsip berhasil diperbarui!"}
 
 
 @router.delete("/sessions/{session_uuid}")

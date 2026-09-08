@@ -81,3 +81,21 @@ export async function assignSession(sessionUuid) {
   const response = await apiClient.put(`/chat/sessions/${sessionUuid}/assign`);
   return response.data;
 }
+
+/**
+ * Archive or unarchive a session
+ * @param {string} sessionUuid - UUID of the session
+ * @param {boolean} isArchived - Archive status
+ */
+export async function archiveSession(sessionUuid, isArchived = true) {
+  const response = await apiClient.put(`/chat/sessions/${sessionUuid}/archive?is_archived=${isArchived}`);
+  return response.data;
+}
+
+/**
+ * Get all archived sessions for current user
+ */
+export async function getArchivedSessions() {
+  const response = await apiClient.get('/chat/sessions/archived');
+  return response.data?.data || [];
+}

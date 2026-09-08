@@ -36,6 +36,9 @@ export function getUploadUrl(filePath) {
   if (cleanPath.startsWith('accounts/')) {
     return `${getApiBase()}/${cleanPath}${tokenQuery}`;
   }
+  if (cleanPath.startsWith('uploads/')) {
+    return `${getApiBase()}/${cleanPath}${tokenQuery}`;
+  }
   if (cleanPath.includes('file_peraturan/')) {
     const filename = cleanPath.split('file_peraturan/').pop();
     return `${getApiBase()}/file_peraturan/${filename}${tokenQuery}`;

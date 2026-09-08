@@ -17,6 +17,7 @@ import EmailTriageTab from "../corporate/EmailTriageTab";
 import DocumentGeneratorTab from "../corporate/DocumentGeneratorTab";
 import VendorAnalyzerTab from "../corporate/VendorAnalyzerTab";
 import CollabWorkspace from "../collab/components/CollabWorkspace";
+import ArchiveTab from "../archive/ArchiveTab";
 import PdfInterrogator from "./components/PdfInterrogator";
 import { translations } from "../../utils/translations";
 import { useChatLogic } from "./hooks/useChatLogic";
@@ -192,7 +193,7 @@ export default function ChatPage({ isGuest,
       >
         <header style={{
           ...styles.header,
-          display: (corporateMode === 'mail' || corporateMode === 'collab') ? 'none' : 'flex',
+          display: (corporateMode === 'mail' || corporateMode === 'collab' || corporateMode === 'archive') ? 'none' : 'flex',
           alignItems: "center",
           justifyContent: "space-between",
           width: "100%",
@@ -474,6 +475,16 @@ export default function ChatPage({ isGuest,
                   onOpenArtifact={handleOpenArtifact}
                   toggleRightSidebar={toggleRightSidebar}
                   showRightSidebar={showRightSidebar}
+                />
+              )}
+              {corporateMode === 'archive' && (
+                <ArchiveTab
+                  theme={theme}
+                  darkMode={darkMode}
+                  userData={currentUserData}
+                  language={language}
+                  isMobile={isMobile}
+                  toggleSidebar={() => setSidebarOpen(!sidebarOpen)}
                 />
               )}
 

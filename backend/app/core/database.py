@@ -71,6 +71,8 @@ async def init_db_pool():
                 await _create_corporate_email_drafts_table(conn)
                 await _create_user_account_types_table(conn)
                 await _create_collab_tables(conn)
+                await _update_archive_columns(conn)
+                await _update_collab_members_status_columns(conn)
             except asyncpg.exceptions.InsufficientPrivilegeError as e:
                 logger.warning(f"⚠️ [DB_MIGRATION] Izin ditolak untuk memodifikasi schema public. Minta admin untuk jalankan DDL secara manual: {e}")
             except Exception as e:
@@ -196,6 +198,33 @@ async def _update_chat_sessions_settings_column(conn):
     await conn.execute("""
         ALTER TABLE chat_sessions 
         ADD COLUMN IF NOT EXISTS settings JSONB DEFAULT NULL;
+    """)
+
+async def _update_archive_columns(conn):
+    """
+    Memastikan kolom is_archived tersedia pada chat_sessions dan collab_rooms.
+    """
+    await conn.execute("""
+        ALTER TABLE chat_sessions 
+        ADD COLUMN IF NOT EXISTS is_archived BOOLEAN DEFAULT FALSE;
+        ALTER TABLE collab_rooms 
+        ADD COLUMN IF NOT EXISTS is_archived BOOLEAN DEFAULT FALSE;
+    """)
+
+async def _update_collab_members_status_columns(conn):
+    """
+    Memastikan kolom status dan invited_by tersedia pada collab_room_members.
+    """
+    await conn.execute("""
+        ALTER TABLE collab_room_members 
+        ADD COLUMN IF NOT EXISTS status VARCHAR(20) DEFAULT 'ACCEPTED';
+        ALTER TABLE collab_room_members 
+        ADD COLUMN IF NOT EXISTS invited_by VARCHAR(50) REFERENCES users(npp);
+        ALTER TABLE collab_room_members 
+        ADD COLUMN IF NOT EXISTS invited_at TIMESTAMPTZ DEFAULT NOW();
+        ALTER TABLE collab_room_members 
+        ADD COLUMN IF NOT EXISTS responded_at TIMESTAMPTZ DEFAULT NULL;
+        CREATE INDEX IF NOT EXISTS idx_collab_members_status ON collab_room_members(npp, status);
     """)
 
 async def _update_chat_messages_feedback_column(conn):

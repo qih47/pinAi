@@ -160,16 +160,19 @@ const CollabUserBubble = memo(function CollabUserBubble({
   darkMode = true,
   theme = {},
   language = 'id',
+  isAutoNoted = false,
   setPreviewImage,
-  onEditMessage
+  onEditMessage,
+  onApplyToDocument
 }) {
   const [isCopied, setIsCopied] = useState(false);
+  const [isNotedManual, setIsNotedManual] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState(message.message_text || message.content || '');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const senderName = message.sender_name || memberInfo?.name || 'Rekan Tim';
+  const senderName = message.sender_name || memberInfo?.name || (language === 'en' ? 'Team Member' : 'Rekan Tim');
   const senderNpp = message.sender_npp || memberInfo?.npp || senderName;
   const photoUrl = memberInfo?.profile_photo_url;
   const division = memberInfo?.divisi || 'PT Pindad';
@@ -274,7 +277,7 @@ const CollabUserBubble = memo(function CollabUserBubble({
                   gap: '8px',
                   userSelect: 'none'
                 }}
-                title="Klik untuk membuka di Document Interrogator"
+                title={language === 'en' ? "Click to open in Document Interrogator" : "Klik untuk membuka di Document Interrogator"}
               >
                 {/* Header Kartu: Icon Dokumen + Badges */}
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
@@ -384,7 +387,7 @@ const CollabUserBubble = memo(function CollabUserBubble({
                   height: '120px',
                   borderColor: darkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'
                 }}
-                title="Klik untuk memperbesar gambar"
+                title={language === 'en' ? "Click to enlarge image" : "Klik untuk memperbesar gambar"}
               >
                 <img src={att.preview} alt={fileName} className="w-full h-full object-cover" />
               </div>
@@ -569,7 +572,7 @@ const CollabUserBubble = memo(function CollabUserBubble({
                 <button
                   type="button"
                   onClick={() => executeCopy(rawContent)}
-                  title="Salin pesan"
+                  title={language === 'en' ? "Copy message" : "Salin pesan"}
                   style={{
                     background: 'transparent',
                     border: 'none',
@@ -589,6 +592,46 @@ const CollabUserBubble = memo(function CollabUserBubble({
                 >
                   {isCopied ? <Check size={13} className="text-emerald-400" /> : <Copy size={13} />}
                 </button>
+                {onApplyToDocument && (
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      setIsNotedManual(true);
+                      await onApplyToDocument(rawContent, senderName);
+                      setTimeout(() => setIsNotedManual(false), 2500);
+                    }}
+                    title={language === 'en' ? "Add to team notes" : "Salin ke Catatan Tim"}
+                    style={{
+                      background: (isAutoNoted || isNotedManual) ? (darkMode ? 'rgba(20, 184, 166, 0.15)' : 'rgba(20, 184, 166, 0.12)') : 'transparent',
+                      border: (isAutoNoted || isNotedManual) ? `1px solid ${darkMode ? 'rgba(20, 184, 166, 0.3)' : 'rgba(20, 184, 166, 0.25)'}` : 'none',
+                      color: (isAutoNoted || isNotedManual) ? '#14b8a6' : secondaryTextColor,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      padding: (isAutoNoted || isNotedManual) ? '2px 8px' : '2px 4px',
+                      borderRadius: '6px',
+                      fontSize: '11px',
+                      fontWeight: 500,
+                      transition: 'all 0.15s ease'
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.color = '#14b8a6';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.color = (isAutoNoted || isNotedManual) ? '#14b8a6' : secondaryTextColor;
+                    }}
+                  >
+                    <FileText size={12} className="text-teal-400" />
+                    <span className="hidden sm:inline">
+                      {isNotedManual 
+                        ? (language === 'en' ? "Recorded!" : "Tercatat!") 
+                        : isAutoNoted 
+                        ? (language === 'en' ? "📌 Auto-Noted" : "📌 Dicatat Otomatis") 
+                        : (language === 'en' ? "To Notes" : "Ke Catatan")}
+                    </span>
+                  </button>
+                )}
                 {onEditMessage && (
                   <button
                     type="button"
@@ -596,7 +639,7 @@ const CollabUserBubble = memo(function CollabUserBubble({
                       setIsEditing(true);
                       setEditValue(rawContent);
                     }}
-                    title="Edit pesan"
+                    title={language === 'en' ? "Edit message" : "Edit pesan"}
                     style={{
                       background: 'transparent',
                       border: 'none',
@@ -720,7 +763,7 @@ const CollabUserBubble = memo(function CollabUserBubble({
             <button
               type="button"
               onClick={() => executeCopy(rawContent)}
-              title="Salin teks"
+              title={language === 'en' ? "Copy text" : "Salin teks"}
               style={{
                 background: 'transparent',
                 border: 'none',
@@ -733,6 +776,46 @@ const CollabUserBubble = memo(function CollabUserBubble({
             >
               {isCopied ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
             </button>
+            {onApplyToDocument && (
+              <button
+                type="button"
+                onClick={async () => {
+                  setIsNotedManual(true);
+                  await onApplyToDocument(rawContent, senderName);
+                  setTimeout(() => setIsNotedManual(false), 2500);
+                }}
+                title={language === 'en' ? "Add to team notes" : "Salin ke Catatan Tim"}
+                style={{
+                  background: (isAutoNoted || isNotedManual) ? (darkMode ? 'rgba(20, 184, 166, 0.15)' : 'rgba(20, 184, 166, 0.12)') : 'transparent',
+                  border: (isAutoNoted || isNotedManual) ? `1px solid ${darkMode ? 'rgba(20, 184, 166, 0.3)' : 'rgba(20, 184, 166, 0.25)'}` : 'none',
+                  color: (isAutoNoted || isNotedManual) ? '#14b8a6' : secondaryTextColor,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  padding: (isAutoNoted || isNotedManual) ? '2px 8px' : '2px 4px',
+                  borderRadius: '6px',
+                  fontSize: '11px',
+                  fontWeight: 500,
+                  transition: 'all 0.15s ease'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.color = '#14b8a6';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.color = (isAutoNoted || isNotedManual) ? '#14b8a6' : secondaryTextColor;
+                }}
+              >
+                <FileText size={12} className="text-teal-400" />
+                <span className="hidden sm:inline">
+                  {isNotedManual 
+                    ? (language === 'en' ? "Recorded!" : "Tercatat!") 
+                    : isAutoNoted 
+                    ? (language === 'en' ? "📌 Auto-Noted" : "📌 Dicatat Otomatis") 
+                    : (language === 'en' ? "To Notes" : "Ke Catatan")}
+                </span>
+              </button>
+            )}
           </div>
         )}
       </div>

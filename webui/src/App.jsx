@@ -211,6 +211,11 @@ function AppContent() {
           path="/corporate/vendor"
           element={<SessionRouteWrapper isGuest={false} corporateMode="vendor" />}
         />
+        {/* 📦 Pusat Arsip (Archive Hub) */}
+        <Route
+          path="/archive"
+          element={<SessionRouteWrapper isGuest={false} corporateMode="archive" />}
+        />
       </Route>
     </Routes>
   );

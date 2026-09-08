@@ -18,7 +18,8 @@ const CollabCakraBubble = ({
   isActive = false,
   thinkingPhase = '',
   darkMode = true,
-  theme
+  theme,
+  language = 'id'
 }) => {
   const [copied, setCopied] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
@@ -37,7 +38,8 @@ const CollabCakraBubble = ({
   const textColor = theme?.textColor || (darkMode ? '#e2e8f0' : '#1f2937');
   const secondaryTextColor = theme?.secondaryText || (darkMode ? '#94a3b8' : '#6b7280');
 
-  const displayThought = thinkingPhase || "CAKRA sedang berpikir";
+  const rawThought = thinkingPhase || (language === 'en' ? "CAKRA is thinking" : "CAKRA sedang berpikir");
+  const displayThought = rawThought.replace(/\.+$/, '').trim();
 
   return (
     <div
@@ -106,19 +108,19 @@ const CollabCakraBubble = ({
 
             {isProactive && (
               <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20 font-medium">
-                💡 Masukan Proaktif
+                {language === 'en' ? '💡 Proactive Insight' : '💡 Masukan Proaktif'}
               </span>
             )}
 
             {isMention && (
               <span className="text-[10px] px-2 py-0.5 rounded-full bg-teal-500/10 text-teal-400 border border-teal-500/20 font-medium">
-                🎯 Respons @cakra
+                {language === 'en' ? '🎯 @cakra Response' : '🎯 Respons @cakra'}
               </span>
             )}
 
             {isWelcome && (
               <span className="text-[10px] px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 font-medium">
-                👋 Tim Kolaborasi
+                {language === 'en' ? '👋 Team Collaboration' : '👋 Tim Kolaborasi'}
               </span>
             )}
 
@@ -159,17 +161,17 @@ const CollabCakraBubble = ({
                 background: darkMode ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)',
                 opacity: isHovered || copied ? 1 : 0.6
               }}
-              title="Salin jawaban"
+              title={language === 'en' ? "Copy response" : "Salin jawaban"}
             >
               {copied ? (
                 <>
                   <Check size={12} className="text-emerald-400" />
-                  <span className="text-emerald-400 text-[11px] font-medium">Tersalin</span>
+                  <span className="text-emerald-400 text-[11px] font-medium">{language === 'en' ? 'Copied' : 'Tersalin'}</span>
                 </>
               ) : (
                 <>
                   <Copy size={12} />
-                  <span className="text-[11px]">Salin</span>
+                  <span className="text-[11px]">{language === 'en' ? 'Copy' : 'Salin'}</span>
                 </>
               )}
             </button>

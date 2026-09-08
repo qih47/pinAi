@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { useChatStore } from '../../../stores/chatStore';
 import { getUploadUrl } from '../../../services/endpoints';
+import { translations } from '../../../utils/translations';
 
 /**
  * 💊 CollabDocumentMinimapPill
@@ -24,6 +25,7 @@ export default function CollabDocumentMinimapPill({
     onNavigate,
     scrollContainerRef
 }) {
+    const t = translations[language]?.collab || translations.id.collab;
     const [isOpen, setIsOpen] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
     const closeTimeoutRef = useRef(null);
@@ -162,14 +164,52 @@ export default function CollabDocumentMinimapPill({
         }
     };
 
-    // Kategori badge
-    const getDocBadge = (title = '') => {
-        const lower = title.toLowerCase();
-        if (lower.includes('pkb')) return { label: 'PKB', color: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30' };
-        if (lower.includes('sop') || lower.includes('prosedur')) return { label: 'SOP', color: 'bg-blue-500/15 text-blue-300 border-blue-500/30' };
-        if (lower.includes('sk') || lower.includes('direksi') || lower.includes('keputusan')) return { label: 'SK Direksi', color: 'bg-amber-500/15 text-amber-300 border-amber-500/30' };
-        if (lower.includes('se') || lower.includes('edaran')) return { label: 'Surat Edaran', color: 'bg-purple-500/15 text-purple-300 border-purple-500/30' };
-        return { label: 'Regulasi', color: 'bg-zinc-500/15 text-zinc-300 border-zinc-500/30' };
+    // Helper kategori & format badge dokumen
+    const getDocBadge = (docOrTitle, fallbackDoc = null) => {
+        const doc = (typeof docOrTitle === 'object' && docOrTitle !== null) 
+            ? docOrTitle 
+            : (fallbackDoc || {});
+        const rawTitle = typeof docOrTitle === 'string' ? docOrTitle : (doc.title || doc.filename || doc.name || '');
+        const lower = rawTitle.toLowerCase();
+        const explicitJenis = doc.jenis || doc.category;
+
+        // 1. Deteksi Format File Presentasi / Slide
+        if (/\.(pptx?|ppsx?|key)$/i.test(lower) || lower.includes('slide') || lower.includes('presentasi')) {
+            return { label: 'SLIDE', color: 'bg-amber-500/15 text-amber-300 border-amber-500/30' };
+        }
+
+        // 2. Deteksi Format Spreadsheet / Excel
+        if (/\.(xlsx?|csv|ods)$/i.test(lower) || lower.includes('spreadsheet') || lower.includes('rekapitulasi')) {
+            return { label: 'EXCEL', color: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30' };
+        }
+
+        // 3. Deteksi Format Word / Dokumen Teks
+        if (/\.(docx?|rtf|odt|txt)$/i.test(lower)) {
+            return { label: 'WORD', color: 'bg-blue-500/15 text-blue-300 border-blue-500/30' };
+        }
+
+        // 4. Deteksi Gambar
+        if (/\.(png|jpe?g|webp|gif|bmp|svg)$/i.test(lower)) {
+            return { label: 'GAMBAR', color: 'bg-cyan-500/15 text-cyan-300 border-cyan-500/30' };
+        }
+
+        // 5. Jika memiliki jenis/kategori resmi dari database
+        if (explicitJenis && explicitJenis !== 'Regulasi' && explicitJenis !== 'Dokumen') {
+            return { label: explicitJenis, color: 'bg-indigo-500/15 text-indigo-300 border-indigo-500/30' };
+        }
+
+        // 6. Deteksi Regulasi Resmi Pindad dengan Batas Kata (Word Boundary) yang Ketat
+        if (/\bpkb\b/i.test(lower)) return { label: 'PKB', color: 'bg-teal-500/15 text-teal-300 border-teal-500/30' };
+        if (/\bsop\b|\bprosedur\b/i.test(lower)) return { label: 'SOP', color: 'bg-blue-500/15 text-blue-300 border-blue-500/30' };
+        if (/\b(sk|skep)\b|\bdireksi\b|\bkeputusan\b/i.test(lower)) return { label: 'SK Direksi', color: 'bg-amber-500/15 text-amber-300 border-amber-500/30' };
+        if (/\bse\b|\bedaran\b/i.test(lower)) return { label: 'Surat Edaran', color: 'bg-purple-500/15 text-purple-300 border-purple-500/30' };
+
+        // 7. Format PDF standar
+        if (lower.endsWith('.pdf')) {
+            return { label: 'PDF', color: 'bg-rose-500/15 text-rose-300 border-rose-500/30' };
+        }
+
+        return { label: 'REGULASI', color: 'bg-zinc-500/15 text-zinc-300 border-zinc-500/30' };
     };
 
     return (
@@ -216,7 +256,7 @@ export default function CollabDocumentMinimapPill({
                     <div className="flex flex-col items-center gap-2 select-none">
                         <div 
                             className="w-7 h-7 rounded-full flex items-center justify-center bg-amber-500/15 border border-amber-500/30 text-amber-400"
-                            title={`${sessionDocs.length} Dokumen Rujukan Tim`}
+                            title={`${sessionDocs.length} ${t.docMinimapTitle || 'Dokumen Rujukan Tim'}`}
                         >
                             <BookOpen size={14} />
                         </div>
@@ -241,7 +281,7 @@ export default function CollabDocumentMinimapPill({
                             <div className="flex items-center gap-1.5">
                                 <BookOpen size={14} className="text-amber-400" />
                                 <span className="text-xs font-semibold text-zinc-100">
-                                    Dokumen Rujukan Tim
+                                    {t.docMinimapTitle || 'Dokumen Rujukan Tim'}
                                 </span>
                             </div>
                             <div className="flex items-center gap-1.5">
@@ -269,7 +309,7 @@ export default function CollabDocumentMinimapPill({
                                     type="text"
                                     value={searchQuery}
                                     onChange={(e) => setSearchQuery(e.target.value)}
-                                    placeholder="Cari dokumen..."
+                                    placeholder={t.docMinimapSearch || 'Cari dokumen...'}
                                     className={`w-full text-[11px] pl-7 pr-3 py-1.5 rounded-lg border outline-none ${
                                         darkMode
                                             ? 'bg-zinc-900 border-zinc-700/70 text-zinc-200 placeholder-zinc-500 focus:border-amber-500'
@@ -282,7 +322,7 @@ export default function CollabDocumentMinimapPill({
                         {/* List Dokumen */}
                         <div className="flex flex-col gap-1.5 max-h-[340px] overflow-y-auto custom-scrollbar pr-0.5">
                             {filteredDocs.map((doc, idx) => {
-                                const badge = getDocBadge(doc.title);
+                                const badge = getDocBadge(doc);
                                 return (
                                     <div
                                         key={doc.rawKey || idx}
@@ -318,7 +358,7 @@ export default function CollabDocumentMinimapPill({
                                                     title="Lihat pesan di ruang obrolan"
                                                 >
                                                     <MessageSquare size={11} />
-                                                    <span>Di Chat</span>
+                                                    <span>{t.docMinimapInChat || 'Di Chat'}</span>
                                                 </button>
                                             )}
                                             <button
@@ -328,7 +368,7 @@ export default function CollabDocumentMinimapPill({
                                                 title="Buka berkas di Document Interrogator"
                                             >
                                                 <Eye size={11} />
-                                                <span>Interrogator →</span>
+                                                <span>{t.docMinimapInterrogator || 'Interrogator →'}</span>
                                             </button>
                                         </div>
                                     </div>

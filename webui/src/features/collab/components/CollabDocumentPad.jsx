@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { translations } from '../../../utils/translations';
 
 const DISCUSSION_TEMPLATE = `# Catatan Diskusi Tim
 **Topik:** [Topik Bahasan]  
@@ -35,6 +36,34 @@ const DISCUSSION_TEMPLATE = `# Catatan Diskusi Tim
 - [ ] Verifikasi kepatuhan PKB & SE (PIC: Qisthi)
 `;
 
+const formatDocContent = (text) => {
+  if (!text) return '';
+  let res = text;
+  // Perbaiki simbol LaTeX arrow mentah atau terpotong ($ ightarrow$ atau $\rightarrow$)
+  res = res.replace(/\$\s*\\?ightarrow\s*\$/gi, ' → ');
+  res = res.replace(/\$\s*\\rightarrow\s*\$/gi, ' → ');
+  res = res.replace(/\\rightarrow\b/gi, ' → ');
+  res = res.replace(/\$\\([a-zA-Z]+)\$/g, (_, sym) => {
+    const map = { rightarrow: '→', leftarrow: '←', Rightarrow: '⇒', times: '×', leq: '≤', geq: '≥' };
+    return map[sym] || `\\${sym}`;
+  });
+
+  // Perbaiki format aneh seperti ". 5." atau "```\n. 6."
+  res = res.replace(/(?:^|\n|\s)\.\s*(\d+\.\s+)/g, '\n\n$1');
+
+  // Format poin bernomor (1., 2., 3., dst) yang ditulis menyatu dalam paragraf
+  // otomatis dipecah menjadi baris list markdown baru
+  // Contoh: "...meliputi: 1. " -> "...meliputi:\n\n1. "
+  res = res.replace(/([:：])\s*(1\.\s+)/g, '$1\n\n$2');
+
+  // Pecah butir berikutnya (2., 3., dst) setelah tanda baca penutup atau blok kode
+  // Contoh: "... /layouts ). 2. Coding..." -> "... /layouts ).\n\n2. Coding..."
+  // Contoh: "... Prettier. 4. Struktur..." -> "... Prettier.\n\n4. Struktur..."
+  res = res.replace(/([.!?;)]|```)\s*(\d+\.\s+[A-Za-z0-9_*])/g, '$1\n\n$2');
+
+  return res;
+};
+
 const CollabDocumentPad = ({
   documentContent,
   onSave,
@@ -43,8 +72,10 @@ const CollabDocumentPad = ({
   isSaving,
   roomTopic,
   darkMode = true,
-  theme
+  theme,
+  language = 'id'
 }) => {
+  const t = translations[language]?.collab || translations.id.collab;
   const [content, setContent] = useState(documentContent || '');
   const [isDirty, setIsDirty] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -87,7 +118,7 @@ const CollabDocumentPad = ({
   };
 
   const handleInsertTemplate = () => {
-    if (content.trim() && !window.confirm('Gunakan format Template Notulen & Poin Diskusi?')) {
+    if (content.trim() && !window.confirm(t.docPadConfirmTemplate || 'Gunakan format Template Notulen & Poin Diskusi?')) {
       return;
     }
     setContent(DISCUSSION_TEMPLATE);
@@ -95,30 +126,10 @@ const CollabDocumentPad = ({
     setViewMode('preview');
   };
 
-  // Bersihkan teks atau paragraf yang berulang (deduplikasi cerdas)
-  const handleDeduplicate = () => {
-    if (!content.trim()) return;
-    const paragraphs = content.split(/\n\s*\n/);
-    const seen = new Set();
-    const unique = [];
-    for (const p of paragraphs) {
-      const normalized = p.trim().toLowerCase();
-      if (normalized && !seen.has(normalized)) {
-        seen.add(normalized);
-        unique.push(p.trim());
-      }
-    }
-    const cleaned = unique.join('\n\n');
-    setContent(cleaned);
-    setIsDirty(true);
-    if (onSave) onSave(cleaned);
-    alert('Duplikasi berhasil dibersihkan!');
-  };
-
   // Kosongkan seluruh catatan
   const handleClear = () => {
     if (!content.trim()) return;
-    if (window.confirm('Kosongkan seluruh isi Catatan Tim untuk memulai draf baru?')) {
+    if (window.confirm(t.docPadConfirmClear || 'Kosongkan seluruh isi Catatan Tim untuk memulai draf baru?')) {
       setContent('');
       setIsDirty(true);
       if (onSave) onSave('');
@@ -172,13 +183,13 @@ const CollabDocumentPad = ({
           </div>
           <div className="min-w-0">
             <h3 className="text-sm font-semibold flex items-center gap-2 truncate" style={{ color: textColor }}>
-              <span>Catatan Tim</span>
+              <span>{t.docPadTitle}</span>
               {isDirty && (
-                <span className="h-2 w-2 rounded-full bg-amber-400 shrink-0" title="Ada perubahan belum disimpan" />
+                <span className="h-2 w-2 rounded-full bg-amber-400 shrink-0" title={t.docPadUnsaved} />
               )}
             </h3>
             <p className="text-[11px] truncate" style={{ color: secondaryTextColor }}>
-              Notulen, ringkasan, dan draf bersama
+              {t.docPadSubtitle}
             </p>
           </div>
         </div>
@@ -196,12 +207,12 @@ const CollabDocumentPad = ({
             {isSaving ? (
               <>
                 <RefreshCw size={13} className="animate-spin" />
-                <span>Menyimpan...</span>
+                <span>{t.docPadSaving}</span>
               </>
             ) : (
               <>
                 <Save size={13} />
-                <span>Simpan</span>
+                <span>{t.docPadSave}</span>
               </>
             )}
           </button>
@@ -210,7 +221,7 @@ const CollabDocumentPad = ({
             <button
               onClick={onClose}
               className="p-1.5 rounded-lg hover:bg-white/10 transition-colors text-zinc-400 hover:text-zinc-200"
-              title="Tutup Panel Catatan"
+              title={t.docPadClose}
             >
               <X size={16} />
             </button>
@@ -241,7 +252,7 @@ const CollabDocumentPad = ({
               title="Edit teks catatan secara langsung"
             >
               <Edit3 size={12} />
-              <span>Edit</span>
+              <span>{t.docPadEdit}</span>
             </button>
             <button
               type="button"
@@ -251,10 +262,10 @@ const CollabDocumentPad = ({
                   ? 'bg-teal-500/20 text-teal-300 shadow-sm border border-teal-500/30'
                   : 'text-zinc-400 hover:text-zinc-200'
               }`}
-              title="Lihat hasil format Markdown (tebal, miring, list, tabel)"
+              title="Lihat hasil format Markdown"
             >
               <Eye size={12} />
-              <span>Pratinjau</span>
+              <span>{t.docPadPreview}</span>
             </button>
           </div>
 
@@ -265,14 +276,14 @@ const CollabDocumentPad = ({
               onClick={handleSummarize}
               disabled={isSummarizing}
               className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-teal-500/30 bg-teal-500/15 hover:bg-teal-500/25 text-teal-300 transition-all text-[11px] font-medium disabled:opacity-50 shadow-sm"
-              title="Rangkum seluruh obrolan tim di ruangan ini menjadi Notulensi Resmi & Tindak Lanjut via CAKRA AI"
+              title="Rangkum seluruh obrolan tim di ruangan ini menjadi Notulensi Resmi via CAKRA AI"
             >
               {isSummarizing ? (
                 <Loader2 size={12} className="animate-spin text-teal-400" />
               ) : (
                 <Sparkles size={12} className="text-teal-400" />
               )}
-              <span>{isSummarizing ? 'Menyusun Notulen...' : 'Rangkum AI'}</span>
+              <span>{isSummarizing ? t.docPadAiSummarizing : t.docPadAiSummarize}</span>
             </button>
           )}
 
@@ -282,24 +293,11 @@ const CollabDocumentPad = ({
             className="flex items-center gap-1 px-2 py-1 rounded-lg border border-white/10 hover:bg-white/5 text-zinc-300 transition-colors text-[11px] font-medium"
             title="Gunakan format template notulen standar"
           >
-            <span>Template</span>
+            <span>{t.docPadTemplate}</span>
           </button>
         </div>
 
         <div className="flex items-center gap-1">
-          {/* Bersihkan Duplikasi Teks */}
-          {content.trim() && (
-            <button
-              type="button"
-              onClick={handleDeduplicate}
-              className="flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-amber-500/10 text-zinc-400 hover:text-amber-300 transition-colors text-[11px]"
-              title="Hapus paragraf atau teks yang terduplikasi secara otomatis"
-            >
-              <RefreshCw size={12} />
-              <span className="hidden xl:inline">Bersihkan Duplikat</span>
-            </button>
-          )}
-
           <button
             type="button"
             onClick={handleCopy}
@@ -307,7 +305,7 @@ const CollabDocumentPad = ({
             title="Salin seluruh isi catatan"
           >
             {copied ? <Check size={13} className="text-emerald-400" /> : <Copy size={13} />}
-            <span className="text-[11px]">{copied ? 'Tersalin' : 'Salin'}</span>
+            <span className="text-[11px]">{copied ? (t.copied || 'Tersalin') : t.docPadCopy}</span>
           </button>
 
           <button
@@ -317,7 +315,7 @@ const CollabDocumentPad = ({
             title="Unduh catatan (.md)"
           >
             <Download size={13} />
-            <span className="text-[11px]">Export</span>
+            <span className="text-[11px]">{t.docPadDownload}</span>
           </button>
 
           {/* Kosongkan Catatan */}
@@ -341,7 +339,7 @@ const CollabDocumentPad = ({
             <textarea
               value={content}
               onChange={handleChange}
-              placeholder="Tulis notulen rapat, catatan bersama, poin kesepakatan, atau draf regulasi di sini... (Mendukung format Markdown: **tebal**, *miring*, ## judul, - poin)"
+              placeholder={t.docPadPlaceholder}
               className="w-full h-full resize-none bg-transparent border-0 text-sm font-sans leading-relaxed focus:outline-none focus:ring-0 custom-scrollbar placeholder:text-zinc-600"
               style={{ color: textColor }}
               spellCheck={false}
@@ -372,13 +370,13 @@ const CollabDocumentPad = ({
                       <p className="mb-2.5 text-zinc-300 leading-relaxed text-sm" {...props} />
                     ),
                     ul: ({ node, ...props }) => (
-                      <ul className="list-disc pl-5 mb-3 space-y-1 text-zinc-300 text-sm" {...props} />
+                      <ul className="list-disc pl-5 my-2.5 space-y-1.5 text-zinc-300 text-sm marker:text-teal-400" {...props} />
                     ),
                     ol: ({ node, ...props }) => (
-                      <ol className="list-decimal pl-5 mb-3 space-y-1 text-zinc-300 text-sm" {...props} />
+                      <ol className="list-decimal pl-5 my-2.5 space-y-2 text-zinc-300 text-sm marker:text-teal-400 marker:font-semibold" {...props} />
                     ),
                     li: ({ node, ...props }) => (
-                      <li className="text-zinc-300 leading-normal" {...props} />
+                      <li className="text-zinc-300 leading-relaxed pl-1" {...props} />
                     ),
                     strong: ({ node, ...props }) => (
                       <strong className="font-semibold text-teal-300" {...props} />
@@ -386,11 +384,37 @@ const CollabDocumentPad = ({
                     em: ({ node, ...props }) => (
                       <em className="italic text-zinc-200" {...props} />
                     ),
-                    code: ({ node, inline, ...props }) => inline ? (
-                      <code className="px-1.5 py-0.5 rounded bg-white/10 text-teal-300 font-mono text-xs" {...props} />
-                    ) : (
-                      <code className="block p-3 rounded-lg bg-black/40 text-zinc-200 font-mono text-xs overflow-x-auto border border-white/[0.06] my-2" {...props} />
-                    ),
+                    pre: ({ children }) => <>{children}</>,
+                    code: ({ node, inline, className, children, ...props }) => {
+                      const match = /language-(\w+)/.exec(className || '');
+                      const codeStr = String(children || '').replace(/\n$/, '');
+                      const isMultiLine = codeStr.includes('\n');
+                      const isBlock = !inline && (Boolean(match) || isMultiLine);
+
+                      if (isBlock) {
+                        return (
+                          <div className="my-2.5 rounded-xl bg-black/60 border border-white/[0.08] overflow-hidden shadow-inner">
+                            {match && (
+                              <div className="px-3.5 py-1.5 bg-white/[0.04] border-b border-white/[0.06] text-[11px] font-mono text-teal-400 font-semibold uppercase tracking-wider">
+                                {match[1]}
+                              </div>
+                            )}
+                            <pre className="p-3.5 overflow-x-auto text-xs font-mono text-zinc-200 leading-relaxed custom-scrollbar">
+                              <code>{codeStr}</code>
+                            </pre>
+                          </div>
+                        );
+                      }
+
+                      return (
+                        <code
+                          className="px-1.5 py-0.5 mx-0.5 rounded-md bg-teal-500/15 text-teal-300 font-mono text-[12px] border border-teal-500/25 inline-block align-baseline font-medium"
+                          {...props}
+                        >
+                          {children}
+                        </code>
+                      );
+                    },
                     blockquote: ({ node, ...props }) => (
                       <blockquote className="pl-3.5 border-l-2 border-teal-500/50 italic text-zinc-400 my-2.5 bg-teal-500/[0.03] py-1 rounded-r" {...props} />
                     ),
@@ -411,18 +435,18 @@ const CollabDocumentPad = ({
                     )
                   }}
                 >
-                  {content}
+                  {formatDocContent(content)}
                 </ReactMarkdown>
               </div>
             ) : (
               <div className="h-full flex flex-col items-center justify-center text-center p-6 text-zinc-500">
                 <FileText size={36} className="mb-2.5 opacity-25 text-teal-400" />
-                <p className="text-xs text-zinc-400">Catatan tim masih kosong.</p>
+                <p className="text-xs text-zinc-400">{t.docPadEmpty}</p>
                 <button
                   onClick={() => setViewMode('edit')}
                   className="mt-3 px-3.5 py-1.5 rounded-lg bg-teal-500/10 text-teal-300 hover:bg-teal-500/20 text-xs border border-teal-500/30 transition-all"
                 >
-                  Mulai Menulis
+                  {t.docPadStartWriting}
                 </button>
               </div>
             )}
@@ -440,13 +464,13 @@ const CollabDocumentPad = ({
         }}
       >
         <div className="flex items-center gap-2">
-          <span>{content.split(/\s+/).filter(Boolean).length} kata</span>
+          <span>{content.split(/\s+/).filter(Boolean).length} {t.docPadWords}</span>
           {viewMode === 'preview' && content.trim() && (
-            <span className="text-[10px] text-zinc-500 hidden sm:inline">• Klik ganda untuk edit</span>
+            <span className="text-[10px] text-zinc-500 hidden sm:inline">{t.docPadDoubleClick}</span>
           )}
         </div>
         <span className={isDirty ? 'text-amber-400 font-medium' : 'text-zinc-500'}>
-          {isDirty ? 'Perubahan belum disimpan' : 'Semua perubahan tersimpan'}
+          {isDirty ? t.docPadUnsavedStatus : t.docPadSavedStatus}
         </span>
       </div>
     </div>

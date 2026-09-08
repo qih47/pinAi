@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
+import { Archive } from "lucide-react";
 import { useChatStore } from "@/stores/chatStore";
 import SidebarHeader from "./Sidebar/SidebarHeader";
 import SessionList from "./Sidebar/SessionList";
@@ -35,6 +36,8 @@ const Sidebar = ({
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [sessionToDelete, setSessionToDelete] = useState(null);
   const [deleteModalPos, setDeleteModalPos] = useState({ top: 100, left: 268 });
+  const [showArchiveModal, setShowArchiveModal] = useState(false);
+  const [sessionToArchive, setSessionToArchive] = useState(null);
   const [sessionSearchQuery, setSessionSearchQuery] = useState("");
   const sidebarSearchInputRef = useRef(null);
   const [isHovered, setIsHovered] = useState(false);
@@ -48,6 +51,7 @@ const Sidebar = ({
   const pinChat = useChatStore((state) => state.pinChat);
   const renameChat = useChatStore((state) => state.renameChat);
   const deleteChat = useChatStore((state) => state.deleteChat);
+  const archiveChat = useChatStore((state) => state.archiveChat);
   const fetchChatHistory = useChatStore((state) => state.fetchChatHistory);
 
   const profileName = userData?.fullname || userData?.name || "Pegawai Pindad";
@@ -120,6 +124,37 @@ const Sidebar = ({
     }
   };
 
+  const confirmArchive = (e, sessionUuid, title) => {
+    if (e && e.stopPropagation) e.stopPropagation();
+    setSessionToArchive({ sessionUuid, title: title || "Percakapan" });
+    setShowArchiveModal(true);
+    setActiveMenuId(null);
+  };
+
+  const executeArchive = async () => {
+    if (!sessionToArchive) return;
+    const { sessionUuid } = sessionToArchive;
+
+    try {
+      setShowArchiveModal(false);
+      if (archiveChat) {
+        await archiveChat(sessionUuid, true);
+        setChatHistory((prev) =>
+          prev.filter((c) => c.session_uuid !== sessionUuid)
+        );
+
+        if (currentSessionId === sessionUuid) {
+          clearChat();
+          navigate("/chat/new");
+        }
+      }
+    } catch (err) {
+      console.error("Gagal mengarsipkan chat:", err);
+    } finally {
+      setSessionToArchive(null);
+    }
+  };
+
   const hasFetchedRef = useRef(false);
 
   useEffect(() => {
@@ -183,6 +218,7 @@ const Sidebar = ({
         navigate={navigate}
         setIsSearchModalOpen={setIsSearchModalOpen}
         language={language}
+        setActiveMenuId={setActiveMenuId}
       />
 
       {/* ── SCROLL CONTAINER WRAPPER WITH TOP & BOTTOM FADE ── */}
@@ -213,6 +249,8 @@ const Sidebar = ({
           pinChat={pinChat}
           renameChat={renameChat}
           deleteChat={deleteChat}
+          archiveChat={archiveChat}
+          confirmArchive={confirmArchive}
           menuRef={menuRef}
           activeMenuId={activeMenuId}
           setActiveMenuId={setActiveMenuId}
@@ -305,6 +343,56 @@ const Sidebar = ({
                   className="flex-1 px-3 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-medium transition-colors shadow-md shadow-red-200 dark:shadow-none"
                 >
                   Ya, Hapus
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* 📦 MODAL KONFIRMASI ARSIP CHAT */}
+      {showArchiveModal && sessionToArchive && createPortal(
+        <div 
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-sm animate-in fade-in duration-150"
+          onClick={() => {
+            setShowArchiveModal(false);
+            setSessionToArchive(null);
+          }}
+        >
+          <div 
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white dark:bg-gray-800 rounded-2xl p-5 w-80 shadow-2xl border border-gray-200 dark:border-gray-700 transform animate-in fade-in zoom-in-95 duration-200"
+          >
+            <div className="flex flex-col items-center text-center">
+              <div className="w-10 h-10 bg-amber-100 rounded-full flex items-center justify-center mb-3 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400">
+                <Archive size={20} />
+              </div>
+              <h3 className="text-base font-bold text-gray-900 dark:text-white">
+                {t.archiveChatConfirm || "Arsipkan Chat?"}
+              </h3>
+              <p className="text-xs text-gray-500 mt-1 mb-4 dark:text-gray-400 leading-relaxed">
+                {language === 'en' ? (
+                  <>Chat <strong className="text-gray-700 dark:text-gray-200">"{sessionToArchive.title}"</strong> will be moved to Archive. You can restore it anytime.</>
+                ) : (
+                  <>Obrolan <strong className="text-gray-700 dark:text-gray-200">"{sessionToArchive.title}"</strong> akan dipindahkan ke menu Arsip. Anda dapat memulihkannya kapan saja.</>
+                )}
+              </p>
+              <div className="flex gap-2 w-full">
+                <button
+                  onClick={() => {
+                    setShowArchiveModal(false);
+                    setSessionToArchive(null);
+                  }}
+                  className="flex-1 px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl text-xs font-medium transition-colors dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600"
+                >
+                  {t.cancel || "Batal"}
+                </button>
+                <button
+                  onClick={executeArchive}
+                  className="flex-1 px-3 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-medium transition-colors shadow-md shadow-amber-200 dark:shadow-none"
+                >
+                  {t.yesArchive || "Ya, Arsipkan"}
                 </button>
               </div>
             </div>

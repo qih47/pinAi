@@ -59,6 +59,7 @@ const CollabChatBubble = memo(function CollabChatBubble({
     theme = {},
     language = 'id',
     isLastMessage = false,
+    isAutoNoted = false,
     onApplyToDocument,
     onFileClick,
     setPreviewImage,
@@ -71,6 +72,7 @@ const CollabChatBubble = memo(function CollabChatBubble({
     const [isSpeaking, setIsSpeaking] = useState(false);
     const [feedbackState, setFeedbackState] = useState(null);
     const [isAvatarHovered, setIsAvatarHovered] = useState(false);
+    const [isNotedManual, setIsNotedManual] = useState(false);
 
     // Ambil konten teks yang sudah dibersihkan secara aman
     const rawContent = cleanCakraResponseText(msg.content || msg.message_text || '');
@@ -173,7 +175,7 @@ const CollabChatBubble = memo(function CollabChatBubble({
                                     whiteSpace: 'nowrap'
                                 }}
                             >
-                                {thinkingPhase || "CAKRA sedang merumuskan jawaban..."}
+                                {thinkingPhase || (language === 'en' ? "CAKRA is formulating a response..." : "CAKRA sedang merumuskan jawaban...")}
                             </span>
                             <span style={{ display: 'inline-flex', gap: '2px', alignItems: 'center', height: '14px', lineHeight: 1 }}>
                                 <span style={{ fontSize: 16, color: theme?.secondaryText || '#94a3b8', animation: 'dotBounce 0.8s infinite ease-in-out', display: 'inline-block' }}>.</span>
@@ -189,19 +191,19 @@ const CollabChatBubble = memo(function CollabChatBubble({
 
                             {isProactive && (
                                 <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20 font-medium">
-                                    💡 Masukan Proaktif
+                                    {language === 'en' ? '💡 Proactive Insight' : '💡 Masukan Proaktif'}
                                 </span>
                             )}
 
                             {isMention && (
                                 <span className="text-[10px] px-2 py-0.5 rounded-full bg-teal-500/10 text-teal-400 border border-teal-500/20 font-medium">
-                                    🎯 Respons @cakra
+                                    {language === 'en' ? '🎯 @cakra Response' : '🎯 Respons @cakra'}
                                 </span>
                             )}
 
                             {isWelcome && (
                                 <span className="text-[10px] px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 font-medium">
-                                    👋 Tim Kolaborasi
+                                    {language === 'en' ? '👋 Team Collaboration' : '👋 Tim Kolaborasi'}
                                 </span>
                             )}
 
@@ -304,7 +306,7 @@ const CollabChatBubble = memo(function CollabChatBubble({
                                         color: feedbackState === 'good' ? '#10b981' : (darkMode ? '#94a3b8' : '#64748b'),
                                         opacity: feedbackState === 'good' ? 1 : 0.6
                                     }}
-                                    title="Tanggapan Membantu"
+                                    title={language === 'en' ? "Helpful response" : "Tanggapan Membantu"}
                                 >
                                     <svg width="15" height="15" viewBox="0 0 24 24" fill={feedbackState === 'good' ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                         <path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3" />
@@ -326,7 +328,7 @@ const CollabChatBubble = memo(function CollabChatBubble({
                                         color: feedbackState === 'bad' ? '#ef4444' : (darkMode ? '#94a3b8' : '#64748b'),
                                         opacity: feedbackState === 'bad' ? 1 : 0.6
                                     }}
-                                    title="Tanggapan Kurang Tepat"
+                                    title={language === 'en' ? "Unhelpful response" : "Tanggapan Kurang Tepat"}
                                 >
                                     <svg width="15" height="15" viewBox="0 0 24 24" fill={feedbackState === 'bad' ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                         <path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3zm7-13h3a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-3" />
@@ -348,7 +350,7 @@ const CollabChatBubble = memo(function CollabChatBubble({
                                         color: isCopied ? '#10b981' : (darkMode ? '#94a3b8' : '#64748b'),
                                         opacity: isCopied ? 1 : 0.6
                                     }}
-                                    title="Salin Tanggapan"
+                                    title={language === 'en' ? "Copy response" : "Salin Tanggapan"}
                                 >
                                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                         <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
@@ -371,7 +373,7 @@ const CollabChatBubble = memo(function CollabChatBubble({
                                         color: isSpeaking ? '#6366f1' : (darkMode ? '#94a3b8' : '#64748b'),
                                         opacity: isSpeaking ? 1 : 0.6
                                     }}
-                                    title="Dengarkan Suara"
+                                    title={language === 'en' ? "Listen to voice" : "Dengarkan Suara"}
                                 >
                                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                         <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
@@ -383,9 +385,15 @@ const CollabChatBubble = memo(function CollabChatBubble({
                                 {onApplyToDocument && (
                                     <button
                                         type="button"
-                                        onClick={() => onApplyToDocument(rawContent)}
+                                        onClick={async () => {
+                                            setIsNotedManual(true);
+                                            await onApplyToDocument(rawContent, 'CAKRA AI');
+                                            setTimeout(() => setIsNotedManual(false), 2500);
+                                        }}
                                         style={{
-                                            background: 'transparent',
+                                            background: (isAutoNoted || isNotedManual)
+                                                ? (darkMode ? 'rgba(20, 184, 166, 0.15)' : 'rgba(20, 184, 166, 0.1)')
+                                                : 'transparent',
                                             border: 'none',
                                             cursor: 'pointer',
                                             padding: '5px 8px',
@@ -393,11 +401,13 @@ const CollabChatBubble = memo(function CollabChatBubble({
                                             display: 'flex',
                                             alignItems: 'center',
                                             gap: '4px',
-                                            color: darkMode ? '#94a3b8' : '#64748b',
-                                            opacity: 0.8,
+                                            color: (isAutoNoted || isNotedManual)
+                                                ? '#14b8a6'
+                                                : (darkMode ? '#94a3b8' : '#64748b'),
+                                            opacity: (isAutoNoted || isNotedManual) ? 1 : 0.8,
                                             transition: 'all 0.2s ease',
                                             fontSize: '11px',
-                                            fontWeight: 500
+                                            fontWeight: (isAutoNoted || isNotedManual) ? 600 : 500
                                         }}
                                         onMouseEnter={(e) => {
                                             e.currentTarget.style.opacity = '1';
@@ -405,14 +415,24 @@ const CollabChatBubble = memo(function CollabChatBubble({
                                             e.currentTarget.style.background = darkMode ? 'rgba(20, 184, 166, 0.12)' : 'rgba(20, 184, 166, 0.08)';
                                         }}
                                         onMouseLeave={(e) => {
-                                            e.currentTarget.style.opacity = '0.8';
-                                            e.currentTarget.style.color = darkMode ? '#94a3b8' : '#64748b';
-                                            e.currentTarget.style.background = 'transparent';
+                                            e.currentTarget.style.opacity = (isAutoNoted || isNotedManual) ? '1' : '0.8';
+                                            e.currentTarget.style.color = (isAutoNoted || isNotedManual)
+                                                ? '#14b8a6'
+                                                : (darkMode ? '#94a3b8' : '#64748b');
+                                            e.currentTarget.style.background = (isAutoNoted || isNotedManual)
+                                                ? (darkMode ? 'rgba(20, 184, 166, 0.15)' : 'rgba(20, 184, 166, 0.1)')
+                                                : 'transparent';
                                         }}
-                                        title="Salin dan terapkan respons ini ke Catatan Tim (Document Pad)"
+                                        title={language === 'en' ? "Copy and apply this response to Team Notes (Document Pad)" : "Salin dan terapkan respons ini ke Catatan Tim (Document Pad)"}
                                     >
                                         <FileText size={13} className="text-teal-400" />
-                                        <span className="hidden sm:inline">Ke Catatan</span>
+                                        <span className="hidden sm:inline">
+                                            {isNotedManual
+                                                ? (language === 'en' ? "Recorded!" : "Tercatat!")
+                                                : isAutoNoted
+                                                ? (language === 'en' ? "📌 Auto-Noted" : "📌 Dicatat Otomatis")
+                                                : (language === 'en' ? "To Notes" : "Ke Catatan")}
+                                        </span>
                                     </button>
                                 )}
 

@@ -4,6 +4,7 @@ import SendButton from "../../chat/components/SendButton";
 import VoiceButton from "../../chat/components/ChatInputArea/VoiceButton";
 import PlusActionMenu from "../../chat/components/ChatInputArea/PlusActionMenu";
 import AttachmentPreview from "../../chat/components/ChatInputArea/AttachmentPreview";
+import ScrollBottomButton from "../../chat/components/ChatInputArea/ScrollBottomButton";
 import CollabHintSuggestions from "./CollabHintSuggestions";
 import { translations } from "../../../utils/translations";
 import useNextcloudStore from "../../../stores/nextcloudStore";
@@ -20,8 +21,10 @@ import {
   X
 } from "lucide-react";
 import cakraLogo from "../../../assets/cakra.png";
+import { collabApi } from "../services/collabApi";
 
 export default function CollabChatInputArea({
+  roomId,
   theme,
   darkMode = true,
   isMobile = false,
@@ -30,6 +33,9 @@ export default function CollabChatInputArea({
   members = [],
   isSending = false,
   language = "id",
+  showScrollBottom = false,
+  messages = [],
+  messagesContainerRef = null,
 }) {
   const [input, setInput] = useState("");
   const [selectedFiles, setSelectedFiles] = useState([]);
@@ -227,12 +233,36 @@ export default function CollabChatInputArea({
     }
   };
 
-  const handleSubmit = () => {
-    if ((!input.trim() && selectedFiles.length === 0 && !selectedDocContext) || isSending) return;
+  const handleSubmit = async () => {
+    if ((!input.trim() && selectedFiles.length === 0 && !selectedDocContext) || isSending || isUploadingFile) return;
     if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
     notifyTyping(false);
 
-    const finalAttachments = [...selectedFiles];
+    let processedAttachments = [];
+    const filesToUpload = selectedFiles.filter((f) => f.file_obj);
+    const alreadyUploaded = selectedFiles.filter((f) => !f.file_obj);
+
+    if (filesToUpload.length > 0 && roomId) {
+      try {
+        setIsUploadingFile(true);
+        const uploaded = await collabApi.uploadAttachments(
+          roomId,
+          filesToUpload.map((f) => f.file_obj)
+        );
+        processedAttachments = [...alreadyUploaded, ...uploaded];
+      } catch (err) {
+        console.error("Gagal mengunggah lampiran:", err);
+        alert(err.response?.data?.detail || "Gagal mengunggah lampiran berkas.");
+        setIsUploadingFile(false);
+        return;
+      } finally {
+        setIsUploadingFile(false);
+      }
+    } else {
+      processedAttachments = [...selectedFiles];
+    }
+
+    const finalAttachments = [...processedAttachments];
     if (selectedDocContext) {
       finalAttachments.push({
         type: "context_doc",
@@ -422,7 +452,7 @@ export default function CollabChatInputArea({
           }}
           onMouseEnter={(e) => (e.currentTarget.style.opacity = 1)}
           onMouseLeave={(e) => (e.currentTarget.style.opacity = 0.7)}
-          title="Hapus mode"
+          title={t.removeMode || (language === "en" ? "Remove mode" : "Hapus mode")}
         >
           <X size={13} />
         </button>
@@ -460,7 +490,7 @@ export default function CollabChatInputArea({
             }}
           >
             <AtSign size={12} className="text-teal-400" />
-            <span>Pilih Anggota Tim atau CAKRA</span>
+            <span>{language === "en" ? "Select Team Member or CAKRA" : "Pilih Anggota Tim atau CAKRA"}</span>
           </div>
           <div className="max-h-48 overflow-y-auto py-1 custom-scrollbar">
             {filteredMentions.map((opt, idx) => (
@@ -552,6 +582,14 @@ export default function CollabChatInputArea({
         }
       `}</style>
 
+      {/* 📎 ATTACHMENT PREVIEW DI LUAR TEXT INPUT (Persis seperti Chat Utama) */}
+      <AttachmentPreview
+        selectedFiles={selectedFiles}
+        removeFilePreview={removeFilePreview}
+        darkMode={darkMode}
+        theme={theme}
+      />
+
       {/* 💡 UPWARD HINT SUGGESTIONS DI ATAS TEXT INPUT (Muncul otomatis saat memilih Tool dari menu Plus) */}
       {hintsMounted && (
         <div
@@ -595,16 +633,15 @@ export default function CollabChatInputArea({
           boxSizing: "border-box",
         }}
       >
-        {/* Attachment preview jika ada file yang diunggah */}
-        {selectedFiles.length > 0 && (
-          <div style={{ marginBottom: "8px", width: "100%" }}>
-            <AttachmentPreview
-              selectedFiles={selectedFiles}
-              removeFilePreview={removeFilePreview}
-              darkMode={darkMode}
-            />
-          </div>
-        )}
+        {/* ⬇️ TOMBOL TO BOTTOM (SCROLL KE BAWAH) IDENTIK DENGAN CHAT UTAMA */}
+        <ScrollBottomButton
+          isBottom={true}
+          showScrollBottom={showScrollBottom}
+          showWelcome={false}
+          messages={messages}
+          messagesContainerRef={messagesContainerRef}
+          darkMode={darkMode}
+        />
 
         <div
           style={{
@@ -760,7 +797,7 @@ export default function CollabChatInputArea({
           letterSpacing: "0.1px",
         }}
       >
-        CAKRA dapat membuat kesalahan. Selalu periksa kembali informasi penting atau hasil perhitungan.
+        {t.disclaimer || (language === "en" ? "CAKRA can make mistakes. Consider verifying important information." : "CAKRA dapat membuat kesalahan. Selalu periksa kembali informasi penting atau hasil perhitungan.")}
       </div>
     </div>
   );
