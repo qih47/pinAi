@@ -21,7 +21,8 @@ import {
   Trash2,
   Check,
   X,
-  AlertTriangle
+  AlertTriangle,
+  FileEdit
 } from 'lucide-react';
 import { collabApi } from '../services/collabApi';
 import { useCollabStream } from '../hooks/useCollabStream';
@@ -34,6 +35,7 @@ import CollabAvatar from './CollabAvatar';
 import PreviewImageModal from '../../chat/components/modals/PreviewImageModal';
 import NextcloudModal from '../../chat/components/NextcloudModal';
 import { useCollabStore } from '../../../stores/collabStore';
+import { useDocWriterStore } from '../../../stores/docWriterStore';
 import { translations } from '../../../utils/translations';
 
 export const CollabWorkspace = ({
@@ -50,6 +52,10 @@ export const CollabWorkspace = ({
   const t = translations[language]?.collab || translations.id.collab;
   const { roomId } = useParams();
   const navigate = useNavigate();
+  const { isDocWriterOpen, toggleDocWriter } = useDocWriterStore((state) => ({
+    isDocWriterOpen: state.isOpen,
+    toggleDocWriter: state.toggleWriter
+  }));
 
   const currentNpp = userData?.npp || (() => {
     try {
@@ -282,7 +288,7 @@ export const CollabWorkspace = ({
         setIsLoadingChat(true);
         const [detail, msgs] = await Promise.all([
           collabApi.getRoomDetail(roomId),
-          collabApi.getMessages(roomId, 100)
+          collabApi.getMessages(roomId, 200)
         ]);
 
         if (isMounted) {
@@ -334,6 +340,10 @@ export const CollabWorkspace = ({
   // State Scroll to Bottom (Button To Bottom identik dengan chat utama)
   const [showScrollBottom, setShowScrollBottom] = useState(false);
   const messagesContainerRef = useRef(null);
+
+  const handleAtBottomChange = useCallback((isAtBottom) => {
+    setShowScrollBottom((prev) => (prev === !isAtBottom ? prev : !isAtBottom));
+  }, []);
 
   // SSE Stream Event Handlers
   const handleNewMessage = useCallback((msg) => {
@@ -910,7 +920,34 @@ export const CollabWorkspace = ({
               background: pageBg
             }}
           >
-            <div className="flex items-center gap-3 min-w-0">
+            <div className="flex items-center gap-2 min-w-0">
+              {/* Tombol Balik ke Daftar Ruang */}
+              <button
+                type="button"
+                onClick={() => navigate('/collab')}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-medium transition-colors hover:bg-white/5 cursor-pointer shrink-0"
+                style={{ color: secondaryTextColor }}
+                title={language === 'en' ? 'Back to All Rooms' : 'Kembali ke Semua Ruang'}
+              >
+                <ArrowLeft size={16} />
+                <span className="hidden sm:inline">{language === 'en' ? 'All Rooms' : 'Semua Ruang'}</span>
+              </button>
+
+              {/* Tombol Toggle Sidebar Kiri */}
+              {toggleSidebar && (
+                <button
+                  type="button"
+                  onClick={toggleSidebar}
+                  className="p-1.5 rounded-lg transition-colors hover:bg-white/5 cursor-pointer shrink-0"
+                  style={{ color: secondaryTextColor }}
+                  title="Menu Sidebar"
+                >
+                  <Menu size={16} />
+                </button>
+              )}
+
+              <div className="h-4 w-px hidden sm:block shrink-0" style={{ background: borderColor }} />
+
               <div className="min-w-0">
                 <h2 className="text-sm font-bold truncate flex items-center gap-2" style={{ color: textColor }}>
                   <span>{roomDetail?.name || 'Ruang Diskusi'}</span>
@@ -970,6 +1007,26 @@ export const CollabWorkspace = ({
               >
                 <UserPlus size={14} className="text-teal-400" />
                 <span className="hidden sm:inline">{t.invite}</span>
+              </button>
+
+              {/* Toggle Document Writer & Editor (Word/SKEP/SE) */}
+              <button
+                type="button"
+                onClick={toggleDocWriter}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all ${
+                  isDocWriterOpen
+                    ? 'bg-sky-500/20 text-sky-300 border-sky-500/40 shadow-sm'
+                    : 'hover:bg-white/5'
+                }`}
+                style={!isDocWriterOpen ? {
+                  background: darkMode ? '#1e1e20' : '#f3f4f6',
+                  borderColor: borderColor,
+                  color: textColor
+                } : {}}
+                title="Buka Dokumen Writer (Word/SKEP/SE)"
+              >
+                <FileEdit size={14} className="text-sky-400" />
+                <span className="hidden sm:inline">Doc Writer</span>
               </button>
 
               {/* Toggle Document Pad */}
@@ -1077,7 +1134,7 @@ export const CollabWorkspace = ({
             </div>
           </div>
 
-          {/* Area Utama: Chat (Kiri) + Document Pad (Kanan) */}
+          {/* Area Utama: Chat + Document Pad (Kanan) */}
           <div className="flex-1 flex min-h-0 overflow-hidden" style={{ background: pageBg }}>
             {/* Area Obrolan Grup */}
             <div className="flex-1 flex flex-col min-w-0" style={{ background: pageBg }}>
@@ -1102,7 +1159,7 @@ export const CollabWorkspace = ({
                   onOpenArtifact={onOpenArtifact}
                   onEditMessage={handleEditMessage}
                   scrollContainerRef={messagesContainerRef}
-                  onAtBottomChange={(isAtBottom) => setShowScrollBottom(!isAtBottom)}
+                  onAtBottomChange={handleAtBottomChange}
                 />
               )}
 

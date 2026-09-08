@@ -24,6 +24,7 @@ const LazyMapViewer = lazy(() => import('./MapViewer'));
 const LazyWebSearchWidget = lazy(() => import('./WebSearchWidget'));
 const LazyUrlFetchTimelineWidget = lazy(() => import('./UrlFetchTimelineWidget'));
 const LazyInteractiveWizardWidget = lazy(() => import('./InteractiveWizardWidget'));
+const LazyDocWriterWidget = lazy(() => import('./DocWriterChatWidget'));
 
 const remarkPluginsList = [remarkGfm, remarkMath];
 const rehypePluginsList = [rehypeKatex];
@@ -554,6 +555,20 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
                 return (
                     <Suspense fallback={<div className="animate-pulse p-8 border border-dashed rounded-xl text-sm text-center font-medium my-4">Memuat editor email...</div>}>
                         <LazySmartMailWidget initialData={cleanCode} darkMode={darkMode} theme={theme} language={language} />
+                    </Suspense>
+                );
+            }
+
+            if (!inline && match && (match[1] === 'docwriter' || match[1] === 'doc_writer' || match[1] === 'document_writer')) {
+                return (
+                    <Suspense fallback={<div className="animate-pulse p-4 border border-dashed rounded-xl text-sm text-center font-medium my-2">Memuat Dokumen Studio...</div>}>
+                        <LazyDocWriterWidget 
+                            codeBlockContent={cleanCode} 
+                            darkMode={darkMode} 
+                            theme={theme} 
+                            language={language} 
+                            isStreaming={isStreaming} 
+                        />
                     </Suspense>
                 );
             }

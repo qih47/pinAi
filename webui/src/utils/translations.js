@@ -457,6 +457,20 @@ export const translations = {
       toNotes: "Ke Catatan",
       addedToNotes: "Tercatat!"
     },
+    docWriter: {
+      title: "Dokumen Writer & Editor",
+      subtitle: "Penyusunan naskah dinas & ekspor resmi Word / PDF A4",
+      openEditor: "Dokumen Editor",
+      closeEditor: "Tutup Dokumen Editor",
+      skepTemplate: "Surat Keputusan Direksi (SKEP)",
+      seTemplate: "Surat Edaran Direksi (SE)",
+      memoTemplate: "Nota Dinas / Memo Internal",
+      blankTemplate: "Lembar Dokumen Kosong",
+      exportDocx: "Unduh .DOCX",
+      printPdf: "Cetak PDF A4",
+      applyRevision: "Terapkan ke Dokumen Aktif",
+      applied: "Revisi Diterapkan!"
+    },
     archive: {
       title: "Arsip Percakapan & Ruang Diskusi",
       subtitle: "Kelola dan pulihkan riwayat percakapan serta ruang diskusi tim yang telah diarsipkan.",
@@ -1282,6 +1296,20 @@ export const translations = {
       autoNoteNotification: "CAKRA automatically recorded a key point to Team Notes",
       toNotes: "To Notes",
       addedToNotes: "Recorded!"
+    },
+    docWriter: {
+      title: "Document Writer & Editor",
+      subtitle: "Official corporate drafting & Word / PDF A4 export",
+      openEditor: "Document Editor",
+      closeEditor: "Close Document Editor",
+      skepTemplate: "Board Decision Decree (SKEP)",
+      seTemplate: "Circular Letter (SE)",
+      memoTemplate: "Internal Memorandum",
+      blankTemplate: "Blank Document Sheet",
+      exportDocx: "Download .DOCX",
+      printPdf: "Print A4 PDF",
+      applyRevision: "Apply to Active Document",
+      applied: "Revision Applied!"
     },
     archive: {
       title: "Chat & Discussion Room Archive",

@@ -46,6 +46,9 @@ const CollabChatArea = ({
   const bottomRef = useRef(null);
   const internalScrollRef = useRef(null);
   const scrollContainerRef = externalScrollRef || internalScrollRef;
+  const onAtBottomChangeRef = useRef(onAtBottomChange);
+  onAtBottomChangeRef.current = onAtBottomChange;
+  const lastAtBottomRef = useRef(null);
 
   const handleNavigate = useCallback((index) => {
     const targetMsg = messages[index];
@@ -71,15 +74,18 @@ const CollabChatArea = ({
     const handleScroll = () => {
       const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
       const isAtBottom = distance < 100;
-      if (onAtBottomChange) {
-        onAtBottomChange(isAtBottom);
+      if (lastAtBottomRef.current !== isAtBottom) {
+        lastAtBottomRef.current = isAtBottom;
+        if (onAtBottomChangeRef.current) {
+          onAtBottomChangeRef.current(isAtBottom);
+        }
       }
     };
 
     handleScroll();
     el.addEventListener('scroll', handleScroll, { passive: true });
     return () => el.removeEventListener('scroll', handleScroll);
-  }, [scrollContainerRef, onAtBottomChange, messages.length]);
+  }, [scrollContainerRef]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });

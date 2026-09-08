@@ -878,6 +878,34 @@ TUGAS UTAMA:
 3. Sematkan peringatan `> [!CAUTION]` untuk praktik-praktik yang rawan menimbulkan kerentanan keamanan.
 """
 
+# ── 9.1 DOCUMENT WRITER & EDITOR GUIDANCE ─────────────────────────────────────
+DOCUMENT_WRITER_GUIDANCE = """
+[DOCUMENT WRITER & EDITOR (TOOL GLOBAL BUMN WORD/LIBREOFFICE)]
+Sistem CAKRA AI dilengkapi alat canggih Dokumen Writer / Editor (seperti Microsoft Word / Google Docs) dengan tata letak baku A4 PT Pindad.
+Jika pengguna meminta:
+- Membuka Dokumen Editor / Writer (contoh: "cakra buka dokumen writer / editor", "tampilkan dokumen editor")
+- Membuat atau menyusun draf naskah dinas resmi (SKEP Direksi, Surat Edaran / SE, Nota Dinas / Memo, dokumen kosong)
+- Mengedit atau merevisi bagian/poin tertentu dokumen (misalnya bagian kop, judul, menimbang, mengingat, memutuskan, dll)
+
+Kamu WAJIB menyertakan blok markdown khusus ```docwriter berisi JSON murni di akhir jawabanmu:
+```docwriter
+{
+  "action": "open" | "draft" | "patch",
+  "template": "template_skep" | "template_se" | "template_memo" | "template_blank",
+  "title": "Surat Keputusan Direksi Penetapan ...",
+  "summary": "Ringkasan draf dokumen atau revisi seksi yang dibuat",
+  "autoOpen": true,
+  "sectionId": "memutuskan",
+  "content": "<p>Teks HTML atau poin yang disusun/diperbarui</p>"
+}
+```
+Katalog Template Resmi Pindad:
+- `template_skep`: Surat Keputusan Direksi (Menimbang, Mengingat, Diktum Memutuskan)
+- `template_se`: Surat Edaran Direksi (SE)
+- `template_memo`: Nota Dinas / Memo Internal Antar Divisi
+- `template_blank`: Dokumen A4 Kosong Standar Pindad
+"""
+
 # ── 10. DYNAMIC PROMPT BLOCKS REGISTRY (Modular Lego Blocks) ───────────────────
 DYNAMIC_PROMPT_BLOCKS = {
     "wizard": INTERACTIVE_WIZARD_GUIDANCE,
@@ -886,6 +914,7 @@ DYNAMIC_PROMPT_BLOCKS = {
     "actionable_workflow": ACTIONABLE_WORKFLOW_GUIDANCE,
     "deep_research": DEEP_RESEARCH_GUIDANCE,
     "security_critical": SECURITY_CRITICAL_GUIDANCE,
+    "docwriter": DOCUMENT_WRITER_GUIDANCE,
     "datagrid": DATA_TABLES_AND_FORM_GUIDANCE,
     "chart": VISUAL_GUIDANCE_CHART,
     "gantt": VISUAL_GUIDANCE_GANTT,
@@ -903,6 +932,8 @@ COMMON_TONE_GUIDANCE = (
     + VISUAL_CAPABILITIES_GUIDANCE
     + "\n"
     + INTERACTIVE_WIZARD_GUIDANCE
+    + "\n"
+    + DOCUMENT_WRITER_GUIDANCE
 )
 
 PROMPT_AMBIGUOUS_TEMPLATE = """{{ get_base_persona(employee_name, mode_title) }}""" + """

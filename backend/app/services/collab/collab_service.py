@@ -453,16 +453,17 @@ class CollabService:
                 """,
                 uuid.UUID(room_id)
             )
-            members = [dict(r) for r in member_rows]
-
-            # 3. Ambil riwayat chat
+            # 3. Ambil riwayat chat terbaru
             msg_rows = await conn.fetch(
                 """
-                SELECT id::text, sender_type, sender_npp, sender_name, message_text, created_at
-                FROM collab_messages
-                WHERE room_id = $1
+                SELECT * FROM (
+                    SELECT id::text, sender_type, sender_npp, sender_name, message_text, created_at
+                    FROM collab_messages
+                    WHERE room_id = $1
+                    ORDER BY created_at DESC
+                    LIMIT 200
+                ) sub
                 ORDER BY created_at ASC
-                LIMIT 100
                 """,
                 uuid.UUID(room_id)
             )
@@ -711,21 +712,24 @@ class CollabService:
             )
 
             query = """
-                SELECT 
-                    id::text,
-                    room_id::text,
-                    sender_type,
-                    sender_npp,
-                    sender_name,
-                    message_text,
-                    is_mention,
-                    interjection_type,
-                    attachments,
-                    created_at
-                FROM collab_messages
-                WHERE room_id = $1
+                SELECT * FROM (
+                    SELECT 
+                        id::text,
+                        room_id::text,
+                        sender_type,
+                        sender_npp,
+                        sender_name,
+                        message_text,
+                        is_mention,
+                        interjection_type,
+                        attachments,
+                        created_at
+                    FROM collab_messages
+                    WHERE room_id = $1
+                    ORDER BY created_at DESC
+                    LIMIT $2
+                ) sub
                 ORDER BY created_at ASC
-                LIMIT $2
             """
             rows = await conn.fetch(query, uuid.UUID(room_id), limit)
             messages = []

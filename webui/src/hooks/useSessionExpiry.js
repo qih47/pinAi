@@ -18,8 +18,8 @@ export const useSessionExpiry = () => {
   const [expiresIn, setExpiresIn] = useState(''); // formatted string: "7h 45m"
   const [warningShown, setWarningShown] = useState(false);
   const [isExpiring, setIsExpiring] = useState(false);
-
-  const { user, token } = useChatAuthStore();
+  const user = useChatAuthStore((state) => state.user);
+  const token = useChatAuthStore((state) => state.token);
   const toast = useToast();
   
   const language = localStorage.getItem("cakra_language") || "id";
@@ -76,9 +76,10 @@ export const useSessionExpiry = () => {
     toast.warning(tToast.sessionExpired || '⏰ Your session has expired. Please log in again.');
   }, [toast, tToast]);
 
-  // Main countdown effect
+  const userNpp = user?.npp || user?.id || '';
+
   useEffect(() => {
-    if (!token || !user) {
+    if (!token || !userNpp) {
       setTimeRemaining(null);
       setExpiresIn('');
       return;
@@ -135,7 +136,7 @@ export const useSessionExpiry = () => {
     }, 1000); // Update every second for smooth countdown
 
     return () => clearInterval(countdownInterval);
-  }, [token, user, warningShown]);
+  }, [token, userNpp, warningShown]);
 
   return {
     timeRemaining,           // milliseconds

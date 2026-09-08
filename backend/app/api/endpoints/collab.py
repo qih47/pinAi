@@ -325,7 +325,7 @@ async def invite_members(
 @router.get("/rooms/{room_id}/messages", tags=["Collab"])
 async def get_messages(
     room_id: str,
-    limit: int = Query(50, ge=1, le=200),
+    limit: int = Query(100, ge=1, le=500),
     current_user_npp: str = Depends(get_current_user_npp)
 ):
     """Mengambil riwayat obrolan di dalam ruangan."""

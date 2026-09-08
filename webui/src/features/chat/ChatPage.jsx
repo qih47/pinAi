@@ -19,6 +19,8 @@ import VendorAnalyzerTab from "../corporate/VendorAnalyzerTab";
 import CollabWorkspace from "../collab/components/CollabWorkspace";
 import ArchiveTab from "../archive/ArchiveTab";
 import PdfInterrogator from "./components/PdfInterrogator";
+import DocWriterWorkspace from "../doc_writer/components/DocWriterWorkspace";
+import { useDocWriterStore } from "../../stores/docWriterStore";
 import { translations } from "../../utils/translations";
 import { useChatLogic } from "./hooks/useChatLogic";
 
@@ -38,6 +40,10 @@ export default function ChatPage({ isGuest,
   } = chatLogic;
   const { themeSetting } = chatLogic;
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
+  const { isDocWriterOpen, toggleDocWriter } = useDocWriterStore((state) => ({
+    isDocWriterOpen: state.isOpen,
+    toggleDocWriter: state.toggleWriter
+  }));
 
   const t = translations[language]?.chatPage || translations.id.chatPage;
   const tGlobal = translations[language] || translations.id;
@@ -420,6 +426,38 @@ export default function ChatPage({ isGuest,
                 </svg>
               </button>
             )}
+
+            {/* 📝 TOMBOL DOKUMEN WRITER & EDITOR (Global Co-Authoring) */}
+            <button
+              onClick={toggleDocWriter}
+              style={{
+                background: isDocWriterOpen ? (darkMode ? "rgba(56, 189, 248, 0.15)" : "rgba(2, 132, 199, 0.1)") : "transparent",
+                border: isDocWriterOpen ? "1px solid rgba(56, 189, 248, 0.4)" : "none",
+                cursor: "pointer",
+                width: "36px",
+                height: "36px",
+                borderRadius: "50%",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                color: isDocWriterOpen ? "#38bdf8" : theme.iconColor,
+                transition: "all 0.2s",
+                outline: "none",
+              }}
+              onMouseEnter={(e) => {
+                if (!isDocWriterOpen) e.currentTarget.style.background = darkMode ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.05)";
+              }}
+              onMouseLeave={(e) => {
+                if (!isDocWriterOpen) e.currentTarget.style.background = "transparent";
+              }}
+              title="Buka Dokumen Writer (Word/SKEP/SE)"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+              </svg>
+            </button>
+
             {/* 👇 W16: Notification Bell */}
             <HeaderDropdownMenu
               isGuest={isGuest}
@@ -438,6 +476,7 @@ export default function ChatPage({ isGuest,
         {/* WRAPPER FOR SPLIT SCREEN */}
         <div style={{ flex: 1, display: "flex", flexDirection: "row", overflow: "hidden", marginTop: 0 }}>
           <PdfInterrogator darkMode={darkMode} language={language} isMobile={isMobile} />
+          <DocWriterWorkspace darkMode={darkMode} theme={theme} isMobile={isMobile} />
           <div
             style={{
               flex: 1,

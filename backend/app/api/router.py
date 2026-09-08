@@ -22,9 +22,10 @@ api_router.include_router(notifications.audit_router, tags=["Audit Logs"])
 api_router.include_router(analytics.router, prefix="/analytics", tags=["Analytics"])
 api_router.include_router(nextcloud.router, prefix="/nextcloud", tags=["Nextcloud Integration"])
 
-from backend.app.api.endpoints import voice, user, collab
+from backend.app.api.endpoints import voice, user, collab, document_writer
 api_router.include_router(voice.router, prefix="/voice", tags=["Voice Transcription"])
 api_router.include_router(user.router, prefix="/user", tags=["User Profile"])
 api_router.include_router(collab.router, prefix="/collab", tags=["Collab Space"])
+api_router.include_router(document_writer.router, tags=["Document Writer"])
 
-logger.info("[ROUTER_INIT] Main api_router loaded: /auth, /chat, /health, /documents, /admin, /notifications, /audit-logs, /analytics, /synthetic, /nextcloud, /user")
+logger.info("[ROUTER_INIT] Main api_router loaded: /auth, /chat, /health, /documents, /admin, /notifications, /audit-logs, /analytics, /synthetic, /nextcloud, /user, /doc-writer")

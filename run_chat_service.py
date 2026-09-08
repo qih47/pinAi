@@ -282,7 +282,7 @@ chat_service_router = APIRouter()
 
 from backend.app.api.endpoints import (
     chat, health, documents, notifications, api_keys,
-    training, corporate, synthetic, nextcloud, voice, user, collab
+    training, corporate, synthetic, nextcloud, voice, user, collab, document_writer
 )
 
 chat_service_router.include_router(chat.router,           prefix="/chat",          tags=["Chat"])
@@ -297,6 +297,7 @@ chat_service_router.include_router(nextcloud.router,      prefix="/nextcloud",  
 chat_service_router.include_router(voice.router,          prefix="/voice",         tags=["Voice"])
 chat_service_router.include_router(user.router,           prefix="/user",          tags=["User Profile"])
 chat_service_router.include_router(collab.router,         prefix="/collab",        tags=["Collab Space"])
+chat_service_router.include_router(document_writer.router, tags=["Document Writer"])
 
 app.include_router(chat_service_router, prefix="/api")
 logger.info("🔌 [CHAT_SERVICE] All chat routers mounted.")
