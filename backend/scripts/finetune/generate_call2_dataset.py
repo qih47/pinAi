@@ -142,19 +142,78 @@ def generate_cot_sample(case_data: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def fetch_unlimited_core_db_samples() -> List[Dict[str, Any]]:
+    """Mengekstrak seluruh pasangan Q&A regulasi aktual dari PostgreSQL ragdb menjadi CoT ShareGPT."""
+    import asyncio
+    try:
+        from backend.app.services.training.nightly.db_setup import get_ragdb_conn
+        async def _query():
+            async with get_ragdb_conn() as conn:
+                rows = await conn.fetch("""
+                    SELECT q.generated_question, q.answer, q.page_range, COALESCE(c.judul, 'Regulasi PT Pindad') as judul
+                    FROM rag_document_questions q
+                    LEFT JOIN nightly_training_checkpoints c ON q.source_id = c.dokumen_id
+                    ORDER BY q.id ASC
+                """)
+                return [dict(r) for r in rows]
+        return asyncio.run(_query())
+    except Exception as e:
+        print(f"⚠️ Gagal membaca Q&A dari DB (melewati): {e}")
+        return []
+
+
 def main():
-    parser = argparse.ArgumentParser(description="Generate synthetic CoT dataset for Call 2 Core")
-    parser.add_argument("--output", type=str, default="data/finetune/call2_train_2000.jsonl", help="Output JSONL filepath")
-    parser.add_argument("--samples", type=int, default=2000, help="Number of samples to generate")
+    parser = argparse.ArgumentParser(description="Generate CoT dataset for Call 2 Core (Unlimited by Training)")
+    parser.add_argument("--output", type=str, default="data/finetune/nightly_cakra_core.jsonl", help="Output JSONL filepath")
+    parser.add_argument("--samples", type=int, default=0, help="Number of synthetic samples (0 = Unlimited by DB)")
+    parser.add_argument("--from-db", action="store_true", help="Extract all actual Q&A from ragdb rag_document_questions")
     args = parser.parse_args()
 
     os.makedirs(os.path.dirname(args.output) or ".", exist_ok=True)
 
     generated_data = []
-    for _ in range(args.samples):
-        base_case = random.choice(PKB_CASES)
-        sample = generate_cot_sample(base_case)
-        generated_data.append(sample)
+
+    # 1. Tarik dari database jika diminta atau samples == 0
+    if args.from_db or args.samples == 0:
+        db_records = fetch_unlimited_core_db_samples()
+        if db_records:
+            system_prompt = (
+                "Kamu adalah CAKRA AI, asisten kecerdasan buatan berdaulat PT PINDAD. "
+                "Sebelum menjawab, lakukan penalaran terstruktur di dalam tag <think>...</think> "
+                "lalu sajikan jawaban profesional, akurat, to-the-point berdasar regulasi resmi."
+            )
+            for r in db_records:
+                q = r.get("generated_question", "").strip()
+                ans = r.get("answer", "").strip()
+                doc_title = r.get("judul", "Regulasi PT Pindad")
+                page = r.get("page_range", "-")
+                if not q or not ans:
+                    continue
+
+                thought = (
+                    f"1. Analisis Pertanyaan: Pengguna mencari rincian mengenai '{q}'.\n"
+                    f"2. Dokumen Sumber: {doc_title} (Halaman {page}).\n"
+                    f"3. Verifikasi Fakta: {ans[:250]}...\n"
+                    f"4. Strategi Jawaban: Tuliskan respon lugas, kutip nomor dokumen dan halaman resmi."
+                )
+                assistant_msg = f"<think>\n{thought}\n</think>\n\n{ans}\n\n*(Dasar Ketentuan: {doc_title}, Halaman {page})*"
+
+                generated_data.append({
+                    "conversations": [
+                        {"from": "system", "value": system_prompt},
+                        {"from": "human", "value": q},
+                        {"from": "gpt", "value": assistant_msg}
+                    ]
+                })
+            print(f"📦 Berhasil memuat {len(generated_data)} data CoT asli regulasi dari ragdb!")
+
+    # 2. Jika DB kosong atau diminta synthetic templates
+    if not generated_data or args.samples > 0:
+        num_samples = args.samples if args.samples > 0 else 500
+        for _ in range(num_samples):
+            base_case = random.choice(PKB_CASES)
+            sample = generate_cot_sample(base_case)
+            generated_data.append(sample)
 
     random.shuffle(generated_data)
 
@@ -162,8 +221,9 @@ def main():
         for item in generated_data:
             f.write(json.dumps(item, ensure_ascii=False) + "\n")
 
-    print(f"✅ Berhasil men-generate {len(generated_data)} sampel CoT Reasoning dataset ke: {args.output}")
+    print(f"✅ Berhasil mengekspor {len(generated_data)} sampel CoT Reasoning dataset ke: {args.output} (Unlimited)")
 
 
 if __name__ == "__main__":
     main()
+

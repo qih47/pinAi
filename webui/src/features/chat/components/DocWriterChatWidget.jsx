@@ -34,8 +34,34 @@ const DocWriterChatWidget = ({
     activeDocument 
   } = useDocWriterStore();
 
+  const isGuest = useMemo(() => {
+    try {
+      const raw = localStorage.getItem('cakra_user');
+      if (!raw) return true;
+      const u = JSON.parse(raw);
+      return Boolean(u?.isGuest || u?.role === 'guest' || u?.npp === 'GUEST');
+    } catch {
+      return false;
+    }
+  }, []);
+
   const [applied, setApplied] = useState(false);
   const [parseError, setParseError] = useState(false);
+
+  useEffect(() => {
+    if (!isGuest) {
+      useDocWriterStore.getState().setAiActivated(true);
+    }
+  }, [isGuest]);
+
+  if (isGuest) {
+    return (
+      <div className="p-3.5 my-2.5 rounded-xl border border-amber-500/30 bg-amber-500/10 text-amber-200 text-xs flex items-center gap-2.5 shadow-sm">
+        <ShieldCheck className="w-4 h-4 text-amber-400 shrink-0" />
+        <span>Fitur CAKRA Document Studio hanya dapat diakses oleh Pegawai Resmi PT Pindad. Silakan masuk (login) menggunakan Akun Pegawai Anda.</span>
+      </div>
+    );
+  }
 
   // Parse JSON data dari blok markdown ```docwriter
   const docData = useMemo(() => {

@@ -332,41 +332,41 @@ export default function DocumentMinimapPill({
 
         // 1. Deteksi Format File Presentasi / Slide
         if (/\.(pptx?|ppsx?|key)$/i.test(lower) || lower.includes('slide') || lower.includes('presentasi')) {
-            return { label: 'SLIDE', color: 'bg-amber-500/15 text-amber-300 border-amber-500/30' };
+            return { label: 'SLIDE', color: darkMode ? 'bg-amber-500/15 text-amber-300 border-amber-500/30' : 'bg-amber-50 text-amber-800 border-amber-300' };
         }
 
         // 2. Deteksi Format Spreadsheet / Excel
         if (/\.(xlsx?|csv|ods)$/i.test(lower) || lower.includes('spreadsheet') || lower.includes('rekapitulasi')) {
-            return { label: 'EXCEL', color: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30' };
+            return { label: 'EXCEL', color: darkMode ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30' : 'bg-emerald-50 text-emerald-800 border-emerald-300' };
         }
 
         // 3. Deteksi Format Word / Dokumen Teks
         if (/\.(docx?|rtf|odt|txt)$/i.test(lower)) {
-            return { label: 'WORD', color: 'bg-blue-500/15 text-blue-300 border-blue-500/30' };
+            return { label: 'WORD', color: darkMode ? 'bg-blue-500/15 text-blue-300 border-blue-500/30' : 'bg-blue-50 text-blue-800 border-blue-300' };
         }
 
         // 4. Deteksi Gambar
         if (/\.(png|jpe?g|webp|gif|bmp|svg)$/i.test(lower)) {
-            return { label: 'GAMBAR', color: 'bg-cyan-500/15 text-cyan-300 border-cyan-500/30' };
+            return { label: 'GAMBAR', color: darkMode ? 'bg-cyan-500/15 text-cyan-300 border-cyan-500/30' : 'bg-cyan-50 text-cyan-800 border-cyan-300' };
         }
 
         // 5. Jika memiliki jenis/kategori resmi dari database
         if (explicitJenis && explicitJenis !== 'Regulasi' && explicitJenis !== 'Dokumen') {
-            return { label: explicitJenis, color: 'bg-indigo-500/15 text-indigo-300 border-indigo-500/30' };
+            return { label: explicitJenis, color: darkMode ? 'bg-indigo-500/15 text-indigo-300 border-indigo-500/30' : 'bg-indigo-50 text-indigo-800 border-indigo-300' };
         }
 
         // 6. Deteksi Regulasi Resmi Pindad dengan Batas Kata (Word Boundary) yang Ketat
-        if (/\bpkb\b/i.test(lower)) return { label: 'PKB Pindad', color: 'bg-teal-500/15 text-teal-300 border-teal-500/30' };
-        if (/\bsop\b|\bprosedur\b/i.test(lower)) return { label: 'SOP', color: 'bg-blue-500/15 text-blue-300 border-blue-500/30' };
-        if (/\b(sk|skep)\b|\bdireksi\b|\bkeputusan\b/i.test(lower)) return { label: 'SK Direksi', color: 'bg-amber-500/15 text-amber-300 border-amber-500/30' };
-        if (/\bse\b|\bedaran\b/i.test(lower)) return { label: 'Surat Edaran', color: 'bg-purple-500/15 text-purple-300 border-purple-500/30' };
+        if (/\bpkb\b/i.test(lower)) return { label: 'PKB Pindad', color: darkMode ? 'bg-teal-500/15 text-teal-300 border-teal-500/30' : 'bg-teal-50 text-teal-800 border-teal-300' };
+        if (/\bsop\b|\bprosedur\b/i.test(lower)) return { label: 'SOP', color: darkMode ? 'bg-blue-500/15 text-blue-300 border-blue-500/30' : 'bg-blue-50 text-blue-800 border-blue-300' };
+        if (/\b(sk|skep)\b|\bdireksi\b|\bkeputusan\b/i.test(lower)) return { label: 'SK Direksi', color: darkMode ? 'bg-amber-500/15 text-amber-300 border-amber-500/30' : 'bg-amber-50 text-amber-800 border-amber-300' };
+        if (/\bse\b|\bedaran\b/i.test(lower)) return { label: 'Surat Edaran', color: darkMode ? 'bg-purple-500/15 text-purple-300 border-purple-500/30' : 'bg-purple-50 text-purple-800 border-purple-300' };
 
         // 7. Format PDF standar
         if (lower.endsWith('.pdf')) {
-            return { label: 'PDF', color: 'bg-rose-500/15 text-rose-300 border-rose-500/30' };
+            return { label: 'PDF', color: darkMode ? 'bg-rose-500/15 text-rose-300 border-rose-500/30' : 'bg-rose-50 text-rose-800 border-rose-300' };
         }
 
-        return { label: 'REGULASI', color: 'bg-zinc-500/15 text-zinc-300 border-zinc-500/30' };
+        return { label: 'REGULASI', color: darkMode ? 'bg-zinc-500/15 text-zinc-300 border-zinc-500/30' : 'bg-slate-100 text-slate-700 border-slate-300' };
     };
 
     // ── 8. Render Portal 4 Mode Action Popup Menu ──
@@ -578,15 +578,15 @@ export default function DocumentMinimapPill({
                         // ── 🗂️ KONTEN LENGKAP POPOVER (SAAT DI-HOVER) ──
                         <div className="flex flex-col w-full">
                             {/* Header Popover */}
-                            <div className="flex items-center justify-between px-2 py-1.5 mb-1.5 border-b border-zinc-700/40">
+                            <div className={`flex items-center justify-between px-2 py-1.5 mb-1.5 border-b ${darkMode ? 'border-zinc-700/40' : 'border-slate-200'}`}>
                                 <div className="flex items-center gap-1.5 min-w-0 pr-2">
-                                    <BookOpen className="w-3.5 h-3.5 text-indigo-400 flex-shrink-0" />
-                                    <span className="text-[12px] font-semibold tracking-tight truncate">
+                                    <BookOpen className={`w-3.5 h-3.5 flex-shrink-0 ${darkMode ? 'text-indigo-400' : 'text-indigo-600'}`} />
+                                    <span className={`text-[12px] font-semibold tracking-tight truncate ${darkMode ? 'text-zinc-100' : 'text-slate-800'}`}>
                                         {t.title || 'Dokumen Rujukan PT Pindad'}
                                     </span>
                                 </div>
                                 <div className="flex items-center gap-1.5 flex-shrink-0">
-                                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-indigo-500/15 text-indigo-300 border border-indigo-500/30">
+                                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full border ${darkMode ? 'bg-indigo-500/15 text-indigo-300 border-indigo-500/30' : 'bg-indigo-50 text-indigo-700 border-indigo-200'}`}>
                                         {sessionDocs.length}
                                     </span>
                                     <button
@@ -597,7 +597,7 @@ export default function DocumentMinimapPill({
                                             setActiveActionDoc(null);
                                             setIsGlobalExpanded(false);
                                         }}
-                                        className="p-1 rounded-md text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/60 transition-colors"
+                                        className={`p-1 rounded-md transition-colors ${darkMode ? 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/60' : 'text-slate-400 hover:text-slate-700 hover:bg-slate-100'}`}
                                         title="Tutup"
                                     >
                                         <X className="w-3.5 h-3.5" />
@@ -608,7 +608,7 @@ export default function DocumentMinimapPill({
                         {/* 🔍 Search Input Box Dokumen Sesi (Muncul jika dokumen >= 20) */}
                         {sessionDocs.length >= 20 && (
                             <div className="relative mb-2 px-0.5">
-                                <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-zinc-400 pointer-events-none" />
+                                <Search className={`w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none ${darkMode ? 'text-zinc-400' : 'text-slate-400'}`} />
                                 <input
                                     type="text"
                                     value={searchQuery}
@@ -617,14 +617,14 @@ export default function DocumentMinimapPill({
                                     className={`w-full text-[11px] pl-7 pr-6 py-1.5 rounded-lg border outline-none transition-all ${
                                         darkMode 
                                             ? 'bg-zinc-900/90 border-zinc-700/70 text-zinc-200 placeholder-zinc-500 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/40' 
-                                            : 'bg-gray-50 border-gray-200 text-gray-800 placeholder-gray-400 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30'
+                                            : 'bg-slate-50 border-slate-200 text-slate-800 placeholder-slate-400 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30'
                                     }`}
                                 />
                                 {searchQuery && (
                                     <button
                                         type="button"
                                         onClick={() => setSearchQuery('')}
-                                        className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 text-zinc-400 hover:text-zinc-200 transition-colors"
+                                        className={`absolute right-2 top-1/2 -translate-y-1/2 p-0.5 transition-colors ${darkMode ? 'text-zinc-400 hover:text-zinc-200' : 'text-slate-400 hover:text-slate-700'}`}
                                     >
                                         <X className="w-3 h-3" />
                                     </button>
@@ -635,7 +635,7 @@ export default function DocumentMinimapPill({
                         {/* ── 📚 Document Items List (Dokumen Sesi) — Memanjang penuh tanpa dipotong ── */}
                         <div className="flex flex-col gap-1 pr-0.5">
                             {filteredDocs.length === 0 ? (
-                                <div className="py-5 text-center text-[11px] text-zinc-400">
+                                <div className={`py-5 text-center text-[11px] ${darkMode ? 'text-zinc-400' : 'text-slate-500'}`}>
                                     {t.noResults || 'Dokumen tidak ditemukan'}
                                 </div>
                             ) : (
@@ -673,8 +673,10 @@ export default function DocumentMinimapPill({
                                                     : isHovered
                                                     ? darkMode
                                                         ? 'border-zinc-700 bg-zinc-800/80'
-                                                        : 'border-gray-300 bg-gray-100'
-                                                    : 'border-transparent hover:border-zinc-800/60'
+                                                        : 'border-slate-300 bg-slate-100'
+                                                    : darkMode
+                                                        ? 'border-transparent hover:border-zinc-800/60'
+                                                        : 'border-slate-200/80 bg-slate-50/70 hover:border-slate-300 shadow-sm'
                                             }`}
                                         >
                                             {/* Bagian Kiri: Icon + Judul + Kategori (Klik untuk Buka PDF) */}
@@ -683,12 +685,12 @@ export default function DocumentMinimapPill({
                                                 className="flex items-start gap-2 min-w-0 flex-1 pr-1.5 cursor-pointer"
                                                 title="Klik untuk membuka dokumen PDF"
                                             >
-                                                <div className="w-6 h-6 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5 bg-indigo-500/10 text-indigo-400 group-hover:bg-indigo-500 group-hover:text-white transition-colors">
+                                                <div className={`w-6 h-6 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5 border ${darkMode ? 'bg-indigo-500/10 text-indigo-400 border-indigo-500/20 group-hover:bg-indigo-500 group-hover:text-white' : 'bg-indigo-50 text-indigo-600 border-indigo-200 group-hover:bg-indigo-600 group-hover:text-white'} transition-colors`}>
                                                     <FileText className="w-3.5 h-3.5" />
                                                 </div>
 
                                                 <div className="flex flex-col min-w-0">
-                                                    <p className="text-[12px] font-medium leading-tight truncate group-hover:text-indigo-400 transition-colors" title={doc.title}>
+                                                    <p className={`text-[12px] font-medium leading-tight truncate transition-colors ${darkMode ? 'text-zinc-200 group-hover:text-indigo-400' : 'text-slate-800 group-hover:text-indigo-600'}`} title={doc.title}>
                                                         {doc.title}
                                                     </p>
                                                     <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
@@ -696,7 +698,7 @@ export default function DocumentMinimapPill({
                                                             {badge.label}
                                                         </span>
                                                         {doc.halaman && (
-                                                            <span className="text-[10px] text-zinc-400">
+                                                            <span className={`text-[10px] ${darkMode ? 'text-zinc-400' : 'text-slate-500'}`}>
                                                                 Hal. {doc.halaman}
                                                             </span>
                                                         )}
@@ -730,8 +732,8 @@ export default function DocumentMinimapPill({
                                                     }}
                                                     className={`p-1 rounded-lg transition-all ${
                                                         isActionActive || isHovered
-                                                            ? darkMode ? 'bg-zinc-700/80 text-white' : 'bg-gray-200 text-gray-900'
-                                                            : 'text-zinc-500 hover:text-zinc-200'
+                                                            ? darkMode ? 'bg-zinc-700/80 text-white' : 'bg-slate-200 text-slate-900'
+                                                            : darkMode ? 'text-zinc-500 hover:text-zinc-200' : 'text-slate-400 hover:text-slate-700'
                                                     }`}
                                                     title="Opsi Mode Analisis & Pratinjau Dokumen"
                                                 >
@@ -745,41 +747,47 @@ export default function DocumentMinimapPill({
                         </div>
 
                         {/* ── 📊 Footer Info Dokumen Sesi ── */}
-                        <div className="mt-2 pt-2 border-t border-zinc-800/60 flex items-center justify-between px-1 text-[10px] text-zinc-400">
+                        <div className={`mt-2 pt-2 border-t flex items-center justify-between px-1 text-[10px] ${darkMode ? 'border-zinc-800/60 text-zinc-400' : 'border-slate-200 text-slate-500'}`}>
                             <span className="flex items-center gap-1">
-                                <Sparkles className="w-2.5 h-2.5 text-indigo-400" />
+                                <Sparkles className={`w-2.5 h-2.5 ${darkMode ? 'text-indigo-400' : 'text-indigo-600'}`} />
                                 <span>{t.sessionDocs || 'Dokumen di Sesi Ini'}</span>
                             </span>
-                            <span className="text-zinc-500 text-[9.5px]">
+                            <span className={`text-[9.5px] ${darkMode ? 'text-zinc-500' : 'text-slate-400'}`}>
                                 {filteredDocs.length} / {sessionDocs.length}
                             </span>
                         </div>
 
                         {/* ── 🌐 COLLAPSIBLE SECTION: PENCARIAN DATABASE REGULASI GLOBAL ── */}
-                        <div className="mt-2 pt-2 border-t border-zinc-800/60 flex flex-col gap-1.5">
+                        <div className={`mt-2 pt-2 border-t flex flex-col gap-1.5 ${darkMode ? 'border-zinc-800/60' : 'border-slate-200'}`}>
                             <button
                                 type="button"
                                 onClick={handleToggleGlobal}
                                 className={`w-full flex items-center justify-between px-2 py-1.5 rounded-xl border text-[11px] font-medium transition-colors duration-150 ${
                                     isGlobalExpanded
-                                        ? 'bg-indigo-600/15 border-indigo-500/40 text-indigo-300'
+                                        ? darkMode 
+                                            ? 'bg-indigo-600/15 border-indigo-500/40 text-indigo-300'
+                                            : 'bg-indigo-50 border-indigo-200 text-indigo-700'
                                         : darkMode
-                                        ? 'bg-zinc-900/60 border-zinc-800 hover:border-zinc-700 hover:bg-zinc-800/60 text-zinc-300'
-                                        : 'bg-gray-50 border-gray-200 hover:bg-gray-100 text-gray-700'
+                                            ? 'bg-zinc-900/60 border-zinc-800 hover:border-zinc-700 hover:bg-zinc-800/60 text-zinc-300'
+                                            : 'bg-slate-50 border-slate-200 hover:bg-slate-100 text-slate-700'
                                 }`}
                             >
                                 <div className="flex items-center gap-1.5 truncate">
-                                    <Globe className="w-3.5 h-3.5 text-indigo-400 flex-shrink-0" />
+                                    <Globe className={`w-3.5 h-3.5 flex-shrink-0 ${darkMode ? 'text-indigo-400' : 'text-indigo-600'}`} />
                                     <span className="truncate">{t.exploreGlobal || 'Cari di Seluruh Regulasi Pindad'}</span>
                                 </div>
-                                <ChevronDown className={`w-3.5 h-3.5 flex-shrink-0 transition-transform duration-200 ${isGlobalExpanded ? 'rotate-180 text-indigo-400' : 'text-zinc-400'}`} />
+                                <ChevronDown className={`w-3.5 h-3.5 flex-shrink-0 transition-transform duration-200 ${isGlobalExpanded ? 'rotate-180 text-indigo-400' : (darkMode ? 'text-zinc-400' : 'text-slate-400')}`} />
                             </button>
 
                             {isGlobalExpanded && (
-                                <div className="flex flex-col gap-1.5 p-1.5 rounded-xl bg-zinc-950/40 border border-zinc-800/50 transition-all duration-150">
+                                <div className={`flex flex-col gap-1.5 p-1.5 rounded-xl transition-all duration-150 border ${
+                                    darkMode 
+                                        ? 'bg-zinc-950/40 border-zinc-800/50' 
+                                        : 'bg-slate-50/90 border-slate-200/90'
+                                }`}>
                                     {/* Search Box Global Regulations */}
                                     <div className="relative">
-                                        <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-zinc-400 pointer-events-none" />
+                                        <Search className={`w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none ${darkMode ? 'text-zinc-400' : 'text-slate-400'}`} />
                                         <input
                                             type="text"
                                             value={globalSearchQuery}
@@ -788,16 +796,16 @@ export default function DocumentMinimapPill({
                                             className={`w-full text-[11px] pl-7 pr-6 py-1.5 rounded-lg border outline-none transition-all ${
                                                 darkMode 
                                                     ? 'bg-zinc-900/90 border-zinc-700/70 text-zinc-200 placeholder-zinc-500 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/40' 
-                                                    : 'bg-white border-gray-300 text-gray-800 placeholder-gray-400 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30'
+                                                    : 'bg-white border-slate-200 text-slate-800 placeholder-slate-400 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30'
                                             }`}
                                         />
                                         {isLoadingGlobal ? (
-                                            <Loader2 className="w-3.5 h-3.5 absolute right-2.5 top-1/2 -translate-y-1/2 text-indigo-400 animate-spin" />
+                                            <Loader2 className={`w-3.5 h-3.5 absolute right-2.5 top-1/2 -translate-y-1/2 animate-spin ${darkMode ? 'text-indigo-400' : 'text-indigo-600'}`} />
                                         ) : globalSearchQuery ? (
                                             <button
                                                 type="button"
                                                 onClick={() => setGlobalSearchQuery('')}
-                                                className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 text-zinc-400 hover:text-zinc-200 transition-colors"
+                                                className={`absolute right-2 top-1/2 -translate-y-1/2 p-0.5 transition-colors ${darkMode ? 'text-zinc-400 hover:text-zinc-200' : 'text-slate-400 hover:text-slate-700'}`}
                                             >
                                                 <X className="w-3 h-3" />
                                             </button>
@@ -807,12 +815,12 @@ export default function DocumentMinimapPill({
                                     {/* List Hasil Dokumen Global */}
                                     <div className="flex flex-col gap-1 pr-0.5">
                                         {isLoadingGlobal ? (
-                                            <div className="py-4 flex items-center justify-center gap-1.5 text-[11px] text-zinc-400">
+                                            <div className={`py-4 flex items-center justify-center gap-1.5 text-[11px] ${darkMode ? 'text-zinc-400' : 'text-slate-500'}`}>
                                                 <Loader2 className="w-3.5 h-3.5 animate-spin text-indigo-400" />
                                                 <span>{t.loadingGlobal || 'Mencari regulasi di database...'}</span>
                                             </div>
                                         ) : globalDocs.length === 0 ? (
-                                            <div className="py-4 text-center text-[10.5px] text-zinc-400">
+                                            <div className={`py-4 text-center text-[10.5px] ${darkMode ? 'text-zinc-400' : 'text-slate-500'}`}>
                                                 {t.emptyGlobal || 'Tidak ada regulasi yang cocok'}
                                             </div>
                                         ) : (
@@ -841,7 +849,7 @@ export default function DocumentMinimapPill({
                                                                 ? 'border-indigo-500/80 bg-indigo-500/10'
                                                                 : darkMode
                                                                 ? 'border-zinc-800/70 hover:border-zinc-700 bg-zinc-900/50 hover:bg-zinc-850'
-                                                                : 'border-gray-200 hover:border-gray-300 bg-white hover:bg-gray-50'
+                                                                : 'border-slate-200 hover:border-slate-300 bg-white hover:bg-slate-50 shadow-sm'
                                                         }`}
                                                     >
                                                         {/* Bagian Kiri: Title & Badge (Klik untuk Buka PDF) */}
@@ -850,12 +858,12 @@ export default function DocumentMinimapPill({
                                                             className="flex items-start gap-1.5 min-w-0 flex-1 pr-1 cursor-pointer"
                                                             title="Klik untuk membuka dokumen PDF"
                                                         >
-                                                            <div className="w-5 h-5 rounded flex items-center justify-center flex-shrink-0 mt-0.5 bg-indigo-500/10 text-indigo-400 group-hover:bg-indigo-500 group-hover:text-white transition-colors">
+                                                            <div className={`w-5 h-5 rounded flex items-center justify-center flex-shrink-0 mt-0.5 border ${darkMode ? 'bg-indigo-500/10 text-indigo-400 border-indigo-500/20 group-hover:bg-indigo-500 group-hover:text-white' : 'bg-indigo-50 text-indigo-600 border-indigo-200 group-hover:bg-indigo-600 group-hover:text-white'} transition-colors`}>
                                                                 <FileText className="w-3 h-3" />
                                                             </div>
 
                                                             <div className="flex flex-col min-w-0">
-                                                                <p className="text-[11px] font-medium leading-tight truncate group-hover:text-indigo-400 transition-colors" title={gDoc.title}>
+                                                                <p className={`text-[11px] font-medium leading-tight truncate transition-colors ${darkMode ? 'text-zinc-200 group-hover:text-indigo-400' : 'text-slate-800 group-hover:text-indigo-600'}`} title={gDoc.title}>
                                                                     {gDoc.title}
                                                                 </p>
                                                                 <div className="flex items-center gap-1 mt-0.5">
@@ -863,7 +871,7 @@ export default function DocumentMinimapPill({
                                                                         {badge.label}
                                                                     </span>
                                                                     {gDoc.nomor && (
-                                                                        <span className="text-[9px] text-zinc-400 truncate">
+                                                                        <span className={`text-[9px] truncate ${darkMode ? 'text-zinc-400' : 'text-slate-500'}`}>
                                                                             {gDoc.nomor}
                                                                         </span>
                                                                     )}
@@ -887,12 +895,12 @@ export default function DocumentMinimapPill({
                                                                 }}
                                                                 className={`p-1 rounded transition-all ${
                                                                     isActionActive
-                                                                        ? darkMode ? 'bg-zinc-700/80 text-white' : 'bg-gray-200 text-gray-900'
-                                                                        : 'text-zinc-500 hover:text-zinc-200'
+                                                                        ? darkMode ? 'bg-zinc-700/80 text-white' : 'bg-slate-200 text-slate-900'
+                                                                        : darkMode ? 'text-zinc-500 hover:text-zinc-200' : 'text-slate-400 hover:text-slate-700'
                                                                 }`}
                                                                 title="Opsi Mode Analisis & Pratinjau Dokumen"
                                                             >
-                                                                <MoreVertical className="w-3 h-3" />
+                                                                <MoreVertical className="w-3.5 h-3.5" />
                                                             </button>
                                                         </div>
                                                     </div>

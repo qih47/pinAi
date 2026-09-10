@@ -2,8 +2,21 @@ import { create } from 'zustand';
 import axios from 'axios';
 import { defaultTemplates } from '../features/doc_writer/templates/defaultTemplates';
 
+const isGuestUser = () => {
+  try {
+    const raw = localStorage.getItem('cakra_user');
+    if (!raw) return true;
+    const u = JSON.parse(raw);
+    return Boolean(u?.isGuest || u?.role === 'guest' || u?.npp === 'GUEST');
+  } catch {
+    return false;
+  }
+};
+
 export const useDocWriterStore = create((set, get) => ({
   isOpen: false,
+  isAiActivated: false,
+  setAiActivated: (val) => set({ isAiActivated: Boolean(val) }),
   splitWidth: typeof window !== 'undefined' && window.innerWidth < 1200 ? 520 : 640,
   activeDocument: {
     id: 'doc_active',
@@ -21,12 +34,17 @@ export const useDocWriterStore = create((set, get) => ({
   setTemplateModalOpen: (val) => set({ isTemplateModalOpen: Boolean(val) }),
 
   openWriter: (templateId = null, initialTitle = null, initialContent = null) => {
+    if (isGuestUser()) {
+      console.warn('[DOC_WRITER] Tamu (Guest) dilarang membuka Document Studio.');
+      return;
+    }
     const currentDoc = get().activeDocument;
     const targetTemplateId = templateId || currentDoc.templateId || 'template_skep';
     const fallbackTemplate = defaultTemplates[targetTemplateId] || defaultTemplates['template_blank'];
 
     set({
       isOpen: true,
+      isAiActivated: true,
       activeTemplateId: targetTemplateId,
       activeDocument: {
         ...currentDoc,
@@ -40,7 +58,13 @@ export const useDocWriterStore = create((set, get) => ({
 
   closeWriter: () => set({ isOpen: false }),
 
-  toggleWriter: () => set((state) => ({ isOpen: !state.isOpen })),
+  toggleWriter: () => {
+    if (isGuestUser()) {
+      console.warn('[DOC_WRITER] Tamu (Guest) dilarang membuka Document Studio.');
+      return;
+    }
+    set((state) => ({ isOpen: !state.isOpen }));
+  },
 
   setSplitWidth: (width) => set({ splitWidth: Math.max(380, Math.min(width, window.innerWidth - 380)) }),
 
@@ -78,6 +102,7 @@ export const useDocWriterStore = create((set, get) => ({
   },
 
   patchSection: (sectionId, newHtml) => {
+    if (isGuestUser()) return;
     const currentDoc = get().activeDocument;
     let updatedHtml = currentDoc?.htmlContent || '';
 

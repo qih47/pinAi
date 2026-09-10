@@ -132,6 +132,17 @@ CHITCHAT_TOPICS = [
     ("terima kasih banyak ya infonya sangat membantu", "ucapan terima kasih", "familiar_aku_kamu", "empathetic"),
 ]
 
+DOCWRITER_TOPICS = [
+    ("buatkan dokumen surat keputusan direksi tentang tim gugus tugas ai", "Surat Keputusan Gugus Tugas AI", "sk"),
+    ("tuliskan dokumen sop operasional pemeliharaan mesin bubut cnc", "SOP Pemeliharaan Mesin CNC", "sop"),
+    ("susun draf kebijakan keamanan informasi dan siber perusahaan", "Kebijakan Keamanan Siber", "policy"),
+    ("tolong buatkan draf perjanjian kerja sama mou dengan pt dirgantara indonesia", "Draf MoU PT Dirgantara", "mou"),
+    ("buatkan dokumen nota dinas resmi laporan progres pengembangan cakra ai", "Nota Dinas Laporan Cakra AI", "nota_dinas"),
+    ("tuliskan panduan standar k3 keselamatan kerja bengkel senjata", "Pedoman K3 Bengkel Senjata", "pedoman"),
+    ("buka doc studio buatkan dokumen peraturan disiplin kerja karyawan", "Dokumen Peraturan Disiplin", "peraturan"),
+    ("buat dokumen telaahan staf untuk perpanjangan sewa gudang amunisi", "Telaahan Staf Sewa Gudang", "telaahan")
+]
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # GENERATOR ENGINE
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -206,6 +217,20 @@ def generate_sample(sample_type: str) -> Dict[str, Any]:
             "tone_hint": tone
         }
 
+    elif sample_type == "DOCWRITER":
+        user_msg, active_top, doc_type = random.choice(DOCWRITER_TOPICS)
+        pronoun = "formal_saya_anda"
+        
+        target_json = {
+            "active_topic": "Penyusunan Dokumen Resmi (Document Studio)",
+            "key_subject": active_top,
+            "need_rag": False,
+            "is_docwriter": True,
+            "is_ambiguous": False,
+            "pronoun": pronoun,
+            "tone_hint": "formal"
+        }
+
     elif sample_type == "GENERATE_FILE":
         user_msg, active_top, ext = random.choice(GENERATE_FILE_TOPICS)
         pronoun = random.choice(PRONOUNS)
@@ -259,32 +284,89 @@ def generate_sample(sample_type: str) -> Dict[str, Any]:
     }
 
 
+def fetch_unlimited_db_samples() -> List[Dict[str, Any]]:
+    """Mengekstrak seluruh pertanyaan regulasi aktual dari PostgreSQL ragdb secara UNLIMITED."""
+    import asyncio
+    try:
+        from backend.app.services.training.nightly.db_setup import get_ragdb_conn
+        async def _query():
+            async with get_ragdb_conn() as conn:
+                rows = await conn.fetch("""
+                    SELECT q.generated_question, q.page_range, COALESCE(c.judul, 'Regulasi PT Pindad') as judul
+                    FROM rag_document_questions q
+                    LEFT JOIN nightly_training_checkpoints c ON q.source_id = c.dokumen_id
+                    ORDER BY q.id ASC
+                """)
+                return [dict(r) for r in rows]
+        return asyncio.run(_query())
+    except Exception as e:
+        print(f"⚠️ Gagal membaca dari DB (melewati): {e}")
+        return []
+
+
 def main():
-    parser = argparse.ArgumentParser(description="Generate synthetic dataset for Call 1 Router")
-    parser.add_argument("--output", type=str, default="data/call1_train.jsonl", help="Output JSONL filepath")
-    parser.add_argument("--samples", type=int, default=3000, help="Number of samples to generate")
+    parser = argparse.ArgumentParser(description="Generate dataset for Call 1 Router (Unlimited by Training)")
+    parser.add_argument("--output", type=str, default="data/finetune/nightly_call1_router.jsonl", help="Output JSONL filepath")
+    parser.add_argument("--samples", type=int, default=0, help="Number of synthetic samples (0 = Unlimited by DB)")
+    parser.add_argument("--from-db", action="store_true", help="Extract all actual questions from ragdb rag_document_questions")
     args = parser.parse_args()
 
     os.makedirs(os.path.dirname(args.output) or ".", exist_ok=True)
 
-    distribution = [
-        ("DOCUMENTS", 0.40),
-        ("WEB_SEARCH", 0.20),
-        ("CODING", 0.15),
-        ("EMAIL", 0.10),
-        ("GENERATE_FILE", 0.08),
-        ("AMBIGUOUS", 0.04),
-        ("CHITCHAT", 0.03),
-    ]
-
-    total_samples = args.samples
-    counts = {t: int(total_samples * ratio) for t, ratio in distribution}
-
     generated_data = []
-    for sample_type, count in counts.items():
-        for _ in range(count):
-            sample = generate_sample(sample_type)
-            generated_data.append(sample)
+
+    # Jika --from-db atau samples == 0, utamakan ekstrak dari ragdb
+    if args.from_db or args.samples == 0:
+        db_records = fetch_unlimited_db_samples()
+        if db_records:
+            system_prompt = (
+                "Kamu adalah model klasifikasi dan router intent presisi tinggi untuk CAKRA AI PT Pindad. "
+                "Tugasmu adalah menganalisis query pengguna dan mengeluarkan keputusan routing JSON deterministik."
+            )
+            for r in db_records:
+                q_text = r.get("generated_question", "").strip()
+                if not q_text:
+                    continue
+                doc_title = r.get("judul", "Regulasi PT Pindad")
+                page_str = r.get("page_range", "")
+                router_target = {
+                    "active_topic": "Regulasi & Kebijakan PT PINDAD",
+                    "key_subject": doc_title,
+                    "need_rag": True,
+                    "rag_reason": f"Menanyakan regulasi internal {doc_title}",
+                    "queries": [q_text, doc_title],
+                    "is_chitchat": False,
+                    "is_ambiguous": False,
+                    "pronoun": "formal_saya_anda",
+                    "tone_hint": "direct_concise"
+                }
+                generated_data.append({
+                    "conversations": [
+                        {"from": "system", "value": system_prompt},
+                        {"from": "human", "value": q_text},
+                        {"from": "gpt", "value": json.dumps(router_target, ensure_ascii=False)}
+                    ]
+                })
+            print(f"📦 Berhasil memuat {len(generated_data)} data routing asli regulasi dari ragdb!")
+
+    # Jika jumlah masih 0 atau diminta synthetic tambahan
+    if not generated_data or args.samples > 0:
+        total_samples = args.samples if args.samples > 0 else 1000
+        distribution = [
+            ("DOCUMENTS", 0.35),
+            ("DOCWRITER", 0.15),
+            ("WEB_SEARCH", 0.15),
+            ("CODING", 0.15),
+            ("EMAIL", 0.10),
+            ("GENERATE_FILE", 0.05),
+            ("AMBIGUOUS", 0.03),
+            ("CHITCHAT", 0.02),
+        ]
+        counts = {t: int(total_samples * ratio) for t, ratio in distribution}
+        for sample_type, count in counts.items():
+            for _ in range(count):
+                sample = generate_sample(sample_type)
+                generated_data.append(sample)
 
     random.shuffle(generated_data)
 
@@ -292,11 +374,9 @@ def main():
         for item in generated_data:
             f.write(json.dumps(item, ensure_ascii=False) + "\n")
 
-    print(f"✅ Berhasil men-generate {len(generated_data)} sampel dataset ke: {args.output}")
-    print(f"📊 Distribusi Dataset:")
-    for t, c in counts.items():
-        print(f"   - {t:<15}: {c} sampel ({c/len(generated_data)*100:.1f}%)")
+    print(f"✅ Berhasil mengekspor {len(generated_data)} sampel dataset router ke: {args.output} (Unlimited)")
 
 
 if __name__ == "__main__":
     main()
+

@@ -45,6 +45,9 @@ backend/assets/*
 backend/models/*
 !backend/models/.gitkeep
 
+backend/storage/*
+!backend/storage/.gitkeep
+
 backend/bin/
 
 file_koreksi/*

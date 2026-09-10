@@ -40,6 +40,10 @@ class ModeFlash:
             routing_data["is_ambiguous"] = False
             routing_data["is_multi_document"] = False
         
+        if current_user_npp == "GUEST":
+            routing_data["is_guest"] = True
+            routing_data["is_docwriter"] = False
+        
         # Select module
         module_name = select_call2_module(routing_data, has_rag_context=False)
         logger.info(f"[MODE_FLASH] Selected module: {module_name}")

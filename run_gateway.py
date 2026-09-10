@@ -54,6 +54,7 @@ ROUTE_MAP = [
     ("/uploads",         CHAT_SERVICE_URL),
     ("/accounts",        CHAT_SERVICE_URL),
     ("/file_peraturan",  CHAT_SERVICE_URL),
+    ("/doc_pages",       CHAT_SERVICE_URL),
 ]
 
 SSE_PATHS = [

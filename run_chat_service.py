@@ -277,6 +277,16 @@ async def serve_file_peraturan(file_path: str, request: Request):
         raise HTTPException(status_code=404, detail="File tidak ditemukan")
     return FileResponse(abs_path)
 
+DOC_PAGES_DIR = "/home/qisthi/pinAi/backend/storage/doc_pages"
+os.makedirs(DOC_PAGES_DIR, exist_ok=True)
+
+@app.get("/doc_pages/{file_path:path}", tags=["Static Files"])
+async def serve_doc_pages(file_path: str):
+    abs_path = os.path.join(DOC_PAGES_DIR, file_path)
+    if not os.path.exists(abs_path):
+        raise HTTPException(status_code=404, detail="Page image not found")
+    return FileResponse(abs_path)
+
 # ── Load Chat routers ─────────────────────────────────────────────────────────
 chat_service_router = APIRouter()
 

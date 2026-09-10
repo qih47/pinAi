@@ -436,9 +436,13 @@ export default function ContextIsolationModal({
                                 doc.stataktif === "obsolete" ? t.obsoleteStatus :
                                   t.validStatus}
                             </div>
+                          </div>
 
+                          {/* Sisi Kanan: Aksi Dokumen Tambahan + Toggle (<) + Tombol Mode Chat (Tanya, Kepatuhan, Bedah, atau Unfocus) */}
+                          <div style={{ display: "flex", gap: "6px", alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end" }}>
+                            {/* Aksi Dokumen Tambahan (Muncul saat di-expand) */}
                             {doc.filename && !isIsolated && expandedActions[doc.id] && (
-                              <>
+                              <div style={{ display: "flex", gap: "4px", alignItems: "center" }}>
                                 {/* Tombol Eye dengan dropdown PDF / Portal */}
                                 <div
                                   style={{ position: 'relative', display: 'inline-flex' }}
@@ -682,27 +686,31 @@ export default function ContextIsolationModal({
                                   </svg>
                                   {t.insightBtn}
                                 </button>
-                              </>
+                              </div>
                             )}
 
+                            {/* Tombol Toggle Expand/Collapse (<) persis di sebelah kiri tombol Tanya */}
                             {doc.filename && !isIsolated && (
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   setExpandedActions(prev => ({ ...prev, [doc.id]: !prev[doc.id] }));
                                 }}
+                                onMouseEnter={(e) => e.currentTarget.style.background = darkMode ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.08)"}
+                                onMouseLeave={(e) => e.currentTarget.style.background = expandedActions[doc.id] ? (darkMode ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.06)") : "transparent"}
                                 title={expandedActions[doc.id] ? "Sembunyikan aksi" : "Tampilkan aksi lainnya"}
                                 style={{
                                   padding: "4px 6px",
                                   background: expandedActions[doc.id] ? (darkMode ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.06)") : "transparent",
-                                  border: `1px solid ${expandedActions[doc.id] ? (darkMode ? "rgba(255,255,255,0.15)" : "rgba(0,0,0,0.1)") : "transparent"}`,
+                                  border: `1px solid ${expandedActions[doc.id] ? (darkMode ? "rgba(255,255,255,0.15)" : "rgba(0,0,0,0.1)") : (darkMode ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.08)")}`,
                                   color: theme.textColor,
                                   cursor: "pointer",
                                   display: "flex",
                                   alignItems: "center",
                                   justifyContent: "center",
                                   borderRadius: "6px",
-                                  transition: "all 0.2s ease"
+                                  transition: "all 0.2s ease",
+                                  marginRight: "2px",
                                 }}
                               >
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ transform: expandedActions[doc.id] ? 'rotate(0deg)' : 'rotate(180deg)', transition: 'transform 0.2s' }}>
@@ -710,10 +718,6 @@ export default function ContextIsolationModal({
                                 </svg>
                               </button>
                             )}
-                          </div>
-
-                          {/* Sisi Kanan: Tombol Mode Chat (Tanya, Kepatuhan, Bedah, atau Unfocus) */}
-                          <div style={{ display: "flex", gap: "6px", alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end" }}>
                             {isIsolated ? (
                               <button
                                 onClick={() => {

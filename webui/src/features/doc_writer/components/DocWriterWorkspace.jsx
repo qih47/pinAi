@@ -48,7 +48,18 @@ const DocWriterWorkspace = ({ darkMode = true, theme, isMobile = false }) => {
     window.addEventListener('mouseup', handleMouseUp);
   }, [setSplitWidth]);
 
-  if (!isOpen) return null;
+  const isGuest = (() => {
+    try {
+      const raw = localStorage.getItem('cakra_user');
+      if (!raw) return true;
+      const u = JSON.parse(raw);
+      return Boolean(u?.isGuest || u?.role === 'guest' || u?.npp === 'GUEST');
+    } catch {
+      return false;
+    }
+  })();
+
+  if (isGuest || !isOpen) return null;
 
   const bgHeader = darkMode ? '#18181b' : '#ffffff';
   const borderColor = darkMode ? '#2d2d32' : '#e5e7eb';

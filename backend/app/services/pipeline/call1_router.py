@@ -685,20 +685,22 @@ def _validate_and_normalize_routing(
 
     # ── ATURAN DOKUMEN WRITER & DRAF NASKAH DINAS (OVERRIDE AMBIGUOUS) ─────────
     # Jika pengguna meminta membuka editor atau membuat draf naskah dinas resmi (SE, SKEP, Memo),
-    # pastikan BUKAN ambigu dan jangan pernah di-gate oleh wizard!
+    # pastikan BUKAN ambigu dan jangan pernah di-gate oleh wizard! Khusus Pegawai (Bukan Tamu/Guest).
     is_docwriter_intent = bool(
-        routing.get("is_docwriter")
-        or precheck.get("is_docwriter")
-        or re.search(r'\b(buka|open|tampil(kan)?|muncul(kan)?|akses)\b.{0,25}\b(editor|writer|studio)\b', user_msg_lower)
-        or (any(kw in user_msg_lower for kw in ["surat edaran", "skep", "nota dinas", "surat keputusan", "naskah dinas"]) and any(v in user_msg_lower for v in ["draft", "draf", "siapkan", "buatkan", "susun", "bikin", "buka", "buat", "tulis"]))
-        or bool(re.search(r'\b(draft|draf|buatkan|siapkan|bikin|susun)\b.{0,20}\b(se|skep|surat)\b', user_msg_lower))
-        or any(kw in user_msg_lower for kw in [
-            "buka editor", "buka dokumen editor", "buka editornya", "buka dokumen writer",
-            "dokumen writer", "dokumen editor", "draft surat", "draf surat", "draft skep", "draf skep",
-            "draft se", "draf se", "draft memo", "draf memo", "draft nota dinas", "draf nota dinas",
-            "draft surat edaran", "draf surat edaran", "siapkan draft", "siapkan draf",
-            "buatkan draft", "buatkan draf", "susun draft", "susun draf"
-        ])
+        not is_guest and (
+            routing.get("is_docwriter")
+            or precheck.get("is_docwriter")
+            or re.search(r'\b(buka|open|tampil(kan)?|muncul(kan)?|akses)\b.{0,25}\b(editor|writer|studio)\b', user_msg_lower)
+            or (any(kw in user_msg_lower for kw in ["surat edaran", "skep", "nota dinas", "surat keputusan", "naskah dinas"]) and any(v in user_msg_lower for v in ["draft", "draf", "siapkan", "buatkan", "susun", "bikin", "buka", "buat", "tulis"]))
+            or bool(re.search(r'\b(draft|draf|buatkan|siapkan|bikin|susun)\b.{0,20}\b(se|skep|surat)\b', user_msg_lower))
+            or any(kw in user_msg_lower for kw in [
+                "buka editor", "buka dokumen editor", "buka editornya", "buka dokumen writer",
+                "dokumen writer", "dokumen editor", "draft surat", "draf surat", "draft skep", "draf skep",
+                "draft se", "draf se", "draft memo", "draf memo", "draft nota dinas", "draf nota dinas",
+                "draft surat edaran", "draf surat edaran", "siapkan draft", "siapkan draf",
+                "buatkan draft", "buatkan draf", "susun draft", "susun draf"
+            ])
+        )
     )
     if is_docwriter_intent:
         routing["is_docwriter"] = True
@@ -1009,8 +1011,9 @@ def _validate_and_normalize_routing(
                 routing["queries"] = [routing.get("key_subject") or user_message]
             logger.info(f"[CALL1] 🛡️ Guard: Auto-activated is_web_search | queries={routing['queries']}")
     # 🔒 GUEST HARD-WALL SECURITY GUARD:
-    # Tamu DILARANG KERAS mengakses dokumen/arsip internal PT Pindad dalam kondisi apapun!
+    # Tamu DILARANG KERAS mengakses dokumen/arsip internal PT Pindad dan Document Studio dalam kondisi apapun!
     if is_guest:
+        routing["is_docwriter"] = False
         if routing.get("need_rag"):
             logger.info("[CALL1] 🛡️ Guest Mode: Forcing need_rag=False (RAG hard-block for Guest)")
             routing["need_rag"] = False
@@ -1059,6 +1062,7 @@ def _build_fallback_routing(precheck: Dict[str, Any]) -> Dict[str, Any]:
         "fetch_urls": valid_detected_urls,
         "is_web_search": False,
         "is_coding": bool(precheck.get("is_coding", False)),
+        "is_docwriter": bool(precheck.get("is_docwriter", False)) and not is_guest,
         "is_generate_file": bool(precheck.get("is_generate_file", False)),
         "is_generate_email": bool(precheck.get("is_generate_email", False)),
         "needs_code_analysis": False,
@@ -1167,6 +1171,7 @@ def _build_fallback_routing(precheck: Dict[str, Any]) -> Dict[str, Any]:
     # 4. Strict Guest Isolation Guard
     if is_guest:
         fallback["need_rag"] = False
+        fallback["is_docwriter"] = False
         fallback["query_judul"] = []
         fallback["queries"] = []
 
@@ -1309,13 +1314,16 @@ async def generate_call1_preset_routing(
             result["is_ambiguous"] = True
             result["ambiguity_reason"] = str(res_json.get("ambiguity_reason") or "").strip()
             logger.info(f"[CALL1_PRESET_ROUTING] ❓ Ambiguity detected -> reason: '{result['ambiguity_reason']}'")
-        if (
+        is_guest_user = bool(precheck.get("is_guest", False))
+        if not is_guest_user and (
             precheck.get("is_docwriter")
             or re.search(r'\b(buka|open|tampil(kan)?|muncul(kan)?|akses)\b.{0,25}\b(editor|writer|studio)\b', user_message.lower())
             or any(kw in user_message.lower() for kw in ["buka editor", "dokumen writer", "dokumen editor", "draft surat", "draf surat", "draft skep", "draf skep", "draft se", "draf se", "draft memo", "draf memo", "draft nota dinas", "draf nota dinas", "siapkan draft", "siapkan draf", "buatkan draft", "buatkan draf"])
         ):
             result["is_docwriter"] = True
             result["is_ambiguous"] = False
+        else:
+            result["is_docwriter"] = False
 
         # Kelanjutan visual refinement jika Call 2 sebelumnya telah membuat visual
         user_lower_check = user_message.lower()

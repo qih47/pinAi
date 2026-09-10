@@ -177,41 +177,41 @@ export default function CollabDocumentMinimapPill({
 
         // 1. Deteksi Format File Presentasi / Slide
         if (/\.(pptx?|ppsx?|key)$/i.test(lower) || lower.includes('slide') || lower.includes('presentasi')) {
-            return { label: 'SLIDE', color: 'bg-amber-500/15 text-amber-300 border-amber-500/30' };
+            return { label: 'SLIDE', color: darkMode ? 'bg-amber-500/15 text-amber-300 border-amber-500/30' : 'bg-amber-50 text-amber-800 border-amber-300' };
         }
 
         // 2. Deteksi Format Spreadsheet / Excel
         if (/\.(xlsx?|csv|ods)$/i.test(lower) || lower.includes('spreadsheet') || lower.includes('rekapitulasi')) {
-            return { label: 'EXCEL', color: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30' };
+            return { label: 'EXCEL', color: darkMode ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30' : 'bg-emerald-50 text-emerald-800 border-emerald-300' };
         }
 
         // 3. Deteksi Format Word / Dokumen Teks
         if (/\.(docx?|rtf|odt|txt)$/i.test(lower)) {
-            return { label: 'WORD', color: 'bg-blue-500/15 text-blue-300 border-blue-500/30' };
+            return { label: 'WORD', color: darkMode ? 'bg-blue-500/15 text-blue-300 border-blue-500/30' : 'bg-blue-50 text-blue-800 border-blue-300' };
         }
 
         // 4. Deteksi Gambar
         if (/\.(png|jpe?g|webp|gif|bmp|svg)$/i.test(lower)) {
-            return { label: 'GAMBAR', color: 'bg-cyan-500/15 text-cyan-300 border-cyan-500/30' };
+            return { label: 'GAMBAR', color: darkMode ? 'bg-cyan-500/15 text-cyan-300 border-cyan-500/30' : 'bg-cyan-50 text-cyan-800 border-cyan-300' };
         }
 
         // 5. Jika memiliki jenis/kategori resmi dari database
         if (explicitJenis && explicitJenis !== 'Regulasi' && explicitJenis !== 'Dokumen') {
-            return { label: explicitJenis, color: 'bg-indigo-500/15 text-indigo-300 border-indigo-500/30' };
+            return { label: explicitJenis, color: darkMode ? 'bg-indigo-500/15 text-indigo-300 border-indigo-500/30' : 'bg-indigo-50 text-indigo-800 border-indigo-300' };
         }
 
         // 6. Deteksi Regulasi Resmi Pindad dengan Batas Kata (Word Boundary) yang Ketat
-        if (/\bpkb\b/i.test(lower)) return { label: 'PKB', color: 'bg-teal-500/15 text-teal-300 border-teal-500/30' };
-        if (/\bsop\b|\bprosedur\b/i.test(lower)) return { label: 'SOP', color: 'bg-blue-500/15 text-blue-300 border-blue-500/30' };
-        if (/\b(sk|skep)\b|\bdireksi\b|\bkeputusan\b/i.test(lower)) return { label: 'SK Direksi', color: 'bg-amber-500/15 text-amber-300 border-amber-500/30' };
-        if (/\bse\b|\bedaran\b/i.test(lower)) return { label: 'Surat Edaran', color: 'bg-purple-500/15 text-purple-300 border-purple-500/30' };
+        if (/\bpkb\b/i.test(lower)) return { label: 'PKB', color: darkMode ? 'bg-teal-500/15 text-teal-300 border-teal-500/30' : 'bg-teal-50 text-teal-800 border-teal-300' };
+        if (/\bsop\b|\bprosedur\b/i.test(lower)) return { label: 'SOP', color: darkMode ? 'bg-blue-500/15 text-blue-300 border-blue-500/30' : 'bg-blue-50 text-blue-800 border-blue-300' };
+        if (/\b(sk|skep)\b|\bdireksi\b|\bkeputusan\b/i.test(lower)) return { label: 'SK Direksi', color: darkMode ? 'bg-amber-500/15 text-amber-300 border-amber-500/30' : 'bg-amber-50 text-amber-800 border-amber-300' };
+        if (/\bse\b|\bedaran\b/i.test(lower)) return { label: 'Surat Edaran', color: darkMode ? 'bg-purple-500/15 text-purple-300 border-purple-500/30' : 'bg-purple-50 text-purple-800 border-purple-300' };
 
         // 7. Format PDF standar
         if (lower.endsWith('.pdf')) {
-            return { label: 'PDF', color: 'bg-rose-500/15 text-rose-300 border-rose-500/30' };
+            return { label: 'PDF', color: darkMode ? 'bg-rose-500/15 text-rose-300 border-rose-500/30' : 'bg-rose-50 text-rose-800 border-rose-300' };
         }
 
-        return { label: 'REGULASI', color: 'bg-zinc-500/15 text-zinc-300 border-zinc-500/30' };
+        return { label: 'REGULASI', color: darkMode ? 'bg-zinc-500/15 text-zinc-300 border-zinc-500/30' : 'bg-slate-100 text-slate-700 border-slate-300' };
     };
 
     if (!sessionDocs || sessionDocs.length === 0 || isSplitScreen || isTemplateModalOpen) {
@@ -283,15 +283,15 @@ export default function CollabDocumentMinimapPill({
                     // ── 🗂️ TAMPILAN EXPANDED POPOVER ──
                     <div className="flex flex-col w-full">
                         {/* Header */}
-                        <div className="flex items-center justify-between pb-2 border-b border-zinc-700/40 mb-2">
+                        <div className={`flex items-center justify-between pb-2 mb-2 border-b ${darkMode ? 'border-zinc-700/40' : 'border-slate-200'}`}>
                             <div className="flex items-center gap-1.5">
-                                <BookOpen size={14} className="text-amber-400" />
-                                <span className="text-xs font-semibold text-zinc-100">
+                                <BookOpen size={14} className={darkMode ? "text-amber-400" : "text-amber-600"} />
+                                <span className={`text-xs font-semibold ${darkMode ? 'text-zinc-100' : 'text-slate-800'}`}>
                                     {t.docMinimapTitle || 'Dokumen Rujukan Tim'}
                                 </span>
                             </div>
                             <div className="flex items-center gap-1.5">
-                                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30">
+                                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full border ${darkMode ? 'bg-amber-500/15 text-amber-300 border-amber-500/30' : 'bg-amber-50 text-amber-800 border-amber-300'}`}>
                                     {sessionDocs.length}
                                 </span>
                                 <button
@@ -300,7 +300,7 @@ export default function CollabDocumentMinimapPill({
                                         e.stopPropagation();
                                         setIsOpen(false);
                                     }}
-                                    className="p-1 rounded-md text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 transition-colors"
+                                    className={`p-1 rounded-md transition-colors ${darkMode ? 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800' : 'text-slate-400 hover:text-slate-700 hover:bg-slate-100'}`}
                                 >
                                     <X size={13} />
                                 </button>
@@ -310,7 +310,7 @@ export default function CollabDocumentMinimapPill({
                         {/* Search Input (jika dokumen >= 4) */}
                         {sessionDocs.length >= 4 && (
                             <div className="relative mb-2">
-                                <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-zinc-400 pointer-events-none" />
+                                <Search size={13} className={`absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none ${darkMode ? 'text-zinc-400' : 'text-slate-400'}`} />
                                 <input
                                     type="text"
                                     value={searchQuery}
@@ -319,7 +319,7 @@ export default function CollabDocumentMinimapPill({
                                     className={`w-full text-[11px] pl-7 pr-3 py-1.5 rounded-lg border outline-none ${
                                         darkMode
                                             ? 'bg-zinc-900 border-zinc-700/70 text-zinc-200 placeholder-zinc-500 focus:border-amber-500'
-                                            : 'bg-zinc-50 border-zinc-200 text-zinc-800 placeholder-zinc-400 focus:border-amber-500'
+                                            : 'bg-slate-50 border-slate-200 text-slate-800 placeholder-slate-400 focus:border-amber-500'
                                     }`}
                                 />
                             </div>
@@ -335,11 +335,11 @@ export default function CollabDocumentMinimapPill({
                                         className={`p-2 rounded-xl border transition-all ${
                                             darkMode
                                                 ? 'bg-zinc-900/60 hover:bg-zinc-800/80 border-zinc-800/80 hover:border-zinc-700'
-                                                : 'bg-zinc-50 hover:bg-zinc-100/90 border-zinc-200'
+                                                : 'bg-slate-50/90 hover:bg-slate-100/90 border-slate-200 shadow-sm'
                                         }`}
                                     >
                                         <div className="flex items-start gap-2 mb-1.5">
-                                            <div className="p-1 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-400 shrink-0 mt-0.5">
+                                            <div className={`p-1 rounded-lg shrink-0 mt-0.5 border ${darkMode ? 'bg-amber-500/10 border-amber-500/20 text-amber-400' : 'bg-amber-50 border-amber-200 text-amber-600'}`}>
                                                 <FileText size={12} />
                                             </div>
                                             <div className="flex-1 min-w-0">
@@ -348,19 +348,19 @@ export default function CollabDocumentMinimapPill({
                                                         {badge.label}
                                                     </span>
                                                 </div>
-                                                <div className="text-[11px] font-semibold line-clamp-2 text-zinc-100 leading-snug">
+                                                <div className={`text-[11px] font-semibold line-clamp-2 leading-snug ${darkMode ? 'text-zinc-100' : 'text-slate-800'}`}>
                                                     {doc.title}
                                                 </div>
                                             </div>
                                         </div>
 
                                         {/* Action buttons */}
-                                        <div className="flex items-center justify-end gap-1.5 mt-1 pt-1.5 border-t border-white/5">
+                                        <div className={`flex items-center justify-end gap-1.5 mt-1 pt-1.5 border-t ${darkMode ? 'border-white/5' : 'border-slate-200/80'}`}>
                                             {typeof doc.messageIndex === 'number' && (
                                                 <button
                                                     type="button"
                                                     onClick={(e) => handleJumpToChat(e, doc)}
-                                                    className="flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-medium text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 transition-colors"
+                                                    className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-medium transition-colors ${darkMode ? 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800' : 'text-slate-500 hover:text-slate-800 hover:bg-slate-200/60'}`}
                                                     title="Lihat pesan di ruang obrolan"
                                                 >
                                                     <MessageSquare size={11} />
@@ -370,7 +370,7 @@ export default function CollabDocumentMinimapPill({
                                             <button
                                                 type="button"
                                                 onClick={(e) => handleOpenInInterrogator(e, doc)}
-                                                className="flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-semibold text-amber-300 bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 transition-colors"
+                                                className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-semibold transition-colors border ${darkMode ? 'text-amber-300 bg-amber-500/15 hover:bg-amber-500/25 border-amber-500/30' : 'text-amber-800 bg-amber-100/80 hover:bg-amber-200/80 border-amber-300'}`}
                                                 title="Buka berkas di Document Interrogator"
                                             >
                                                 <Eye size={11} />

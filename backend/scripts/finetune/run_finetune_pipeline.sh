@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# CAKRA AI — Master Fine-Tuning Pipeline Runner
+# CAKRA AI — Master Fine-Tuning Pipeline Runner (Unlimited by Training)
 # ==============================================================================
-# Skrip automasi satu-klik untuk generate dataset, training QLoRA, dan export GGUF.
+# Skrip automasi untuk training QLoRA cakra-router (Call 1 e4b) dan cakra-core (Call 2).
+# Menggunakan dataset akumulatif hasil training regulasi tanpa batas sampel.
 #
 # Usage:
 #   ./backend/scripts/finetune/run_finetune_pipeline.sh all
@@ -15,36 +16,49 @@ set -e
 TARGET=${1:-"all"}
 
 echo "================================================================="
-echo "🚀 CAKRA AI ENTERPRISE FINE-TUNING PIPELINE"
+echo "🚀 CAKRA AI ENTERPRISE FINE-TUNING PIPELINE (UNLIMITED BY TRAINING)"
 echo "Target: $TARGET"
 echo "================================================================="
 
+ROUTER_DATASET="data/finetune/nightly_call1_router.jsonl"
+CORE_DATASET="data/finetune/nightly_cakra_core.jsonl"
+
 if [ "$TARGET" == "all" ] || [ "$TARGET" == "call1" ]; then
     echo ""
-    echo "▶️ [STEP 1/3] Menghasilkan 3.000 Dataset Call 1 Router..."
-    python3 backend/scripts/finetune/generate_call1_dataset.py \
-        --output data/finetune/call1_train_3000.jsonl \
-        --samples 3000
+    echo "▶️ [STEP 1/2] Menyiapkan Dataset Call 1 Router e4b (Unlimited)..."
+    if [ ! -s "$ROUTER_DATASET" ]; then
+        echo "   Dataset $ROUTER_DATASET kosong atau belum ada, mengekstrak dari ragdb..."
+        ./rag_env/bin/python backend/scripts/finetune/generate_call1_dataset.py \
+            --output "$ROUTER_DATASET" \
+            --from-db
+    fi
+    TOTAL_ROUTER=$(wc -l < "$ROUTER_DATASET" 2>/dev/null || echo 0)
+    echo "   Total Baris Data Latih Router e4b: $TOTAL_ROUTER baris"
 
     echo ""
-    echo "▶️ [STEP 2/3] Memulai Training QLoRA cakra-router..."
-    python3 backend/scripts/finetune/train_call1_router.py \
-        --dataset data/finetune/call1_train_3000.jsonl \
+    echo "▶️ [STEP 2/2] Memulai Training QLoRA cakra-router (e4b)..."
+    ./rag_env/bin/python backend/scripts/finetune/train_call1_router.py \
+        --dataset "$ROUTER_DATASET" \
         --output_dir models/adapters/cakra-router-lora \
         --epochs 3
 fi
 
 if [ "$TARGET" == "all" ] || [ "$TARGET" == "call2" ]; then
     echo ""
-    echo "▶️ [STEP 1/3] Menghasilkan 2.000 Dataset CoT Call 2 Core..."
-    python3 backend/scripts/finetune/generate_call2_dataset.py \
-        --output data/finetune/call2_train_2000.jsonl \
-        --samples 2000
+    echo "▶️ [STEP 1/2] Menyiapkan Dataset CoT Call 2 Core (Unlimited)..."
+    if [ ! -s "$CORE_DATASET" ]; then
+        echo "   Dataset $CORE_DATASET kosong atau belum ada, mengekstrak dari ragdb..."
+        ./rag_env/bin/python backend/scripts/finetune/generate_call2_dataset.py \
+            --output "$CORE_DATASET" \
+            --from-db
+    fi
+    TOTAL_CORE=$(wc -l < "$CORE_DATASET" 2>/dev/null || echo 0)
+    echo "   Total Baris Data Latih Core 31B: $TOTAL_CORE baris"
 
     echo ""
-    echo "▶️ [STEP 2/3] Memulai Training QLoRA cakra-core..."
-    python3 backend/scripts/finetune/train_call2_core.py \
-        --dataset data/finetune/call2_train_2000.jsonl \
+    echo "▶️ [STEP 2/2] Memulai Training QLoRA cakra-core..."
+    ./rag_env/bin/python backend/scripts/finetune/train_call2_core.py \
+        --dataset "$CORE_DATASET" \
         --output_dir models/adapters/cakra-core-lora \
         --epochs 3
 fi
@@ -53,3 +67,4 @@ echo ""
 echo "================================================================="
 echo "✅ PIPELINE FINE-TUNING SELESAI DENGAN SUKSES!"
 echo "================================================================="
+

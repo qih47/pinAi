@@ -81,8 +81,10 @@ class ModeHub:
         precheck["user_default_pronoun"] = user_default_pronoun
         precheck["client_context"] = client_context
 
-        
         is_guest = (current_user_npp == "GUEST")
+        precheck["is_guest"] = is_guest
+        if is_guest:
+            precheck["is_docwriter"] = False
         # ── Fetch Long-Term Memory (ai_document_chunks) & Check Generic Title ────────
         session_chunks_text = ""
         visited_urls = []

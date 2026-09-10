@@ -49,6 +49,47 @@ export default function ChatPage({ isGuest,
 
   const wasLeftSidebarOpenForDocWriterRef = React.useRef(false);
 
+  // ── Hanya munculkan icon Dokumen Studio jika diminta via AI (seperti Image 2) & BUKAN Guest ──
+  const isAiActivated = useDocWriterStore((state) => state.isAiActivated);
+  const [hasSessionDocWriter, setHasSessionDocWriter] = React.useState(false);
+
+  React.useEffect(() => {
+    if (isGuest) {
+      setHasSessionDocWriter(false);
+      return;
+    }
+    if (isDocWriterOpen) {
+      setHasSessionDocWriter(true);
+    }
+    if (messages && messages.length > 0) {
+      const found = messages.some((m) => {
+        const text = m.content || m.message_text || '';
+        return typeof text === 'string' && /```(?:docwriter|doc_writer|document_writer)\b/i.test(text);
+      });
+      if (found) setHasSessionDocWriter(true);
+    }
+  }, [isGuest, isDocWriterOpen, messages]);
+
+  const hasAiTriggeredDocWriter = React.useMemo(() => {
+    if (isGuest) return false;
+    if (isDocWriterOpen || hasSessionDocWriter) return true;
+    if (messages && messages.length > 0) {
+      const found = messages.some((m) => {
+        const text = m.content || m.message_text || '';
+        return typeof text === 'string' && /```(?:docwriter|doc_writer|document_writer)\b/i.test(text);
+      });
+      if (found) return true;
+    }
+    return Boolean(isAiActivated);
+  }, [isGuest, isDocWriterOpen, hasSessionDocWriter, messages, isAiActivated]);
+
+  // Pastikan writer ditutup paksa jika guest mode aktif
+  React.useEffect(() => {
+    if (isGuest && isDocWriterOpen) {
+      useDocWriterStore.getState().closeWriter();
+    }
+  }, [isGuest, isDocWriterOpen]);
+
   // ── Auto-collapse left sidebar when Document Writer editor is open (in main chat & collab) ──
   React.useEffect(() => {
     if (isDocWriterOpen) {
@@ -67,6 +108,8 @@ export default function ChatPage({ isGuest,
   // ── Auto-close Document Studio saat beralih sesi chat atau ke menu lain ──
   React.useEffect(() => {
     useDocWriterStore.getState().closeWriter();
+    useDocWriterStore.getState().setAiActivated(false);
+    setHasSessionDocWriter(false);
   }, [activeSessionId, corporateMode, showDocumentList, location.pathname]);
 
   const t = translations[language]?.chatPage || translations.id.chatPage;
@@ -451,36 +494,38 @@ export default function ChatPage({ isGuest,
               </button>
             )}
 
-            {/* 📝 TOMBOL DOKUMEN WRITER & EDITOR (Global Co-Authoring) */}
-            <button
-              onClick={toggleDocWriter}
-              style={{
-                background: isDocWriterOpen ? (darkMode ? "rgba(56, 189, 248, 0.15)" : "rgba(2, 132, 199, 0.1)") : "transparent",
-                border: isDocWriterOpen ? "1px solid rgba(56, 189, 248, 0.4)" : "none",
-                cursor: "pointer",
-                width: "36px",
-                height: "36px",
-                borderRadius: "50%",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                color: isDocWriterOpen ? "#38bdf8" : theme.iconColor,
-                transition: "all 0.2s",
-                outline: "none",
-              }}
-              onMouseEnter={(e) => {
-                if (!isDocWriterOpen) e.currentTarget.style.background = darkMode ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.05)";
-              }}
-              onMouseLeave={(e) => {
-                if (!isDocWriterOpen) e.currentTarget.style.background = "transparent";
-              }}
-              title="Buka Dokumen Writer (Word/SKEP/SE)"
-            >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
-                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
-              </svg>
-            </button>
+            {/* 📝 TOMBOL DOKUMEN WRITER & EDITOR (Hanya muncul jika diminta via AI / Image 2, dan BUKAN Guest) */}
+            {!isGuest && hasAiTriggeredDocWriter && (
+              <button
+                onClick={toggleDocWriter}
+                style={{
+                  background: isDocWriterOpen ? (darkMode ? "rgba(56, 189, 248, 0.15)" : "rgba(2, 132, 199, 0.1)") : "transparent",
+                  border: isDocWriterOpen ? "1px solid rgba(56, 189, 248, 0.4)" : "none",
+                  cursor: "pointer",
+                  width: "36px",
+                  height: "36px",
+                  borderRadius: "50%",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  color: isDocWriterOpen ? "#38bdf8" : theme.iconColor,
+                  transition: "all 0.2s",
+                  outline: "none",
+                }}
+                onMouseEnter={(e) => {
+                  if (!isDocWriterOpen) e.currentTarget.style.background = darkMode ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.05)";
+                }}
+                onMouseLeave={(e) => {
+                  if (!isDocWriterOpen) e.currentTarget.style.background = "transparent";
+                }}
+                title="Buka Dokumen Writer (Word/SKEP/SE)"
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                  <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                </svg>
+              </button>
+            )}
 
             {/* 👇 W16: Notification Bell */}
             <HeaderDropdownMenu
@@ -500,7 +545,9 @@ export default function ChatPage({ isGuest,
         {/* WRAPPER FOR SPLIT SCREEN */}
         <div style={{ flex: 1, display: "flex", flexDirection: "row", overflow: "hidden", marginTop: 0 }}>
           <PdfInterrogator darkMode={darkMode} language={language} isMobile={isMobile} />
-          <DocWriterWorkspace darkMode={darkMode} theme={theme} isMobile={isMobile} />
+          {!isGuest && isDocWriterOpen && (
+            <DocWriterWorkspace darkMode={darkMode} theme={theme} isMobile={isMobile} />
+          )}
           <div
             style={{
               flex: 1,

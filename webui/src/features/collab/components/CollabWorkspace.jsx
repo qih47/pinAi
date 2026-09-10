@@ -68,6 +68,9 @@ export const CollabWorkspace = ({
     }
   })();
 
+  const isGuest = Boolean(userData?.isGuest || userData?.role === 'guest' || currentNpp === 'GUEST');
+  const isAiActivated = useDocWriterStore((state) => state.isAiActivated);
+
   // Skema warna konsisten persis ChatPage
   const pageBg = theme?.mainBg || (darkMode ? '#151517' : '#ffffff');
   const borderColor = theme?.borderColor || (darkMode ? '#2a2a2d' : '#e5e7eb');
@@ -92,6 +95,56 @@ export const CollabWorkspace = ({
   const [isLoadingChat, setIsLoadingChat] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [autoNotedMessageIds, setAutoNotedMessageIds] = useState(new Set());
+  const [streamingCakra, setStreamingCakra] = useState(null);
+  const [cakraThinkingPhase, setCakraThinkingPhase] = useState('');
+
+  const [hasRoomDocWriter, setHasRoomDocWriter] = useState(false);
+
+  useEffect(() => {
+    if (isGuest) {
+      setHasRoomDocWriter(false);
+      return;
+    }
+    if (isDocWriterOpen) {
+      setHasRoomDocWriter(true);
+    }
+    if (messages && messages.length > 0) {
+      const found = messages.some((m) => {
+        const text = m.message_text || m.content || '';
+        return typeof text === 'string' && /```(?:docwriter|doc_writer|document_writer)\b/i.test(text);
+      });
+      if (found) setHasRoomDocWriter(true);
+    }
+    if (streamingCakra) {
+      const streamText = streamingCakra.message_text || streamingCakra.content || '';
+      if (typeof streamText === 'string' && /```(?:docwriter|doc_writer|document_writer)\b/i.test(streamText)) {
+        setHasRoomDocWriter(true);
+      }
+    }
+  }, [isGuest, isDocWriterOpen, messages, streamingCakra]);
+
+  useEffect(() => {
+    setHasRoomDocWriter(false);
+  }, [roomId]);
+
+  const hasAiTriggeredDocWriter = useMemo(() => {
+    if (isGuest) return false;
+    if (isDocWriterOpen || hasRoomDocWriter) return true;
+    if (messages && messages.length > 0) {
+      const found = messages.some((m) => {
+        const text = m.message_text || m.content || '';
+        return typeof text === 'string' && /```(?:docwriter|doc_writer|document_writer)\b/i.test(text);
+      });
+      if (found) return true;
+    }
+    if (streamingCakra) {
+      const streamText = streamingCakra.message_text || streamingCakra.content || '';
+      if (typeof streamText === 'string' && /```(?:docwriter|doc_writer|document_writer)\b/i.test(streamText)) {
+        return true;
+      }
+    }
+    return Boolean(isAiActivated);
+  }, [isGuest, isDocWriterOpen, hasRoomDocWriter, messages, streamingCakra, isAiActivated]);
 
   const wasSidebarOpenForPadRef = useRef(false);
 
@@ -357,10 +410,6 @@ export const CollabWorkspace = ({
     }
     return map;
   }, [roomDetail]);
-
-  // State Streaming Real-time CAKRA
-  const [streamingCakra, setStreamingCakra] = useState(null);
-  const [cakraThinkingPhase, setCakraThinkingPhase] = useState('');
 
   // State Scroll to Bottom (Button To Bottom identik dengan chat utama)
   const [showScrollBottom, setShowScrollBottom] = useState(false);
@@ -1015,24 +1064,26 @@ export const CollabWorkspace = ({
               </button>
 
               {/* Toggle Document Writer & Editor (Word/SKEP/SE) */}
-              <button
-                type="button"
-                onClick={toggleDocWriter}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all ${
-                  isDocWriterOpen
-                    ? 'bg-sky-500/20 text-sky-300 border-sky-500/40 shadow-sm'
-                    : 'hover:bg-white/5'
-                }`}
-                style={!isDocWriterOpen ? {
-                  background: darkMode ? '#1e1e20' : '#f3f4f6',
-                  borderColor: borderColor,
-                  color: textColor
-                } : {}}
-                title="Buka Dokumen Writer (Word/SKEP/SE)"
-              >
-                <FileEdit size={14} className="text-sky-400" />
-                <span className="hidden sm:inline">Doc Writer</span>
-              </button>
+              {!isGuest && hasAiTriggeredDocWriter && (
+                <button
+                  type="button"
+                  onClick={toggleDocWriter}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all ${
+                    isDocWriterOpen
+                      ? 'bg-sky-500/20 text-sky-300 border-sky-500/40 shadow-sm'
+                      : 'hover:bg-white/5'
+                  }`}
+                  style={!isDocWriterOpen ? {
+                    background: darkMode ? '#1e1e20' : '#f3f4f6',
+                    borderColor: borderColor,
+                    color: textColor
+                  } : {}}
+                  title="Buka Dokumen Writer (Word/SKEP/SE)"
+                >
+                  <FileEdit size={14} className="text-sky-400" />
+                  <span className="hidden sm:inline">Doc Writer</span>
+                </button>
+              )}
 
               {/* Toggle Document Pad */}
               <button

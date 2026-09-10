@@ -8,42 +8,45 @@ class TrainingService:
     @staticmethod
     async def get_source_docs() -> List[Dict[str, Any]]:
         """
-        Fetches documents from qa_peraturan_db (berita) and cross-checks with ragdb (dokumen).
-        Returns list with is_embedded flag.
+        Fetches all documents from qa_peraturan_db (berita) and cross-checks with ragdb (dokumen_chunk).
+        Returns list with accurate is_embedded flag based on whether vector embeddings actually exist.
         """
         try:
-            # 1. Fetch source documents from MySQL
+            # 1. Fetch all source documents from MySQL (tanpa limit 200)
             mysql_docs = []
             async with get_peraturan_db() as conn_mysql:
                 async with conn_mysql.cursor() as cur:
-                    # We fetch a subset or everything (e.g., top 100 for now, ordered by date)
                     await cur.execute("""
                         SELECT id_berita, judul, noper, tanggal, gambar, id_kategori
                         FROM berita
                         ORDER BY id_berita DESC
-                        LIMIT 200
                     """)
                     columns = [col[0] for col in cur.description]
                     rows = await cur.fetchall()
                     for row in rows:
                         mysql_docs.append(dict(zip(columns, row)))
 
-            # 2. Cross-check with PostgreSQL to see which are already embedded
+            # 2. Cross-check dengan PostgreSQL ragdb: hanya dokumen yang benar-benar memiliki embedding di dokumen_chunk
             embedded_ids = set()
             async with get_db() as conn_pg:
-                # We assume dokumen.id maps to berita.id_berita
-                pg_rows = await conn_pg.fetch("SELECT id FROM dokumen")
-                embedded_ids = {row['id'] for row in pg_rows}
+                pg_rows = await conn_pg.fetch("""
+                    SELECT DISTINCT dokumen_id 
+                    FROM dokumen_chunk 
+                    WHERE embedding IS NOT NULL
+                """)
+                embedded_ids = {row['dokumen_id'] for row in pg_rows}
 
             # 3. Assemble response
             result = []
             for doc in mysql_docs:
                 doc_id = doc['id_berita']
+                tgl = doc.get('tanggal')
+                tgl_str = tgl.isoformat() if hasattr(tgl, 'isoformat') else str(tgl) if tgl else None
                 result.append({
                     "id": doc_id,
                     "judul": doc['judul'],
                     "noper": doc['noper'],
-                    "tanggal": doc['tanggal'].isoformat() if doc['tanggal'] else None,
+                    "tanggal": tgl_str,
                     "kategori_id": doc['id_kategori'],
                     "file_name": doc['gambar'],
                     "is_embedded": doc_id in embedded_ids

@@ -1128,7 +1128,7 @@ Jika konteks pesan atau riwayat sebelumnya berkaitan dengan pembuatan script, fo
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Pastikan jawabanmu langsung ke intinya, namun tetap detail dan informatif. Jika berkaitan dengan koding/teknis, berikan solusinya secara proaktif tanpa menunda dengan daftar pertanyaan manual.
 {% endif %}
-""" + CORE_TONE_AND_IDENTITY + "\n" + DATA_TABLES_AND_FORM_GUIDANCE + "\n" + DOCUMENT_WRITER_GUIDANCE
+""" + CORE_TONE_AND_IDENTITY + "\n" + DATA_TABLES_AND_FORM_GUIDANCE
 
 # ── PROMPT CHITCHAT & EMPATHETIC DIALOGUE (~300 Token) ───────────────────
 PROMPT_CHITCHAT_TEMPLATE = """{{ get_base_persona(employee_name, mode_title) }}""" + """

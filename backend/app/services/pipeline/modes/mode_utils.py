@@ -482,14 +482,9 @@ def build_call2_system_prompt(
             if "MODE SMART MAIL" not in prompt:
                 prompt += "\n\n" + EMAIL_SYSTEM_PROMPT
 
-        # Injeksi Dokumen Writer & Editor (Tool Global BUMN)
-        user_msg_check = (precheck.get("_user_message") or "").lower()
-        if (
-            precheck.get("is_docwriter")
-            or any(kw in user_msg_check for kw in [
-                "buka editor", "editor", "writer", "surat edaran", "skep", "nota dinas", "draf", "draft"
-            ])
-        ):
+        # Injeksi Dokumen Writer & Editor (Tool Global BUMN) - Khusus Pegawai Resmi (Bukan Tamu/Guest)
+        is_guest_user = bool(precheck.get("is_guest", False))
+        if not is_guest_user and precheck.get("is_docwriter"):
             from backend.app.services.pipeline.prompts.core_prompts import DOCUMENT_WRITER_GUIDANCE
             if "DOCUMENT WRITER & EDITOR" not in prompt:
                 prompt += "\n\n" + DOCUMENT_WRITER_GUIDANCE

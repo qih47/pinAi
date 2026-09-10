@@ -201,7 +201,9 @@ const CollabDocumentPad = ({
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
               isDirty
                 ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-md shadow-emerald-950/40'
-                : 'opacity-40 cursor-not-allowed bg-white/[0.03] text-zinc-400'
+                : darkMode 
+                  ? 'opacity-40 cursor-not-allowed bg-white/[0.03] text-zinc-400' 
+                  : 'opacity-40 cursor-not-allowed bg-black/[0.04] text-slate-400'
             }`}
           >
             {isSaving ? (
@@ -220,7 +222,7 @@ const CollabDocumentPad = ({
           {onClose && (
             <button
               onClick={onClose}
-              className="p-1.5 rounded-lg hover:bg-white/10 transition-colors text-zinc-400 hover:text-zinc-200"
+              className={`p-1.5 rounded-lg transition-colors ${darkMode ? 'hover:bg-white/10 text-zinc-400 hover:text-zinc-200' : 'hover:bg-slate-100 text-slate-400 hover:text-slate-700'}`}
               title={t.docPadClose}
             >
               <X size={16} />
@@ -240,14 +242,18 @@ const CollabDocumentPad = ({
       >
         <div className="flex items-center gap-1.5 flex-wrap">
           {/* Switch Edit / Preview Mode */}
-          <div className="flex items-center p-0.5 rounded-lg bg-black/30 border border-white/[0.06]">
+          <div className={`flex items-center p-0.5 rounded-lg border ${darkMode ? 'bg-black/30 border-white/[0.06]' : 'bg-slate-100 border-slate-200'}`}>
             <button
               type="button"
               onClick={() => setViewMode('edit')}
               className={`flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium transition-all ${
                 viewMode === 'edit'
-                  ? 'bg-teal-500/20 text-teal-300 shadow-sm border border-teal-500/30'
-                  : 'text-zinc-400 hover:text-zinc-200'
+                  ? darkMode 
+                    ? 'bg-teal-500/20 text-teal-300 shadow-sm border border-teal-500/30' 
+                    : 'bg-white text-teal-700 shadow-sm border border-teal-300 font-semibold'
+                  : darkMode 
+                    ? 'text-zinc-400 hover:text-zinc-200' 
+                    : 'text-slate-500 hover:text-slate-800'
               }`}
               title="Edit teks catatan secara langsung"
             >
@@ -259,8 +265,12 @@ const CollabDocumentPad = ({
               onClick={() => setViewMode('preview')}
               className={`flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium transition-all ${
                 viewMode === 'preview'
-                  ? 'bg-teal-500/20 text-teal-300 shadow-sm border border-teal-500/30'
-                  : 'text-zinc-400 hover:text-zinc-200'
+                  ? darkMode 
+                    ? 'bg-teal-500/20 text-teal-300 shadow-sm border border-teal-500/30' 
+                    : 'bg-white text-teal-700 shadow-sm border border-teal-300 font-semibold'
+                  : darkMode 
+                    ? 'text-zinc-400 hover:text-zinc-200' 
+                    : 'text-slate-500 hover:text-slate-800'
               }`}
               title="Lihat hasil format Markdown"
             >
@@ -275,13 +285,17 @@ const CollabDocumentPad = ({
               type="button"
               onClick={handleSummarize}
               disabled={isSummarizing}
-              className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-teal-500/30 bg-teal-500/15 hover:bg-teal-500/25 text-teal-300 transition-all text-[11px] font-medium disabled:opacity-50 shadow-sm"
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border transition-all text-[11px] font-medium disabled:opacity-50 shadow-sm ${
+                darkMode 
+                  ? 'border-teal-500/30 bg-teal-500/15 hover:bg-teal-500/25 text-teal-300' 
+                  : 'border-teal-300 bg-teal-50 hover:bg-teal-100 text-teal-800'
+              }`}
               title="Rangkum seluruh obrolan tim di ruangan ini menjadi Notulensi Resmi via CAKRA AI"
             >
               {isSummarizing ? (
-                <Loader2 size={12} className="animate-spin text-teal-400" />
+                <Loader2 size={12} className={`animate-spin ${darkMode ? 'text-teal-400' : 'text-teal-700'}`} />
               ) : (
-                <Sparkles size={12} className="text-teal-400" />
+                <Sparkles size={12} className={darkMode ? 'text-teal-400' : 'text-teal-700'} />
               )}
               <span>{isSummarizing ? t.docPadAiSummarizing : t.docPadAiSummarize}</span>
             </button>
@@ -290,7 +304,11 @@ const CollabDocumentPad = ({
           <button
             type="button"
             onClick={handleInsertTemplate}
-            className="flex items-center gap-1 px-2 py-1 rounded-lg border border-white/10 hover:bg-white/5 text-zinc-300 transition-colors text-[11px] font-medium"
+            className={`flex items-center gap-1 px-2 py-1 rounded-lg border transition-colors text-[11px] font-medium ${
+              darkMode 
+                ? 'border-white/10 hover:bg-white/5 text-zinc-300' 
+                : 'border-slate-200 hover:bg-slate-100 text-slate-700'
+            }`}
             title="Gunakan format template notulen standar"
           >
             <span>{t.docPadTemplate}</span>
@@ -301,17 +319,25 @@ const CollabDocumentPad = ({
           <button
             type="button"
             onClick={handleCopy}
-            className="flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-white/5 transition-colors text-zinc-300"
+            className={`flex items-center gap-1 px-2 py-1 rounded-lg transition-colors ${
+              darkMode 
+                ? 'hover:bg-white/5 text-zinc-300' 
+                : 'hover:bg-slate-100 text-slate-700'
+            }`}
             title="Salin seluruh isi catatan"
           >
-            {copied ? <Check size={13} className="text-emerald-400" /> : <Copy size={13} />}
+            {copied ? <Check size={13} className="text-emerald-500" /> : <Copy size={13} />}
             <span className="text-[11px]">{copied ? (t.copied || 'Tersalin') : t.docPadCopy}</span>
           </button>
 
           <button
             type="button"
             onClick={handleDownload}
-            className="flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-white/5 transition-colors text-zinc-300"
+            className={`flex items-center gap-1 px-2 py-1 rounded-lg transition-colors ${
+              darkMode 
+                ? 'hover:bg-white/5 text-zinc-300' 
+                : 'hover:bg-slate-100 text-slate-700'
+            }`}
             title="Unduh catatan (.md)"
           >
             <Download size={13} />
@@ -323,7 +349,11 @@ const CollabDocumentPad = ({
             <button
               type="button"
               onClick={handleClear}
-              className="flex items-center gap-1 px-1.5 py-1 rounded-lg hover:bg-rose-500/10 text-zinc-400 hover:text-rose-400 transition-colors"
+              className={`flex items-center gap-1 px-1.5 py-1 rounded-lg transition-colors ${
+                darkMode 
+                  ? 'hover:bg-rose-500/10 text-zinc-400 hover:text-rose-400' 
+                  : 'hover:bg-rose-50 text-slate-400 hover:text-rose-600'
+              }`}
               title="Kosongkan seluruh isi catatan untuk membuat draf baru"
             >
               <Trash2 size={13} />
@@ -340,7 +370,7 @@ const CollabDocumentPad = ({
               value={content}
               onChange={handleChange}
               placeholder={t.docPadPlaceholder}
-              className="w-full h-full resize-none bg-transparent border-0 text-sm font-sans leading-relaxed focus:outline-none focus:ring-0 custom-scrollbar placeholder:text-zinc-600"
+              className={`w-full h-full resize-none bg-transparent border-0 text-sm font-sans leading-relaxed focus:outline-none focus:ring-0 custom-scrollbar ${darkMode ? 'placeholder:text-zinc-600' : 'placeholder:text-slate-400'}`}
               style={{ color: textColor }}
               spellCheck={false}
               autoFocus
@@ -353,36 +383,36 @@ const CollabDocumentPad = ({
             title="Klik ganda di area ini untuk beralih ke mode edit"
           >
             {content.trim() ? (
-              <div className="prose prose-invert max-w-none space-y-3">
+              <div className={`prose max-w-none space-y-3 ${darkMode ? 'prose-invert' : 'prose-slate'}`}>
                 <ReactMarkdown
                   remarkPlugins={[remarkGfm]}
                   components={{
                     h1: ({ node, ...props }) => (
-                      <h1 className="text-lg font-bold text-teal-400 pb-2 mb-3 border-b border-white/[0.08]" {...props} />
+                      <h1 className={`text-lg font-bold pb-2 mb-3 border-b ${darkMode ? 'text-teal-400 border-white/[0.08]' : 'text-teal-700 border-slate-200'}`} {...props} />
                     ),
                     h2: ({ node, ...props }) => (
-                      <h2 className="text-base font-semibold text-zinc-100 mt-4 mb-2 flex items-center gap-2" {...props} />
+                      <h2 className={`text-base font-semibold mt-4 mb-2 flex items-center gap-2 ${darkMode ? 'text-zinc-100' : 'text-slate-900'}`} {...props} />
                     ),
                     h3: ({ node, ...props }) => (
-                      <h3 className="text-sm font-semibold text-zinc-200 mt-3 mb-1" {...props} />
+                      <h3 className={`text-sm font-semibold mt-3 mb-1 ${darkMode ? 'text-zinc-200' : 'text-slate-800'}`} {...props} />
                     ),
                     p: ({ node, ...props }) => (
-                      <p className="mb-2.5 text-zinc-300 leading-relaxed text-sm" {...props} />
+                      <p className={`mb-2.5 leading-relaxed text-sm ${darkMode ? 'text-zinc-300' : 'text-slate-700'}`} {...props} />
                     ),
                     ul: ({ node, ...props }) => (
-                      <ul className="list-disc pl-5 my-2.5 space-y-1.5 text-zinc-300 text-sm marker:text-teal-400" {...props} />
+                      <ul className={`list-disc pl-5 my-2.5 space-y-1.5 text-sm ${darkMode ? 'text-zinc-300 marker:text-teal-400' : 'text-slate-700 marker:text-teal-600'}`} {...props} />
                     ),
                     ol: ({ node, ...props }) => (
-                      <ol className="list-decimal pl-5 my-2.5 space-y-2 text-zinc-300 text-sm marker:text-teal-400 marker:font-semibold" {...props} />
+                      <ol className={`list-decimal pl-5 my-2.5 space-y-2 text-sm ${darkMode ? 'text-zinc-300 marker:text-teal-400 marker:font-semibold' : 'text-slate-700 marker:text-teal-600 marker:font-semibold'}`} {...props} />
                     ),
                     li: ({ node, ...props }) => (
-                      <li className="text-zinc-300 leading-relaxed pl-1" {...props} />
+                      <li className={`leading-relaxed pl-1 ${darkMode ? 'text-zinc-300' : 'text-slate-700'}`} {...props} />
                     ),
                     strong: ({ node, ...props }) => (
-                      <strong className="font-semibold text-teal-300" {...props} />
+                      <strong className={`font-semibold ${darkMode ? 'text-teal-300' : 'text-teal-700'}`} {...props} />
                     ),
                     em: ({ node, ...props }) => (
-                      <em className="italic text-zinc-200" {...props} />
+                      <em className={`italic ${darkMode ? 'text-zinc-200' : 'text-slate-800'}`} {...props} />
                     ),
                     pre: ({ children }) => <>{children}</>,
                     code: ({ node, inline, className, children, ...props }) => {
@@ -393,9 +423,17 @@ const CollabDocumentPad = ({
 
                       if (isBlock) {
                         return (
-                          <div className="my-2.5 rounded-xl bg-black/60 border border-white/[0.08] overflow-hidden shadow-inner">
+                          <div className={`my-2.5 rounded-xl border overflow-hidden shadow-inner ${
+                            darkMode 
+                              ? 'bg-black/60 border-white/[0.08]' 
+                              : 'bg-slate-900 border-slate-700'
+                          }`}>
                             {match && (
-                              <div className="px-3.5 py-1.5 bg-white/[0.04] border-b border-white/[0.06] text-[11px] font-mono text-teal-400 font-semibold uppercase tracking-wider">
+                              <div className={`px-3.5 py-1.5 border-b text-[11px] font-mono font-semibold uppercase tracking-wider ${
+                                darkMode 
+                                  ? 'bg-white/[0.04] border-white/[0.06] text-teal-400' 
+                                  : 'bg-slate-800 border-slate-700 text-teal-400'
+                              }`}>
                                 {match[1]}
                               </div>
                             )}
@@ -408,7 +446,11 @@ const CollabDocumentPad = ({
 
                       return (
                         <code
-                          className="px-1.5 py-0.5 mx-0.5 rounded-md bg-teal-500/15 text-teal-300 font-mono text-[12px] border border-teal-500/25 inline-block align-baseline font-medium"
+                          className={`px-1.5 py-0.5 mx-0.5 rounded-md font-mono text-[12px] inline-block align-baseline font-medium border ${
+                            darkMode
+                              ? 'bg-teal-500/15 text-teal-300 border-teal-500/25'
+                              : 'bg-teal-50 text-teal-800 border-teal-200'
+                          }`}
                           {...props}
                         >
                           {children}
@@ -416,22 +458,26 @@ const CollabDocumentPad = ({
                       );
                     },
                     blockquote: ({ node, ...props }) => (
-                      <blockquote className="pl-3.5 border-l-2 border-teal-500/50 italic text-zinc-400 my-2.5 bg-teal-500/[0.03] py-1 rounded-r" {...props} />
+                      <blockquote className={`pl-3.5 border-l-2 italic my-2.5 py-1 rounded-r ${
+                        darkMode
+                          ? 'border-teal-500/50 text-zinc-400 bg-teal-500/[0.03]'
+                          : 'border-teal-500 text-slate-600 bg-teal-50/50'
+                      }`} {...props} />
                     ),
                     input: ({ node, ...props }) => (
                       <input type="checkbox" className="mr-2 rounded border-white/20 text-teal-500 pointer-events-none accent-teal-500" {...props} />
                     ),
-                    hr: () => <hr className="my-4 border-white/[0.08]" />,
+                    hr: () => <hr className={`my-4 ${darkMode ? 'border-white/[0.08]' : 'border-slate-200'}`} />,
                     table: ({ node, ...props }) => (
-                      <div className="overflow-x-auto my-3 rounded-lg border border-white/[0.06]">
-                        <table className="min-w-full text-xs divide-y divide-white/[0.06]" {...props} />
+                      <div className={`overflow-x-auto my-3 rounded-lg border ${darkMode ? 'border-white/[0.06]' : 'border-slate-200'}`}>
+                        <table className={`min-w-full text-xs divide-y ${darkMode ? 'divide-white/[0.06]' : 'divide-slate-200'}`} {...props} />
                       </div>
                     ),
                     th: ({ node, ...props }) => (
-                      <th className="px-3 py-2 text-left font-semibold text-zinc-200 bg-white/[0.04]" {...props} />
+                      <th className={`px-3 py-2 text-left font-semibold ${darkMode ? 'text-zinc-200 bg-white/[0.04]' : 'text-slate-800 bg-slate-50'}`} {...props} />
                     ),
                     td: ({ node, ...props }) => (
-                      <td className="px-3 py-2 text-zinc-300 border-t border-white/[0.04]" {...props} />
+                      <td className={`px-3 py-2 border-t ${darkMode ? 'text-zinc-300 border-white/[0.04]' : 'text-slate-700 border-slate-100'}`} {...props} />
                     )
                   }}
                 >
@@ -439,12 +485,16 @@ const CollabDocumentPad = ({
                 </ReactMarkdown>
               </div>
             ) : (
-              <div className="h-full flex flex-col items-center justify-center text-center p-6 text-zinc-500">
-                <FileText size={36} className="mb-2.5 opacity-25 text-teal-400" />
-                <p className="text-xs text-zinc-400">{t.docPadEmpty}</p>
+              <div className={`h-full flex flex-col items-center justify-center text-center p-6 ${darkMode ? 'text-zinc-500' : 'text-slate-400'}`}>
+                <FileText size={36} className={`mb-2.5 opacity-25 ${darkMode ? 'text-teal-400' : 'text-teal-600'}`} />
+                <p className={`text-xs ${darkMode ? 'text-zinc-400' : 'text-slate-600'}`}>{t.docPadEmpty}</p>
                 <button
                   onClick={() => setViewMode('edit')}
-                  className="mt-3 px-3.5 py-1.5 rounded-lg bg-teal-500/10 text-teal-300 hover:bg-teal-500/20 text-xs border border-teal-500/30 transition-all"
+                  className={`mt-3 px-3.5 py-1.5 rounded-lg text-xs border transition-all ${
+                    darkMode
+                      ? 'bg-teal-500/10 text-teal-300 hover:bg-teal-500/20 border-teal-500/30'
+                      : 'bg-teal-50 text-teal-700 hover:bg-teal-100 border-teal-300'
+                  }`}
                 >
                   {t.docPadStartWriting}
                 </button>
@@ -466,10 +516,12 @@ const CollabDocumentPad = ({
         <div className="flex items-center gap-2">
           <span>{content.split(/\s+/).filter(Boolean).length} {t.docPadWords}</span>
           {viewMode === 'preview' && content.trim() && (
-            <span className="text-[10px] text-zinc-500 hidden sm:inline">{t.docPadDoubleClick}</span>
+            <span className={`text-[10px] hidden sm:inline ${darkMode ? 'text-zinc-500' : 'text-slate-400'}`}>
+              {t.docPadDoubleClick}
+            </span>
           )}
         </div>
-        <span className={isDirty ? 'text-amber-400 font-medium' : 'text-zinc-500'}>
+        <span className={isDirty ? (darkMode ? 'text-amber-400 font-medium' : 'text-amber-600 font-medium') : (darkMode ? 'text-zinc-500' : 'text-slate-400')}>
           {isDirty ? t.docPadUnsavedStatus : t.docPadSavedStatus}
         </span>
       </div>

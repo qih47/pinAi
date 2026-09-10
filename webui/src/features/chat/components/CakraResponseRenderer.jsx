@@ -504,7 +504,7 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
                 const tGlobal = translations[language]?.webSearch || translations.id.webSearch;
 
                 return (
-                    <Suspense fallback={<div className="animate-pulse p-3 border border-[#2d2d2d] bg-[#1e1e1e] rounded-xl text-xs text-gray-400 font-medium my-2">{tGlobal.loadingResults || "Memuat hasil pencarian..."}</div>}>
+                    <Suspense fallback={<div className={`animate-pulse p-3 border rounded-xl text-xs font-medium my-2 ${darkMode ? 'border-[#2d2d2d] bg-[#1e1e1e] text-gray-400' : 'border-slate-200 bg-slate-50 text-slate-500'}`}>{tGlobal.loadingResults || "Memuat hasil pencarian..."}</div>}>
                         <LazyWebSearchWidget searchData={searchData} isStreaming={isStreaming} hasStartedResponding={hasStartedResponding} darkMode={darkMode} language={language} />
                     </Suspense>
                 );
