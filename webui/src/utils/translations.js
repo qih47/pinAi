@@ -669,7 +669,9 @@ export const translations = {
       autoMode: "Otomatis",
       flashMode: "Flash",
       docMode: "Dokumen",
-      thinkingToggle: "Proses Mendalam"
+      thinkingToggle: "Proses Mendalam",
+      thinkButton: "Berpikir",
+      thinkTooltip: "Dapatkan jawaban yang lebih cerdas"
     },
     tts: {
       stopReading: "Berhenti Membaca",
@@ -1509,7 +1511,9 @@ export const translations = {
       autoMode: "Auto",
       flashMode: "Flash",
       docMode: "Documents",
-      thinkingToggle: "Thinking"
+      thinkingToggle: "Thinking",
+      thinkButton: "Think",
+      thinkTooltip: "Get a smarter answer"
     },
     tts: {
       stopReading: "Stop Reading",
