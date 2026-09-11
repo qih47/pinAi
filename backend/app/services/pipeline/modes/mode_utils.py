@@ -1,14 +1,26 @@
 import logging
+import re
 from typing import List, Dict, Any, Optional, Tuple
 
 _CODING_KEYWORDS = ["import ", "export ", "const ", "async ", "await ", "function", "def ", "return ", "class ", "select ", "docker", "sql ", "query", "react", "python", "javascript", "coding", "koding", "usecontext", "usememo", "typescript", "golang", "kotlin", "flutter", "dart", "frontend", "backend", "jsx", "html", "css", "tailwind"]
 _GREETING_KEYWORDS = ["hai", "halo", "hello", "hi ", "apa kabar", "selamat pagi", "selamat siang", "selamat sore", "selamat malam", "assalamualaikum", "pagi", "siang", "malam", "thanks", "thank you", "terima kasih", "makasih", "ok", "oke", "siap", "tq", "nuhun", "suwun", "mantap", "sip"]
-_DOC_KEYWORDS = ["ketentuan", "peraturan", "skep", "surat keputusan", "surat edaran", "regulasi", "kebijakan", "prosedur", "sop", "seragam", "cuti", "gaji", "tunjangan", "rekrutmen", "rekrut", "pegawai", "pindad", "aturan", "pasal", "syarat", "lembur", "pensiun", "promosi", "jabatan", "seleksi", "penerimaan", "ik "]
+# CATATAN: 'ik' (Instruksi Kerja) sengaja TIDAK dimasukkan sebagai substring mentah agar tidak
+# false-positive pada kata seperti 'vulkanik', 'organik', 'teknik'. Cek via word-boundary di detect_precheck.
+_DOC_KEYWORDS = ["ketentuan", "peraturan", "skep", "surat keputusan", "surat edaran", "regulasi", "kebijakan", "prosedur", "sop", "seragam", "cuti", "gaji", "tunjangan", "rekrutmen", "rekrut", "pegawai", "pindad", "aturan", "pasal", "syarat", "lembur", "pensiun", "promosi", "jabatan", "seleksi", "penerimaan"]
 _PUBLIC_WEB_KEYWORDS = [
-    "cari di web", "carikan di web", "cari web", "search web", "browsing", "di internet", 
-    "web publik", "sumber publik", "di google", "berita online", "berita terkini", 
-    "dpr", "dpr ri", "dpr-ri", "presiden ri", "kementerian", "menteri", "mahkamah konstitusi", 
-    "pilkada", "pemilu", "bmkg", "prakiraan cuaca", "kurs rupiah", "ihsg", "inflasi nasional"
+    # Perintah eksplisit penelusuran web
+    "cari di web", "carikan di web", "cari web", "search web", "browsing", "di internet",
+    "web publik", "sumber publik", "di google", "googling", "riset online", "carikan informasi",
+    # Berita & peristiwa publik
+    "berita online", "berita terkini", "berita hari ini", "kabar terkini", "update terbaru",
+    "dpr", "dpr ri", "dpr-ri", "presiden ri", "kementerian", "menteri", "mahkamah konstitusi",
+    "pilkada", "pemilu",
+    # Fenomena alam, geosains, kebencanaan, lingkungan — UNIVERSAL, tanpa hardcode topik spesifik
+    "bmkg", "prakiraan cuaca", "gempa", "erupsi", "banjir", "longsor", "karhutla", "kebakaran hutan",
+    "tsunami", "letusan", "vulkanik", "gunung berapi", "aktivitas gunung", "aktifitas gunung",
+    "bencana alam", "cuaca esktrem", "siaga bencana", "peringatan dini",
+    # Data ekonomi real-time publik
+    "kurs rupiah", "ihsg", "inflasi nasional", "harga bbm", "harga minyak"
 ]
 
 def detect_precheck(user_message: str, chat_mode: str, has_attachment: bool, user_default_pronoun: Optional[str] = None) -> Dict[str, Any]:
@@ -19,7 +31,9 @@ def detect_precheck(user_message: str, chat_mode: str, has_attachment: bool, use
     is_public_web = any(kw in msg_lower for kw in _PUBLIC_WEB_KEYWORDS)
     _MAP_KEYWORDS = ["lokasi", "alamat", "dimana", "di mana", "koordinat", "peta", "letak pabrik", "kantor pusat", "fasilitas divisi"]
     is_map_query = any(kw in msg_lower for kw in _MAP_KEYWORDS)
-    is_doc_query = any(kw in msg_lower for kw in _DOC_KEYWORDS) and not is_public_web and not is_map_query
+    # Cek 'ik' (Instruksi Kerja) via word-boundary agar tidak false-positive di 'vulkanik', 'organik', dll
+    has_ik_keyword = bool(re.search(r'\bik\b', msg_lower))
+    is_doc_query = (any(kw in msg_lower for kw in _DOC_KEYWORDS) or has_ik_keyword) and not is_public_web and not is_map_query
     
     _EMAIL_KEYWORDS = ["kirim email", "buat email", "draft email", "balas email", "email ke", "draf email"]
     is_generate_email = any(kw in msg_lower for kw in _EMAIL_KEYWORDS)
@@ -34,14 +48,17 @@ def detect_precheck(user_message: str, chat_mode: str, has_attachment: bool, use
         "buat draft", "buat draf", "tulis draft", "tulis draf", "susun draft", "susun draf",
         "tampilkan editor", "editor naskah", "editor dokumen"
     ]
-    import re
 
     is_open_editor = bool(re.search(r'\b(buka|open|tampil(kan)?|muncul(kan)?|akses)\b.{0,25}\b(editor|writer|studio)\b', msg_lower))
     is_doc_draft = (
         (any(kw in msg_lower for kw in ["surat edaran", "skep", "nota dinas", "surat keputusan", "naskah dinas"]) and any(v in msg_lower for v in ["draft", "draf", "siapkan", "buatkan", "susun", "bikin", "buka", "buat", "tulis"]))
         or bool(re.search(r'\b(draft|draf|buatkan|siapkan|bikin|susun)\b.{0,20}\b(se|skep|surat)\b', msg_lower))
     )
-    is_docwriter = any(kw in msg_lower for kw in _DOCWRITER_KEYWORDS) or is_doc_draft or is_open_editor
+    is_doc_edit = (
+        bool(re.search(r'\b(edit|ubah|ganti|tambah|tambahkan|revisi|perbarui|update|hapus)\b.{0,30}\b(poin|point|dasar|bagian|huruf|ketentuan|tentang|judul|draf|dokumen)\b', msg_lower))
+        or bool(re.search(r'\b(edit|ubah|ganti|tambah|tambahkan)\s+(di\s+|bagian\s+|poin\s+|point\s+)?[a-z]\b', msg_lower))
+    )
+    is_docwriter = any(kw in msg_lower for kw in _DOCWRITER_KEYWORDS) or is_doc_draft or is_open_editor or is_doc_edit
 
     _VISUAL_KEYWORDS = ["visual", "diagram", "alur", "flowchart", "grafik", "bagan"]
     requires_visual = any(kw in msg_lower for kw in _VISUAL_KEYWORDS)
@@ -120,17 +137,16 @@ def detect_precheck(user_message: str, chat_mode: str, has_attachment: bool, use
         is_chitchat = is_greeting
 
     # SPRINT 5: Proteksi sapaan & ucapan terima kasih/apresiasi/pamitan di mode apapun!
-    # Prioritaskan chat_mode eksplisit jika user memilih mode dokumen
-    is_explicit_doc_mode = str(chat_mode).lower().strip() in ["documents", "document", "global_chat"]
+    # Prioritaskan chat_mode eksplisit jika user memilih mode dokumen via tab/pill
+    is_explicit_doc_mode = str(chat_mode).lower().strip() in ["documents", "document"]
 
     if (is_chitchat or is_farewell) and not is_doc_query and not has_instruction and not is_explicit_doc_mode:
         need_rag_hint = False
-    elif is_explicit_doc_mode:
-        need_rag_hint = True
-        is_public_web = False
-        is_chitchat = False
     elif is_public_web:
         need_rag_hint = False
+        is_chitchat = False
+    elif is_explicit_doc_mode:
+        need_rag_hint = True
         is_chitchat = False
     elif is_map_query and not is_explicit_doc_mode:
         need_rag_hint = False

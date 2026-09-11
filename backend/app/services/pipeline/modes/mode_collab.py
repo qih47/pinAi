@@ -241,7 +241,9 @@ class ModeCollab:
         rag_context: Optional[str] = None,
         rag_sources: Optional[List[Dict[str, Any]]] = None,
         eval_reason: Optional[str] = None,
-        request: Optional[Any] = None
+        request: Optional[Any] = None,
+        room_id: Optional[str] = None,
+        master_npp: Optional[str] = None
     ) -> AsyncGenerator[str, None]:
         """
         Menghasilkan respons CAKRA sebagai AI Teammate secara streaming.
@@ -281,6 +283,24 @@ class ModeCollab:
             f"{document_content.strip() if document_content and document_content.strip() else '(Draf dokumen belum diisi oleh tim)'}\n"
             f"---------------------------------------------------\n\n"
         )
+
+        # Injeksi Live Document Snapshot (CAKRA Document Studio di Collab)
+        if room_id:
+            try:
+                from backend.app.services.document_writer.doc_writer_service import doc_writer_service
+                from backend.app.services.document_writer.document_structure_parser import document_structure_parser
+                from pathlib import Path
+
+                active_doc = doc_writer_service.get_active_document(room_id=room_id, master_npp=master_npp or "")
+                if active_doc and active_doc.get("file_path"):
+                    doc_path = Path(active_doc["file_path"])
+                    if doc_path.exists():
+                        doc_snapshot = document_structure_parser.get_prompt_snapshot(doc_path)
+                        if doc_snapshot:
+                            system_context += f"\n\n{doc_snapshot}\n\n"
+                            logger.info(f"[MODE_COLLAB] Injected live DocWriter snapshot for {doc_path.name} in room {room_id}")
+            except Exception as e:
+                logger.warning(f"[MODE_COLLAB] Gagal mengambil snapshot DocWriter untuk room {room_id}: {e}")
 
         # Integrasi Rujukan RAG (Jika ditemukan dari pencarian regulasi internal)
         if rag_context and rag_context.strip():

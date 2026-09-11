@@ -1173,7 +1173,9 @@ class CollabService:
                 rag_context=rag_context,
                 rag_sources=rag_sources,
                 eval_reason=eval_reason,
-                request=request
+                request=request,
+                room_id=room_id,
+                master_npp=room.get("created_by")
             ):
                 full_response_text += chunk
                 await collab_broadcast_manager.broadcast(room_id, {

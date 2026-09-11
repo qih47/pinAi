@@ -54,6 +54,12 @@ class ModeGuest:
         if community_context:
             system_prompt += community_context
 
+        # 3. Inject Session Context (URL content / web fetch / ai_document_chunks)
+        # Persis seperti mode_flash — konten URL yang sudah di-fetch server-side diinjeksi ke sini
+        session_chunks = routing_data.get("_retrieved_session_chunks_text") or routing_data.get("_session_chunks_text", "")
+        if session_chunks:
+            system_prompt += "\n\n" + session_chunks
+
         # 4. Persiapkan Messages untuk Ollama
         messages_dict = [{"role": m.role, "content": m.content} for m in chat_history]
         # Mengambil 5 history + 1 current message = 6

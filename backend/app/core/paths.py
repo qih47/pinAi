@@ -19,6 +19,27 @@ LOGS_DIR = get_abs_path("logs")
 # Direktori Accounts dan File Peraturan
 ACCOUNTS_DIR = get_abs_path("accounts")
 FILE_PERATURAN_DIR = get_abs_path("file_peraturan")
+DOCWRITER_TEMPLATES_DIR = get_abs_path("backend/assets/templates/docwriter")
+
+def get_docwriter_dir(npp: str, session_id: str = "", room_id: str = "", master_npp: str = "") -> Path:
+    """
+    Path penyimpanan dokumen kerja user (multi-tenant):
+    - Collab room: accounts/{room_owner}/collab/{safe_room}/brain/docwriter
+    - Sesi chat: accounts/{safe_npp}/{safe_session}/brain/docwriter
+    - Akun global (fallback): accounts/{safe_npp}/documents/docwriter
+    """
+    safe_npp = "".join(c if c.isalnum() else "_" for c in str(npp)).strip("_") or "guest"
+    if room_id:
+        room_owner = "".join(c if c.isalnum() else "_" for c in str(master_npp or npp)).strip("_") or "guest"
+        safe_room = "".join(c if c.isalnum() or c == "-" else "_" for c in str(room_id)).strip("_")
+        p = Path(ACCOUNTS_DIR) / room_owner / "collab" / safe_room / "brain" / "docwriter"
+    elif session_id:
+        safe_session = "".join(c if c.isalnum() or c == "-" else "_" for c in str(session_id)).strip("_")
+        p = Path(ACCOUNTS_DIR) / safe_npp / safe_session / "brain" / "docwriter"
+    else:
+        p = Path(ACCOUNTS_DIR) / safe_npp / "documents" / "docwriter"
+    p.mkdir(parents=True, exist_ok=True)
+    return p
 
 def get_account_dir(npp: str, category: str) -> Path:
     """Mendapatkan path untuk penyimpanan berbasis akun (NPP) berdasarkan kategori (images, artifacts, documents, cache)"""
@@ -93,5 +114,5 @@ def ensure_collab_symlink(master_npp: str, member_npp: str, room_id: str) -> boo
         return False
 
 # Pastikan folder exist
-for directory in [DOCUMENTS_DIR, UPLOAD_DIR, NOSQL_DATA_DIR, LOGS_DIR, ACCOUNTS_DIR, FILE_PERATURAN_DIR]:
+for directory in [DOCUMENTS_DIR, UPLOAD_DIR, NOSQL_DATA_DIR, LOGS_DIR, ACCOUNTS_DIR, FILE_PERATURAN_DIR, DOCWRITER_TEMPLATES_DIR]:
     os.makedirs(directory, exist_ok=True)

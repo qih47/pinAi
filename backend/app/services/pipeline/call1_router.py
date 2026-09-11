@@ -574,8 +574,9 @@ def _validate_and_normalize_routing(
         routing["is_web_search"] = bool(routing_json.get("is_web_search", False))
 
     # 🌐 Penyelarasan Yurisdiksi: Jika model memilih Data Luar (Web Search) tanpa mode dokumen internal eksplisit, prioritaskan Web Search
-    is_doc_mode = bool(precheck.get("need_rag_hint") or str(precheck.get("chat_mode", "")).lower().strip() in ["documents", "document", "global_chat"])
-    if routing["is_web_search"] and routing["need_rag"] and not is_doc_mode:
+    forced_mode_clean = str(precheck.get("forced_mode") or "").lower().strip()
+    is_forced_doc_mode = forced_mode_clean in ["documents", "document", "rag"]
+    if routing["is_web_search"] and routing["need_rag"] and not is_forced_doc_mode:
         routing["need_rag"] = False
         routing["query_judul"] = []
         logger.info("[CALL1] 🌐 Resolving dual-intent conflict: is_web_search takes priority over need_rag for external data")
@@ -667,10 +668,10 @@ def _validate_and_normalize_routing(
             logger.info("[CALL1] 💬 Continuous Casual / Chitchat flow detected -> is_chitchat=True")
 
     # ── ATURAN STRICT MODE DOKUMEN (USER EXPLICIT INTENT OVERRIDE) ───────────
-    # Jika user secara eksplisit memilih Mode Dokumen, pastikan need_rag selalu True dan web search False
-    # (PENTING: Jangan paksa jika user hanya sapaan santai, chitchat, atau koding)
+    # Jika user secara manual mengunci Mode Dokumen (forced_mode), pastikan need_rag aktif HANYA jika bukan web search, koding, atau chitchat
     is_explicit_doc_mode = (
-        (precheck.get("chat_mode") in ["documents", "document"] or precheck.get("need_rag_hint") is True)
+        is_forced_doc_mode
+        and not routing.get("is_web_search")
         and not routing.get("is_chitchat")
         and not routing.get("is_coding")
         and not is_simple_greeting
@@ -693,6 +694,8 @@ def _validate_and_normalize_routing(
             or re.search(r'\b(buka|open|tampil(kan)?|muncul(kan)?|akses)\b.{0,25}\b(editor|writer|studio)\b', user_msg_lower)
             or (any(kw in user_msg_lower for kw in ["surat edaran", "skep", "nota dinas", "surat keputusan", "naskah dinas"]) and any(v in user_msg_lower for v in ["draft", "draf", "siapkan", "buatkan", "susun", "bikin", "buka", "buat", "tulis"]))
             or bool(re.search(r'\b(draft|draf|buatkan|siapkan|bikin|susun)\b.{0,20}\b(se|skep|surat)\b', user_msg_lower))
+            or bool(re.search(r'\b(edit|ubah|ganti|tambah|tambahkan|revisi|perbarui|update|hapus)\b.{0,30}\b(poin|point|dasar|bagian|huruf|ketentuan|tentang|judul|draf|dokumen)\b', user_msg_lower))
+            or bool(re.search(r'\b(edit|ubah|ganti|tambah|tambahkan)\s+(di\s+|bagian\s+|poin\s+|point\s+)?[a-z]\b', user_msg_lower))
             or any(kw in user_msg_lower for kw in [
                 "buka editor", "buka dokumen editor", "buka editornya", "buka dokumen writer",
                 "dokumen writer", "dokumen editor", "draft surat", "draf surat", "draft skep", "draf skep",
@@ -1012,12 +1015,14 @@ def _validate_and_normalize_routing(
             logger.info(f"[CALL1] 🛡️ Guard: Auto-activated is_web_search | queries={routing['queries']}")
     # 🔒 GUEST HARD-WALL SECURITY GUARD:
     # Tamu DILARANG KERAS mengakses dokumen/arsip internal PT Pindad dan Document Studio dalam kondisi apapun!
+    # TAPI tamu TETAP BISA melakukan web search publik!
     if is_guest:
         routing["is_docwriter"] = False
         if routing.get("need_rag"):
             logger.info("[CALL1] 🛡️ Guest Mode: Forcing need_rag=False (RAG hard-block for Guest)")
             routing["need_rag"] = False
             routing["query_judul"] = []
+            # Jika tidak ada kapabilitas lain yang aktif, cek apakah web search bisa diaktifkan
             if not any([
                 routing.get("is_coding"),
                 routing.get("is_generate_file"),
@@ -1026,7 +1031,15 @@ def _validate_and_normalize_routing(
                 routing.get("need_analytic"),
                 routing.get("is_ambiguous")
             ]):
-                routing["is_chitchat"] = True
+                # Cek apakah precheck mengisyaratkan web publik → aktifkan web search, bukan chitchat
+                _is_pub = precheck.get("is_public_web", False) if isinstance(precheck, dict) else False
+                if _is_pub:
+                    routing["is_web_search"] = True
+                    if not routing.get("queries"):
+                        routing["queries"] = [routing.get("key_subject") or user_message]
+                    logger.info("[CALL1] 🌐 Guest Mode: RAG blocked but is_public_web → activating web search")
+                else:
+                    routing["is_chitchat"] = True
         routing["is_multi_document"] = False
 
     return routing
@@ -1173,7 +1186,9 @@ def _build_fallback_routing(precheck: Dict[str, Any]) -> Dict[str, Any]:
         fallback["need_rag"] = False
         fallback["is_docwriter"] = False
         fallback["query_judul"] = []
-        fallback["queries"] = []
+        # Jangan hapus queries/is_web_search jika memang ini adalah web search publik!
+        if not fallback.get("is_web_search"):
+            fallback["queries"] = []
 
     logger.info(f"[CALL1] Fallback routing constructed successfully | need_rag={fallback['need_rag']} | is_coding={fallback['is_coding']} | is_ambiguous={fallback['is_ambiguous']} | requires_visual={fallback['requires_visual']}")
     return fallback

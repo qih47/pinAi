@@ -438,7 +438,7 @@ const DeepLearningTab = () => {
                 ) : (
                   <span className="flex items-center gap-1.5 text-xs font-semibold px-2.5 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400">
                     <CheckCircle2 className="w-3.5 h-3.5" />
-                    STANDBY (Jadwal Cron Aktif: 18:00 WIB)
+                    STANDBY (Jadwal: Harian 18:00 WIB • Weekend Non-Stop)
                   </span>
                 )}
                 <span className="text-xs px-2 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700/60 flex items-center gap-1">
@@ -449,11 +449,11 @@ const DeepLearningTab = () => {
                 </span>
               </div>
               <p className="text-xs text-slate-400 mt-1 flex items-center gap-2 flex-wrap">
-                <span>⏰ Jadwal: <strong className="text-slate-200">18:00 - 07:30 WIB</strong> (Toleransi Batch s.d. 08:00 WIB)</span>
+                <span>⏰ Jadwal: <strong className="text-slate-200">Hari Kerja 18:00 - 07:30 WIB</strong> • <strong className="text-amber-300 font-semibold">Weekend Non-Stop (Jumat 18:00 s.d. Senin 08:00 WIB)</strong></span>
                 <span>•</span>
                 <span>🤖 Model: <strong className="text-purple-300">gemma4:31b</strong> + mxbai-embed-large</span>
                 <span>•</span>
-                <span className="text-indigo-300">Otomatis via Crontab (0 18 * * *)</span>
+                <span className="text-indigo-300">Otomatis via Crontab (Harian & Weekend Non-Stop)</span>
               </p>
             </div>
           </div>

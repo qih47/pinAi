@@ -6,6 +6,25 @@ import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import apiClient from '../../../services/apiClient';
 
+const formatDateTime = (isoString, includeSeconds = false) => {
+  if (!isoString) return '—';
+  const d = new Date(isoString);
+  if (isNaN(d.getTime())) return '—';
+
+  const day = String(d.getDate()).padStart(2, '0');
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+  const month = months[d.getMonth()];
+  const year = d.getFullYear();
+  const hours = String(d.getHours()).padStart(2, '0');
+  const minutes = String(d.getMinutes()).padStart(2, '0');
+  const seconds = String(d.getSeconds()).padStart(2, '0');
+
+  if (includeSeconds) {
+    return `${day} ${month} ${year}, ${hours}:${minutes}:${seconds}`;
+  }
+  return `${day} ${month} ${year}, ${hours}:${minutes}`;
+};
+
 export const ChatReplayModal = ({ npp, onClose }) => {
   const [sessions, setSessions] = useState([]);
   const [selectedSession, setSelectedSession] = useState(null);
@@ -120,9 +139,11 @@ export const ChatReplayModal = ({ npp, onClose }) => {
                     }`}
                   >
                     <div className="font-semibold text-gray-200 truncate">{s.title}</div>
-                    <div className="text-xs text-gray-500 mt-1 flex justify-between">
-                      <span>{new Date(s.updated_at).toLocaleTimeString()}</span>
-                      {s.is_deleted && <span className="text-red-400/80">Deleted</span>}
+                    <div className="text-xs text-gray-500 mt-1 flex justify-between items-center">
+                      <span className="font-mono text-[11px] text-gray-400" title={formatDateTime(s.updated_at || s.created_at, true)}>
+                        {formatDateTime(s.updated_at || s.created_at, false)}
+                      </span>
+                      {s.is_deleted && <span className="text-red-400/80 font-medium text-[10px] bg-red-500/10 px-1.5 py-0.5 rounded border border-red-500/20">Deleted</span>}
                     </div>
                   </button>
                 ))
@@ -186,7 +207,9 @@ export const ChatReplayModal = ({ npp, onClose }) => {
                           <div className={`flex flex-col gap-1 ${isUser ? 'items-end' : 'items-start'}`}>
                             <div className="flex items-center gap-2 text-xs text-gray-500">
                               <span className="font-semibold text-gray-400">{isUser ? npp : 'CAKRA AI'}</span>
-                              <span>{new Date(msg.timestamp).toLocaleTimeString()}</span>
+                              <span className="text-gray-400 text-[11px] font-mono">
+                                {formatDateTime(msg.timestamp || msg.created_at, true)}
+                              </span>
                             </div>
                             
                             <div className={`p-4 rounded-2xl ${

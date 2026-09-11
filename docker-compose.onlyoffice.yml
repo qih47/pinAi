@@ -1,0 +1,20 @@
+version: '3.7'
+
+services:
+  onlyoffice:
+    container_name: cakra-onlyoffice
+    image: onlyoffice/documentserver:latest
+    restart: unless-stopped
+    ports:
+      - "8085:80"
+    environment:
+      - JWT_ENABLED=true
+      - JWT_SECRET=CAKRA_ONLYOFFICE_SECRET_2026
+      - JWT_HEADER=Authorization
+      - JWT_IN_BODY=true
+      - WOPI_ENABLED=false
+    volumes:
+      - ./backend/storage/onlyoffice/data:/var/www/onlyoffice/Data
+      - ./backend/storage/onlyoffice/log:/var/log/onlyoffice
+      - ./backend/storage/onlyoffice/cache:/var/lib/onlyoffice/documentserver/App_Data/cache/files
+      - ./backend/storage/onlyoffice/forgotten:/var/lib/onlyoffice/documentserver/App_Data/cache/files/forgotten

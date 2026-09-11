@@ -41,6 +41,8 @@ file_peraturan/*
 
 backend/assets/*
 !backend/assets/.gitkeep
+!backend/assets/templates/
+!backend/assets/templates/**
 
 backend/models/*
 !backend/models/.gitkeep

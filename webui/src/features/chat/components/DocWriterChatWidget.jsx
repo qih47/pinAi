@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   FileText, 
   ExternalLink, 
@@ -87,8 +87,9 @@ const DocWriterChatWidget = ({
   const action = docData?.action || 'draft'; // 'open', 'draft', 'patch'
   const templateKey = docData?.template || 'template_skep';
   const docTitle = docData?.title || defaultTemplates[templateKey]?.title || 'Draf Dokumen Resmi';
-  const summary = docData?.summary || (action === 'patch' ? `Revisi bagian "${docData?.sectionId || 'dokumen'}" oleh CAKRA` : 'Draf naskah dinas siap sunting');
-  const sectionId = docData?.sectionId || null;
+  const sectionName = docData?.sectionId || (docData?.item ? `${docData?.section || 'dasar'} poin ${docData.item}` : docData?.section) || null;
+  const summary = docData?.summary || (action === 'patch' ? `Revisi ${sectionName || 'dokumen'} oleh CAKRA` : 'Draf naskah dinas siap sunting');
+  const sectionId = sectionName;
   const rawHtml = docData?.content || '';
 
   // Dapatkan detail template
@@ -97,34 +98,44 @@ const DocWriterChatWidget = ({
     id: templateKey
   };
 
-  // Auto-open jika action eksplisit adalah 'open' dan belum dibuka
-  useEffect(() => {
-    if (!isStreaming && docData?.autoOpen && !isOpen) {
-      handleOpenInEditor();
-    }
-  }, [isStreaming, docData]);
+  const hasAutoSyncedRef = useRef(false);
+  const wasStreamingRef = useRef(isStreaming);
 
-  const handleOpenInEditor = () => {
-    openWriter(
+  useEffect(() => {
+    if (isStreaming) {
+      wasStreamingRef.current = true;
+    } else if (docData && wasStreamingRef.current && !hasAutoSyncedRef.current) {
+      hasAutoSyncedRef.current = true;
+      if (docData.autoOpen && !isOpen) {
+        handleApplyPatch(true);
+      } else if (rawHtml || summary) {
+        handleApplyPatch(true);
+      }
+    }
+  }, [isStreaming, docData, isOpen]);
+
+  const handleOpenInEditor = async () => {
+    await openWriter(
       templateKey,
       docTitle,
       rawHtml || undefined
     );
   };
 
-  const handleApplyPatch = () => {
-    if (!sectionId && !rawHtml) return;
-    if (sectionId) {
+  const handleApplyPatch = async (silent = false) => {
+    const store = useDocWriterStore.getState();
+    // Pastikan dokumen aktif sudah terbuka & terinisialisasi
+    await store.openWriter(templateKey, docTitle, rawHtml || undefined);
+    if (store.applyAiEdit) {
+      await store.applyAiEdit(summary || docTitle || 'Revisi dari CAKRA AI', sectionId, rawHtml);
+    }
+    if (sectionId && patchSection) {
       patchSection(sectionId, rawHtml);
-    } else if (rawHtml) {
-      setDocumentContent(rawHtml);
-      if (docTitle) setDocumentTitle(docTitle);
     }
     setApplied(true);
-    if (!isOpen) {
-      openWriter(templateKey, docTitle);
+    if (!silent) {
+      setTimeout(() => setApplied(false), 3000);
     }
-    setTimeout(() => setApplied(false), 3000);
   };
 
   const handleDownloadDocx = () => {
@@ -261,26 +272,26 @@ const DocWriterChatWidget = ({
             <span>{isOpen ? 'Lihat di Dokumen Editor' : 'Buka Dokumen Editor (Split-Screen)'}</span>
           </button>
 
-          {/* Tombol Terapkan jika patch */}
-          {action === 'patch' && (
+          {/* Tombol Terapkan ke Dokumen Word */}
+          {(rawHtml || action === 'patch' || summary) && (
             <button
-              onClick={handleApplyPatch}
-              disabled={applied}
+              onClick={() => handleApplyPatch(false)}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-medium border hover:bg-emerald-500/10 active:scale-95 transition-all"
               style={{
                 borderColor: darkMode ? 'rgba(16, 185, 129, 0.35)' : 'rgba(16, 185, 129, 0.3)',
                 color: applied ? '#34d399' : (darkMode ? '#a7f3d0' : '#065f46')
               }}
+              title="Sinkronkan teks revisi AI langsung ke file dokumen Word (.docx)"
             >
               {applied ? (
                 <>
                   <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                  <span>Diterapkan!</span>
+                  <span>Tersimpan di Dokumen!</span>
                 </>
               ) : (
                 <>
                   <Edit3 className="w-3.5 h-3.5" />
-                  <span>Terapkan ke Editor</span>
+                  <span>Terapkan ke Dokumen</span>
                 </>
               )}
             </button>

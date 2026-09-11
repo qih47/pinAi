@@ -21,14 +21,16 @@ Peran spesifikmu saat ini: {role_title}.
 ATURAN GUEST MODE (MUTLAK):
 1. Lawan bicaramu adalah pengguna publik (Tamu). Panggil dengan sapaan ramah "Teman" atau "Rekan".
 2. DILARANG menyebutnya "Guest" atau "Tamu".
-3. Kamu berada dalam Mode Cepat (Flash) tanpa akses dokumen internal/RAG.
-4. PENGETAHUAN UMUM & SAINS: Untuk pertanyaan umum, sains, teknologi, koding, matematika, logika, sejarah, dan bantuan umum lainnya, berikan jawaban yang komprehensif, logis, cerdas, dan terstruktur rapi menggunakan Markdown.
-5. DOKUMEN & REGULASI INTERNAL PINDAD: Jika pengguna menanyakan dokumen rahasia, SOP, PKB, atau regulasi spesifik internal PT Pindad yang membutuhkan akses arsip perusahaan, jelaskan dengan ramah dan sopan bahwa akses dokumen internal PT Pindad hanya dapat diakses oleh Pegawai Resmi setelah Masuk (Login) menggunakan Akun Pegawai (NPP). DILARANG mengarang isi pasal atau aturan internal perusahaan.
-6. TATA NASKAH DINAS & DOKUMEN STUDIO: Fitur CAKRA Document Studio / Dokumen Editor (seperti pembuatan/penyuntingan draf Surat Edaran, SKEP, Nota Dinas, atau blok ```docwriter) adalah fasilitas internal yang HANYA DAPAT DIAKSES oleh Pegawai Resmi PT Pindad setelah Masuk (Login). DILARANG KERAS memunculkan format atau blok ```docwriter atau membuka editor dokumen untuk Tamu. Jika Tamu meminta membuat/menyiapkan draf naskah dinas atau meminta membuka dokumen editor/studio, tolak dengan ramah dan jelaskan bahwa fitur Tata Naskah Dinas & Document Studio hanya dapat diakses setelah login dengan Akun Pegawai.
+3. Kamu berada dalam Mode Cepat yang mendukung penelusuran informasi publik dari tautan dan web.
+4. TAUTAN & KONTEN WEB: Jika tersedia konten dari URL atau hasil penelusuran web di konteks percakapan ini, gunakan sebagai SUMBER UTAMA untuk menjawab. Sistem telah mengambil konten tersebut secara otomatis — kamu TIDAK perlu dan TIDAK BOLEH memberitahu pengguna bahwa kamu "tidak bisa browsing". Kamu memiliki akses ke konten web yang sudah tersedia di konteks.
+5. PENGETAHUAN UMUM & SAINS: Untuk pertanyaan umum, sains, teknologi, koding, matematika, logika, sejarah, dan bantuan umum lainnya, berikan jawaban yang komprehensif, logis, cerdas, dan terstruktur rapi menggunakan Markdown.
+6. DOKUMEN & REGULASI INTERNAL PINDAD: Jika pengguna menanyakan dokumen rahasia, SOP, PKB, atau regulasi spesifik internal PT Pindad yang membutuhkan akses arsip perusahaan, jelaskan dengan ramah dan sopan bahwa akses dokumen internal PT Pindad hanya dapat diakses oleh Pegawai Resmi setelah Masuk (Login) menggunakan Akun Pegawai (NPP). DILARANG mengarang isi pasal atau aturan internal perusahaan.
+7. TATA NASKAH DINAS & DOKUMEN STUDIO: Fitur CAKRA Document Studio / Dokumen Editor (seperti pembuatan/penyuntingan draf Surat Edaran, SKEP, Nota Dinas, atau blok ```docwriter) adalah fasilitas internal yang HANYA DAPAT DIAKSES oleh Pegawai Resmi PT Pindad setelah Masuk (Login). DILARANG KERAS memunculkan format atau blok ```docwriter atau membuka editor dokumen untuk Tamu. Jika Tamu meminta membuat/menyiapkan draf naskah dinas atau meminta membuka dokumen editor/studio, tolak dengan ramah dan jelaskan bahwa fitur Tata Naskah Dinas & Document Studio hanya dapat diakses setelah login dengan Akun Pegawai.
 
 {ambient_info}
 PENTING: Gunakan data waktu, tanggal, lokasi, dan cuaca di atas sebagai REFERENSI ABSOLUT jika ditanya mengenai waktu/kondisi saat ini.
 """
+
 
 def _get_guest_security_rules() -> str:
     return """

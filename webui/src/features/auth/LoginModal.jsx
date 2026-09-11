@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { 
-  X, 
-  User, 
-  Lock, 
-  Eye, 
-  EyeOff, 
-  AlertCircle, 
+import {
+  X,
+  User,
+  Lock,
+  Eye,
+  EyeOff,
+  AlertCircle,
   Loader2,
   ShieldCheck,
   Sparkles,
@@ -17,9 +17,9 @@ import { useChatAuthStore } from '../../stores/authStore';
 import { useChatStore } from '../../stores/chatStore';
 import { useNavigate } from 'react-router-dom';
 
-export default function LoginModal({ 
-  isOpen: externalIsOpen, 
-  onClose: externalOnClose, 
+export default function LoginModal({
+  isOpen: externalIsOpen,
+  onClose: externalOnClose,
   darkMode = true,
   language = 'id'
 }) {
@@ -148,7 +148,7 @@ export default function LoginModal({
   const inputBorder = isDark ? 'rgba(255, 255, 255, 0.12)' : '#e2e8f0';
 
   return (
-    <div 
+    <div
       style={{
         position: 'fixed',
         inset: 0,
@@ -165,7 +165,7 @@ export default function LoginModal({
       }}
     >
       {/* ── 2-COLUMN FLUENT OOBE MODAL CANVAS (MATCHING WELCOME WIZARD) ── */}
-      <div 
+      <div
         style={{
           position: 'relative',
           width: '100%',
@@ -184,7 +184,7 @@ export default function LoginModal({
         }}
       >
         {/* Close Button */}
-        <button 
+        <button
           onClick={handleClose}
           style={{
             position: 'absolute',
@@ -319,8 +319,8 @@ export default function LoginModal({
           </h2>
           <p style={{ fontSize: '13px', color: textMuted, margin: '0 0 20px 0', lineHeight: 1.4 }}>
             {language === 'en'
-              ? 'Enter your NPP and HRIS password.'
-              : 'Gunakan NPP dan kata sandi HRIS Anda.'}
+              ? 'Enter your NPP and EIS password.'
+              : 'Gunakan NPP dan kata sandi EIS Anda.'}
           </p>
 
           {/* Error Alert */}
@@ -393,7 +393,7 @@ export default function LoginModal({
                   {language === 'en' ? 'Password' : 'Kata Sandi'}
                 </label>
                 <span style={{ fontSize: '11px', color: textMuted }}>
-                  {language === 'en' ? 'HRIS Account' : 'Akun HRIS'}
+                  {language === 'en' ? 'EIS Account' : 'Akun EIS'}
                 </span>
               </div>
               <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>

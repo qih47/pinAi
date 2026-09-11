@@ -36,6 +36,7 @@ import PreviewImageModal from '../../chat/components/modals/PreviewImageModal';
 import NextcloudModal from '../../chat/components/NextcloudModal';
 import { useCollabStore } from '../../../stores/collabStore';
 import { useDocWriterStore } from '../../../stores/docWriterStore';
+import DocWriterWorkspace from '../../doc_writer/components/DocWriterWorkspace';
 import { translations } from '../../../utils/translations';
 
 export const CollabWorkspace = ({
@@ -174,46 +175,55 @@ export const CollabWorkspace = ({
   });
   const isResizingPad = useRef(false);
 
-  const handleMouseMovePad = useCallback((e) => {
-    if (!isResizingPad.current) return;
-    const newWidth = window.innerWidth - e.clientX;
-    const minW = 340;
-    const maxW = Math.min(950, Math.floor(window.innerWidth * 0.75));
-    if (newWidth >= minW && newWidth <= maxW) {
-      setPadWidth(newWidth);
-    }
-  }, []);
-
   const stopResizingPad = useCallback(() => {
     if (!isResizingPad.current) return;
     isResizingPad.current = false;
     document.body.style.cursor = '';
     document.body.style.userSelect = '';
-    document.removeEventListener('mousemove', handleMouseMovePad);
-    document.removeEventListener('mouseup', stopResizingPad);
     try {
       setPadWidth((currentW) => {
         localStorage.setItem('collab_pad_width', currentW.toString());
         return currentW;
       });
     } catch {}
-  }, [handleMouseMovePad]);
+  }, []);
+
+  const handleMouseMovePad = useCallback((e) => {
+    if (!isResizingPad.current) return;
+    if (e.buttons === 0) {
+      stopResizingPad();
+      return;
+    }
+    const newWidth = window.innerWidth - e.clientX;
+    const minW = 340;
+    const maxW = Math.min(950, Math.floor(window.innerWidth * 0.75));
+    if (newWidth >= minW && newWidth <= maxW) {
+      setPadWidth(newWidth);
+    }
+  }, [stopResizingPad]);
 
   const startResizingPad = useCallback((e) => {
     e.preventDefault();
     isResizingPad.current = true;
     document.body.style.cursor = 'col-resize';
     document.body.style.userSelect = 'none';
-    document.addEventListener('mousemove', handleMouseMovePad);
-    document.addEventListener('mouseup', stopResizingPad);
+
+    const onMouseUp = () => {
+      stopResizingPad();
+      window.removeEventListener('mousemove', handleMouseMovePad);
+      window.removeEventListener('mouseup', onMouseUp);
+    };
+
+    window.addEventListener('mousemove', handleMouseMovePad, { passive: true });
+    window.addEventListener('mouseup', onMouseUp);
   }, [handleMouseMovePad, stopResizingPad]);
 
   useEffect(() => {
     return () => {
-      document.removeEventListener('mousemove', handleMouseMovePad);
-      document.removeEventListener('mouseup', stopResizingPad);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
     };
-  }, [handleMouseMovePad, stopResizingPad]);
+  }, []);
 
   // Modals
   const [isCreateOpen, setIsCreateOpen] = useState(false);
@@ -389,6 +399,7 @@ export const CollabWorkspace = ({
   useEffect(() => {
     setIsPadOpen(false);
     useDocWriterStore.getState().closeWriter();
+    useDocWriterStore.getState().setContext(null, roomId || null);
   }, [roomId]);
 
   // Map NPP and Name to Member Info
@@ -1192,6 +1203,15 @@ export const CollabWorkspace = ({
 
           {/* Area Utama: Chat + Document Pad (Kanan) */}
           <div className="flex-1 flex min-h-0 overflow-hidden" style={{ background: pageBg }}>
+            {!isGuest && isDocWriterOpen && (
+              <DocWriterWorkspace
+                darkMode={darkMode}
+                theme={theme}
+                isMobile={isMobile}
+                sessionId={null}
+                roomId={roomId}
+              />
+            )}
             {/* Area Obrolan Grup */}
             <div className="flex-1 flex flex-col min-w-0" style={{ background: pageBg }}>
               {isLoadingChat ? (

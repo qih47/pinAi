@@ -105,12 +105,31 @@ export default function ChatPage({ isGuest,
     }
   }, [isDocWriterOpen, isMobile, setSidebarOpen]);
 
-  // ── Auto-close Document Studio saat beralih sesi chat atau ke menu lain ──
+  const collabRoomId = React.useMemo(() => {
+    if (corporateMode === 'collab' && location.pathname.startsWith('/collab/')) {
+      const parts = location.pathname.split('/');
+      return parts[2] || null;
+    }
+    return null;
+  }, [corporateMode, location.pathname]);
+
+  const prevSessionRef = React.useRef(activeSessionId);
+  const prevCorporateModeRef = React.useRef(corporateMode);
+
   React.useEffect(() => {
-    useDocWriterStore.getState().closeWriter();
-    useDocWriterStore.getState().setAiActivated(false);
-    setHasSessionDocWriter(false);
-  }, [activeSessionId, corporateMode, showDocumentList, location.pathname]);
+    useDocWriterStore.getState().setContext(activeSessionId, collabRoomId);
+  }, [activeSessionId, collabRoomId]);
+
+  // ── Auto-close Document Studio HANYA saat berpindah ke sesi chat lain atau menu lain ──
+  React.useEffect(() => {
+    if (prevSessionRef.current !== activeSessionId || prevCorporateModeRef.current !== corporateMode) {
+      prevSessionRef.current = activeSessionId;
+      prevCorporateModeRef.current = corporateMode;
+      useDocWriterStore.getState().closeWriter();
+      useDocWriterStore.getState().setAiActivated(false);
+      setHasSessionDocWriter(false);
+    }
+  }, [activeSessionId, corporateMode]);
 
   const t = translations[language]?.chatPage || translations.id.chatPage;
   const tGlobal = translations[language] || translations.id;
@@ -545,8 +564,14 @@ export default function ChatPage({ isGuest,
         {/* WRAPPER FOR SPLIT SCREEN */}
         <div style={{ flex: 1, display: "flex", flexDirection: "row", overflow: "hidden", marginTop: 0 }}>
           <PdfInterrogator darkMode={darkMode} language={language} isMobile={isMobile} />
-          {!isGuest && isDocWriterOpen && (
-            <DocWriterWorkspace darkMode={darkMode} theme={theme} isMobile={isMobile} />
+          {!isGuest && isDocWriterOpen && corporateMode !== 'collab' && (
+            <DocWriterWorkspace
+              darkMode={darkMode}
+              theme={theme}
+              isMobile={isMobile}
+              sessionId={activeSessionId}
+              roomId={null}
+            />
           )}
           <div
             style={{

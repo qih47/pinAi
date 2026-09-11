@@ -182,8 +182,8 @@ export const createStreamSlice = (set, get) => ({
         set({ stagedAttachments: [] });
 
         // Untuk mode 'documents', isolasi dokumen spesifik HANYA berlaku untuk 1 turn awal ini.
-        // Setelah stream selesai dikirim & diterima, bersihkan activeIsolatedDocId agar chat berikutnya masuk ke RAG umum.
-        if (get().activeModeTag === 'documents' || options?.forced_mode === 'documents') {
+        // Setelah stream selesai dikirim & diterima, bersihkan activeIsolatedDocId jika user memang sedang di tab documents.
+        if (get().activeModeTag === 'documents') {
             get().setContextIsolation(null, null, 'documents');
         }
     },
@@ -215,10 +215,12 @@ export const createStreamSlice = (set, get) => ({
             }
         }
 
-        if (detectedMode && ['auto', 'focus', 'documents', 'document', 'compliance', 'flash', 'guest', 'email', 'insight'].includes(detectedMode)) {
-            effectiveChatMode = (detectedMode === 'document') ? 'documents' : detectedMode;
-        } else if (currentIsolatedDocId) {
+        if (currentIsolatedDocId) {
             effectiveChatMode = currentChatMode === 'compliance' ? 'compliance' : 'focus';
+        } else if (get().activeModeTag) {
+            effectiveChatMode = get().activeModeTag;
+        } else {
+            effectiveChatMode = 'auto';
         }
 
         // Cek thinking mode asli dari pesan yang diedit atau respons setelahnya

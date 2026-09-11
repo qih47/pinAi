@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { X, FileCheck2, ScrollText, Mail, FileText, Check, AlertCircle } from 'lucide-react';
+import { X, FileCheck2, ScrollText, Mail, FileText, Check, AlertCircle, Layers, CheckCircle2 } from 'lucide-react';
 import { useDocWriterStore } from '../../../stores/docWriterStore';
 import { defaultTemplates } from '../templates/defaultTemplates';
 
@@ -9,6 +9,8 @@ const iconMap = {
   ScrollText: ScrollText,
   Mail: Mail,
   FileText: FileText,
+  Layers: Layers,
+  CheckCircle2: CheckCircle2,
 };
 
 const TemplateSelectorModal = ({ isOpen, onClose, darkMode = true, theme }) => {

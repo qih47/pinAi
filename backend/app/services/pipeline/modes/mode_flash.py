@@ -80,6 +80,29 @@ class ModeFlash:
         if session_chunks:
             system_prompt += "\n\n" + session_chunks
 
+        # Inject Live Document Snapshot (Mata AI CAKRA Document Studio)
+        if current_user_npp and current_user_npp != "GUEST":
+            try:
+                from backend.app.services.document_writer.doc_writer_service import doc_writer_service
+                from backend.app.services.document_writer.document_structure_parser import document_structure_parser
+                from pathlib import Path
+
+                room_id = (context_isolation.get("room_id") if context_isolation else None) or (routing_data.get("room_id") if routing_data else None) or ""
+                active_doc = doc_writer_service.get_active_document(
+                    npp=current_user_npp,
+                    session_id=session_uuid or "",
+                    room_id=room_id
+                )
+                if active_doc and active_doc.get("file_path"):
+                    doc_path = Path(active_doc["file_path"])
+                    if doc_path.exists():
+                        doc_snapshot = document_structure_parser.get_prompt_snapshot(doc_path)
+                        if doc_snapshot:
+                            system_prompt += f"\n\n{doc_snapshot}\n"
+                            logger.info(f"[MODE_FLASH] Injected live DocWriter snapshot for {doc_path.name} into system prompt")
+            except Exception as e:
+                logger.warning(f"[MODE_FLASH] Gagal mengambil snapshot dokumen aktif: {e}")
+
         messages_dict = [{"role": m.role, "content": m.content} for m in chat_history]
         # Mengambil lean history: 4 pesan terakhir untuk chitchat, 6 pesan untuk modul lainnya
         if module_name == "chitchat":

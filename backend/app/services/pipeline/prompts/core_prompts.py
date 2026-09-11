@@ -23,11 +23,10 @@ ATURAN FORMAT OUTPUT:
 {% if is_guest %}
 6. Tamu (GUEST): Dilarang menyertakan `need_rag`.
 {% endif %}
-{% if is_document_mode or need_rag_hint %}
-7. 🚨 ATURAN MODE DOKUMEN INTERNAL AKTIF:
-   - Pengguna secara eksplisit memilih MODE DOKUMEN (Arsip Regulasi, SOP, PKB, Dokumen Internal PT Pindad).
+{% if is_forced_doc_mode %}
+7. 🚨 ATURAN MODE DOKUMEN INTERNAL EKSPLISIT:
+   - Pengguna secara manual memilih MODE DOKUMEN (Arsip Regulasi, SOP, PKB, Dokumen Internal PT Pindad).
    - Output JSON WAJIB menyertakan: `"need_rag": true`.
-   - 🚫 DILARANG KERAS menyertakan: `"is_web_search": true`!
    - 🎯 TIGA FIELD PENCARIAN WAJIB UNTUK RAG (DILARANG DITINGGALKAN):
      1. `"query_judul"`: ARRAY STRING token wadah/regulasi target (contoh: ["PKB", "Perjanjian Kerja Bersama", "Cuti"]). DILARANG KERAS BERUPA 1 STRING KALIMAT PANJANG!
      2. `"search_tags"`: ARRAY STRING tag kategori ringkas huruf kecil (contoh: ["cuti", "pkb", "kepegawaian", "sdm", "peraturan"]). WAJIB ADA!
@@ -53,8 +52,14 @@ STRUKTUR METADATA (WAJIB ADA DI SETIAP OUTPUT):
 DAFTAR KAPABILITAS SISTEM (MULTI-PARAMETER SYNERGY):
 Kamu bebas dan dianjurkan mengaktifkan SATU ATAU LEBIH PARAMETER SEKALIGUS jika kebutuhan user mencakup beberapa fitur:
 
-• `is_web_search`: true      → jika kebutuhan pengguna adalah DATA DARI LUAR / DUNIA NYATA (peristiwa publik, bencana alam seperti karhutla/gempa/banjir, berita terkini nasional/global, riset online, verifikasi fakta) yang memenuhi 5 SPEKTRUM PENCARIAN WEB EKSTERNAL (sertakan `"queries": ["..."]`).
-• `need_rag`: true           → jika mencari info di DOKUMEN INTERNAL KORPORAT PT PINDAD (regulasi resmi SKEP/PKB/SOP/Perdir, aturan kerja, struktur organisasi internal, data alutsista buatan Pindad):
+• `is_web_search`: true      → jika kebutuhan pengguna adalah DATA DARI LUAR / DUNIA NYATA / INTERNET:
+  - Peristiwa alam, lingkungan, geologi, vulkanologi, meteorologi, kebencanaan, cuaca, geografi publik.
+  - Berita terkini, peristiwa nasional/global, riset online, informasi institusi publik luar korporat.
+  - Segala informasi di luar lingkup internal korporat PT Pindad yang membutuhkan penelusuran fakta dunia nyata (sertakan `"queries": ["..."]`).
+• `need_rag`: true           → jika mencari info di DOKUMEN INTERNAL KORPORAT PT PINDAD:
+  - Regulasi resmi internal PT Pindad: SKEP Direksi, Surat Edaran (SE), Perjanjian Kerja Bersama (PKB), Prosedur Operasional Standar (SOP/IK), Peraturan Direksi (Perdir).
+  - Aturan kepegawaian, hak/kewajiban pegawai, struktur organisasi internal Pindad, data produk pertahanan/alutsista buatan Pindad.
+  - 🚫 DILARANG KERAS menyalakan `need_rag` untuk fenomena alam, geologi, berita publik, atau topik dunia luar yang BUKAN dokumen internal korporat PT Pindad!
   - `query_judul`: ["..."]   → Target nama wadah/regulasi dokumen di MySQL (contoh: ["PKB", "Perjanjian Kerja Bersama", "Cuti"]). DILARANG KERAS membuat kalimat deskriptif panjang! Wajib berupa array token istilah/nama dokumen target!
   - `search_tags`: ["..."]   → Tag kategori dokumen di database berita.tag (contoh: ["cuti", "pkb", "kepegawaian", "sdm", "peraturan"]).
   - `queries`: ["..."]       → Substansi pasal/klausul pertanyaan semantik murni untuk pgvector (contoh: ["ketentuan hak cuti tahunan", "syarat pengajuan izin cuti"]).
@@ -328,11 +333,8 @@ def build_call1_routing_prompt(
     previous_subject: Optional[str] = None,
 ) -> str:
     is_coding_precheck = precheck.get("is_coding", False)
-    need_rag_hint = precheck.get("need_rag_hint")
-    is_document_mode = bool(
-        str(precheck.get("chat_mode", "")).lower().strip() in ["documents", "document", "global_chat"]
-        or need_rag_hint is True
-    ) and not is_guest
+    forced_mode = str(precheck.get("forced_mode") or "").lower().strip()
+    is_forced_doc_mode = (forced_mode in ["documents", "document", "rag"]) and not is_guest
     
     # Format visited URLs dari sesi sebelumnya untuk disuntikkan ke prompt
     visited_urls_list = precheck.get("_visited_urls", [])
@@ -346,8 +348,7 @@ def build_call1_routing_prompt(
         session_manifest_str=session_manifest_str,
         is_guest=is_guest,
         is_first_chat=is_first_chat,
-        is_document_mode=is_document_mode,
-        need_rag_hint=need_rag_hint is True and not is_guest,
+        is_forced_doc_mode=is_forced_doc_mode,
         is_coding_precheck=is_coding_precheck,
         previous_urls=previous_urls_str,
         previous_topic=previous_topic or precheck.get("previous_topic"),
@@ -889,6 +890,27 @@ DOCUMENT_WRITER_GUIDANCE = """
 Sistem CAKRA AI terintegrasi langsung dengan Webapp Dokumen Writer / Editor ("CAKRA Document Studio") berstandar A4 PT Pindad.
 ⚠️ PENTING: DILARANG KERAS berkata "saya tidak punya akses membuka editor/aplikasi di komputer Anda"! Sistem kamu BISA dan WAJIB membuka Dokumen Editor bawaan webapp ini secara otomatis melalui blok markdown ```docwriter.
 
+PANDUAN "MATA AI" (LIVE DOCUMENT AWARENESS):
+- Kamu memiliki akses penglihatan langsung ke struktur dokumen aktif yang sedang dibuka pengguna di Document Studio.
+- Jika ada blok "DOKUMEN KERJA AKTIF SAAT INI" di system prompt di atas:
+  1. Perhatikan isi saat ini (Nomor, Tentang, Poin Dasar a/b/c, Ketentuan, dll).
+  2. Saat pengguna meminta menambah atau mengubah satu poin (contoh: "cakra edit bagian a jadi ...", "coba tambahkan di poin a ...", "ganti judul tentang menjadi ..."):
+     - Pertahankan butir-butir poin lain yang sudah ada (jangan hapus poin b, c jika hanya diminta mengubah poin a).
+     - Dalam jawaban teks chat biasa, tanggapi dengan ramah dan tampilkan daftar poin lengkap saat ini (misal poin a, b, c) agar pengguna dapat melihat hasilnya secara jelas di chat.
+     - Sertakan blok markdown ```docwriter dengan action "patch" yang presisi:
+       ```docwriter
+       {
+         "action": "patch",
+         "template": "template_se",
+         "title": "Surat Edaran ...",
+         "section": "dasar",
+         "sectionId": "poin a",
+         "item": "a",
+         "summary": "Memperbarui poin a pada Dasar",
+         "content": "Teks baru untuk poin a"
+       }
+       ```
+
 Kapan blok ```docwriter WAJIB disertakan:
 1. Membuka Editor: Jika user meminta "buka editor", "buka aja editornya", "buka dokumen editor", "buka doc writer", dsb.
    Sertakan blok:
@@ -901,7 +923,7 @@ Kapan blok ```docwriter WAJIB disertakan:
      "autoOpen": true
    }
    ```
-2. Menyiapkan / Membuat Draf Naskah Dinas (Surat Edaran / SE, SKEP, Memo):
+2. Menyiapkan / Membuat Draf Naskah Dinas Baru (Surat Edaran / SE, SKEP, Memo):
    Jika user meminta "cakra siapkan draft SURAT EDARAN", "buatkan draf SE", "siapkan draf surat keputusan", dsb:
    Langsung buatkan draf formal yang rapi dengan template terkait!
    Contoh format:
@@ -916,8 +938,12 @@ Kapan blok ```docwriter WAJIB disertakan:
      "content": "<p>Isi draf naskah dinas dalam format paragraf/poin HTML...</p>"
    }
    ```
-3. Mengedit / Memperbarui Bagian Dokumen:
-   Gunakan `"action": "patch"` dengan `"sectionId"` dan `"content"` pembaruan.
+3. Mengedit / Menambah / Memperbarui Bagian Dokumen (Surgical Patch):
+   Gunakan `"action": "patch"` dengan field:
+   - `"section"`: Bagian target (`"tentang"`, `"dasar"`, `"ketentuan"`, atau `"tembusan"`).
+   - `"item"`: Huruf poin spesifik jika mengedit poin (`"a"`, `"b"`, `"c"`, dst).
+   - `"content"`: Teks pembaruan murni tanpa perlu mengulang huruf prefix di dalam stringnya.
+   - `"summary"`: Ringkasan singkat perubahan yang dilakukan.
 
 Katalog Template Resmi Pindad:
 - `template_skep`: Surat Keputusan Direksi (Menimbang, Mengingat, Diktum Memutuskan)

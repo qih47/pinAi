@@ -134,25 +134,55 @@ class NightlyTrainingOrchestrator:
             "artifacts": self.last_spread_artifacts
         }
 
-    def is_within_training_window(self, force_run: bool = False) -> bool:
+    def is_within_training_window(self, force_run: bool = False, current_dt: Optional[datetime] = None) -> bool:
         """
-        Mengecek apakah saat ini berada dalam rentang waktu training malam:
-        18:00 sore s/d 07:30 pagi.
+        Mengecek apakah saat ini berada dalam rentang waktu training:
+        1. Hari Kerja (Senin - Jumat pagi):
+           - 18:00 sore s/d 07:30 pagi (toleransi batch s.d. 08:00 WIB).
+        2. Weekend Marathon (Jumat sore s/d Senin pagi):
+           - Dimulai Jumat pukul 18:00 (6 sore) WIB.
+           - Sepanjang Sabtu (24 jam non-stop tanpa batas jam).
+           - Sepanjang Minggu (24 jam non-stop tanpa batas jam).
+           - Berakhir Senin pukul 07:30 WIB (hard stop 08:00 WIB).
         """
         if force_run:
             return True
 
-        now = datetime.now().time()
-        # Kasus lewat tengah malam: 18:00 -> 23:59 atau 00:00 -> 07:30
-        if self.start_time <= now or now < self.soft_stop_time:
+        if current_dt is None:
+            current_dt = datetime.now()
+
+        weekday = current_dt.weekday()  # 0=Senin, 1=Selasa, 2=Rabu, 3=Kamis, 4=Jumat, 5=Sabtu, 6=Minggu
+        current_time = current_dt.time()
+
+        # Weekend Marathon: Sabtu & Minggu non-stop 24 jam tanpa batasan jam
+        if weekday in (5, 6):
             return True
+
+        # Hari Kerja (Senin s/d Jumat):
+        # Termasuk Jumat malam (mulai jam 18:00) dan Senin dini hari (s.d. 07:30)
+        if self.start_time <= current_time or current_time < self.soft_stop_time:
+            return True
+
         return False
 
-    def is_approaching_hard_stop(self) -> bool:
-        """Mengecek apakah sudah lewat 07:50 mendekati 08:00"""
-        now = datetime.now().time()
+    def is_approaching_hard_stop(self, current_dt: Optional[datetime] = None) -> bool:
+        """
+        Mengecek apakah sudah lewat 07:50 mendekati 08:00 WIB.
+        Catatan: Pada hari Sabtu & Minggu (Weekend Marathon), hard stop dinonaktifkan
+        sepenuhnya karena training berjalan 24 jam non-stop tanpa batasan jam.
+        Hard stop hanya berlaku pada hari kerja (Senin pagi s/d Jumat pagi).
+        """
+        if current_dt is None:
+            current_dt = datetime.now()
+
+        weekday = current_dt.weekday()
+        # Nonaktifkan hard stop di hari Sabtu dan Minggu
+        if weekday in (5, 6):
+            return False
+
+        current_time = current_dt.time()
         cutoff_margin = dtime(7, 50)
-        if cutoff_margin <= now < self.hard_stop_time:
+        if cutoff_margin <= current_time < self.hard_stop_time:
             return True
         return False
 
@@ -462,8 +492,8 @@ class NightlyTrainingOrchestrator:
 
         logger.info("=" * 70)
         logger.info(f"🚀 CAKRA AI NIGHTLY TRAINING ENGINE DIMULAI (Model: {self.model_name})")
-        logger.info(f"⏰ Jendela Waktu: 18:00 WIB s/d 07:30 WIB (Hard stop 08:00 WIB)")
-        logger.info(f"🎯 Database Target: ragdb (Eksklusif)")
+        logger.info("⏰ Jendela: Hari Kerja (18:00 - 07:30 WIB) | Weekend Marathon (Jumat 18:00 s.d. Senin 08:00 WIB Non-Stop)")
+        logger.info("🎯 Database Target: ragdb (Eksklusif)")
         logger.info("=" * 70)
 
         # 1. Sync & enroll dokumen dari ragdb
@@ -642,8 +672,8 @@ async def get_nightly_dashboard_status() -> Dict[str, Any]:
         "stats": stats,
         "tiered_stats": tiered_stats,
         "schedule": {
-            "window": "18:00 WIB s/d 07:30 WIB",
-            "hard_stop": "08:00 WIB",
+            "window": "Hari Kerja: 18:00 - 07:30 WIB | Weekend Marathon: Jumat 18:00 s/d Senin 08:00 WIB (Non-Stop)",
+            "hard_stop": "08:00 WIB (Senin - Jumat)",
             "mode": "Otomatis via Cronjob & Tombol Manual"
         }
     }
