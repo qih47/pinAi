@@ -28,7 +28,9 @@ from backend.app.services.analytics_service import (
     get_agent_steps,
     get_security_threat_score,
     get_query_clusters,
-    get_all_users_with_activity
+    get_all_users_with_activity,
+    get_daily_token_usage,
+    get_request_token_logs
 )
 from backend.app.services.security_service import get_recent_security_logs
 from backend.app.services.hardware_service import get_hardware_telemetry
@@ -123,6 +125,30 @@ async def get_leaderboard():
     """Mengambil top users berdasarkan konsumsi token"""
     users = await get_top_users()
     return {"status": "success", "leaderboard": users}
+
+@router.get("/tokens/daily")
+async def daily_token_usage(days: int = 7):
+    """Mengambil ringkasan penggunaan token per hari dan statistik model."""
+    result = await get_daily_token_usage(days=days)
+    return result
+
+@router.get("/tokens/requests")
+async def request_token_logs(
+    limit: int = 25,
+    offset: int = 0,
+    search: str = "",
+    mode: str = "",
+    date: str = "",
+):
+    """Mengambil log per-request penggunaan token riil."""
+    result = await get_request_token_logs(
+        limit=limit,
+        offset=offset,
+        search=search,
+        mode=mode,
+        date=date,
+    )
+    return result
 
 @router.get("/knowledge/stats")
 async def knowledge_stats():

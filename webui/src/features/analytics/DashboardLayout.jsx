@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useChatStore } from '../../stores/chatStore';
-import { Activity, ShieldAlert, FileText, Settings, LogOut, Hexagon, Wrench, Database, ChevronLeft, ChevronRight, FileSearch, Code2, Archive, Key, Brain, Users, MessageSquare } from 'lucide-react';
+import { Activity, ShieldAlert, FileText, Settings, LogOut, Hexagon, Wrench, Database, ChevronLeft, ChevronRight, FileSearch, Code2, Archive, Key, Brain, Users, MessageSquare, Coins } from 'lucide-react';
 import { LiveTerminal } from './components/LiveTerminal';
 import { RequestLatencyChart } from './components/RequestLatencyChart';
 import { AgenticRadar } from './components/AgenticRadar';
@@ -18,6 +18,7 @@ import { QualityRadar } from './components/QualityRadar';
 import { PipelineVisualizer } from './components/PipelineVisualizer';
 import { HardwareMonitor } from './components/HardwareMonitor';
 import { TokenLeaderboard } from './components/TokenLeaderboard';
+import { TokenMonitorTab } from './components/TokenMonitorTab';
 import AuditLogsPage from '../admin/AuditLogsPage';
 import { OCRSandbox } from '../admin/components/OCRSandbox';
 import { PromptStudio } from '../admin/components/PromptStudio';
@@ -122,18 +123,10 @@ export const DashboardLayout = () => {
                <ChevronRight size={20} />
             </button>
             <div>
-              <h2 className="text-2xl font-bold tracking-wide text-gray-100 flex items-center gap-3">
+              <h2 className="text-2xl font-bold tracking-wide text-gray-100">
                 OPERATIONAL INTELLIGENCE
-                <span className="bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 text-xs px-2 py-1 rounded tracking-widest uppercase">Live</span>
               </h2>
               <p className="text-sm text-gray-500 mt-1">Real-time system health and bottleneck monitoring.</p>
-            </div>
-          </div>
-          
-          <div className="flex gap-4">
-            <div className="bg-[#0B0F19] border border-gray-800 rounded-lg px-4 py-2 flex flex-col">
-              <span className="text-[10px] text-gray-500 uppercase tracking-wider">System Status</span>
-              <span className="text-green-400 font-bold text-sm tracking-wide">OPERATIONAL</span>
             </div>
           </div>
         </header>
@@ -148,6 +141,12 @@ export const DashboardLayout = () => {
                 className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${overviewTab === 'main' ? 'text-cyan-400 border-b-2 border-cyan-400 bg-cyan-900/20' : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800/50'}`}
               >
                 Main Dashboard
+              </button>
+              <button 
+                onClick={() => setOverviewTab('tokens')}
+                className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-colors flex items-center gap-1.5 ${overviewTab === 'tokens' ? 'text-cyan-400 border-b-2 border-cyan-400 bg-cyan-900/20' : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800/50'}`}
+              >
+                <Coins size={14} /> Token Monitor
               </button>
               <button 
                 onClick={() => setOverviewTab('metrics')}
@@ -181,6 +180,11 @@ export const DashboardLayout = () => {
                   </div>
                 </div>
               </div>
+            )}
+
+            {/* Token Monitor Tab */}
+            {overviewTab === 'tokens' && (
+              <TokenMonitorTab />
             )}
 
             {/* Metrics Tab */}

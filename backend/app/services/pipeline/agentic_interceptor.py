@@ -130,19 +130,21 @@ async def agentic_stream_wrapper(
                     native_thought = chunk_data.get("thinking", "")
                     eval_count = chunk_data.get("eval_count", 0)
                     eval_duration = chunk_data.get("eval_duration", 0)
+                    prompt_eval_count = chunk_data.get("prompt_eval_count", 0)
                 except (json.JSONDecodeError, AttributeError):
                     chunk_text = chunk_line if isinstance(chunk_line, str) else ""
                     native_thought = ""
                     eval_count = 0
                     eval_duration = 0
+                    prompt_eval_count = 0
 
                 # 1. Forward thinking chunks as usual
                 if native_thought and is_thinking:
                     yield format_sse("", native_thought, False, event_type=SSEEventType.THINKING)
 
                 if not chunk_text:
-                    if eval_count > 0 and not is_capturing_tool:
-                        yield format_sse("", "", False, event_type=SSEEventType.CHUNK, eval_count=eval_count, eval_duration=eval_duration)
+                    if (eval_count > 0 or prompt_eval_count > 0) and not is_capturing_tool:
+                        yield format_sse("", "", False, event_type=SSEEventType.CHUNK, eval_count=eval_count, eval_duration=eval_duration, prompt_eval_count=prompt_eval_count)
                     continue
 
                 # 2. Track text stream

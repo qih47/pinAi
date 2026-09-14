@@ -592,9 +592,15 @@ async def stream_ollama_chat(
                         if done:
                             eval_count = chunk.get("eval_count", 0)
                             eval_duration = chunk.get("eval_duration", 0)
+                            prompt_eval_count = chunk.get("prompt_eval_count", 0)
+                            prompt_eval_duration = chunk.get("prompt_eval_duration", 0)
                             if eval_count and eval_duration:
                                 yield_data["eval_count"] = eval_count
                                 yield_data["eval_duration"] = eval_duration
+                            if prompt_eval_count:
+                                yield_data["prompt_eval_count"] = prompt_eval_count
+                            if prompt_eval_duration:
+                                yield_data["prompt_eval_duration"] = prompt_eval_duration
                                 
                         yield json.dumps(
                             yield_data,
@@ -788,6 +794,9 @@ async def generate_json_response(
                 raise ValueError(f"[JSON_GEN] Model {model_name} returned empty content")
 
         parsed_json = _extract_json_from_response(message_content, model_name)
+        if isinstance(parsed_json, dict):
+            parsed_json["_prompt_tokens"] = result.get("prompt_eval_count", 0)
+            parsed_json["_completion_tokens"] = result.get("eval_count", 0)
 
         elapsed = (datetime.now() - start_time).total_seconds()
         elapsed_ms = elapsed * 1000

@@ -590,6 +590,16 @@ class ModeHub:
                 "key_subject": current_key_subject
             }) + "\n"
 
+        # Emit Call 1 Router token metrics
+        router_p_tokens = routing_data.get("_router_prompt_tokens") or 0
+        router_c_tokens = routing_data.get("_router_completion_tokens") or 0
+        if router_p_tokens > 0 or router_c_tokens > 0:
+            yield json.dumps({
+                "event_type": "pipeline_tokens",
+                "router_prompt_tokens": router_p_tokens,
+                "router_completion_tokens": router_c_tokens,
+            }) + "\n"
+
         # ── Step 3.5: Progressive URL Fetching Stepper (100% Call 1 Single Source of Truth) ───
         url_contexts = ""
         from backend.app.services.web_tools.url_reader import extract_url_display_info, fetch_webpage_content

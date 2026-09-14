@@ -5,7 +5,7 @@ import psutil
 import subprocess
 import asyncio
 import logging
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 
 from backend.app.core import database
 from backend.app.utils.request_logging import recent_latencies
@@ -41,12 +41,14 @@ async def fetch_db_metrics():
                 # Fallback jika struktur tabel berbeda
                 active_sessions = await conn.fetchval("SELECT COUNT(*) FROM chat_sessions")
             
-            # Hitung total token (Simulasi atau Real jika ada kolom prompt_tokens dll)
+            # Hitung total token riil dari request_token_usage (dengan fallback chat_messages)
             try:
-                # Cek jika tabel audit / metrics ada, atau total pesan
-                total_msgs = await conn.fetchval("SELECT COUNT(*) FROM chat_messages")
-                # Simulasi: 1 pesan rata-rata konsumsi 450 tokens (karena kita ga nyimpen token exact per baris saat ini)
-                token_consumption = total_msgs * 450
+                real_tokens = await conn.fetchval("SELECT SUM(total_tokens) FROM request_token_usage")
+                if real_tokens and real_tokens > 0:
+                    token_consumption = int(real_tokens)
+                else:
+                    total_msgs = await conn.fetchval("SELECT COUNT(*) FROM chat_messages")
+                    token_consumption = (total_msgs or 0) * 450
             except Exception:
                 token_consumption = 0
 
@@ -178,29 +180,49 @@ async def get_ollama_running_models() -> List[Dict[str, Any]]:
     return models
 
 async def get_top_users() -> List[Dict[str, Any]]:
-    """Fetches top 5 token consumers in the last 7 days based on message count"""
+    """Fetches top 10 token consumers in the last 7-30 days based on real token usage or message count"""
     if database.db_pool is None:
         return []
 
-    base_query = """
-        SELECT s.npp, COUNT(m.id) as msgs, MAX(m.timestamp) as last_active
-        FROM chat_messages m
-        JOIN chat_sessions s ON m.session_id = s.id
-        WHERE m.timestamp >= NOW() - INTERVAL '{interval}'
-        AND s.npp != 'GUEST'
-        GROUP BY s.npp
-        ORDER BY msgs DESC
-        LIMIT 10
-    """
-
     try:
         async with database.db_pool.acquire() as conn:
-            # Coba 7 hari dulu
+            # 1. Coba ambil dari data riil request_token_usage
+            try:
+                real_rows = await conn.fetch("""
+                    SELECT user_npp as npp, SUM(total_tokens) as tokens, COUNT(*) as msgs, MAX(created_at) as last_active
+                    FROM request_token_usage
+                    WHERE user_npp != 'GUEST' AND user_npp IS NOT NULL AND created_at >= NOW() - INTERVAL '30 days'
+                    GROUP BY user_npp
+                    ORDER BY tokens DESC
+                    LIMIT 10
+                """)
+                if real_rows and len(real_rows) > 0:
+                    return [
+                        {
+                            "npp": r["npp"],
+                            "tokens": int(r["tokens"] or 0),
+                            "msgs": int(r["msgs"] or 0),
+                            "last_active": r["last_active"].isoformat() if r["last_active"] else None,
+                        }
+                        for r in real_rows
+                    ]
+            except Exception:
+                pass
+
+            # 2. Fallback ke chat_messages (estimasi 450 token/msg) jika tabel token belum banyak data
+            base_query = """
+                SELECT s.npp, COUNT(m.id) as msgs, MAX(m.timestamp) as last_active
+                FROM chat_messages m
+                JOIN chat_sessions s ON m.session_id = s.id
+                WHERE m.timestamp >= NOW() - INTERVAL '{interval}'
+                AND s.npp != 'GUEST'
+                GROUP BY s.npp
+                ORDER BY msgs DESC
+                LIMIT 10
+            """
             rows = await conn.fetch(base_query.format(interval='7 days'))
-            # Fallback ke 30 hari kalau kosong
             if not rows:
                 rows = await conn.fetch(base_query.format(interval='30 days'))
-            # Estimasi token: 450 token per message
             return [
                 {
                     "npp": r["npp"],
@@ -726,3 +748,296 @@ async def get_query_clusters() -> List[Dict[str, Any]]:
     except Exception as e:
         logger.error(f"Failed to get query clusters: {e}")
         return []
+
+
+async def record_request_tokens(
+    request_id: str,
+    session_uuid: Optional[str] = None,
+    user_npp: Optional[str] = None,
+    mode: str = "general",
+    model_router: str = "gemma4:e4b",
+    model_generator: str = "gemma4:31b",
+    router_prompt_tokens: int = 0,
+    router_completion_tokens: int = 0,
+    gen_prompt_tokens: int = 0,
+    gen_completion_tokens: int = 0,
+    duration_ms: float = 0.0,
+) -> bool:
+    """
+    Mencatat penggunaan token riil per request ke tabel request_token_usage.
+    Dipanggil asinkron dari pipeline_orchestrator saat respons chat selesai.
+    """
+    if database.db_pool is None:
+        return False
+
+    tot_prompt = int(router_prompt_tokens or 0) + int(gen_prompt_tokens or 0)
+    tot_completion = int(router_completion_tokens or 0) + int(gen_completion_tokens or 0)
+    total_tokens = tot_prompt + tot_completion
+
+    try:
+        async with database.db_pool.acquire() as conn:
+            await conn.execute(
+                """
+                INSERT INTO request_token_usage (
+                    request_id, session_uuid, user_npp, mode,
+                    model_router, model_generator,
+                    router_prompt_tokens, router_completion_tokens,
+                    gen_prompt_tokens, gen_completion_tokens,
+                    total_prompt_tokens, total_completion_tokens,
+                    total_tokens, duration_ms
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+                """,
+                request_id,
+                session_uuid,
+                user_npp or "GUEST",
+                mode or "general",
+                model_router,
+                model_generator,
+                int(router_prompt_tokens or 0),
+                int(router_completion_tokens or 0),
+                int(gen_prompt_tokens or 0),
+                int(gen_completion_tokens or 0),
+                tot_prompt,
+                tot_completion,
+                total_tokens,
+                float(duration_ms or 0.0),
+            )
+            logger.info(
+                f"🪙 [TOKEN_TRACKER] Recorded request {request_id} | "
+                f"prompt={tot_prompt} | completion={tot_completion} | total={total_tokens} tokens | mode={mode}"
+            )
+            return True
+    except Exception as e:
+        logger.warning(f"⚠️ [TOKEN_TRACKER] Failed to record token usage: {e}")
+        return False
+
+
+async def get_daily_token_usage(days: int = 7) -> Dict[str, Any]:
+    """
+    Agregasi metrik penggunaan token per hari untuk grafik time-series dan ringkasan KPI.
+    Jika days <= 0 atau days >= 365, tampilkan Semua Waktu (All Time).
+    """
+    if database.db_pool is None:
+        return {"status": "success", "days": days, "series": [], "models": [], "kpi": {}}
+
+    is_all_time = (days <= 0 or days >= 365)
+    days_clamped = 0 if is_all_time else max(1, min(days, 180))
+
+    try:
+        async with database.db_pool.acquire() as conn:
+            # 1. Query runtun waktu per hari
+            if is_all_time:
+                query_series = """
+                    SELECT 
+                        TO_CHAR(created_at, 'YYYY-MM-DD') as date_str,
+                        COUNT(*) as request_count,
+                        COALESCE(SUM(total_tokens), 0) as total_tokens,
+                        COALESCE(SUM(total_prompt_tokens), 0) as prompt_tokens,
+                        COALESCE(SUM(total_completion_tokens), 0) as completion_tokens,
+                        COALESCE(ROUND(AVG(total_tokens)), 0) as avg_tokens_per_req,
+                        COALESCE(ROUND(AVG(duration_ms)), 0) as avg_latency_ms
+                    FROM request_token_usage
+                    GROUP BY TO_CHAR(created_at, 'YYYY-MM-DD')
+                    ORDER BY date_str ASC;
+                """
+                rows = await conn.fetch(query_series)
+            else:
+                query_series = """
+                    SELECT 
+                        TO_CHAR(created_at, 'YYYY-MM-DD') as date_str,
+                        COUNT(*) as request_count,
+                        COALESCE(SUM(total_tokens), 0) as total_tokens,
+                        COALESCE(SUM(total_prompt_tokens), 0) as prompt_tokens,
+                        COALESCE(SUM(total_completion_tokens), 0) as completion_tokens,
+                        COALESCE(ROUND(AVG(total_tokens)), 0) as avg_tokens_per_req,
+                        COALESCE(ROUND(AVG(duration_ms)), 0) as avg_latency_ms
+                    FROM request_token_usage
+                    WHERE created_at >= CURRENT_DATE - ($1 || ' days')::INTERVAL
+                    GROUP BY TO_CHAR(created_at, 'YYYY-MM-DD')
+                    ORDER BY date_str ASC;
+                """
+                rows = await conn.fetch(query_series, str(days_clamped))
+
+            # 2. Distribusi per Model
+            if is_all_time:
+                query_models = """
+                    SELECT 
+                        model_generator as model,
+                        COUNT(*) as request_count,
+                        COALESCE(SUM(total_tokens), 0) as total_tokens
+                    FROM request_token_usage
+                    GROUP BY model_generator
+                    ORDER BY total_tokens DESC;
+                """
+                model_rows = await conn.fetch(query_models)
+            else:
+                query_models = """
+                    SELECT 
+                        model_generator as model,
+                        COUNT(*) as request_count,
+                        COALESCE(SUM(total_tokens), 0) as total_tokens
+                    FROM request_token_usage
+                    WHERE created_at >= CURRENT_DATE - ($1 || ' days')::INTERVAL
+                    GROUP BY model_generator
+                    ORDER BY total_tokens DESC;
+                """
+                model_rows = await conn.fetch(query_models, str(days_clamped))
+
+            # 3. KPI Total All-Time, Hari ini & Kemarin
+            all_time_tokens = await conn.fetchval(
+                "SELECT COALESCE(SUM(total_tokens), 0) FROM request_token_usage"
+            ) or 0
+            all_time_requests = await conn.fetchval(
+                "SELECT COUNT(*) FROM request_token_usage"
+            ) or 0
+
+            today_tokens = await conn.fetchval(
+                "SELECT COALESCE(SUM(total_tokens), 0) FROM request_token_usage WHERE created_at >= CURRENT_DATE"
+            ) or 0
+            yesterday_tokens = await conn.fetchval(
+                "SELECT COALESCE(SUM(total_tokens), 0) FROM request_token_usage WHERE created_at >= CURRENT_DATE - INTERVAL '1 day' AND created_at < CURRENT_DATE"
+            ) or 0
+
+            pct_change = 0.0
+            if yesterday_tokens > 0:
+                pct_change = round(((today_tokens - yesterday_tokens) / yesterday_tokens) * 100, 1)
+
+            series_data = [
+                {
+                    "date": r["date_str"],
+                    "requests": int(r["request_count"]),
+                    "total_tokens": int(r["total_tokens"]),
+                    "prompt_tokens": int(r["prompt_tokens"]),
+                    "completion_tokens": int(r["completion_tokens"]),
+                    "avg_tokens": int(r["avg_tokens_per_req"]),
+                    "avg_latency_ms": int(r["avg_latency_ms"]),
+                }
+                for r in rows
+            ]
+
+            period_total = sum(s["total_tokens"] for s in series_data)
+            period_requests = sum(s["requests"] for s in series_data)
+            avg_per_req = round(period_total / period_requests) if period_requests > 0 else 0
+            peak_day = max(series_data, key=lambda x: x["total_tokens"])["date"] if series_data else "-"
+
+            models_data = [
+                {
+                    "model": m["model"] or "gemma4:31b",
+                    "requests": int(m["request_count"]),
+                    "tokens": int(m["total_tokens"]),
+                }
+                for m in model_rows
+            ]
+
+            return {
+                "status": "success",
+                "days": days_clamped,
+                "is_all_time": is_all_time,
+                "series": series_data,
+                "models": models_data,
+                "kpi": {
+                    "all_time_tokens": int(all_time_tokens),
+                    "all_time_requests": int(all_time_requests),
+                    "today_tokens": int(today_tokens),
+                    "yesterday_tokens": int(yesterday_tokens),
+                    "pct_change": pct_change,
+                    "period_total_tokens": period_total,
+                    "period_requests": period_requests,
+                    "avg_tokens_per_req": avg_per_req,
+                    "peak_day": peak_day,
+                }
+            }
+    except Exception as e:
+        logger.error(f"Failed to fetch daily token usage: {e}")
+        return {"status": "error", "error": str(e), "series": [], "models": [], "kpi": {}}
+
+
+async def get_request_token_logs(
+    limit: int = 25,
+    offset: int = 0,
+    search: str = "",
+    mode: str = "",
+    date: str = "",
+) -> Dict[str, Any]:
+    """
+    Mengambil log per-request penggunaan token dengan pagination dan filter pencarian.
+    """
+    if database.db_pool is None:
+        return {"status": "error", "total": 0, "logs": []}
+
+    limit_clamped = max(1, min(limit, 100))
+    offset_clamped = max(0, offset)
+
+    conditions = ["1=1"]
+    params = []
+    idx = 1
+
+    if search and search.strip():
+        conditions.append(f"(request_id ILIKE ${idx} OR user_npp ILIKE ${idx} OR session_uuid ILIKE ${idx})")
+        params.append(f"%{search.strip()}%")
+        idx += 1
+
+    if mode and mode.strip() and mode.lower() != "all":
+        conditions.append(f"mode ILIKE ${idx}")
+        params.append(mode.strip().lower())
+        idx += 1
+
+    if date and date.strip():
+        conditions.append(f"TO_CHAR(created_at, 'YYYY-MM-DD') = ${idx}")
+        params.append(date.strip())
+        idx += 1
+
+    where_clause = " AND ".join(conditions)
+
+    try:
+        async with database.db_pool.acquire() as conn:
+            count_query = f"SELECT COUNT(*) FROM request_token_usage WHERE {where_clause}"
+            total_records = await conn.fetchval(count_query, *params) or 0
+
+            data_query = f"""
+                SELECT 
+                    id, request_id, session_uuid, user_npp, mode,
+                    model_router, model_generator,
+                    router_prompt_tokens, router_completion_tokens,
+                    gen_prompt_tokens, gen_completion_tokens,
+                    total_prompt_tokens, total_completion_tokens,
+                    total_tokens, duration_ms, created_at
+                FROM request_token_usage
+                WHERE {where_clause}
+                ORDER BY id DESC
+                LIMIT ${idx} OFFSET ${idx + 1}
+            """
+            rows = await conn.fetch(data_query, *params, limit_clamped, offset_clamped)
+
+            logs = [
+                {
+                    "id": r["id"],
+                    "request_id": r["request_id"],
+                    "session_uuid": r["session_uuid"],
+                    "user_npp": r["user_npp"],
+                    "mode": r["mode"],
+                    "model_router": r["model_router"],
+                    "model_generator": r["model_generator"],
+                    "router_prompt_tokens": r["router_prompt_tokens"],
+                    "router_completion_tokens": r["router_completion_tokens"],
+                    "gen_prompt_tokens": r["gen_prompt_tokens"],
+                    "gen_completion_tokens": r["gen_completion_tokens"],
+                    "total_prompt_tokens": r["total_prompt_tokens"],
+                    "total_completion_tokens": r["total_completion_tokens"],
+                    "total_tokens": r["total_tokens"],
+                    "duration_ms": round(r["duration_ms"] or 0, 1),
+                    "timestamp": r["created_at"].isoformat() if r["created_at"] else None,
+                }
+                for r in rows
+            ]
+
+            return {
+                "status": "success",
+                "total": total_records,
+                "limit": limit_clamped,
+                "offset": offset_clamped,
+                "logs": logs,
+            }
+    except Exception as e:
+        logger.error(f"Failed to fetch request token logs: {e}")
+        return {"status": "error", "error": str(e), "total": 0, "logs": []}

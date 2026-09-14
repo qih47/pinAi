@@ -73,6 +73,7 @@ async def init_db_pool():
                 await _create_collab_tables(conn)
                 await _update_archive_columns(conn)
                 await _update_collab_members_status_columns(conn)
+                await _create_request_token_usage_table(conn)
             except asyncpg.exceptions.InsufficientPrivilegeError as e:
                 logger.warning(f"⚠️ [DB_MIGRATION] Izin ditolak untuk memodifikasi schema public. Minta admin untuk jalankan DDL secara manual: {e}")
             except Exception as e:
@@ -491,6 +492,36 @@ async def save_continuation_state(session_uuid: str, state_data: dict) -> None:
             await conn.execute("UPDATE chat_sessions SET continuation_state = $1 WHERE session_uuid = $2", state_json, session_uuid)
     except Exception as e:
         logger.warning(f"[DB] Failed to save continuation state: {e}")
+
+async def _create_request_token_usage_table(conn):
+    """
+    Tabel audit dan monitoring penggunaan token riil per-request dan per-hari.
+    """
+    await conn.execute("""
+        CREATE TABLE IF NOT EXISTS request_token_usage (
+            id BIGSERIAL PRIMARY KEY,
+            request_id VARCHAR(64) NOT NULL,
+            session_uuid VARCHAR(64),
+            user_npp VARCHAR(50) DEFAULT 'GUEST',
+            mode VARCHAR(50) DEFAULT 'general',
+            model_router VARCHAR(50),
+            model_generator VARCHAR(50),
+            router_prompt_tokens INT DEFAULT 0,
+            router_completion_tokens INT DEFAULT 0,
+            gen_prompt_tokens INT DEFAULT 0,
+            gen_completion_tokens INT DEFAULT 0,
+            total_prompt_tokens INT DEFAULT 0,
+            total_completion_tokens INT DEFAULT 0,
+            total_tokens INT NOT NULL DEFAULT 0,
+            duration_ms FLOAT DEFAULT 0,
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_token_usage_created_at ON request_token_usage(created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_token_usage_session ON request_token_usage(session_uuid);
+        CREATE INDEX IF NOT EXISTS idx_token_usage_npp ON request_token_usage(user_npp);
+        CREATE INDEX IF NOT EXISTS idx_token_usage_req ON request_token_usage(request_id);
+    """)
 
 def get_db_pool():
     """

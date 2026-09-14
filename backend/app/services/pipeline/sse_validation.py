@@ -116,6 +116,7 @@ def format_sse(
     eval_count: int = 0,
     eval_duration: int = 0,
     title: Optional[str] = None,
+    prompt_eval_count: int = 0,
 ) -> str:
     """
     Format SSE event conforming to API Contract.
@@ -137,6 +138,8 @@ def format_sse(
         event["eval_count"] = eval_count
     if eval_duration > 0:
         event["eval_duration"] = eval_duration
+    if prompt_eval_count > 0:
+        event["prompt_eval_count"] = prompt_eval_count
 
     if not SSEValidator.validate_event(event, event_type):
         logger.debug("[SSE_VALIDATION] Skipping empty event")

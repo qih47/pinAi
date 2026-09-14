@@ -380,6 +380,9 @@ async def execute_call1_routing(
             context_history_str=context_history_str,
         )
 
+        routing["_router_prompt_tokens"] = routing_json.get("_prompt_tokens", 0) if isinstance(routing_json, dict) else 0
+        routing["_router_completion_tokens"] = routing_json.get("_completion_tokens", 0) if isinstance(routing_json, dict) else 0
+
         # ── KOTAK 1: [CALL 1 ROUTING & DECISION DASHBOARD] ────────────────────
         active_mode = "GENERAL / CHITCHAT"
         if routing.get("fetch_urls"):
