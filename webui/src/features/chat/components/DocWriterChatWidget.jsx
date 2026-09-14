@@ -9,7 +9,8 @@ import {
   Edit3, 
   Layers,
   ChevronRight,
-  ShieldCheck
+  ShieldCheck,
+  Loader2
 } from 'lucide-react';
 import { useDocWriterStore } from '../../../stores/docWriterStore';
 import { defaultTemplates } from '../../doc_writer/templates/defaultTemplates';
@@ -46,6 +47,8 @@ const DocWriterChatWidget = ({
   }, []);
 
   const [applied, setApplied] = useState(false);
+  const [appliedMsg, setAppliedMsg] = useState(null);
+  const [isApplying, setIsApplying] = useState(false);
   const [parseError, setParseError] = useState(false);
 
   useEffect(() => {
@@ -98,21 +101,21 @@ const DocWriterChatWidget = ({
     id: templateKey
   };
 
-  const hasAutoSyncedRef = useRef(false);
+  const hasAutoOpenedRef = useRef(false);
   const wasStreamingRef = useRef(isStreaming);
 
+  // Auto-open editor HANYA jika aksi eksplisit meminta buka editor ("action": "open"),
+  // TIDAK lagi auto-apply patch diam-diam saat streaming berakhir!
   useEffect(() => {
     if (isStreaming) {
       wasStreamingRef.current = true;
-    } else if (docData && wasStreamingRef.current && !hasAutoSyncedRef.current) {
-      hasAutoSyncedRef.current = true;
-      if (docData.autoOpen && !isOpen) {
-        handleApplyPatch(true);
-      } else if (rawHtml || summary) {
-        handleApplyPatch(true);
+    } else if (docData && wasStreamingRef.current && !hasAutoOpenedRef.current) {
+      hasAutoOpenedRef.current = true;
+      if (docData.action === 'open' && docData.autoOpen && !isOpen) {
+        openWriter(templateKey, docTitle, rawHtml || undefined);
       }
     }
-  }, [isStreaming, docData, isOpen]);
+  }, [isStreaming, docData, isOpen, templateKey, docTitle, rawHtml, openWriter]);
 
   const handleOpenInEditor = async () => {
     await openWriter(
@@ -122,19 +125,34 @@ const DocWriterChatWidget = ({
     );
   };
 
-  const handleApplyPatch = async (silent = false) => {
-    const store = useDocWriterStore.getState();
-    // Pastikan dokumen aktif sudah terbuka & terinisialisasi
-    await store.openWriter(templateKey, docTitle, rawHtml || undefined);
-    if (store.applyAiEdit) {
-      await store.applyAiEdit(summary || docTitle || 'Revisi dari CAKRA AI', sectionId, rawHtml);
-    }
-    if (sectionId && patchSection) {
-      patchSection(sectionId, rawHtml);
-    }
-    setApplied(true);
-    if (!silent) {
-      setTimeout(() => setApplied(false), 3000);
+  const handleApplyPatch = async () => {
+    if (isApplying) return;
+    setIsApplying(true);
+    try {
+      const store = useDocWriterStore.getState();
+      // Pastikan dokumen aktif sudah terbuka & terinisialisasi
+      await store.openWriter(templateKey, docTitle, rawHtml || undefined);
+      let res = null;
+      if (store.applyAiEdit) {
+        res = await store.applyAiEdit(summary || docTitle || 'Revisi dari CAKRA AI', sectionId, rawHtml);
+      }
+      if (sectionId && patchSection) {
+        patchSection(sectionId, rawHtml);
+      }
+      setApplied(true);
+      if (res?.message) {
+        setAppliedMsg(res.message);
+      } else {
+        setAppliedMsg(language === 'en' ? 'Saved to Document!' : 'Tersimpan di Dokumen!');
+      }
+      setTimeout(() => {
+        setApplied(false);
+        setAppliedMsg(null);
+      }, 4000);
+    } catch (err) {
+      console.error('[DOC_WRITER] Gagal menerapkan patch AI:', err);
+    } finally {
+      setIsApplying(false);
     }
   };
 
@@ -275,23 +293,31 @@ const DocWriterChatWidget = ({
           {/* Tombol Terapkan ke Dokumen Word */}
           {(rawHtml || action === 'patch' || summary) && (
             <button
-              onClick={() => handleApplyPatch(false)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-medium border hover:bg-emerald-500/10 active:scale-95 transition-all"
+              onClick={handleApplyPatch}
+              disabled={isApplying}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-medium border active:scale-95 transition-all ${
+                isApplying ? 'opacity-80 cursor-wait' : 'hover:bg-emerald-500/10'
+              }`}
               style={{
                 borderColor: darkMode ? 'rgba(16, 185, 129, 0.35)' : 'rgba(16, 185, 129, 0.3)',
                 color: applied ? '#34d399' : (darkMode ? '#a7f3d0' : '#065f46')
               }}
-              title="Sinkronkan teks revisi AI langsung ke file dokumen Word (.docx)"
+              title="Periksa layout dan sinkronkan revisi AI secara presisi ke dokumen Word (.docx)"
             >
-              {applied ? (
+              {isApplying ? (
                 <>
-                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                  <span>Tersimpan di Dokumen!</span>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-400" />
+                  <span>{language === 'en' ? 'AI checking layout...' : 'AI memeriksa layout...'}</span>
+                </>
+              ) : applied ? (
+                <>
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                  <span className="truncate max-w-[240px] font-medium">{appliedMsg || (language === 'en' ? 'Saved to Document!' : 'Tersimpan di Dokumen!')}</span>
                 </>
               ) : (
                 <>
                   <Edit3 className="w-3.5 h-3.5" />
-                  <span>Terapkan ke Dokumen</span>
+                  <span>{language === 'en' ? 'Apply to Document' : 'Terapkan ke Dokumen'}</span>
                 </>
               )}
             </button>

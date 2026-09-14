@@ -59,6 +59,9 @@ from backend.app.core.paths import (
     get_docwriter_dir,
     ACCOUNTS_DIR
 )
+from backend.app.core.config import settings
+from backend.app.core.llm_client import generate_json_response
+from backend.app.services.document_writer.document_structure_parser import document_structure_parser
 
 logger = logging.getLogger("DOC_WRITER_SERVICE")
 
@@ -675,7 +678,7 @@ class DocWriterService:
             paragraph.alignment = alignment
 
     @classmethod
-    def apply_ai_edit(
+    async def apply_ai_edit(
         cls,
         doc_id: str,
         instruction: str,
@@ -686,10 +689,12 @@ class DocWriterService:
         room_id: str = ""
     ) -> Dict[str, Any]:
         """
-        Menerapkan manipulasi/revisi teks secara presisi (surgical update) ke berkas .docx:
-        1. Membaca node target (Tentang, Dasar poin a/b/c, Ketentuan, dll).
-        2. Mempertahankan Paragraph Properties (<w:pPr>) agar Justify, hanging indent, dan margin tidak rusak.
-        3. Memperbarui mtime berkas sehingga ONLYOFFICE otomatis memuat versi terbaru.
+        Menerapkan manipulasi/revisi teks secara cerdas (AI Layout-Aware & Presisi) ke berkas .docx:
+        1. Membaca struktur semantik dokumen fisik .docx saat ini via document_structure_parser.
+        2. Menjalankan AI Layout Resolver (gemma4:e4b) untuk memetakan instruksi/konten ke seksi & butir target yang tepat.
+        3. Menjalankan bedah XML presisi (preserving <w:pPr>, hanging indent, alignment, & margin).
+        4. Mencegah keras penimpaan placeholder salah (misal judul tertimpa teks isi).
+        5. Memperbarui mtime berkas sehingga ONLYOFFICE otomatis memuat versi terbaru.
         """
         doc_meta = cls.locate_document(doc_id, npp=npp, session_id=session_id, room_id=room_id)
         if not doc_meta:
@@ -710,208 +715,352 @@ class DocWriterService:
             except Exception:
                 soup = None
 
+        clean_text_content = soup.get_text(separator="\n").strip() if soup else content_str
+
+        # ── 1. BACA STRUKTUR LIVE DOKUMEN ──
+        parsed_struct = document_structure_parser.parse_docx(docx_path)
+        struct_summary = document_structure_parser.get_prompt_snapshot(docx_path)
+
         has_applied_smart_edit = False
+        action_summary = "Perubahan AI berhasil disimpan ke dokumen Word."
 
-        # 1. Ekstrak & Update Judul / Tentang
-        tentang = ""
-        if soup:
-            for el in soup.find_all(["p", "div", "h3", "h4", "span"]):
-                txt = el.get_text()
-                if "tentang" in txt.lower():
-                    parts = re.split(r"tentang\s*:?", txt, flags=re.IGNORECASE)
-                    if len(parts) > 1 and parts[1].strip():
-                        tentang = parts[1].strip()
-                        break
-        elif "tentang" in combined_query and any(k in combined_query for k in ["ganti", "ubah", "judul", "menjadi", "jadi"]):
-            m = re.search(r'(?:tentang(?:nya)?|judul(?:nya)?)\s*(?:menjadi|jadi|:)\s*(.*)', instruction_str, re.IGNORECASE)
-            if m and m.group(1).strip():
-                tentang = m.group(1).strip().strip(" \"'.,")
+        # ── 2. AI DOCUMENT LAYOUT RESOLVER ──
+        action_plan = None
+        try:
+            prompt_system = (
+                "Kamu adalah AI Ahli Tata Naskah Dinas & Layout Dokumen Resmi PT Pindad.\n"
+                "Tugasmu: Menganalisis instruksi revisi pengguna dan memetakannya secara presisi ke dalam struktur dokumen Word (.docx) aktif saat ini.\n\n"
+                f"{struct_summary}\n\n"
+                "PEDOMAN STRUKTUR TEMPLATE:\n"
+                "1. 'tentang': Digunakan HANYA jika instruksi meminta mengganti/menetapkan Judul/Perihal/Tentang surat.\n"
+                "2. 'dasar': Bagian konsideran / dasar hukum / perintah lisan Direksi / acuan (butir berhuruf a, b, c, dst).\n"
+                "   - Jika menambah butir baru: tentukan huruf berikutnya (misal jika saat ini sudah ada a, b, c, maka target_item='d'). Operation: 'append_item'.\n"
+                "   - Jika merevisi butir tertentu: tentukan huruf target (misal target_item='a'). Operation: 'update_item'.\n"
+                "3. 'menimbang' / 'mengingat': Untuk format SKEP (Keputusan Direksi).\n"
+                "4. 'ketentuan': Bagian isi kebijakan atau ketentuan surat (Point 2 pada Surat Edaran atau Diktum Memutuskan pada SKEP).\n"
+                "   - Operation: 'set_text' atau 'append_item'.\n"
+                "5. 'penutup': Kalimat penutup surat edaran / keputusan.\n"
+                "6. 'tembusan': Daftar tembusan pejabat.\n\n"
+                "DILARANG KERAS menempatkan teks isi/dasar ke bagian judul/tentang!\n"
+                "Format output WAJIB JSON murni:\n"
+                "{\n"
+                '  "target_section": "tentang" | "dasar" | "menimbang" | "mengingat" | "ketentuan" | "penutup" | "tembusan",\n'
+                '  "operation": "set_text" | "append_item" | "update_item" | "replace_section",\n'
+                '  "target_item": "a" | "b" | "c" | "d" | null,\n'
+                '  "clean_text": "Teks bersih tanpa tag HTML dan tanpa prefix huruf/angka",\n'
+                '  "summary": "Ringkasan tindakan dalam Bahasa Indonesia (contoh: Menambahkan Poin (d) pada seksi Dasar)"\n'
+                "}"
+            )
+            user_prompt = (
+                f"Target Seksi Hint: {section_id or '-'}\n"
+                f"Instruksi Revisi: {instruction_str}\n"
+                f"Konten Teks/HTML Draf:\n{clean_text_content[:3000]}"
+            )
 
-        if tentang:
-            for i, p in enumerate(doc.paragraphs):
-                if p.text.lower().strip() in ["tentang", "t e n t a n g"]:
-                    for j in range(i + 1, min(i + 4, len(doc.paragraphs))):
-                        pj = doc.paragraphs[j]
-                        if cls._is_placeholder_paragraph(pj) or (pj.text.strip() and not pj.text.strip().lower().startswith("1.")):
-                            cls._set_paragraph_text_preserve_format(
-                                pj,
-                                tentang,
-                                bold=True,
-                                alignment=WD_ALIGN_PARAGRAPH.CENTER
-                            )
-                            has_applied_smart_edit = True
-                            logger.info(f"[DOC_WRITER] Surgically updated Tentang at P[{j}]: {tentang}")
+            action_plan = await generate_json_response(
+                model_name=getattr(settings, "ROUTER_MODEL", "gemma4:e4b"),
+                messages=[
+                    {"role": "system", "content": prompt_system},
+                    {"role": "user", "content": user_prompt}
+                ],
+                temperature=0.1,
+                timeout=15.0,
+                num_predict=512
+            )
+            logger.info(f"[DOC_WRITER] AI Layout Action Plan: {action_plan}")
+        except Exception as e:
+            logger.warning(f"[DOC_WRITER] AI Layout Resolver gagal/timeout ({e}), lanjut ke rule-based terpandu...")
+            action_plan = None
+
+        # ── 3. EKSEKUSI ACTION PLAN AI JIKA VALID ──
+        if action_plan and isinstance(action_plan, dict):
+            target_sec = (action_plan.get("target_section") or "").strip().lower()
+            plan_text = (action_plan.get("clean_text") or "").strip()
+            item_letter = (action_plan.get("target_item") or "").strip().lower() or None
+            custom_summary = action_plan.get("summary")
+
+            if plan_text:
+                # 3A. Target: TENTANG / JUDUL
+                if target_sec == "tentang":
+                    clean_title = plan_text.strip(" \"'.,").upper()
+                    for i, p in enumerate(doc.paragraphs):
+                        if p.text.lower().strip() in ["tentang", "t e n t a n g"]:
+                            for j in range(i + 1, min(i + 4, len(doc.paragraphs))):
+                                pj = doc.paragraphs[j]
+                                if cls._is_placeholder_paragraph(pj) or (pj.text.strip() and not pj.text.strip().lower().startswith("1.")):
+                                    cls._set_paragraph_text_preserve_format(
+                                        pj,
+                                        clean_title,
+                                        bold=True,
+                                        alignment=WD_ALIGN_PARAGRAPH.CENTER
+                                    )
+                                    has_applied_smart_edit = True
+                                    action_summary = custom_summary or "Berhasil memperbarui Judul/Tentang dokumen."
+                                    logger.info(f"[DOC_WRITER] AI Action Plan applied: TENTANG at P[{j}]")
+                                    break
                             break
-                    break
 
-        # 2. Deteksi Target Item Spesifik pada Dasar (poin a, b, c, dll.)
-        target_item_match = re.search(r'(?:poin|point|dasar|bagian|huruf|item)\s*([a-z])\b', combined_query)
-        if not target_item_match and section_id and section_id.strip().lower() in list("abcdefghijkl"):
-            target_item_letter = section_id.strip().lower()
-        else:
-            target_item_letter = target_item_match.group(1).lower() if target_item_match else None
+                # 3B. Target: DASAR (Surat Edaran) / MENIMBANG / MENGINGAT (SKEP)
+                elif target_sec in ["dasar", "menimbang", "mengingat"]:
+                    existing_items = parsed_struct.get(target_sec, {}) if isinstance(parsed_struct, dict) else {}
+                    # Jika seksi ini belum memiliki butir aktif sama sekali (masih placeholder) dan user tidak minta huruf spesifik, mulai dari 'a'
+                    if not existing_items and not re.search(r'(?:poin|huruf|item)\s*([b-z])\b', combined_query):
+                        item_letter = 'a'
+                    elif not item_letter:
+                        next_idx = len(existing_items)
+                        item_letter = chr(ord('a') + next_idx)
 
-        # Jika target item spesifik terdeteksi (misal: "edit bagian a jadi ...")
-        if target_item_letter:
-            new_item_text = ""
-            # Coba ambil dari soup list
-            if soup:
-                lis = soup.find_all("li")
-                if lis:
-                    # Ambil index sesuai huruf: a=0, b=1, c=2
-                    idx = ord(target_item_letter) - ord('a')
-                    if 0 <= idx < len(lis):
-                        new_item_text = lis[idx].get_text().strip()
+                    clean_item_text = re.sub(rf"^{item_letter}[\.\)]\s*", "", plan_text, flags=re.IGNORECASE).strip()
+                    if not clean_item_text.endswith("."):
+                        clean_item_text += "."
+                    formatted_line = f"{item_letter}.   {clean_item_text}"
 
-            if not new_item_text and content_str:
-                if not ("<ol" in content_str.lower() or "<ul" in content_str.lower()):
-                    new_item_text = soup.get_text().strip() if soup else content_str.strip()
+                    for i, p in enumerate(doc.paragraphs):
+                        p_norm = p.text.lower().strip()
+                        if target_sec in p_norm:
+                            target_updated = False
+                            last_item_p = None
 
-            if not new_item_text:
-                m = re.search(r'(?:jadi|menjadi|adalah|yaitu|:)\s*(.*)', instruction_str, re.IGNORECASE)
-                if m and m.group(1).strip():
-                    new_item_text = m.group(1).strip().strip(" \"'")
-                else:
-                    new_item_text = instruction_str.strip()
+                            for j in range(i + 1, min(i + 15, len(doc.paragraphs))):
+                                pj = doc.paragraphs[j]
+                                pj_clean = pj.text.strip().lower()
 
-            # Bersihkan prefix 'a.' jika sudah ada di teks agar tidak double 'a. a. teks'
-            new_item_text = re.sub(rf"^{target_item_letter}[\.\)]\s*", "", new_item_text, flags=re.IGNORECASE).strip()
-            if new_item_text:
-                if not new_item_text.endswith("."):
-                    new_item_text += "."
-                formatted_item = f"{target_item_letter}.   {new_item_text}"
+                                if pj_clean.startswith("2.") or "memutuskan" in pj_clean or "ketentuan" in pj_clean or "demikian" in pj_clean:
+                                    break
 
-                for i, p in enumerate(doc.paragraphs):
-                    if "dasar" in p.text.lower().strip() or "menimbang" in p.text.lower().strip():
-                        target_updated = False
-                        last_dasar_pj = None
-                        # 1. Cari paragraf yang sudah ada huruf targetnya (misal sudah 'a.')
-                        for j in range(i + 1, min(i + 12, len(doc.paragraphs))):
-                            pj = doc.paragraphs[j]
-                            p_clean = pj.text.strip().lower()
-                            if re.match(r"^[a-z][\.\)]", p_clean):
-                                last_dasar_pj = pj
-                            if p_clean.startswith(f"{target_item_letter}.") or p_clean.startswith(f"{target_item_letter})"):
-                                cls._set_paragraph_text_preserve_format(pj, formatted_item)
-                                target_updated = True
-                                has_applied_smart_edit = True
-                                logger.info(f"[DOC_WRITER] Surgically updated existing item {target_item_letter} at P[{j}]: {formatted_item}")
+                                if re.match(r"^[a-z][\.\)]", pj_clean):
+                                    last_item_p = pj
+
+                                if pj_clean.startswith(f"{item_letter}.") or pj_clean.startswith(f"{item_letter})"):
+                                    cls._set_paragraph_text_preserve_format(pj, formatted_line)
+                                    target_updated = True
+                                    has_applied_smart_edit = True
+                                    action_summary = custom_summary or f"Berhasil memperbarui Poin ({item_letter}) pada {target_sec.title()}."
+                                    logger.info(f"[DOC_WRITER] AI Action Plan applied: update {target_sec} {item_letter} at P[{j}]")
+                                    break
+
+                            if not target_updated:
+                                for j in range(i + 1, min(i + 15, len(doc.paragraphs))):
+                                    pj = doc.paragraphs[j]
+                                    pj_clean = pj.text.strip().lower()
+                                    if pj_clean.startswith("2.") or "memutuskan" in pj_clean or "ketentuan" in pj_clean or "demikian" in pj_clean:
+                                        break
+                                    if cls._is_placeholder_paragraph(pj):
+                                        cls._set_paragraph_text_preserve_format(pj, formatted_line)
+                                        target_updated = True
+                                        has_applied_smart_edit = True
+                                        action_summary = custom_summary or f"Berhasil mengisi Poin ({item_letter}) pada {target_sec.title()}."
+                                        logger.info(f"[DOC_WRITER] AI Action Plan applied: fill placeholder {target_sec} {item_letter} at P[{j}]")
+                                        break
+
+                            if not target_updated and last_item_p is not None:
+                                try:
+                                    import copy
+                                    from docx.oxml import OxmlElement
+                                    from docx.text.paragraph import Paragraph
+                                    new_p_elem = OxmlElement('w:p')
+                                    if last_item_p._element.pPr is not None:
+                                        new_p_elem.append(copy.deepcopy(last_item_p._element.pPr))
+                                    last_item_p._element.addnext(new_p_elem)
+                                    new_p_obj = Paragraph(new_p_elem, doc)
+                                    cls._set_paragraph_text_preserve_format(new_p_obj, formatted_line)
+                                    target_updated = True
+                                    has_applied_smart_edit = True
+                                    action_summary = custom_summary or f"Berhasil menambahkan Poin ({item_letter}) pada {target_sec.title()}."
+                                    logger.info(f"[DOC_WRITER] AI Action Plan applied: appended item {target_sec} {item_letter}")
+                                except Exception as append_err:
+                                    logger.warning(f"[DOC_WRITER] Gagal append item baru: {append_err}")
+
+                            if target_updated:
                                 break
 
-                        # 2. Jika belum ada (misal masih placeholder ....), isi placeholder pertama yang cocok
-                        if not target_updated:
+                # 3C. Target: KETENTUAN / ISI SURAT
+                elif target_sec == "ketentuan":
+                    formatted_ketentuan = plan_text
+                    if not formatted_ketentuan.startswith("2.") and not formatted_ketentuan.lower().startswith("kesatu"):
+                        formatted_ketentuan = f"2.   {formatted_ketentuan}"
+
+                    for i, p in enumerate(doc.paragraphs):
+                        if i > 8 and (cls._is_placeholder_paragraph(p) or p.text.strip().startswith("2.")):
+                            cls._set_paragraph_text_preserve_format(p, formatted_ketentuan)
+                            has_applied_smart_edit = True
+                            action_summary = custom_summary or "Berhasil memperbarui bagian Ketentuan / Isi Surat."
+                            logger.info(f"[DOC_WRITER] AI Action Plan applied: Ketentuan at P[{i}]")
+                            break
+
+                # 3D. Target: PENUTUP
+                elif target_sec == "penutup":
+                    for i, p in enumerate(doc.paragraphs):
+                        if "demikian" in p.text.lower():
+                            cls._set_paragraph_text_preserve_format(p, plan_text)
+                            has_applied_smart_edit = True
+                            action_summary = custom_summary or "Berhasil memperbarui Penutup dokumen."
+                            break
+
+        # ── 4. TARGETED RULE-BASED FALLBACK (Jika AI Resolver tidak tereksekusi) ──
+        if not has_applied_smart_edit:
+            logger.info("[DOC_WRITER] Menjalankan targeted rule-based update...")
+
+            # 4A. Judul / Tentang
+            tentang = ""
+            if soup:
+                for el in soup.find_all(["p", "div", "h3", "h4", "span"]):
+                    txt = el.get_text()
+                    if "tentang" in txt.lower():
+                        parts = re.split(r"tentang\s*:?", txt, flags=re.IGNORECASE)
+                        if len(parts) > 1 and parts[1].strip():
+                            tentang = parts[1].strip()
+                            break
+            elif "tentang" in combined_query and any(k in combined_query for k in ["ganti", "ubah", "judul", "menjadi", "jadi"]):
+                m = re.search(r'(?:tentang(?:nya)?|judul(?:nya)?)\s*(?:menjadi|jadi|:)\s*(.*)', instruction_str, re.IGNORECASE)
+                if m and m.group(1).strip():
+                    tentang = m.group(1).strip().strip(" \"'.,")
+
+            if tentang:
+                for i, p in enumerate(doc.paragraphs):
+                    if p.text.lower().strip() in ["tentang", "t e n t a n g"]:
+                        for j in range(i + 1, min(i + 4, len(doc.paragraphs))):
+                            pj = doc.paragraphs[j]
+                            if cls._is_placeholder_paragraph(pj) or (pj.text.strip() and not pj.text.strip().lower().startswith("1.")):
+                                cls._set_paragraph_text_preserve_format(
+                                    pj,
+                                    tentang,
+                                    bold=True,
+                                    alignment=WD_ALIGN_PARAGRAPH.CENTER
+                                )
+                                has_applied_smart_edit = True
+                                action_summary = "Berhasil memperbarui Judul/Tentang dokumen."
+                                break
+                        break
+
+            # 4B. Poin Spesifik pada Dasar (a, b, c, dll.)
+            target_item_match = re.search(r'(?:poin|point|dasar|bagian|huruf|item)\s*([a-z])\b', combined_query)
+            if not target_item_match and section_id and section_id.strip().lower() in list("abcdefghijkl"):
+                target_item_letter = section_id.strip().lower()
+            else:
+                target_item_letter = target_item_match.group(1).lower() if target_item_match else None
+
+            if target_item_letter:
+                new_item_text = ""
+                if soup:
+                    lis = soup.find_all("li")
+                    if lis:
+                        idx = ord(target_item_letter) - ord('a')
+                        if 0 <= idx < len(lis):
+                            new_item_text = lis[idx].get_text().strip()
+
+                if not new_item_text and content_str:
+                    if not ("<ol" in content_str.lower() or "<ul" in content_str.lower()):
+                        new_item_text = soup.get_text().strip() if soup else content_str.strip()
+
+                if not new_item_text:
+                    m = re.search(r'(?:jadi|menjadi|adalah|yaitu|:)\s*(.*)', instruction_str, re.IGNORECASE)
+                    if m and m.group(1).strip():
+                        new_item_text = m.group(1).strip().strip(" \"'")
+                    else:
+                        new_item_text = instruction_str.strip()
+
+                new_item_text = re.sub(rf"^{target_item_letter}[\.\)]\s*", "", new_item_text, flags=re.IGNORECASE).strip()
+                if new_item_text:
+                    if not new_item_text.endswith("."):
+                        new_item_text += "."
+                    formatted_item = f"{target_item_letter}.   {new_item_text}"
+
+                    for i, p in enumerate(doc.paragraphs):
+                        if "dasar" in p.text.lower().strip() or "menimbang" in p.text.lower().strip():
+                            target_updated = False
+                            last_dasar_pj = None
                             for j in range(i + 1, min(i + 12, len(doc.paragraphs))):
                                 pj = doc.paragraphs[j]
-                                if cls._is_placeholder_paragraph(pj):
+                                p_clean = pj.text.strip().lower()
+                                if re.match(r"^[a-z][\.\)]", p_clean):
+                                    last_dasar_pj = pj
+                                if p_clean.startswith(f"{target_item_letter}.") or p_clean.startswith(f"{target_item_letter})"):
                                     cls._set_paragraph_text_preserve_format(pj, formatted_item)
                                     target_updated = True
                                     has_applied_smart_edit = True
-                                    logger.info(f"[DOC_WRITER] Surgically filled placeholder item {target_item_letter} at P[{j}]: {formatted_item}")
+                                    action_summary = f"Berhasil memperbarui Poin ({target_item_letter}) pada Dasar."
                                     break
 
-                        # 3. Jika belum ada placeholder dan item adalah item baru, tambahkan paragraf kloning
-                        if not target_updated and last_dasar_pj is not None:
-                            try:
-                                import copy
-                                from docx.oxml import OxmlElement
-                                from docx.text.paragraph import Paragraph
-                                new_p_elem = OxmlElement('w:p')
-                                if last_dasar_pj._element.pPr is not None:
-                                    new_p_elem.append(copy.deepcopy(last_dasar_pj._element.pPr))
-                                last_dasar_pj._element.addnext(new_p_elem)
-                                new_p_obj = Paragraph(new_p_elem, doc)
-                                cls._set_paragraph_text_preserve_format(new_p_obj, formatted_item)
-                                target_updated = True
-                                has_applied_smart_edit = True
-                                logger.info(f"[DOC_WRITER] Surgically appended new item {target_item_letter}: {formatted_item}")
-                            except Exception as append_err:
-                                logger.warning(f"[DOC_WRITER] Gagal append item baru: {append_err}")
+                            if not target_updated:
+                                for j in range(i + 1, min(i + 12, len(doc.paragraphs))):
+                                    pj = doc.paragraphs[j]
+                                    if cls._is_placeholder_paragraph(pj):
+                                        cls._set_paragraph_text_preserve_format(pj, formatted_item)
+                                        target_updated = True
+                                        has_applied_smart_edit = True
+                                        action_summary = f"Berhasil mengisi Poin ({target_item_letter}) pada Dasar."
+                                        break
 
-                        if target_updated:
+                            if not target_updated and last_dasar_pj is not None:
+                                try:
+                                    import copy
+                                    from docx.oxml import OxmlElement
+                                    from docx.text.paragraph import Paragraph
+                                    new_p_elem = OxmlElement('w:p')
+                                    if last_dasar_pj._element.pPr is not None:
+                                        new_p_elem.append(copy.deepcopy(last_dasar_pj._element.pPr))
+                                    last_dasar_pj._element.addnext(new_p_elem)
+                                    new_p_obj = Paragraph(new_p_elem, doc)
+                                    cls._set_paragraph_text_preserve_format(new_p_obj, formatted_item)
+                                    target_updated = True
+                                    has_applied_smart_edit = True
+                                    action_summary = f"Berhasil menambahkan Poin ({target_item_letter}) pada Dasar."
+                                except Exception as append_err:
+                                    logger.warning(f"[DOC_WRITER] Gagal append item baru: {append_err}")
+
+                            if target_updated:
+                                break
+
+            # 4C. Update Dasar secara Bulk jika ada <li> dari AI
+            elif soup:
+                dasar_items = []
+                dasar_header = soup.find(lambda e: e.name in ["p", "h4", "strong", "b", "span"] and "dasar" in e.get_text().lower())
+                if dasar_header:
+                    ol = dasar_header.find_next(["ol", "ul"])
+                    if ol:
+                        for li in ol.find_all("li", recursive=False):
+                            dasar_items.append(li.get_text().strip())
+
+                if dasar_items:
+                    for i, p in enumerate(doc.paragraphs):
+                        if "dasar" in p.text.lower().strip() or "menimbang" in p.text.lower().strip():
+                            item_idx = 0
+                            to_delete = []
+                            for j in range(i + 1, min(i + 12, len(doc.paragraphs))):
+                                pj = doc.paragraphs[j]
+                                if cls._is_placeholder_paragraph(pj) or re.match(r"^[a-z][\.\)]", pj.text.strip(), re.IGNORECASE):
+                                    if item_idx < len(dasar_items):
+                                        cur_item_text = dasar_items[item_idx]
+                                        cur_letter = chr(ord('a') + item_idx)
+                                        cur_item_text = re.sub(rf"^{cur_letter}[\.\)]\s*", "", cur_item_text, flags=re.IGNORECASE).strip()
+                                        formatted_line = f"{cur_letter}.   {cur_item_text}"
+                                        cls._set_paragraph_text_preserve_format(pj, formatted_line)
+                                        has_applied_smart_edit = True
+                                        item_idx += 1
+                                    else:
+                                        if cls._is_placeholder_paragraph(pj):
+                                            to_delete.append(pj)
+                            for dp in to_delete:
+                                try:
+                                    dp._element.getparent().remove(dp._element)
+                                except Exception:
+                                    pass
+                            action_summary = f"Berhasil memperbarui {item_idx} butir pada Dasar."
                             break
 
-        # 3. Update Dasar secara Bulk jika ada beberapa poin dari AI
-        elif soup:
-            dasar_items = []
-            dasar_header = soup.find(lambda e: e.name in ["p", "h4", "strong", "b", "span"] and "dasar" in e.get_text().lower())
-            if dasar_header:
-                ol = dasar_header.find_next(["ol", "ul"])
-                if ol:
-                    for li in ol.find_all("li", recursive=False):
-                        dasar_items.append(li.get_text().strip())
-
-            if dasar_items:
-                for i, p in enumerate(doc.paragraphs):
-                    if "dasar" in p.text.lower().strip() or "menimbang" in p.text.lower().strip():
-                        item_idx = 0
-                        to_delete = []
-                        for j in range(i + 1, min(i + 12, len(doc.paragraphs))):
-                            pj = doc.paragraphs[j]
-                            if cls._is_placeholder_paragraph(pj) or re.match(r"^[a-z][\.\)]", pj.text.strip(), re.IGNORECASE):
-                                if item_idx < len(dasar_items):
-                                    cur_item_text = dasar_items[item_idx]
-                                    cur_letter = chr(ord('a') + item_idx)
-                                    cur_item_text = re.sub(rf"^{cur_letter}[\.\)]\s*", "", cur_item_text, flags=re.IGNORECASE).strip()
-                                    formatted_line = f"{cur_letter}.   {cur_item_text}"
-                                    cls._set_paragraph_text_preserve_format(pj, formatted_line)
-                                    has_applied_smart_edit = True
-                                    item_idx += 1
-                                else:
-                                    if cls._is_placeholder_paragraph(pj):
-                                        to_delete.append(pj)
-                        for dp in to_delete:
-                            try:
-                                dp._element.getparent().remove(dp._element)
-                            except Exception:
-                                pass
-                        break
-
-        # 4. Ekstrak Ketentuan / Isi Surat (Point 2 pada Surat Edaran)
-        if soup and not has_applied_smart_edit:
-            ketentuan_intro = ""
-            for p in soup.find_all("p"):
-                txt = p.get_text().strip()
-                if "sehubungan dengan" in txt.lower() or "ditetapkan standar" in txt.lower() or "ketentuan" in txt.lower():
-                    ketentuan_intro = txt
-                    break
-
-            if ketentuan_intro:
-                for i, p in enumerate(doc.paragraphs):
-                    if (cls._is_placeholder_paragraph(p) or p.text.strip().startswith("2.")) and i > 10:
-                        formatted_ketentuan = f"2.   {ketentuan_intro}" if not ketentuan_intro.startswith("2.") else ketentuan_intro
-                        cls._set_paragraph_text_preserve_format(p, formatted_ketentuan)
-                        has_applied_smart_edit = True
-                        logger.info(f"[DOC_WRITER] Surgically updated Ketentuan at P[{i}]")
-                        break
-
-        # 5. Fallback jika tidak ada pola khusus yang cocok
-        if not has_applied_smart_edit:
-            fallback_text = content_str or instruction_str
-            if "<" in fallback_text and ">" in fallback_text:
-                try:
-                    fallback_text = BeautifulSoup(fallback_text, "html.parser").get_text(separator="\n").strip()
-                except Exception:
-                    pass
-
-            replaced = False
-            for p in doc.paragraphs:
-                if cls._is_placeholder_paragraph(p):
-                    cls._set_paragraph_text_preserve_format(p, fallback_text)
-                    replaced = True
-                    break
-
-            if not replaced and fallback_text.strip():
-                tembusan_idx = None
-                for idx, p in enumerate(doc.paragraphs):
-                    if "tembusan" in p.text.lower():
-                        tembusan_idx = idx
-                        break
-
-                if tembusan_idx is not None:
-                    p = doc.paragraphs[tembusan_idx].insert_paragraph_before(fallback_text)
-                else:
-                    p = doc.add_paragraph(fallback_text)
-                p.paragraph_format.space_after = Pt(6)
+            # 4D. Ekstrak Ketentuan / Isi Surat (Point 2 pada Surat Edaran)
+            if not has_applied_smart_edit and ("ketentuan" in combined_query or "isi" in combined_query or "standar" in combined_query):
+                ketentuan_intro = clean_text_content
+                if ketentuan_intro:
+                    for i, p in enumerate(doc.paragraphs):
+                        if i > 8 and (cls._is_placeholder_paragraph(p) or p.text.strip().startswith("2.")):
+                            formatted_ketentuan = f"2.   {ketentuan_intro}" if not ketentuan_intro.startswith("2.") else ketentuan_intro
+                            cls._set_paragraph_text_preserve_format(p, formatted_ketentuan)
+                            has_applied_smart_edit = True
+                            action_summary = "Berhasil memperbarui bagian Ketentuan / Isi Surat."
+                            logger.info(f"[DOC_WRITER] Surgically updated Ketentuan at P[{i}]")
+                            break
 
         # Simpan kembali berkas .docx
         doc.save(str(docx_path))
@@ -934,12 +1083,13 @@ class DocWriterService:
             except Exception:
                 pass
 
-        logger.info(f"[DOC_WRITER] AI Edit berhasil diterapkan ke berkas .docx: {docx_path}")
+        logger.info(f"[DOC_WRITER] AI Edit berhasil diterapkan: {action_summary} ({docx_path})")
         return {
             "success": True,
             "doc_id": doc_id,
             "updated_at": now_iso,
-            "message": "Perubahan AI berhasil disimpan ke dokumen Word."
+            "message": action_summary,
+            "action_taken": action_plan
         }
 
     # =========================================================================

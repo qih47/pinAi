@@ -337,8 +337,8 @@ async def execute_call1_routing(
     # Tentukan model yang digunakan
     effective_model = model_name or getattr(settings, "MODEL_ROUTER", "gemma4:e4b")
 
-    # Kunci num_ctx adaptif: Gemma (vocab 256k -> ~3.1k tokens) cukup 4096. Model lain (Granite/Llama vocab 128k -> ~5.1k tokens) butuh 8192.
-    if any(k in effective_model.lower() for k in ["granite", "llama", "mistral", "qwen"]):
+    # Kunci num_ctx adaptif: Gemma (vocab 256k -> ~3.1k tokens) cukup 4096. Model lain (Granite/Llama/MiniCPM vocab 128k -> ~5.1k tokens) butuh 8192.
+    if any(k in effective_model.lower() for k in ["granite", "llama", "mistral", "qwen", "minicpm"]):
         router_ctx = 8192
     else:
         router_ctx = getattr(settings, "NUM_CTX_ROUTER", 4096)

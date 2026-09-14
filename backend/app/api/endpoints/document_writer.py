@@ -209,7 +209,7 @@ async def apply_ai_edit(req: AiEditRequest):
     Menerapkan perubahan teks/instruksi dari AI langsung ke berkas .docx dan me-reload editor.
     """
     try:
-        result = doc_writer_service.apply_ai_edit(
+        result = await doc_writer_service.apply_ai_edit(
             doc_id=req.doc_id,
             instruction=req.instruction,
             section_id=req.section_id,

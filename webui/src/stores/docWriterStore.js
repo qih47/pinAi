@@ -300,12 +300,12 @@ export const useDocWriterStore = create((set, get) => ({
 
       if (res.data?.success) {
         set({ lastAiEditTimestamp: Date.now() });
-        return true;
+        return res.data;
       }
-      return false;
+      return null;
     } catch (err) {
       console.error('[DOC_WRITER] Gagal mengirim instruksi edit AI:', err);
-      return false;
+      return null;
     }
   },
 
