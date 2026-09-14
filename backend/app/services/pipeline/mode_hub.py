@@ -174,37 +174,23 @@ class ModeHub:
                 request=request,
             )
 
-            # Inject routing params ke precheck
-            if preset_routing.get("is_ambiguous"):
-                precheck["is_ambiguous"] = True
-            if preset_routing.get("requires_visual"):
-                precheck["requires_visual"] = preset_routing["requires_visual"]
-            if preset_routing.get("visual_types"):
-                precheck["visual_types"] = preset_routing["visual_types"]
-            if preset_routing.get("need_analytic"):
-                precheck["need_analytic"] = preset_routing["need_analytic"]
-            if preset_routing.get("is_troubleshooting"):
-                precheck["is_troubleshooting"] = True
-            if preset_routing.get("is_comparative"):
-                precheck["is_comparative"] = True
-            if preset_routing.get("has_actionable_workflow"):
-                precheck["has_actionable_workflow"] = True
-            if preset_routing.get("is_security_critical"):
-                precheck["is_security_critical"] = True
-            if preset_routing.get("is_generate_file"):
-                precheck["is_generate_file"] = True
-            if preset_routing.get("is_map_query"):
-                precheck["is_map_query"] = True
-            if preset_routing.get("queries"):
-                precheck["queries"] = preset_routing["queries"]
-            if preset_routing.get("query_judul"):
-                precheck["query_judul"] = preset_routing["query_judul"]
-            if preset_routing.get("search_tags"):
-                precheck["search_tags"] = preset_routing["search_tags"]
-            if preset_routing.get("active_topic"):
-                precheck["active_topic"] = preset_routing["active_topic"]
-            if preset_routing.get("key_subject"):
-                precheck["key_subject"] = preset_routing["key_subject"]
+            # Inject routing params ke precheck secara dinamis & konsisten (17 Kapabilitas Lengkap)
+            for cap in [
+                "is_ambiguous", "requires_visual", "need_analytic", "is_troubleshooting",
+                "is_comparative", "has_actionable_workflow", "is_deep_research", "is_security_critical",
+                "is_generate_file", "is_generate_email", "is_docwriter", "is_coding",
+                "is_map_query", "is_chitchat", "is_web_search", "need_rag"
+            ]:
+                if preset_routing.get(cap) is True:
+                    precheck[cap] = True
+
+            for list_field in ["visual_types", "queries", "query_judul", "search_tags", "fetch_urls"]:
+                if preset_routing.get(list_field):
+                    precheck[list_field] = preset_routing[list_field]
+
+            for str_field in ["active_topic", "key_subject", "ambiguity_reason"]:
+                if preset_routing.get(str_field):
+                    precheck[str_field] = preset_routing[str_field]
 
             if session_uuid:
                 from backend.app.services.chat.chat_history_service import chat_history_service
@@ -641,17 +627,16 @@ class ModeHub:
             else:
                 activity_text = "Menelaah referensi tautan"
             
-            final_fetch_payload = {
-                "nodes": collected_nodes,
-                "fetching": None,
-                "activity": activity_text
-            }
-            
-            # Kirim TEPAT 1 blok markdown ```urlfetch agar tidak dobel / bertumpuk di chat
-            yield format_sse(chunk=f"```urlfetch\n{json.dumps(final_fetch_payload)}\n```\n\n", event_type=SSEEventType.CHUNK)
-            await asyncio.sleep(0.01)
-            
-            if url_contexts:
+            if url_contexts and url_contexts.strip():
+                final_fetch_payload = {
+                    "nodes": collected_nodes,
+                    "fetching": None,
+                    "activity": activity_text
+                }
+                # Kirim TEPAT 1 blok markdown ```urlfetch HANYA jika konten URL berhasil diunduh
+                yield format_sse(chunk=f"```urlfetch\n{json.dumps(final_fetch_payload)}\n```\n\n", event_type=SSEEventType.CHUNK)
+                await asyncio.sleep(0.01)
+                
                 yield format_sse(status="📖 Mengekstrak konten web", event_type=SSEEventType.STATUS)
                 await asyncio.sleep(0.01)
                 precheck["_session_chunks_text"] = precheck.get("_session_chunks_text", "") + f"\n\n[KONTEN WEB DARI URL DI CHAT]\n{url_contexts}"
@@ -659,6 +644,8 @@ class ModeHub:
                 precheck["is_web_search"] = False
                 routing_data["is_web_search"] = False
                 logger.info(f"[MODE_HUB] Injected {len(url_contexts)} chars of URL context into precheck. Overriding is_web_search to False.")
+            else:
+                logger.warning(f"[MODE_HUB] Fetching failed or yielded empty content for {approved_fetch_urls}. Suppressing urlfetch widget and allowing fallback.")
                 
                 if session_uuid and current_user_npp:
                     from backend.app.services.chat.chat_history_service import chat_history_service

@@ -62,7 +62,7 @@ class ModeAttachment:
     ) -> AsyncGenerator[str, None]:
         logger.info("[MODE_ATTACHMENT] Starting execution")
         
-        yield format_sse(status="👁️ Memindai file lampiran", event_type=SSEEventType.STATUS)
+        yield format_sse(status="👁️ Memindai file lampiran", status_key="SCANNING_ATTACHMENT", event_type=SSEEventType.STATUS)
         await asyncio.sleep(0.02)
 
         # ── 1. Ekstraksi Path File Lampiran ─────────────────────────────────────
@@ -128,14 +128,14 @@ class ModeAttachment:
                 brain = SessionBrainService(current_user_npp, session_uuid)
                 cached_brain = brain.get_document(doc_id_key)
                 if cached_brain and "text_map" in cached_brain:
-                    yield format_sse(status="🧠 Dari memori sesi", event_type=SSEEventType.STATUS)
+                    yield format_sse(status="🧠 Dari memori sesi", status_key="BRAIN_HIT", event_type=SSEEventType.STATUS)
                     await asyncio.sleep(0.01)
                     text_map = cached_brain["text_map"]
                     all_base64_images = cached_brain.get("images", [])
                     total_pages = cached_brain.get("total_pages", len(text_map))
 
             if text_map is None:
-                yield format_sse(status="📄 Memuat dokumen", event_type=SSEEventType.STATUS)
+                yield format_sse(status="📄 Memuat dokumen", status_key="DOC_LOADING", event_type=SSEEventType.STATUS)
                 await asyncio.sleep(0.01)
                 cache_key = session_uuid or pdf_file_path
                 text_map, all_base64_images, total_pages = await extract_and_ocr_document_async(pdf_file_path, cache_key=cache_key)
@@ -147,7 +147,7 @@ class ModeAttachment:
                         "images": all_base64_images,
                         "total_pages": total_pages,
                     })
-                    yield format_sse(status="💾 Menyimpan ke memori", event_type=SSEEventType.STATUS)
+                    yield format_sse(status="💾 Menyimpan ke memori", status_key="BRAIN_SAVE", event_type=SSEEventType.STATUS)
                     await asyncio.sleep(0.01)
 
 
@@ -156,7 +156,7 @@ class ModeAttachment:
 
             if is_summary:
                 # Mode Rangkuman Dokumen Utuh
-                yield format_sse(status=f"📑 Merangkum seluruh {total_pages} halaman dokumen", event_type=SSEEventType.STATUS)
+                yield format_sse(status=f"📑 Merangkum seluruh {total_pages} halaman dokumen", status_key="SUMMARIZING_PAGES", event_type=SSEEventType.STATUS)
                 await asyncio.sleep(0.05)
 
                 if total_pages <= 40:
@@ -180,7 +180,7 @@ class ModeAttachment:
                     final_base64_images = []
             else:
                 # Mode Targeted QA (Two-Stage Context-Aware Retrieval)
-                yield format_sse(status=f"🔍 Menganalisis klausul terkait pada {total_pages} halaman", event_type=SSEEventType.STATUS)
+                yield format_sse(status=f"🔍 Menganalisis klausul terkait pada {total_pages} halaman", status_key="ANALYZING_CLAUSES_PAGES", event_type=SSEEventType.STATUS)
                 await asyncio.sleep(0.05)
 
                 explicit_pages = extract_explicit_pages_from_query(user_message, total_pages)
@@ -194,7 +194,7 @@ class ModeAttachment:
                 )
 
                 halaman_str = ", ".join([str(p+1) for p in selected_pages])
-                yield format_sse(status=f"📌 Ditemukan Klausul pada Halaman {halaman_str}!", event_type=SSEEventType.STATUS)
+                yield format_sse(status=f"📌 Ditemukan Klausul pada Halaman {halaman_str}!", status_key="FOUND_CLAUSE_PAGE", event_type=SSEEventType.STATUS)
                 await asyncio.sleep(0.1)
 
         # ── 3. Susun Prompt & Context ───────────────────────────────────────────

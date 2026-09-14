@@ -49,7 +49,9 @@ async def chat_stream_endpoint(
     async def wrapped_generator():
         # Yield initial status to flush HTTP headers immediately and prevent frontend hanging
         # Tambahkan spasi kosong padding untuk bypass proxy/browser buffers yang terlalu besar
-        yield format_sse(status="⚡ Menghubungkan ke Cakra AI", event_type=SSEEventType.STATUS).replace("\n", " " * 1024 + "\n")
+        user_lang = getattr(payload, "language", "id") or "id"
+        init_status = "⚡ Connecting to Cakra AI" if str(user_lang).lower() == "en" else "⚡ Menghubungkan ke Cakra AI"
+        yield format_sse(status=init_status, status_key="CONNECTING_CAKRA", event_type=SSEEventType.STATUS).replace("\n", " " * 1024 + "\n")
         try:
             async for chunk in _sequential_pipeline_generator(request, payload, current_user_npp):
                 yield chunk

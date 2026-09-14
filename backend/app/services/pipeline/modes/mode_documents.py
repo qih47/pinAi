@@ -213,7 +213,7 @@ class ModeDocuments:
                     })
                     logger.info(f"[MODE_DOCUMENTS] 🧠 [BRAIN-HIT] Dokumen aktif sesi {b_id} ('{doc_title}', {doc_nomor}) digunakan dari Brain.")
             else:
-                yield format_sse(status="🔍 Menelusuri regulasi", event_type=SSEEventType.STATUS)
+                yield format_sse(status="🔍 Menelusuri regulasi", status_key="SEARCHING_REGULATIONS", event_type=SSEEventType.STATUS)
                 search_tags = routing_data.get("search_tags", [])
                 logger.info(f"[MODE_DOCUMENTS] [TIER 1] Fetching candidate documents for query_judul: {query_judul_list} | search_tags: {search_tags}")
                 candidate_docs = await get_candidate_documents_metadata(user_message, query_judul_list, rag_queries=rag_queries, search_tags=search_tags) or []
@@ -233,7 +233,7 @@ class ModeDocuments:
                             f"[MODE_DOCUMENTS] ⚠️ Call 1.1 CRAG flagged candidates as NOT RELEVANT ({crag_eval.get('reason')}). "
                             f"Running 1x targeted re-search with suggestions..."
                         )
-                        yield format_sse(status="🔄 Menajamkan pencarian regulasi...", status_key="CRAG_RETRY", event_type=SSEEventType.STATUS)
+                        yield format_sse(status="🔄 Menajamkan pencarian regulasi", status_key="CRAG_RETRY", event_type=SSEEventType.STATUS)
                         retry_qj = crag_eval.get("suggested_query_judul") or query_judul_list
                         retry_tags = crag_eval.get("suggested_tags") or search_tags
                         retry_queries = crag_eval.get("suggested_queries") or rag_queries
@@ -278,7 +278,7 @@ class ModeDocuments:
                 
                 doc_count = len(full_read_docs)
                 hist_count = len(historical_docs)
-                yield format_sse(status=f"📑 Menemukan {doc_count + hist_count} dokumen", event_type=SSEEventType.STATUS)
+                yield format_sse(status=f"📑 Menemukan {doc_count + hist_count} dokumen", status_key="DOCS_FOUND", event_type=SSEEventType.STATUS)
                 await asyncio.sleep(0.02)
                 
                 global_page_pool = []
@@ -430,7 +430,7 @@ class ModeDocuments:
                 # 2. Global Cross-Document Page-Level Reranking & Tri-Window Context Expansion
                 if global_page_pool:
                     total_p_count = len(global_page_pool)
-                    yield format_sse(status="🎯 Menyaring pasal relevan", event_type=SSEEventType.STATUS)
+                    yield format_sse(status="🎯 Menyaring pasal relevan", status_key="FILTERING_RELEVANT_ARTICLES", event_type=SSEEventType.STATUS)
                     await asyncio.sleep(0.02)
                     
                     # Effective query untuk BGE page scoring: gunakan rag_queries[0] murni saja.
@@ -489,7 +489,7 @@ class ModeDocuments:
                             summary_parts.append(f"{short_t} (Hal {', '.join(p_nums)})")
                         
                     sse_summary = " & ".join(summary_parts)
-                    yield format_sse(status="📄 Membaca pasal terpilih", event_type=SSEEventType.STATUS)
+                    yield format_sse(status="📄 Membaca pasal terpilih", status_key="READING_SELECTED_ARTICLES", event_type=SSEEventType.STATUS)
                     await asyncio.sleep(0.02)
                     
                     # Susun judul_context dari Connected Pages yang utuh dan tidak terpotong
@@ -575,7 +575,7 @@ class ModeDocuments:
                 else:
                     logger.info("[MODE_DOCUMENTS] ℹ️ [TIER 1 MISS] MySQL nihil (0 hasil). Mengaktifkan Fallback Tier 2 Vector RAG & Community Knowledge...")
                 
-                yield format_sse(status="🔍 Menelusuri semantik vector", event_type=SSEEventType.STATUS)
+                yield format_sse(status="🔍 Menelusuri semantik vector", status_key="SEARCHING_VECTOR_SEMANTICS", event_type=SSEEventType.STATUS)
                 
                 from backend.app.services.pipeline.community_knowledge import search_community_knowledge
                 from backend.app.services.rag.rag_pipeline import run_rag_pipeline
@@ -638,7 +638,7 @@ class ModeDocuments:
                     rag_sources = [c for c in all_raw_candidates if c.get("score", 0.0) >= 0.40][:10]
                     
                     if rag_sources:
-                        yield format_sse(status="📄 Menganalisis pasal", event_type=SSEEventType.STATUS)
+                        yield format_sse(status="📄 Menganalisis pasal", status_key="ANALYZING_ARTICLE", event_type=SSEEventType.STATUS)
                 else:
                     rag_sources = []
 
@@ -674,7 +674,7 @@ class ModeDocuments:
                     "="*40)
 
         # ── Step 3: LLM Execution (Call 2) ────────────────────────────────────────
-        yield format_sse(status="✍️ Menyusun jawaban", event_type=SSEEventType.STATUS)
+        yield format_sse(status="✍️ Menyusun jawaban", status_key="DRAFTING_RESPONSE", event_type=SSEEventType.STATUS)
         await asyncio.sleep(0.01)
 
         if rag_sources:

@@ -18,8 +18,10 @@ ATURAN FORMAT OUTPUT:
 2. JANGAN sertakan penjelasan, komentar, markdown triple backtick, atau teks tambahan apapun.
 3. 🚫 DILARANG KERAS MENULIS KATA `false`, `null`, ATAU ARRAY KOSONG `[]` DI DALAM JSON!
 4. BYPASS THINKING MODE: Jangan hasilkan draf penalaran teks bebas.
-5. 🚨 ATURAN MINIMAL 1 PARAMETER KAPABILITAS AKTIF:
-   Setiap respons JSON WAJIB mengaktifkan MINIMAL 1 parameter kapabilitas dari DAFTAR KAPABILITAS SISTEM di bawah yang paling relevan. DILARANG KERAS menghasilkan JSON tanpa satupun parameter kapabilitas!
+5. 🚨 ATURAN DINAMISASI & MULTI-TRUE SYNERGY:
+   - Aktifkan parameter kapabilitas HANYA jika benar-benar relevan dan dibutuhkan oleh pesan pengguna.
+   - MULTI-TRUE (KOMBO): Kamu bebas dan dianjurkan mengaktifkan DUA ATAU LEBIH parameter true sekaligus jika permintaan mencakup beberapa aspek (contoh: koding + buat file fisik, regulasi RAG + visual diagram, pencarian web + grafik data).
+   - EFISIENSI KASUAL (ZERO-CAPABILITY): Jika pesan pengguna HANYA sapaan, salam, ucapan terima kasih, atau obrolan santai tanpa permintaan data eksternal atau aksi teknis khusus, CUKUP hasilkan metadata {"active_topic": "...", "key_subject": "..."} (dan "session_title" jika first chat). JANGAN memaksakan menyalakan parameter kapabilitas yang tidak diminta!
 {% if is_guest %}
 6. Tamu (GUEST): Dilarang menyertakan `need_rag`.
 {% endif %}
@@ -55,7 +57,7 @@ Kamu bebas dan dianjurkan mengaktifkan SATU ATAU LEBIH PARAMETER SEKALIGUS jika 
 • `is_web_search`: true      → jika kebutuhan pengguna adalah DATA DARI LUAR / DUNIA NYATA / INTERNET:
   - Peristiwa alam, lingkungan, geologi, vulkanologi, meteorologi, kebencanaan, cuaca, geografi publik.
   - Berita terkini, peristiwa nasional/global, riset online, informasi institusi publik luar korporat.
-  - Segala informasi di luar lingkup internal korporat PT Pindad yang membutuhkan penelusuran fakta dunia nyata (sertakan `"queries": ["..."]`).
+  - Segala informasi di luar lingkup internal korporat PT Pindad yang membutuhkan penelusuran fakta dunia nyata (sertakan `"queries": ["..."]`). PENTING: 'queries' WAJIB berupa kata kunci pencarian murni mesin pencari tanpa kata perintah/percakapan (contoh: ["berita terbaru erupsi gunung anak krakatau"] bukan ["infoin berita..."]).
 • `need_rag`: true           → jika mencari info di DOKUMEN INTERNAL KORPORAT PT PINDAD:
   - Regulasi resmi internal PT Pindad: SKEP Direksi, Surat Edaran (SE), Perjanjian Kerja Bersama (PKB), Prosedur Operasional Standar (SOP/IK), Peraturan Direksi (Perdir).
   - Aturan kepegawaian, hak/kewajiban pegawai, struktur organisasi internal Pindad, data produk pertahanan/alutsista buatan Pindad.
@@ -82,10 +84,14 @@ Kamu bebas dan dianjurkan mengaktifkan SATU ATAU LEBIH PARAMETER SEKALIGUS jika 
 • `is_docwriter`: true        → jika pengguna meminta membuka Dokumen Editor / Dokumen Writer atau menyusun draf naskah dinas resmi PT Pindad (Surat Edaran/SE, Surat Keputusan/SKEP, Nota Dinas/Memo). Permintaan ini BUKAN ambigu (is_ambiguous: false)!
 • `is_ambiguous`: true        → jika permintaan pengguna masih sangat umum, bercabang, belum memiliki spesifikasi kunci di domain apapun, atau router RAGU menentukan parameter (misal ragu antara Dokumen Internal RAG vs Data Luar Web Search vs Koding vs Visual). WAJIB sertakan `"ambiguity_reason": "alasan spesifik keraguan dan aspek yang perlu diklarifikasi"`.
 • `is_chitchat`: true         → jika obrolan santai, salam/sapaan, ungkapan terima kasih, cuaca/waktu saat ini, tanggapan opini, afirmasi, keluh kesah/curhat, refleksi obrolan lanjutan, candaan, atau pembahasan pengetahuan umum/pop culture (film, anime, sains dasar, sejarah) yang dapat dijawab mandiri dari pengetahuan internal model.
-• `fetch_urls`: ["https://..."] → jika pengguna memberikan link URL spesifik untuk dibaca langsung.
+• `fetch_urls`: ["https://..."] → jika pengguna menyertakan tautan URL atau nama domain spesifik (contoh: "pindad.com", "https://ollama.com", "detik.com") untuk dikunjungi, dibaca isinya, dicari beritanya/pengumumannya, atau dirangkum. Gunakan domain persis yang diberikan pengguna (contoh: "pindad.com" ➔ "https://pindad.com", jangan diubah ke domain lain!). Ketika `fetch_urls` aktif, jangan aktifkan is_web_search dan jangan aktifkan need_rag!
 
 🌟 CONTOH SINERGI MULTI-PARAMETER & SPARSE JSON (TIDAK ADA FALSE, TIDAK ADA NULL):
-• Berita Terkini, Peristiwa Publik & Bencana Alam (Data Dari Luar / Web):
+• Membaca / Mencari Berita pada URL atau Domain Spesifik:
+  User: "coba cari berita terbaru di pindad.com cuy"
+  {"session_title": "Berita Terbaru Pindad", "active_topic": "Berita Korporasi", "key_subject": "Update Berita Pindad", "fetch_urls": ["https://pindad.com"]}
+
+• Berita Terkini, Peristiwa Publik & Bencana Alam (Data Dari Luar / Web Bebas):
   User: "carikan informasi karhutla terbaru mau tau perkembangannya"
   {"session_title": "Informasi Karhutla Terkini", "active_topic": "Bencana Lingkungan", "key_subject": "Perkembangan Karhutla", "is_web_search": true, "queries": ["perkembangan karhutla terbaru hari ini", "kondisi kebakaran hutan terkini"]}
 
@@ -272,11 +278,24 @@ PANDUAN PENALARAN PARAMETER `is_ambiguous` & MULTI-TURN WIZARD RESOLUTION:
      Dan user membalas santai (contoh: "semangat ya", "mantap bro", "haha iya"):
      ➔ Ini adalah kelanjutan basa-basi: WAJIB aktifkan `is_chitchat: true`! JANGAN aktifkan need_rag atau is_web_search!
 
-PANDUAN PENALARAN PARAMETER `fetch_urls` VS `is_web_search`:
-- Prioritaskan URL Reader (`fetch_urls: ["https://..."]`) jika ada tautan URL spesifik yang ingin dibaca / dirangkum oleh pengguna (contoh: "baca https://ollama.com", "rangkum isi https://pindad.com") ➔ HILANGKAN `is_web_search` (matikan DuckDuckGo) agar langsung membaca halaman web tersebut secara presisi.
-- 🛡️ PROTEKSI ERROR LOG & KODE:
-  DILARANG KERAS memasukkan URL ke `fetch_urls` jika URL tersebut sekadar bagian dari log error (`npm ERR!`, stack trace, 404/500, pypi/npm registry, localhost) atau kode program.
-  Untuk pesan error atau kendala teknis, aktifkan `is_troubleshooting: true` atau `is_coding: true`, BUKAN `fetch_urls`!
+PANDUAN PENALARAN PARAMETER `fetch_urls` VS `is_web_search` VS `need_rag`:
+1. PRIORITASKAN URL READER (`fetch_urls: ["https://..."]`):
+   Jika pengguna menyebutkan URL lengkap ATAU nama domain web spesifik (contoh: "pindad.com", "detik.com", "https://ollama.com") untuk dicari beritanya, dicek informasinya, ditelaah, atau dirangkum:
+   - Contoh: "coba cari berita terbaru di pindad.com cuy" ➔ `fetch_urls: ["https://pindad.com"]` (HILANGKAN `is_web_search` dan HILANGKAN `need_rag`!).
+   - Contoh: "ada pengumuman apa di website pindad.com" ➔ `fetch_urls: ["https://pindad.com"]` (HILANGKAN `is_web_search` dan HILANGKAN `need_rag`!).
+   - Contoh: "rangkum isi artikel di https://ollama.com/blog" ➔ `fetch_urls: ["https://ollama.com/blog"]` (HILANGKAN `is_web_search` dan HILANGKAN `need_rag`!).
+   ⚠️ SANGAT PENTING:
+   - Selalu gunakan protokol `https://` dan nama domain PERSIS seperti yang ditulis pengguna (jika user menulis `pindad.com`, jadikan `https://pindad.com`, JANGAN diubah menjadi `pindad.co.id` atau domain lain!).
+   - Ketika ada URL/domain spesifik pengguna, DILARANG KERAS mengaktifkan `is_web_search` (pencarian umum internet) agar sistem langsung fokus membaca situs rujukan tersebut!
+   - DILARANG KERAS mengaktifkan `need_rag` (RAG dokumen internal) karena targetnya adalah URL web eksternal!
+
+2. GUNAKAN `is_web_search: true` (DUCKDUCKGO SEARCH):
+   Hanya jika pengguna mencari berita atau informasi mutakhir di internet TANPA menyebutkan URL/domain tertentu:
+   - Contoh: "berita terkini gempa hari ini", "siapa menteri bumn sekarang", "kurs dollar terkini", "perkembangan alutsista global".
+
+3. 🛡️ PROTEKSI ERROR LOG & KODE:
+   DILARANG KERAS memasukkan URL ke `fetch_urls` jika URL tersebut sekadar bagian dari log error (`npm ERR!`, stack trace, 404/500, pypi/npm registry, localhost) atau kode program.
+   Untuk pesan error atau kendala teknis, aktifkan `is_troubleshooting: true` atau `is_coding: true`, BUKAN `fetch_urls`!
 
 
 {% if need_rag_hint %}HINT: RAG WAJIB diaktifkan.{% endif %}
@@ -392,17 +411,23 @@ TUGAS:
      `"visual_types": ["mermaid" | "chart" | "gantt" | "datagrid" | "infographic" | "map"]`
 4. KAPABILITAS MODULAR TAMBAHAN (Hanya sertakan jika relevan dengan instruksi pengguna):
    - `"need_analytic": true`        -> analisis data, kalkulasi numerik, atau statistik
-   - `"is_troubleshooting": true`  -> kendala teknis, stack trace, atau error
+   - `"is_troubleshooting": true`  -> kendala teknis, stack trace, bug, atau error
    - `"is_comparative": true`      -> perbandingan 2+ opsi / produk / versi regulasi
    - `"has_actionable_workflow": true` -> prosedur operasional SOP, checklist langkah kerja
-   - `"is_security_critical": true` -> proteksi data, otentikasi, enkripsi
-   - `"is_generate_file": true`    -> permintaan eksplisit membuat file fisik unduhan (.xlsx, .docx, .py, dll)
-   - `"is_map_query": true`        -> letak geografis, fasilitas pabrik, kantor, koordinat
+   - `"is_deep_research": true`    -> riset mendalam, arsitektur enterprise, evaluasi komprehensif
+   - `"is_security_critical": true` -> proteksi data rahasia, audit keamanan, hardening
+   - `"is_generate_file": true`    -> permintaan eksplisit membuat berkas fisik unduhan (.xlsx, .docx, .py, dll)
+   - `"is_docwriter": true`        -> penyusunan naskah dinas resmi, surat edaran, memo, atau membuka editor dokumen
+   - `"is_generate_email": true`   -> draf email kedinasan atau korespondensi formal
+   - `"is_coding": true`           -> implementasi script pemrograman, koding, fungsi, database query
+   - `"is_web_search": true`       -> pencarian web / informasi internet terkini luar internal Pindad
+   - `"is_map_query": true`        -> letak geografis, fasilitas pabrik, kantor, koordinat Pindad
 5. Jika FIRST CHAT = true, buatkan judul percakapan ringkas 2-4 kata -> "session_title": "..." (DILARANG KERAS 1 KATA, untuk pesan sapaan gunakan frasa akrab seperti "Sapaan Pagi yang Akrab" atau "Sapaan Pagi Brother").
 
-ATURAN OUTPUT JSON (WAJIB DIIKUTI):
+ATURAN OUTPUT JSON (WAJIB DIIKUTI — STRICT SPARSE JSON):
 - Kembalikan JSON murni tanpa markdown/backtick.
-- HANYA sertakan field yang bernilai TRUE, array non-kosong, atau string non-null. Field yang FALSE tidak perlu ditulis.
+- HANYA sertakan field yang bernilai TRUE, array non-kosong, atau string non-null.
+- DILARANG KERAS menulis field yang bernilai false, null, atau array kosong [].
 - Jika FIRST CHAT = false, JANGAN sertakan field session_title.
 
 OUTPUT JSON:

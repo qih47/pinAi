@@ -103,15 +103,27 @@ Selain memutuskan should_intervene, evaluasi juga apakah obrolan menyentuh topik
 - Spesifikasi, kontrak, atau data teknis produk/alutsista Pindad
 Jika iya, tetapkan need_rag: true dan tentukan queries semantik, query_judul dokumen target, serta search_tags kategori.
 
-FORMAT OUTPUT WAJIB JSON MURNI:
-{
-  "should_intervene": true / false,
-  "reason": "Alasan singkat, jujur, dari sudut pandang manusia — bukan daftar aturan",
-  "need_rag": true / false,
-  "queries": ["substansi pencarian semantik jika need_rag"],
-  "query_judul": ["nama dokumen target, array pendek, bukan kalimat panjang"],
-  "search_tags": ["tag kategori dokumen"]
-}
+FORMAT OUTPUT WAJIB JSON MURNI (STRICT SPARSE JSON):
+- Kembalikan JSON murni tanpa markdown/backtick.
+- Jika should_intervene: false, CUKUP kembalikan:
+  {
+    "should_intervene": false,
+    "reason": "Alasan singkat wajar diam dari sudut pandang rekan kerja"
+  }
+- Jika should_intervene: true:
+  {
+    "should_intervene": true,
+    "reason": "Alasan singkat, jujur, dari sudut pandang rekan kerja",
+    "need_rag": true / false,
+    "queries": ["substansi pencarian semantik jika need_rag: true"],
+    "query_judul": ["nama dokumen target, array pendek, jika need_rag: true"],
+    "search_tags": ["tag kategori dokumen jika need_rag: true"],
+    "requires_visual": true,
+    "visual_types": ["mermaid" | "chart"],
+    "is_coding": true,
+    "is_docwriter": true
+  }
+- CATATAN SPARSE: Field seperti queries, query_judul, visual_types, is_coding, is_docwriter HANYA disertakan jika bernilai aktif (true / non-empty). Dilarang menyertakan array kosong [] atau field yang tidak dibutuhkan.
 """
 
 COLLAB_AUTO_NOTE_EVAL_PROMPT = """Anda adalah asisten kurasi notulensi rapat cerdas PT Pindad.

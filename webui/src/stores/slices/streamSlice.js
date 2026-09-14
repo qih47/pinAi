@@ -127,6 +127,8 @@ export const createStreamSlice = (set, get) => ({
             mode: effectiveChatMode,
             isThinkingMode: isThinkingMode,
             thinking: isThinkingMode ? '' : undefined,
+            statusKey: isThinkingMode ? 'THINKING_PROGRESS' : null,
+            statusMessage: isThinkingMode ? 'THINKING_PROGRESS' : ''
         };
 
         const currentAttachmentPaths = attachmentMeta
@@ -252,7 +254,8 @@ export const createStreamSlice = (set, get) => ({
             isThinking: effectiveThinkingMode,
             isStreaming: true,
             thinking: '',
-            statusMessage: effectiveThinkingMode ? 'Sedang berpikir' : '',
+            statusKey: effectiveThinkingMode ? 'THINKING_PROGRESS' : null,
+            statusMessage: effectiveThinkingMode ? 'THINKING_PROGRESS' : '',
             chatMode: effectiveChatMode,
             mode: effectiveChatMode,
             isThinkingMode: effectiveThinkingMode

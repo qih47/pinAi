@@ -36,6 +36,7 @@ class ChatStreamRequest(BaseModel):
     doc_title: Optional[str] = Field(None, description="Judul dokumen terisolasi dari FE")
     hint_source: Optional[dict] = Field(None, description="Metadata sumber lengkap dokumen yang dipilih (nomor, judul, jenis, tanggal)")
     context_isolation: Optional[dict] = Field(None, description="Objek isolasi konteks dari FE")
+    language: Optional[str] = Field("id", description="Bahasa antarmuka pengguna: id atau en")
 
     class Config:
         from_attributes = True

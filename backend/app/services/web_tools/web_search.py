@@ -27,7 +27,9 @@ def _get_cached_results(query: str) -> Optional[List[Dict[str, Any]]]:
     return None
 
 def _set_cache(query: str, results: List[Dict[str, Any]]) -> None:
-    """Simpan hasil ke cache. Batas max 50 entry untuk cegah memory leak."""
+    """Simpan hasil ke cache jika tidak kosong. Batas max 50 entry untuk cegah memory leak."""
+    if not results:
+        return
     key = query.strip().lower()
     if len(_search_cache) >= 50:
         # Hapus entry terlama
@@ -36,7 +38,7 @@ def _set_cache(query: str, results: List[Dict[str, Any]]) -> None:
     _search_cache[key] = (time.time(), results)
 
 def sanitize_web_query(query: str) -> str:
-    """Membersihkan kata-kata filler percakapan, slang, dan keluhan dari query pencarian web."""
+    """Membersihkan kata-kata filler percakapan, slang, perintah, dan keluhan dari query pencarian web."""
     if not query:
         return ""
     q = query.strip()
@@ -44,24 +46,27 @@ def sanitize_web_query(query: str) -> str:
     # Hapus tanda kutip luar
     q = re.sub(r'^["\']+|["\']+$', '', q).strip()
 
-    # Prefix fillers
+    # Prefix fillers (dijalankan hingga bersih berlapis)
     prefix_fillers = [
-        r"^mencari referensi terkait\s*",
-        r"^referensi terkait\s*",
-        r"^carikan info(rmasi)? terkait\s*",
-        r"^carikan referensi terkait\s*",
-        r"^cari di web\s*",
-        r"^cari web\s*",
-        r"^tolong cari(kan)?\s*",
-        r"^coba cari(kan)?\s*",
-        r"^info(rmasi)? tentang\s*",
-        r"^berita tentang\s*",
-        r"^apa itu\s*",
-        r"^apakah ada\s*",
-        r"^siapa itu\s*",
+        r"^(?:tolong|coba|bisa|mohon)?\s*(?:infoin|infokan|beritahu|beritahukan|kasih\s+tau|kasih\s+tahu|spill|update|kabar|cekin|cek)\s*(?:dong|deh|tentang|soal|berita|kabar)?\s*",
+        r"^(?:ada\s+apa\s+dengan|gimana\s+kondisi|gimana\s+status|bagaimana\s+kondisi|bagaimana\s+status)\s*",
+        r"^mencari(\s+referensi)?(\s+terkait)?\s*",
+        r"^referensi(\s+terkait)?\s*",
+        r"^carikan(\s+(saya|aku|gue|gw))?(\s+info(rmasi)?)?(\s+terkait)?\s*",
+        r"^cari(\s+di\s+web|\s+web)?\s*",
+        r"^tolong(\s+carikan)?\s*",
+        r"^coba(\s+carikan)?\s*",
+        r"^info(rmasi)?(\s+tentang|\s+lain)?\s*",
+        r"^berita(\s+tentang|\s+terkini|\s+terbaru)?\s*",
+        r"^tanya(\s+dong)?\s*",
+        r"^nanya(\s+dong)?\s*",
+        r"^apa\s+itu\s*",
+        r"^apakah\s+ada\s*",
+        r"^siapa\s+itu\s*",
     ]
-    for pattern in prefix_fillers:
-        q = re.sub(pattern, "", q, flags=re.IGNORECASE).strip()
+    for _ in range(4):
+        for pattern in prefix_fillers:
+            q = re.sub(pattern, "", q, flags=re.IGNORECASE).strip()
 
     # Suffix / inline slang & conversational rant fillers
     slang_patterns = [
@@ -69,7 +74,6 @@ def sanitize_web_query(query: str) -> str:
         r"\b(hadeh|hadeuh|astaga|buset|waduh|anjir|anjay|gila|parah)\b",
         r"\b(wkwk+|haha+|hehe+)\b",
         r"\b(dong|deh|sih|nih|tuh|kan|lah|ya|kah|kek|kayak|plis|please)\b",
-        r"\b(coba|tolong|bikin|bikinin|buatkan)\b",
         r"\b(gw|gue|lu|lo|elu|aku|kamu|kita|saya)\b",
     ]
     for pattern in slang_patterns:
@@ -79,10 +83,27 @@ def sanitize_web_query(query: str) -> str:
     q = re.sub(r"\s+", " ", q).strip()
     return q or query.strip()
 
+
+def simplify_search_query(query: str) -> str:
+    """Mengekstrak kata kunci inti entitas dari query jika pencarian utama memerlukan penyederhanaan."""
+    if not query:
+        return ""
+    q = sanitize_web_query(query)
+    modifiers = [
+        r"\b(berita|kabar|info|informasi|update|terbaru|terkini|hari ini|saat ini|sekarang|teranyar)\b",
+        r"\b(tentang|mengenai|soal|terkait|pada|di|ke|dari|dan|atau|yang|adalah)\b"
+    ]
+    simplified = q
+    for mod in modifiers:
+        simplified = re.sub(mod, " ", simplified, flags=re.IGNORECASE)
+    simplified = re.sub(r"\s+", " ", simplified).strip()
+    return simplified if len(simplified.split()) >= 2 else q
+
+
 async def perform_web_search(query: str, num_results: int = 5) -> List[Dict[str, Any]]:
     """
     Melakukan pencarian ke SearXNG dan mengembalikan daftar hasil.
-    Hasil di-cache selama 5 menit untuk menghindari duplikat request.
+    Dilengkapi multi-tier query retry & language fallback agar tidak menghasilkan kosongan.
     """
     clean_q = sanitize_web_query(query)
     if not clean_q:
@@ -90,44 +111,57 @@ async def perform_web_search(query: str, num_results: int = 5) -> List[Dict[str,
 
     # Cek cache dulu
     cached = _get_cached_results(clean_q)
-    if cached is not None:
+    if cached is not None and len(cached) > 0:
         return cached[:num_results]
 
     logger.info(f"[Web Search] Searching for: '{clean_q}' (raw: '{query}')")
     
-    params = {
-        "q": clean_q,
-        "format": "json",
-        "language": "id",
-        "categories": "general",
-        "safesearch": "0"
-    }
-    
-    try:
-        async with httpx.AsyncClient(timeout=8.0) as client:
-            response = await client.get(SEARXNG_URL, params=params)
-            response.raise_for_status()
+    candidate_queries = [clean_q]
+    simplified_q = simplify_search_query(clean_q)
+    if simplified_q and simplified_q.lower() != clean_q.lower():
+        candidate_queries.append(simplified_q)
 
-            data = response.json()
-            results = data.get("results", [])
-            
-            # Format results
-            formatted_results = []
-            for r in results[:num_results]:
-                formatted_results.append({
-                    "title": r.get("title", ""),
-                    "url": r.get("url", ""),
-                    "content": r.get("content", ""),
-                    "engine": r.get("engine", "")
-                })
-            
-            # Simpan ke cache
-            _set_cache(clean_q, formatted_results)
-            return formatted_results
-            
-    except Exception as e:
-        logger.error(f"[Web Search] Failed to search SearXNG: {str(e)}")
-        return []
+    # Coba candidate queries secara berurutan jika hasil kosong
+    for cand_idx, target_q in enumerate(candidate_queries):
+        # Percobaan 1: dengan language=id
+        # Percobaan 2 (jika kosong): tanpa language restriction (all languages)
+        for lang_opt in ["id", None]:
+            params = {
+                "q": target_q,
+                "format": "json",
+                "categories": "general",
+                "safesearch": "0"
+            }
+            if lang_opt:
+                params["language"] = lang_opt
+
+            try:
+                async with httpx.AsyncClient(timeout=10.0) as client:
+                    response = await client.get(SEARXNG_URL, params=params)
+                    response.raise_for_status()
+
+                    data = response.json()
+                    results = data.get("results", [])
+                    
+                    if results:
+                        formatted_results = []
+                        for r in results[:num_results]:
+                            formatted_results.append({
+                                "title": r.get("title", ""),
+                                "url": r.get("url", ""),
+                                "content": r.get("content", ""),
+                                "engine": r.get("engine", "")
+                            })
+                        
+                        logger.info(f"[Web Search] ✅ Found {len(formatted_results)} results for '{target_q}' (lang={lang_opt})")
+                        _set_cache(clean_q, formatted_results)
+                        return formatted_results
+
+            except Exception as e:
+                logger.warning(f"[Web Search] Attempt failed for '{target_q}' (lang={lang_opt}): {e}")
+
+    logger.warning(f"[Web Search] ⚠️ Zero results returned across all candidates for: '{clean_q}'")
+    return []
 
 
 def format_search_results_for_llm(results: List[Dict[str, Any]]) -> str:

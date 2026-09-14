@@ -6,13 +6,15 @@ _CODING_KEYWORDS = ["import ", "export ", "const ", "async ", "await ", "functio
 _GREETING_KEYWORDS = ["hai", "halo", "hello", "hi ", "apa kabar", "selamat pagi", "selamat siang", "selamat sore", "selamat malam", "assalamualaikum", "pagi", "siang", "malam", "thanks", "thank you", "terima kasih", "makasih", "ok", "oke", "siap", "tq", "nuhun", "suwun", "mantap", "sip"]
 # CATATAN: 'ik' (Instruksi Kerja) sengaja TIDAK dimasukkan sebagai substring mentah agar tidak
 # false-positive pada kata seperti 'vulkanik', 'organik', 'teknik'. Cek via word-boundary di detect_precheck.
-_DOC_KEYWORDS = ["ketentuan", "peraturan", "skep", "surat keputusan", "surat edaran", "regulasi", "kebijakan", "prosedur", "sop", "seragam", "cuti", "gaji", "tunjangan", "rekrutmen", "rekrut", "pegawai", "pindad", "aturan", "pasal", "syarat", "lembur", "pensiun", "promosi", "jabatan", "seleksi", "penerimaan"]
+_DOC_KEYWORDS = ["ketentuan", "peraturan", "skep", "surat keputusan", "surat edaran", "regulasi", "kebijakan", "prosedur", "sop", "seragam", "cuti", "gaji", "tunjangan", "rekrutmen", "rekrut", "pegawai", "pindad", "aturan", "pasal", "syarat", "lembur", "pensiun", "promosi", "jabatan", "seleksi", "penerimaan", "sanksi", "indisipliner", "pelanggaran", "disiplin", "kompensasi", "anggaran dasar", "akta"]
 _PUBLIC_WEB_KEYWORDS = [
-    # Perintah eksplisit penelusuran web
+    # Perintah eksplisit penelusuran web & berita publik
     "cari di web", "carikan di web", "cari web", "search web", "browsing", "di internet",
     "web publik", "sumber publik", "di google", "googling", "riset online", "carikan informasi",
-    # Berita & peristiwa publik
-    "berita online", "berita terkini", "berita hari ini", "kabar terkini", "update terbaru",
+    "berita terbaru", "cari berita", "kabar terbaru", "info terbaru", "informasi terbaru",
+    "berita terkini", "berita online", "berita hari ini", "kabar terkini", "update terbaru",
+    "cek berita", "cari kabar", "isu terbaru", "perkembangan terbaru", "siaran pers",
+    # Lembaga & politik publik
     "dpr", "dpr ri", "dpr-ri", "presiden ri", "kementerian", "menteri", "mahkamah konstitusi",
     "pilkada", "pemilu",
     # Fenomena alam, geosains, kebencanaan, lingkungan — UNIVERSAL, tanpa hardcode topik spesifik
@@ -28,12 +30,25 @@ def detect_precheck(user_message: str, chat_mode: str, has_attachment: bool, use
 
     is_coding = any(kw in msg_lower for kw in _CODING_KEYWORDS)
     is_greeting = any(kw in msg_lower for kw in _GREETING_KEYWORDS)
-    is_public_web = any(kw in msg_lower for kw in _PUBLIC_WEB_KEYWORDS)
+    
+    # Deteksi domain publik yang dipadukan dengan kata pencarian berita/info (misal: pindad.com, kompas.com)
+    has_web_domain = bool(re.search(r'\b[a-zA-Z0-9-]+\.(?:com|co\.id|id|org|net|gov|edu)\b', msg_lower))
+    has_search_intent = any(v in msg_lower for v in ["cari", "search", "berita", "kabar", "cek", "googling", "info", "tentang", "mengenai", "terbaru", "rilis"])
+    is_domain_search = has_web_domain and has_search_intent
+
+    is_public_web = any(kw in msg_lower for kw in _PUBLIC_WEB_KEYWORDS) or is_domain_search
     _MAP_KEYWORDS = ["lokasi", "alamat", "dimana", "di mana", "koordinat", "peta", "letak pabrik", "kantor pusat", "fasilitas divisi"]
     is_map_query = any(kw in msg_lower for kw in _MAP_KEYWORDS)
     # Cek 'ik' (Instruksi Kerja) via word-boundary agar tidak false-positive di 'vulkanik', 'organik', dll
     has_ik_keyword = bool(re.search(r'\bik\b', msg_lower))
-    is_doc_query = (any(kw in msg_lower for kw in _DOC_KEYWORDS) or has_ik_keyword) and not is_public_web and not is_map_query
+
+    if is_coding:
+        # Jika koding/SQL aktif, kata seperti 'gaji' atau 'pegawai' sering berupa nama tabel/kolom schema.
+        # Hanya anggap doc query jika ada penyebutan dokumen/regulasi eksplisit.
+        explicit_doc_terms = ["pkb", "skep", "peraturan", "sop", "surat edaran", "regulasi", "pasal", "anggaran dasar"]
+        is_doc_query = any(kw in msg_lower for kw in explicit_doc_terms)
+    else:
+        is_doc_query = (any(kw in msg_lower for kw in _DOC_KEYWORDS) or has_ik_keyword) and not is_public_web and not is_map_query
     
     _EMAIL_KEYWORDS = ["kirim email", "buat email", "draft email", "balas email", "email ke", "draf email"]
     is_generate_email = any(kw in msg_lower for kw in _EMAIL_KEYWORDS)
@@ -445,8 +460,8 @@ def build_call2_system_prompt(
             VISUAL_GUIDANCE_MAP,
         )
 
-        # 🛡️ STRICT ISOLATION GUARD: Jika need_rag=True, DILARANG KERAS mengutip koding atau web search masa lalu
-        if precheck.get("need_rag") or module_name in ["rag", "multi_document"]:
+        # 🛡️ STRICT ISOLATION GUARD: Jika need_rag=True murni regulasi (tanpa kombo coding/web)
+        if (precheck.get("need_rag") or module_name in ["rag", "multi_document"]) and not precheck.get("is_coding") and not precheck.get("is_web_search"):
             prompt += (
                 "\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
                 "🚨 ATURAN MUTLAK ISOLASI REGULASI & DOKUMEN (ANTI-KONTAMINASI CODING & WEB SEARCH)\n"
@@ -457,8 +472,8 @@ def build_call2_system_prompt(
                 "4. Jawaban WAJIB 100% berfokus pada pasal, regulasi, SOP, dan rujukan dokumen internal yang tersedia.\n"
             )
 
-        # Injeksi Wizard jika ambigu atau troubleshooting pada modul selain ambiguous
-        if (precheck.get("is_ambiguous") or precheck.get("is_troubleshooting")) and module_name != "ambiguous":
+        # Injeksi Wizard jika ambigu pada modul selain ambiguous
+        if precheck.get("is_ambiguous") and module_name != "ambiguous":
             if "INTERACTIVE DECISION WIZARD" not in prompt:
                 prompt += "\n\n" + INTERACTIVE_WIZARD_GUIDANCE
 
@@ -515,8 +530,8 @@ def build_call2_system_prompt(
                 '<create_file filename="nama_file.ext">\n...isi file murni...\n</create_file>\n'
             )
 
-        # Injeksi Visual Capabilities Modular (Mermaid / Chart / Gantt / Datagrid / Map)
-        if precheck.get("requires_visual") is True:
+        # Injeksi Visual Capabilities Modular (Mermaid / Flowchart / Chart / Gantt / Datagrid / Map)
+        if precheck.get("requires_visual") is True or bool(precheck.get("visual_types")):
             from backend.app.services.pipeline.prompts.core_prompts import build_modular_visual_guidance
             visual_types = precheck.get("visual_types", [])
             prompt += "\n\n" + build_modular_visual_guidance(visual_types) + "\n\n"

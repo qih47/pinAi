@@ -78,7 +78,7 @@ export async function fetchChatSuggestions(mode = 'documents', query = '', limit
  * @param {Object} options - Configuration options (timeoutMs, etc)
  */
 export async function streamChat(
-  { sessionUuid, messages, chatMode, thinking, isolatedDocId, attachmentPaths, npp, editIndex, signal, activeTopic, keySubject, forcedMode, bypassRouter },
+  { sessionUuid, messages, chatMode, thinking, isolatedDocId, attachmentPaths, npp, editIndex, signal, activeTopic, keySubject, forcedMode, bypassRouter, language },
   { onThinking, onStatus, onSources, onChunk, onFileStatus, onDone, onError, onTopicUpdate },
   options = {}
 ) {
@@ -155,7 +155,11 @@ export async function streamChat(
         edit_index: editIndex,
         active_topic: activeTopic,
         key_subject: keySubject,
-        client_context: clientContext,
+        language: language || localStorage.getItem("cakra_language") || 'id',
+        client_context: {
+          ...clientContext,
+          language: language || localStorage.getItem("cakra_language") || 'id'
+        },
         forced_mode: forcedMode || undefined,
         bypass_router: Boolean(bypassRouter)
       }),
@@ -260,7 +264,7 @@ export async function streamChat(
           }
           
           if (parsedData.status !== undefined && parsedData.status && onStatus) {
-            onStatus(parsedData.status);
+            onStatus(parsedData.status, parsedData.status_key);
           }
           
           if (parsedData.sources && Array.isArray(parsedData.sources) && parsedData.sources.length > 0 && onSources) {

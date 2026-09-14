@@ -32,11 +32,27 @@ const toastFloatingStyle = {
     animation: 'fadeInUp 0.2s ease-out'
 };
 
-function formatThinkingPhase(thought) {
-    if (!thought) return "CAKRA sedang berpikir";
+function formatThinkingPhase(thought, language = 'id') {
+    if (!thought) return language === 'en' ? "CAKRA is thinking" : "CAKRA sedang berpikir";
 
-    // Gunakan lastIndexOf agar selalu menangkap fase terakhir (paling baru)
-    const phases = [
+    const isEn = language === 'en';
+    const phases = isEn ? [
+        { key: "jalur", label: "🚦 Analyzing intent" },
+        { key: "Gateway", label: "🚦 Analyzing intent" },
+        { key: "dokumen", label: "📚 Searching regulations" },
+        { key: "RAG", label: "📚 Searching regulations" },
+        { key: "cepat", label: "✍️ Drafting response" },
+        { key: "respons", label: "✍️ Drafting response" },
+        { key: "Gemma", label: "✍️ Drafting response" },
+        { key: "LANGKAH 1", label: "🔍 Searching documents" },
+        { key: "SELEKSI DOKUMEN", label: "🔍 Searching documents" },
+        { key: "LANGKAH 2", label: "🧠 Analyzing documents" },
+        { key: "ANALISIS ISI", label: "🧠 Analyzing documents" },
+        { key: "LANGKAH 3", label: "✍️ Drafting answer" },
+        { key: "RENCANA JAWABAN", label: "✍️ Drafting answer" },
+        { key: "PDF", label: "📄 Reading PDF attachment" },
+        { key: "visual", label: "🖼️ Analyzing visual" }
+    ] : [
         { key: "jalur", label: "🚦 Menganalisis intent" },
         { key: "Gateway", label: "🚦 Menganalisis intent" },
         { key: "dokumen", label: "📚 Menelusuri regulasi" },
@@ -55,7 +71,7 @@ function formatThinkingPhase(thought) {
     ];
 
     let lastIndex = -1;
-    let activePhase = "CAKRA sedang berpikir";
+    let activePhase = isEn ? "CAKRA is thinking" : "CAKRA sedang berpikir";
 
     for (const phase of phases) {
         const idx = thought.lastIndexOf(phase.key);
@@ -495,16 +511,17 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
     const isActive = isThisMessageStreaming;
 
     // 🔥 Smooth transition & animasi untuk teks status / berpikir dinamis (Claude Style)
-    const [displayThought, setDisplayThought] = useState(language === 'en' ? '✨ Responding...' : '✨ Merespons...');
+    const [displayThought, setDisplayThought] = useState(language === 'en' ? '✨ Responding' : '✨ Merespons');
     const [isThoughtVisible, setIsThoughtVisible] = useState(true);
     const thoughtTimerRef = useRef(null);
 
     useEffect(() => {
         if (!showStatusText) return;
 
-        // PRIORITIZE msg.statusMessage (e.g. from SSE status event) over static fallback
-        const localizedStatus = msg.statusMessage ? resolveStatusMessage(msg.statusMessage, language) : '';
-        const nextThought = localizedStatus ? localizedStatus : (formatThinkingPhase(msg.thought, language) || (language === 'en' ? '🧠 Thinking...' : '🧠 Berpikir...'));
+        // PRIORITIZE msg.statusMessage / msg.statusKey (e.g. from SSE status event) over static fallback
+        const localizedStatus = (msg.statusMessage || msg.statusKey) ? resolveStatusMessage(msg, language) : '';
+        const rawNext = localizedStatus ? localizedStatus : (formatThinkingPhase(msg.thought, language) || (language === 'en' ? '🧠 Thinking' : '🧠 Berpikir'));
+        const nextThought = typeof rawNext === 'string' ? rawNext.replace(/\s*\.{2,}\s*$/, '').trim() : rawNext;
 
         if (nextThought !== displayThought) {
             if (thoughtTimerRef.current) {
@@ -625,7 +642,7 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
                                             darkMode={darkMode}
                                             theme={theme}
                                             searchQuery={searchQuery}
-                                            statusMessage={resolveStatusMessage(msg.statusMessage, language)}
+                                            statusMessage={resolveStatusMessage(msg, language)}
                                             messageIndex={idx}
                                             isLastMessage={isLastMessage}
                                             language={language}
@@ -656,7 +673,7 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
                                     darkMode={darkMode}
                                     theme={theme}
                                     searchQuery={searchQuery}
-                                    statusMessage={resolveStatusMessage(msg.statusMessage, language)}
+                                    statusMessage={resolveStatusMessage(msg, language)}
                                     messageIndex={idx}
                                     isLastMessage={isLastMessage}
                                     language={language}
@@ -690,7 +707,7 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
                                             darkMode={darkMode}
                                             theme={theme}
                                             searchQuery={searchQuery}
-                                            statusMessage={resolveStatusMessage(msg.statusMessage, language)}
+                                            statusMessage={resolveStatusMessage(msg, language)}
                                             messageIndex={idx}
                                             isLastMessage={isLastMessage}
                                             language={language}

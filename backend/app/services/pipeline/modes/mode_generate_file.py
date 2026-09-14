@@ -355,7 +355,7 @@ class ModeGenerateFile:
             *trimmed_messages,
         ]
 
-        yield format_sse(status="💻 Merancang arsitektur file", event_type=SSEEventType.STATUS)
+        yield format_sse(status="💻 Merancang arsitektur file", status_key="DESIGNING_FILE_ARCHITECTURE", event_type=SSEEventType.STATUS)
 
         parser = InterceptorParser()
         current_streaming_filename = None
@@ -406,7 +406,7 @@ class ModeGenerateFile:
                         tag_type = payload.get("tag_type", "create_file")
                         current_streaming_filename = fn
                         logger.info(f"[MODE_GENERATE_FILE] Detected <{tag_type}> for: {fn}")
-                        yield format_sse(status=f"📁 Menyiapkan {fn}", event_type=SSEEventType.STATUS)
+                        yield format_sse(status=f"📁 Menyiapkan {fn}", status_key="PREPARING_FILE", event_type=SSEEventType.STATUS)
                         yield format_sse_file_status(stage="creating", filename=fn, tag_type=tag_type)
 
                     elif action == "code_chunk":
@@ -429,7 +429,7 @@ class ModeGenerateFile:
                             relative_path = str(file_path.relative_to(Path(ACCOUNTS_DIR).parent)) 
                             lines_count = len(code.splitlines()) if code else 1
                             written_files.append({ "filename": fn, "file_path": relative_path, "lines_count": lines_count })
-                            yield format_sse(status=f"✨ Berkas {fn} siap", event_type=SSEEventType.STATUS)
+                            yield format_sse(status=f"✨ Berkas {fn} siap", status_key="FILE_READY", event_type=SSEEventType.STATUS)
                             yield format_sse_file_status(stage="done", filename=fn, file_path=relative_path, lines_count=lines_count)
                         except Exception as write_err:
                             logger.error(f"[MODE_GENERATE_FILE] File write error for {fn}: {write_err}")

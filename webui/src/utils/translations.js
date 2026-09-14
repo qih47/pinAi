@@ -762,82 +762,90 @@ export const translations = {
       emptyGlobal: "Tidak ada regulasi yang cocok"
     },
     sseStatus: {
-      ANALYZING_INTENT: "🧠 Menganalisis...",
-      ANALYZING_CONTEXT: "💭 Menimbang...",
-      SEARCHING_DOCS: "🔍 Menelusuri arsip...",
-      CHECKING_ARCHIVE: "⏳ Memeriksa arsip...",
+      ANALYZING_INTENT: "🧠 Menganalisis",
+      ANALYZING_CONTEXT: "💭 Menimbang",
+      SEARCHING_DOCS: "🔍 Menelusuri arsip",
+      CHECKING_ARCHIVE: "⏳ Memeriksa arsip",
       CACHE_USED: "⚡ Menggunakan cache",
       DOCS_FOUND: "✨ Ditemukan {count} dokumen",
       DOC_REFS_FOUND: "✅ Ditemukan {count} rujukan",
-      SELECTING_REFS: "📊 Memilah rujukan...",
+      SELECTING_REFS: "📊 Memilah rujukan",
       DOCS_ACCESS_FAILED: "⚠️ Gagal mengakses dokumen",
       USING_INTERNAL_KNOWLEDGE: "⚠️ Pengetahuan internal",
-      WEB_SEARCHING: "🌐 Menjelajah web...",
-      WEB_DOWNLOADING: "🌐 Mengunduh {domain}...",
-      WEB_EXTRACTING: "📖 Mengekstrak data...",
-      WEB_READING_LINKS: "📖 Membaca {count} tautan...",
-      WEB_FILTERING_FACTS: "🎯 Menyaring fakta...",
-      WEB_SUMMARIZING: "💡 Meringkas informasi...",
-      SYNTHESIZING_ANSWER: "💡 Merumuskan...",
-      PREPARING_RESPONSE: "✨ Merespons...",
-      MAP_SEARCHING: "🌍 Mencari lokasi...",
+      WEB_SEARCHING: "🌐 Menjelajah web",
+      WEB_DOWNLOADING: "🌐 Mengunduh {domain}",
+      WEB_EXTRACTING: "📖 Mengekstrak data",
+      WEB_READING_LINKS: "📖 Membaca {count} tautan",
+      WEB_FILTERING_FACTS: "🎯 Menyaring fakta",
+      WEB_SUMMARIZING: "💡 Meringkas informasi",
+      SYNTHESIZING_ANSWER: "💡 Merumuskan",
+      PREPARING_RESPONSE: "✨ Merespons",
+      MAP_SEARCHING: "🌍 Mencari lokasi",
       MAP_LOCATION_NOT_FOUND: "⚠️ Lokasi tidak ditemukan",
-      WRITING_EMAIL: "✉️ Menyusun surat...",
+      WRITING_EMAIL: "✉️ Menyusun surat",
       EMAIL_READY: "✨ Surat siap ({duration}s)",
-      PREPARING_FILE: "📁 Menyiapkan {filename}...",
-      CREATING_FILE_PROGRESS: "✍️ Menulis berkas...",
+      PREPARING_FILE: "📁 Menyiapkan {filename}",
+      CREATING_FILE_PROGRESS: "✍️ Menulis berkas",
       FILE_READY: "✨ Berkas {filename} siap",
-      SCANNING_ATTACHMENT: "👁️ Memindai lampiran...",
-      EXTRACTING_PDF: "⚙️ Mengekstrak PDF...",
-      SUMMARIZING_PAGES: "📑 Merangkum {pages} halaman...",
-      ANALYZING_CLAUSES_PAGES: "🔍 Menganalisis {pages} halaman...",
-      FOUND_CLAUSE_PAGE: "📌 Ditemukan klausul di hal. {pages}",
-      OPENING_FOCUS_DOC: "🎯 Membuka dokumen fokus",
-      SCANNING_DOC_CONTENT: "⚙️ Memindai {title}...",
-      ANALYZING_DOC_PAGES: "🔍 Menelaah {pages} halaman...",
-      RETRIEVING_FULL_TEXT: "📂 Mengambil teks utuh...",
-      SEARCHING_GLOBAL_ARCHIVE: "🔄 Mencari di seluruh arsip...",
-      SEARCHING_GLOBAL: "🔄 Mencari global...",
-      FOCUSED_CONTEXT: "📌 Konteks: {title} (Hal. {pages})",
-      OPENING_COMPLIANCE_TEST: "🎯 Uji kepatuhan dokumen",
-      SCANNING_REF_DOC: "⚙️ Memindai acuan...",
-      ANALYZING_REGULATION_PAGES: "🔍 Menelaah {pages} halaman...",
-      FOUND_RELATED_CLAUSE_PAGE: "📌 Klausul terkait di hal. {pages}",
-      ANALYZING_COMPLIANCE_SCENARIO: "⚖️ Menganalisis kepatuhan...",
+      // ── PIPELINE & RAG STATUS KEYS ──
+      CONNECTING_CAKRA: "⚡ Menghubungkan ke Cakra AI",
+      OPENING_FOCUS_DOC: "🎯 Membuka dokumen fokus rujukan",
+      OPENING_COMPLIANCE_TEST: "🎯 Membuka uji kepatuhan dokumen",
       OPENING_REDTEAM_DOC: "🕵️ Membedah dokumen sasaran",
-      SCANNING_REDTEAM_CLAUSES: "⚙️ Memindai klausul...",
-      ANALYZING_REDTEAM_PAGES: "🔍 Menelaah {pages} halaman...",
-      FOUND_TARGET_CLAUSE_PAGE: "📌 Sasaran di hal. {pages}",
-      CONNECTING_CAKRA: "✨ Menghubungkan ke Cakra AI",
-      DESIGNING_FILE_ARCHITECTURE: "💻 Merancang kode...",
-      SEARCHING_REGULATIONS: "🔍 Menelusuri regulasi...",
-      FILTERING_RELEVANT_ARTICLES: "🎯 Menyaring pasal...",
-      READING_SELECTED_ARTICLES: "📄 Membaca pasal terpilih...",
-      SEARCHING_VECTOR_SEMANTICS: "🔍 Menelusuri semantik...",
-      ANALYZING_ARTICLE: "📄 Menganalisis pasal...",
-      DRAFTING_RESPONSE: "✍️ Menulis draf...",
+      ANALYZING_COMPLIANCE_SCENARIO: "⚖️ Menganalisis kepatuhan skenario terhadap klausul utuh",
+      DISSECTING_LEGAL_LOOPHOLES: "⚔️ Membedah celah hukum dari 2 sudut pandang ekstrem",
+      RETRIEVING_FULL_TEXT: "📂 Mengambil teks utuh dari arsip dokumen",
+      SEARCHING_GLOBAL_ARCHIVE: "🔄 Mencari secara global di arsip",
+      SEARCHING_GLOBAL: "🔄 Mencari secara global",
+      FOCUSED_CONTEXT: "📌 Konteks Terfokus: {title} (Hal. {pages})",
+      SCANNING_REF_DOC: "⚙️ Memindai acuan",
+      ANALYZING_REGULATION_PAGES: "🔍 Menganalisis seluruh {pages} halaman regulasi",
+      FOUND_RELATED_CLAUSE_PAGE: "📌 Ditemukan Klausul Terkait pada Halaman {pages}!",
+      SCANNING_REDTEAM_CLAUSES: "⚙️ Memindai klausul",
+      ANALYZING_REDTEAM_PAGES: "🔍 Menganalisis seluruh {pages} halaman dokumen",
+      FOUND_TARGET_CLAUSE_PAGE: "📌 Ditemukan Klausul Sasaran pada Halaman {pages}!",
+      DESIGNING_FILE_ARCHITECTURE: "💻 Merancang arsitektur file",
+      SEARCHING_REGULATIONS: "🔍 Menelusuri regulasi",
+      CRAG_RETRY: "🔄 Menajamkan pencarian regulasi",
+      FILTERING_RELEVANT_ARTICLES: "🎯 Menyaring pasal relevan",
+      READING_SELECTED_ARTICLES: "📄 Membaca pasal terpilih",
+      SEARCHING_VECTOR_SEMANTICS: "🔍 Menelusuri semantik vector",
+      ANALYZING_ARTICLE: "📄 Menganalisis pasal",
+      DRAFTING_RESPONSE: "✍️ Menyusun jawaban",
+      WEB_SEARCH_INIT: "🌐 Mencari di web",
+      READING_URLS: "📖 Membaca {count} tautan",
+      FILTERING_FACTS: "🎯 Menyaring fakta penting",
+      DRAFTING_SUMMARY: "💡 Menyusun ringkasan",
       FINISHED: "Selesai",
-      THINKING_DEFAULT: "🧠 Berpikir...",
+      THINKING_DEFAULT: "🧠 Berpikir",
       THINKING_DONE: "✨ Selesai berpikir",
-      // ── NEW PRESET & VISUAL STATUS KEYS (CLAUDE STYLE) ──
-      WEB_INIT: "🌐 Menjelajah web...",
-      DIAGRAM_INIT: "📐 Merancang alur...",
-      DIAGRAM_PLANNING: "📐 Merancang hierarki alur...",
-      DIAGRAM_RENDERING: "🔄 Menggambar diagram...",
+      // ── PRESET & VISUAL STATUS KEYS ──
+      WEB_INIT: "🌐 Menjelajah web",
+      DIAGRAM_INIT: "📐 Merancang alur",
+      DIAGRAM_PLANNING: "📐 Merancang hierarki alur",
+      DIAGRAM_RENDERING: "🔄 Menggambar diagram",
       DIAGRAM_READY: "✨ Diagram siap",
-      CHART_INIT: "📈 Mengolah data...",
-      CHART_ANALYZING: "📈 Menganalisis data...",
-      CHART_RENDERING: "📊 Membuat grafik...",
+      CHART_INIT: "📈 Mengolah data",
+      CHART_ANALYZING: "📈 Menganalisis data",
+      CHART_RENDERING: "📊 Membuat grafik",
       CHART_READY: "✨ Grafik siap",
-      CODE_INIT: "💻 Menyiapkan kode...",
-      DOCS_INIT: "📚 Membuka arsip...",
-      MAIL_INIT: "✉️ Menyusun surat...",
+      CODE_INIT: "💻 Menyiapkan kode",
+      DOCS_INIT: "📚 Membuka arsip",
+      MAIL_INIT: "📧 Menulis email",
       BRAIN_HIT: "🧠 Dari memori sesi",
       BRAIN_SAVE: "💾 Menyimpan ke memori",
       DOC_LOADING: "📄 Memuat dokumen",
       DOC_READING_SELECTED: "📄 Membaca pasal terpilih",
       DOC_OCR_RUNNING: "🔬 Dokumen scan, OCR dijalankan",
-      DOC_READING_TEXT: "📖 Membaca teks dokumen"
+      DOC_READING_TEXT: "📖 Membaca teks dokumen",
+      ANALYZING_CONTEXT: "🧠 Menganalisis konteks",
+      THINKING_PROGRESS: "Sedang berpikir",
+      PREPARING_RESPONSE: "✨ Merespons",
+      SCANNING_ATTACHMENT: "👁️ Memindai file lampiran",
+      ANALYZING_DOC_PAGES: "🔍 Menganalisis {pages} halaman dokumen rujukan",
+      SUMMARIZING_PAGES: "📑 Merangkum seluruh {pages} halaman dokumen",
+      ANALYZING_CLAUSES_PAGES: "🔍 Menganalisis klausul terkait pada {pages} halaman",
+      FOUND_CLAUSE_PAGE: "📌 Ditemukan Klausul pada Halaman {pages}!"
     }
   },
 
@@ -1606,82 +1614,90 @@ export const translations = {
       emptyGlobal: "No matching regulations found"
     },
     sseStatus: {
-      ANALYZING_INTENT: "🧠 Analyzing...",
-      ANALYZING_CONTEXT: "💭 Mulling...",
-      SEARCHING_DOCS: "🔍 Searching library...",
-      CHECKING_ARCHIVE: "⏳ Checking archives...",
+      ANALYZING_INTENT: "🧠 Analyzing",
+      ANALYZING_CONTEXT: "💭 Mulling",
+      SEARCHING_DOCS: "🔍 Searching library",
+      CHECKING_ARCHIVE: "⏳ Checking archives",
       CACHE_USED: "⚡ Using cached docs",
       DOCS_FOUND: "✨ Found {count} documents",
       DOC_REFS_FOUND: "✅ Found {count} references",
-      SELECTING_REFS: "📊 Refining sources...",
+      SELECTING_REFS: "📊 Refining sources",
       DOCS_ACCESS_FAILED: "⚠️ Failed to access docs",
       USING_INTERNAL_KNOWLEDGE: "⚠️ Internal knowledge",
-      WEB_SEARCHING: "🌐 Browsing web...",
-      WEB_DOWNLOADING: "🌐 Fetching {domain}...",
-      WEB_EXTRACTING: "📖 Extracting data...",
-      WEB_READING_LINKS: "📖 Reading {count} links...",
-      WEB_FILTERING_FACTS: "🎯 Honing facts...",
-      WEB_SUMMARIZING: "💡 Summarizing...",
-      SYNTHESIZING_ANSWER: "💡 Synthesizing...",
-      PREPARING_RESPONSE: "✨ Responding...",
-      MAP_SEARCHING: "🌍 Searching location...",
+      WEB_SEARCHING: "🌐 Browsing web",
+      WEB_DOWNLOADING: "🌐 Fetching {domain}",
+      WEB_EXTRACTING: "📖 Extracting data",
+      WEB_READING_LINKS: "📖 Reading {count} links",
+      WEB_FILTERING_FACTS: "🎯 Honing facts",
+      WEB_SUMMARIZING: "💡 Summarizing",
+      SYNTHESIZING_ANSWER: "💡 Synthesizing",
+      PREPARING_RESPONSE: "✨ Responding",
+      MAP_SEARCHING: "🌍 Searching location",
       MAP_LOCATION_NOT_FOUND: "⚠️ Location not found",
-      WRITING_EMAIL: "✉️ Drafting letter...",
+      WRITING_EMAIL: "✉️ Drafting letter",
       EMAIL_READY: "✨ Letter ready ({duration}s)",
-      PREPARING_FILE: "📁 Preparing {filename}...",
-      CREATING_FILE_PROGRESS: "✍️ Coding file...",
+      PREPARING_FILE: "📁 Preparing {filename}",
+      CREATING_FILE_PROGRESS: "✍️ Coding file",
       FILE_READY: "✨ File {filename} ready",
-      SCANNING_ATTACHMENT: "👁️ Scanning file...",
-      EXTRACTING_PDF: "⚙️ Extracting PDF...",
-      SUMMARIZING_PAGES: "📑 Summarizing {pages} pages...",
-      ANALYZING_CLAUSES_PAGES: "🔍 Analyzing {pages} pages...",
-      FOUND_CLAUSE_PAGE: "📌 Clause on Page {pages}",
-      OPENING_FOCUS_DOC: "🎯 Opening focus doc",
-      SCANNING_DOC_CONTENT: "⚙️ Scanning {title}...",
-      ANALYZING_DOC_PAGES: "🔍 Analyzing {pages} pages...",
-      RETRIEVING_FULL_TEXT: "📂 Retrieving full text...",
-      SEARCHING_GLOBAL_ARCHIVE: "🔄 Searching all archives...",
-      SEARCHING_GLOBAL: "🔄 Searching globally...",
-      FOCUSED_CONTEXT: "📌 Context: {title} (Pg. {pages})",
-      OPENING_COMPLIANCE_TEST: "🎯 Compliance test",
-      SCANNING_REF_DOC: "⚙️ Scanning reference...",
-      ANALYZING_REGULATION_PAGES: "🔍 Analyzing {pages} pages...",
-      FOUND_RELATED_CLAUSE_PAGE: "📌 Related clause on Pg. {pages}",
-      ANALYZING_COMPLIANCE_SCENARIO: "⚖️ Analyzing compliance...",
-      OPENING_REDTEAM_DOC: "🕵️ Dissecting target doc",
-      SCANNING_REDTEAM_CLAUSES: "⚙️ Scanning clauses...",
-      ANALYZING_REDTEAM_PAGES: "🔍 Analyzing {pages} pages...",
-      FOUND_TARGET_CLAUSE_PAGE: "📌 Target on Pg. {pages}",
-      CONNECTING_CAKRA: "✨ Connecting to Cakra AI",
-      DESIGNING_FILE_ARCHITECTURE: "💻 Architecting code...",
-      SEARCHING_REGULATIONS: "🔍 Searching regulations...",
-      FILTERING_RELEVANT_ARTICLES: "🎯 Filtering articles...",
-      READING_SELECTED_ARTICLES: "📄 Reading articles...",
-      SEARCHING_VECTOR_SEMANTICS: "🔍 Searching semantics...",
-      ANALYZING_ARTICLE: "📄 Analyzing article...",
-      DRAFTING_RESPONSE: "✍️ Drafting...",
+      // ── PIPELINE & RAG STATUS KEYS ──
+      CONNECTING_CAKRA: "⚡ Connecting to Cakra AI",
+      OPENING_FOCUS_DOC: "🎯 Opening reference document",
+      OPENING_COMPLIANCE_TEST: "🎯 Opening compliance test",
+      OPENING_REDTEAM_DOC: "🕵️ Dissecting target document",
+      ANALYZING_COMPLIANCE_SCENARIO: "⚖️ Analyzing compliance against full clause",
+      DISSECTING_LEGAL_LOOPHOLES: "⚔️ Dissecting legal loopholes from opposing angles",
+      RETRIEVING_FULL_TEXT: "📂 Retrieving full text from document archive",
+      SEARCHING_GLOBAL_ARCHIVE: "🔄 Searching all document archives",
+      SEARCHING_GLOBAL: "🔄 Searching globally",
+      FOCUSED_CONTEXT: "📌 Focused Context: {title} (Pg. {pages})",
+      SCANNING_REF_DOC: "⚙️ Scanning reference",
+      ANALYZING_REGULATION_PAGES: "🔍 Analyzing all {pages} regulation pages",
+      FOUND_RELATED_CLAUSE_PAGE: "📌 Related Clause Found on Page {pages}!",
+      SCANNING_REDTEAM_CLAUSES: "⚙️ Scanning clauses",
+      ANALYZING_REDTEAM_PAGES: "🔍 Analyzing all {pages} document pages",
+      FOUND_TARGET_CLAUSE_PAGE: "📌 Target Clause Found on Page {pages}!",
+      DESIGNING_FILE_ARCHITECTURE: "💻 Designing file architecture",
+      SEARCHING_REGULATIONS: "🔍 Searching regulations",
+      CRAG_RETRY: "🔄 Refining regulation search",
+      FILTERING_RELEVANT_ARTICLES: "🎯 Filtering relevant articles",
+      READING_SELECTED_ARTICLES: "📄 Reading selected articles",
+      SEARCHING_VECTOR_SEMANTICS: "🔍 Searching vector semantics",
+      ANALYZING_ARTICLE: "📄 Analyzing articles",
+      DRAFTING_RESPONSE: "✍️ Drafting response",
+      WEB_SEARCH_INIT: "🌐 Searching the web",
+      READING_URLS: "📖 Reading {count} links",
+      FILTERING_FACTS: "🎯 Filtering key facts",
+      DRAFTING_SUMMARY: "💡 Drafting summary",
       FINISHED: "Done",
-      THINKING_DEFAULT: "🧠 Thinking...",
+      THINKING_DEFAULT: "🧠 Thinking",
       THINKING_DONE: "✨ Thinking done",
-      // ── NEW PRESET & VISUAL STATUS KEYS (CLAUDE STYLE) ──
-      WEB_INIT: "🌐 Browsing web...",
-      DIAGRAM_INIT: "📐 Designing flow...",
-      DIAGRAM_PLANNING: "📐 Planning flow...",
-      DIAGRAM_RENDERING: "🔄 Diagramming...",
+      // ── PRESET & VISUAL STATUS KEYS ──
+      WEB_INIT: "🌐 Browsing web",
+      DIAGRAM_INIT: "📐 Designing flow",
+      DIAGRAM_PLANNING: "📐 Planning flow",
+      DIAGRAM_RENDERING: "🔄 Rendering diagram",
       DIAGRAM_READY: "✨ Diagram ready",
-      CHART_INIT: "📈 Processing data...",
-      CHART_ANALYZING: "📈 Analyzing visual data...",
-      CHART_RENDERING: "📊 Plotting chart...",
+      CHART_INIT: "📈 Processing data",
+      CHART_ANALYZING: "📈 Analyzing visual data",
+      CHART_RENDERING: "📊 Plotting chart",
       CHART_READY: "✨ Chart ready",
-      CODE_INIT: "💻 Preparing workspace...",
-      DOCS_INIT: "📚 Accessing library...",
-      MAIL_INIT: "✉️ Drafting letter...",
+      CODE_INIT: "💻 Preparing workspace",
+      DOCS_INIT: "📚 Accessing library",
+      MAIL_INIT: "📧 Drafting email",
       BRAIN_HIT: "🧠 From session memory",
       BRAIN_SAVE: "💾 Saving to memory",
       DOC_LOADING: "📄 Loading document",
       DOC_READING_SELECTED: "📄 Reading selected clauses",
       DOC_OCR_RUNNING: "🔬 Scanned document, running OCR",
-      DOC_READING_TEXT: "📖 Reading document text"
+      DOC_READING_TEXT: "📖 Reading document text",
+      ANALYZING_CONTEXT: "🧠 Analyzing context",
+      THINKING_PROGRESS: "Thinking",
+      PREPARING_RESPONSE: "✨ Responding",
+      SCANNING_ATTACHMENT: "👁️ Scanning attachment files",
+      ANALYZING_DOC_PAGES: "🔍 Analyzing {pages} reference document pages",
+      SUMMARIZING_PAGES: "📑 Summarizing all {pages} document pages",
+      ANALYZING_CLAUSES_PAGES: "🔍 Analyzing related clauses across {pages} pages",
+      FOUND_CLAUSE_PAGE: "📌 Clause Found on Page {pages}!"
     }
   }
 };
@@ -1691,117 +1707,229 @@ export const translations = {
  * Resolves any SSE status message (whether raw text, key object, or legacy string)
  * into the localized string for the specified language.
  */
-export function resolveStatusMessage(statusInput, language = 'id') {
+export function resolveStatusMessage(statusInput, language = 'id', explicitKey = null) {
   if (!statusInput) return '';
+
+  const stripDots = (str) => {
+    if (!str || typeof str !== 'string') return str || '';
+    return str.replace(/\s*\.{2,}\s*$/, '').trim();
+  };
+
   const sseDict = translations[language]?.sseStatus || translations.id.sseStatus || {};
+  const idDict = translations.id?.sseStatus || {};
 
-  // 1. If statusInput is an object { key, params, fallback }
+  let raw = '';
+  let key = explicitKey;
+
+  // 1. If statusInput is an object { key, params, fallback } or { statusMessage, statusKey }
   if (typeof statusInput === 'object') {
-    const key = statusInput.key;
-    if (key && sseDict[key]) {
-      let text = sseDict[key];
-      if (statusInput.params) {
-        Object.entries(statusInput.params).forEach(([k, v]) => {
-          text = text.replace(new RegExp(`\\{${k}\\}`, 'g'), v);
+    key = statusInput.statusKey || statusInput.key || key;
+    raw = String(statusInput.statusMessage || statusInput.status || '').trim();
+    if (key && sseDict[key] && !raw) {
+      return stripDots(sseDict[key]);
+    }
+  } else {
+    raw = String(statusInput).trim();
+  }
+
+  if (!raw && key && sseDict[key]) return stripDots(sseDict[key]);
+  if (!raw) return '';
+
+  // 2. Direct dictionary key match
+  if (sseDict[raw]) {
+    return stripDots(sseDict[raw]);
+  }
+
+  // Helper to normalize strings for robust comparison
+  const cleanText = (str) => String(str || '')
+    .replace(/^[^\p{L}\p{N}]+/gu, '')
+    .replace(/[\.!\?]+$/, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+
+  // 3. If explicit key provided, resolve with params if applicable
+  if (key && sseDict[key]) {
+    const targetTpl = sseDict[key];
+    if (!targetTpl.includes('{')) {
+      return stripDots(targetTpl);
+    }
+    const idTpl = idDict[key];
+    if (idTpl && idTpl.includes('{')) {
+      const pNames = [];
+      const strippedId = cleanText(idTpl);
+      const escaped = strippedId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const rxStr = '^' + escaped.replace(/\\\{([a-zA-Z0-9_]+)\\\}/g, (_, p) => {
+        pNames.push(p);
+        return '(.+?)';
+      }) + '$';
+      const m = cleanText(raw).match(new RegExp(rxStr, 'iu'));
+      if (m) {
+        let res = targetTpl;
+        pNames.forEach((name, idx) => {
+          res = res.replace(new RegExp(`\\{${name}\\}`, 'g'), m[idx + 1].trim());
         });
+        return stripDots(res);
       }
-      return text;
     }
-    return statusInput.fallback || '';
+    return stripDots(targetTpl);
   }
 
-  // 2. If statusInput is a direct dictionary key
-  if (sseDict[statusInput]) {
-    return sseDict[statusInput];
+  const cleanR = cleanText(raw);
+
+  // 4. Dynamic parameterized regex patterns (clean without trailing dots)
+  const mDocsFound = cleanR.match(/(?:menemukan|ditemukan)\s+(\d+)\s+dokumen/i);
+  if (mDocsFound) {
+    return stripDots(language === 'en' ? `📑 Found ${mDocsFound[1]} documents` : `📑 Menemukan ${mDocsFound[1]} dokumen`);
   }
 
-  // 2B. Direct match for new Brain & Document short-circuit status strings
-  if (statusInput === "🧠 Dari memori sesi") return sseDict.BRAIN_HIT || statusInput;
-  if (statusInput === "💾 Menyimpan ke memori") return sseDict.BRAIN_SAVE || statusInput;
-  if (statusInput === "📄 Memuat dokumen") return sseDict.DOC_LOADING || statusInput;
-  if (statusInput === "📄 Membaca pasal terpilih") return sseDict.DOC_READING_SELECTED || statusInput;
-  if (statusInput === "🔬 Dokumen scan, OCR dijalankan") return sseDict.DOC_OCR_RUNNING || statusInput;
-  if (statusInput === "📖 Membaca teks dokumen") return sseDict.DOC_READING_TEXT || statusInput;
-
-  // 3. Pattern / Regex matching for dynamic legacy string statuses
-  const mDocsFound = statusInput.match(/^✨ Menemukan (\d+) dokumen$/);
-  if (mDocsFound && sseDict.DOCS_FOUND) {
-    return sseDict.DOCS_FOUND.replace('{count}', mDocsFound[1]);
-  }
-  const mRefsFound = statusInput.match(/^✅ Menemukan (\d+) rujukan dokumen$/);
-  if (mRefsFound && sseDict.DOC_REFS_FOUND) {
-    return sseDict.DOC_REFS_FOUND.replace('{count}', mRefsFound[1]);
-  }
-  const mWebDown = statusInput.match(/^🌐 Mengunduh (.+)$/);
-  if (mWebDown && sseDict.WEB_DOWNLOADING) {
-    return sseDict.WEB_DOWNLOADING.replace('{domain}', mWebDown[1]);
-  }
-  const mLinksRead = statusInput.match(/^📖 Membaca (\d+) tautan$/);
-  if (mLinksRead && sseDict.WEB_READING_LINKS) {
-    return sseDict.WEB_READING_LINKS.replace('{count}', mLinksRead[1]);
-  }
-  const mEmailReady = statusInput.match(/^✨ Email siap \(([\d\.]+)s\)$/);
-  if (mEmailReady && sseDict.EMAIL_READY) {
-    return sseDict.EMAIL_READY.replace('{duration}', mEmailReady[1]);
-  }
-  const mPrepFile = statusInput.match(/^📁 Menyiapkan (.+)$/);
-  if (mPrepFile && sseDict.PREPARING_FILE) {
-    return sseDict.PREPARING_FILE.replace('{filename}', mPrepFile[1]);
-  }
-  const mFileReady = statusInput.match(/^✨ Berkas (.+) siap$/);
-  if (mFileReady && sseDict.FILE_READY) {
-    return sseDict.FILE_READY.replace('{filename}', mFileReady[1]);
-  }
-  const mScanDoc = statusInput.match(/^⚙️ Memindai isi (.+)\.\.\.$/);
-  if (mScanDoc && sseDict.SCANNING_DOC_CONTENT) {
-    return sseDict.SCANNING_DOC_CONTENT.replace('{title}', mScanDoc[1]);
-  }
-  const mAnalyzeDoc = statusInput.match(/^🔍 Menganalisis (.+) halaman dokumen rujukan\.\.\.$/);
-  if (mAnalyzeDoc && sseDict.ANALYZING_DOC_PAGES) {
-    return sseDict.ANALYZING_DOC_PAGES.replace('{pages}', mAnalyzeDoc[1]);
-  }
-  const mAnalyzeReg = statusInput.match(/^🔍 Menganalisis seluruh (.+) halaman regulasi\.\.\.$/);
-  if (mAnalyzeReg && sseDict.ANALYZING_REGULATION_PAGES) {
-    return sseDict.ANALYZING_REGULATION_PAGES.replace('{pages}', mAnalyzeReg[1]);
-  }
-  const mAnalyzeRed = statusInput.match(/^🔍 Menganalisis seluruh (.+) halaman dokumen\.\.\.$/);
-  if (mAnalyzeRed && sseDict.ANALYZING_REDTEAM_PAGES) {
-    return sseDict.ANALYZING_REDTEAM_PAGES.replace('{pages}', mAnalyzeRed[1]);
-  }
-  const mSummPages = statusInput.match(/^📑 Merangkum seluruh (.+) halaman dokumen\.\.\.$/);
-  if (mSummPages && sseDict.SUMMARIZING_PAGES) {
-    return sseDict.SUMMARIZING_PAGES.replace('{pages}', mSummPages[1]);
-  }
-  const mClausePages = statusInput.match(/^🔍 Menganalisis klausul terkait pada (.+) halaman\.\.\.$/);
-  if (mClausePages && sseDict.ANALYZING_CLAUSES_PAGES) {
-    return sseDict.ANALYZING_CLAUSES_PAGES.replace('{pages}', mClausePages[1]);
-  }
-  const mFoundClauseRel = statusInput.match(/^📌 Ditemukan Klausul Terkait pada Halaman (.+)!$/);
-  if (mFoundClauseRel && sseDict.FOUND_RELATED_CLAUSE_PAGE) {
-    return sseDict.FOUND_RELATED_CLAUSE_PAGE.replace('{pages}', mFoundClauseRel[1]);
-  }
-  const mFoundClauseTarget = statusInput.match(/^📌 Ditemukan Klausul Sasaran pada Halaman (.+)!$/);
-  if (mFoundClauseTarget && sseDict.FOUND_TARGET_CLAUSE_PAGE) {
-    return sseDict.FOUND_TARGET_CLAUSE_PAGE.replace('{pages}', mFoundClauseTarget[1]);
-  }
-  const mFoundClause = statusInput.match(/^📌 Ditemukan Klausul pada Halaman (.+)!$/);
-  if (mFoundClause && sseDict.FOUND_CLAUSE_PAGE) {
-    return sseDict.FOUND_CLAUSE_PAGE.replace('{pages}', mFoundClause[1]);
-  }
-  const mFocusCtx = statusInput.match(/^📌 Konteks Terfokus: (.+) \(Hal\. (.+)\)$/);
-  if (mFocusCtx && sseDict.FOCUSED_CONTEXT) {
-    return sseDict.FOCUSED_CONTEXT.replace('{title}', mFocusCtx[1]).replace('{pages}', mFocusCtx[2]);
+  const mRefsFound = raw.match(/^(?:✅)?\s*(?:Menemukan|Ditemukan)\s+(\d+)\s+rujukan/i);
+  if (mRefsFound) {
+    return stripDots(language === 'en' ? `✅ Found ${mRefsFound[1]} document references` : `✅ Menemukan ${mRefsFound[1]} rujukan dokumen`);
   }
 
-  // 4. Exact reverse-map from Indonesian text to current language
+  const mWebDown = raw.match(/^(?:🌐)?\s*Mengunduh\s+(.+?)(?:\.{1,3})?$/i);
+  if (mWebDown) {
+    return stripDots(language === 'en' ? `🌐 Downloading ${mWebDown[1]}` : `🌐 Mengunduh ${mWebDown[1]}`);
+  }
+
+  const mLinksRead = raw.match(/^(?:📖)?\s*Membaca\s+(\d+)\s+tautan/i);
+  if (mLinksRead) {
+    return stripDots(language === 'en' ? `📖 Reading ${mLinksRead[1]} links` : `📖 Membaca ${mLinksRead[1]} tautan`);
+  }
+
+  const mEmailReady = raw.match(/^(?:✨|✉️)?\s*(?:Email|Surat)\s+siap\s*\(([\d\.]+)s\)/i);
+  if (mEmailReady) {
+    return stripDots(language === 'en' ? `✨ Email ready (${mEmailReady[1]}s)` : `✨ Email siap (${mEmailReady[1]}s)`);
+  }
+
+  const mPrepFile = raw.match(/^(?:📁)?\s*Menyiapkan\s+(.+?)(?:\.{1,3})?$/i);
+  if (mPrepFile) {
+    return stripDots(language === 'en' ? `📁 Preparing ${mPrepFile[1]}` : `📁 Menyiapkan ${mPrepFile[1]}`);
+  }
+
+  const mFileReady = raw.match(/^(?:✨)?\s*(?:Berkas|File)\s+(.+?)\s+siap/i);
+  if (mFileReady) {
+    return stripDots(language === 'en' ? `✨ File ${mFileReady[1]} ready` : `✨ Berkas ${mFileReady[1]} siap`);
+  }
+
+  const mScanDoc = raw.match(/^(?:⚙️)?\s*Memindai\s+(?:isi\s+)?(.+?)(?:\.{1,3})?$/i);
+  if (mScanDoc) {
+    return stripDots(language === 'en' ? `⚙️ Scanning ${mScanDoc[1]}` : `⚙️ Memindai ${mScanDoc[1]}`);
+  }
+
+  const mAnalyzeDoc = raw.match(/^(?:🔍)?\s*(?:Menganalisis|Membaca)\s+(.+?)\s+halaman\s+dokumen\s+rujukan/i);
+  if (mAnalyzeDoc) {
+    return stripDots(language === 'en' ? `🔍 Analyzing ${mAnalyzeDoc[1]} reference document pages` : `🔍 Menganalisis ${mAnalyzeDoc[1]} halaman dokumen rujukan`);
+  }
+
+  const mGetFullText = raw.match(/^(?:📖|🔍|📂)?\s*Mengambil\s+teks\s+(?:lengkap|utuh)\s+dari\s+(.+?)\s+dokumen/i);
+  if (mGetFullText) {
+    return stripDots(language === 'en' ? `📂 Retrieving full text from ${mGetFullText[1]} documents` : `📂 Mengambil teks utuh dari ${mGetFullText[1]} dokumen`);
+  }
+
+  const mAnalyzeReg = raw.match(/^(?:🔍)?\s*Menganalisis\s+seluruh\s+(.+?)\s+halaman\s+regulasi/i);
+  if (mAnalyzeReg) {
+    return stripDots(language === 'en' ? `🔍 Analyzing all ${mAnalyzeReg[1]} regulation pages` : `🔍 Menganalisis seluruh ${mAnalyzeReg[1]} halaman regulasi`);
+  }
+
+  const mAnalyzeRed = raw.match(/^(?:🔍)?\s*Menganalisis\s+seluruh\s+(.+?)\s+halaman\s+dokumen/i);
+  if (mAnalyzeRed) {
+    return stripDots(language === 'en' ? `🔍 Analyzing all ${mAnalyzeRed[1]} document pages` : `🔍 Menganalisis seluruh ${mAnalyzeRed[1]} halaman dokumen`);
+  }
+
+  const mSummPages = raw.match(/^(?:📑)?\s*Merangkum\s+seluruh\s+(.+?)\s+halaman\s+dokumen/i);
+  if (mSummPages) {
+    return stripDots(language === 'en' ? `📑 Summarizing all ${mSummPages[1]} document pages` : `📑 Merangkum seluruh ${mSummPages[1]} halaman dokumen`);
+  }
+
+  const mClausePages = raw.match(/^(?:🔍)?\s*Menganalisis\s+klausul\s+terkait\s+pada\s+(.+?)\s+halaman/i);
+  if (mClausePages) {
+    return stripDots(language === 'en' ? `🔍 Analyzing related clauses across ${mClausePages[1]} pages` : `🔍 Menganalisis klausul terkait pada ${mClausePages[1]} halaman`);
+  }
+
+  const mFoundClauseRel = raw.match(/^(?:📌)?\s*Ditemukan\s+Klausul\s+Terkait\s+pada\s+Halaman\s+(.+?)!*$/i);
+  if (mFoundClauseRel) {
+    return stripDots(language === 'en' ? `📌 Related Clause Found on Page ${mFoundClauseRel[1]}!` : `📌 Ditemukan Klausul Terkait pada Halaman ${mFoundClauseRel[1]}!`);
+  }
+
+  const mFoundClauseTarget = raw.match(/^(?:📌)?\s*Ditemukan\s+Klausul\s+Sasaran\s+pada\s+Halaman\s+(.+?)!*$/i);
+  if (mFoundClauseTarget) {
+    return stripDots(language === 'en' ? `📌 Target Clause Found on Page ${mFoundClauseTarget[1]}!` : `📌 Ditemukan Klausul Sasaran pada Halaman ${mFoundClauseTarget[1]}!`);
+  }
+
+  const mFoundClause = raw.match(/^(?:📌)?\s*Ditemukan\s+Klausul\s+pada\s+Halaman\s+(.+?)!*$/i);
+  if (mFoundClause) {
+    return stripDots(language === 'en' ? `📌 Clause Found on Page ${mFoundClause[1]}!` : `📌 Ditemukan Klausul pada Halaman ${mFoundClause[1]}!`);
+  }
+
+  const mFocusCtx = raw.match(/^(?:📌)?\s*Konteks\s+(?:Terfokus:\s*)?(.+?)\s*\((?:Hal|Pg)\.\s*(.+?)\)$/i);
+  if (mFocusCtx) {
+    return stripDots(language === 'en' ? `📌 Focused Context: ${mFocusCtx[1]} (Pg. ${mFocusCtx[2]})` : `📌 Konteks Terfokus: ${mFocusCtx[1]} (Hal. ${mFocusCtx[2]})`);
+  }
+
+  // 5. Reverse-mapping from Indonesian text to current language
   if (language !== 'id') {
-    const idSseDict = translations.id?.sseStatus || {};
-    for (const [k, idText] of Object.entries(idSseDict)) {
-      if (idText === statusInput && sseDict[k]) {
-        return sseDict[k];
+
+    // 5A. Parameterized templates in idDict
+    for (const [k, idText] of Object.entries(idDict)) {
+      if (idText.includes('{')) {
+        const pNames = [];
+        const strippedId = cleanText(idText);
+        const escaped = strippedId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const rxStr = '^' + escaped.replace(/\\\{([a-zA-Z0-9_]+)\\\}/g, (_, p) => {
+          pNames.push(p);
+          return '(.+?)';
+        }) + '$';
+        const m = cleanR.match(new RegExp(rxStr, 'iu'));
+        if (m && sseDict[k]) {
+          let res = sseDict[k];
+          pNames.forEach((name, idx) => {
+            res = res.replace(new RegExp(`\\{${name}\\}`, 'g'), m[idx + 1].trim());
+          });
+          return stripDots(res);
+        }
       }
     }
+
+    // 5B. Exact normalized match in idDict
+    for (const [k, idText] of Object.entries(idDict)) {
+      if (!idText.includes('{') && cleanText(idText) === cleanR && sseDict[k]) {
+        return stripDots(sseDict[k]);
+      }
+    }
+
+    // 5C. Resilient semantic fallbacks based on prominent keywords
+    if (cleanR.includes('menghubungkan ke cakra')) return stripDots(sseDict.CONNECTING_CAKRA || '⚡ Connecting to Cakra AI');
+    if (cleanR.includes('mencari regulasi') || cleanR.includes('menelusuri regulasi')) return stripDots(sseDict.SEARCHING_REGULATIONS || '🔍 Searching regulations');
+    if (cleanR.includes('menajamkan pencarian')) return stripDots(sseDict.CRAG_RETRY || '🔄 Refining regulation search');
+    if (cleanR.includes('menyaring pasal')) return stripDots(sseDict.FILTERING_RELEVANT_ARTICLES || '🎯 Filtering relevant articles');
+    if (cleanR.includes('membaca pasal')) return stripDots(sseDict.READING_SELECTED_ARTICLES || '📄 Reading selected articles');
+    if (cleanR.includes('semantik vector') || cleanR.includes('vektor regulasi')) return stripDots(sseDict.SEARCHING_VECTOR_SEMANTICS || '🔍 Searching vector semantics');
+    if (cleanR.includes('menganalisis pasal')) return stripDots(sseDict.ANALYZING_ARTICLE || '📄 Analyzing articles');
+    if (cleanR.includes('menyusun jawaban') || cleanR.includes('merumuskan jawaban') || cleanR.includes('menyusun draf jawaban')) return stripDots(sseDict.DRAFTING_RESPONSE || '✍️ Drafting response');
+    if (cleanR.includes('arsitektur file')) return stripDots(sseDict.DESIGNING_FILE_ARCHITECTURE || '💻 Designing file architecture');
+    if (cleanR.includes('memindai file lampiran') || cleanR.includes('memindai dokumen lampiran')) return stripDots(sseDict.SCANNING_ATTACHMENT || '👁️ Scanning attachment files');
+    if (cleanR.includes('mencari secara global')) return stripDots(sseDict.SEARCHING_GLOBAL || '🔄 Searching globally');
+    if (cleanR.includes('uji kepatuhan')) return stripDots(sseDict.OPENING_COMPLIANCE_TEST || '🎯 Opening compliance test');
+    if (cleanR.includes('dokumen sasaran') || cleanR.includes('analisis red team')) return stripDots(sseDict.OPENING_REDTEAM_DOC || '🕵️ Dissecting target document');
+    if (cleanR.includes('dokumen fokus')) return stripDots(sseDict.OPENING_FOCUS_DOC || '🎯 Opening reference document');
+    if ((cleanR.includes('kepatuhan') && cleanR.includes('skenario')) || cleanR.includes('uji kepatuhan')) return stripDots(sseDict.ANALYZING_COMPLIANCE_SCENARIO || '⚖️ Analyzing compliance against full clause');
+    if (cleanR.includes('celah hukum')) return stripDots(sseDict.DISSECTING_LEGAL_LOOPHOLES || '⚖️ Dissecting legal loopholes');
+    if (cleanR.includes('mengambil teks')) return stripDots(sseDict.RETRIEVING_FULL_TEXT || '📂 Retrieving full text');
+    if (cleanR.includes('memuat dokumen')) return stripDots(sseDict.DOC_LOADING || '📄 Loading document');
+    if (cleanR.includes('dari memori sesi')) return stripDots(sseDict.BRAIN_HIT || '🧠 From session memory');
+    if (cleanR.includes('menyimpan ke memori')) return stripDots(sseDict.BRAIN_SAVE || '💾 Saving to memory');
+    if (cleanR.includes('draft email') || cleanR.includes('menulis email') || cleanR.includes('draf email')) return stripDots(sseDict.MAIL_INIT || '📧 Drafting email');
+    if (cleanR.includes('email berhasil') || cleanR.includes('surat berhasil') || cleanR.includes('email siap')) return '✨ Email ready';
+    if (cleanR.includes('diagram')) return stripDots(sseDict.DIAGRAM_RENDERING || '🔄 Rendering diagram');
+    if (cleanR.includes('grafik')) return stripDots(sseDict.CHART_RENDERING || '📊 Plotting chart');
+    if (cleanR.includes('merespons')) return stripDots(sseDict.PREPARING_RESPONSE || '✨ Responding');
+    if (cleanR.includes('mencari di web')) return stripDots(sseDict.WEB_SEARCH_INIT || '🌐 Searching the web');
+    if (cleanR.includes('menyaring fakta')) return stripDots(sseDict.FILTERING_FACTS || '🎯 Filtering key facts');
+    if (cleanR.includes('menyusun ringkasan')) return stripDots(sseDict.DRAFTING_SUMMARY || '💡 Drafting summary');
+    if (cleanR.includes('berpikir') || cleanR.includes('menganalisis konteks')) return stripDots(sseDict.THINKING_PROGRESS || 'Thinking');
   }
 
-  return statusInput;
+  return stripDots(raw);
 }

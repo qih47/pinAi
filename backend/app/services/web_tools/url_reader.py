@@ -28,25 +28,37 @@ _IGNORED_DOMAINS = {
     "localhost", "127.0.0.1", "0.0.0.0", "example.com"
 }
 
-_PACKAGE_EXTENSIONS = (".tgz", ".whl", ".tar.gz", ".zip", ".bin", ".iso", ".gz")
+_PACKAGE_EXTENSIONS = (".tgz", ".whl", ".tar.gz", ".zip", ".bin", ".iso", ".gz", ".exe", ".dmg", ".pkg")
 
 _ERROR_LOG_SIGNALS = (
-    "npm err!", "yarn error", "pnpm err", "pip error", "traceback (most recent call last)",
-    "stacktrace:", "exception in thread", "fatal error:", "failed to fetch",
+    "npm err", "yarn error", "pnpm err", "pip error", "traceback (most recent call last)",
+    "stacktrace", "exception in thread", "fatal error", "failed to fetch",
     "404 not found", "connection refused", "econnrefused", "etimedout", "err_connection",
-    "status code: 4", "status code: 5"
+    "status code: 4", "status code: 5", "error:", "exception:", "stderr:", "failed on",
+    "failed to", "download failed", "wget ", "curl -", "git clone", "docker run",
+    "log:", "logs:", "warning:", "warn:"
 )
 
 _EXPLICIT_READ_SIGNALS = (
-    "baca", "rangkum", "ringkas", "cek link", "buka web", "isi tautan", "kunjungi",
-    "analisis web", "baca ini", "ringkasan dari", "apa isi", "simpulkan"
+    "baca link", "baca url", "baca tautan", "baca web", "baca artikel", "baca halaman",
+    "baca ini", "buka link", "buka url", "buka web", "buka tautan", "isi tautan",
+    "isi link", "isi web", "isi url", "apa isi", "ringkas link", "ringkas url",
+    "ringkas tautan", "ringkasan dari", "rangkum link", "rangkum url", "rangkum web",
+    "cek link", "cek url", "kunjungi", "analisis web", "analisis url", "analisis link",
+    "simpulkan link", "telaah link", "bedah link"
+)
+
+_SEARCH_INTENT_SIGNALS = (
+    "cari", "carikan", "search", "googling", "berita", "kabar", "terkini", "terbaru",
+    "info", "informasi", "cek berita", "apa kabar", "kabar di", "berita di"
 )
 
 
 def is_incidental_url(url: str, full_text: str = "") -> bool:
     """
     Memeriksa apakah URL adalah URL insidental (bagian dari error log, package manager registry,
-    atau snippet kode) yang tidak dimaksudkan untuk dibaca oleh URL Reader.
+    snippet kode, atau sekadar penyebutan domain dalam konteks web search) yang TIDAK dimaksudkan
+    untuk di-scrape langsung oleh URL Reader.
     """
     url_lower = url.lower()
 
@@ -59,15 +71,17 @@ def is_incidental_url(url: str, full_text: str = "") -> bool:
     if any(url_lower.endswith(ext) for ext in _PACKAGE_EXTENSIONS):
         return True
 
-    # 3. Jika ada full_text, periksa apakah berada di konteks error log
+    # 3. Jika ada full_text, periksa apakah berada di konteks error log atau search
     if full_text:
         text_lower = full_text.lower()
-        has_error = any(sig in text_lower for sig in _ERROR_LOG_SIGNALS)
         has_explicit_read = any(sig in text_lower for sig in _EXPLICIT_READ_SIGNALS)
+        has_error = any(sig in text_lower for sig in _ERROR_LOG_SIGNALS)
+        
+        # 3a. Berada di dalam pesan error / log instalasi tanpa instruksi eksplisit membaca link
         if has_error and not has_explicit_read:
             return True
 
-        # Cek apakah URL hanya muncul di dalam blok kode (```...```)
+        # 3b. Cek apakah URL hanya muncul di dalam blok kode (```...```)
         code_blocks = re.findall(r'```[\s\S]*?```', full_text)
         if code_blocks:
             url_in_code = any(url in cb or url.replace('https://', '') in cb or url.replace('http://', '') in cb for cb in code_blocks)

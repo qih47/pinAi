@@ -11,7 +11,8 @@ from typing import Dict, Any, Optional, Tuple
 EXPLICIT_SEARCH_PATTERNS = [
     # A. Perintah Penelusuran Online
     r"\b(cari|searching|googling|browsing|surfing|crawling|telusuri|lacak|riset)\s+(di\s+)?(web|internet|google|online|situs)\b",
-    r"\b(coba\s+)?(cariin|googling|browsing)\b",
+    r"\b(coba\s+)?(googling|browsing)\b",
+    r"\b(coba\s+)?(cariin|carikan)\s+(di\s+)?(web|internet|google|online|situs)\b",
     r"\b(bisa\s+tolong\s+)?(carikan|carikan\s+info|carikan\s+referensi)\s+(online|di\s+web|di\s+internet)\b",
     r"\b(scrape|fetch|baca\s+link|baca\s+url)\b",
     
@@ -20,8 +21,9 @@ EXPLICIT_SEARCH_PATTERNS = [
     r"\b(cek\s+faktanya|faktanya\s+gimana|apa\s+beneran\s+ada\s+kabarnya|ada\s+bukti\s+valid(nya)?)\b",
     r"\b(cek|lihat)\s+(berita|rilis|klarifikasi)\s+resmi(nya)?\b",
     
-    # C. Kabar Terkini & Informasi Mutakhir
-    r"\b(berita|kabar|informasi|isu|kondisi|situasi|update)\s+(terkini|terbaru|teranyar|terupdate|terakhir|paling\s+baru|hari\s+ini|minggu\s+ini|saat\s+ini|sekarang)\b",
+    # C. Kabar Terkini & Informasi Mutakhir (Khusus berita/isu eksternal, BUKAN sapaan personal)
+    r"\b(berita|informasi|isu|kondisi|situasi|update)\s+(terkini|terbaru|teranyar|terupdate|terakhir|paling\s+baru|hari\s+ini|minggu\s+ini|saat\s+ini|sekarang)\b",
+    r"(?<!apa\s)(?<!gimana\s)(?<!bagaimana\s)\bkabar\s+(terkini|terbaru|teranyar|terupdate|terakhir|dunia|nasional|pasar|ekonomi|bumn)\b",
     r"\b(update|perkembangan)\s+(terkini|terbaru|terakhir|teranyar)\b",
     r"\b(ada\s+apa\s+hari\s+ini|ada\s+kejadian\s+apa|gempa\s+hari\s+ini|banjir\s+hari\s+ini)\b",
     
@@ -31,7 +33,11 @@ EXPLICIT_SEARCH_PATTERNS = [
     r"\b(kapan|jadwal)\s+(tayang|rilis|keluar|kick[- ]?off|tanding)\s+(film|game|gadget|iphone|samsung|pesawat|pertandingan)\b",
     
     # E. Sanggahan & Koreksi Pengguna (Self-Correction)
-    r"\b(salah\s+(bro|bang|cuy|boss|min|ai)|bukan\s+itu|cek\s+lagi|coba\s+cek\s+lagi|yang\s+bener\s+kapan|jangan\s+ngaco)\b"
+    r"\b(salah\s+(bro|bang|cuy|boss|min|ai)|bukan\s+itu|cek\s+lagi|coba\s+cek\s+lagi|yang\s+bener\s+kapan|jangan\s+ngaco)\b",
+    
+    # F. Domain & URL Spesifik (Web Publik)
+    r"\b(situs|website|web|link|portal|laman)\s+[a-zA-Z0-9-]+\.(?:com|co\.id|id|org|net|gov|edu)\b",
+    r"\b[a-zA-Z0-9-]+\.(?:com|co\.id|id|org|net|gov|edu)\b"
 ]
 
 # ── 2. OPINION, AFFIRMATION, & CONVERSATIONAL TRIGGERS ───────────────────────
@@ -48,15 +54,31 @@ OPINION_AFFIRMATION_PATTERNS = [
 _search_compiled = [re.compile(p, re.IGNORECASE) for p in EXPLICIT_SEARCH_PATTERNS]
 _opinion_compiled = [re.compile(p, re.IGNORECASE) for p in OPINION_AFFIRMATION_PATTERNS]
 
+_INTERNAL_DOC_PATTERNS = re.compile(
+    r"\b(dokumen|pkb|sop|peraturan|skep|surat\s+keputusan|surat\s+edaran|nota\s+dinas|regulasi|pedoman|kebijakan\s+internal)\b",
+    re.IGNORECASE
+)
+
+_PERSONAL_GREETING_PATTERNS = re.compile(
+    r"\b(apa\s+kabar|gimana\s+kabar|bagaimana\s+kabar|kabar\s+baik)\b",
+    re.IGNORECASE
+)
+
 
 def is_explicit_web_search_required(text: str) -> bool:
     """
     Mengecek apakah pesan pengguna secara tegas membutuhkan pencarian web eksternal
     berdasarkan 5 spektrum luas pencarian internet.
+    Jika pesan menyebutkan dokumen regulasi internal (PKB, SOP, dokumen), JANGAN pernah dianggap web search.
+    Jika pesan adalah sapaan personal basa-basi (apa kabar), JANGAN pernah dianggap web search.
     """
     if not text:
         return False
     stripped = text.strip()
+    if _INTERNAL_DOC_PATTERNS.search(stripped):
+        return False
+    if _PERSONAL_GREETING_PATTERNS.search(stripped) and not any(kw in stripped.lower() for kw in ["cari di web", "googling", "search web", "situs", "link"]):
+        return False
     return any(p.search(stripped) for p in _search_compiled)
 
 

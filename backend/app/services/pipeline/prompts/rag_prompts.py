@@ -14,14 +14,8 @@ from .core_prompts import (
 )
 from backend.app.services.pipeline.prompt_manager import prompt_manager
 
-# Guidance Modular RAG (Tanpa template visual statis)
-RAG_MODULAR_GUIDANCE = (
-    CORE_TONE_AND_IDENTITY
-    + "\n"
-    + DATA_TABLES_AND_FORM_GUIDANCE
-    + "\n"
-    + INTERACTIVE_WIZARD_GUIDANCE
-)
+# Guidance Modular RAG (Form dan Wizard diinjeksi secara on-demand sesuai parameter aktif Call 1)
+RAG_MODULAR_GUIDANCE = CORE_TONE_AND_IDENTITY
 
 PROMPT_RAG_TEMPLATE = """{{ get_base_persona(employee_name, mode_title) }}""" + """
 {% if is_thinking %}
@@ -47,20 +41,26 @@ LANGKAH 1 — ANALISIS KONTEKS SILANG & SELEKSI DOKUMEN:
 LANGKAH 2 — ANALISIS ISI:
   → Dari dokumen RELEVAN, identifikasi pasal/ayat/poin yang menjawab pertanyaan.
   → Perhatikan hierarki: SKEP > SOP > Instruksi Kerja jika ada konflik.
-  → RESOLUSI MULTI-VERSI: Jika menemukan beberapa versi tahun dari regulasi yang sama (misal: PKB 2024 vs PKB 2021, SOP lama vs SOP baru), WAJIB buat blok ```wizard DI BAGIAN AWAL (tepat setelah </sources_json>) agar pengguna bisa memilih rujukan atau membandingkan keduanya.
+{% if is_ambiguous %}
+  → RESOLUSI MULTI-VERSI / AMBIGUITAS (WIZARD): Karena situasi ini ambigu atau ditemukan multi-versi dokumen, buat blok ```wizard DI BAGIAN AWAL (tepat setelah </sources_json>) agar pengguna bisa memilih rujukan secara interaktif.
+{% endif %}
 
 LANGKAH 3 — RENCANA JAWABAN:
-  → Tentukan struktur jawaban: jika ada ```wizard, letakkan ```wizard DI AWAL setelah </sources_json>, kemudian baru salam/pengantar singkat.
-  → ZERO-HIT FALLBACK: Jika benar-benar tidak ada dokumen relevan yang ditemukan di arsip internal, sampaikan secara transparan dan berikan opsi tindakan lanjutan menggunakan blok ```wizard di awal (Cari di Web / Perluas Pencarian).
+{% if is_ambiguous %}
+  → Tentukan struktur jawaban: letakkan ```wizard DI AWAL setelah </sources_json>, kemudian baru salam/pengantar singkat.
+{% endif %}
+  → ZERO-HIT FALLBACK: Jika benar-benar tidak ada dokumen relevan yang ditemukan di arsip internal, sampaikan secara transparan bahwa data belum ditemukan di arsip internal.
 {% else %}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ⚡ INSTRUKSI DETAIL (THINKING MODE: OFF)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 1. ANALISIS KONTEKS SILANG: Pahami KONTEKS SPESIFIK user.
 2. SELEKSI KETAT: Filter dokumen secara internal. HANYA gunakan dokumen regulasi yang benar-benar relevan sebagai bahan jawaban utama.
-3. RESOLUSI MULTI-VERSI & ZERO-HIT WIZARD:
-   - Jika ada beberapa versi dokumen (beda tahun/edisi) atau zero-hit, WAJIB ketik blok ```wizard DI AWAL tepat setelah </sources_json> sebelum teks penjelasan.
+{% if is_ambiguous %}
+3. RESOLUSI MULTI-VERSI & AMBIGU WIZARD:
+   - Karena kondisi ambigu / multi-versi, ketik blok ```wizard DI AWAL tepat setelah </sources_json> sebelum teks penjelasan.
    - JANGAN mengulang pertanyaan kuesioner sebagai bullet point di teks jawaban.
+{% endif %}
 4. REKOMENDASI PROAKTIF (WAJIB MUTLAK): Jika di dalam dokumen sumber terdapat dokumen berupa Form, Formulir, Surat Izin, Surat Permohonan, atau Template Pengajuan, Anda DILARANG KERAS mengabaikannya! Anda WAJIB memberikannya sebagai REKOMENDASI/SUGESTI di akhir jawaban (contoh: "Sebagai informasi tambahan, terdapat dokumen format pengajuan..."), DAN WAJIB memasukkannya ke dalam `<sources_json>`!
 5. Jawaban akhir WAJIB sangat rinci — uraikan poin-poin regulasi, sebutkan nomor SKEP/pasal, dan rangkum secara terstruktur.
 {% endif %}
@@ -340,7 +340,8 @@ def build_response_prompt_rag(
         tone_hint=precheck.get("tone_hint", "casual"),
         is_thinking=is_thinking,
         rag_context=rag_context[:_RAG_CONTEXT_MAX_CHARS] if rag_context else "",
-        is_multi_document=False
+        is_multi_document=False,
+        is_ambiguous=bool(precheck.get("is_ambiguous", False)),
     )
 
 def build_response_prompt_multi_document(
@@ -358,7 +359,8 @@ def build_response_prompt_multi_document(
         tone_hint=precheck.get("tone_hint", "casual"),
         is_thinking=is_thinking,
         rag_context=rag_context[:_RAG_CONTEXT_MAX_CHARS] if rag_context else "",
-        is_multi_document=True
+        is_multi_document=True,
+        is_ambiguous=bool(precheck.get("is_ambiguous", False)),
     )
 
 def build_response_prompt_analytic(

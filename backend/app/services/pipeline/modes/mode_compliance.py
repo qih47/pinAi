@@ -58,7 +58,7 @@ class ModeCompliance:
         if not isolated_doc_id and request and getattr(request, "isolated_doc_id", None):
             isolated_doc_id = request.isolated_doc_id
             
-        yield format_sse(status="🎯 Membuka uji kepatuhan dokumen", event_type=SSEEventType.STATUS)
+        yield format_sse(status="🎯 Membuka uji kepatuhan dokumen", status_key="OPENING_COMPLIANCE_TEST", event_type=SSEEventType.STATUS)
         await asyncio.sleep(0.05)
 
         # 1. Fetch Filename and Metadata from Database
@@ -93,7 +93,7 @@ class ModeCompliance:
                 
         async def fallback_to_rag(reason: str):
             logger.warning(f"[MODE_COMPLIANCE] Fallback to RAG triggered: {reason}")
-            yield format_sse(status="🔄 Mencari secara global", event_type=SSEEventType.STATUS)
+            yield format_sse(status="🔄 Mencari secara global", status_key="SEARCHING_GLOBAL", event_type=SSEEventType.STATUS)
             await asyncio.sleep(0.01)
             from backend.app.services.pipeline.modes.mode_documents import ModeDocuments
             fallback_handler = ModeDocuments()
@@ -163,7 +163,7 @@ class ModeCompliance:
 
 
         # 4. Two-Stage Context-Aware Reranking & Structural Continuity Engine
-        yield format_sse(status=f"🔍 Menganalisis seluruh {total_pages} halaman regulasi", event_type=SSEEventType.STATUS)
+        yield format_sse(status=f"🔍 Menganalisis seluruh {total_pages} halaman regulasi", status_key="ANALYZING_REGULATION_PAGES", event_type=SSEEventType.STATUS)
         await asyncio.sleep(0.05)
 
 
@@ -180,14 +180,17 @@ class ModeCompliance:
 
         # 5. Sampaikan SSE Bertahap ke frontend:
         halaman_str = ", ".join([str(p+1) for p in selected_pages])
-        yield format_sse(status=f"📌 Ditemukan Klausul Terkait pada Halaman {halaman_str}!", event_type=SSEEventType.STATUS)
+        yield format_sse(status=f"📌 Ditemukan Klausul Terkait pada Halaman {halaman_str}!", status_key="FOUND_RELATED_CLAUSE_PAGE", event_type=SSEEventType.STATUS)
         await asyncio.sleep(0.2)
         
-        yield format_sse(status=f"⚖️ Menganalisis kepatuhan skenario terhadap klausul utuh", event_type=SSEEventType.STATUS)
+        yield format_sse(status=f"⚖️ Menganalisis kepatuhan skenario terhadap klausul utuh", status_key="ANALYZING_COMPLIANCE_SCENARIO", event_type=SSEEventType.STATUS)
         await asyncio.sleep(0.1)
 
-        # 6. Persiapkan Chat History & Prompt
-        messages_dict = [{"role": m.role, "content": m.content} for m in chat_history]
+        # 6. Persiapkan Chat History & Prompt (Maks 5 putaran dialog / 10 pesan)
+        messages_dict = [{"role": m.role, "content": m.content} for m in chat_history if getattr(m, "role", None) != "system"]
+        if messages_dict and messages_dict[-1].get("role") == "user" and messages_dict[-1].get("content") == user_message:
+            messages_dict = messages_dict[:-1]
+        trimmed_messages = messages_dict[-10:] if len(messages_dict) > 10 else messages_dict
         precheck = detect_precheck(user_message, "compliance", False)
 
         system_prompt = build_response_prompt_compliance(
@@ -212,14 +215,14 @@ class ModeCompliance:
                 user_payload["images"] = valid_images[:12]
                 logger.info(f"[MODE_COMPLIANCE] 🖼️ Injected {len(user_payload['images'])} page images into Call 2 (Gemma Vision)")
             
-        current_messages = [{"role": "system", "content": system_prompt}] + messages_dict + [user_payload]
+        current_messages = [{"role": "system", "content": system_prompt}] + trimmed_messages + [user_payload]
 
         buffer = ""
         started_streaming = False
         
         # Hitung estimasi token
         sys_tokens = len(system_prompt) // 4
-        hist_tokens = sum(len(m.get("content", "")) for m in messages_dict) // 4
+        hist_tokens = sum(len(m.get("content", "")) for m in trimmed_messages) // 4
         total_used = sys_tokens + hist_tokens
         num_ctx = 16384
 

@@ -48,7 +48,7 @@ async def handle_web_search(
 
     display_query = " & ".join(clean_target_queries)
     logger.info(f"[Web Search] queries: {clean_target_queries} | display: '{display_query}'")
-    yield format_sse(status="🌐 Mencari di web", event_type=SSEEventType.STATUS)
+    yield format_sse(status="🌐 Mencari di web", status_key="WEB_SEARCH_INIT", event_type=SSEEventType.STATUS)
     await asyncio.sleep(0.01)
     
     # 1. Ambil URL-read content yang sudah di-fetch oleh url_reader di mode_hub (jika ada)
@@ -89,6 +89,25 @@ async def handle_web_search(
                 seen_urls.add(u)
                 raw_search_results.append(r)
     
+    # 2.05 🔄 Fallback otomatis jika pencarian utama menghasilkan 0 hasil (anti-kosongan)
+    if not raw_search_results:
+        from backend.app.services.web_tools.web_search import simplify_search_query
+        fallback_queries = []
+        for q in clean_target_queries:
+            sq = simplify_search_query(q)
+            if sq and sq.lower() != q.lower():
+                fallback_queries.append(sq)
+        if fallback_queries:
+            logger.info(f"[Web Search] 🔄 Retrying search with simplified fallback queries: {fallback_queries}")
+            fb_tasks = [perform_web_search(q, num_results=10) for q in fallback_queries]
+            fb_results_lists = await asyncio.gather(*fb_tasks)
+            for r_list in fb_results_lists:
+                for r in r_list:
+                    u = r.get("url")
+                    if u and u not in seen_urls:
+                        seen_urls.add(u)
+                        raw_search_results.append(r)
+
     # 2.1 Rerank hasil search berdasarkan relevansi query gabungan
     search_results = raw_search_results
     if search_results:
@@ -147,7 +166,7 @@ async def handle_web_search(
     # 5.2. ⚡ PARALLEL Deep scraping: semua top URL di-crawl bersamaan
     top_urls = [r["url"] for r in search_results[:3] if r.get("engine") != "url_reader"]
     if top_urls:
-        yield format_sse(status=f"📖 Membaca {len(top_urls)} tautan", event_type=SSEEventType.STATUS)
+        yield format_sse(status=f"📖 Membaca {len(top_urls)} tautan", status_key="READING_URLS", event_type=SSEEventType.STATUS)
         await asyncio.sleep(0.01)
         
         from backend.app.services.web_tools.url_reader import fetch_webpage_content
@@ -184,7 +203,7 @@ async def handle_web_search(
                 all_chunks.extend(chunk_text(content.strip(), url))
                 
         if all_chunks:
-            yield format_sse(status="🎯 Menyaring fakta penting", event_type=SSEEventType.STATUS)
+            yield format_sse(status="🎯 Menyaring fakta penting", status_key="FILTERING_FACTS", event_type=SSEEventType.STATUS)
             await asyncio.sleep(0.01)
             
             chunk_texts = [c["text"] for c in all_chunks]
@@ -246,7 +265,7 @@ async def handle_web_search(
     modified_messages = [m for m in trimmed_history if m["role"] != "system"]
     modified_messages.insert(0, {"role": "system", "content": system_prompt})
     
-    yield format_sse(status="💡 Menyusun ringkasan", event_type=SSEEventType.STATUS)
+    yield format_sse(status="💡 Menyusun ringkasan", status_key="DRAFTING_SUMMARY", event_type=SSEEventType.STATUS)
     await asyncio.sleep(0.01)
 
     # 5. Mulai streaming jawaban dari LLM dengan num_ctx=16384 dan num_predict=-1 (tak terbatas)

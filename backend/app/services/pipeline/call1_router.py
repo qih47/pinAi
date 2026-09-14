@@ -77,10 +77,14 @@ def extract_routing_signals_for_call1(user_content: str) -> str:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 _WEB_QUERY_FILLER_PREFIXES = re.compile(
-    r"^(mencari(\s+referensi)?(\s+terkait)?|carikan(\s+(saya|aku|gue|gw))?(\s+informasi)?|"
-    r"cari(\s+(informasi|info|data|tahu|tahu))?|tolong(\s+carikan)?|informasi(\s+tentang|\s+lain)?|"
+    r"^(?:(?:tolong|coba|bisa|mohon)\s+)?(?:"
+    r"infoin|infokan|beritahu|beritahukan|kasih\s+tau|kasih\s+tahu|spill|update|kabar|cekin|cek|"
+    r"mencari(\s+referensi)?(\s+terkait)?|carikan(\s+(saya|aku|gue|gw))?(\s+info(rmasi)?)?(\s+terkait)?|"
+    r"cari(\s+di\s+web|\s+web|\s+(informasi|info|data|tahu))?|informasi(\s+tentang|\s+lain)?|"
     r"info(\s+tentang|\s+lain)?|data(\s+tentang|\s+lain)?|terkait|mengenai|tentang|referensi(\s+terkait)?|"
-    r"analisa(\s+tentang)?|jelaskan(\s+tentang)?|lainnya|lain)\s+",
+    r"analisa(\s+tentang)?|jelaskan(\s+tentang)?|ada\s+apa\s+dengan|gimana\s+kondisi|gimana\s+status|"
+    r"bagaimana\s+kondisi|bagaimana\s+status|tanya(\s+dong)?|nanya(\s+dong)?|bocoran(\s+tentang)?|"
+    r"berita(\s+tentang|\s+terkini|\s+terbaru)?|lainnya|lain)\s*(?:dong|deh|tentang|soal|berita|kabar)?\s*",
     re.IGNORECASE
 )
 
@@ -88,15 +92,29 @@ def _sanitize_web_query(query: str, user_message: str = "") -> str:
     """
     Bersihkan prefix filler kata bahasa Indonesia dari web search query
     dan tangani over-expansion / disambiguasi semantik (seperti 'demo' unjuk rasa vs 'demo produk').
-    Contoh: "data lain qwen3.8" → "qwen3.8"
+    Contoh: "infoin berita terbaru erupsi anak krakatau" → "terbaru erupsi anak krakatau"
     """
     cleaned = query.strip()
+    cleaned = re.sub(r'^["\']+|["\']+$', '', cleaned).strip()
+
     # Ulangi hingga semua prefix filler terkikis (bisa berlapis)
     for _ in range(5):
         new_cleaned = _WEB_QUERY_FILLER_PREFIXES.sub("", cleaned).strip()
         if new_cleaned == cleaned:
             break
         cleaned = new_cleaned
+
+    # Bersihkan slang percakapan yang tersisa di tengah/akhir query
+    slang_patterns = [
+        r"\b(cuy|bro|gan|bang|mas|mba|bos)\b",
+        r"\b(hadeh|hadeuh|astaga|buset|waduh|anjir|anjay|gila|parah)\b",
+        r"\b(wkwk+|haha+|hehe+)\b",
+        r"\b(dong|deh|sih|nih|tuh|kan|lah|ya|kah|kek|kayak|plis|please)\b",
+        r"\b(gw|gue|lu|lo|elu|aku|kamu|kita|saya)\b",
+    ]
+    for pattern in slang_patterns:
+        cleaned = re.sub(pattern, " ", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
 
     # 🚨 Disambiguasi Semantik: "demo" (unjuk rasa massa) vs "demo produk"
     lower_q = cleaned.lower()
@@ -331,6 +349,8 @@ async def execute_call1_routing(
     )
 
     try:
+        from datetime import datetime
+        t0_call1 = datetime.now()
         routing_json = await generate_json_response(
             model_name=effective_model,
             messages=messages,
@@ -343,15 +363,13 @@ async def execute_call1_routing(
             num_predict=dynamic_predict,
             timeout=120.0,
         )
-
+        duration_call1_ms = (datetime.now() - t0_call1).total_seconds() * 1000
 
         # Bersihkan setiap field bernilai False, None, atau empty array agar benar-benar sparse
         clean_sparse_json = {
             k: v for k, v in routing_json.items() 
             if v is not False and v is not None and v != [] and v != ""
         }
-        import json
-        logger.info(f"[CALL1] 📦 Raw JSON Payload dari LLM:\n{json.dumps(clean_sparse_json, indent=2)}")
 
         routing = _validate_and_normalize_routing(
             clean_sparse_json, 
@@ -362,10 +380,179 @@ async def execute_call1_routing(
             context_history_str=context_history_str,
         )
 
-        logger.info(
-            f"[CALL1] Routing complete | need_rag={routing['need_rag']} | "
-            f"queries={routing['queries']} | is_coding={routing['is_coding']} | is_ambiguous={routing['is_ambiguous']}"
-        )
+        # ── KOTAK 1: [CALL 1 ROUTING & DECISION DASHBOARD] ────────────────────
+        active_mode = "GENERAL / CHITCHAT"
+        if routing.get("fetch_urls"):
+            active_mode = f"URL READER ({', '.join(routing.get('fetch_urls'))})"
+        elif routing.get("is_chitchat") or routing.get("is_greeting"):
+            active_mode = "CHITCHAT / OBROLAN SANTAI"
+        elif routing.get("need_rag"):
+            active_mode = "RAG REGULASI INTERNAL"
+        elif routing.get("is_web_search"):
+            active_mode = "WEB SEARCH EKSTERNAL"
+        elif routing.get("is_coding"):
+            active_mode = "CODING & SCRIPTING"
+        elif routing.get("is_docwriter"):
+            active_mode = "DOKUMEN WRITER BUMN"
+        elif routing.get("is_generate_file"):
+            active_mode = "FILE GENERATION (<create_file>)"
+        elif routing.get("is_generate_email"):
+            active_mode = "SMART EMAIL DINAS"
+        elif routing.get("need_analytic"):
+            active_mode = "ANALITIK & MATEMATIS"
+        elif routing.get("is_ambiguous"):
+            active_mode = "AMBIGU / DECISION WIZARD"
+
+        need_rag_str = "✅ True (Ambil regulasi internal)" if routing.get("need_rag") else "❌ False"
+        web_search_str = "✅ True (Cari di internet)" if routing.get("is_web_search") else "❌ False"
+        target_q = routing.get("queries", [])
+        target_q_str = str(target_q[:2]) if target_q else "[]"
+        if len(target_q) > 2:
+            target_q_str += f" (+{len(target_q)-2} lainnya)"
+
+        vt = routing.get("visual_types", [])
+        visual_str = f"✅ {', '.join(vt)}" if (routing.get("requires_visual") and vt) else "❌ None"
+
+        active_features = []
+        if routing.get("is_ambiguous"):
+            active_features.append("Decision Wizard")
+        if routing.get("is_troubleshooting"):
+            active_features.append("Troubleshooting")
+        if routing.get("is_comparative"):
+            active_features.append("Comparative Matrix")
+        if routing.get("has_actionable_workflow"):
+            active_features.append("Actionable Workflow")
+        if routing.get("is_deep_research"):
+            active_features.append("Deep Research")
+        if routing.get("is_security_critical"):
+            active_features.append("Security Critical")
+        if routing.get("is_generate_file"):
+            active_features.append("File Generator")
+        if routing.get("is_docwriter"):
+            active_features.append("DocWriter")
+        if routing.get("is_generate_email"):
+            active_features.append("Smart Email")
+        if routing.get("is_coding"):
+            active_features.append("Coding Sandbox")
+        if routing.get("is_map_query"):
+            active_features.append("Peta Pindad")
+
+        features_str = ", ".join(active_features) if active_features else "Standar (Tanpa Modul Berat)"
+
+        clean_user_msg = user_message.replace("\n", " ").strip()
+        topic_str = f"{routing.get('active_topic', '-')} / {routing.get('key_subject', '-')}".strip(" /")
+
+        INNER_W = 98
+        BORDER_W = INNER_W + 2
+
+        def _make_rows(text: str, inner_width: int = INNER_W, indent_spaces: int = 4) -> list:
+            import wcwidth
+            w_text = wcwidth.wcswidth(text)
+            if w_text <= inner_width:
+                pad = inner_width - w_text
+                return [f"║ {text}{' ' * max(0, pad)} ║"]
+            
+            # Deteksi indentasi awal asli dari teks
+            leading_spaces = len(text) - len(text.lstrip(" "))
+            prefix_indent = " " * leading_spaces
+            clean_text = text.lstrip(" ")
+            
+            words = clean_text.split(" ")
+            lines = []
+            curr = prefix_indent
+            for w in words:
+                if not w:
+                    continue
+                cand = (curr + " " + w) if curr.strip() else (prefix_indent + w)
+                if wcwidth.wcswidth(cand) <= inner_width:
+                    curr = cand
+                else:
+                    if curr.strip():
+                        lines.append(curr)
+                        curr = (" " * indent_spaces) + w
+                    else:
+                        lines.append(w)
+                        curr = ""
+            if curr.strip():
+                lines.append(curr)
+
+            res = []
+            for line in lines:
+                w_line = wcwidth.wcswidth(line)
+                if w_line > inner_width:
+                    cur_ch = ""
+                    for ch in line:
+                        if wcwidth.wcswidth(cur_ch + ch) > inner_width:
+                            break
+                        cur_ch += ch
+                    line = cur_ch
+                    w_line = wcwidth.wcswidth(line)
+                pad = inner_width - w_line
+                res.append(f"║ {line}{' ' * max(0, pad)} ║")
+            return res
+
+        top_border = "╔" + ("═" * BORDER_W) + "╗"
+        mid_border = "╠" + ("═" * BORDER_W) + "╣"
+        bot_border = "╚" + ("═" * BORDER_W) + "╝"
+
+        fetch_urls_list = routing.get("fetch_urls", [])
+        fetch_urls_str = f"✅ {fetch_urls_list}" if fetch_urls_list else "❌ None"
+
+        raw_qj = routing.get("query_judul", [])
+        qj_str = f"✅ {raw_qj}" if raw_qj else "❌ None (Semua Dokumen)"
+
+        raw_st = routing.get("search_tags", [])
+        st_str = f"✅ {raw_st}" if raw_st else "❌ None"
+
+        lang_tone_str = f"Lang: {routing.get('detected_language', 'id')} | Pronoun: {routing.get('pronoun', 'unknown')} | Tone: {routing.get('tone_hint', 'formal')}"
+
+        query_rows = []
+        if not target_q:
+            query_rows = [*_make_rows("   • Search Queries : ❌ [] (Nihil / Percakapan Langsung)", indent_spaces=22)]
+        else:
+            query_rows = [*_make_rows(f"   • Search Queries : ({len(target_q)} query aktif)", indent_spaces=22)]
+            for idx, q_item in enumerate(target_q, start=1):
+                query_rows.extend(_make_rows(f"     [{idx}] \"{q_item}\"", indent_spaces=11))
+
+        rag_specific_rows = []
+        if routing.get("need_rag"):
+            rag_specific_rows = [
+                *_make_rows(f"   • Query Judul    : {qj_str}", indent_spaces=22),
+                *_make_rows(f"   • Search Tags    : {st_str}", indent_spaces=22),
+            ]
+
+        ambiguity_rows = []
+        if routing.get("is_ambiguous") and routing.get("ambiguity_reason"):
+            ambiguity_rows = [
+                *_make_rows(f"   • Alasan Ambigu  : \"{routing.get('ambiguity_reason')}\"", indent_spaces=22)
+            ]
+
+        c1_lines = [
+            top_border,
+            *_make_rows("🧭 [CALL 1 ROUTING & DECISION DASHBOARD]"),
+            mid_border,
+            *_make_rows(f"🤖 Model Router     : {effective_model}"),
+            *_make_rows(f"🕒 Waktu Eksekusi   : {duration_call1_ms:.1f} ms ({duration_call1_ms/1000:.2f}s) | ctx={router_ctx} | predict={dynamic_predict}"),
+            *_make_rows(f"💬 Pesan Pengguna   : \"{clean_user_msg}\"", indent_spaces=22),
+            mid_border,
+            *_make_rows("🎯 KEPUTUSAN KANAL DATA (BACKEND RETRIEVAL)"),
+            *_make_rows(f"   • Need RAG       : {need_rag_str}"),
+            *rag_specific_rows,
+            *_make_rows(f"   • Web Search     : {web_search_str}"),
+            *_make_rows(f"   • URL Reader     : {fetch_urls_str}", indent_spaces=22),
+            *query_rows,
+            mid_border,
+            *_make_rows("🧩 KEPUTUSAN KANAL FORMAT CALL 2 (KOMPONEN AKTIF)"),
+            *_make_rows(f"   • Mode Terpilih  : {active_mode}"),
+            *_make_rows(f"   • Visual Output  : {visual_str}"),
+            *_make_rows(f"   • Fitur Khusus   : {features_str}", indent_spaces=22),
+            *_make_rows(f"   • Topik / Subjek : {topic_str}"),
+            *_make_rows(f"   • Gaya & Persona : {lang_tone_str}", indent_spaces=22),
+            *ambiguity_rows,
+            bot_border
+        ]
+
+        logger.info("\n" + "\n".join(c1_lines))
 
         return routing
 
@@ -483,6 +670,9 @@ def _validate_and_normalize_routing(
     else:
         routing["visual_types"] = []
         
+    if routing["visual_types"]:
+        routing["requires_visual"] = True
+        
     # Auto-detect visual_types jika requires_visual tapi visual_types belum terisi
     if routing["requires_visual"] and not routing["visual_types"]:
         user_lower = (user_message or "").lower()
@@ -562,21 +752,43 @@ def _validate_and_normalize_routing(
         routing["is_web_search"] = False
         routing["queries"] = []
         routing["is_chitchat"] = True
-    elif routing_json.get("queries") and not routing["need_rag"] and not routing["is_coding"] and not routing["is_generate_file"]:
-        # Hanya aktifkan web search jika memang diminta di JSON atau terdeteksi di spektrum web search
-        if routing_json.get("is_web_search", False) or is_explicit_web:
+    # 🌐 Penyelarasan Yurisdiksi: Jika model memilih Data Luar (Web Search) bersamaan dengan Dokumen Internal
+    forced_mode_clean = str(precheck.get("forced_mode") or "").lower().strip()
+    is_forced_doc_mode = forced_mode_clean in ["documents", "document", "rag", "focus", "compliance", "redteam", "audit"]
+    has_doc_signal = any(kw in user_msg_lower for kw in [
+        "dokumen", "pkb", "sop", "peraturan", "skep", "surat keputusan", "surat edaran",
+        "naskah dinas", "cuti", "pasal", "tunjangan", "dinas", "kpi", "audit", "auditor", "sanksi",
+        "indisipliner", "kompensasi", "anggaran dasar", "akta", "disiplin", "pelanggaran",
+        "karyawan", "pegawai", "celah", "hukum", "direksi", "komisaris", "belanja modal", "kewenangan"
+    ])
+
+    if routing_json.get("queries") and not routing["need_rag"] and not routing["is_coding"] and not routing["is_generate_file"]:
+        # Hanya aktifkan web search jika memang diminta di JSON atau terdeteksi di spektrum web search / public web
+        if routing_json.get("is_web_search", False) or is_explicit_web or precheck.get("is_public_web"):
             routing["is_web_search"] = True
+        elif is_forced_doc_mode or has_doc_signal or precheck.get("need_rag_hint") or precheck.get("is_doc_query"):
+            routing["need_rag"] = True
+            routing["is_web_search"] = False
+            routing["is_chitchat"] = False
+            logger.info("[CALL1] 📚 Document signal or forced doc mode detected with queries -> setting need_rag=True")
         else:
             routing["is_web_search"] = False
             routing["queries"] = []
             routing["is_chitchat"] = True
     else:
-        routing["is_web_search"] = bool(routing_json.get("is_web_search", False))
+        # Jika LLM Call 1 sudah menentukan need_rag=True, prioritaskan keputusan model dan jangan biarkan regex luar menimpa
+        if routing.get("need_rag"):
+            routing["is_web_search"] = False
+        else:
+            routing["is_web_search"] = bool(routing_json.get("is_web_search", False)) or is_explicit_web or bool(precheck.get("is_public_web"))
 
-    # 🌐 Penyelarasan Yurisdiksi: Jika model memilih Data Luar (Web Search) tanpa mode dokumen internal eksplisit, prioritaskan Web Search
-    forced_mode_clean = str(precheck.get("forced_mode") or "").lower().strip()
-    is_forced_doc_mode = forced_mode_clean in ["documents", "document", "rag"]
-    if routing["is_web_search"] and routing["need_rag"] and not is_forced_doc_mode:
+    if routing.get("is_web_search") and (is_forced_doc_mode or has_doc_signal):
+        routing["need_rag"] = True
+        routing["is_web_search"] = False
+        if not routing.get("queries"):
+            routing["queries"] = [user_message]
+        logger.info("[CALL1] 📚 Resolving document/web intent: internal document intent takes priority (need_rag=True, is_web_search=False)")
+    elif routing.get("is_web_search") and routing.get("need_rag"):
         routing["need_rag"] = False
         routing["query_judul"] = []
         logger.info("[CALL1] 🌐 Resolving dual-intent conflict: is_web_search takes priority over need_rag for external data")
@@ -660,26 +872,41 @@ def _validate_and_normalize_routing(
 
     # 4. 💬 Penanganan Kelanjutan Basa-basi (Call 2 baru saja menjawab chitchat):
     if has_prior_chitchat and not routing["need_rag"] and not routing["is_coding"] and not routing["requires_visual"]:
-        casual_ack_kw = ["mantap", "siap", "oke", "ok", "haha", "wkwk", "makasih", "terima kasih", "thanks", "tq", "sip", "semangat", "keren", "bener", "betul", "iya", "nice", "good"]
-        if any(w in user_msg_lower for w in casual_ack_kw) and len(user_message.split()) <= 10:
+        casual_ack_kw = {"mantap", "siap", "oke", "ok", "haha", "wkwk", "makasih", "terima kasih", "thanks", "tq", "sip", "semangat", "keren", "bener", "betul", "iya", "nice", "good"}
+        user_words = set(re.findall(r'\b[a-zA-Z0-9_]+\b', user_msg_lower))
+        has_doc_terms = any(kw in user_msg_lower for kw in ["dokumen", "pkb", "sop", "peraturan", "skep", "surat", "cuti", "pasal", "gaji", "tunjangan", "kpi", "audit"])
+        if not has_doc_terms and (user_words & casual_ack_kw) and len(user_message.split()) <= 6:
             routing["is_chitchat"] = True
             routing["is_web_search"] = False
             routing["is_ambiguous"] = False
             logger.info("[CALL1] 💬 Continuous Casual / Chitchat flow detected -> is_chitchat=True")
 
+    # 5. 📚 Penanganan Kelanjutan Dokumen / Regulasi Multi-turn:
+    # Jika percakapan sebelumnya membahas dokumen/PKB/regulasi dan pesan lanjutan menanyakan rincian
+    has_prior_doc_context = bool(context_history_str and any(kw in context_history_str.lower() for kw in ["pkb", "pasal", "peraturan", "sop", "skep", "surat keputusan", "ketentuan", "kebijakan"]))
+    if has_prior_doc_context and not routing["need_rag"] and not routing.get("is_coding") and not is_simple_greeting:
+        follow_up_doc_kw = ["bagaimana dengan", "bagaimana kalau", "lalu", "kalau", "kompensasi", "lembur", "lapangan", "sanksi", "syarat", "ketentuan", "aturan", "berapa", "karyawan", "pegawai", "hak"]
+        if any(w in user_msg_lower for w in follow_up_doc_kw):
+            routing["need_rag"] = True
+            routing["is_chitchat"] = False
+            routing["is_web_search"] = False
+            if not routing.get("queries"):
+                routing["queries"] = [user_message]
+            logger.info(f"[CALL1] 📚 Continuous Document Context detected from history -> need_rag=True, queries={routing['queries']}")
+
     # ── ATURAN STRICT MODE DOKUMEN (USER EXPLICIT INTENT OVERRIDE) ───────────
-    # Jika user secara manual mengunci Mode Dokumen (forced_mode), pastikan need_rag aktif HANYA jika bukan web search, koding, atau chitchat
+    # Jika user secara manual mengunci Mode Dokumen (forced_mode), pastikan need_rag aktif HANYA jika bukan web search atau koding
     is_explicit_doc_mode = (
         is_forced_doc_mode
         and not routing.get("is_web_search")
-        and not routing.get("is_chitchat")
         and not routing.get("is_coding")
         and not is_simple_greeting
     )
-    if is_explicit_doc_mode and not routing["is_ambiguous"]:
+    if is_explicit_doc_mode:
         routing["need_rag"] = True
         routing["is_web_search"] = False
         routing["is_chitchat"] = False
+        routing["is_ambiguous"] = False
         if not routing.get("queries"):
             routing["queries"] = [user_message]
         logger.info(f"[CALL1] 📚 Explicit Document Mode enforced: need_rag=True, queries={routing['queries']}")
@@ -784,9 +1011,10 @@ def _validate_and_normalize_routing(
             routing["fetch_urls"] = valid_detected
             logger.info(f"[CALL1] Auto-populated fetch_urls from precheck detected URLs: {routing['fetch_urls']}")
 
-    # Jika user memberikan URL untuk dibaca langsung, prioritaskan URL Reader daripada DuckDuckGo Web Search
+    # Jika user memberikan URL untuk dibaca langsung, prioritaskan URL Reader daripada DuckDuckGo Web Search / RAG
     if routing["fetch_urls"]:
         routing["is_web_search"] = False
+        routing["need_rag"] = False
 
     queries = routing.get("queries") or routing_json.get("queries", [])
     is_web_search = bool(routing.get("is_web_search", False))
@@ -883,8 +1111,8 @@ def _validate_and_normalize_routing(
     else:
         routing["session_title"] = None
 
-    # Override dengan precheck jika ada hint yang kuat (HANYA jika bukan public web search dan BUKAN chitchat/greeting/closing)
-    if precheck.get("need_rag_hint") is True and not routing["need_rag"] and not routing.get("is_web_search") and not precheck.get("is_public_web") and not routing.get("is_chitchat") and not routing.get("is_greeting"):
+    # Override dengan precheck jika ada hint yang kuat (HANYA jika bukan public web search, bukan URL reader, dan BUKAN chitchat/greeting/closing)
+    if precheck.get("need_rag_hint") is True and not routing["need_rag"] and not routing.get("is_web_search") and not routing.get("fetch_urls") and not precheck.get("is_public_web") and not routing.get("is_chitchat") and not routing.get("is_greeting"):
         logger.warning("[CALL1] Precheck override: need_rag forced to True")
         routing["need_rag"] = True
 
@@ -953,11 +1181,24 @@ def _validate_and_normalize_routing(
     if isinstance(routing.get("queries"), list):
         routing["queries"] = [q.strip() for q in routing["queries"] if isinstance(q, str) and q.strip()]
 
+    # Pastikan is_web_search selalu memiliki minimal 1 query pencarian
+    if routing.get("is_web_search") and not routing.get("queries"):
+        routing["queries"] = [routing.get("key_subject") or user_message]
+
+    # Auto-tag is_generate_file jika user secara eksplisit meminta script/file yang dibuat/disimpan
+    file_intent_keywords = [
+        "buatkan file", "bikin file", "buat file", "simpan ke excel", "simpan ke file",
+        "simpan ke csv", "buatkan script", "bikin script", "ekspor ke", "export ke", "generate file"
+    ]
+    if any(k in user_msg_lower for k in file_intent_keywords) and routing.get("is_coding"):
+        routing["is_generate_file"] = True
+
     # ── DETERMINISTIC MINIMAL 1-PARAMETER GUARD ───────────────────────────────
     # Memastikan tidak ada JSON hasil routing yang 'kosong' tanpa satupun parameter kapabilitas aktif
     capability_flags = [
         routing.get("need_rag"),
         routing.get("is_web_search"),
+        bool(routing.get("fetch_urls")),
         routing.get("is_coding"),
         routing.get("is_generate_file"),
         routing.get("is_generate_email"),
@@ -1268,7 +1509,7 @@ async def generate_call1_preset_routing(
             user_message=user_message,
             key_subject=res_json.get("key_subject", ""),
             active_topic=res_json.get("active_topic", ""),
-            need_rag=forced_mode in ["documents", "document", "rag", "focus", "audit", "compliance"],
+            need_rag=forced_mode in ["documents", "document", "rag", "focus", "audit", "compliance", "redteam"],
         )
         if clean_qj:
             result["query_judul"] = clean_qj
@@ -1332,13 +1573,12 @@ async def generate_call1_preset_routing(
         is_guest_user = bool(precheck.get("is_guest", False))
         if not is_guest_user and (
             precheck.get("is_docwriter")
+            or res_json.get("is_docwriter") is True
             or re.search(r'\b(buka|open|tampil(kan)?|muncul(kan)?|akses)\b.{0,25}\b(editor|writer|studio)\b', user_message.lower())
             or any(kw in user_message.lower() for kw in ["buka editor", "dokumen writer", "dokumen editor", "draft surat", "draf surat", "draft skep", "draf skep", "draft se", "draf se", "draft memo", "draf memo", "draft nota dinas", "draf nota dinas", "siapkan draft", "siapkan draf", "buatkan draft", "buatkan draf"])
         ):
             result["is_docwriter"] = True
             result["is_ambiguous"] = False
-        else:
-            result["is_docwriter"] = False
 
         # Kelanjutan visual refinement jika Call 2 sebelumnya telah membuat visual
         user_lower_check = user_message.lower()
@@ -1348,9 +1588,9 @@ async def generate_call1_preset_routing(
                 result["visual_types"] = [precheck.get("last_visual_type") or "chart"]
 
         # Visual flag & sub-types
-        if res_json.get("requires_visual") is True:
+        raw_vt = res_json.get("visual_types") or res_json.get("visual_type") or []
+        if res_json.get("requires_visual") is True or raw_vt:
             result["requires_visual"] = True
-            raw_vt = res_json.get("visual_types") or res_json.get("visual_type") or []
             if isinstance(raw_vt, str):
                 result["visual_types"] = [raw_vt.strip().lower()]
             elif isinstance(raw_vt, list):
@@ -1391,11 +1631,12 @@ async def generate_call1_preset_routing(
                 if not result["visual_types"]:
                     result["visual_types"] = ["mermaid"]
 
-        # Modular capability flags
+        # Modular capability flags (Garansi 17 Kapabilitas Lengkap & Utuh)
         for flag in [
             "need_analytic", "is_troubleshooting", "is_comparative", 
-            "has_actionable_workflow", "is_security_critical", 
-            "is_generate_file", "is_map_query"
+            "has_actionable_workflow", "is_deep_research", "is_security_critical", 
+            "is_generate_file", "is_docwriter", "is_generate_email", 
+            "is_coding", "is_web_search", "is_map_query"
         ]:
             if res_json.get(flag) is True:
                 result[flag] = True
@@ -1406,8 +1647,13 @@ async def generate_call1_preset_routing(
             if isinstance(raw_title, str) and raw_title.strip() and raw_title.strip().lower() not in GENERIC_SESSION_TITLES:
                 result["session_title"] = format_session_title(raw_title)
 
-        logger.info(f"⚡ [CALL1_PRESET_ROUTING] Result in {duration_ms:.1f}ms: {result} (mode={forced_mode}, first_chat={is_first_chat})")
-        return result
+        # Kembalikan strict sparse dictionary (hanya nilai bernilai True/non-empty)
+        clean_result = {
+            k: v for k, v in result.items()
+            if v is not False and v is not None and v != [] and v != ""
+        }
+        logger.info(f"⚡ [CALL1_PRESET_ROUTING] Result in {duration_ms:.1f}ms: {clean_result} (mode={forced_mode}, first_chat={is_first_chat})")
+        return clean_result
 
     except Exception as e:
         logger.warning(f"[CALL1_PRESET_ROUTING] Gagal via LLM: {e}")

@@ -220,6 +220,14 @@ class ModeCollab:
                 "query_judul": res.get("query_judul", []) if isinstance(res.get("query_judul"), list) else [],
                 "search_tags": res.get("search_tags", []) if isinstance(res.get("search_tags"), list) else []
             }
+            if res.get("requires_visual"):
+                routing_dict["requires_visual"] = True
+                routing_dict["visual_types"] = res.get("visual_types", ["mermaid"])
+            if res.get("is_coding"):
+                routing_dict["is_coding"] = True
+            if res.get("is_docwriter"):
+                routing_dict["is_docwriter"] = True
+
             logger.info(f"[COLLAB_EVAL] should_intervene={should_intervene}, need_rag={need_rag}, reason='{reason}'")
             return should_intervene, reason, routing_dict
         except Exception as e:
@@ -523,8 +531,8 @@ class ModeCollab:
 
         messages = [{"role": "system", "content": system_context}]
 
-        # Tambahkan riwayat obrolan (maks 15 pesan terakhir)
-        history_window = recent_messages[-15:]
+        # Tambahkan riwayat obrolan (maks 5 putaran dialog / 10 pesan terakhir)
+        history_window = recent_messages[-10:]
         for msg in history_window:
             sender = msg.get("sender_name", "Anggota")
             text = msg.get("message_text", "")

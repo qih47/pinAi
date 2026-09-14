@@ -35,7 +35,7 @@ class ModeEmail:
         logger.info(f"[MODE_EMAIL] Executing Email Draft Mode. Precheck data: {routing_data}")
         start_time = time.time()
         
-        yield format_sse(status="📧 Menulis email", event_type=SSEEventType.STATUS)
+        yield format_sse(status="📧 Menulis email", status_key="MAIL_INIT", event_type=SSEEventType.STATUS)
         await asyncio.sleep(0.01)
 
         system_prompt = build_email_system_prompt(
@@ -44,10 +44,13 @@ class ModeEmail:
             is_thinking=is_thinking
         )
 
-        # Convert chat history to dict list
-        current_messages = [{"role": m.role, "content": m.content} for m in chat_history]
-        # Insert system prompt at the beginning
-        current_messages.insert(0, {"role": "system", "content": system_prompt})
+        # Convert chat history to dict list (Maks 5 putaran dialog / 10 pesan)
+        messages_dict = [{"role": m.role, "content": m.content} for m in chat_history if getattr(m, "role", None) != "system"]
+        if not messages_dict or messages_dict[-1].get("role") != "user" or messages_dict[-1].get("content") != user_message:
+            messages_dict.append({"role": "user", "content": user_message})
+        trimmed_messages = messages_dict[-10:] if len(messages_dict) > 10 else messages_dict
+        
+        current_messages = [{"role": "system", "content": system_prompt}] + trimmed_messages
         
         response_stream = stream_ollama_chat(
             messages=current_messages,
@@ -102,4 +105,4 @@ class ModeEmail:
 
         duration = time.time() - start_time
         logger.info(f"[MODE_EMAIL] Completed in {duration:.2f}s")
-        yield format_sse(status=f"✨ Email siap ({duration:.1f}s)", event_type=SSEEventType.STATUS)
+        yield format_sse(status=f"✨ Email siap ({duration:.1f}s)", status_key="EMAIL_READY", event_type=SSEEventType.STATUS)

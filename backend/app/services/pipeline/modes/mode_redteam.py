@@ -65,7 +65,7 @@ class ModeRedTeam:
         if not isolated_doc_id and request and getattr(request, "isolated_doc_id", None):
             isolated_doc_id = request.isolated_doc_id
             
-        yield format_sse(status="🕵️ Membedah dokumen sasaran", event_type=SSEEventType.STATUS)
+        yield format_sse(status="🕵️ Membedah dokumen sasaran", status_key="OPENING_REDTEAM_DOC", event_type=SSEEventType.STATUS)
         await asyncio.sleep(0.05)
 
         # 1. Fetch Filename and Metadata from Database or Direct Filename
@@ -100,7 +100,7 @@ class ModeRedTeam:
                 
         async def fallback_to_rag(reason: str):
             logger.warning(f"[MODE_REDTEAM] Fallback to RAG triggered: {reason}")
-            yield format_sse(status="🔄 Mencari secara global", event_type=SSEEventType.STATUS)
+            yield format_sse(status="🔄 Mencari secara global", status_key="SEARCHING_GLOBAL", event_type=SSEEventType.STATUS)
             await asyncio.sleep(0.01)
             from backend.app.services.pipeline.modes.mode_documents import ModeDocuments
             fallback_handler = ModeDocuments()
@@ -147,14 +147,14 @@ class ModeRedTeam:
             brain = SessionBrainService(current_user_npp, session_uuid)
             cached_brain = brain.get_document(doc_id_key)
             if cached_brain and "text_map" in cached_brain:
-                yield format_sse(status="🧠 Dari memori sesi", event_type=SSEEventType.STATUS)
+                yield format_sse(status="🧠 Dari memori sesi", status_key="BRAIN_HIT", event_type=SSEEventType.STATUS)
                 await asyncio.sleep(0.01)
                 text_map = cached_brain["text_map"]
                 all_base64_images = cached_brain.get("images", [])
                 total_pages = cached_brain.get("total_pages", len(text_map))
 
         if text_map is None:
-            yield format_sse(status="📄 Memuat dokumen", event_type=SSEEventType.STATUS)
+            yield format_sse(status="📄 Memuat dokumen", status_key="DOC_LOADING", event_type=SSEEventType.STATUS)
             await asyncio.sleep(0.01)
             cache_key = session_uuid or file_path
             text_map, all_base64_images, total_pages = await extract_and_ocr_document_async(file_path, cache_key=cache_key, render_images=True)
@@ -166,11 +166,11 @@ class ModeRedTeam:
                     "images": all_base64_images,
                     "total_pages": total_pages,
                 })
-                yield format_sse(status="💾 Menyimpan ke memori", event_type=SSEEventType.STATUS)
+                yield format_sse(status="💾 Menyimpan ke memori", status_key="BRAIN_SAVE", event_type=SSEEventType.STATUS)
                 await asyncio.sleep(0.01)
 
         # 4. Two-Stage Context-Aware Reranking & Structural Continuity Engine
-        yield format_sse(status=f"🔍 Menganalisis seluruh {total_pages} halaman dokumen", event_type=SSEEventType.STATUS)
+        yield format_sse(status=f"🔍 Menganalisis seluruh {total_pages} halaman dokumen", status_key="ANALYZING_REDTEAM_PAGES", event_type=SSEEventType.STATUS)
         await asyncio.sleep(0.05)
 
 
@@ -187,14 +187,17 @@ class ModeRedTeam:
 
         # 5. Sampaikan SSE Bertahap ke frontend:
         halaman_str = ", ".join([str(p+1) for p in selected_pages])
-        yield format_sse(status=f"📌 Ditemukan Klausul Sasaran pada Halaman {halaman_str}!", event_type=SSEEventType.STATUS)
+        yield format_sse(status=f"📌 Ditemukan Klausul Sasaran pada Halaman {halaman_str}!", status_key="FOUND_TARGET_CLAUSE_PAGE", event_type=SSEEventType.STATUS)
         await asyncio.sleep(0.2)
         
-        yield format_sse(status=f"⚔️ Membedah celah hukum dari 2 sudut pandang ekstrem", event_type=SSEEventType.STATUS)
+        yield format_sse(status=f"⚔️ Membedah celah hukum dari 2 sudut pandang ekstrem", status_key="DISSECTING_LEGAL_LOOPHOLES", event_type=SSEEventType.STATUS)
         await asyncio.sleep(0.1)
 
-        # 6. Persiapkan Chat History & Prompt
-        messages_dict = [{"role": m.role, "content": m.content} for m in chat_history]
+        # 6. Persiapkan Chat History & Prompt (Maks 5 putaran dialog / 10 pesan)
+        messages_dict = [{"role": m.role, "content": m.content} for m in chat_history if getattr(m, "role", None) != "system"]
+        if messages_dict and messages_dict[-1].get("role") == "user" and messages_dict[-1].get("content") == user_message:
+            messages_dict = messages_dict[:-1]
+        trimmed_messages = messages_dict[-10:] if len(messages_dict) > 10 else messages_dict
         precheck = detect_precheck(user_message, "redteam", False)
 
         system_prompt = build_redteam_system_prompt(
@@ -218,14 +221,14 @@ class ModeRedTeam:
                 user_payload["images"] = valid_images[:12]
                 logger.info(f"[MODE_REDTEAM] 🖼️ Injected {len(user_payload['images'])} page images into Call 2 (Gemma Vision)")
             
-        current_messages = [{"role": "system", "content": system_prompt}] + messages_dict + [user_payload]
+        current_messages = [{"role": "system", "content": system_prompt}] + trimmed_messages + [user_payload]
 
         buffer = ""
         started_streaming = False
         
         # Hitung estimasi token
         sys_tokens = len(system_prompt) // 4
-        hist_tokens = sum(len(m.get("content", "")) for m in messages_dict) // 4
+        hist_tokens = sum(len(m.get("content", "")) for m in trimmed_messages) // 4
         total_used = sys_tokens + hist_tokens
         num_ctx = 16384
 

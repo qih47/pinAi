@@ -187,7 +187,44 @@ class SessionRepository:
                 logger.error(f"[CHAT_HISTORY_ERROR] Failed to get session settings: {str(e)}")
                 return None
 
-    
+    async def save_active_tokens_observation(
+        self, session_uuid: str, tokens_observation: Dict[str, Any]
+    ) -> bool:
+        """Menyimpan observasi token context window ke dalam settings chat_sessions."""
+        if not session_uuid:
+            return False
+        async with get_db() as conn:
+            try:
+                row = await conn.fetchrow(
+                    "SELECT settings FROM chat_sessions WHERE session_uuid = $1 AND is_deleted = FALSE",
+                    session_uuid,
+                )
+                current_settings = {}
+                if row and row["settings"]:
+                    current_settings = json.loads(row["settings"]) if isinstance(row["settings"], str) else dict(row["settings"])
+                
+                current_settings["tokens_observation"] = tokens_observation
+                settings_json = json.dumps(current_settings)
+                
+                await conn.execute(
+                    "UPDATE chat_sessions SET settings = $1 WHERE session_uuid = $2",
+                    settings_json,
+                    session_uuid,
+                )
+                return True
+            except Exception as e:
+                logger.error(f"[CHAT_HISTORY_ERROR] Failed to save active tokens observation: {str(e)}")
+                return False
+
+    async def get_active_tokens_observation(self, session_uuid: str) -> Optional[Dict[str, Any]]:
+        """Mengambil observasi token context window dari settings chat_sessions."""
+        if not session_uuid:
+            return None
+        settings = await self.get_session_settings(session_uuid)
+        if settings and isinstance(settings, dict):
+            return settings.get("tokens_observation")
+        return None
+
     async def update_title_direct(self, session_uuid: str, new_title: str) -> bool:
         """
         Update judul sesi secara langsung (dari Gemma 4 di Call 1 atau Call 2).

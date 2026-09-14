@@ -104,7 +104,8 @@ export async function performStream(set, get, messagesToSend, assistantMessage, 
                     activeTopic: (typeof get().sessionTopics?.[activeSessionUuid] === 'object' ? get().sessionTopics[activeSessionUuid]?.topic : get().sessionTopics?.[activeSessionUuid]) || get().activeTopic || null,
                     keySubject: (typeof get().sessionTopics?.[activeSessionUuid] === 'object' ? get().sessionTopics[activeSessionUuid]?.keySubject : null) || get().keySubject || null,
                     forcedMode: activeForcedMode,
-                    bypassRouter: activeBypassRouter
+                    bypassRouter: activeBypassRouter,
+                    language: get().language || (typeof localStorage !== 'undefined' ? localStorage.getItem("cakra_language") : 'id') || 'id'
                 },
                 {
                     onTopicUpdate: (topic, keySubject) => {
@@ -114,7 +115,10 @@ export async function performStream(set, get, messagesToSend, assistantMessage, 
                             keySubject: keySubject || null,
                             sessionTopics: {
                                 ...(state.sessionTopics || {}),
-                                [activeSessionUuid]: { topic, keySubject: keySubject || null }
+                                [activeSessionUuid]: {
+                                    topic: topic,
+                                    keySubject: keySubject || null
+                                }
                             }
                         }));
                     },
@@ -128,7 +132,8 @@ export async function performStream(set, get, messagesToSend, assistantMessage, 
                         accumulatedThinking += cleanThinking;
 
                         // Status resmi yang bersih dan elegan (prioritaskan status dari backend jika ada)
-                        let currentStatus = assistantMessage.statusMessage || '🧠 Menganalisis konteks';
+                        const activeLang = get().language || (typeof localStorage !== 'undefined' ? localStorage.getItem("cakra_language") : 'id') || 'id';
+                        let currentStatus = assistantMessage.statusMessage || (activeLang === 'en' ? '🧠 Analyzing context' : '🧠 Menganalisis konteks');
 
                         const updatedAssistantMsg = {
                             ...assistantMessage,
@@ -158,11 +163,12 @@ export async function performStream(set, get, messagesToSend, assistantMessage, 
                             });
                         }
                     },
-                    onStatus: (statusStr) => {
+                    onStatus: (statusStr, statusKey) => {
                         // Dipanggil oleh RAG / pipeline statis
                         const updatedAssistantMsg = {
                             ...assistantMessage,
-                            statusMessage: statusStr
+                            statusMessage: statusStr,
+                            statusKey: statusKey || assistantMessage.statusKey || null
                         };
                         assistantMessage = updatedAssistantMsg;
 

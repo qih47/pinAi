@@ -15,7 +15,7 @@ from fastapi import Request
 from backend.app.core.config import settings
 from backend.app.core.llm_client import stream_ollama_chat
 from backend.app.services.pipeline.sse_validation import format_sse, SSEEventType
-from backend.app.services.web_tools.web_search import perform_web_search, format_search_results_for_llm
+from backend.app.services.web_tools.web_search import perform_web_search, format_search_results_for_llm, sanitize_web_query
 from backend.app.services.web_tools.url_reader import fetch_webpage_content
 
 logger = logging.getLogger("CAKRA_AGENTIC_INTERCEPTOR")
@@ -29,8 +29,8 @@ async def execute_in_line_web_search(query: str) -> tuple[Dict[str, Any], str]:
     Menjalankan pencarian web live + scraping paralel untuk in-line tool call.
     Mengembalikan (widget_payload, llm_context_text).
     """
-    clean_query = query.strip()
-    logger.info(f"[AGENTIC_TOOL] Executing in-line web search for query: '{clean_query}'")
+    clean_query = sanitize_web_query(query.strip()) or query.strip()
+    logger.info(f"[AGENTIC_TOOL] Executing in-line web search for query: '{clean_query}' (raw: '{query}')")
     
     # 1. Search via SearXNG (5-8 hasil)
     raw_results = await perform_web_search(clean_query, num_results=6)
@@ -209,7 +209,7 @@ async def agentic_stream_wrapper(
                             is_capturing_tool = False
                             
                             # Emit live status SSE
-                            yield format_sse(status="🌐 Mencari di web", event_type=SSEEventType.STATUS)
+                            yield format_sse(status="🌐 Mencari di web", status_key="WEB_SEARCH_INIT", event_type=SSEEventType.STATUS)
                             await asyncio.sleep(0.01)
 
                             # Eksekusi Web Search
@@ -221,7 +221,7 @@ async def agentic_stream_wrapper(
                             accumulated_full_text += enriched_block
 
                             # Update status
-                            yield format_sse(status="💡 Menyusun jawaban", event_type=SSEEventType.STATUS)
+                            yield format_sse(status="💡 Menyusun jawaban", status_key="DRAFTING_RESPONSE", event_type=SSEEventType.STATUS)
                             await asyncio.sleep(0.01)
 
                             # Siapkan Turn 2 Prompt untuk melanjutkan jawaban

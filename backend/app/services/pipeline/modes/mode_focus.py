@@ -53,7 +53,7 @@ class ModeFocus:
         if not isolated_doc_id and request and getattr(request, "isolated_doc_id", None):
             isolated_doc_id = request.isolated_doc_id
             
-        yield format_sse(status="🎯 Membuka dokumen fokus rujukan", event_type=SSEEventType.STATUS)
+        yield format_sse(status="🎯 Membuka dokumen fokus rujukan", status_key="OPENING_FOCUS_DOC", event_type=SSEEventType.STATUS)
         await asyncio.sleep(0.05)
 
         # 1. Resolusi Identitas Dokumen dari PostgreSQL (dokumen) & MySQL (berita)
@@ -177,7 +177,7 @@ class ModeFocus:
                     await asyncio.sleep(0.35)
 
 
-            yield format_sse(status=f"🔍 Menganalisis {total_pages} halaman dokumen rujukan", event_type=SSEEventType.STATUS)
+            yield format_sse(status=f"🔍 Menganalisis {total_pages} halaman dokumen rujukan", status_key="ANALYZING_DOC_PAGES", event_type=SSEEventType.STATUS)
             await asyncio.sleep(0.05)
 
 
@@ -210,7 +210,7 @@ class ModeFocus:
                     total_pages = cached_brain.get("total_pages", len(text_map))
 
             if not final_extracted_text:
-                yield format_sse(status="📂 Mengambil teks utuh dari arsip dokumen", event_type=SSEEventType.STATUS)
+                yield format_sse(status="📂 Mengambil teks utuh dari arsip dokumen", status_key="RETRIEVING_FULL_TEXT", event_type=SSEEventType.STATUS)
                 await asyncio.sleep(0.05)
 
                 try:
@@ -255,7 +255,7 @@ class ModeFocus:
         # Skenario C: Dokumen benar-benar tidak ditemukan -> Fallback ke RAG global
         if not final_extracted_text and not file_path:
             logger.warning(f"[MODE_FOCUS] Fallback to RAG triggered: File not found in DB or missing isolated_doc_id ({isolated_doc_id})")
-            yield format_sse(status="🔄 Mencari secara global di arsip", event_type=SSEEventType.STATUS)
+            yield format_sse(status="🔄 Mencari secara global di arsip", status_key="SEARCHING_GLOBAL_ARCHIVE", event_type=SSEEventType.STATUS)
             await asyncio.sleep(0.01)
             from backend.app.services.pipeline.modes.mode_documents import ModeDocuments
             fallback_handler = ModeDocuments()
@@ -276,11 +276,14 @@ class ModeFocus:
 
         # 4. Sampaikan SSE Status Halaman Dokumen Terfokus
         halaman_str = ", ".join([str(p+1 if isinstance(p, int) else p) for p in selected_pages])
-        yield format_sse(status=f"📌 Konteks Terfokus: {doc_title or filename or 'Dokumen Rujukan'} (Hal. {halaman_str})", event_type=SSEEventType.STATUS)
+        yield format_sse(status=f"📌 Konteks Terfokus: {doc_title or filename or 'Dokumen Rujukan'} (Hal. {halaman_str})", status_key="FOCUSED_CONTEXT", event_type=SSEEventType.STATUS)
         await asyncio.sleep(0.1)
 
-        # 5. Persiapkan Chat History & Prompt Focus Eksklusif
-        messages_dict = [{"role": m.role, "content": m.content} for m in chat_history]
+        # 5. Persiapkan Chat History & Prompt Focus Eksklusif (Maks 5 putaran dialog / 10 pesan)
+        messages_dict = [{"role": m.role, "content": m.content} for m in chat_history if getattr(m, "role", None) != "system"]
+        if messages_dict and messages_dict[-1].get("role") == "user" and messages_dict[-1].get("content") == user_message:
+            messages_dict = messages_dict[:-1]
+        trimmed_messages = messages_dict[-10:] if len(messages_dict) > 10 else messages_dict
         precheck = detect_precheck(user_message, "focus", False)
 
         system_prompt = build_response_prompt_focus(
@@ -308,7 +311,7 @@ class ModeFocus:
                 user_payload["images"] = valid_images[:12]
                 logger.info(f"[MODE_FOCUS] 🖼️ Injected {len(user_payload['images'])} page images into Call 2 (Gemma Vision)")
             
-        current_messages = [{"role": "system", "content": system_prompt}] + messages_dict + [user_payload]
+        current_messages = [{"role": "system", "content": system_prompt}] + trimmed_messages + [user_payload]
 
         buffer = ""
         started_streaming = False
@@ -318,7 +321,7 @@ class ModeFocus:
         if session_uuid_to_use:
             from backend.app.services.chat.chat_history_service import chat_history_service
             sys_tokens = len(system_prompt) // 4
-            hist_tokens = sum(len(m.get("content", "")) for m in messages_dict) // 4
+            hist_tokens = sum(len(m.get("content", "")) for m in trimmed_messages) // 4
             total_used = sys_tokens + hist_tokens
             obs_dict = {
                 "rag_mode": "FOCUS",

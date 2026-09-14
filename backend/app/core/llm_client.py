@@ -231,7 +231,7 @@ async def stream_ollama_chat(
     # Inject Privacy & Security Guardrail
     messages = _inject_global_guardrail(messages)
 
-    # ── Call 2 Input Payload Analysis & Breakdown ──────────────────────────────
+    # ── Call 2 Input Payload Analysis & Breakdown (Compact & High-Diagnostic) ──
     system_content = next((m.get("content", "") for m in messages if m.get("role") == "system"), "")
     user_messages = [m for m in messages if m.get("role") == "user"]
     history_messages = [m for m in messages if m.get("role") in ["user", "assistant"]][:-1] if len(messages) > 2 else []
@@ -242,47 +242,267 @@ async def stream_ollama_chat(
     query_chars = len(current_query)
     total_chars = sum(len(m.get("content", "")) for m in messages)
 
-    has_rag = any(kw in system_content for kw in ["[KUTIPAN DOKUMEN INTERNAL", "[KUTIPAN REGULASI", "RAG", "DOKUMEN PENDUKUNG"])
-    has_web = any(kw in system_content for kw in ["=== KONTEN MENDALAM DARI TAUTAN TERATAS", "HASIL PENCARIAN GOOGLE", "Web Search"])
-    has_mem = any(kw in system_content for kw in ["[INGATAN MASA LALU PEGAWAI", "Karakter Komunikasi", "PANDUAN NAMA PANGGILAN"])
+    # Deteksi akurat konten fisik (bukan sekadar kata RAG di teks umum)
+    has_web = ("BERIKUT ADALAH HASIL PENCARIAN WEB TERBARU:" in system_content or "=== KONTEN MENDALAM DARI TAUTAN TERATAS" in system_content)
+    has_rag_context_block = ("📚 SUMBER DOKUMEN" in system_content and "Tidak ada konteks dokumen yang terambil." not in system_content)
+    has_rag_headers = any(kw in system_content for kw in ["--- DOKUMEN:", "[KUTIPAN REGULASI:", "[KUTIPAN DOKUMEN INTERNAL:", "--- KUTIPAN REGULASI", "[DOKUMEN TERKAIT:"])
+    has_rag = has_rag_context_block or has_rag_headers
+    has_attachment = any(kw in system_content for kw in ["[LAMPIRAN TEKS DOKUMEN", "[OCR_TEXT", "HASIL PEMBACAAN DOKUMEN"])
 
-    # Extract employee name if present in system prompt
+    # Extract employee name & slang mirroring
     import re
     emp_match = re.search(r'Nama\s*/\s*Panggilan Pilihan Pegawai:\s*\*\*([^\*]+)\*\*', system_content) or re.search(r'Pegawai yang kamu layani:\s*\*\*([^\*]+)\*\*', system_content)
     emp_name_log = emp_match.group(1).strip() if emp_match else "Pegawai"
+    slang_match = re.search(r"pengguna secara spontan menyapa.*?['\"]([^'\"]+)['\"]", system_content, re.IGNORECASE)
+    emp_sapaan_full = f"{emp_name_log} (Slang Akrab: \"{slang_match.group(1)}\")" if slang_match else emp_name_log
+
+    # Extract Mode Operasi Call 2
+    mode_match = re.search(r'MODE:\s*([A-Z\s_]+)', system_content)
+    detected_mode = mode_match.group(1).strip() if mode_match else ("RAG Mode" if has_rag else ("Web Search Mode" if has_web else "Chitchat / Standar"))
+
+    # Extract Data Sources & Char Sizes
+    data_log_entries = []
+    if has_web:
+        web_sources = []
+        for m in re.finditer(r'\[\d+\]\s*Judul Sumber:\s*([^\n\r]+)', system_content):
+            t = m.group(1).strip()
+            if len(t) > 40:
+                t = t[:37] + "..."
+            if t and t not in web_sources:
+                web_sources.append(t)
+        if not web_sources:
+            for m in re.finditer(r'\[Sumber:\s*https?://(?:www\.)?([^/\s\]]+)', system_content):
+                dom = m.group(1).strip()
+                if dom and dom not in web_sources:
+                    web_sources.append(dom)
+        web_chars_est = 0
+        for kw in ["BERIKUT ADALAH HASIL PENCARIAN WEB TERBARU:", "=== KONTEN MENDALAM"]:
+            if kw in system_content:
+                p_start = system_content.find(kw)
+                p_end = len(system_content)
+                for end_kw in ["\n📚 SUMBER DOKUMEN", "\n🎨 GAYA BAHASA", "\n=== CAKRA AI SYSTEM GUARDRAIL"]:
+                    p = system_content.find(end_kw, p_start)
+                    if p != -1 and p < p_end:
+                        p_end = p
+                web_chars_est = max(0, p_end - p_start)
+                break
+        src_text = ", ".join(web_sources[:5]) if web_sources else "Hasil Penelusuran Web"
+        if len(web_sources) > 5:
+            src_text += f" (+{len(web_sources)-5} lainnya)"
+        data_log_entries.append(f"• Web Search     : {web_chars_est:,} chars (~{web_chars_est//4:,} tokens) | Sumber: {src_text}")
+
+    if has_rag:
+        rag_sources = []
+        for m in re.finditer(r'---\s*DOKUMEN:\s*([^\n\r(]+)', system_content):
+            d = m.group(1).strip()
+            if len(d) > 40:
+                d = d[:37] + "..."
+            if d and d not in rag_sources:
+                rag_sources.append(d)
+        for m in re.finditer(r'\[KUTIPAN (?:REGULASI|DOKUMEN INTERNAL)[^:]*:\s*([^\n\r\]]+)', system_content):
+            d = m.group(1).strip()
+            if len(d) > 40:
+                d = d[:37] + "..."
+            if d and d not in rag_sources:
+                rag_sources.append(d)
+        rag_chars_est = 0
+        for kw in ["📚 SUMBER DOKUMEN", "--- DOKUMEN:", "[KUTIPAN REGULASI:", "[KUTIPAN DOKUMEN INTERNAL:"]:
+            if kw in system_content:
+                p_start = system_content.find(kw)
+                p_end = len(system_content)
+                for end_kw in ["\n🎨 GAYA BAHASA & ATURAN", "\nATURAN STANDARISASI NOMENKLATUR", "\n=== CAKRA AI SYSTEM GUARDRAIL", "\nATURAN MUTLAK PENEMPATAN JSON"]:
+                    p = system_content.find(end_kw, p_start)
+                    if p != -1 and p < p_end:
+                        p_end = p
+                rag_chars_est = max(0, p_end - p_start)
+                break
+        doc_text = ", ".join(rag_sources[:5]) if rag_sources else "Arsip Dokumen Internal Pindad"
+        if len(rag_sources) > 5:
+            doc_text += f" (+{len(rag_sources)-5} lainnya)"
+        data_log_entries.append(f"• RAG Internal   : {rag_chars_est:,} chars (~{rag_chars_est//4:,} tokens) | Dokumen: {doc_text}")
+
+    if has_attachment:
+        data_log_entries.append("• Lampiran / OCR : Terdeteksi lampiran berkas dokumen pengguna")
+
+    if not data_log_entries:
+        data_log_entries.append("• Status         : ⚪ Nihil (Percakapan Langsung / Tanpa Data Luar)")
+
+    # Detect Active Prompt Modules (Lego Blocks Inspection)
+    active_lego = []
+    if "MERMAID DIAGRAM (SANGAT DIREKOMENDASIKAN" in system_content or "1. MERMAID DIAGRAM GUIDANCE" in system_content:
+        active_lego.append("Visual: Mermaid")
+    if "[VISUALIZATION: FLOWCHART XYFLOW]" in system_content or "```flowchart" in system_content:
+        active_lego.append("Visual: Flowchart (XYFlow)")
+    if "2. CHART.JS VISUAL ENGINE" in system_content:
+        active_lego.append("Visual: Chart.js")
+    if "4. GANTT TIMELINE ENGINE" in system_content:
+        active_lego.append("Visual: Gantt")
+    if "5. ADVANCED DATA GRID" in system_content:
+        active_lego.append("Visual: DataGrid")
+    if "6. PETA & GEOLOKASI (INTERACTIVE MAP" in system_content:
+        active_lego.append("Visual: Map Pindad")
+    if "VISUALIZATION: INFOGRAPHIC" in system_content or "```infographic" in system_content:
+        active_lego.append("Visual: Infographic")
+
+    if "INTERACTIVE DECISION WIZARD & GUIDED CLARIFICATION" in system_content:
+        active_lego.append("Interactive Wizard")
+    if "10. PANDUAN STRUKTUR PEMECAHAN MASALAH (TROUBLESHOOTING" in system_content:
+        active_lego.append("Troubleshooting")
+    if "11. PANDUAN TABEL MATRIKS PERBANDINGAN" in system_content:
+        active_lego.append("Comparative Matrix")
+        active_lego.append("Actionable Workflow")
+    if "DEEP RESEARCH & ENTERPRISE ARCHITECT" in system_content:
+        active_lego.append("Deep Research")
+    if "SECURITY CRITICAL & HARDENING" in system_content:
+        active_lego.append("Security Critical")
+    if "<create_file" in system_content or "PETUNJUK PEMBUATAN BERKAS FISIK" in system_content:
+        active_lego.append("File Generator (<create_file>)")
+    if "DOCUMENT WRITER & EDITOR" in system_content:
+        active_lego.append("Document Writer BUMN")
+    if "MODE SMART MAIL" in system_content:
+        active_lego.append("Smart Email Generator")
+    if "CODING SANDBOX" in system_content or "KODING & SCRIPT" in system_content:
+        active_lego.append("Coding Sandbox")
+    if "ATURAN MUTLAK ISOLASI REGULASI" in system_content:
+        active_lego.append("RAG Anti-Contamination Guard")
+    if "CAKRA AI SYSTEM GUARDRAIL" in system_content:
+        active_lego.append("System Guardrail")
+
+    lego_modules_str = ", ".join(active_lego) if active_lego else "Core Persona & Sapaan (Tanpa Modul Berat)"
+
+    # Format True Dialogue Rounds (Putaran Dialog Berpasangan: User + AI)
+    dialogue_rounds = []
+    curr_u = ""
+    curr_a = ""
+    for m in history_messages:
+        role = m.get("role")
+        txt = m.get("content", "").replace("\n", " ").strip()
+        if role == "user":
+            if curr_u or curr_a:
+                dialogue_rounds.append((curr_u, curr_a))
+                curr_u = ""
+                curr_a = ""
+            curr_u = txt
+        elif role == "assistant":
+            curr_a = txt
+    if curr_u or curr_a:
+        dialogue_rounds.append((curr_u, curr_a))
+
+    history_snippets = []
+    if dialogue_rounds:
+        recent_rounds = dialogue_rounds[-2:]  # 2 putaran dialog terakhir
+        hidden_count = len(dialogue_rounds) - len(recent_rounds)
+        if hidden_count > 0:
+            history_snippets.append(f"   (... {hidden_count} putaran dialog sebelumnya diringkas)")
+        for idx, (u_text, a_text) in enumerate(recent_rounds, 1):
+            round_num = len(dialogue_rounds) - len(recent_rounds) + idx
+            u_snip = (u_text[:65] + "...") if len(u_text) > 65 else (u_text or "(pesan awal)")
+            a_snip = (a_text[:65] + "...") if len(a_text) > 65 else (a_text or "...")
+            history_snippets.append(f"   [Putaran {round_num}]")
+            history_snippets.append(f"     • User : \"{u_snip}\"")
+            history_snippets.append(f"     • AI   : \"{a_snip}\"")
+    else:
+        history_snippets.append("   (Percakapan baru / belum ada riwayat putaran dialog)")
 
     image_count = sum(len(m.get("images", [])) for m in messages if isinstance(m.get("images"), list))
+    clean_query_log = current_query.replace("\n", " ").strip()
+    if len(clean_query_log) > 90:
+        clean_query_log = clean_query_log[:87] + "..."
 
-    logger.info(
-        f"\n"
-        f"╔═══════════════════════════════════════════════════════════════════════════════╗\n"
-        f"║ 📥 [CALL 2 INPUT MONITORING & PREFILL PAYLOAD]                               ║\n"
-        f"╠═══════════════════════════════════════════════════════════════════════════════╣\n"
-        f"║ 🤖 Model Target     : {model_name:<55} ║\n"
-        f"║ 👤 Employee Sapaan  : {emp_name_log:<55} ║\n"
-        f"║ ⚙️  Konfigurasi      : num_ctx={num_ctx:<6} | num_predict={num_predict if 'num_predict' in locals() else 8192:<6} | temp={temperature:<4} | think={is_thinking} ║\n"
-        f"║ 📊 Total Payload    : {total_chars:,} chars (~{total_chars//4:,} est. tokens) | {len(messages)} messages ║\n"
-        f"║   ├─ System Prompt  : {system_chars:,} chars (~{system_chars//4:,} tokens) [RAG: {'✅' if has_rag else '❌'} | Web: {'✅' if has_web else '❌'} | Mem: {'✅' if has_mem else '❌'}] ║\n"
-        f"║   ├─ History Context: {len(history_messages)} turns ({history_chars:,} chars | ~{history_chars//4:,} tokens) ║\n"
-        f"║   ├─ Visual Images  : {image_count} visual page images injected to Gemma Vision      ║\n"
-        f"║   └─ User Prompt    : \"{current_query[:55].strip()}...\" ({query_chars:,} chars) ║\n"
-        f"╠═══════════════════════════════════════════════════════════════════════════════╣\n"
-        f"║ 📜 [RAW SYSTEM PROMPT CONTENT ({system_chars:,} chars)]:                      ║\n"
-        f"╠═══════════════════════════════════════════════════════════════════════════════╣\n"
-        f"{system_content}\n"
-        f"╚═══════════════════════════════════════════════════════════════════════════════╝"
-    )
-
-    logger.info("⏳ [LLM CLIENT] Request masuk antrean GPU. Menunggu Slot Semaphore...")
     queue_start_time = datetime.now()
-
     async with gpu_semaphore:
         queue_wait_time = (datetime.now() - queue_start_time).total_seconds()
         queue_ms = queue_wait_time * 1000
-        if queue_wait_time > 0.05:
-            logger.info(f"🔓 [HARDWARE GPU] Slot didapatkan setelah antre {queue_ms:.1f}ms ({queue_wait_time:.2f}s)! Mulai inferensi model '{model_name}'...")
-        else:
-            logger.info(f"🔓 [HARDWARE GPU] Slot didapatkan langsung (tanpa antre - {queue_ms:.1f}ms)! Mulai inferensi model '{model_name}'...")
+
+        num_predict_val = num_predict if 'num_predict' in locals() and num_predict else 8192
+
+        INNER_W = 98
+        BORDER_W = INNER_W + 2
+
+        def _make_rows2(text: str, inner_width: int = INNER_W, indent_spaces: int = 4) -> list:
+            import wcwidth
+            w_text = wcwidth.wcswidth(text)
+            if w_text <= inner_width:
+                pad = inner_width - w_text
+                return [f"║ {text}{' ' * max(0, pad)} ║"]
+            
+            leading_spaces = len(text) - len(text.lstrip(" "))
+            prefix_indent = " " * leading_spaces
+            clean_text = text.lstrip(" ")
+
+            words = clean_text.split(" ")
+            lines = []
+            curr = prefix_indent
+            for w in words:
+                if not w:
+                    continue
+                cand = (curr + " " + w) if curr.strip() else (prefix_indent + w)
+                if wcwidth.wcswidth(cand) <= inner_width:
+                    curr = cand
+                else:
+                    if curr.strip():
+                        lines.append(curr)
+                        curr = (" " * indent_spaces) + w
+                    else:
+                        lines.append(w)
+                        curr = ""
+            if curr.strip():
+                lines.append(curr)
+
+            res = []
+            for line in lines:
+                w_line = wcwidth.wcswidth(line)
+                if w_line > inner_width:
+                    cur_ch = ""
+                    for ch in line:
+                        if wcwidth.wcswidth(cur_ch + ch) > inner_width:
+                            break
+                        cur_ch += ch
+                    line = cur_ch
+                    w_line = wcwidth.wcswidth(line)
+                pad = inner_width - w_line
+                res.append(f"║ {line}{' ' * max(0, pad)} ║")
+            return res
+
+        top2 = "╔" + ("═" * BORDER_W) + "╗"
+        mid2 = "╠" + ("═" * BORDER_W) + "╣"
+        bot2 = "╚" + ("═" * BORDER_W) + "╝"
+
+        c2_lines = [
+            top2,
+            *_make_rows2("📥 [CALL 2 INPUT & PREFILL PAYLOAD DASHBOARD]"),
+            mid2,
+            *_make_rows2(f"🤖 Model Target     : {model_name}"),
+            *_make_rows2(f"👤 Sapaan Pegawai   : {emp_sapaan_full}"),
+            *_make_rows2(f"⏳ Antrean GPU      : {queue_ms:.1f} ms ({'Langsung dapat slot' if queue_wait_time <= 0.05 else f'Antre {queue_wait_time:.2f}s'})"),
+            *_make_rows2(f"🔧 Konfigurasi      : num_ctx={num_ctx} | predict={num_predict_val} | temp={temperature} | think={is_thinking}"),
+            *_make_rows2(f"📊 Total Payload    : {total_chars:,} chars (~{total_chars//4:,} est. tokens) | {len(messages)} messages"),
+            *_make_rows2(f"   ├─ System Prompt : {system_chars:,} chars (~{system_chars//4:,} tokens)"),
+            *_make_rows2(f"   ├─ Riwayat Chat  : {history_chars:,} chars (~{history_chars//4:,} tokens) ({len(dialogue_rounds)} putaran dialog)"),
+            *_make_rows2(f"   └─ Current Query : {query_chars:,} chars | Visual Images: {image_count}"),
+            mid2,
+            *_make_rows2("💬 [QUERY PENGGUNA AKTIF]"),
+            *_make_rows2(f"   \"{clean_query_log}\"", indent_spaces=5),
+            mid2,
+            *_make_rows2("📂 [DATA KONTEKS FISIK YANG DIBAWA]")
+        ]
+        for entry in data_log_entries:
+            c2_lines.extend(_make_rows2(f"   {entry}", indent_spaces=5))
+
+        c2_lines.extend([
+            mid2,
+            *_make_rows2("🧩 [MODUL PROMPT LEGO YANG TERPASANG]"),
+            *_make_rows2(f"   • Mode Operasi   : {detected_mode}"),
+            *_make_rows2(f"   • Balok Aktif    : {lego_modules_str}", indent_spaces=22),
+            mid2,
+            *_make_rows2(f"📜 [RIWAYAT PERCAKAPAN ({len(dialogue_rounds)} Putaran Dialog / {len(history_messages)} Pesan | {history_chars:,} chars)]")
+        ])
+        for snip in history_snippets:
+            c2_lines.extend(_make_rows2(f" {snip}", indent_spaces=5))
+
+        c2_lines.append(bot2)
+
+        logger.info("\n" + "\n".join(c2_lines))
 
         inference_start_time = datetime.now()
 
