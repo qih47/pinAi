@@ -552,13 +552,13 @@ class TTSService:
             )
         ref_audio_proc, ref_text_proc = self._ref_audio_cache[ref_file]
 
-        # Penanganan Anti-Cutoff:
-        # Tambahkan trailing breathing buffer agar model tidak memotong suku kata terakhir (misal: "Sehat kan?")
+        # Penanganan Anti-Cutoff: tambahkan '. e.' sebagai buffer nafas penutup netral.
+        # Karakter 'e' terdaftar langsung di vocab F5-TTS, menghasilkan vokal hembusan nafas
+        # alami tanpa sisa bunyi 'uu', serta memberi alokasi durasi penuh agar konsonan akhir kata asli
+        # (misal: 'siap', 'fresh') terucap 100% utuh.
         gen_text_input = clean_text.strip()
-        if not gen_text_input.endswith(('.', '?', '!')):
-            gen_text_input += '.'
-        if not gen_text_input.endswith('..'):
-            gen_text_input += ' ..'
+        gen_text_input = gen_text_input.rstrip('.?!')
+        gen_text_input += '. !!!!.'
 
         # Kecepatan bicara (speed factor) adaptif bahasa Indonesia:
         # Kecepatan natural penutur bahasa Indonesia ~8-10 karakter per detik.
@@ -594,17 +594,17 @@ class TTSService:
         )
         t_elapsed = time.time() - t_start
 
-        # Trailing silence 0.35 detik (jeda nafas alami, mencegah kata terakhir terpotong)
-        silence_samples = int(0.35 * sr)
+        # Trailing silence 0.6 detik
+        silence_samples = int(0.6 * sr)
         silence = np.zeros(silence_samples, dtype=wav.dtype)
 
-        # Micro-fadeout halus di 60ms terakhir agar tidak ada klik audio
-        fade_len = min(int(0.06 * sr), len(wav))
+        # Concat dulu, fadeout di ujung silence (bukan di kata)
+        wav = np.concatenate([wav, silence])
+        fade_len = min(int(0.08 * sr), len(wav))
         if fade_len > 0:
             fade_curve = np.linspace(1.0, 0.0, fade_len)
             wav[-fade_len:] = wav[-fade_len:] * fade_curve
 
-        wav = np.concatenate([wav, silence])
         audio_dur = len(wav) / sr
 
         logger.info(
