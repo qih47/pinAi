@@ -338,5 +338,231 @@ export const createStreamSlice = (set, get) => ({
             index,     // 🔥 editIndex
             regenerationOptions
         );
+    },
+
+    /**
+     * Regenerate Assistant Response as a new variant (< 1 / 3 >) without overwriting previous versions.
+     * @param {number} assistantIdx - Index of the assistant message in messages array
+     */
+    regenerateAssistant: async (assistantIdx, toast = null) => {
+        const sessionUuid = get().sessionUuid;
+        if (get().activeStreams?.[sessionUuid]?.isStreaming) return;
+
+        const currentMessages = [...get().messages];
+        const targetAssistantMsg = currentMessages[assistantIdx];
+        if (!targetAssistantMsg || targetAssistantMsg.role !== 'assistant') return;
+
+        // Cari user message sebelumnya
+        let userIdx = assistantIdx - 1;
+        while (userIdx >= 0 && currentMessages[userIdx]?.role !== 'user') {
+            userIdx--;
+        }
+        if (userIdx < 0) return;
+        const userMsg = currentMessages[userIdx];
+
+        // Dapatkan mode dan thinking asli
+        const currentIsolatedDocId = get().activeIsolatedDocId;
+        const currentChatMode = get().chatMode || 'auto';
+        let effectiveChatMode = currentChatMode;
+
+        let detectedMode = targetAssistantMsg.chatMode || targetAssistantMsg.mode || targetAssistantMsg.metadata?.mode;
+        if (!detectedMode && userMsg) {
+            detectedMode = userMsg.chatMode || userMsg.mode || userMsg.metadata?.mode;
+        }
+
+        if (currentIsolatedDocId) {
+            effectiveChatMode = currentChatMode === 'compliance' ? 'compliance' : 'focus';
+        } else if (get().activeModeTag) {
+            effectiveChatMode = get().activeModeTag;
+        } else {
+            effectiveChatMode = detectedMode || 'auto';
+        }
+
+        let effectiveThinkingMode = get().isThinkingMode;
+        if (targetAssistantMsg.isThinkingMode !== undefined) {
+            effectiveThinkingMode = Boolean(targetAssistantMsg.isThinkingMode);
+        } else if (targetAssistantMsg.thinking !== undefined && typeof targetAssistantMsg.thinking === 'boolean') {
+            effectiveThinkingMode = targetAssistantMsg.thinking;
+        } else if (targetAssistantMsg.thought) {
+            const thoughtStr = String(targetAssistantMsg.thought);
+            const hasThinkingFlag = /Thinking:\s*true/i.test(thoughtStr);
+            const hasThinkingTag = thoughtStr.includes('<think>') || thoughtStr.includes('<|channel>thought');
+            const hasRealThought = thoughtStr.length > 50 && !thoughtStr.startsWith('Gemma Agentic | Mode:') && !thoughtStr.startsWith('Gemma Agentic [Mode:');
+            effectiveThinkingMode = hasThinkingFlag || hasThinkingTag || hasRealThought;
+        }
+
+        // Siapkan struktur variants
+        let existingVariants = [];
+        if (Array.isArray(targetAssistantMsg.variants) && targetAssistantMsg.variants.length > 0) {
+            existingVariants = targetAssistantMsg.variants.map((v, i) => ({
+                ...v,
+                variant_index: v.variant_index || (i + 1)
+            }));
+        } else {
+            existingVariants = [{
+                id: targetAssistantMsg.id,
+                content: targetAssistantMsg.content,
+                thought: targetAssistantMsg.thought,
+                sources: targetAssistantMsg.sources,
+                metadata: targetAssistantMsg.metadata,
+                feedback: targetAssistantMsg.feedback,
+                timestamp: targetAssistantMsg.timestamp || targetAssistantMsg.created_at,
+                created_at: targetAssistantMsg.created_at || targetAssistantMsg.timestamp,
+                variant_index: 1
+            }];
+        }
+
+        const newVariantIndex = existingVariants.length + 1;
+        const nowIso = new Date().toISOString();
+        const newVariant = {
+            id: null,
+            content: '',
+            thought: '',
+            sources: null,
+            metadata: null,
+            feedback: null,
+            isThinking: effectiveThinkingMode,
+            isStreaming: true,
+            variant_index: newVariantIndex,
+            timestamp: nowIso,
+            created_at: nowIso
+        };
+
+        const updatedVariants = [...existingVariants, newVariant];
+        const newActiveVariantIndex = updatedVariants.length - 1;
+
+        const updatedAssistantMessage = {
+            ...targetAssistantMsg,
+            content: '',
+            thought: '',
+            sources: null,
+            metadata: null,
+            feedback: null,
+            created_at: nowIso,
+            timestamp: nowIso,
+            isThinking: effectiveThinkingMode,
+            isStreaming: true,
+            statusKey: effectiveThinkingMode ? 'THINKING_PROGRESS' : null,
+            statusMessage: effectiveThinkingMode ? 'THINKING_PROGRESS' : '',
+            chatMode: effectiveChatMode,
+            mode: effectiveChatMode,
+            isThinkingMode: effectiveThinkingMode,
+            variants: updatedVariants,
+            activeVariantIndex: newActiveVariantIndex,
+            parent_id: userMsg.id || targetAssistantMsg.parent_id || null,
+            regenerated_from_id: targetAssistantMsg.id || (existingVariants[targetAssistantMsg.activeVariantIndex || 0]?.id) || null
+        };
+
+        currentMessages[assistantIdx] = updatedAssistantMessage;
+
+        const controller = new AbortController();
+        const activeStreams = { ...get().activeStreams };
+        activeStreams[sessionUuid] = {
+            messages: currentMessages,
+            isStreaming: true,
+            isThinking: effectiveThinkingMode,
+            abortController: controller,
+            currentThinking: effectiveThinkingMode ? 'Sedang berpikir...' : ''
+        };
+
+        set({
+            activeStreams,
+            messages: currentMessages,
+            isStreaming: true,
+            isThinking: effectiveThinkingMode,
+            isEditRegenerating: true,
+            abortController: controller,
+            currentThinking: effectiveThinkingMode ? 'Sedang berpikir...' : ''
+        });
+
+        await new Promise(resolve => setTimeout(resolve, 100));
+
+        // Kirim riwayat percakapan HANYA sampai user prompt yang bersangkutan
+        const messagesToSend = currentMessages.slice(0, userIdx + 1);
+        const npp = JSON.parse(localStorage.getItem('cakra_user') || '{}')?.npp || null;
+
+        const currentAttachmentPaths = (userMsg.attachments || [])
+            .map((file) => file.file_path)
+            .filter(Boolean);
+
+        const msgStreamOptions = targetAssistantMsg?.streamOptions || userMsg?.streamOptions || {};
+        const savedIsolatedDocId = msgStreamOptions.isolated_doc_id || 
+                                   msgStreamOptions.isolatedDocId || 
+                                   userMsg?.isolatedDocId || 
+                                   get().activeIsolatedDocId || 
+                                   null;
+
+        const regenerationOptions = {
+            ...msgStreamOptions,
+            isolated_doc_id: savedIsolatedDocId,
+            isolatedDocId: savedIsolatedDocId,
+            forced_mode: msgStreamOptions.forced_mode || msgStreamOptions.forcedMode || (savedIsolatedDocId ? 'documents' : effectiveChatMode),
+            forcedMode: msgStreamOptions.forced_mode || msgStreamOptions.forcedMode || (savedIsolatedDocId ? 'documents' : effectiveChatMode),
+            bypass_router: msgStreamOptions.bypass_router !== undefined ? msgStreamOptions.bypass_router : Boolean(savedIsolatedDocId),
+            bypassRouter: msgStreamOptions.bypassRouter !== undefined ? msgStreamOptions.bypassRouter : Boolean(savedIsolatedDocId),
+            is_regenerate: true,
+            isRegenerate: true,
+            target_index: assistantIdx,
+            targetIndex: assistantIdx,
+            parent_index: userIdx,
+            parentIndex: userIdx,
+            regenerated_from_id: updatedAssistantMessage.regenerated_from_id,
+            parent_id: updatedAssistantMessage.parent_id,
+            regeneratedFromId: updatedAssistantMessage.regenerated_from_id,
+            parentId: updatedAssistantMessage.parent_id
+        };
+
+        await performStream(
+            set,
+            get,
+            messagesToSend,
+            updatedAssistantMessage,
+            sessionUuid,
+            npp,
+            savedIsolatedDocId,
+            currentAttachmentPaths,
+            effectiveChatMode,
+            effectiveThinkingMode,
+            toast,
+            assistantIdx, // targetAssistantIdx
+            null,         // editIndex null agar tidak menimpa via update_chat_message!
+            regenerationOptions
+        );
+    },
+
+    /**
+     * Switch actively displayed variant of a message (< 1 / 3 >) in-memory without reloading
+     * @param {number} messageIdx - Index of message in messages array
+     * @param {number} targetVariantIdx - Index in msg.variants (0-based)
+     */
+    switchMessageVariant: (messageIdx, targetVariantIdx) => {
+        const messages = [...get().messages];
+        const targetMsg = messages[messageIdx];
+        if (!targetMsg || !targetMsg.variants || !targetMsg.variants[targetVariantIdx]) return;
+
+        const selectedVariant = targetMsg.variants[targetVariantIdx];
+        const selectedThought = selectedVariant.thought || selectedVariant.thinking || '';
+        const selectedTime = selectedVariant.created_at || selectedVariant.timestamp || targetMsg.created_at || targetMsg.timestamp;
+        messages[messageIdx] = {
+            ...targetMsg,
+            ...selectedVariant,
+            created_at: selectedTime,
+            timestamp: selectedTime,
+            thought: selectedThought,
+            thinking: selectedThought,
+            activeVariantIndex: targetVariantIdx
+        };
+
+        set({ messages });
+
+        const sessionUuid = get().sessionUuid;
+        if (sessionUuid && get().activeStreams?.[sessionUuid]) {
+            const activeStreams = { ...get().activeStreams };
+            activeStreams[sessionUuid] = {
+                ...activeStreams[sessionUuid],
+                messages
+            };
+            set({ activeStreams });
+        }
     }
 });

@@ -22,8 +22,8 @@ class MessageRepository:
     # =========================================================================
     
     async def save_chat_message(
-        self, session_id: str, role: str, text: str, thought: Optional[str] = None, sources: Optional[list] = None, metadata: Optional[dict] = None
-    ) -> bool:
+        self, session_id: str, role: str, text: str, thought: Optional[str] = None, sources: Optional[list] = None, metadata: Optional[dict] = None, parent_id: Optional[int] = None, regenerated_from_id: Optional[int] = None, variant_index: Optional[int] = None
+    ) -> Any:
         """Menyimpan pesan ke chat_messages. Param session_id menerima session_uuid, di-resolve ke PK integer."""
         async with get_db() as conn:
             try:
@@ -34,15 +34,40 @@ class MessageRepository:
                     )
                     return False
     
+                # Auto-resolve parent_id untuk role assistant jika belum ditentukan
+                if role == 'assistant' and parent_id is None:
+                    if regenerated_from_id:
+                        parent_id = await conn.fetchval(
+                            "SELECT parent_id FROM chat_messages WHERE id = $1",
+                            regenerated_from_id
+                        )
+                    if parent_id is None:
+                        parent_id = await conn.fetchval(
+                            "SELECT id FROM chat_messages WHERE session_id = $1 AND role = 'user' ORDER BY timestamp DESC, id DESC LIMIT 1",
+                            session_pk
+                        )
+
+                # Hitung variant_index otomatis jika role assistant dan memiliki parent_id
+                if role == 'assistant' and parent_id:
+                    if variant_index is None:
+                        curr_max = await conn.fetchval(
+                            "SELECT COALESCE(MAX(variant_index), 0) FROM chat_messages WHERE session_id = $1 AND parent_id = $2",
+                            session_pk, parent_id
+                        )
+                        variant_index = (curr_max or 0) + 1
+                else:
+                    variant_index = variant_index or 1
+
                 # Thought process diubah menjadi thought sesuai sasis fisik tabel baru
                 sources_json = json.dumps(sources) if sources is not None else None
                 metadata_json = json.dumps(metadata) if metadata is not None else None
                 query = """
-                    INSERT INTO chat_messages (session_id, role, message_text, timestamp, thought, sources, metadata)
-                    VALUES ($1, $2, $3, CURRENT_TIMESTAMP, $4, $5, $6);
+                    INSERT INTO chat_messages (session_id, role, message_text, timestamp, thought, sources, metadata, parent_id, regenerated_from_id, variant_index)
+                    VALUES ($1, $2, $3, CURRENT_TIMESTAMP, $4, $5, $6, $7, $8, $9)
+                    RETURNING id;
                 """
-                await conn.execute(query, session_pk, role, text, thought, sources_json, metadata_json)
-                return True
+                inserted_id = await conn.fetchval(query, session_pk, role, text, thought, sources_json, metadata_json, parent_id, regenerated_from_id, variant_index)
+                return inserted_id or True
             except Exception as e:
                 logger.error(f"[CHAT_HISTORY_ERROR] Failed to save chat message: {str(e)}")
                 return False
@@ -184,8 +209,9 @@ class MessageRepository:
     
     async def get_session_messages(self, session_uuid: str) -> List[Dict[str, Any]]:
         """
-        Ambil semua pesan dalam sesi tertentu beserta file lampirannya.
+        Ambil semua pesan dalam sesi tertentu beserta file lampiran dan varian responsnya.
         Memotong absolute path lama di level SQL agar output data selalu nama file murni.
+        Mengelompokkan varian respons asisten yang berelasi dengan parent user message yang sama.
         """
         query = """
             SELECT 
@@ -195,7 +221,11 @@ class MessageRepository:
                 m.thought,
                 m.sources,
                 m.metadata,
+                m.feedback,
                 m.timestamp,
+                m.parent_id,
+                m.regenerated_from_id,
+                COALESCE(m.variant_index, 1) AS variant_index,
                 COALESCE(
                     JSON_AGG(
                         JSON_BUILD_OBJECT(
@@ -221,13 +251,16 @@ class MessageRepository:
                     WHERE session_id = s.id AND timestamp < m.timestamp
                 )
             WHERE s.session_uuid = $1 AND s.is_deleted = FALSE
-            GROUP BY m.id, m.role, m.message_text, m.thought, m.sources, m.metadata, m.timestamp
-            ORDER BY m.timestamp ASC
+            GROUP BY m.id, m.role, m.message_text, m.thought, m.sources, m.metadata, m.feedback, m.timestamp, m.parent_id, m.regenerated_from_id, m.variant_index
+            ORDER BY m.timestamp ASC, m.id ASC
         """
         async with get_db() as conn:
             rows = await conn.fetch(query, session_uuid)
-            return [
-                {
+            formatted_messages = []
+            assistant_turn_by_parent = {}
+
+            for row in rows:
+                msg_data = {
                     "id": row["id"],
                     "role": row["role"],
                     "content": row["message_text"],
@@ -236,9 +269,66 @@ class MessageRepository:
                     "created_at": row["timestamp"].isoformat() if hasattr(row["timestamp"], "isoformat") else str(row["timestamp"]) if row["timestamp"] else None,
                     "sources": json.loads(row["sources"]) if row["sources"] and isinstance(row["sources"], str) else row.get("sources"),
                     "metadata": json.loads(row["metadata"]) if row["metadata"] and isinstance(row["metadata"], str) else row.get("metadata"),
-                    "attachments": json.loads(row["attachments"]) if isinstance(row["attachments"], str) else row["attachments"]
-                } for row in rows
-            ]
+                    "feedback": json.loads(row["feedback"]) if row["feedback"] and isinstance(row["feedback"], str) else row.get("feedback"),
+                    "attachments": json.loads(row["attachments"]) if isinstance(row["attachments"], str) else row["attachments"],
+                    "parent_id": row["parent_id"],
+                    "regenerated_from_id": row["regenerated_from_id"],
+                    "variant_index": row["variant_index"] or 1
+                }
+
+                # Kelompokkan asisten varian jika memiliki parent_id yang sama dalam sesi ini
+                if row["role"] == "assistant" and row["parent_id"] and row["parent_id"] in assistant_turn_by_parent:
+                    target_idx = assistant_turn_by_parent[row["parent_id"]]
+                    existing_msg = formatted_messages[target_idx]
+                    
+                    variant_copy = {
+                        "id": msg_data["id"],
+                        "content": msg_data["content"],
+                        "thought": msg_data["thought"],
+                        "sources": msg_data["sources"],
+                        "metadata": msg_data["metadata"],
+                        "feedback": msg_data["feedback"],
+                        "timestamp": msg_data["timestamp"],
+                        "created_at": msg_data["created_at"],
+                        "variant_index": msg_data["variant_index"]
+                    }
+                    existing_msg["variants"].append(variant_copy)
+                    existing_msg["variants"].sort(key=lambda v: v.get("variant_index", 1))
+                    
+                    # Varian aktif default ke yang paling baru
+                    existing_msg["activeVariantIndex"] = len(existing_msg["variants"]) - 1
+                    latest = existing_msg["variants"][-1]
+                    
+                    # Sinkronisasi properti root ke varian terbaru agar backward-compatible
+                    existing_msg["id"] = latest["id"]
+                    existing_msg["content"] = latest["content"]
+                    existing_msg["thought"] = latest["thought"]
+                    existing_msg["sources"] = latest["sources"]
+                    existing_msg["metadata"] = latest["metadata"]
+                    existing_msg["feedback"] = latest["feedback"]
+                    existing_msg["timestamp"] = latest["timestamp"]
+                    existing_msg["created_at"] = latest["created_at"]
+                    existing_msg["variant_index"] = latest.get("variant_index", 1)
+                else:
+                    if row["role"] == "assistant":
+                        msg_data["variants"] = [{
+                            "id": msg_data["id"],
+                            "content": msg_data["content"],
+                            "thought": msg_data["thought"],
+                            "sources": msg_data["sources"],
+                            "metadata": msg_data["metadata"],
+                            "feedback": msg_data["feedback"],
+                            "timestamp": msg_data["timestamp"],
+                            "created_at": msg_data["created_at"],
+                            "variant_index": msg_data["variant_index"]
+                        }]
+                        msg_data["activeVariantIndex"] = 0
+                        if row["parent_id"]:
+                            assistant_turn_by_parent[row["parent_id"]] = len(formatted_messages)
+
+                    formatted_messages.append(msg_data)
+
+            return formatted_messages
 
     
     # =========================================================================

@@ -51,6 +51,9 @@ export const useChatStore = create((set, get) => ({
         set({ ttsSpeed: val });
         get().syncSettings();
     },
+    activeTtsMessageId: null,
+    setActiveTtsMessageId: (id) => set({ activeTtsMessageId: id }),
+    stopAllTTS: () => set({ activeTtsMessageId: null }),
     
     // Sync Settings Logic
     syncSettings: async () => {

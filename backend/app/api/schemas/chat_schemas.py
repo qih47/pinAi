@@ -37,6 +37,11 @@ class ChatStreamRequest(BaseModel):
     hint_source: Optional[dict] = Field(None, description="Metadata sumber lengkap dokumen yang dipilih (nomor, judul, jenis, tanggal)")
     context_isolation: Optional[dict] = Field(None, description="Objek isolasi konteks dari FE")
     language: Optional[str] = Field("id", description="Bahasa antarmuka pengguna: id atau en")
+    regenerated_from_id: Optional[int] = Field(None, description="ID pesan asisten yang di-regenerate")
+    parent_id: Optional[int] = Field(None, description="ID pesan user induk")
+    is_regenerate: Optional[bool] = Field(False, description="Flag penanda bahwa stream ini adalah regenerasi respons")
+    target_index: Optional[int] = Field(None, description="Index offset pesan asisten dalam riwayat sesi")
+    parent_index: Optional[int] = Field(None, description="Index offset pesan user induk dalam riwayat sesi")
 
     class Config:
         from_attributes = True

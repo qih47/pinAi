@@ -61,6 +61,7 @@ async def init_db_pool():
                 await _update_chat_sessions_settings_column(conn)
                 await _update_chat_messages_feedback_column(conn)
                 await _update_chat_messages_metadata_column(conn)
+                await _update_chat_messages_variants_column(conn)
                 await _create_security_logs_table(conn)
                 await _create_system_prompts_table(conn)
                 await _create_api_keys_table(conn)
@@ -257,6 +258,22 @@ async def _update_chat_messages_metadata_column(conn):
     await conn.execute("""
         ALTER TABLE chat_messages 
         ADD COLUMN IF NOT EXISTS metadata JSONB;
+    """)
+
+async def _update_chat_messages_variants_column(conn):
+    """
+    Memastikan kolom parent_id, regenerated_from_id, dan variant_index tersedia
+    pada chat_messages untuk mendukung fitur multi-versi regenerate (< 1 / 3 >).
+    """
+    await conn.execute("""
+        ALTER TABLE chat_messages 
+        ADD COLUMN IF NOT EXISTS parent_id INT REFERENCES chat_messages(id) ON DELETE SET NULL;
+        ALTER TABLE chat_messages 
+        ADD COLUMN IF NOT EXISTS regenerated_from_id INT REFERENCES chat_messages(id) ON DELETE SET NULL;
+        ALTER TABLE chat_messages 
+        ADD COLUMN IF NOT EXISTS variant_index INT DEFAULT 1;
+        CREATE INDEX IF NOT EXISTS idx_chat_messages_parent_id ON chat_messages(parent_id);
+        CREATE INDEX IF NOT EXISTS idx_chat_messages_regen_from ON chat_messages(regenerated_from_id);
     """)
 
 async def _create_security_logs_table(conn):

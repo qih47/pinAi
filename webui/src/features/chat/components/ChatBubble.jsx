@@ -86,26 +86,33 @@ function formatThinkingPhase(thought, language = 'id') {
 const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThinking, isStreamingText, searchQuery = '', isLastMessage, onFileClick, setPreviewImage, onOpenArtifact, handleDownloadAllArtifacts, handleDownloadArtifact, language = 'id' }) {
     const tGlobal = translations[language] || translations.id;
     const tTTS = translations[language]?.tts || translations.id.tts;
+    const tChat = tGlobal.chat || translations.id.chat || {};
     const [showToast, setShowToast] = useState(false);
     const [toastMsg, setToastMsg] = useState('');
     const ttsSpeed = useChatStore(state => state.ttsSpeed);
     const editAndRegenerate = useChatStore(state => state.editAndRegenerate);
+    const regenerateAssistant = useChatStore(state => state.regenerateAssistant);
+    const switchMessageVariant = useChatStore(state => state.switchMessageVariant);
 
     const handleInstantRetry = useCallback(() => {
-        const storeMessages = useChatStore.getState().messages;
-        const targetIdx = idx - 1;
-        if (targetIdx >= 0 && storeMessages[targetIdx]) {
-            const userText = storeMessages[targetIdx].content;
-            editAndRegenerate(targetIdx, userText);
+        if (regenerateAssistant) {
+            regenerateAssistant(idx);
         } else {
-            for (let i = idx - 1; i >= 0; i--) {
-                if (storeMessages[i]?.role === 'user') {
-                    editAndRegenerate(i, storeMessages[i].content);
-                    break;
+            const storeMessages = useChatStore.getState().messages;
+            const targetIdx = idx - 1;
+            if (targetIdx >= 0 && storeMessages[targetIdx]) {
+                const userText = storeMessages[targetIdx].content;
+                editAndRegenerate(targetIdx, userText);
+            } else {
+                for (let i = idx - 1; i >= 0; i--) {
+                    if (storeMessages[i]?.role === 'user') {
+                        editAndRegenerate(i, storeMessages[i].content);
+                        break;
+                    }
                 }
             }
         }
-    }, [idx, editAndRegenerate]);
+    }, [idx, regenerateAssistant, editAndRegenerate]);
 
     // TTS Audio State
     const [isAudioLoading, setIsAudioLoading] = useState(false);
@@ -126,10 +133,18 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
         chunkBuffer: "",
     });
     const currentAudioRef = useRef(null);
+    const ttsAbortControllerRef = useRef(null);
     const globalIsStreaming = useChatStore((state) => state.isStreaming);
-    const isThisMessageStreaming = msg.isStreaming === true || (isLastMessage && globalIsStreaming);
+    const isEditRegenerating = useChatStore((state) => state.isEditRegenerating);
+    const isThisMessageStreaming = Boolean(
+        msg.isStreaming === true ||
+        (!isEditRegenerating && isLastMessage && globalIsStreaming && msg.role === 'assistant' && msg.isStreaming !== false && (!msg.content || msg.content === ''))
+    );
     const autoReadAloud = useChatStore((state) => state.autoReadAloud);
     const ttsVoice = useChatStore((state) => state.ttsVoice);
+    const activeTtsMessageId = useChatStore((state) => state.activeTtsMessageId);
+    const setActiveTtsMessageId = useChatStore((state) => state.setActiveTtsMessageId);
+    const messageId = msg.id || msg.uuid || `msg-${idx}`;
 
     // Clean text helper tingkat lanjut
     const cleanTextForTTS = useCallback((text) => {
@@ -177,9 +192,16 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
         return t;
     }, []);
 
-    // Stop TTS completely
+    // Stop TTS completely and abort any in-flight network request immediately
     const stopTTS = useCallback(() => {
+        if (ttsAbortControllerRef.current) {
+            ttsAbortControllerRef.current.abort();
+            ttsAbortControllerRef.current = null;
+        }
+
         ttsQueueRef.current.isStopped = true;
+        ttsQueueRef.current.isFetching = false;
+        ttsQueueRef.current.isPlaying = false;
         ttsQueueRef.current.textChunks = [];
 
         // Revoke all remaining URLs
@@ -188,6 +210,7 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
 
         if (currentAudioRef.current) {
             currentAudioRef.current.pause();
+            currentAudioRef.current.src = "";
             currentAudioRef.current = null;
         }
 
@@ -203,13 +226,21 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
         };
     }, [stopTTS]);
 
+    // If another message took over active TTS, stop and abort this one immediately
+    useEffect(() => {
+        if (activeTtsMessageId !== messageId && (ttsActive || isAudioLoading || isAudioPlaying)) {
+            stopTTS();
+        }
+    }, [activeTtsMessageId, messageId, ttsActive, isAudioLoading, isAudioPlaying, stopTTS]);
+
     // Auto trigger on mount/streaming if autoReadAloud is true
     useEffect(() => {
         if (isLastMessage && autoReadAloud && msg.role === 'assistant' && isThisMessageStreaming) {
+            setActiveTtsMessageId(messageId);
             setTtsActive(true);
             ttsQueueRef.current.isStopped = false;
         }
-    }, [isLastMessage, autoReadAloud, msg.role, isThisMessageStreaming]);
+    }, [isLastMessage, autoReadAloud, msg.role, isThisMessageStreaming, messageId, setActiveTtsMessageId]);
 
     const isThisMessageStreamingRef = useRef(isThisMessageStreaming);
     useEffect(() => {
@@ -288,6 +319,9 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
             return enCount > idCount ? 'en' : 'id';
         };
 
+        const controller = new AbortController();
+        ttsAbortControllerRef.current = controller;
+
         try {
             let finalVoice = ttsVoice;
             if (!finalVoice) {
@@ -299,24 +333,34 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
                 text: textToRead,
                 voice: finalVoice,
                 speed: ttsSpeed || 'normal'
-            }, { responseType: 'blob', timeout: 120000 });
-            if (ttsQueueRef.current.isStopped) return;
+            }, { 
+                responseType: 'blob', 
+                timeout: 120000,
+                signal: controller.signal,
+            });
+            if (ttsQueueRef.current.isStopped || controller.signal.aborted) return;
 
             const url = URL.createObjectURL(res.data);
             ttsQueueRef.current.audioUrls.push(url);
 
             playNextAudio();
         } catch (err) {
+            if (controller.signal.aborted || err.name === 'CanceledError' || err.name === 'AbortError' || err.code === 'ERR_CANCELED') {
+                return;
+            }
             console.error("TTS Error:", err);
             const detail = err.response?.data?.detail;
             setToastMsg(typeof detail === 'string' ? detail : tTTS.failedPlay || "Gagal memutar suara.");
             setShowToast(true);
             setTimeout(() => setShowToast(false), 3500);
         } finally {
+            if (ttsAbortControllerRef.current === controller) {
+                ttsAbortControllerRef.current = null;
+            }
             ttsQueueRef.current.isFetching = false;
             setIsAudioLoading(false);
 
-            if (ttsQueueRef.current.textChunks.length > 0) {
+            if (!ttsQueueRef.current.isStopped && ttsQueueRef.current.textChunks.length > 0) {
                 fetchNextTTS();
             }
         }
@@ -499,7 +543,12 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
     const toggleReadAloud = useCallback(() => {
         if (ttsActive || isAudioLoading || isAudioPlaying) {
             stopTTS();
+            if (activeTtsMessageId === messageId) {
+                setActiveTtsMessageId(null);
+            }
         } else {
+            // Claim active TTS globally so all other messages stop & abort immediately
+            setActiveTtsMessageId(messageId);
             ttsQueueRef.current = {
                 textChunks: [],
                 audioUrls: [],
@@ -511,7 +560,7 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
             };
             setTtsActive(true);
         }
-    }, [ttsActive, isAudioLoading, isAudioPlaying, stopTTS]);
+    }, [ttsActive, isAudioLoading, isAudioPlaying, stopTTS, activeTtsMessageId, messageId, setActiveTtsMessageId]);
 
 
     const executeTextCopy = async (textToCopy) => {
@@ -1141,13 +1190,127 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
                                 </svg>
                             </button>
 
-                            {/* ⏱️ LABEL TIMER DI SEBELAH KANAN REGENERATE */}
-                            <MessageTimer
-                                timestamp={msg.created_at || msg.timestamp}
-                                language={language}
-                                darkMode={darkMode}
-                                style={{ marginLeft: '4px' }}
-                            />
+                            {/* 📑 VARIANT NAVIGATOR (< 1 / 3 >) */}
+                            {Array.isArray(msg.variants) && msg.variants.length > 1 && (
+                                <div
+                                    style={{
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '2px',
+                                        marginLeft: '4px',
+                                        marginRight: '4px',
+                                        fontSize: '12px',
+                                        fontWeight: 500,
+                                        userSelect: 'none',
+                                        color: darkMode ? '#94a3b8' : '#64748b'
+                                    }}
+                                >
+                                    {/* Tombol < (Previous) */}
+                                    <button
+                                        type="button"
+                                        disabled={(msg.activeVariantIndex !== undefined ? msg.activeVariantIndex : (msg.variants.length - 1)) <= 0}
+                                        onClick={() => {
+                                            const currentVIdx = msg.activeVariantIndex !== undefined ? msg.activeVariantIndex : (msg.variants.length - 1);
+                                            if (currentVIdx > 0 && switchMessageVariant) {
+                                                switchMessageVariant(idx, currentVIdx - 1);
+                                            }
+                                        }}
+                                        style={{
+                                            background: 'transparent',
+                                            border: 'none',
+                                            cursor: (msg.activeVariantIndex !== undefined ? msg.activeVariantIndex : (msg.variants.length - 1)) <= 0 ? 'default' : 'pointer',
+                                            padding: '2px 4px',
+                                            borderRadius: '4px',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            opacity: (msg.activeVariantIndex !== undefined ? msg.activeVariantIndex : (msg.variants.length - 1)) <= 0 ? 0.25 : 0.7,
+                                            color: 'inherit',
+                                            transition: 'all 0.15s ease'
+                                        }}
+                                        title={tChat.prevVersion || (language === 'en' ? 'Previous version' : 'Versi sebelumnya')}
+                                        onMouseEnter={(e) => {
+                                            const currentVIdx = msg.activeVariantIndex !== undefined ? msg.activeVariantIndex : (msg.variants.length - 1);
+                                            if (currentVIdx > 0) {
+                                                e.currentTarget.style.opacity = '1';
+                                                e.currentTarget.style.background = darkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)';
+                                            }
+                                        }}
+                                        onMouseLeave={(e) => {
+                                            const currentVIdx = msg.activeVariantIndex !== undefined ? msg.activeVariantIndex : (msg.variants.length - 1);
+                                            e.currentTarget.style.opacity = currentVIdx <= 0 ? 0.25 : 0.7;
+                                            e.currentTarget.style.background = 'transparent';
+                                        }}
+                                    >
+                                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                            <polyline points="15 18 9 12 15 6"></polyline>
+                                        </svg>
+                                    </button>
+
+                                    {/* Indikator Versi "1 / 3" */}
+                                    <span style={{ padding: '0 2px', minWidth: '28px', textAlign: 'center' }}>
+                                        {((msg.activeVariantIndex !== undefined ? msg.activeVariantIndex : (msg.variants.length - 1)) + 1)} / {msg.variants.length}
+                                    </span>
+
+                                    {/* Tombol > (Next) */}
+                                    <button
+                                        type="button"
+                                        disabled={(msg.activeVariantIndex !== undefined ? msg.activeVariantIndex : (msg.variants.length - 1)) >= msg.variants.length - 1}
+                                        onClick={() => {
+                                            const currentVIdx = msg.activeVariantIndex !== undefined ? msg.activeVariantIndex : (msg.variants.length - 1);
+                                            if (currentVIdx < msg.variants.length - 1 && switchMessageVariant) {
+                                                switchMessageVariant(idx, currentVIdx + 1);
+                                            }
+                                        }}
+                                        style={{
+                                            background: 'transparent',
+                                            border: 'none',
+                                            cursor: (msg.activeVariantIndex !== undefined ? msg.activeVariantIndex : (msg.variants.length - 1)) >= msg.variants.length - 1 ? 'default' : 'pointer',
+                                            padding: '2px 4px',
+                                            borderRadius: '4px',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            opacity: (msg.activeVariantIndex !== undefined ? msg.activeVariantIndex : (msg.variants.length - 1)) >= msg.variants.length - 1 ? 0.25 : 0.7,
+                                            color: 'inherit',
+                                            transition: 'all 0.15s ease'
+                                        }}
+                                        title={tChat.nextVersion || (language === 'en' ? 'Next version' : 'Versi berikutnya')}
+                                        onMouseEnter={(e) => {
+                                            const currentVIdx = msg.activeVariantIndex !== undefined ? msg.activeVariantIndex : (msg.variants.length - 1);
+                                            if (currentVIdx < msg.variants.length - 1) {
+                                                e.currentTarget.style.opacity = '1';
+                                                e.currentTarget.style.background = darkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)';
+                                            }
+                                        }}
+                                        onMouseLeave={(e) => {
+                                            const currentVIdx = msg.activeVariantIndex !== undefined ? msg.activeVariantIndex : (msg.variants.length - 1);
+                                            e.currentTarget.style.opacity = currentVIdx >= msg.variants.length - 1 ? 0.25 : 0.7;
+                                            e.currentTarget.style.background = 'transparent';
+                                        }}
+                                    >
+                                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                            <polyline points="9 18 15 12 9 6"></polyline>
+                                        </svg>
+                                    </button>
+                                </div>
+                            )}
+
+                            {/* ⏱️ LABEL TIMER DI SEBELAH KANAN REGENERATE (DINAMIS SESUAI VARIAN AKTIF) */}
+                            {(() => {
+                                const activeVariant = Array.isArray(msg.variants) && msg.activeVariantIndex !== undefined
+                                    ? msg.variants[msg.activeVariantIndex]
+                                    : null;
+                                const displayTimestamp = activeVariant?.created_at || activeVariant?.timestamp || msg.created_at || msg.timestamp;
+                                return (
+                                    <MessageTimer
+                                        timestamp={displayTimestamp}
+                                        language={language}
+                                        darkMode={darkMode}
+                                        style={{ marginLeft: '4px' }}
+                                    />
+                                );
+                            })()}
                         </div>
                     )}
 
@@ -1169,6 +1332,7 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
         prevProps.msg.statusMessage === nextProps.msg.statusMessage &&
         prevProps.msg.reasoning === nextProps.msg.reasoning &&
         prevProps.msg.role === nextProps.msg.role &&
+        prevProps.msg.isStreaming === nextProps.msg.isStreaming &&
         prevProps.isThinking === nextProps.isThinking &&
         prevProps.isStreamingText === nextProps.isStreamingText &&
         prevProps.darkMode === nextProps.darkMode &&
@@ -1179,7 +1343,9 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
         prevProps.msg.attachments === nextProps.msg.attachments &&
         prevProps.msg.fileGenerations === nextProps.msg.fileGenerations &&
         prevProps.msg.sources === nextProps.msg.sources &&
-        prevProps.msg.citations === nextProps.msg.citations
+        prevProps.msg.citations === nextProps.msg.citations &&
+        prevProps.msg.activeVariantIndex === nextProps.msg.activeVariantIndex &&
+        prevProps.msg.variants === nextProps.msg.variants
     );
 });
 

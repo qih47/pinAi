@@ -100,6 +100,11 @@ export async function performStream(set, get, messagesToSend, assistantMessage, 
                     attachmentPaths,
                     npp,
                     editIndex,
+                    isRegenerate: Boolean(streamOptions.isRegenerate || streamOptions.is_regenerate),
+                    targetIndex: streamOptions.targetIndex !== undefined ? streamOptions.targetIndex : streamOptions.target_index,
+                    parentIndex: streamOptions.parentIndex !== undefined ? streamOptions.parentIndex : streamOptions.parent_index,
+                    regeneratedFromId: streamOptions.regeneratedFromId || streamOptions.regenerated_from_id || null,
+                    parentId: streamOptions.parentId || streamOptions.parent_id || null,
                     signal: controller.signal,
                     activeTopic: (typeof get().sessionTopics?.[activeSessionUuid] === 'object' ? get().sessionTopics[activeSessionUuid]?.topic : get().sessionTopics?.[activeSessionUuid]) || get().activeTopic || null,
                     keySubject: (typeof get().sessionTopics?.[activeSessionUuid] === 'object' ? get().sessionTopics[activeSessionUuid]?.keySubject : null) || get().keySubject || null,
@@ -492,6 +497,23 @@ export async function performStream(set, get, messagesToSend, assistantMessage, 
                             window.dispatchEvent(new CustomEvent("cakra_title_update", {
                                 detail: { sessionUuid: get().sessionUuid, title: data.title }
                             }));
+                        }
+
+                        // Sync ke varian aktif jika pesan memiliki variants
+                        if (assistantMessage.variants && assistantMessage.activeVariantIndex !== undefined && assistantMessage.variants[assistantMessage.activeVariantIndex]) {
+                            const activeThought = assistantMessage.thought || assistantMessage.thinking || accumulatedThinking || '';
+                            assistantMessage.thought = activeThought;
+                            assistantMessage.thinking = activeThought;
+                            assistantMessage.variants[assistantMessage.activeVariantIndex] = {
+                                ...assistantMessage.variants[assistantMessage.activeVariantIndex],
+                                content: assistantMessage.content,
+                                thought: activeThought,
+                                thinking: activeThought,
+                                sources: assistantMessage.sources,
+                                metadata: assistantMessage.metadata,
+                                isStreaming: false,
+                                isThinking: false
+                            };
                         }
 
                         const currentMessages = [...(get().activeStreams[activeSessionUuid]?.messages || get().messages)];

@@ -78,7 +78,7 @@ export async function fetchChatSuggestions(mode = 'documents', query = '', limit
  * @param {Object} options - Configuration options (timeoutMs, etc)
  */
 export async function streamChat(
-  { sessionUuid, messages, chatMode, thinking, isolatedDocId, attachmentPaths, npp, editIndex, signal, activeTopic, keySubject, forcedMode, bypassRouter, language },
+  { sessionUuid, messages, chatMode, thinking, isolatedDocId, attachmentPaths, npp, editIndex, signal, activeTopic, keySubject, forcedMode, bypassRouter, language, regeneratedFromId, parentId, isRegenerate, targetIndex, parentIndex },
   { onThinking, onStatus, onSources, onChunk, onFileStatus, onDone, onError, onTopicUpdate },
   options = {}
 ) {
@@ -153,6 +153,11 @@ export async function streamChat(
         isolated_doc_id: isolatedDocId,
         attachment_paths: attachmentPaths,
         edit_index: editIndex,
+        is_regenerate: Boolean(isRegenerate || regeneratedFromId),
+        target_index: targetIndex !== undefined && targetIndex !== null ? targetIndex : undefined,
+        parent_index: parentIndex !== undefined && parentIndex !== null ? parentIndex : undefined,
+        regenerated_from_id: regeneratedFromId || undefined,
+        parent_id: parentId || undefined,
         active_topic: activeTopic,
         key_subject: keySubject,
         language: language || localStorage.getItem("cakra_language") || 'id',

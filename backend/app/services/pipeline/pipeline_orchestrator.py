@@ -132,8 +132,12 @@ async def _sequential_pipeline_generator(
         if payload.messages:
             payload.messages[-1].content = user_message
 
-    # ── Save user message ─────────────────────────────────────────────────────
-    if payload.session_uuid:
+    # ── Save user message (Hanya jika bukan event regenerate) ────────────────
+    is_regenerate_event = bool(
+        getattr(payload, 'is_regenerate', False) 
+        or payload.regenerated_from_id is not None
+    )
+    if payload.session_uuid and not is_regenerate_event:
         user_text = f"{original_user_message}"
         
         if payload.edit_index is not None:
@@ -404,7 +408,60 @@ async def _sequential_pipeline_generator(
                 if generated_artifacts:
                     message_metadata["artifacts"] = generated_artifacts
                 
-                if payload.edit_index is not None:
+                if is_regenerate_event:
+                    # REGENERATE: Simpan sebagai varian baru tanpa menimpa respons sebelumnya
+                    actual_parent_id = payload.parent_id
+                    actual_regen_from_id = payload.regenerated_from_id
+
+                    if actual_regen_from_id is None or actual_parent_id is None:
+                        try:
+                            from backend.app.core.database import get_db
+                            async with get_db() as conn:
+                                session_pk = await chat_history_service._resolve_session_pk(conn, payload.session_uuid)
+                                if session_pk:
+                                    target_offset = getattr(payload, 'target_index', None)
+                                    if target_offset is not None and actual_regen_from_id is None:
+                                        row_target = await conn.fetchrow(
+                                            "SELECT id, parent_id FROM chat_messages WHERE session_id = $1 ORDER BY timestamp ASC, id ASC OFFSET $2 LIMIT 1",
+                                            session_pk, target_offset
+                                        )
+                                        if row_target:
+                                            actual_regen_from_id = row_target["id"]
+                                            if not actual_parent_id:
+                                                actual_parent_id = row_target["parent_id"]
+
+                                    if actual_regen_from_id and not actual_parent_id:
+                                        actual_parent_id = await conn.fetchval(
+                                            "SELECT parent_id FROM chat_messages WHERE id = $1",
+                                            actual_regen_from_id
+                                        )
+
+                                    if not actual_parent_id:
+                                        parent_offset = getattr(payload, 'parent_index', None)
+                                        if parent_offset is not None:
+                                            actual_parent_id = await conn.fetchval(
+                                                "SELECT id FROM chat_messages WHERE session_id = $1 ORDER BY timestamp ASC, id ASC OFFSET $2 LIMIT 1",
+                                                session_pk, parent_offset
+                                            )
+                                        else:
+                                            actual_parent_id = await conn.fetchval(
+                                                "SELECT id FROM chat_messages WHERE session_id = $1 AND role = 'user' ORDER BY timestamp DESC, id DESC LIMIT 1",
+                                                session_pk
+                                            )
+                        except Exception as res_err:
+                            logger.error(f"[PIPELINE_REGEN] Gagal me-resolve parent_id/regen_id: {res_err}")
+
+                    await chat_history_service.save_chat_message(
+                        session_id=payload.session_uuid,
+                        role="assistant",
+                        text=full_response_text,
+                        thought=ast_thought,
+                        sources=preloaded_rag_sources,
+                        metadata=message_metadata,
+                        parent_id=actual_parent_id,
+                        regenerated_from_id=actual_regen_from_id
+                    )
+                elif payload.edit_index is not None:
                     await chat_history_service.update_chat_message(
                         session_id=payload.session_uuid,
                         edit_index=payload.edit_index + 1,
@@ -421,7 +478,8 @@ async def _sequential_pipeline_generator(
                         text=full_response_text,
                         thought=ast_thought,
                         sources=preloaded_rag_sources,
-                        metadata=message_metadata
+                        metadata=message_metadata,
+                        parent_id=payload.parent_id
                     )
                 if not (payload.attachment_paths and len(payload.attachment_paths) > 0):
                     try:
