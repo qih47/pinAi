@@ -111,6 +111,7 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
     const [isAudioLoading, setIsAudioLoading] = useState(false);
     const [isAudioPlaying, setIsAudioPlaying] = useState(false);
     const [ttsActive, setTtsActive] = useState(false);
+    const [isHoveredOnTTS, setIsHoveredOnTTS] = useState(false);
     const [feedbackState, setFeedbackState] = useState(msg.feedback?.rating || null);
     const [isCopied, setIsCopied] = useState(false);
     const [isAvatarHovered, setIsAvatarHovered] = useState(false);
@@ -122,6 +123,7 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
         isFetching: false,
         isPlaying: false,
         isStopped: false,
+        chunkBuffer: "",
     });
     const currentAudioRef = useRef(null);
     const globalIsStreaming = useChatStore((state) => state.isStreaming);
@@ -129,14 +131,50 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
     const autoReadAloud = useChatStore((state) => state.autoReadAloud);
     const ttsVoice = useChatStore((state) => state.ttsVoice);
 
-    // Clean text helper
+    // Clean text helper tingkat lanjut
     const cleanTextForTTS = useCallback((text) => {
-        return text
-            .replace(/\[\[CAKRA_FILE_PROCESS_LOG(?:_\d+)?\]\]/g, "")
-            .replace(/[\p{Emoji_Presentation}\p{Extended_Pictographic}]/gu, "")
-            .replace(/[*_#`~>"]/g, "") // Removed " to avoid 'kutip dua'
-            .replace(/:/g, ",") // Replaced : with , to avoid 'titik dua' and create a natural pause
-            .trim();
+        if (!text) return "";
+        let t = text;
+        // 1. Buang total blok code / metadata yang mungkin tersisa
+        t = t.replace(/```(?:websearch|urlfetch|docsearch|document_meta|json)?[\s\S]*?```/g, "");
+        t = t.replace(/\[\[CAKRA_FILE_PROCESS_LOG(?:_\d+)?\]\]/g, "");
+
+        // 2. Format Sitasi Sumber: [Sumber: UMY](...) atau [Sumber: UMY]
+        t = t.replace(/\[Sumber\s*:?\s*([^\]]+)\](?:\([^)]*\))?/gi, (match, label) => {
+            let src = label.trim().replace(/^:\s*/, '');
+            // Spasi huruf jika akronim (misal UMY -> U M Y)
+            if (/^[A-Z]{2,5}$/.test(src)) {
+                src = src.split('').join(' ');
+            }
+            src = src.replace(/\.com\b/gi, ' dot com')
+                     .replace(/\.co\.id\b/gi, ' dot co dot i d')
+                     .replace(/\.id\b/gi, ' dot i d')
+                     .replace(/\.ac\.id\b/gi, ' dot a c dot i d');
+            return `, sumber dari ${src}.`;
+        });
+
+        // 3. Buang tautan markdown umum [Label](url) -> ambil Labelnya saja
+        t = t.replace(/\[([^\]]+)\]\([^)]+\)/g, "$1");
+        // Buang URL langsung
+        t = t.replace(/https?:\/\/\S+/gi, "");
+
+        // 4. Rentang Angka (misal: 4–6 September -> 4 sampai 6 September)
+        t = t.replace(/(\d+)\s*[-–—]\s*(\d+)/g, "$1 sampai $2");
+
+        // 5. Hapus emoji & markdown visual
+        t = t.replace(/[\p{Emoji_Presentation}\p{Extended_Pictographic}]/gu, "");
+        t = t.replace(/[*_#`~>"]/g, ""); // Hapus tanda bintang, pagar, petik ganda
+        
+        // 6. Rapikan titik dua: jika ada di dalam kalimat, ganti titik
+        t = t.replace(/:/g, ".");
+        
+        // 7. Rapikan koma dan spasi
+        t = t.replace(/,\s*,+/g, ", ");
+        t = t.replace(/\s*,\s*/g, ", ");
+        t = t.replace(/,\s*\./g, ".");
+        t = t.replace(/\s{2,}/g, " ").trim();
+
+        return t;
     }, []);
 
     // Stop TTS completely
@@ -194,7 +232,6 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
                 URL.revokeObjectURL(url);
                 currentAudioRef.current = null;
                 ttsQueueRef.current.isPlaying = false;
-                playNextAudio();
 
                 // If everything is done
                 if (ttsQueueRef.current.textChunks.length === 0 &&
@@ -203,6 +240,13 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
                     !ttsQueueRef.current.isFetching) {
                     setIsAudioPlaying(false);
                     setTtsActive(false);
+                } else {
+                    // Jeda nafas alami 120ms sebelum chunk berikutnya diputar
+                    setTimeout(() => {
+                        if (!ttsQueueRef.current.isStopped) {
+                            playNextAudio();
+                        }
+                    }, 120);
                 }
             };
 
@@ -284,66 +328,78 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
         const isF5Voice = ttsVoice && (ttsVoice.startsWith('id-ID-Pria') || ttsVoice.startsWith('id-ID-Wanita'));
 
         // ── F5-TTS Mode (Indonesian voices) ─────────────────────────────────
-        // Strategy: split at ANY newline or ~150 char sentence boundary.
-        // Each chunk → 1 internal F5-TTS batch (no internal re-batching).
         // Pipeline: while chunk N plays, chunk N+1 is being fetched.
+        // Lewati total blok metadata seperti ```websearch ... ``` agar tidak pernah dibaca.
         if (isF5Voice) {
             const content = msg.content || '';
-            let unprocessed = content.substring(ttsQueueRef.current.cursor);
 
+            // Lewati metadata code block di awal (misal: ```websearch ... ``` atau ```urlfetch ... ```)
+            let currentCursor = ttsQueueRef.current.cursor || 0;
+            const leadingMetaRegex = /^\s*```(?:websearch|urlfetch|docsearch|document_meta|json)?[\s\S]*?(?:```|$)/;
+            const metaMatch = content.match(leadingMetaRegex);
+            if (metaMatch) {
+                const metaEnd = metaMatch[0].length;
+                // Jika blok code di awal belum tuntas di-stream oleh LLM, tunggu sampai selesai
+                if (!metaMatch[0].endsWith('```') && isThisMessageStreaming) {
+                    return;
+                }
+                if (currentCursor < metaEnd) {
+                    currentCursor = metaEnd;
+                    ttsQueueRef.current.cursor = metaEnd;
+                }
+            }
+
+            let unprocessed = content.substring(currentCursor);
             let foundChunk = false;
 
-            // 1. Split at ANY newline (covers single \n for list items too)
-            const lineRegex = /\n+/g;
-            let lineMatch;
-            lineRegex.lastIndex = 0;
-            while ((lineMatch = lineRegex.exec(unprocessed)) !== null) {
-                const boundaryIdx = lineMatch.index;
-                const chunk = unprocessed.substring(0, boundaryIdx);
-                const cleaned = cleanTextForTTS(chunk);
+            // 1. Pemisahan berbasis kalimat utuh (. ? !) atau baris list / paragraf
+            const sentenceRegex = /([.?!]+(?:\s+|\n+|$)|(?:\n\s*[-*•]|\n\s*\d+\.|\n\n+))/g;
+            let match;
+            sentenceRegex.lastIndex = 0;
+
+            while ((match = sentenceRegex.exec(unprocessed)) !== null) {
+                const boundaryIdx = match.index + match[0].length;
+                const rawChunk = unprocessed.substring(0, boundaryIdx);
+                const cleaned = cleanTextForTTS(rawChunk);
+
                 if (cleaned) {
                     if (!ttsQueueRef.current.chunkBuffer) ttsQueueRef.current.chunkBuffer = "";
-                    ttsQueueRef.current.chunkBuffer += cleaned + " ";
-                    // Flush buffer when it has enough content (>= 40 chars) or is a real paragraph break (\n\n)
-                    if (ttsQueueRef.current.chunkBuffer.length >= 40 || lineMatch[0].length > 1) {
+                    ttsQueueRef.current.chunkBuffer += (ttsQueueRef.current.chunkBuffer ? " " : "") + cleaned;
+
+                    // Flush jika mencapai satu kalimat matang (>= 30 karakter) atau tanda pemutus kuat (!, ?, \n)
+                    const isStrongPunct = match[0].includes('!') || match[0].includes('?') || match[0].includes('\n');
+                    if (ttsQueueRef.current.chunkBuffer.length >= 30 || isStrongPunct) {
                         ttsQueueRef.current.textChunks.push(ttsQueueRef.current.chunkBuffer.trim());
                         ttsQueueRef.current.chunkBuffer = "";
                     }
                 }
-                ttsQueueRef.current.cursor += boundaryIdx + lineMatch[0].length;
+
+                ttsQueueRef.current.cursor += boundaryIdx;
                 unprocessed = content.substring(ttsQueueRef.current.cursor);
                 foundChunk = true;
-                lineRegex.lastIndex = 0; // reset to scan new unprocessed
+                sentenceRegex.lastIndex = 0;
             }
 
-            // 2. If buffer > 150 chars with no newline yet, split at sentence boundary
-            if (!foundChunk && unprocessed.length > 150) {
-                const sentRegex = /[.?!,]+\s/g;
-                let lastEnd = -1;
-                let sm;
-                sentRegex.lastIndex = 0;
-                while ((sm = sentRegex.exec(unprocessed)) !== null) {
-                    const pos = sm.index + sm[0].length;
-                    if (pos > 150) break;
-                    lastEnd = pos;
-                }
-                if (lastEnd > 30) {
-                    const chunk = unprocessed.substring(0, lastEnd);
-                    const cleaned = cleanTextForTTS(chunk);
+            // 2. Jika buffer teks terus mengalir tanpa tanda baca hingga > 120 karakter, cari spasi aman
+            if (!foundChunk && unprocessed.length > 120) {
+                const lastSpace = unprocessed.lastIndexOf(' ');
+                if (lastSpace > 40) {
+                    const rawChunk = unprocessed.substring(0, lastSpace + 1);
+                    const cleaned = cleanTextForTTS(rawChunk);
                     if (cleaned) {
                         if (!ttsQueueRef.current.chunkBuffer) ttsQueueRef.current.chunkBuffer = "";
-                        ttsQueueRef.current.chunkBuffer += cleaned + " ";
-                        if (ttsQueueRef.current.chunkBuffer.length >= 150) {
+                        ttsQueueRef.current.chunkBuffer += (ttsQueueRef.current.chunkBuffer ? " " : "") + cleaned;
+                        if (ttsQueueRef.current.chunkBuffer.length >= 60) {
                             ttsQueueRef.current.textChunks.push(ttsQueueRef.current.chunkBuffer.trim());
                             ttsQueueRef.current.chunkBuffer = "";
                         }
                     }
-                    ttsQueueRef.current.cursor += lastEnd;
+                    ttsQueueRef.current.cursor += lastSpace + 1;
                     foundChunk = true;
                 }
             }
 
-            // 3. Flush remaining when LLM streaming is done
+            // 3. Flush sisa teks saat streaming LLM telah tuntas
             if (!isThisMessageStreaming) {
                 const remaining = content.substring(ttsQueueRef.current.cursor);
                 const cleaned = cleanTextForTTS(remaining);
@@ -441,7 +497,7 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
     });
 
     const toggleReadAloud = useCallback(() => {
-        if (ttsActive) {
+        if (ttsActive || isAudioLoading || isAudioPlaying) {
             stopTTS();
         } else {
             ttsQueueRef.current = {
@@ -451,10 +507,11 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
                 isFetching: false,
                 isPlaying: false,
                 isStopped: false,
+                chunkBuffer: "",
             };
             setTtsActive(true);
         }
-    }, [ttsActive, stopTTS]);
+    }, [ttsActive, isAudioLoading, isAudioPlaying, stopTTS]);
 
 
     const executeTextCopy = async (textToCopy) => {
@@ -991,47 +1048,56 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
                             <button
                                 type="button"
                                 onClick={toggleReadAloud}
-                                disabled={isAudioLoading}
                                 style={{
-                                    background: 'transparent',
+                                    background: isHoveredOnTTS && (isAudioLoading || isAudioPlaying) 
+                                        ? (darkMode ? 'rgba(239, 68, 68, 0.15)' : 'rgba(239, 68, 68, 0.08)')
+                                        : isAudioPlaying 
+                                            ? (darkMode ? 'rgba(59, 130, 246, 0.15)' : 'rgba(59, 130, 246, 0.08)')
+                                            : 'transparent',
                                     border: 'none',
-                                    cursor: isAudioLoading ? 'wait' : 'pointer',
+                                    cursor: 'pointer',
                                     padding: '6px',
                                     borderRadius: '6px',
                                     display: 'flex',
                                     alignItems: 'center',
                                     justifyContent: 'center',
                                     transition: 'all 0.2s ease',
-                                    opacity: isAudioPlaying ? 1 : 0.5,
-                                    color: isAudioPlaying
-                                        ? '#3b82f6'
-                                        : (darkMode ? '#94a3b8' : '#64748b')
+                                    opacity: (isAudioPlaying || isAudioLoading || isHoveredOnTTS) ? 1 : 0.5,
+                                    color: isHoveredOnTTS && (isAudioLoading || isAudioPlaying)
+                                        ? '#ef4444'
+                                        : (isAudioPlaying || isAudioLoading)
+                                            ? '#3b82f6'
+                                            : (darkMode ? '#94a3b8' : '#64748b')
                                 }}
-                                title={isAudioPlaying ? tTTS.stopReading : tTTS.readAloud}
-                                onMouseEnter={(e) => {
-                                    if (!isAudioPlaying) {
-                                        e.currentTarget.style.opacity = '1';
-                                        e.currentTarget.style.color = '#3b82f6';
-                                        e.currentTarget.style.background = darkMode ? 'rgba(59,130,246,0.1)' : 'rgba(59,130,246,0.05)';
-                                    }
-                                }}
-                                onMouseLeave={(e) => {
-                                    if (!isAudioPlaying) {
-                                        e.currentTarget.style.opacity = '0.5';
-                                        e.currentTarget.style.color = darkMode ? '#94a3b8' : '#64748b';
-                                        e.currentTarget.style.background = 'transparent';
-                                    }
-                                }}
+                                title={
+                                    (isAudioPlaying || isAudioLoading)
+                                        ? (isHoveredOnTTS ? "Hentikan Baca" : (isAudioLoading ? "Menyiapkan suara... (Klik untuk batal)" : tTTS.stopReading))
+                                        : tTTS.readAloud
+                                }
+                                onMouseEnter={() => setIsHoveredOnTTS(true)}
+                                onMouseLeave={() => setIsHoveredOnTTS(false)}
                             >
                                 {isAudioLoading ? (
-                                    <svg className="animate-spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                                        <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                                    </svg>
+                                    isHoveredOnTTS ? (
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                                            <rect x="5" y="5" width="14" height="14" rx="2"></rect>
+                                        </svg>
+                                    ) : (
+                                        <svg className="animate-spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                                            <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                                        </svg>
+                                    )
                                 ) : isAudioPlaying ? (
-                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                        <rect x="6" y="4" width="4" height="16"></rect>
-                                        <rect x="14" y="4" width="4" height="16"></rect>
-                                    </svg>
+                                    isHoveredOnTTS ? (
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                                            <rect x="5" y="5" width="14" height="14" rx="2"></rect>
+                                        </svg>
+                                    ) : (
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                            <rect x="6" y="4" width="4" height="16"></rect>
+                                            <rect x="14" y="4" width="4" height="16"></rect>
+                                        </svg>
+                                    )
                                 ) : (
                                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                         <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>

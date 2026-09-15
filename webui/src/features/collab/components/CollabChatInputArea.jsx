@@ -145,10 +145,10 @@ export default function CollabChatInputArea({
   const filteredMentions =
     mentionQuery !== null
       ? mentionOptions.filter(
-          (opt) =>
-            opt.name.toLowerCase().includes(mentionQuery.toLowerCase()) ||
-            opt.displayName.toLowerCase().includes(mentionQuery.toLowerCase())
-        )
+        (opt) =>
+          opt.name.toLowerCase().includes(mentionQuery.toLowerCase()) ||
+          opt.displayName.toLowerCase().includes(mentionQuery.toLowerCase())
+      )
       : [];
 
   const handleTextChange = (e) => {
@@ -385,18 +385,18 @@ export default function CollabChatInputArea({
       activeModeTag === "code"
         ? tHints.code
         : activeModeTag === "websearch"
-        ? tHints.websearchTag || "Web search"
-        : activeModeTag === "documents"
-        ? tHints.documents
-        : activeModeTag === "diagram"
-        ? tHints.diagram
-        : activeModeTag === "chart"
-        ? tHints.chart
-        : activeModeTag === "create_file"
-        ? tHints.createFile
-        : activeModeTag === "smart_mail"
-        ? tHints.smartMail
-        : tHints.focus || activeModeTag;
+          ? tHints.websearchTag || "Web search"
+          : activeModeTag === "documents"
+            ? tHints.documents
+            : activeModeTag === "diagram"
+              ? tHints.diagram
+              : activeModeTag === "chart"
+                ? tHints.chart
+                : activeModeTag === "create_file"
+                  ? tHints.createFile
+                  : activeModeTag === "smart_mail"
+                    ? tHints.smartMail
+                    : tHints.focus || activeModeTag;
 
     return (
       <div
@@ -498,11 +498,10 @@ export default function CollabChatInputArea({
                 key={opt.id}
                 type="button"
                 onClick={() => insertMention(opt)}
-                className={`w-full text-left px-3.5 py-2 flex items-center gap-2.5 transition-colors ${
-                  idx === mentionIndex
+                className={`w-full text-left px-3.5 py-2 flex items-center gap-2.5 transition-colors ${idx === mentionIndex
                     ? "bg-teal-500/20 text-teal-300"
                     : "hover:bg-white/5"
-                }`}
+                  }`}
                 style={{ color: theme.textColor }}
               >
                 {opt.isAi ? (
@@ -677,7 +676,7 @@ export default function CollabChatInputArea({
             value={input}
             onChange={handleTextChange}
             onKeyDown={handleKeyDown}
-            placeholder={t.askCakra || "Tanya CAKRA..."}
+            placeholder={t.txtAmsg || "Tulis Pesan..."}
             rows={1}
             style={{
               flex: 1,

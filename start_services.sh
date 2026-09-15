@@ -14,6 +14,12 @@ LOG_DIR="$ROOT/logs/services"
 FRONTEND_DIR="$ROOT/webui"
 mkdir -p "$LOG_DIR"
 
+# Ensure NVIDIA CUDA shared libraries from venv are in LD_LIBRARY_PATH
+NVIDIA_LIBS=$(find "$ROOT/rag_env/lib/python3.10/site-packages/nvidia" -maxdepth 2 -type d -name "lib" 2>/dev/null | tr '\n' ':')
+if [ -n "$NVIDIA_LIBS" ]; then
+    export LD_LIBRARY_PATH="${NVIDIA_LIBS}:${LD_LIBRARY_PATH}"
+fi
+
 start_service() {
     local name="$1"
     local script="$2"

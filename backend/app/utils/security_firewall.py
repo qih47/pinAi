@@ -164,12 +164,18 @@ def _check_depth(data: Any, depth: int = 0) -> None:
 
 # SQL Injection — covers UNION, stacked queries, comment injection, blind SQLi
 _SQLI_PATTERNS = [
-    re.compile(r"(?i)\b(SELECT|INSERT|UPDATE|DELETE|DROP|ALTER|TRUNCATE|GRANT|REVOKE|EXEC|EXECUTE|CAST|CONVERT)\b\s+\w"),
+    re.compile(r"(?i)\bSELECT\b[\s\S]{1,100}\bFROM\b"),
+    re.compile(r"(?i)\bINSERT\s+INTO\b"),
+    re.compile(r"(?i)\bUPDATE\b[\s\S]{1,100}\bSET\b"),
+    re.compile(r"(?i)\bDELETE\s+FROM\b"),
+    re.compile(r"(?i)\bDROP\s+(TABLE|DATABASE|VIEW|INDEX|PROCEDURE|FUNCTION)\b"),
+    re.compile(r"(?i)\bALTER\s+(TABLE|DATABASE|VIEW|USER)\b"),
+    re.compile(r"(?i)\bTRUNCATE\s+(TABLE)?\s*\w"),
     re.compile(r"(?i)\bUNION\b.{0,30}\bSELECT\b"),
     re.compile(r"(?i)\bOR\b\s+['\"]?\d+['\"]?\s*=\s*['\"]?\d+['\"]?"),   # OR 1=1
     re.compile(r"(?i)\bAND\b\s+['\"]?\d+['\"]?\s*=\s*['\"]?\d+['\"]?"),  # AND 1=1
     re.compile(r"--\s"),                                                    # SQL comment
-    re.compile(r";\s*(DROP|DELETE|INSERT|UPDATE)", re.IGNORECASE),          # Stacked
+    re.compile(r";\s*(DROP|DELETE|INSERT|UPDATE)\b", re.IGNORECASE),          # Stacked
     re.compile(r"(?i)\bWAITFOR\b\s+DELAY"),                               # Time-based blind
     re.compile(r"(?i)\bSLEEP\s*\("),                                       # MySQL blind
     re.compile(r"(?i)'\s*OR\s*'[^']*'\s*=\s*'"),                         # Classic ' OR 'x'='x
@@ -281,8 +287,8 @@ def _scan_dict_recursive(data: Any, path: str = "root", skip_injection: bool = F
             _scan_for_injections(data, path)
     elif isinstance(data, dict):
         for k, v in data.items():
-            if str(k) in ("content", "liveCode", "code", "fileGenerations", "chat_mode", "focus", "insight", "lineage", "email_content", "email_subject", "instruction"):
-                # Run ONLY prompt injection checks on these sensitive chat fields
+            if str(k) in ("content", "text", "raw_text", "sentence", "transcript", "speech_text", "liveCode", "code", "fileGenerations", "chat_mode", "focus", "insight", "lineage", "email_content", "email_subject", "instruction"):
+                # Run ONLY prompt injection checks on these sensitive chat/text fields
                 _scan_dict_recursive(v, f"{path}.{k}", skip_injection=True, prompt_injection_only=True)
             else:
                 if not skip_injection and not prompt_injection_only:
@@ -542,8 +548,11 @@ async def security_firewall_dependency(request: Request) -> None:
                 # Depth check first (fast)
                 _check_depth(body_json)
 
+                # Voice endpoints send spoken sentences / responses which should skip injection scan
+                is_voice_endpoint = raw_path.startswith("/api/voice") or raw_path.startswith("/voice")
+
                 # Recursive injection + input validation scan
-                _scan_dict_recursive(body_json)
+                _scan_dict_recursive(body_json, skip_injection=is_voice_endpoint)
 
         except InjectionException as e:
             logger.warning(f"[FIREWALL] Malicious body from {client_ip} in field {e.field_name}")

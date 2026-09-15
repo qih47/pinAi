@@ -122,13 +122,9 @@ async def lifespan(app: FastAPI):
                 await _warmup_and_pin_models()
                 logger.info("⏳ [WARMUP] Loading BAAI/bge-reranker...")
                 await asyncio.get_event_loop().run_in_executor(None, _load_reranker)
-                logger.info("⏳ [WARMUP] Preloading F5-TTS...")
-                from backend.app.api.endpoints.voice import get_f5_tts
-                ema_model, vocoder = await asyncio.get_event_loop().run_in_executor(None, get_f5_tts)
-                if ema_model is not None:
-                    logger.info("✅ [WARMUP] F5-TTS ready.")
-                else:
-                    logger.warning("⚠️ [WARMUP] F5-TTS will lazy-load on first request.")
+                logger.info("⏳ [WARMUP] Preloading F5-TTS via tts_service...")
+                from backend.app.services.voice.tts_service import tts_service
+                await tts_service.warmup()
                 logger.info("✅ [WARMUP] All background models pinned and ready.")
             except Exception as e:
                 logger.warning(f"⚠️ [WARMUP] Background warmup encountered: {e}")

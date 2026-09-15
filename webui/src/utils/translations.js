@@ -663,6 +663,7 @@ export const translations = {
     chatInput: {
       askDoc: "Tanyakan sesuatu tentang dokumen ini...",
       askCakra: "Tanya CAKRA...",
+      txtAmsg: "Tulis Pesan...",
       uploadFile: "Unggah File",
       uploadCloud: "Pilih dari PinCloud",
       disclaimer: "CAKRA dapat membuat kesalahan. Selalu periksa kembali informasi penting atau hasil perhitungan.",
@@ -1513,6 +1514,7 @@ export const translations = {
     chatInput: {
       askDoc: "Ask about this document...",
       askCakra: "Ask CAKRA",
+      txtAmsg: "Text a Message",
       uploadFile: "Upload file",
       uploadCloud: "Upload from PinCloud",
       disclaimer: "CAKRA can make mistakes. Consider verifying important information.",
