@@ -213,7 +213,7 @@ def build_rule_based_queries(user_message: str, context_subject: str = "", conte
     clean_msg = re.sub(r"\s{2,}", " ", clean_msg).strip()
     msg_lower = clean_msg.lower()
 
-    # Kata pengisi / pertanyaan / konjungsi
+    # Kata pengisi / pertanyaan / konjungsi / instruksi percakapan
     stop_words = {
         "apakah", "ada", "yang", "lebih", "detail", "lagi", "seperti", "kalau", "kalo",
         "gimana", "bagaimana", "sih", "cuy", "thanks", "ya", "mohon", "info", "tentang",
@@ -222,7 +222,10 @@ def build_rule_based_queries(user_message: str, context_subject: str = "", conte
         "bisa", "gak", "nggak", "engga", "ngga", "tidak", "dalam", "membahas", "bahas",
         "coba", "mengenai", "terkait", "soal", "itu", "ini", "pada", "oleh", "dengan",
         "kepada", "adalah", "merupakan", "yaitu", "perbedaan", "bandingkan", "dibanding",
-        "menurut", "sesuai", "ga", "kah", "dong?", "ya?"
+        "menurut", "sesuai", "ga", "kah", "dong?", "ya?",
+        # Kata instruksi pencarian & pronomina umum yang bukan subjek regulasi
+        "cariin", "carikan", "cari", "gw", "gue", "saya", "aku", "dokumen", "dokumennya",
+        "tersebut", "situ", "sini", "didalam", "adakah", "tolongin"
     }
 
     # ✂️ Kata instruksi visual/format yang harus dibuang dari query dokumen
@@ -274,7 +277,7 @@ def build_rule_based_queries(user_message: str, context_subject: str = "", conte
 
     # 2. Ekstraksi langsung dari kata spesifik di user_message (tanpa subject prefix)
     if words:
-        full_core = dedup_words(" ".join(words[:5]))  # Max 5 kata, deduped
+        full_core = dedup_words(" ".join(words))  # Utuh tanpa pemotongan 5 kata
         if full_core not in queries:
             queries.append(full_core)
 
@@ -283,7 +286,7 @@ def build_rule_based_queries(user_message: str, context_subject: str = "", conte
         if clean_subject:
             queries.append(clean_subject)
         elif words:
-            queries.append(dedup_words(" ".join(words[:4])))
+            queries.append(dedup_words(" ".join(words)))
 
     # Bersihkan: hapus generik kosong, whitespace, duplikat query
     seen = set()

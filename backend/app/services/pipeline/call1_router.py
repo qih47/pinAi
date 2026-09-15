@@ -1126,17 +1126,14 @@ def _validate_and_normalize_routing(
         # Ambil pure keyword asli dari rule_based_queries index 0
         pure_keyword = rule_based_queries[0] if rule_based_queries else user_msg
 
-        if not routing["queries"]:
-            routing["queries"] = rule_based_queries
-            logger.info(f"[CALL1] Rule-based queries generated from subject/context: {routing['queries']}")
+        if not routing.get("queries"):
+            routing["queries"] = rule_based_queries if rule_based_queries else ([user_msg] if user_msg else [])
+            logger.info(f"[CALL1] Rule-based queries fallback generated: {routing['queries']}")
         else:
-            # Amankan query dari gemma, tapi paksa query 1 jadi pure keyword user jika spesifik
-            gemma_queries = [q.strip() for q in routing["queries"] if q and q.strip() and q.lower() != pure_keyword.lower()]
-            if pure_keyword and pure_keyword.lower() not in ["ketentuan", "regulasi", "aturan"]:
-                routing["queries"] = [pure_keyword] + gemma_queries[:2]
-            else:
-                routing["queries"] = gemma_queries[:3] if gemma_queries else rule_based_queries
-            logger.info(f"[CALL1] Queries finalized: {routing['queries']}")
+            # 🎯 Percayai query cerdas dari Call 1 (Gemma) secara langsung tanpa pemotongan/penimpaan paksa
+            gemma_queries = [q.strip() for q in routing["queries"] if q and q.strip()]
+            routing["queries"] = gemma_queries[:3]
+            logger.info(f"[CALL1] Using intelligent queries from Gemma Router: {routing['queries']}")
 
     # Final cleanup: buang string kosong / spasi dari queries
     if isinstance(routing.get("queries"), list):

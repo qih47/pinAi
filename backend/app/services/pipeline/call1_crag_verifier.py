@@ -31,24 +31,28 @@ ENABLE_CALL1_1_CRAG = True
 CRAG_VERIFIER_SYSTEM_PROMPT = """Kamu adalah Quality Control (QC) verifikator dokumen instan CAKRA AI PT Pindad.
 
 TUGAS:
-Evaluasi apakah dokumen/snippet kandidat yang ditemukan dari database RELEVAN dan MEMUAT substansi yang dicari user.
+Evaluasi apakah dokumen kandidat yang ditemukan RELEVAN dan MEMUAT topik/dokumen yang dicari user (Turn {{ turn }} QC).
 
 TARGET PENCARIAN USER:
 - Pesan User: {{ user_query }}
 - Target Judul: {{ target_judul }}
 - Target Tags: {{ target_tags }}
 
-KANDIDAT DOKUMEN YANG DITEMUKAN DARI DATABASE:
+KANDIDAT DOKUMEN:
 {{ candidates_summary }}
 
 ATURAN EVALUASI:
-1. Jika judul dokumen atau cuplikan kandidat COCOK / MEMBAHAS topik yang dicari user:
-   "is_relevant": true, "reason": "cocok", field suggested dikosongkan ([]).
-2. Jika dokumen SALAH / TIDAK RELEVAN (contoh: user cari PKB/Cuti tapi yang ditemukan Audit Internal / Helpdesk / Kontrak KPI):
-   "is_relevant": false, "reason": "penjelasan 1 kalimat singkat mengapa tidak cocok",
-   "suggested_query_judul": ["nama dokumen alternatif spesifik"],
-   "suggested_queries": ["frasa pencarian alternatif"],
-   "suggested_tags": ["tag relevan"]
+1. Perhatikan DUA hal utama:
+   a. TARGET DOKUMEN: Jika user mencari dokumen spesifik tertentu (contoh: nomor surat, kode regulasi, nama perjanjian/pedoman spesifik), pastikan dokumen kandidat memang dokumen yang diminta, bukan dokumen lain yang hanya memuat kata kunci serupa.
+   b. SUBSTANSI TOPIK: Jika user menanyakan topik substansi tertentu (contoh: hak cuti, remunerasi, tunjangan, lembur, sanksi, jam kerja), pastikan dokumen kandidat memang memuat aturan/ketentuan terkait topik tersebut.
+2. Jika dokumen COCOK & RELEVAN:
+   "is_relevant": true, "reason": "alasan singkat kecocokan",
+   "suggested_query_judul": [], "suggested_queries": [], "suggested_tags": []
+3. Jika dokumen SALAH / TIDAK COCOK (contoh: berasal dari memori sesi lama yang tidak nyambung, atau dokumen yang ditemukan berbeda dari yang dicari pengguna):
+   "is_relevant": false, "reason": "alasan singkat mengapa tidak cocok",
+   "suggested_query_judul": ["nama dokumen yang lebih tepat sesuai konteks pertanyaan pengguna"],
+   "suggested_queries": ["query pencarian alternatif yang tajam"],
+   "suggested_tags": ["tag yang relevan"]
 
 OUTPUT JSON FORMAT (WAJIB JSON MURNI TANPA MARKDOWN):
 {
@@ -67,10 +71,11 @@ async def verify_retrieved_documents_crag(
     target_tags: List[str],
     candidate_docs: List[Dict[str, Any]],
     request: Optional[Request] = None,
+    turn: int = 1,
 ) -> Dict[str, Any]:
     """
     Verifikasi instan dokumen hasil retrieval menggunakan gemma4:e4b.
-    Mengembalikan dict hasil evaluasi beserta timing_ms.
+    Mendukung Turn 1 (validasi awal Brain/MySQL) dan Turn 2 (validasi hasil retry).
     """
     if not ENABLE_CALL1_1_CRAG:
         return {
@@ -85,7 +90,7 @@ async def verify_retrieved_documents_crag(
     if not candidate_docs or not user_query:
         return {
             "is_relevant": False,
-            "reason": "Tidak ada kandidat dokumen yang ditemukan dari database",
+            "reason": "Tidak ada kandidat dokumen yang ditemukan",
             "suggested_query_judul": target_judul_list,
             "suggested_queries": [user_query],
             "suggested_tags": target_tags,
@@ -95,16 +100,19 @@ async def verify_retrieved_documents_crag(
     # Buat ringkasan super ringkas kandidat dokumen (maksimal 3 dokumen teratas, ~300 token)
     cand_lines = []
     for idx, doc in enumerate(candidate_docs[:3]):
+        doc_id = doc.get("id") or doc.get("doc_id") or "?"
         judul = doc.get("judul") or doc.get("noper") or "Tanpa Judul"
-        tag = doc.get("tag") or ""
+        tag = doc.get("tag") or doc.get("jenis") or ""
+        origin = "Memori Sesi (Brain)" if doc.get("_from_session_brain") else "Database MySQL"
         snippet = doc.get("isi_snippet") or doc.get("snippet") or ""
         snippet_clean = " ".join(snippet[:180].split()) if snippet else ""
-        cand_lines.append(f"[{idx+1}] Judul: {judul} | Tag: {tag} | Cuplikan: {snippet_clean}")
+        cand_lines.append(f"[{idx+1}] ID:{doc_id} | Asal:{origin} | Judul: {judul} | Tag/Jenis: {tag} | Cuplikan: {snippet_clean}")
 
     candidates_summary = "\n".join(cand_lines)
 
     prompt = (
         CRAG_VERIFIER_SYSTEM_PROMPT
+        .replace("{{ turn }}", str(turn))
         .replace("{{ user_query }}", user_query.strip())
         .replace("{{ target_judul }}", json.dumps(target_judul_list, ensure_ascii=False))
         .replace("{{ target_tags }}", json.dumps(target_tags, ensure_ascii=False))

@@ -2,6 +2,7 @@ import logging
 import json
 import asyncio
 import os
+import re
 from typing import AsyncGenerator, List, Dict, Any, Optional
 
 from fastapi import Request
@@ -218,47 +219,94 @@ class ModeDocuments:
                 logger.info(f"[MODE_DOCUMENTS] [TIER 1] Fetching candidate documents for query_judul: {query_judul_list} | search_tags: {search_tags}")
                 candidate_docs = await get_candidate_documents_metadata(user_message, query_judul_list, rag_queries=rag_queries, search_tags=search_tags) or []
 
-                # ⚡ CALL 1.1 CRAG VERIFIER (Fast-Path Quality Control):
-                from backend.app.services.pipeline.call1_crag_verifier import verify_retrieved_documents_crag, ENABLE_CALL1_1_CRAG
-                if candidate_docs and ENABLE_CALL1_1_CRAG:
-                    crag_eval = await verify_retrieved_documents_crag(
-                        user_query=user_message,
-                        target_judul_list=query_judul_list,
-                        target_tags=search_tags,
-                        candidate_docs=candidate_docs,
-                        request=request,
+            # ⚡ CALL 1.1 CRAG VERIFIER (2-Turn Quality Control Gatekeeper)
+            # Wajib mengevaluasi kandidat dokumen, baik yang bersumber dari Memori Sesi (Brain) maupun Database!
+            from backend.app.services.pipeline.call1_crag_verifier import verify_retrieved_documents_crag, ENABLE_CALL1_1_CRAG
+            search_tags = routing_data.get("search_tags", [])
+
+            if candidate_docs and ENABLE_CALL1_1_CRAG and not iso_id:
+                # ── TURN 1: Validasi Awal (Kandidat Brain / MySQL) ─────────────────────────
+                crag_eval_t1 = await verify_retrieved_documents_crag(
+                    user_query=user_message,
+                    target_judul_list=query_judul_list,
+                    target_tags=search_tags,
+                    candidate_docs=candidate_docs,
+                    request=request,
+                    turn=1,
+                )
+
+                if not crag_eval_t1.get("is_relevant"):
+                    logger.warning(
+                        f"[MODE_DOCUMENTS] ⚠️ Turn 1 Call 1.1 CRAG flagged candidates as NOT RELEVANT ({crag_eval_t1.get('reason')}). "
+                        f"Running 1x targeted re-search with QC suggestions..."
                     )
-                    if not crag_eval.get("is_relevant"):
-                        logger.warning(
-                            f"[MODE_DOCUMENTS] ⚠️ Call 1.1 CRAG flagged candidates as NOT RELEVANT ({crag_eval.get('reason')}). "
-                            f"Running 1x targeted re-search with suggestions..."
+                    yield format_sse(status="🔄 Menajamkan pencarian regulasi", status_key="CRAG_RETRY", event_type=SSEEventType.STATUS)
+
+                    # Simpan cadangan kandidat awal jika retry DB tidak membuahkan hasil
+                    initial_candidates = list(candidate_docs)
+                    from_brain = any(doc.get("_from_session_brain") for doc in candidate_docs)
+                    if from_brain:
+                        logger.info("[MODE_DOCUMENTS] 🗑️ Rejecting stale Brain candidates for this query, switching to fresh Database search.")
+                        candidate_docs = []
+
+                    retry_qj = crag_eval_t1.get("suggested_query_judul") or query_judul_list
+                    retry_tags = crag_eval_t1.get("suggested_tags") or search_tags
+                    retry_queries = crag_eval_t1.get("suggested_queries") or rag_queries
+
+                    retry_docs = await get_candidate_documents_metadata(
+                        user_message,
+                        retry_qj,
+                        rag_queries=retry_queries,
+                        search_tags=retry_tags
+                    )
+
+                    if retry_docs:
+                        # ── TURN 2: Validasi Hasil Retry Pencarian ─────────────────────────
+                        crag_eval_t2 = await verify_retrieved_documents_crag(
+                            user_query=user_message,
+                            target_judul_list=retry_qj,
+                            target_tags=retry_tags,
+                            candidate_docs=retry_docs,
+                            request=request,
+                            turn=2,
                         )
-                        yield format_sse(status="🔄 Menajamkan pencarian regulasi", status_key="CRAG_RETRY", event_type=SSEEventType.STATUS)
-                        retry_qj = crag_eval.get("suggested_query_judul") or query_judul_list
-                        retry_tags = crag_eval.get("suggested_tags") or search_tags
-                        retry_queries = crag_eval.get("suggested_queries") or rag_queries
-                        retry_docs = await get_candidate_documents_metadata(
-                            user_message,
-                            retry_qj,
-                            rag_queries=retry_queries,
-                            search_tags=retry_tags
+                        logger.info(
+                            f"[MODE_DOCUMENTS] Turn 2 Call 1.1 CRAG result: is_relevant={crag_eval_t2.get('is_relevant')} | "
+                            f"reason: {crag_eval_t2.get('reason')}"
                         )
-                        if retry_docs:
-                            candidate_docs = retry_docs
-                            logger.info(f"[MODE_DOCUMENTS] ✅ 1x Re-search found {len(candidate_docs)} new candidates.")
-                        else:
-                            logger.info("[MODE_DOCUMENTS] ℹ️ Re-search did not return new docs, retaining initial candidates.")
+                        # Gunakan kandidat hasil pencarian ulang
+                        candidate_docs = retry_docs
+                    else:
+                        logger.info("[MODE_DOCUMENTS] ℹ️ Re-search did not return new docs, retaining initial candidates as best-effort.")
+                        candidate_docs = initial_candidates
 
 
             if candidate_docs:
                 # ── SPLIT: Aktif/Terbaru (Full PDF Read) vs Historis (Ringkasan Saja) ──────
-                # Kandidat sudah diurutkan: berlaku + terbaru di atas (dari scoring peraturan_service)
+                # Urutkan kandidat: Berlaku di atas, kecocokan judul target, lalu skor retrieval dasar
+                def candidate_rank_key(d):
+                    # 1. Status berlaku (1 jika Berlaku, 0 jika tidak)
+                    berlaku_score = 1 if d.get("status_berlaku") == "Berlaku" else 0
+                    # 2. Kecocokan judul terhadap target yang dicari user (tanpa hardcode nama instansi)
+                    target_match_score = 0.0
+                    d_title = (str(d.get("judul", "")) + " " + str(d.get("noper", ""))).lower()
+                    if query_judul_list:
+                        for qj in query_judul_list:
+                            qj_str = str(qj or "").lower().strip()
+                            if qj_str and qj_str in d_title:
+                                target_match_score += 1.0
+                    # 3. Base retrieval score
+                    base_score = float(d.get("score") or 0.0)
+                    return (berlaku_score, target_match_score, base_score)
+
+                candidate_docs.sort(key=candidate_rank_key, reverse=True)
+
                 full_read_docs = []
                 historical_docs = []
                 for doc in candidate_docs:
                     is_supp = doc.get("is_supplementary", False)
                     status = doc.get("status_berlaku", "")
-                    
+
                     if is_supp:
                         historical_docs.append(doc)
                     elif status == "Berlaku" or len(full_read_docs) < 1:
@@ -269,13 +317,13 @@ class ModeDocuments:
                             historical_docs.append(doc)
                     else:
                         historical_docs.append(doc)
-                
+
                 # Jika tidak ada yang berstatus Berlaku sama sekali, ambil hingga 2 teratas sebagai full_read
                 if not full_read_docs:
                     non_supp = [d for d in candidate_docs if not d.get("is_supplementary", False)]
                     full_read_docs = non_supp[:2] if non_supp else candidate_docs[:1]
                     historical_docs = [d for d in candidate_docs if d not in full_read_docs]
-                
+
                 doc_count = len(full_read_docs)
                 hist_count = len(historical_docs)
                 yield format_sse(status=f"📑 Menemukan {doc_count + hist_count} dokumen", status_key="DOCS_FOUND", event_type=SSEEventType.STATUS)
@@ -433,25 +481,45 @@ class ModeDocuments:
                     yield format_sse(status="🎯 Menyaring pasal relevan", status_key="FILTERING_RELEVANT_ARTICLES", event_type=SSEEventType.STATUS)
                     await asyncio.sleep(0.02)
                     
-                    # Effective query untuk BGE page scoring: gunakan rag_queries[0] murni saja.
-                    effective_page_query = rag_queries[0].strip() if rag_queries else user_message
-                    logger.info(f"[MODE_DOCUMENTS] Scoring {len(global_page_pool)} pages using effective query: '{effective_page_query}'")
-                    
+                    # Multi-Query gabungan untuk BGE page scoring: padukan query cerdas Call 1 dan pertanyaan user
+                    rag_queries_clean = [q.strip() for q in rag_queries if q and q.strip()]
+                    effective_page_query = " ".join(dict.fromkeys(rag_queries_clean + [user_message]))
+                    logger.info(f"[MODE_DOCUMENTS] Scoring {len(global_page_pool)} pages using combined effective query: '{effective_page_query}'")
+
                     # BGE Scoring on all pages
                     page_corpus = [p["text"] if p["text"] else f"Dokumen {p['doc_title']} halaman {p['page_num']}" for p in global_page_pool]
                     scores = await reranker_service.compute_scores(effective_page_query, page_corpus)
-                    
+
+                    # Ekstrak kata kunci fokus untuk Exact Keyword Boost (misal: "cuti", "remunerasi", "tunjangan", "gaji")
+                    focus_keywords = set()
+                    for text_src in (rag_queries_clean + [user_message]):
+                        for token in text_src.lower().split():
+                            clean_tok = re.sub(r"[^\w]", "", token)
+                            if len(clean_tok) >= 4 and clean_tok not in [
+                                "dokumen", "peraturan", "terkait", "dalam", "surat", "nomor",
+                                "tentang", "mengenai", "pindad", "apakah", "bagaimana", "adalah"
+                            ]:
+                                focus_keywords.add(clean_tok)
+
+                    logger.info(f"[MODE_DOCUMENTS] Exact Keyword Boost terms: {focus_keywords}")
+
                     for idx, score in enumerate(scores):
-                        global_page_pool[idx]["score"] = float(score)
-                        
+                        p_obj = global_page_pool[idx]
+                        final_score = float(score)
+                        p_text_lower = p_obj.get("text", "").lower()
+                        # Jika teks halaman memuat exact keyword pencarian, berikan keyword match booster (+0.4)
+                        if focus_keywords and any(kw in p_text_lower for kw in focus_keywords):
+                            final_score += 0.4
+                        p_obj["score"] = final_score
+
                     # Urutkan berdasarkan skor tertinggi
                     global_page_pool.sort(key=lambda x: x["score"], reverse=True)
-                    
-                    # Ambil Top 6 Seed Halaman Terbaik Lintas Dokumen
-                    top_seeds = [p for p in global_page_pool if p["score"] > 0.35][:6]
+
+                    # Ambil Top 8 Seed Halaman Terbaik Lintas Dokumen
+                    top_seeds = [p for p in global_page_pool if p["score"] > 0.35][:8]
                     if not top_seeds:
-                        top_seeds = global_page_pool[:3]
-                        
+                        top_seeds = global_page_pool[:4]
+
                     # Kelompokkan seed per dokumen untuk Tri-Window Expansion
                     seeds_by_doc = {}
                     for seed in top_seeds:
@@ -459,7 +527,7 @@ class ModeDocuments:
                         if d_id not in seeds_by_doc:
                             seeds_by_doc[d_id] = []
                         seeds_by_doc[d_id].append(seed["page_index"])
-                    
+
                     # Terapkan Tri-Window Connected Context per dokumen
                     connected_pages_per_doc = {}
                     for d_id, seed_indices in seeds_by_doc.items():
@@ -467,16 +535,20 @@ class ModeDocuments:
                         expanded_indices = expand_tri_window_context(seed_indices, t_map, total_pages=len(t_map))
                         connected_pages_per_doc[d_id] = expanded_indices
                         logger.info(f"[MODE_DOCUMENTS] Doc {d_id} Expanded Pages: {expanded_indices} (from seeds: {seed_indices})")
-                    
+
                     # 🧠 ADAPTIVE BRAIN-FIRST FULL INCLUSION:
                     # Untuk dokumen aktif sesi dari Brain yang berukuran <= 30 halaman,
-                    # sertakan seluruh halamannya secara utuh agar tidak ada pasal/syarat yang tertinggal!
+                    # sertakan seluruh halamannya secara utuh HANYA jika dokumen tersebut adalah satu-satunya dokumen
+                    # atau dokumen tersebut memang memiliki seed yang relevan dengan pertanyaan user!
                     for doc in full_read_docs:
                         d_id = doc.get("id")
                         t_map = doc_text_maps.get(d_id, [])
                         if doc.get("_from_session_brain") and len(t_map) <= 30:
-                            connected_pages_per_doc[d_id] = list(range(len(t_map)))
-                            logger.info(f"[MODE_DOCUMENTS] 🧠 [BRAIN-FULL] Doc {d_id} has {len(t_map)} pages (<= 30) -> Injected 100% full document context!")
+                            if len(full_read_docs) == 1 or d_id in seeds_by_doc:
+                                connected_pages_per_doc[d_id] = list(range(len(t_map)))
+                                logger.info(f"[MODE_DOCUMENTS] 🧠 [BRAIN-FULL] Doc {d_id} has {len(t_map)} pages (<= 30) -> Injected 100% full document context!")
+                            else:
+                                logger.info(f"[MODE_DOCUMENTS] ℹ️ Doc {d_id} from Brain has no relevant seeds for current topic, skipping full inclusion to prevent context crowding.")
                     
                     # Grouping summary untuk SSE status
                     summary_parts = []
@@ -857,7 +929,6 @@ class ModeDocuments:
             )
 
         # State variables for stream interception
-        import re
         intercept_buffer = ""
         is_intercepting = False
         json_intercepted = False
