@@ -208,10 +208,10 @@ async def serve_db_doc(file_path: str, request: Request, current_user_npp: Optio
 @app.get("/api/system/models-status", tags=["System"])
 async def get_system_models_status():
     from backend.app.services.rag.reranker_service import _load_reranker
-    from backend.app.api.endpoints import voice
+    from backend.app.services.voice.tts_service import tts_service
     
     reranker_loaded = _load_reranker.cache_info().currsize > 0
-    f5_loaded = getattr(voice, "_f5_ema_model", None) is not None
+    f5_loaded = getattr(tts_service, "_ema_model", None) is not None
     return {
         "status": "success",
         "reranker": {

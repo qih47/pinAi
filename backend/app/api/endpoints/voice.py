@@ -188,57 +188,10 @@ _ref_audio_cache = {}
 _F5_MODEL_CFG = dict(dim=1024, depth=22, heads=16, ff_mult=2, text_dim=512, conv_layers=4)
 
 def get_f5_tts():
-    """Load & cache F5-TTS model + vocoder (thread-safe lazy init)."""
+    """Load & cache F5-TTS model + vocoder via tts_service (SSOT)."""
     global _f5_ema_model, _f5_vocoder
-    if _f5_ema_model is not None:
-        return _f5_ema_model, _f5_vocoder
-
-    try:
-        import torch
-        import os
-        from f5_tts.infer.utils_infer import load_model, load_vocoder
-        from f5_tts.model import DiT
-
-        # Ensure SDPA math mode (stable, no Flash/MemEfficient bugs on older GPUs)
-        torch.backends.cuda.enable_flash_sdp(False)
-        torch.backends.cuda.enable_mem_efficient_sdp(False)
-        torch.backends.cuda.enable_math_sdp(True)
-
-        ckpt_file  = "/home/qisthi/pinAi/backend/models/f5_tts/f5_tts_indo_v2.pt"
-        vocab_file = "/home/qisthi/pinAi/backend/models/f5_tts/vocab.txt"
-
-        if not (os.path.exists(ckpt_file) and os.path.exists(vocab_file)):
-            logger.warning("[VOICE] F5-TTS weights not found, skipping load.")
-            return None, None
-
-        logger.info("[VOICE] Loading F5-TTS EMA model to GPU...")
-        _f5_ema_model = load_model(
-            model_cls=DiT,
-            model_cfg=_F5_MODEL_CFG,
-            ckpt_path=ckpt_file,
-            vocab_file=vocab_file,
-            ode_method="euler",
-            use_ema=True,
-            device="cuda",
-        )
-
-        logger.info("[VOICE] Loading F5-TTS vocoder (vocos)...")
-        vocos_local_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))), "assets", "weights", "vocos")
-        _f5_vocoder = load_vocoder(
-            vocoder_name="vocos",
-            is_local=True,
-            local_path=vocos_local_path,
-            device="cuda",
-        )
-        logger.info("[VOICE] F5-TTS Model loaded successfully.")
-
-    except ImportError:
-        logger.warning("[VOICE] f5_tts module not installed.")
-    except Exception as e:
-        import traceback
-        logger.error(f"[VOICE] Failed to load F5-TTS: {e}")
-        logger.error(traceback.format_exc())
-
+    from backend.app.services.voice.tts_service import tts_service
+    _f5_ema_model, _f5_vocoder = tts_service.get_models()
     return _f5_ema_model, _f5_vocoder
 
 
