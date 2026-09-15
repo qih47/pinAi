@@ -178,7 +178,7 @@ export default function ChatArea({
           </div>
         )}
         {/* Spacer bawah lega agar batas bawah tembus sampai bawah & bubble terakhir tidak tertutup input area */}
-        <div style={{ height: `${spacerHeight}px`, width: '100%', flexShrink: 0, overflowAnchor: 'auto' }} />
+        <div style={{ height: `${spacerHeight}px`, width: '100%', flexShrink: 0, overflowAnchor: 'none', pointerEvents: 'none' }} />
       </>
     );
   }, [isStreaming, lastAssistantIndex, currentThinking, theme.mainBg, theme.secondaryText, language, activeModeTag]);
@@ -207,7 +207,7 @@ export default function ChatArea({
           position: 'relative',
           flex: 1,
           overflowAnchor: 'none',
-          overscrollBehaviorY: 'contain',
+          overscrollBehaviorY: 'auto',
         }}
         className="custom-scrollbar chat-main-scroll"
       >
@@ -229,11 +229,11 @@ export default function ChatArea({
           ) : (
             <div
               className="assistant-content-container"
-              style={{ flex: 1, minHeight: 0, position: 'relative', animation: 'fadeSlideIn 0.15s ease-out' }}
+              style={{ width: '100%', minHeight: 0, position: 'relative', animation: 'fadeSlideIn 0.15s ease-out' }}
             >
               <Virtuoso
                 ref={virtuosoRef}
-                style={{ height: '100%' }}
+                style={{ width: '100%' }}
                 data={messages}
                 customScrollParent={scrollParent}
                 useWindowScroll={false}

@@ -86,9 +86,11 @@ export const DateDivider = React.memo(function DateDivider({
 
   return (
     <div
-      className="flex items-center justify-center my-6 select-none pointer-events-none w-full"
+      className="flex items-center justify-center select-none pointer-events-none w-full"
       style={{
-        margin: '24px 0 16px',
+        padding: '24px 0 16px',
+        margin: 0,
+        boxSizing: 'border-box',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
