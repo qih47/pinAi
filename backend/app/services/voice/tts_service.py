@@ -67,15 +67,22 @@ PHONETIC_ROOTS = {
     'hr': 'eic ar',
     'ac': 'a se',
     'tbk': 'te be ka',
-    'bumn': 'be u em en',
+    'bumn': 'B U M N',
     'pic': 'pi ai si',
     'pkb': 'pe ka be',
     'kpk': 'ka pe ka',
     'dpr': 'de pe er',
     'dprd': 'de pe er de',
-    'wib': 'we i be',
-    'wita': 'wita',
-    'wit': 'wit',
+    'wib': 'waktu indonesia barat',
+    'wita': 'waktu indonesia tengah',
+    'wit': 'waktu indonesia timur',
+    'pkl': 'P K L',
+    'pt': 'P T',
+    'ktp': 'K T P',
+    'sim': 'S I M',
+    'npwp': 'N P W P',
+    'bpjs': 'B P J S',
+    'stnk': 'S T N K',
 
     # Indonesian specific abbreviations & slang
     'sip': 'siip',
@@ -318,11 +325,11 @@ def clean_text_for_tts(text: str) -> str:
         tz = (match.group(3) or "").upper()
         tz_word = ""
         if tz == "WIB":
-            tz_word = "we i be"
+            tz_word = "waktu indonesia barat"
         elif tz == "WITA":
-            tz_word = "wita"
+            tz_word = "waktu indonesia tengah"
         elif tz == "WIT":
-            tz_word = "wit"
+            tz_word = "waktu indonesia timur"
 
         if minute in ["00", "0"]:
             return f"pukul {hour} tepat {tz_word}".strip()
@@ -557,19 +564,19 @@ class TTSService:
         # Kecepatan natural penutur bahasa Indonesia ~8-10 karakter per detik.
         speed_map = {
             "slow": 0.65,
-            "normal": 0.75,
-            "fast": 0.95,
+            "normal": 0.85,
+            "fast": 1.15,
         }
         if isinstance(speed_setting, (int, float)):
             effective_speed = float(speed_setting)
         elif str(speed_setting).replace('.', '', 1).isdigit():
             effective_speed = float(speed_setting)
         else:
-            effective_speed = speed_map.get(str(speed_setting).lower(), 0.75)
+            effective_speed = speed_map.get(str(speed_setting).lower(), 0.85)
 
-        # Untuk kalimat sangat pendek (< 35 karakter), perlambat sedikit agar intonasi tuntas
-        if len(clean_text) < 35:
-            effective_speed = min(effective_speed, 0.68)
+        # Untuk kalimat sangat pendek, jangan paksa throttle jika user memilih fast
+        if len(clean_text) < 25 and str(speed_setting).lower() != "fast":
+            effective_speed = min(effective_speed, 0.75)
 
         t_start = time.time()
         wav, sr, _ = infer_process(

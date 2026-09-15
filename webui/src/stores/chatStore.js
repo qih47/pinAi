@@ -57,10 +57,14 @@ export const useChatStore = create((set, get) => ({
         const token = localStorage.getItem('cakra_token');
         if (!token) return;
         const state = get();
+        const themeSetting = localStorage.getItem('cakra-theme-setting') || 'dark';
+        const preferredLang = localStorage.getItem('cakra_language') || 'id';
         const settings = {
             autoReadAloud: state.autoReadAloud,
             ttsVoice: state.ttsVoice,
-            ttsSpeed: state.ttsSpeed
+            ttsSpeed: state.ttsSpeed,
+            theme_preference: themeSetting,
+            preferred_language: preferredLang
         };
         try {
             await apiClient.put('/user/settings', { token, settings });
@@ -87,6 +91,19 @@ export const useChatStore = create((set, get) => ({
                     localStorage.setItem('cakra_tts_speed', s.ttsSpeed);
                     set({ ttsSpeed: s.ttsSpeed });
                 }
+                if (s.theme_preference) {
+                    localStorage.setItem('cakra-theme-setting', s.theme_preference);
+                    const isDark = s.theme_preference === 'dark' || (s.theme_preference === 'system' && window.matchMedia?.('(prefers-color-scheme: dark)').matches);
+                    if (isDark) {
+                        document.documentElement.classList.add('dark');
+                    } else {
+                        document.documentElement.classList.remove('dark');
+                    }
+                }
+                if (s.preferred_language) {
+                    localStorage.setItem('cakra_language', s.preferred_language);
+                }
+                window.dispatchEvent(new CustomEvent('cakra-settings-updated', { detail: s }));
             }
         } catch (e) {
             console.error("Gagal load settings", e);

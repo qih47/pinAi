@@ -76,61 +76,19 @@ def extract_routing_signals_for_call1(user_content: str) -> str:
 # WEB QUERY SANITIZER
 # ═══════════════════════════════════════════════════════════════════════════════
 
-_WEB_QUERY_FILLER_PREFIXES = re.compile(
-    r"^(?:(?:tolong|coba|bisa|mohon)\s+)?(?:"
-    r"infoin|infokan|beritahu|beritahukan|kasih\s+tau|kasih\s+tahu|spill|update|kabar|cekin|cek|"
-    r"mencari(\s+referensi)?(\s+terkait)?|carikan(\s+(saya|aku|gue|gw))?(\s+info(rmasi)?)?(\s+terkait)?|"
-    r"cari(\s+di\s+web|\s+web|\s+(informasi|info|data|tahu))?|informasi(\s+tentang|\s+lain)?|"
-    r"info(\s+tentang|\s+lain)?|data(\s+tentang|\s+lain)?|terkait|mengenai|tentang|referensi(\s+terkait)?|"
-    r"analisa(\s+tentang)?|jelaskan(\s+tentang)?|ada\s+apa\s+dengan|gimana\s+kondisi|gimana\s+status|"
-    r"bagaimana\s+kondisi|bagaimana\s+status|tanya(\s+dong)?|nanya(\s+dong)?|bocoran(\s+tentang)?|"
-    r"berita(\s+tentang|\s+terkini|\s+terbaru)?|lainnya|lain)\s*(?:dong|deh|tentang|soal|berita|kabar)?\s*",
-    re.IGNORECASE
-)
-
 def _sanitize_web_query(query: str, user_message: str = "") -> str:
     """
-    Bersihkan prefix filler kata bahasa Indonesia dari web search query
-    dan tangani over-expansion / disambiguasi semantik (seperti 'demo' unjuk rasa vs 'demo produk').
-    Contoh: "infoin berita terbaru erupsi anak krakatau" → "terbaru erupsi anak krakatau"
+    Pembersihan teknis murni untuk web search query hasil penalaran LLM Router:
+    Menghapus tanda kutip pembungkus string, karakter baris baru/tab, dan spasi berlebih
+    tanpa memotong kata kunci semantik esensial (seperti 'berita', 'terbaru', 'informasi', 'kabar').
     """
+    if not query:
+        return ""
     cleaned = query.strip()
     cleaned = re.sub(r'^["\']+|["\']+$', '', cleaned).strip()
-
-    # Ulangi hingga semua prefix filler terkikis (bisa berlapis)
-    for _ in range(5):
-        new_cleaned = _WEB_QUERY_FILLER_PREFIXES.sub("", cleaned).strip()
-        if new_cleaned == cleaned:
-            break
-        cleaned = new_cleaned
-
-    # Bersihkan slang percakapan yang tersisa di tengah/akhir query
-    slang_patterns = [
-        r"\b(cuy|bro|gan|bang|mas|mba|bos)\b",
-        r"\b(hadeh|hadeuh|astaga|buset|waduh|anjir|anjay|gila|parah)\b",
-        r"\b(wkwk+|haha+|hehe+)\b",
-        r"\b(dong|deh|sih|nih|tuh|kan|lah|ya|kah|kek|kayak|plis|please)\b",
-        r"\b(gw|gue|lu|lo|elu|aku|kamu|kita|saya)\b",
-    ]
-    for pattern in slang_patterns:
-        cleaned = re.sub(pattern, " ", cleaned, flags=re.IGNORECASE)
-    cleaned = re.sub(r"\s+", " ", cleaned).strip()
-
-    # 🚨 Disambiguasi Semantik: "demo" (unjuk rasa massa) vs "demo produk"
-    lower_q = cleaned.lower()
-    if "demo produk" in lower_q or "pameran teknologi" in lower_q or "jadwal pameran" in lower_q:
-        user_msg_lower = (user_message or "").lower()
-        civic_hints = ["jakarta", "dpr", "monas", "patung kuda", "istana", "bandung", "surabaya", "malang", "hari ini", "terkini", "masih ada", "jalan", "polisi", "buruh", "mahasiswa"]
-        product_hints = ["produk", "software", "aplikasi", "alat", "senjata", "fitur", "gadget", "hp", "mobil", "motor"]
-        
-        # Jika konteks user adalah situasi kota/wilayah dan TIDAK meminta produk secara eksplisit
-        if any(h in user_msg_lower for h in civic_hints) and not any(p in user_msg_lower for p in product_hints):
-            cleaned = re.sub(r'demo\s+produk\s*', 'demonstrasi unjuk rasa ', cleaned, flags=re.IGNORECASE)
-            cleaned = re.sub(r'(&\s*)?(jadwal\s+)?pameran(\s+teknologi)?\s*', '', cleaned, flags=re.IGNORECASE).strip()
-            if "unjuk rasa" not in cleaned.lower() and "demonstrasi" not in cleaned.lower():
-                cleaned = f"demonstrasi unjuk rasa {cleaned}"
-
-    return cleaned.strip() or query.strip()
+    cleaned = re.sub(r'[\r\n\t]+', ' ', cleaned)
+    cleaned = re.sub(r'\s+', ' ', cleaned).strip()
+    return cleaned or query.strip()
 
 
 _RAG_TITLE_STOPWORDS = {

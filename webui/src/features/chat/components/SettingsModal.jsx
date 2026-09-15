@@ -183,6 +183,34 @@ export default function SettingsModal({
     }
   }, [isOpen, onClose]);
 
+  const handleInstantPhotoUpload = async (file) => {
+    if (!file) return;
+    setEditPhoto(file);
+    const previewUrl = URL.createObjectURL(file);
+    setEditPhotoPreview(previewUrl);
+    setIsSubmittingProfile(true);
+
+    const formData = new FormData();
+    formData.append('token', localStorage.getItem('cakra_token') || '');
+    formData.append('photo', file);
+
+    try {
+      const response = await apiClient.put('/user/profile', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data'
+        }
+      });
+      if (response.data?.status === 'success') {
+        await checkSession();
+      }
+    } catch (err) {
+      console.error("Gagal instant upload foto profil", err);
+      alert("Gagal memperbarui foto profil: " + (err.response?.data?.detail || err.message));
+    } finally {
+      setIsSubmittingProfile(false);
+    }
+  };
+
   const handleProfileUpdate = async (e) => {
     e.preventDefault();
     setIsSubmittingProfile(true);
@@ -597,9 +625,11 @@ export default function SettingsModal({
                   <div className="w-20 h-20 rounded-full overflow-hidden flex-shrink-0 border border-gray-700 bg-gray-800 flex items-center justify-center mb-3">
                     {editPhotoPreview || userData?.profile_photo_url ? (
                       <img
+                        key={editPhotoPreview || userData?.profile_photo_url}
                         src={editPhotoPreview || (userData?.profile_photo_url ? `${getApiBase()}${userData.profile_photo_url}` : '')}
                         alt="Profile"
                         className="w-full h-full object-cover"
+                        onLoad={(e) => { e.currentTarget.style.display = "block"; }}
                         onError={(e) => { e.currentTarget.style.display = "none"; }}
                       />
                     ) : userData?.npp ? (
@@ -607,23 +637,24 @@ export default function SettingsModal({
                         src={`https://hris.pindad.co.id/assets/image/foto_pegawai_bumn/${userData.npp}.jpg`}
                         alt="Profile"
                         className="w-full h-full object-cover"
+                        onLoad={(e) => { e.currentTarget.style.display = "block"; }}
                         onError={(e) => { e.currentTarget.style.display = "none"; }}
                       />
                     ) : (
                       <span className={`font-bold ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>AI</span>
                     )}
                   </div>
-                  <label className={`cursor-pointer px-4 py-1.5 text-xs font-medium rounded-full transition-colors ${darkMode ? 'bg-gray-800 hover:bg-gray-700 text-white' : 'bg-gray-200 hover:bg-gray-300 text-black'}`}>
-                    Upload Foto
+                  <label className={`cursor-pointer px-4 py-1.5 text-xs font-medium rounded-full transition-colors ${darkMode ? 'bg-gray-800 hover:bg-gray-700 text-white' : 'bg-gray-200 hover:bg-gray-300 text-black'} ${isSubmittingProfile ? 'opacity-50 cursor-wait' : ''}`}>
+                    {isSubmittingProfile ? 'Mengunggah...' : 'Upload Foto'}
                     <input
                       type="file"
                       accept="image/*"
+                      disabled={isSubmittingProfile}
                       className="hidden"
                       onChange={(e) => {
-                        const file = e.target.files[0];
+                        const file = e.target.files?.[0];
                         if (file) {
-                          setEditPhoto(file);
-                          setEditPhotoPreview(URL.createObjectURL(file));
+                          handleInstantPhotoUpload(file);
                         }
                       }}
                     />
@@ -744,24 +775,42 @@ export default function SettingsModal({
             <div className="relative py-2 mb-2">
               <div className="relative flex flex-col sm:flex-row sm:items-center justify-between gap-4 z-10">
                 <div className="flex items-center space-x-4 sm:space-x-5">
-                  <div className={`w-14 h-14 sm:w-16 sm:h-16 rounded-full overflow-hidden flex-shrink-0 ${darkMode ? 'bg-gray-800' : 'bg-gray-200'} shadow-sm flex items-center justify-center`}>
-                    {userData?.profile_photo_url ? (
-                      <img
-                        src={`${getApiBase()}${userData.profile_photo_url}`}
-                        alt="Profile"
-                        className="w-full h-full object-cover"
-                        onError={(e) => { e.currentTarget.style.display = "none"; }}
+                  <div className="relative group">
+                    <div className={`w-14 h-14 sm:w-16 sm:h-16 rounded-full overflow-hidden flex-shrink-0 ${darkMode ? 'bg-gray-800' : 'bg-gray-200'} shadow-sm flex items-center justify-center`}>
+                      {editPhotoPreview || userData?.profile_photo_url ? (
+                        <img
+                          key={editPhotoPreview || userData?.profile_photo_url}
+                          src={editPhotoPreview || `${getApiBase()}${userData.profile_photo_url}`}
+                          alt="Profile"
+                          className="w-full h-full object-cover"
+                          onLoad={(e) => { e.currentTarget.style.display = "block"; }}
+                          onError={(e) => { e.currentTarget.style.display = "none"; }}
+                        />
+                      ) : userData?.npp ? (
+                        <img
+                          src={`https://hris.pindad.co.id/assets/image/foto_pegawai_bumn/${userData.npp}.jpg`}
+                          alt="Profile"
+                          className="w-full h-full object-cover"
+                          onLoad={(e) => { e.currentTarget.style.display = "block"; }}
+                          onError={(e) => { e.currentTarget.style.display = "none"; }}
+                        />
+                      ) : (
+                        <User size={28} className={darkMode ? 'text-gray-500' : 'text-gray-400'} />
+                      )}
+                    </div>
+                    <label className="absolute inset-0 rounded-full bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center cursor-pointer transition-opacity">
+                      <span className="text-[10px] text-white font-medium">Ubah</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        disabled={isSubmittingProfile}
+                        className="hidden"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) handleInstantPhotoUpload(file);
+                        }}
                       />
-                    ) : userData?.npp ? (
-                      <img
-                        src={`https://hris.pindad.co.id/assets/image/foto_pegawai_bumn/${userData.npp}.jpg`}
-                        alt="Profile"
-                        className="w-full h-full object-cover"
-                        onError={(e) => { e.currentTarget.style.display = "none"; }}
-                      />
-                    ) : (
-                      <User size={28} className={darkMode ? 'text-gray-500' : 'text-gray-400'} />
-                    )}
+                    </label>
                   </div>
                   <div className="min-w-0 flex-1">
                     <h3 className={`text-base sm:text-lg font-bold truncate ${darkMode ? 'text-white' : 'text-gray-900'}`}>{userData?.name || userData?.nama || "User"}</h3>

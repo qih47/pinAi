@@ -211,51 +211,51 @@ export default function ChatArea({
         }}
         className="custom-scrollbar chat-main-scroll"
       >
-      <div style={{ ...styles.chatInner, paddingTop: '20px' }}>
-        {isLoading ? (
-          <div style={{ animation: 'fadeSlideIn 0.2s ease-out' }}>
-            <SkeletonChat />
-          </div>
-        ) : messages.length === 0 ? (
-          <div style={styles.emptyState}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '16px' }}>
-              <div style={styles.emptyLogoWrap}>
-                <img src={cakraLogo} alt="CAKRA" style={styles.emptyLogo} />
-              </div>
-              <h1 style={{ ...styles.emptyTitle, color: theme.textColor }}>{t.welcomeTitle}</h1>
+        <div style={{ ...styles.chatInner, paddingTop: '39px' }}>
+          {isLoading ? (
+            <div style={{ animation: 'fadeSlideIn 0.2s ease-out' }}>
+              <SkeletonChat />
             </div>
-            <p style={{ ...styles.emptySubtitle, color: theme.secondaryText }}>{t.welcomeSubtitle}</p>
-          </div>
-        ) : (
-          <div
-            className="assistant-content-container"
-            style={{ flex: 1, minHeight: 0, position: 'relative', animation: 'fadeSlideIn 0.15s ease-out' }}
-          >
-            <Virtuoso
-              ref={virtuosoRef}
-              style={{ height: '100%' }}
-              data={messages}
-              customScrollParent={scrollParent}
-              useWindowScroll={false}
-              itemContent={itemContent}
-              language={language}
-              atBottomStateChange={(atBottom) => {
-                if (onAtBottomChange) onAtBottomChange(atBottom);
-              }}
-              followOutput={(isAtBottom) => {
-                return isAtBottom ? 'auto' : false;
-              }}
-              rangeChanged={(range) => {
-                setVisibleRange(range);
-              }}
-              increaseViewportBy={{ top: 1200, bottom: 1200 }}
-              components={{ Footer: FooterComponent }}
-            />
-          </div>
-        )}
+          ) : messages.length === 0 ? (
+            <div style={styles.emptyState}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '16px' }}>
+                <div style={styles.emptyLogoWrap}>
+                  <img src={cakraLogo} alt="CAKRA" style={styles.emptyLogo} />
+                </div>
+                <h1 style={{ ...styles.emptyTitle, color: theme.textColor }}>{t.welcomeTitle}</h1>
+              </div>
+              <p style={{ ...styles.emptySubtitle, color: theme.secondaryText }}>{t.welcomeSubtitle}</p>
+            </div>
+          ) : (
+            <div
+              className="assistant-content-container"
+              style={{ flex: 1, minHeight: 0, position: 'relative', animation: 'fadeSlideIn 0.15s ease-out' }}
+            >
+              <Virtuoso
+                ref={virtuosoRef}
+                style={{ height: '100%' }}
+                data={messages}
+                customScrollParent={scrollParent}
+                useWindowScroll={false}
+                itemContent={itemContent}
+                language={language}
+                atBottomStateChange={(atBottom) => {
+                  if (onAtBottomChange) onAtBottomChange(atBottom);
+                }}
+                followOutput={(isAtBottom) => {
+                  return isAtBottom ? 'auto' : false;
+                }}
+                rangeChanged={(range) => {
+                  setVisibleRange(range);
+                }}
+                increaseViewportBy={{ top: 1200, bottom: 1200 }}
+                components={{ Footer: FooterComponent }}
+              />
+            </div>
+          )}
+        </div>
       </div>
-    </div>
-      
+
       {/* 💊 Navigasi Dokumen Rujukan PT Pindad (Kiri) */}
       <DocumentMinimapPill
         messages={messages}
@@ -273,16 +273,16 @@ export default function ChatArea({
       />
 
       {/* 🧭 Navigasi Mini-Map User Messages (Kanan) */}
-      <ChatNavigator 
-        messages={messages} 
-        darkMode={darkMode} 
+      <ChatNavigator
+        messages={messages}
+        darkMode={darkMode}
         theme={theme}
         scrollContainerRef={messagesContainerRef}
         onNavigate={(index) => {
           if (virtuosoRef.current) {
             virtuosoRef.current.scrollToIndex({ index, align: 'start', behavior: 'smooth' });
           }
-        }} 
+        }}
       />
     </div>
   );

@@ -81,92 +81,94 @@ export default function SidebarHeader({
       </div>
 
       <div
-        className={`p-3 space-y-0 ${!isOpen && "flex flex-col items-center"}`}
+        className={`px-2 py-1 space-y-0 ${!isOpen && "flex flex-col items-center"}`}
       >
-        <SessionExpiryStatus />
+        <div className={`space-y-0 px-1 ${!isOpen ? 'flex flex-col items-center' : ''}`}>
+          <SessionExpiryStatus />
 
-        {/* ── TOMBOL: NEW CHAT ── */}
-        <button
-          onClick={clearChat}
-          className={`flex items-center rounded-full transition-colors group overflow-hidden text-[14px] ${darkMode ? 'hover:bg-gray-800' : 'hover:bg-gray-200'}`}
-          style={{
-            padding: isOpen ? "8px 12px" : "8px",
-            width: isOpen ? "100%" : "auto",
-            gap: isOpen ? "12px" : "0",
-          }}
-          title={t.newChat}
-        >
-          <span className="h-5 w-5 flex items-center justify-center flex-shrink-0">
-            <Plus size={18} strokeWidth={2.5} className="group-hover:text-blue-500 transition-colors" style={{ color: theme?.iconColor || "currentColor" }} />
-          </span>
-          <span
-            className={`font-semibold whitespace-nowrap transition-opacity duration-300 ${!isOpen ? "hidden" : "opacity-100"
-              }`}
-            style={{ color: theme?.textColor }}
+          {/* ── TOMBOL: NEW CHAT ── */}
+          <button
+            onClick={clearChat}
+            className={`flex items-center rounded-full transition-colors group overflow-hidden text-[14px] ${darkMode ? 'hover:bg-gray-800' : 'hover:bg-gray-200'}`}
+            style={{
+              padding: isOpen ? "8px 12px" : "8px",
+              width: isOpen ? "100%" : "auto",
+              gap: isOpen ? "12px" : "0",
+            }}
+            title={t.newChat}
           >
-            {t.newChat}
-          </span>
-        </button>
-
-        {/* ── TOMBOL: ARSIP ── */}
-        <Link
-          to="/archive"
-          onClick={() => setActiveMenuId?.(null)}
-          className={`flex items-center transition-all group overflow-hidden text-[14px] ${location.pathname === '/archive'
-            ? "bg-amber-500/10 text-amber-500 font-semibold border-l-2 border-amber-500 rounded-r-full"
-            : `rounded-full font-medium ${darkMode ? 'hover:bg-gray-800' : 'hover:bg-gray-200'}`
-            }`}
-          style={{
-            padding: isOpen ? "8px 12px" : "8px",
-            width: isOpen ? "100%" : "auto",
-            gap: isOpen ? "12px" : "0",
-          }}
-          title={t.archive || "Arsip"}
-        >
-          <span className="h-5 w-5 flex items-center justify-center flex-shrink-0">
-            <Archive size={18} strokeWidth={2} className="group-hover:text-amber-500 transition-colors" style={{ color: location.pathname === '/archive' ? "currentColor" : (theme?.iconColor || "currentColor") }} />
-          </span>
-          <span
-            className={`font-semibold whitespace-nowrap transition-opacity duration-300 ${!isOpen ? "hidden" : "opacity-100"}`}
-            style={{ color: location.pathname === '/archive' ? '' : theme?.textColor }}
-          >
-            {t.archive || "Arsip"}
-          </span>
-        </Link>
-
-        {/* ── TOMBOL: SEARCH (CTRL+K) ── */}
-        <button
-          onClick={() => setIsSearchModalOpen(true)}
-          className={`flex items-center rounded-full transition-colors group overflow-hidden text-[14px] ${darkMode ? 'hover:bg-gray-800' : 'hover:bg-gray-200'}`}
-          style={{
-            padding: isOpen ? "8px 12px" : "8px",
-            width: isOpen ? "100%" : "auto",
-            gap: isOpen ? "12px" : "0",
-          }}
-          title={t.searchChat}
-        >
-          <span className="h-5 w-5 flex items-center justify-center flex-shrink-0">
-            <Search size={16} strokeWidth={2.5} className="group-hover:text-blue-500 transition-colors" style={{ color: theme?.iconColor || "currentColor" }} />
-          </span>
-          <span
-            className={`font-semibold whitespace-nowrap transition-opacity duration-300 flex-1 text-left ${!isOpen ? "hidden" : "opacity-100"
-              }`}
-            style={{ color: theme?.textColor }}
-          >
-            {t.searchChat}
-          </span>
-          {isOpen && (
-            <span
-              className="text-[10px] px-1.5 py-0.5 rounded border opacity-60 ml-auto"
-              style={{
-                borderColor: darkMode ? "#4B5563" : "#D1D5DB",
-                color: darkMode ? "#9CA3AF" : "#6B7280"
-              }}
-            >
-              Ctrl K
+            <span className="h-5 w-5 flex items-center justify-center flex-shrink-0">
+              <Plus size={18} strokeWidth={2.5} className="group-hover:text-blue-500 transition-colors" style={{ color: theme?.iconColor || "currentColor" }} />
             </span>
-          )}
-        </button>
+            <span
+              className={`font-semibold whitespace-nowrap transition-opacity duration-300 ${!isOpen ? "hidden" : "opacity-100"
+                }`}
+              style={{ color: theme?.textColor }}
+            >
+              {t.newChat}
+            </span>
+          </button>
+
+          {/* ── TOMBOL: ARSIP ── */}
+          <Link
+            to="/archive"
+            onClick={() => setActiveMenuId?.(null)}
+            className={`flex items-center transition-all group overflow-hidden text-[14px] ${location.pathname === '/archive'
+              ? "bg-amber-500/10 text-amber-500 font-semibold border-l-2 border-amber-500 rounded-r-full"
+              : `rounded-full font-medium ${darkMode ? 'hover:bg-gray-800' : 'hover:bg-gray-200'}`
+              }`}
+            style={{
+              padding: isOpen ? "8px 12px" : "8px",
+              width: isOpen ? "100%" : "auto",
+              gap: isOpen ? "12px" : "0",
+            }}
+            title={t.archive || "Arsip"}
+          >
+            <span className="h-5 w-5 flex items-center justify-center flex-shrink-0">
+              <Archive size={18} strokeWidth={2} className="group-hover:text-amber-500 transition-colors" style={{ color: location.pathname === '/archive' ? "currentColor" : (theme?.iconColor || "currentColor") }} />
+            </span>
+            <span
+              className={`font-semibold whitespace-nowrap transition-opacity duration-300 ${!isOpen ? "hidden" : "opacity-100"}`}
+              style={{ color: location.pathname === '/archive' ? '' : theme?.textColor }}
+            >
+              {t.archive || "Arsip"}
+            </span>
+          </Link>
+
+          {/* ── TOMBOL: SEARCH (CTRL+K) ── */}
+          <button
+            onClick={() => setIsSearchModalOpen(true)}
+            className={`flex items-center rounded-full transition-colors group overflow-hidden text-[14px] ${darkMode ? 'hover:bg-gray-800' : 'hover:bg-gray-200'}`}
+            style={{
+              padding: isOpen ? "8px 12px" : "8px",
+              width: isOpen ? "100%" : "auto",
+              gap: isOpen ? "12px" : "0",
+            }}
+            title={t.searchChat}
+          >
+            <span className="h-5 w-5 flex items-center justify-center flex-shrink-0">
+              <Search size={18} strokeWidth={2.5} className="group-hover:text-blue-500 transition-colors" style={{ color: theme?.iconColor || "currentColor" }} />
+            </span>
+            <span
+              className={`font-semibold whitespace-nowrap transition-opacity duration-300 flex-1 text-left ${!isOpen ? "hidden" : "opacity-100"
+                }`}
+              style={{ color: theme?.textColor }}
+            >
+              {t.searchChat}
+            </span>
+            {isOpen && (
+              <span
+                className="text-[10px] px-1.5 py-0.5 rounded border opacity-60 ml-auto"
+                style={{
+                  borderColor: darkMode ? "#4B5563" : "#D1D5DB",
+                  color: darkMode ? "#9CA3AF" : "#6B7280"
+                }}
+              >
+                Ctrl K
+              </span>
+            )}
+          </button>
+        </div>
       </div>
     </>
   );

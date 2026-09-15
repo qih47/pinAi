@@ -75,9 +75,17 @@ export function useChatLogic({ isGuest,
   const [artifactContent, setArtifactContent] = useState(""); // konten dari server
   const [isArtifactLoading, setIsArtifactLoading] = useState(false);
 
-  const [language, setLanguage] = useState(() => {
+  const [language, setLanguageRaw] = useState(() => {
     return localStorage.getItem("cakra_language") || "id";
   });
+
+  const setLanguage = useCallback((val, syncToServer = true) => {
+    localStorage.setItem("cakra_language", val);
+    setLanguageRaw(val);
+    if (syncToServer) {
+      useChatStore.getState().syncSettings();
+    }
+  }, []);
   const tToast = translations[language]?.toast || translations.id.toast;
 
   // Deteksi bahasa berdasarkan ekstensi file
@@ -618,7 +626,7 @@ export function useChatLogic({ isGuest,
     return false;
   });
 
-  const setDarkMode = (val) => {
+  const setDarkMode = useCallback((val, syncToServer = true) => {
     if (val === "system") {
       setThemeSetting("system");
       localStorage.setItem("cakra-theme-setting", "system");
@@ -629,7 +637,10 @@ export function useChatLogic({ isGuest,
       localStorage.setItem("cakra-theme-setting", mode);
       setDarkModeRaw(val);
     }
-  };
+    if (syncToServer) {
+      useChatStore.getState().syncSettings();
+    }
+  }, []);
 
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
   useEffect(() => {
@@ -662,18 +673,31 @@ export function useChatLogic({ isGuest,
   const [showMsgSearch, setShowMsgSearch] = useState(false);
   const [msgSearchQuery, setMsgSearchQuery] = useState("");
 
-  // 🔄 W8: Sinkronisasi mode tema antar tab browser
+  // 🔄 W8: Sinkronisasi mode tema & bahasa antar tab browser dan event kustom
   useEffect(() => {
     const handleStorageChange = (e) => {
       if (e.key === "cakra-theme-setting") {
-        setDarkMode(e.newValue === "system" ? "system" : e.newValue === "dark");
+        setDarkMode(e.newValue === "system" ? "system" : e.newValue === "dark", false);
       } else if (e.key === "cakra_language" && e.newValue) {
-        setLanguage(e.newValue);
+        setLanguage(e.newValue, false);
+      }
+    };
+    const handleCustomSettings = (e) => {
+      const s = e.detail;
+      if (s?.theme_preference) {
+        setDarkMode(s.theme_preference === "system" ? "system" : s.theme_preference === "dark", false);
+      }
+      if (s?.preferred_language) {
+        setLanguage(s.preferred_language, false);
       }
     };
     window.addEventListener("storage", handleStorageChange);
-    return () => window.removeEventListener("storage", handleStorageChange);
-  }, []);
+    window.addEventListener("cakra-settings-updated", handleCustomSettings);
+    return () => {
+      window.removeEventListener("storage", handleStorageChange);
+      window.removeEventListener("cakra-settings-updated", handleCustomSettings);
+    };
+  }, [setDarkMode, setLanguage]);
 
   // ⌨️ W9: Keyboard Shortcuts Handler
   useEffect(() => {

@@ -5,7 +5,7 @@ import { translations } from "../../../../utils/translations";
 import { useSessionTitle } from "../../../../hooks/useSessionTitle";
 import { useChatStore } from "../../../../stores/chatStore";
 import { useCollabStore } from "../../../../stores/collabStore";
-import { FileText, Mail, FileSignature, BarChart3, Activity, MessageSquare, Pin, PinOff, MoreVertical, Edit, Trash2, Users2, Archive } from "lucide-react";
+import { FileText, Mail, FileSignature, BarChart3, Activity, MessageSquare, Pin, PinOff, MoreVertical, Edit, Trash2, Users2, Archive, ArrowUpRight } from "lucide-react";
 
 const TypewriterTitle = ({ text, onDone }) => {
   const [displayedText, setDisplayedText] = React.useState("");
@@ -75,6 +75,7 @@ export default function SessionList({
   userData,
   navigate,
   onScroll,
+  onOpenAllChats,
 }) {
   const location = useLocation();
   const t = translations[language]?.sidebar || translations.id.sidebar;
@@ -175,17 +176,10 @@ export default function SessionList({
 
   return (
     <div
-      onScroll={onScroll}
-      className="flex-1 overflow-y-auto overflow-x-hidden px-2 space-y-0.5 custom-scrollbar"
-      style={{
-        scrollbarWidth: "thin",
-        overscrollBehaviorY: "contain",
-        paddingTop: "30px",
-        paddingBottom: "24px",
-      }}
+      className="flex-1 min-h-0 flex flex-col overflow-hidden px-2"
     >
-      {/* ── MENUS THAT SCROLL ALONG WITH CHATS ── */}
-      <div className={`space-y-0 mb-4 px-1 ${!isOpen ? 'flex flex-col items-center' : ''}`}>
+      {/* ── BAGIAN TETAP (TIDAK IKUT SCROLL): REGULATORY SAMPAI ANALYTICS ── */}
+      <div className={`space-y-0 mb-2 px-1 flex-shrink-0 ${!isOpen ? 'flex flex-col items-center' : ''}`}>
         {/* ── CORPORATE TOOLS SECTION (REGULASI) ── */}
         <div className={`pt-0.5 pb-1 transition-all duration-300 ${!isOpen ? "opacity-0 h-0 overflow-hidden" : "opacity-100 h-auto"}`}>
           <p className="text-[10px] font-bold tracking-widest uppercase" style={{ color: darkMode ? "#cbd5e1" : "#4b5563", paddingLeft: "12px" }}>
@@ -463,15 +457,54 @@ export default function SessionList({
         )}
       </div>
 
-      <div className={`transition-opacity duration-300 ${!isOpen ? "opacity-0 pointer-events-none hidden" : "opacity-100"}`}>
+      {/* ── AREA CHATS (HOVER TRIGGER ↗ TETAP AKTIF) ── */}
+      <div className={`group/chats-area flex-1 min-h-0 relative flex flex-col overflow-hidden transition-opacity duration-300 ${!isOpen ? "opacity-0 pointer-events-none hidden" : "opacity-100"}`}>
+        {/* Header "CHATS" (TETAP / TIDAK IKUT SCROLL) */}
         <div
-          className="px-3 py-1 text-[11px] font-bold uppercase tracking-widest mb-1"
+          className="pl-3 pr-0.5 py-1 text-[11px] font-bold uppercase tracking-widest mb-1 flex items-center justify-between flex-shrink-0"
           style={{ color: theme?.secondaryText || "#6b7280" }}
         >
-          {t.chats}
+          <span>{t.chats}</span>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onOpenAllChats?.();
+            }}
+            className={`opacity-0 group-hover/chats-area:opacity-100 p-1 -mr-0.5 rounded transition-all duration-150 ${
+              darkMode ? 'hover:bg-white/10 text-gray-400 hover:text-white' : 'hover:bg-gray-200 text-gray-500 hover:text-gray-900'
+            }`}
+            title={t.viewAllChatsAndCollabs || t.viewAllChats || (language === 'en' ? "View all chats & collabs" : "Lihat semua percakapan & kolaborasi")}
+          >
+            <ArrowUpRight size={14} strokeWidth={2.2} />
+          </button>
         </div>
 
-        {(() => {
+        {/* 🌟 TOP FADE OVERLAY: Ujung scroll transparan halus */}
+        <div
+          style={{
+            position: "absolute",
+            top: "28px",
+            left: 0,
+            right: 0,
+            height: "18px",
+            background: `linear-gradient(to bottom, ${darkMode ? "#1E1E22" : (theme?.sidebarBg || "#F7F8FC")} 0%, transparent 100%)`,
+            pointerEvents: "none",
+            zIndex: 10,
+            transition: "background 0.2s ease",
+          }}
+        />
+
+        {/* Kumpulan Chats (HANYA INI YANG BISA DI-SCROLL) */}
+        <div
+          onScroll={onScroll}
+          className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden space-y-0.5 custom-scrollbar pb-6 pt-1"
+          style={{
+            overscrollBehaviorY: "contain",
+          }}
+        >
+          {(() => {
           if (chatHistory.length === 0) {
             return (
               <div className="text-[11px] text-gray-400 px-3 py-4 italic">
@@ -660,7 +693,7 @@ export default function SessionList({
                         <div
                           ref={menuRef}
                           onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
-                          className={`absolute right-0 top-7 w-32 rounded-md shadow-lg z-[100] py-1 text-[11px] border`}
+                          className={`absolute right-[14px] top-7 w-32 rounded-md shadow-lg z-[100] py-1 text-[11px] border`}
                           style={{ backgroundColor: darkMode ? '#1f2937' : '#ffffff', borderColor: darkMode ? '#374151' : '#e5e7eb' }}
                         >
                           {/* 🔥 DROPDOWN ITEM 1: PIN (SVG VECTOR) */}
@@ -712,6 +745,7 @@ export default function SessionList({
             );
           });
         })()}
+        </div>
       </div>
     </div>
   );

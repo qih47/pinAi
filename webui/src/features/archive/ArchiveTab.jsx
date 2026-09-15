@@ -27,7 +27,8 @@ export default function ArchiveTab({
   userData,
   language = 'id',
   isMobile,
-  toggleSidebar
+  toggleSidebar,
+  setChatHistory
 }) {
   const navigate = useNavigate();
   const fetchChatHistory = useChatStore((state) => state.fetchChatHistory);
@@ -79,7 +80,15 @@ export default function ArchiveTab({
       setActionLoadingId(sessionUuid);
       await archiveSession(sessionUuid, false);
       setArchivedChats((prev) => prev.filter((c) => c.session_uuid !== sessionUuid));
-      if (fetchChatHistory) fetchChatHistory();
+      
+      const npp = userData?.npp || userData?.username;
+      if (npp && fetchChatHistory) {
+        const res = await fetchChatHistory(npp);
+        if (res?.status === "success" && setChatHistory) {
+          setChatHistory(res.data);
+        }
+      }
+      window.dispatchEvent(new CustomEvent("cakra-refresh-chat-history"));
       showToast(t.chatRestoreSuccess || 'Obrolan berhasil dipulihkan ke riwayat aktif.');
     } catch (err) {
       console.error('Gagal memulihkan obrolan:', err);
@@ -95,6 +104,7 @@ export default function ArchiveTab({
       setActionLoadingId(roomId);
       await collabApi.archiveRoom(roomId, false);
       setArchivedRooms((prev) => prev.filter((r) => r.id !== roomId));
+      window.dispatchEvent(new CustomEvent("cakra-refresh-collab-rooms"));
       showToast(t.roomRestoreSuccess || 'Ruang diskusi berhasil dipulihkan.');
     } catch (err) {
       console.error('Gagal memulihkan ruang diskusi:', err);

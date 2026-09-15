@@ -38,49 +38,16 @@ def _set_cache(query: str, results: List[Dict[str, Any]]) -> None:
     _search_cache[key] = (time.time(), results)
 
 def sanitize_web_query(query: str) -> str:
-    """Membersihkan kata-kata filler percakapan, slang, perintah, dan keluhan dari query pencarian web."""
+    """Membersihkan sanitasi teknis murni (tanda kutip luar, spasi berlebih, baris baru) tanpa memotong kata semantik."""
     if not query:
         return ""
     q = query.strip()
-    
-    # Hapus tanda kutip luar
+    # Hapus tanda kutip luar pembungkus string
     q = re.sub(r'^["\']+|["\']+$', '', q).strip()
-
-    # Prefix fillers (dijalankan hingga bersih berlapis)
-    prefix_fillers = [
-        r"^(?:tolong|coba|bisa|mohon)?\s*(?:infoin|infokan|beritahu|beritahukan|kasih\s+tau|kasih\s+tahu|spill|update|kabar|cekin|cek)\s*(?:dong|deh|tentang|soal|berita|kabar)?\s*",
-        r"^(?:ada\s+apa\s+dengan|gimana\s+kondisi|gimana\s+status|bagaimana\s+kondisi|bagaimana\s+status)\s*",
-        r"^mencari(\s+referensi)?(\s+terkait)?\s*",
-        r"^referensi(\s+terkait)?\s*",
-        r"^carikan(\s+(saya|aku|gue|gw))?(\s+info(rmasi)?)?(\s+terkait)?\s*",
-        r"^cari(\s+di\s+web|\s+web)?\s*",
-        r"^tolong(\s+carikan)?\s*",
-        r"^coba(\s+carikan)?\s*",
-        r"^info(rmasi)?(\s+tentang|\s+lain)?\s*",
-        r"^berita(\s+tentang|\s+terkini|\s+terbaru)?\s*",
-        r"^tanya(\s+dong)?\s*",
-        r"^nanya(\s+dong)?\s*",
-        r"^apa\s+itu\s*",
-        r"^apakah\s+ada\s*",
-        r"^siapa\s+itu\s*",
-    ]
-    for _ in range(4):
-        for pattern in prefix_fillers:
-            q = re.sub(pattern, "", q, flags=re.IGNORECASE).strip()
-
-    # Suffix / inline slang & conversational rant fillers
-    slang_patterns = [
-        r"\b(cuy|bro|gan|bang|mas|mba|bos)\b",
-        r"\b(hadeh|hadeuh|astaga|buset|waduh|anjir|anjay|gila|parah)\b",
-        r"\b(wkwk+|haha+|hehe+)\b",
-        r"\b(dong|deh|sih|nih|tuh|kan|lah|ya|kah|kek|kayak|plis|please)\b",
-        r"\b(gw|gue|lu|lo|elu|aku|kamu|kita|saya)\b",
-    ]
-    for pattern in slang_patterns:
-        q = re.sub(pattern, " ", q, flags=re.IGNORECASE)
-
+    # Hapus karakter newline / tab
+    q = re.sub(r'[\r\n\t]+', ' ', q)
     # Bersihkan multiple spaces
-    q = re.sub(r"\s+", " ", q).strip()
+    q = re.sub(r'\s+', ' ', q).strip()
     return q or query.strip()
 
 

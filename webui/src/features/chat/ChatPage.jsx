@@ -22,6 +22,9 @@ import ArchiveTab from "../archive/ArchiveTab";
 import PdfInterrogator from "./components/PdfInterrogator";
 import DocWriterWorkspace from "../doc_writer/components/DocWriterWorkspace";
 import { useDocWriterStore } from "../../stores/docWriterStore";
+import { useChatStore } from "../../stores/chatStore";
+import AllChatsView from "./components/AllChatsView";
+import ChatHeaderTitle from "./components/ChatHeaderTitle";
 import { translations } from "../../utils/translations";
 import { useChatLogic } from "./hooks/useChatLogic";
 
@@ -36,6 +39,11 @@ export default function ChatPage({ isGuest,
     userData: propsUserData,
     getGreeting,
   });
+  const [isAllChatsOpen, setIsAllChatsOpen] = useState(false);
+  const deleteChat = useChatStore((state) => state.deleteChat);
+  const archiveChat = useChatStore((state) => state.archiveChat);
+  const pinChat = useChatStore((state) => state.pinChat);
+  const renameChat = useChatStore((state) => state.renameChat);
   const {
     activeIsolatedDocId, activeIsolatedTitle, activeSessionId, artifactContent, artifacts, authUser, baselineHeightRef, bottomRef, chatHistory, chatMode, chatModeRef, currentIsLoggedIn, currentThinking, currentUserData, darkMode, defaultGetGreeting, detectLang, docContent, docSearchQuery, documents, documentsTotal, fetchDocumentsList, fileInputRef, handleChatModeChange, handleClearChat, handleDownloadAllArtifacts, handleDownloadArtifact, handleDragLeave, handleDragOver, handleDrop, handleFileChange, handleFileClick, handleKeyDown, handleOpenArtifact, handlePaste, handleSubmit, handleSelectHint, handleThinkingModeChange, hasSidebar, input, inputShake, isArtifactLoading, isAuthenticated, isDocLoading, isDragOver, isEmptyChat, isLoading, isLoadingDocuments, isMobile, isMultiLine, isResizingRightSidebar, isStreaming, isStreamingText, isThinking, isThinkingMode, isThinkingModeRef, isUploadingFile, lastAssistantIndex, lastLoadedSessionRef, language, loadChatSession, logout, mainMarginLeft, mainMarginRight, messageSearchInputRef, messages, messagesContainerRef, msgSearchQuery, navigate, previewArtifact, previewDoc, previewImage, removeFilePreview, rightSidebarWidth, selectedFiles, selectedMode, sessionAttachments, setChatHistory, setChatMode, setContextIsolation, setDarkMode, setDocContent, setDocSearchQuery, setInput, setIsArtifactLoading, setIsDocLoading, setIsDragOver, setIsMobile, setIsMultiLine, setIsThinkingMode, setIsUploadingFile, setLanguage, setMsgSearchQuery, setPreviewArtifact, setPreviewDoc, setPreviewImage, setRightSidebarWidth, setSelectedFiles, setSelectedMode, setShowDocumentList, setShowMsgSearch, setShowRightSidebar, setShowScrollBottom, setSidebarOpen, setStagedAttachments, showDocumentList, showMsgSearch, showRightSidebar, showScrollBottom, showWelcome, sidebarOpen, singleLineWidthRef, stagedAttachments, startResizingRightSidebar, storeChatMode, textareaRef, theme, toast, toggleRightSidebar, triggerLogout, validateFile, wasLeftSidebarOpenRef
   } = chatLogic;
@@ -161,6 +169,25 @@ export default function ChatPage({ isGuest,
     document.title = "CAKRA AI";
   }, [activeSessionId, chatHistory]);
 
+  // 🔄 Listener untuk auto-refresh daftar sesi obrolan (misal saat restore dari Archive)
+  React.useEffect(() => {
+    const handleRefresh = async () => {
+      const npp = currentUserData?.npp || authUser?.npp || authUser?.username;
+      if (npp && npp !== "NPP ------") {
+        try {
+          const res = await useChatStore.getState().fetchChatHistory(npp);
+          if (res?.status === "success" && setChatHistory) {
+            setChatHistory(res.data);
+          }
+        } catch (err) {
+          console.error("Gagal refresh chat history in ChatPage:", err);
+        }
+      }
+    };
+    window.addEventListener("cakra-refresh-chat-history", handleRefresh);
+    return () => window.removeEventListener("cakra-refresh-chat-history", handleRefresh);
+  }, [currentUserData?.npp, authUser?.npp, authUser?.username, setChatHistory]);
+
   return (
     <div style={{ ...styles.root, background: theme.rootBg }}>
       {/* ── BACKDROP MOBILE ── */}
@@ -261,17 +288,24 @@ export default function ChatPage({ isGuest,
           setLanguage={setLanguage}
           themeSetting={themeSetting}
           theme={theme}
-          clearChat={handleClearChat}
+          clearChat={() => {
+            setIsAllChatsOpen(false);
+            handleClearChat();
+          }}
           showDocumentList={showDocumentList}
           setShowDocumentList={setShowDocumentList}
           userData={currentUserData}
           triggerLogout={triggerLogout}
-          loadChatSession={loadChatSession}
+          loadChatSession={(sessionUuid) => {
+            setIsAllChatsOpen(false);
+            loadChatSession(sessionUuid);
+          }}
           currentSessionId={activeSessionId}
           chatHistory={chatHistory}
           setChatHistory={setChatHistory}
           cakraLogo={cakraLogo}
           navigate={navigate}
+          onOpenAllChats={() => setIsAllChatsOpen(true)}
         />
       )}
 
@@ -285,7 +319,7 @@ export default function ChatPage({ isGuest,
       >
         <header style={{
           ...styles.header,
-          display: (corporateMode === 'mail' || corporateMode === 'collab' || corporateMode === 'archive') ? 'none' : 'flex',
+          display: (corporateMode === 'mail' || corporateMode === 'collab' || corporateMode === 'archive' || isAllChatsOpen) ? 'none' : 'flex',
           alignItems: "center",
           justifyContent: "space-between",
           width: "100%",
@@ -309,8 +343,8 @@ export default function ChatPage({ isGuest,
           transition: "width 0.3s ease-in-out",
         }}>
 
-          {/* ── BLOK KIRI: Hamburger Menu ── */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0px', pointerEvents: 'auto' }}>
+          {/* ── BLOK KIRI: Hamburger Menu & Claude-Style Header Title ── */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', pointerEvents: 'auto' }}>
             {/* ☰ HAMBURGER MENU MOBILE */}
             {isMobile && hasSidebar && (
               <button
@@ -345,6 +379,18 @@ export default function ChatPage({ isGuest,
               </button>
             )}
 
+            {/* 🏷️ CLAUDE-STYLE CHAT HEADER TITLE & POPOVER */}
+            <ChatHeaderTitle
+              sessionUuid={activeSessionId}
+              chatHistory={chatHistory}
+              setChatHistory={setChatHistory}
+              messages={messages}
+              handleClearChat={handleClearChat}
+              darkMode={darkMode}
+              language={language}
+              toast={toast}
+            />
+
             {!hasSidebar && (
               <img
                 // src={cakraLogo}
@@ -366,7 +412,10 @@ export default function ChatPage({ isGuest,
             {/* ✚ TOMBOL NEW CHAT MOBILE */}
             {isMobile && hasSidebar && (
               <button
-                onClick={handleClearChat}
+                onClick={() => {
+                  setIsAllChatsOpen(false);
+                  handleClearChat();
+                }}
                 style={{
                   background: "transparent",
                   border: "none",
@@ -622,13 +671,37 @@ export default function ChatPage({ isGuest,
                   language={language}
                   isMobile={isMobile}
                   toggleSidebar={() => setSidebarOpen(!sidebarOpen)}
+                  setChatHistory={setChatHistory}
                 />
               )}
 
-              {!corporateMode && (
+              {isAllChatsOpen && (
+                <AllChatsView
+                  chatHistory={chatHistory}
+                  setChatHistory={setChatHistory}
+                  currentSessionId={activeSessionId}
+                  onSelectChat={(sessionUuid) => {
+                    setIsAllChatsOpen(false);
+                    loadChatSession(sessionUuid);
+                  }}
+                  onNewChat={() => {
+                    setIsAllChatsOpen(false);
+                    handleClearChat();
+                  }}
+                  onClose={() => setIsAllChatsOpen(false)}
+                  deleteChat={deleteChat}
+                  archiveChat={archiveChat}
+                  pinChat={pinChat}
+                  renameChat={renameChat}
+                  darkMode={darkMode}
+                  theme={theme}
+                  language={language}
+                  userData={currentUserData}
+                />
+              )}
+
+              {!corporateMode && !isAllChatsOpen && (
                 <>
-
-
                   <ChatArea
                     key={activeSessionId || 'new'}
                     messages={messages}
@@ -658,7 +731,7 @@ export default function ChatPage({ isGuest,
               )}
             </div>
 
-            {showWelcome && !corporateMode && (
+            {showWelcome && !corporateMode && !isAllChatsOpen && (
               <div
                 style={{
                   position: "absolute",
@@ -738,8 +811,8 @@ export default function ChatPage({ isGuest,
             )}
 
 
-            {/* Hanya render input di bawah jika chat sudah ada dan bukan corporate mode */}
-            {!showWelcome && !corporateMode && (
+            {/* Hanya render input di bawah jika chat sudah ada dan bukan corporate mode dan bukan all chats view */}
+            {!showWelcome && !corporateMode && !isAllChatsOpen && (
               <ChatInputArea
                 theme={theme}
                 darkMode={darkMode}

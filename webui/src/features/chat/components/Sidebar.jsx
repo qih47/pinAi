@@ -30,6 +30,7 @@ const Sidebar = ({
   setLanguage,
   themeSetting,
   theme,
+  onOpenAllChats,
 }) => {
   const [activeMenuId, setActiveMenuId] = useState(null);
   const menuRef = useRef(null);
@@ -179,6 +180,25 @@ const Sidebar = ({
     initHistory();
   }, [userData?.npp]);
 
+  // 🔄 Listener event refresh riwayat chat (misal setelah restore arsip)
+  useEffect(() => {
+    const handleRefresh = async () => {
+      const npp = userData?.npp;
+      if (npp && npp !== "NPP ------") {
+        try {
+          const result = await fetchChatHistory(npp);
+          if (result.status === "success") {
+            setChatHistory(result.data);
+          }
+        } catch (err) {
+          console.error("Gagal refresh riwayat sidebar:", err);
+        }
+      }
+    };
+    window.addEventListener("cakra-refresh-chat-history", handleRefresh);
+    return () => window.removeEventListener("cakra-refresh-chat-history", handleRefresh);
+  }, [userData?.npp, fetchChatHistory, setChatHistory]);
+
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (popupRef.current && !popupRef.current.contains(event.target)) {
@@ -221,23 +241,8 @@ const Sidebar = ({
         setActiveMenuId={setActiveMenuId}
       />
 
-      {/* ── SCROLL CONTAINER WRAPPER WITH TOP & BOTTOM FADE ── */}
+      {/* ── CONTAINER WRAPPER UNTUK SESSION LIST ── */}
       <div className="flex-1 min-h-0 relative flex flex-col overflow-hidden">
-        {/* 🌟 TOP FADE OVERLAY: Memudar halus di batas atas scroll */}
-        <div
-          style={{
-            position: "absolute",
-            top: 0,
-            left: 0,
-            right: 0,
-            height: "36px",
-            background: `linear-gradient(to bottom, ${darkMode ? "#1E1E22" : (theme?.sidebarBg || "#F7F8FC")} 0%, ${darkMode ? "rgba(30,30,34,0.8)" : "rgba(247,248,252,0.8)"} 45%, transparent 100%)`,
-            pointerEvents: "none",
-            zIndex: 10,
-            transition: "background 0.2s ease",
-          }}
-        />
-
         <SessionList
           isOpen={isOpen}
           chatHistory={chatHistory}
@@ -264,6 +269,7 @@ const Sidebar = ({
           setShowDocumentList={setShowDocumentList}
           userData={userData}
           navigate={navigate}
+          onOpenAllChats={onOpenAllChats}
         />
 
         {/* 🌟 BOTTOM FADE OVERLAY FOR SIDEBAR */}
