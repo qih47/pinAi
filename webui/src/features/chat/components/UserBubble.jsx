@@ -364,8 +364,22 @@ const UserBubble = memo(function UserBubble({
             <button
               type="button"
               onClick={() => {
-                const editAndRegenerate = useChatStore.getState().editAndRegenerate;
-                editAndRegenerate(idx, msg.content);
+                const { regenerateAssistant, editAndRegenerate, messages } = useChatStore.getState();
+                let targetAssistantIdx = -1;
+                for (let i = idx + 1; i < (messages || []).length; i++) {
+                  if (messages[i]?.role === 'assistant') {
+                    targetAssistantIdx = i;
+                    break;
+                  }
+                  if (messages[i]?.role === 'user') {
+                    break;
+                  }
+                }
+                if (targetAssistantIdx !== -1 && regenerateAssistant) {
+                  regenerateAssistant(targetAssistantIdx);
+                } else if (editAndRegenerate) {
+                  editAndRegenerate(idx, msg.content);
+                }
               }}
               title={tGlobal.chat.retryResponse || 'Ulangi Respons'}
               style={bubbleStyles.hoverActionBtn}

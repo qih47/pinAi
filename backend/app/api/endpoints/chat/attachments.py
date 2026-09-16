@@ -108,12 +108,22 @@ async def upload_chat_attachments(
                 any(file.content_type.startswith(p) for p in TEXT_MIME_PREFIXES if file.content_type)
             )
 
+            DOC_OFFICE_EXTS = {"xlsx", "xls", "docx", "doc"}
             if is_text_upload:
                 try:
                     raw_extracted = file_bytes.decode("utf-8", errors="replace")
                     logger.info(f"📄 [UPLOAD] Konten teks diekstrak: {len(raw_extracted)} chars dari '{file.filename}'")
                 except Exception:
                     raw_extracted = "[Gagal membaca konten teks]"
+            elif file_ext in DOC_OFFICE_EXTS:
+                try:
+                    from backend.app.services.tools.unified_extractor import extract_document
+                    doc_extracted = await extract_document(absolute_write_path)
+                    raw_extracted = doc_extracted.text if doc_extracted and doc_extracted.text else f"[{file.filename}]"
+                    logger.info(f"📊 [UPLOAD] Dokumen Office diekstrak via unified_extractor: {len(raw_extracted)} chars dari '{file.filename}'")
+                except Exception as ex_err:
+                    logger.warning(f"⚠️ [UPLOAD] Gagal ekstrak Office document {file.filename}: {ex_err}")
+                    raw_extracted = f"[{file.filename}]"
             else:
                 raw_extracted = f"[Pending OCR: {file.filename}]"
 

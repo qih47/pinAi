@@ -383,7 +383,13 @@ ALLOWED_MIME_TYPES = {
     "text/plain", "text/markdown", "text/html", "text/css", "text/javascript", "text/csv",
     "application/json", "application/javascript", "application/xml",
     "application/x-httpd-php", "text/x-php", "text/x-python", "text/x-script.python",
+    # Microsoft Office / OpenXML formats
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    "application/vnd.ms-excel",
+    "application/vnd.ms-powerpoint",
+    "application/msword",
 }
 
 MAX_FILE_SIZE = 20 * 1024 * 1024   # 20 MB
@@ -394,8 +400,14 @@ _MAGIC_BYTES: dict[str, list[bytes]] = {
     "image/jpeg":            [b"\xff\xd8\xff"],
     "image/png":             [b"\x89PNG\r\n\x1a\n"],
     "image/webp":            [b"RIFF"],
-    # DOCX / XLSX / PPTX are all ZIP-based
+    # DOCX / XLSX / PPTX are all ZIP-based (PK..)
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document": [b"PK\x03\x04"],
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":         [b"PK\x03\x04"],
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation": [b"PK\x03\x04"],
+    # Legacy OLE2 Compound File Binary (.doc, .xls, .ppt)
+    "application/msword":                                                        [b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1", b"PK\x03\x04"],
+    "application/vnd.ms-excel":                                                  [b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1", b"PK\x03\x04"],
+    "application/vnd.ms-powerpoint":                                             [b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1", b"PK\x03\x04"],
 }
 
 # Filename: only alphanumeric, dash, underscore, dot — no traversal characters

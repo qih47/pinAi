@@ -27,7 +27,13 @@ ALLOWED_MIME_TYPES = {
     "text/plain", "text/html", "text/css", "text/javascript", "text/csv",
     "application/json", "application/javascript", "application/xml",
     "application/x-httpd-php", "text/x-php", "text/x-python",
+    # Microsoft Office / OpenXML formats
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    "application/vnd.ms-excel",
+    "application/vnd.ms-powerpoint",
+    "application/msword",
 }
 
 # We will allow all extensions except the dangerous ones in security_firewall.py
@@ -36,7 +42,7 @@ ALLOWED_EXTENSIONS = {
     ".jpg", ".jpeg", ".png", ".webp", ".bmp", ".pdf", 
     ".txt", ".md", ".csv", ".json", ".xml", ".html", ".css", ".js", ".jsx", ".ts", ".tsx",
     ".py", ".php", ".rb", ".java", ".c", ".cpp", ".h", ".cs", ".go", ".rs", ".swift", ".kt", ".dart",
-    ".sh", ".yml", ".yaml", ".toml", ".ini", ".conf", ".docx"
+    ".sh", ".yml", ".yaml", ".toml", ".ini", ".conf", ".docx", ".xlsx", ".xls", ".pptx", ".ppt", ".doc"
 }
 
 # Magic bytes untuk deteksi tipe file (Hanya untuk file binary. File teks tidak wajib punya magic bytes)
