@@ -30,8 +30,8 @@ class MemoryService:
                 # 1. Ambil memori terstruktur permanen dari ai_memory
                 query = """
                     SELECT mem_key, mem_value FROM ai_memory 
-                    WHERE npp = $1 
-                    ORDER BY (CASE WHEN mem_key = 'Karakter Komunikasi' THEN 1 ELSE 2 END) ASC, created_at DESC 
+                    WHERE npp = $1 AND mem_key NOT IN ('Karakter Komunikasi', 'slang_frequency_count')
+                    ORDER BY created_at DESC 
                     LIMIT 6;
                 """
                 rows = await conn.fetch(query, npp)
@@ -81,49 +81,22 @@ class MemoryService:
 
     async def get_employee_communication_preference(self, npp: str) -> str:
         """
-        Membaca preferensi kata ganti & gaya komunikasi default pegawai dari database lintas sesi (cross-session).
-        Jika user memiliki rekam jejak sering memakai bahasa santai (>= 5x pesan slang di DB), default-nya informal_gue_lo.
+        Membaca preferensi kata ganti & gaya komunikasi default pegawai langsung dari user_settings.
+        100% Single Source of Truth dari Pengaturan Pengguna di Settings UI.
+        Opsi valid: 'formal_saya_anda', 'informal_gue_lo', 'familiar_aku_kamu', 'adaptive_mirroring'.
+        Default jika belum diatur: 'formal_saya_anda'.
         """
         if not npp or npp == "GUEST":
             return "formal_saya_anda"
 
         async with get_db() as conn:
             try:
-                # 0. PRIORITAS UTAMA: Baca pengaturan gaya bahasa akun dari user_settings
                 settings_row = await conn.fetchrow("SELECT settings FROM user_settings WHERE npp = $1", npp)
                 if settings_row and settings_row["settings"]:
                     s_data = json.loads(settings_row["settings"]) if isinstance(settings_row["settings"], str) else settings_row["settings"]
                     style = s_data.get("communication_style")
-                    if style in ["informal_gue_lo", "formal_saya_anda", "familiar_aku_kamu"]:
+                    if style in ["formal_saya_anda", "informal_gue_lo", "familiar_aku_kamu", "adaptive_mirroring"]:
                         return style
-
-                # 1. Cek dari memori yang sudah terkunci di ai_memory
-                row = await conn.fetchrow(
-                    "SELECT mem_value FROM ai_memory WHERE npp = $1 AND mem_key = 'Karakter Komunikasi'",
-                    npp
-                )
-                if row and any(w in row["mem_value"].lower() for w in ["santai", "slang", "gue", "lo", "cuy", "bro"]):
-                    return "informal_gue_lo"
-
-                # 2. Cek akumulasi riwayat pesan pengguna di seluruh sesi (cross-session)
-                count_row = await conn.fetchrow("""
-                    SELECT COUNT(*) as slang_count
-                    FROM chat_messages m
-                    JOIN chat_sessions s ON m.session_id = s.id
-                    WHERE s.npp = $1 AND m.role = 'user'
-                      AND m.message_text ~* '\\b(gue|gw|gua|lo|lu|elu|cuy|bro|boss|bos)\\b';
-                """, npp)
-                
-                slang_total = count_row["slang_count"] if count_row else 0
-                if slang_total >= 5:
-                    # Kunci profil di ai_memory agar tidak perlu re-count terus menerus
-                    mem_value = "User terbiasa dan konsisten menggunakan gaya bahasa santai/slang (lo, gue, bro, cuy, boss). Balas dengan gaya santai akrab yang asik dan bersahabat."
-                    await conn.execute("""
-                        INSERT INTO ai_memory (npp, mem_key, mem_value, category, created_at, updated_at)
-                        VALUES ($1, 'Karakter Komunikasi', $2, 'personal', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-                        ON CONFLICT (mem_key, npp) DO UPDATE SET mem_value = EXCLUDED.mem_value, updated_at = CURRENT_TIMESTAMP;
-                    """, npp, mem_value)
-                    return "informal_gue_lo"
 
                 return "formal_saya_anda"
             except Exception as e:
@@ -132,48 +105,10 @@ class MemoryService:
 
     async def update_communication_style_memory(self, npp: str, user_message: str) -> None:
         """
-        Background task: Update memori gaya bahasa user secara adaptif berbasis pesan yang masuk.
-        Pesan netral (tanpa slang & tanpa formal eksplisit) TIDAK AKAN mereset profil santai user.
+        Deprecated: Gaya komunikasi sekarang 100% dikendalikan oleh menu Pengaturan Akun (Settings UI)
+        sehingga tidak lagi di-override otomatis oleh background task.
         """
-        if npp == "GUEST" or not npp or not user_message:
-            return
-            
-        import re
-        msg_lower = user_message.lower()
-        has_slang = bool(re.search(r'\b(gue|gw|gua|lo|lu|elu|cuy|bro|boss|bos)\b', msg_lower))
-        has_strict_formal = bool(re.search(r'\b(saya|anda|bapak|ibu|mohon|terima kasih|hormat)\b', msg_lower))
-
-        if not has_slang and not has_strict_formal:
-            # Pesan netral (misal "buatkan data dummy", "carikan info") -> Jangan ubah profil yang sudah ada
-            return
-
-        async with get_db() as conn:
-            try:
-                row_count = await conn.fetchrow(
-                    "SELECT mem_value FROM ai_memory WHERE npp = $1 AND mem_key = 'slang_frequency_count'",
-                    npp
-                )
-                current_slang_count = int(row_count["mem_value"]) if row_count and row_count["mem_value"].isdigit() else 0
-
-                if has_slang:
-                    current_slang_count += 1
-                    await conn.execute("""
-                        INSERT INTO ai_memory (npp, mem_key, mem_value, category, created_at, updated_at)
-                        VALUES ($1, 'slang_frequency_count', $2, 'personal', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-                        ON CONFLICT (mem_key, npp) DO UPDATE SET mem_value = EXCLUDED.mem_value, updated_at = CURRENT_TIMESTAMP;
-                    """, npp, str(current_slang_count))
-
-                    if current_slang_count >= 5:
-                        mem_value = "User terbiasa dan konsisten menggunakan gaya bahasa santai/slang (lo, gue, bro, cuy, boss). Balas dengan gaya santai akrab yang asik dan bersahabat."
-                        await conn.execute("""
-                            INSERT INTO ai_memory (npp, mem_key, mem_value, category, created_at, updated_at)
-                            VALUES ($1, 'Karakter Komunikasi', $2, 'personal', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-                            ON CONFLICT (mem_key, npp) DO UPDATE SET mem_value = EXCLUDED.mem_value, updated_at = CURRENT_TIMESTAMP;
-                        """, npp, mem_value)
-                        logger.info(f"[MEMORY_SERVICE] User {npp} has reached threshold ({current_slang_count}x). Slang personality locked.")
-
-            except Exception as write_err:
-                logger.error(f"[MEMORY_SERVICE_ERROR] Failed to update tone memory: {str(write_err)}")
+        return
 
     async def consolidate_nightly_memory(self) -> Dict[str, Any]:
         """

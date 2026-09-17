@@ -311,28 +311,42 @@ class SuggestionService:
                 async with pool.acquire() as conn:
                     if query:
                         search_pattern = f"%{query}%"
-                        # 1. Cari di tabel dokumen / regulasi (PostgreSQL schema: d.judul, d.filename, d.nomor, j.nama, d.tanggal)
+                        # 1. Cari di tabel dokumen / regulasi dengan memprioritaskan yang memiliki chunks di dokumen_chunk
                         sql = """
-                            SELECT DISTINCT COALESCE(d.judul, d.filename, 'Dokumen Tanpa Judul') as title,
+                            SELECT COALESCE(d.judul, d.filename, 'Dokumen Tanpa Judul') as title,
                                    COALESCE(j.nama, 'Regulasi') as category,
                                    d.id as doc_id,
                                    COALESCE(d.nomor, '') as nomor,
                                    COALESCE(d.tanggal::text, '') as tanggal,
                                    COALESCE(d.filename, '') as filename,
-                                   'dokumen' as source
+                                   'dokumen' as source,
+                                   count(c.chunk_id) as chunk_count
                             FROM dokumen d
                             LEFT JOIN jenis_dokumen j ON d.id_jenis = j.id
+                            LEFT JOIN dokumen_chunk c ON d.id = c.dokumen_id
                             WHERE (d.judul ILIKE $1 OR d.nomor ILIKE $1 OR d.filename ILIKE $1 OR j.nama ILIKE $1)
-                            ORDER BY title ASC
+                            GROUP BY d.id, d.judul, d.filename, d.nomor, d.tanggal, j.nama
+                            ORDER BY (count(c.chunk_id) > 0) DESC, title ASC
                             LIMIT $2
                         """
                         rows = await conn.fetch(sql, search_pattern, limit)
                         for r in rows:
                             fname = r["filename"] or ""
-                            pages = _count_pdf_pages(fname)
                             nomor_clean = (r["nomor"] or "").strip()
                             if nomor_clean in ["N/A", "No Regulasi ----"]:
                                 nomor_clean = ""
+
+                            # Auto-resolve file placeholder jika file fisik tidak ada di disk
+                            from backend.app.services.tools.document_resolver import find_valid_pdf_file
+                            if fname and not find_valid_pdf_file(fname) and nomor_clean:
+                                alt_row = await conn.fetchrow(
+                                    "SELECT filename FROM dokumen WHERE nomor ILIKE $1 AND filename != $2 AND filename IS NOT NULL LIMIT 1",
+                                    nomor_clean, fname
+                                )
+                                if alt_row and alt_row["filename"] and find_valid_pdf_file(alt_row["filename"]):
+                                    fname = alt_row["filename"]
+
+                            pages = _count_pdf_pages(fname)
                             suggestions.append({
                                 "title": r["title"].strip(),
                                 "category": r["category"],
@@ -346,9 +360,9 @@ class SuggestionService:
                                 "source": r["source"]
                             })
                     else:
-                        # Default dokumen terpopuler / penting
+                        # Default dokumen terpopuler / penting (hanya yang memiliki chunks aktif)
                         sql = """
-                            SELECT DISTINCT COALESCE(d.judul, d.filename, 'Dokumen Tanpa Judul') as title,
+                            SELECT COALESCE(d.judul, d.filename, 'Dokumen Tanpa Judul') as title,
                                    COALESCE(j.nama, 'Regulasi') as category,
                                    d.id as doc_id,
                                    COALESCE(d.nomor, '') as nomor,
@@ -357,6 +371,8 @@ class SuggestionService:
                                    'dokumen' as source
                             FROM dokumen d
                             LEFT JOIN jenis_dokumen j ON d.id_jenis = j.id
+                            JOIN dokumen_chunk c ON d.id = c.dokumen_id
+                            GROUP BY d.id, d.judul, d.filename, d.nomor, d.tanggal, j.nama
                             ORDER BY d.id DESC
                             LIMIT $1
                         """

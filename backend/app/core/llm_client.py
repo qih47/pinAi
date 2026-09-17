@@ -727,8 +727,8 @@ async def generate_json_response(
 
     ollama_options = {
         "temperature": temperature,
-        "top_p": 0.95,
-        "top_k": 64,
+        "top_p": kwargs.pop("top_p", 0.1),
+        "top_k": kwargs.pop("top_k", 1),
         "num_ctx": num_ctx,
         "num_predict": num_predict,
         "num_batch": kwargs.pop("num_batch", 512),
@@ -778,17 +778,17 @@ async def generate_json_response(
         message_obj = result.get("message", {})
         message_content = message_obj.get("content", "")
 
-        # Gemma 4: jika content kosong, coba ambil dari field `thought`
+        # Gemma 4: jika content kosong, coba ambil dari field `thinking` atau `thought`
         if not message_content or not message_content.strip():
-            thought_content = message_obj.get("thought", "")
+            thought_content = message_obj.get("thinking") or message_obj.get("thought", "")
             if thought_content and thought_content.strip():
                 logger_local.warning(
-                    f"[JSON_GEN] content kosong, recovery dari field 'thought' | model: {model_name}"
+                    f"[JSON_GEN] content kosong, recovery dari field 'thinking/thought' | model: {model_name}"
                 )
                 message_content = thought_content
             else:
                 logger_local.error(
-                    f"[JSON_GEN] content DAN thought kosong. "
+                    f"[JSON_GEN] content DAN thought/thinking kosong. "
                     f"Full Ollama response: {json.dumps(result)[:500]}"
                 )
                 raise ValueError(f"[JSON_GEN] Model {model_name} returned empty content")

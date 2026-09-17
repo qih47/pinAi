@@ -56,79 +56,27 @@ class ModeFocus:
         yield format_sse(status="🎯 Membuka dokumen fokus rujukan", status_key="OPENING_FOCUS_DOC", event_type=SSEEventType.STATUS)
         await asyncio.sleep(0.05)
 
-        # 1. Resolusi Identitas Dokumen dari PostgreSQL (dokumen) & MySQL (berita)
-        filename = None
-        pg_doc_id = None
-        db_file_path = None
-        doc_nomor = context_isolation.get("nomor", "") if (context_isolation and isinstance(context_isolation, dict)) else ""
-        doc_tanggal = context_isolation.get("tanggal", "") if (context_isolation and isinstance(context_isolation, dict)) else ""
-        doc_jenis = context_isolation.get("category", "Regulasi") if (context_isolation and isinstance(context_isolation, dict)) else "Regulasi"
+        # 1. Resolusi Identitas Dokumen Terpadu (PG dokumen & MySQL berita & Smart Fallback)
+        from backend.app.services.tools.document_resolver import find_valid_pdf_file, resolve_isolated_document
+        
+        ctx_nomor = context_isolation.get("nomor", "") if (context_isolation and isinstance(context_isolation, dict)) else ""
+        ctx_filename = context_isolation.get("filename", "") if (context_isolation and isinstance(context_isolation, dict)) else ""
+        
+        resolved = await resolve_isolated_document(
+            isolated_doc_id=isolated_doc_id,
+            doc_title=doc_title,
+            doc_nomor=ctx_nomor,
+            doc_filename=ctx_filename
+        )
+        pg_doc_id = resolved.get("pg_doc_id")
+        filename = resolved.get("filename")
+        file_path = resolved.get("file_path")
+        doc_title = resolved.get("title") or doc_title
+        doc_nomor = resolved.get("nomor") or ctx_nomor
+        doc_tanggal = resolved.get("tanggal") or (context_isolation.get("tanggal", "") if isinstance(context_isolation, dict) else "")
+        doc_jenis = resolved.get("jenis") or (context_isolation.get("category", "Regulasi") if isinstance(context_isolation, dict) else "Regulasi")
 
-        if isinstance(isolated_doc_id, str) and isolated_doc_id.lower().endswith(".pdf"):
-            filename = isolated_doc_id
-            
-        # 1.1 Coba Query PostgreSQL dokumen
-        if not filename and isolated_doc_id:
-            try:
-                async with get_db() as pg_conn:
-                    doc_row = None
-                    pg_select = """
-                        SELECT d.id, d.judul, d.filename, COALESCE(d.nomor, '') as nomor,
-                               COALESCE(d.tanggal::text, '') as tanggal, COALESCE(j.nama, 'Regulasi') as jenis
-                        FROM dokumen d
-                        LEFT JOIN jenis_dokumen j ON d.id_jenis = j.id
-                    """
-                    if str(isolated_doc_id).isdigit():
-                        doc_row = await pg_conn.fetchrow(
-                            f"{pg_select} WHERE d.id = $1", 
-                            int(isolated_doc_id)
-                        )
-                    if not doc_row and isinstance(isolated_doc_id, str):
-                        doc_row = await pg_conn.fetchrow(
-                            f"{pg_select} WHERE d.filename = $1 OR d.judul ILIKE $1 LIMIT 1",
-                            isolated_doc_id
-                        )
-                    if doc_row:
-                        pg_doc_id = doc_row["id"]
-                        filename = doc_row["filename"]
-                        doc_title = doc_title or doc_row["judul"] or filename
-                        doc_nomor = doc_row.get("nomor") or doc_nomor
-                        doc_tanggal = doc_row.get("tanggal") or doc_tanggal
-                        doc_jenis = doc_row.get("jenis") or doc_jenis
-                        logger.info(f"[MODE_FOCUS] Resolved from PG dokumen: id={pg_doc_id}, filename={filename}, nomor={doc_nomor}")
-            except Exception as e:
-                logger.warning(f"[MODE_FOCUS] PG query error: {e}")
-
-        # 1.2 Coba Query MySQL berita jika belum ditemukan di PG atau jika nomor masih kosong
-        if isolated_doc_id:
-            try:
-                async with get_peraturan_db() as conn:
-                    async with conn.cursor() as cur:
-                        query = """
-                            SELECT b.judul,
-                                   COALESCE(NULLIF(b.gambar, ''), NULLIF(b.gambar2, ''), NULLIF(b.gambar3, ''), NULLIF(b.linkper, '')) AS filename,
-                                   COALESCE(b.noper, '') as nomor,
-                                   COALESCE(b.tanggal, '') as tanggal,
-                                   COALESCE(k.nama_kategori, 'Regulasi') as jenis
-                            FROM berita b
-                            LEFT JOIN kategori k ON b.id_kategori = k.id_kategori
-                            WHERE b.id_berita = %s
-                        """
-                        await cur.execute(query, (isolated_doc_id,))
-                        row = await cur.fetchone()
-                        if row:
-                            doc_title = doc_title or row[0]
-                            filename = filename or row[1]
-                            doc_nomor = doc_nomor or row[2]
-                            doc_tanggal = doc_tanggal or (str(row[3]) if row[3] else "")
-                            doc_jenis = doc_jenis if doc_jenis and doc_jenis != "Regulasi" else (row[4] or doc_jenis)
-                            logger.info(f"[MODE_FOCUS] Resolved from MySQL berita: id={isolated_doc_id}, title='{doc_title}', nomor='{doc_nomor}', jenis='{doc_jenis}'")
-            except Exception as e:
-                logger.error(f"[MODE_FOCUS] MySQL Error: {e}")
-
-        # 2. Cari Lokasi Fisik File di Disk via DocumentResolver Global
-        from backend.app.services.tools.document_resolver import find_valid_pdf_file
-        file_path = find_valid_pdf_file(filename, None, None, db_file_path=db_file_path)
+        logger.info(f"[MODE_FOCUS] Unified resolved: id={resolved.get('doc_id')}, title='{doc_title}', nomor='{doc_nomor}', file_path={file_path}")
 
         # 3. Ekstrak Teks Dokumen
         selected_pages = [0]
@@ -259,13 +207,31 @@ class ModeFocus:
             await asyncio.sleep(0.01)
             from backend.app.services.pipeline.modes.mode_documents import ModeDocuments
             fallback_handler = ModeDocuments()
+            
+            # Pertahankan konteks dokumen target agar ModeDocuments mencari dokumen yang benar, bukan dokumen lama dari Brain
+            target_ctx = dict(context_isolation) if isinstance(context_isolation, dict) else {}
+            target_ctx.update({
+                "isolated_doc_id": resolved.get("doc_id") or isolated_doc_id,
+                "id_dokumen": resolved.get("doc_id") or isolated_doc_id,
+                "title": doc_title,
+                "nomor": doc_nomor,
+                "filename": filename
+            })
+            fb_routing = dict(routing_data) if isinstance(routing_data, dict) else {}
+            if doc_title or doc_nomor:
+                existing_q = fb_routing.get("queries") or [user_message]
+                target_q = f"{doc_title} {doc_nomor}".strip()
+                if target_q and target_q not in existing_q:
+                    fb_routing["queries"] = [target_q, *existing_q]
+                fb_routing["search_tags"] = [doc_title, doc_nomor, *(fb_routing.get("search_tags") or [])]
+
             async for chunk in fallback_handler.execute(
                 user_message=user_message,
                 chat_history=chat_history,
                 is_thinking=is_thinking,
                 attachments=attachments,
-                context_isolation=None,
-                routing_data=routing_data,
+                context_isolation=target_ctx,
+                routing_data=fb_routing,
                 request=request,
                 employee_name=employee_name,
                 current_user_npp=current_user_npp,

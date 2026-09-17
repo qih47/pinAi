@@ -176,17 +176,71 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
         // 4. Rentang Angka (misal: 4–6 September -> 4 sampai 6 September)
         t = t.replace(/(\d+)\s*[-–—]\s*(\d+)/g, "$1 sampai $2");
 
-        // 5. Hapus emoji & markdown visual
-        t = t.replace(/[\p{Emoji_Presentation}\p{Extended_Pictographic}]/gu, "");
-        t = t.replace(/[*_#`~>"]/g, ""); // Hapus tanda bintang, pagar, petik ganda
+        // 5. Normalisasi Notasi LaTeX & Simbol Panah Matematika
+        t = t.replace(/\$*\s*\\(?:leftrightarrow|longleftrightarrow|Leftrightarrow|Longleftrightarrow|rightleftharpoons)\b\s*\$*/g, " bolak-balik ");
+        t = t.replace(/\$*\s*\\(?:leftarrow|longleftarrow|Leftarrow|Longleftarrow|gets)\b\s*\$*/g, ", kembali ke ");
+        t = t.replace(/\$*\s*\\(?:rightarrow|to|longrightarrow)\b\s*\$*/g, ", lalu ");
+        t = t.replace(/\$*\s*\\(?:Rightarrow|Longrightarrow)\b\s*\$*/g, ", maka ");
+
+        // 6. Normalisasi Panah Teks & Simbol Alur
+        t = t.replace(/^\s*(?:[-*•→➔➜↳►▶]|->|=>|-->|==>)\s+/gm, "");
+        t = t.replace(/\s*(?:<->|<=>|↔|⇄)\s*/g, " bolak-balik ");
+        t = t.replace(/\s*(?:<-|<--|<=|<==|←)\s*/g, ", kembali ke ");
+        t = t.replace(/\s*(?:->|-->|=>|==>|—>|–>|→|➔|➜|➡)\s*/g, ", lalu ");
+
+        // 7. Normalisasi Simbol Tambah (+) dan Kata Slang Bermasalah
+        t = t.replace(/\s*\+\s*/g, " plus ");
+        t = t.replace(/\b(?:cuy|cui)\b/gi, "chui");
+        t = t.replace(/\bcari\b/gi, "chari");
+        t = t.replace(/\bcoma\b/gi, "koma");
+        // Cegah kluster 'buy' dibaca diftong Inggris /baɪ/ (buy -> bayar)
+        t = t.replace(/\bbuy(?=[a-zA-Z])/gi, "buiy");
+        // Koreksi vokal kolokial -> baku Indonesia
+        t = t.replace(/\blaper\b/gi, "lapar");
+        t = t.replace(/\bbener\b/gi, "benar");
+        t = t.replace(/\bseger\b/gi, "segar");
+        // Koreksi kluster konsonan Inggris
+        t = t.replace(/\bblank\b/gi, "bleng");
+        // Koreksi sengau nasal 'mending' (ASCII agar dibaca tepat oleh model)
+        t = t.replace(/\bmending\b/gi, "men-ding");
+        // Koreksi gugus konsonan akhir 'gampang' agar tidak terpotong jadi 'gam'
+        t = t.replace(/\bgampangnya\b/gi, "gam-pangnya");
+        t = t.replace(/\bgampang\b/gi, "gam-pang");
+        // Kata serapan
+        t = t.replace(/\bcranky\b/gi, "krenki");
+        // Onset konsonan ambigu
+        t = t.replace(/\bobatnya\b/gi, "o-batnya");
+        t = t.replace(/\bdiobati\b/gi, "di-o-bati");
+        t = t.replace(/\bobat\b/gi, "o-bat");
+        // PT dibaca 'pete' bukan 'peu teu'
+        t = t.replace(/\bPT\b/g, "pete");
+        // BTW dibaca 'by the way'
+        t = t.replace(/\bb\.?t\.?w\b/gi, "by the way");
+        // Angka desimal (1,5 atau 1.5) -> 'N koma M'
+        t = t.replace(/(\d+),(\d+)/g, "$1 koma $2");
+        t = t.replace(/\b(\d+)\.(\d{1,2})\b/g, "$1 koma $2");
+        // Angka/Angka (24/7) -> 'N per M'
+        t = t.replace(/\b(\d+)\/(\d+)\b/g, "$1 per $2");
+        // Slash antara teks -> ' atau '
+        t = t.replace(/(?<!\d)\s*\/\s*(?!\d)/g, " atau ");
+
+        // 8. Hapus total semua emoji, piktograf, dan karakter tak kasat mata (ZWJ, variation selectors, ZWS)
+        t = t.replace(/[\p{Emoji_Presentation}\p{Extended_Pictographic}\u200D\u200B-\u200F\uFE00-\uFE0F\uFEFF]/gu, "");
+        t = t.replace(/[\u2600-\u27BF\u2B00-\u2BFF\u2300-\u23FF\u2190-\u21FF]/g, "");
+        t = t.replace(/[*_#`~"$]/g, ""); // Hapus tanda bintang, pagar, petik ganda, dollar
+        t = t.replace(/\\/g, ""); // Hapus sisa backslash
+        t = t.replace(/\|/g, ", "); // Pipe jadi koma
+        t = t.replace(/(?:^|[.!?]\s*),\s*(?:lalu|maka|kembali ke)\s*/g, " ");
+        t = t.replace(/,\s*(?:lalu|maka|kembali ke)(?:\s*[,.]|\s*$)/g, ".");
         
-        // 6. Rapikan titik dua: jika ada di dalam kalimat, ganti titik
-        t = t.replace(/:/g, ".");
+        // 9. Rapikan titik dua tanda baca: jadikan titik henti sebelum penjelasan/list (kecuali jam digital 10:45)
+        t = t.replace(/(?<!\d):(?!\d)/g, ".");
         
-        // 7. Rapikan koma dan spasi
+        // 10. Rapikan koma dan spasi
         t = t.replace(/,\s*,+/g, ", ");
         t = t.replace(/\s*,\s*/g, ", ");
         t = t.replace(/,\s*\./g, ".");
+        t = t.replace(/\s+([,.?!;:])/g, "$1");
         t = t.replace(/\s{2,}/g, " ").trim();
 
         return t;
@@ -285,13 +339,19 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
                 URL.revokeObjectURL(url);
                 currentAudioRef.current = null;
                 ttsQueueRef.current.isPlaying = false;
-                setToastMsg(tTTS.failedPlay);
-                setShowToast(true);
-                setTimeout(() => setShowToast(false), 2000);
-                playNextAudio();
+                if (!ttsQueueRef.current.isStopped) {
+                    setToastMsg(tTTS.failedPlay);
+                    setShowToast(true);
+                    setTimeout(() => setShowToast(false), 2000);
+                    playNextAudio();
+                }
             };
 
             audio.play().catch(e => {
+                if (ttsQueueRef.current.isStopped || e?.name === 'AbortError') {
+                    // Sengaja dihentikan atau di-pause oleh user -> abaikan
+                    return;
+                }
                 console.error("Audio play error", e);
                 audio.onerror();
             });
@@ -396,8 +456,9 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
             let unprocessed = content.substring(currentCursor);
             let foundChunk = false;
 
-            // 1. Pemisahan berbasis kalimat utuh (. ? !) atau baris list / paragraf
-            const sentenceRegex = /([.?!]+(?:\s+|\n+|$)|(?:\n\s*[-*•]|\n\s*\d+\.|\n\n+))/g;
+            // 1. Pemisahan berbasis kalimat utuh (. ? ! :) atau baris list / paragraf
+            // Penting: Gunakan lookahead (?=\d+\.) untuk list agar angka TIDAK tertelan ke akhir chunk
+            const sentenceRegex = /([.?!:]+(?:\s+|\n+|$)|(?:\n\s*(?=[-*•]|\d+\.))|(?:\n\n+))/g;
             let match;
             sentenceRegex.lastIndex = 0;
 
@@ -410,8 +471,9 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
                     if (!ttsQueueRef.current.chunkBuffer) ttsQueueRef.current.chunkBuffer = "";
                     ttsQueueRef.current.chunkBuffer += (ttsQueueRef.current.chunkBuffer ? " " : "") + cleaned;
 
-                    // Flush jika mencapai satu kalimat matang (>= 30 karakter) atau tanda pemutus kuat (!, ?, \n)
-                    const isStrongPunct = match[0].includes('!') || match[0].includes('?') || match[0].includes('\n');
+                    // Flush jika mencapai satu kalimat matang (>= 30 karakter), tanda seru/tanya, newline, atau titik pada kalimat cukup panjang
+                    // Titik dua (:) selalu flush agar nomor list langsung jadi awal chunk berikutnya
+                    const isStrongPunct = match[0].includes('!') || match[0].includes('?') || match[0].includes('\n') || match[0].includes(':') || (match[0].includes('.') && ttsQueueRef.current.chunkBuffer.length >= 25);
                     if (ttsQueueRef.current.chunkBuffer.length >= 30 || isStrongPunct) {
                         ttsQueueRef.current.textChunks.push(ttsQueueRef.current.chunkBuffer.trim());
                         ttsQueueRef.current.chunkBuffer = "";

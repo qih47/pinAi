@@ -55,7 +55,6 @@ export default function ChatInputArea({
 }) {
   const [isAttachmentMenuOpen, setIsAttachmentMenuOpen] = useState(false);
   const [isHintsCollapsed, setIsHintsCollapsed] = useState(false);
-  const [isPillHovered, setIsPillHovered] = useState(false);
   const attachmentMenuRef = useRef(null);
   const t = translations[language]?.chatInput || translations.id.chatInput;
   const tHints = translations[language]?.chat?.hints || translations.id.chat.hints;
@@ -100,9 +99,9 @@ export default function ChatInputArea({
     const effectiveTag = activeModeTag || (chatMode && chatMode !== 'auto' && chatMode !== 'flash' && chatMode !== 'guest' ? chatMode : null);
     if (!effectiveTag) return null;
 
-    // Teks dinamis saat di-hover (apabila chat aktif dan ada hint)
+    // Label mode tetap stabil (tidak berubah teks saat hover agar lebar tidak loncat dan tidak kedip-kedip)
     const canToggleHints = !showWelcome && messages && messages.length > 0 && Boolean(activeModeTag);
-    let displayLabel = effectiveTag === "code"
+    const displayLabel = effectiveTag === "code"
       ? tHints.code
       : effectiveTag === "websearch"
         ? (tHints.websearchTag || "Web search")
@@ -118,12 +117,6 @@ export default function ChatInputArea({
                   ? tHints.smartMail
                   : tHints.focus;
 
-    if (canToggleHints && isPillHovered) {
-      displayLabel = isHintsCollapsed
-        ? (tHints.showHint || "Munculkan hint")
-        : (tHints.hideHint || "Hide hint");
-    }
-
     return (
       <div
         onClick={() => {
@@ -131,8 +124,7 @@ export default function ChatInputArea({
             setIsHintsCollapsed(prev => !prev);
           }
         }}
-        onMouseEnter={() => setIsPillHovered(true)}
-        onMouseLeave={() => setIsPillHovered(false)}
+        className="group relative"
         style={{
           display: "inline-flex",
           alignItems: "center",
@@ -142,12 +134,8 @@ export default function ChatInputArea({
           fontSize: "12px",
           fontWeight: "500",
           background: darkMode
-            ? isPillHovered && canToggleHints
-              ? "rgba(50, 50, 58, 0.98)"
-              : "rgba(35, 35, 42, 0.95)"
-            : isPillHovered && canToggleHints
-              ? "rgba(220, 224, 230, 0.98)"
-              : "rgba(235, 238, 242, 0.95)",
+            ? "rgba(35, 35, 42, 0.95)"
+            : "rgba(235, 238, 242, 0.95)",
           border: darkMode
             ? "1px solid rgba(255, 255, 255, 0.14)"
             : "1px solid rgba(0, 0, 0, 0.10)",
@@ -156,7 +144,7 @@ export default function ChatInputArea({
           userSelect: "none",
           alignSelf: "center",
           cursor: canToggleHints ? "pointer" : "default",
-          transition: "all 0.18s cubic-bezier(0.4, 0, 0.2, 1)",
+          transition: "background-color 0.15s ease, border-color 0.15s ease",
           marginLeft: "2px",
           marginRight: "2px",
         }}
@@ -170,7 +158,7 @@ export default function ChatInputArea({
         {effectiveTag === "create_file" && <FilePlus size={14} className="opacity-90 flex-shrink-0" />}
         {effectiveTag === "smart_mail" && <Mail size={14} className="opacity-90 flex-shrink-0" />}
         {effectiveTag === "focus" && <Target size={14} className="opacity-90 flex-shrink-0" />}
-        <span style={{ letterSpacing: "0.01em", transition: "opacity 0.15s ease" }}>
+        <span style={{ letterSpacing: "0.01em" }}>
           {displayLabel}
         </span>
         <button
@@ -182,20 +170,14 @@ export default function ChatInputArea({
               handleChatModeChange('auto');
             }
           }}
+          className={`p-0.5 rounded-full transition-all duration-150 flex items-center justify-center ml-0.5 text-inherit opacity-60 hover:opacity-100 ${
+            darkMode ? "hover:bg-white/20" : "hover:bg-black/10"
+          }`}
           style={{
             background: "transparent",
             border: "none",
             cursor: "pointer",
-            color: "inherit",
-            padding: "0 2px",
-            display: "flex",
-            alignItems: "center",
-            opacity: 0.7,
-            transition: "opacity 0.2s",
-            marginLeft: "3px"
           }}
-          onMouseEnter={(e) => (e.currentTarget.style.opacity = 1)}
-          onMouseLeave={(e) => (e.currentTarget.style.opacity = 0.7)}
           title="Hapus mode"
         >
           <X size={13} />

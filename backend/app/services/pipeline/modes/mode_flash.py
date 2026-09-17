@@ -8,7 +8,7 @@ from backend.app.api.schemas.chat_schemas import ChatMessageSchema
 from backend.app.services.pipeline.sse_validation import format_sse, SSEEventType
 from backend.app.core.llm_client import stream_ollama_chat
 from backend.app.core.config import settings
-from backend.app.services.pipeline.modes.mode_utils import select_call2_module, get_module_config, build_call2_system_prompt
+from backend.app.services.pipeline.modes.mode_utils import select_call2_module, get_module_config, build_call2_system_prompt, sanitize_history_for_pronoun
 
 logger = logging.getLogger("MODE_FLASH")
 
@@ -110,6 +110,10 @@ class ModeFlash:
         else:
             trimmed_messages = messages_dict[-6:] if len(messages_dict) > 6 else messages_dict
         
+        # 🛡️ ANTI-PRIMING: Bersihkan kata ganti asisten di riwayat jika mode Formal / Akrab aktif
+        active_pronoun = routing_data.get("pronoun", "formal_saya_anda") if routing_data else "formal_saya_anda"
+        trimmed_messages = sanitize_history_for_pronoun(trimmed_messages, active_pronoun)
+
         stream_messages = [
             {"role": "system", "content": system_prompt},
             *trimmed_messages,

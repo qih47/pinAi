@@ -51,7 +51,7 @@ export const createChatSlice = (set, get) => ({
                 activeIsolatedMeta: meta !== null ? meta : (docId && docId === state.activeIsolatedDocId ? state.activeIsolatedMeta : null),
                 chatMode: newChatMode,
                 activeModeTag: (newChatMode === 'focus' || newChatMode === 'compliance' || newChatMode === 'redteam')
-                    ? 'focus'
+                    ? newChatMode
                     : (newChatMode === 'documents' ? 'documents' : (docId ? state.activeModeTag : null))
             };
         });

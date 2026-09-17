@@ -105,9 +105,23 @@ class ModeHub:
                     meta = c.get("metadata", {})
                     if meta.get("source") == "url_read":
                         visited_urls.extend(meta.get("urls", []))
-                if visited_urls:
-                    visited_urls = list(set(visited_urls))  # deduplicate
-                    logger.info(f"[MODE_HUB] Loaded {len(visited_urls)} previously visited URL(s) from session memory")
+
+            # Ekstrak juga URL dari riwayat pesan chat langsung (agar instan tanpa lag async DB)
+            if chat_history:
+                try:
+                    from backend.app.services.web_tools.url_reader import extract_urls_from_text
+                    for m in chat_history:
+                        content_str = getattr(m, "content", "") or ""
+                        if content_str:
+                            for u in extract_urls_from_text(content_str):
+                                if u not in visited_urls:
+                                    visited_urls.append(u)
+                except Exception:
+                    pass
+
+            if visited_urls:
+                visited_urls = list(set(visited_urls))  # deduplicate
+                logger.info(f"[MODE_HUB] Loaded {len(visited_urls)} previously visited URL(s) from session memory & chat history: {visited_urls}")
 
         is_first_chat = (len(chat_history) <= 1) or is_title_generic
         precheck["_session_chunks_text"] = session_chunks_text
@@ -151,6 +165,22 @@ class ModeHub:
                     precheck["has_url_context"] = True  # masih tandai agar routing paham ada URL context
                     precheck["_detected_urls"] = skipped
                     logger.info("[MODE_HUB] All URLs already in session memory — using cached content, no re-fetch needed.")
+            else:
+                # Cek apakah user merujuk ke link/web dari turn sebelumnya (anaphora: "link itu", "web tadi", dll.)
+                user_msg_lower = user_message.lower()
+                LINK_REF_SIGNALS = [
+                    "link itu", "link tadi", "link tersebut", "link nya", "linknya",
+                    "web itu", "web tadi", "web tersebut", "web nya", "webnya",
+                    "website itu", "website tadi", "website tersebut", "websitenya",
+                    "tautan itu", "tautan tadi", "tautan tersebut", "tautannya",
+                    "situs itu", "situs tadi", "situs tersebut", "situsnya"
+                ]
+                if any(sig in user_msg_lower for sig in LINK_REF_SIGNALS) and visited_urls:
+                    logger.info(f"[MODE_HUB] 🔗 Multi-turn link reference detected ('link itu'/'web tadi'). Inheriting visited URLs: {visited_urls}")
+                    precheck["has_url_context"] = True
+                    precheck["_detected_urls"] = visited_urls
+                    precheck["is_web_search"] = True
+                    precheck["need_rag"] = False
         except ImportError:
             pass
 
@@ -249,8 +279,8 @@ class ModeHub:
                     yield chunk
                 return
 
-            # 2. Document Search & Focus / Audit Mode Bypass
-            elif forced_mode_clean in ["documents", "document", "rag", "focus", "audit", "compliance"]:
+            # 2. Document Search & Focus / Audit / Compliance / Redteam Mode Bypass
+            elif forced_mode_clean in ["documents", "document", "rag", "focus", "audit", "compliance", "redteam"]:
                 if is_guest:
                     logger.warning("[MODE_HUB] 🛡️ Blocked Guest from accessing internal documents via forced_mode bypass!")
                     yield format_sse(status="🔒 Akses Dokumen Terbatas", status_key="ACCESS_DENIED", event_type=SSEEventType.STATUS)
@@ -272,10 +302,16 @@ class ModeHub:
                     precheck["queries"] = [user_message]
 
                 # Jika terdapat context_isolation (misal user klik dokumen PKB/SOP dari hint):
-                # Langsung tembak ke Mode Focus (Context Isolation) agar tidak melebar ke RAG global!
+                # Tentukan handler yang sesuai (compliance, redteam, atau focus)
                 if context_isolation and (context_isolation.get("isolated_doc_id") or context_isolation.get("doc_id") or context_isolation.get("id_dokumen")):
-                    logger.info(f"[MODE_HUB] 🎯 Fast-Path Bypass routed directly to MODE_FOCUS for isolated document: {context_isolation}")
-                    handler = self.mode_handlers["focus"]
+                    target_mode_key = "focus"
+                    if forced_mode_clean == "compliance" or chat_mode == "compliance":
+                        target_mode_key = "compliance"
+                    elif forced_mode_clean == "redteam" or chat_mode == "redteam":
+                        target_mode_key = "redteam"
+
+                    logger.info(f"[MODE_HUB] 🎯 Fast-Path Bypass routed directly to MODE_{target_mode_key.upper()} for isolated document: {context_isolation}")
+                    handler = self.mode_handlers[target_mode_key]
                 else:
                     handler = self.mode_handlers["documents"]
 
@@ -478,13 +514,19 @@ class ModeHub:
                 yield chunk
             return
 
-        # ── Fast-path Bypass untuk Context Isolation (Focus Mode) ──────────────────
-        if context_isolation and context_isolation.get("isolated_doc_id"):
-            logger.info("[MODE_HUB] Context Isolation detected! Routing to Focus Mode.")
+        # ── Fast-path Bypass untuk Context Isolation (Focus / Compliance / Redteam Mode) ──
+        if context_isolation and (context_isolation.get("isolated_doc_id") or context_isolation.get("doc_id") or context_isolation.get("id_dokumen")):
+            target_iso_mode = "focus"
+            if chat_mode == "compliance" or forced_mode_clean == "compliance":
+                target_iso_mode = "compliance"
+            elif chat_mode == "redteam" or forced_mode_clean == "redteam":
+                target_iso_mode = "redteam"
+
+            logger.info(f"[MODE_HUB] Context Isolation detected! Routing to {target_iso_mode.upper()} Mode.")
             if session_uuid:
                 from backend.app.services.chat.chat_history_service import chat_history_service
                 radar_scores = {"dokumen": 100, "coding": 10, "chitchat": 10, "analitik": 10, "ambigu": 10}
-                obs_dict = {"msg": "Bypassing Call 1 -> FOCUS", "radar": radar_scores}
+                obs_dict = {"msg": f"Bypassing Call 1 -> {target_iso_mode.upper()}", "radar": radar_scores}
                 asyncio.create_task(chat_history_service.save_agent_step(
                     session_id=session_uuid,
                     step_number=1,
@@ -492,11 +534,8 @@ class ModeHub:
                     tool_input="Context Isolation Active",
                     observation=json.dumps(obs_dict)
                 ))
-            from backend.app.services.pipeline.modes.mode_focus import ModeFocus
-            if "focus" not in self.mode_handlers:
-                self.mode_handlers["focus"] = ModeFocus()
             
-            handler = self.mode_handlers["focus"]
+            handler = self.mode_handlers.get(target_iso_mode, self.mode_handlers["focus"])
             async for chunk in handler.execute(
                 user_message=user_message,
                 chat_history=chat_history,
@@ -506,7 +545,8 @@ class ModeHub:
                 routing_data=precheck,
                 request=request,
                 employee_name=employee_name,
-                current_user_npp=current_user_npp
+                current_user_npp=current_user_npp,
+                session_uuid=session_uuid
             ):
                 yield chunk
             return
@@ -602,7 +642,7 @@ class ModeHub:
 
         # ── Step 3.5: Progressive URL Fetching Stepper (100% Call 1 Single Source of Truth) ───
         url_contexts = ""
-        from backend.app.services.web_tools.url_reader import extract_url_display_info, fetch_webpage_content
+        from backend.app.services.web_tools.url_reader import extract_url_display_info, fetch_webpage_content, fetch_webpage_with_discovery
         
         approved_fetch_urls = routing_data.get("fetch_urls", [])
 
@@ -618,24 +658,31 @@ class ModeHub:
                 yield format_sse(status=f"🌐 Mengunduh {domain_name}", event_type=SSEEventType.STATUS)
                 await asyncio.sleep(0.01)
                 
-                content = await fetch_webpage_content(u)
+                content, sub_nodes = await fetch_webpage_with_discovery(u, user_query=user_message)
                 if content:
                     url_contexts += f"\n\n==== ISI WEB: {u} ====\n\n{content}\n\n========================\n"
                     
-                collected_nodes.append({
-                    "title": display_info["title"],
-                    "domain": display_info["domain"],
-                    "url": u
-                })
+                if sub_nodes:
+                    collected_nodes.extend(sub_nodes)
+                else:
+                    collected_nodes.append({
+                        "title": display_info["title"],
+                        "domain": display_info["domain"],
+                        "url": u
+                    })
             
             # Buat status aktivitas kontekstual di bagian bawah (Clock Icon) dalam Bahasa Indonesia
             msg_lower = user_message.lower()
-            if any(k in msg_lower for k in ["banding", "compare", "vs", "beda", "pilih", "model", "opsi", "spesifikasi"]):
-                activity_text = "Membandingkan opsi model berdasarkan ukuran, fitur, dan performa"
+            if any(k in msg_lower for k in ["banding", "compare", "vs", "beda"]):
+                activity_text = "Membandingkan informasi dari tautan web"
+            elif any(k in msg_lower for k in ["spesifikasi", "spek", "fitur", "detail", "rincian", "ukuran", "dimensi"]):
+                activity_text = "Menelaah rincian spesifikasi dari tautan web"
+            elif any(k in msg_lower for k in ["berita", "kabar", "update", "terbaru"]):
+                activity_text = "Mengekstrak informasi berita terbaru dari tautan web"
             elif any(k in msg_lower for k in ["rangkum", "summary", "ringkas", "baca", "jelaskan", "isi"]):
                 activity_text = "Menganalisis isi konten halaman web"
             else:
-                activity_text = "Menelaah referensi tautan"
+                activity_text = "Menelaah referensi tautan web"
             
             if url_contexts and url_contexts.strip():
                 final_fetch_payload = {
@@ -651,12 +698,15 @@ class ModeHub:
                 await asyncio.sleep(0.01)
                 precheck["_session_chunks_text"] = precheck.get("_session_chunks_text", "") + f"\n\n[KONTEN WEB DARI URL DI CHAT]\n{url_contexts}"
                 precheck["has_url_context"] = True
+
+                # Murni URL reader untuk URL yang di-fetch: matikan web_search dan need_rag
                 precheck["is_web_search"] = False
                 routing_data["is_web_search"] = False
-                logger.info(f"[MODE_HUB] Injected {len(url_contexts)} chars of URL context into precheck. Overriding is_web_search to False.")
-            else:
-                logger.warning(f"[MODE_HUB] Fetching failed or yielded empty content for {approved_fetch_urls}. Suppressing urlfetch widget and allowing fallback.")
-                
+                precheck["need_rag"] = False
+                routing_data["need_rag"] = False
+                logger.info(f"[MODE_HUB] URL fetched ({len(url_contexts)} chars). Murni URL reader -> is_web_search=False, need_rag=False.")
+
+                # Simpan ke session memory document chunks agar multi-turn aware
                 if session_uuid and current_user_npp:
                     from backend.app.services.chat.chat_history_service import chat_history_service
                     clean_web_sample = " ".join(url_contexts.replace("==== ISI WEB:", "").split())[:180]
@@ -676,6 +726,8 @@ class ModeHub:
                             "fetched_at": datetime.now().isoformat()
                         }
                     ))
+            else:
+                logger.warning(f"[MODE_HUB] Fetching failed or yielded empty content for {approved_fetch_urls}. Suppressing urlfetch widget and allowing fallback.")
 
         logger.info(
             f"[MODE_HUB] Call 1 complete | need_rag={routing_data.get('need_rag')} | "
@@ -805,8 +857,28 @@ class ModeHub:
         # 🛡️ Proteksi Kata Ganti: Preferensi eksplisit akun (settings/onboarding) adalah prioritas mutlak
         router_pronoun = routing_data.pop("pronoun", None)
         precheck.update(routing_data)
+        from backend.app.services.pipeline.intent_dictionary import extract_slang_mirror
         if user_default_pronoun in ["informal_gue_lo", "formal_saya_anda", "familiar_aku_kamu"]:
             precheck["pronoun"] = user_default_pronoun
+            if user_default_pronoun == "formal_saya_anda":
+                precheck["mirroring"] = "stay_formal_safe"
+                precheck["slang"] = []
+                precheck["slang_mirror"] = extract_slang_mirror(user_message, user_pronoun="formal_saya_anda")
+                if precheck.get("tone_hint") in ["casual", "friendly"]:
+                    precheck["tone_hint"] = "formal"
+            elif user_default_pronoun == "familiar_aku_kamu":
+                precheck["mirroring"] = "stay_formal_safe"
+                precheck["slang"] = [s for s in precheck.get("slang", []) if s in ["bro", "sis", "bang", "mas", "mba", "aa", "teteh"]]
+                precheck["slang_mirror"] = extract_slang_mirror(user_message, user_pronoun="familiar_aku_kamu")
+                if precheck.get("tone_hint") in ["casual", "formal"]:
+                    precheck["tone_hint"] = "friendly"
+            elif user_default_pronoun == "informal_gue_lo":
+                precheck["mirroring"] = "mirror_casual"
+                precheck["slang_mirror"] = extract_slang_mirror(user_message, user_pronoun="informal_gue_lo")
+                if precheck.get("tone_hint") == "formal":
+                    precheck["tone_hint"] = "casual"
+        elif user_default_pronoun == "adaptive_mirroring":
+            precheck["slang_mirror"] = extract_slang_mirror(user_message, user_pronoun=precheck.get("pronoun", "formal_saya_anda"))
         elif router_pronoun:
             precheck["pronoun"] = router_pronoun
 
@@ -867,7 +939,7 @@ class ModeHub:
             # Hanya fallback ke web search jika URL fetch gagal/kosong
             if url_contexts and url_contexts.strip():
                 precheck["is_web_search"] = False
-                logger.info("[MODE_HUB] URL content fetched successfully → skipping web search, using URL content directly")
+                logger.info("[MODE_HUB] URL content fetched successfully → murni URL reader, skipping web search")
             else:
                 precheck["is_web_search"] = True
                 logger.info("[MODE_HUB] URL fetch failed/empty → falling back to web search")

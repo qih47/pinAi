@@ -5,6 +5,7 @@ import time
 import asyncio
 import logging
 import traceback
+import unicodedata
 from typing import Optional, Tuple, Dict, Any
 from collections import OrderedDict
 
@@ -102,6 +103,12 @@ PHONETIC_ROOTS = {
     'sumber': 'sumber',
 
     # Fonetik pelafalan kata bahasa Indonesia agar tidak bias ke fonem Inggris
+    'cuy': 'chui',
+    'cui': 'chui',
+    'cari': 'chari',
+    'mencari': 'menchari',
+    'dicari': 'dichari',
+    'coma': 'koma',
     'cuaca': 'chuaca',
     'cuacanya': 'chuacanya',
     'coba': 'choba',
@@ -112,6 +119,41 @@ PHONETIC_ROOTS = {
     'cuci': 'chuci',
     'curiga': 'churiga',
     'skep': 'skep',
+
+    # Koreksi vokal kolokial/gaul -> bentuk baku Indonesia (mencegah model salah fonem)
+    'laper': 'lapar',
+    'bener': 'benar',
+    'seger': 'segar',
+    'geder': 'besar',
+    'pinter': 'pintar',
+    'banter': 'kencang',
+    'keder': 'takut',
+
+    # Koreksi kluster konsonan Inggris yang tereliminasi model TTS Indonesia
+    'blank': 'bleng',
+
+    # Koreksi sengau nasal pada 'mending' - 'men-ding' (ASCII only agar regex \b[a-zA-Z]+ bisa match)
+    'mending': 'men-ding',
+
+    # Kata serapan Inggris yang mispronounce oleh model TTS Indonesia
+    'cranky': 'krenki',
+    'btw': 'by the way',
+
+    # Kata Indonesia dengan pola onset konsonan ambigu terhadap fonem model
+    # 'obat' dibaca 'jabat' oleh model karena o+b onset mirip pola Inggris
+    'obat': 'o-bat',
+    'obatnya': 'o-batnya',
+    'diobati': 'di-o-bati',
+
+    # 'gampang' - gugus konsonan akhir -mpang tertelan model jika diikuti konsonan keras
+    'gampang': 'gam-pang',
+    'gampangnya': 'gam-pangnya',
+
+    # Plosive Collision Guard eksplisit: kata-kata yang diawali plosive dan sering muncul
+    # setelah kata berakhiran plosive sama, sehingga suara awal tertelan model TTS
+    'penderitaan': 'p-enderitaan',
+    'penderita': 'p-enderita',
+    'pergi': 'p-ergi',
 }
 
 # Mapping angka Romawi ke kata bahasa Indonesia
@@ -344,6 +386,32 @@ def clean_text_for_tts(text: str) -> str:
     # 8. Hapus titik pemisah ribuan agar '1.500' dibaca 'seribu lima ratus' bukan 'satu titik lima ratus'
     t = re.sub(r'(?<=\d)\.(?=\d{3}(?:\b|\.|\s))', '', t)
 
+    # 8a. Normalisasi angka desimal koma (1,5 -> 'satu koma lima')
+    # Langsung expand ke teks agar tidak ambigu dengan pemisah ribuan titik
+    def expand_decimal_comma(match):
+        left = expand_numbers_id(match.group(1))
+        right = expand_numbers_id(match.group(2))
+        return f"{left} koma {right}"
+
+    t = re.sub(r'(\d+),(\d+)', expand_decimal_comma, t)
+
+    # 8a2. Normalisasi titik desimal (1.5 -> 'satu koma lima')
+    # Match hanya 1-2 digit setelah titik (bukan ribuan yang sudah dihapus step 8)
+    def expand_decimal_dot(match):
+        left = expand_numbers_id(match.group(1))
+        right = expand_numbers_id(match.group(2))
+        return f"{left} koma {right}"
+
+    t = re.sub(r'\b(\d+)\.(\d{1,2})\b', expand_decimal_dot, t)
+
+    # 8b. Normalisasi pola angka/angka (24/7, 2/3 dll) -> '24 per 7', '2 per 3'
+    # Harus sebelum expand_numbers_id dan sebelum konversi slash teks
+    t = re.sub(r'\b(\d+)/(\d+)\b', r'\1 per \2', t)
+
+    # 8c. Slash antara dua kata/teks (bukan angka) -> ' atau '
+    # Contoh: 'Kopi Hitam / Tea Time' -> 'Kopi Hitam atau Tea Time'
+    t = re.sub(r'(?<!\d)\s*/\s*(?!\d)', ' atau ', t)
+
     # 9. Expand angka digit ke kata-kata bahasa Indonesia
     t = expand_numbers_id(t)
 
@@ -389,14 +457,14 @@ def clean_text_for_tts(text: str) -> str:
         r'\bKTA\b': 'ka te a',
         r'\bBPJS\b': 'be pe je es',
         r'\bBUMN\b': 'be u em en',
-        r'\bPT\b': 'pe te',
+        r'\bPT\b': 'pete',
         r'\bCV\b': 'se ve',
         r'\bTNI\b': 'te en i',
         r'\bPOLRI\b': 'polri',
         r'\bBSSN\b': 'be es es en',
-        r'\bWIB\b': 'we i be',
-        r'\bWITA\b': 'wita',
-        r'\bWIT\b': 'wit',
+        r'\bWIB\b': 'waktu indonesia barat',
+        r'\bWITA\b': 'waktu indonesia tengah',
+        r'\bWIT\b': 'waktu indonesia timur',
     }
     for pattern, repl in SPELL_OUT_ACRONYMS.items():
         t = re.sub(pattern, repl, t)
@@ -404,9 +472,50 @@ def clean_text_for_tts(text: str) -> str:
     # 11. Terapkan kamus fonetik kata serapan & singkatan
     t = phonetic_correction(t)
 
-    # 10. Pembersihan Karakter & Tanda Baca
-    # Hapus emoji
-    t = re.sub(r'[\U0001F300-\U0001FFFF\U00002600-\U000027FF]', '', t)
+    # 10. Pembersihan Karakter, Notasi LaTeX & Tanda Baca
+    # Normalisasi Panah LaTeX Math (misal: $\rightarrow$, \rightarrow, \to, \Rightarrow, dll.)
+    t = re.sub(r'\$*\s*\\(?:leftrightarrow|longleftrightarrow|Leftrightarrow|Longleftrightarrow|rightleftharpoons)\b\s*\$*', ' bolak-balik ', t)
+    t = re.sub(r'\$*\s*\\(?:leftarrow|longleftarrow|Leftarrow|Longleftarrow|gets)\b\s*\$*', ', kembali ke ', t)
+    t = re.sub(r'\$*\s*\\(?:rightarrow|to|longrightarrow)\b\s*\$*', ', lalu ', t)
+    t = re.sub(r'\$*\s*\\(?:Rightarrow|Longrightarrow)\b\s*\$*', ', maka ', t)
+    # Hapus sisa tanda dollar ($) LaTeX dan karakter backslash (\)
+    t = re.sub(r'\$+', '', t)
+    # Normalisasi 'cuy' / 'Cuy' / 'Cui' ke fonetik vokal 'chui' (menghindari diftong Inggris buy/guy -> cay)
+    t = re.sub(r'\b(?:cuy|cui)\b', 'chui', t, flags=re.IGNORECASE)
+    # Normalisasi kata 'cari' agar tidak dibaca 'kari' oleh model Inggris
+    t = re.sub(r'\bcari\b', 'chari', t, flags=re.IGNORECASE)
+    # Normalisasi istilah 'coma' (seperti food coma) agar dibaca 'koma'
+    t = re.sub(r'\bcoma\b', 'koma', t, flags=re.IGNORECASE)
+    # Cegah kluster 'buy' dibaca diftong Inggris /baɪ/ (buy -> bayar)
+    t = re.sub(r'\bbuy(?=[a-zA-Z])', 'buiy', t, flags=re.IGNORECASE)
+    # Singkatan bahasa Inggris gaul 'btw' dibaca 'by the way' bukan 'biew'
+    t = re.sub(r'\bb\.?t\.?w\b', 'by the way', t, flags=re.IGNORECASE)
+
+    # Hapus total semua emoji, piktograf, dan karakter tak kasat mata (ZWJ, variation selectors, ZWS)
+    t = re.sub(
+        r'['
+        r'\U0001F000-\U0001FAFF'  # Emoticons, Pictographs, Transport, Food, Activities
+        r'\U00002600-\U000027BF'  # Miscellaneous Symbols & Dingbats
+        r'\U00002B00-\U00002BFF'  # Miscellaneous Symbols and Arrows
+        r'\U00002300-\U000023FF'  # Miscellaneous Technical
+        r'\U00002190-\U000021FF'  # Arrows
+        r'\u200D'                  # Zero Width Joiner (ZWJ, penyebab gap suara di F5-TTS)
+        r'\u200B-\u200F'          # Zero Width Spaces, LTR/RTL marks
+        r'\uFE00-\uFE0F'          # Variation Selectors (VS1-VS16)
+        r'\uFEFF'                  # Zero Width No-Break Space / BOM
+        r']+',
+        '',
+        t,
+        flags=re.UNICODE
+    )
+
+    # Pembersihan lapis kedua: singkirkan karakter format/simbol non-tekstual yang tersisa
+    t = ''.join(
+        c for c in t 
+        if unicodedata.category(c) not in ('So', 'Sk', 'Cf', 'Co', 'Cs') 
+        and not (0xFE00 <= ord(c) <= 0xFE0F or 0xE0100 <= ord(c) <= 0xE01EF)
+    )
+
     # Hapus tanda petik (bikin model stutter)
     t = re.sub(r'["\']', '', t)
     # Hapus markdown symbols
@@ -414,23 +523,34 @@ def clean_text_for_tts(text: str) -> str:
     # Ganti tanda kurung dengan koma untuk jeda nafas alami
     t = re.sub(r'[(\[{]', ', ', t)
     t = re.sub(r'[)\]}]', ', ', t)
-    # Ganti titik dua di tengah kalimat dengan titik
-    t = re.sub(r':', '.', t)
+    # Ganti titik dua tanda baca menjadi titik henti agar beristirahat sejenak sebelum list (kecuali format jam digit)
+    t = re.sub(r'(?<!\d):(?!\d)', '.', t)
     # Ganti & -> dan
     t = re.sub(r'&', ' dan ', t)
-    # Hapus list format angka di awal baris (1. -> hilang)
-    t = re.sub(r'(?m)^\s*\d+\.\s+', '', t)
-    # Hapus bullet points di awal baris
-    t = re.sub(r'(?m)^\s*[-*•]\s+', '', t)
+    # Ganti + -> plus
+    t = re.sub(r'\s*\+\s*', ' plus ', t)
+    # Ganti pipe (|) dengan koma jeda
+    t = re.sub(r'\|', ', ', t)
+    # Hapus blockquote markdown (> Kutipan)
+    t = re.sub(r'(?m)^\s*>\s+', '', t)
+    # Hapus bullet points / arrow markers di awal baris (jangan hapus angka list 1. 2.)
+    t = re.sub(r'(?m)^\s*(?:[-*•→➔➜↳►▶]|->|=>|-->|==>)\s+', '', t)
+    # Normalisasi simbol panah alur / transisi di tengah teks menjadi jeda alami
+    t = re.sub(r'\s*(?:<->|<=>|↔|⇄)\s*', ' bolak-balik ', t)
+    t = re.sub(r'\s*(?:<-|<--|<=|<==|←)\s*', ', kembali ke ', t)
+    t = re.sub(r'\s*(?:->|-->|=>|==>|—>|–>|→|➔|➜|➡)\s*', ', lalu ', t)
+    # Rapikan jika lalu/maka/kembali ke ada di awal kalimat atau sebelum tanda baca
+    t = re.sub(r'(?:^|[.!?]\s*),\s*(?:lalu|maka|kembali ke)\s*', ' ', t)
+    t = re.sub(r',\s*(?:lalu|maka|kembali ke)(?:\s*[,.]|\s*$)', '.', t)
     # Hapus koma berulang dan rapikan spasi sekitar koma
     t = re.sub(r',\s*,+', ', ', t)
     t = re.sub(r'\s*,\s*', ', ', t)
-    # Hapus koma sebelum partikel informal biar intonasi mengalir
-    t = re.sub(r',\s+(cuy|cui|bro|ya|dong|deh|nih|tuh|sih|yuk|kok)\b', r' \1', t, flags=re.IGNORECASE)
     # Sederhanakan elipsis (...) jadi 1 titik
     t = re.sub(r'\.\s*\.+', '.', t)
     # Rapikan koma sebelum titik
     t = re.sub(r',\s*\.', '.', t)
+    # Rapikan spasi sebelum tanda baca yang mungkin timbul akibat emoji yang dihapus
+    t = re.sub(r'\s+([,.?!;:])', r'\1', t)
     # Rapikan spasi
     t = re.sub(r'\s{2,}', ' ', t).strip()
 
@@ -557,8 +677,14 @@ class TTSService:
         # alami tanpa sisa bunyi 'uu', serta memberi alokasi durasi penuh agar konsonan akhir kata asli
         # (misal: 'siap', 'fresh') terucap 100% utuh.
         gen_text_input = clean_text.strip()
-        gen_text_input = gen_text_input.rstrip('.?!')
-        gen_text_input += '. !!!!.'
+        # Dynamic buffer: kalimat tanya -> cukup '? .' agar tidak memunculkan desah 'emm' di akhir.
+        # Kalimat pernyataan -> fine-tuned buffer bawaan user '. !?!? .' tetap dipakai.
+        is_question = bool(re.search(r'\?\s*$', gen_text_input))
+        gen_text_input = gen_text_input.rstrip('. !? ')
+        if is_question:
+            gen_text_input += '? .'
+        else:
+            gen_text_input += '. !?!? .'
 
         # Kecepatan bicara (speed factor) adaptif bahasa Indonesia:
         # Kecepatan natural penutur bahasa Indonesia ~8-10 karakter per detik.

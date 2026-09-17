@@ -403,14 +403,15 @@ class DocWriterService:
         cls,
         npp: str = "",
         session_id: str = "",
-        room_id: str = ""
+        room_id: str = "",
+        master_npp: str = ""
     ) -> Optional[Dict[str, Any]]:
         """
         Mendapatkan dokumen aktif terakhir dari direktori kerja user/room/session.
         Membaca index.json atau berkas .json metadata terbaru berdasarkan mtime/updated_at.
         """
-        master_npp = cls.find_room_master_npp(room_id) if room_id else ""
-        storage_dir = Path(get_docwriter_dir(npp=npp, session_id=session_id, room_id=room_id, master_npp=master_npp))
+        resolved_master_npp = master_npp or (cls.find_room_master_npp(room_id) if room_id else "")
+        storage_dir = Path(get_docwriter_dir(npp=npp, session_id=session_id, room_id=room_id, master_npp=resolved_master_npp))
         if not storage_dir.exists():
             return None
 

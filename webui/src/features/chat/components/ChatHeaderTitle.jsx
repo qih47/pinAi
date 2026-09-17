@@ -29,6 +29,7 @@ export default function ChatHeaderTitle({
   const pinChat = useChatStore((state) => state.pinChat);
   const deleteChat = useChatStore((state) => state.deleteChat);
   const authUser = useChatAuthStore((state) => state.user);
+  const isAuthenticated = useChatAuthStore((state) => state.isAuthenticated);
 
   const t = translations[language]?.chatHeader || {
     pin: language === "en" ? "Pin chat" : "Sematkan percakapan",
@@ -208,6 +209,11 @@ export default function ChatHeaderTitle({
       console.error("Gagal menghapus session:", err);
     }
   };
+
+  const isGuest = !isAuthenticated || !authUser || authUser?.role === "guest" || authUser?.npp === "GUEST";
+  if (isGuest) {
+    return null;
+  }
 
   return (
     <div className="relative flex items-center select-none" ref={menuRef}>

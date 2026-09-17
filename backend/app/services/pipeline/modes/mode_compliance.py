@@ -61,49 +61,58 @@ class ModeCompliance:
         yield format_sse(status="🎯 Membuka uji kepatuhan dokumen", status_key="OPENING_COMPLIANCE_TEST", event_type=SSEEventType.STATUS)
         await asyncio.sleep(0.05)
 
-        # 1. Fetch Filename and Metadata from Database
-        filename = None
-        if isinstance(isolated_doc_id, str) and isolated_doc_id.lower().endswith(".pdf"):
-            filename = isolated_doc_id
-        if isolated_doc_id:
-            try:
-                async with get_peraturan_db() as conn:
-                    async with conn.cursor() as cur:
-                        query = """
-                            SELECT b.judul,
-                                   COALESCE(NULLIF(b.gambar, ''), NULLIF(b.gambar2, ''), NULLIF(b.gambar3, ''), NULLIF(b.linkper, '')) AS filename,
-                                   COALESCE(b.noper, '') as nomor,
-                                   COALESCE(b.tanggal, '') as tanggal,
-                                   COALESCE(k.nama_kategori, 'Regulasi') as jenis
-                            FROM berita b
-                            LEFT JOIN kategori k ON b.id_kategori = k.id_kategori
-                            WHERE b.id_berita = %s
-                        """
-                        await cur.execute(query, (isolated_doc_id,))
-                        row = await cur.fetchone()
-                        if row:
-                            doc_title = doc_title or row[0]
-                            filename = filename or row[1]
-                            doc_nomor = doc_nomor or row[2]
-                            doc_tanggal = doc_tanggal or (str(row[3]) if row[3] else "")
-                            doc_jenis = doc_jenis if doc_jenis and doc_jenis != "Regulasi" else (row[4] or doc_jenis)
-                            logger.info(f"[MODE_COMPLIANCE] Resolved from MySQL: id={isolated_doc_id}, title='{doc_title}', nomor='{doc_nomor}'")
-            except Exception as e:
-                logger.error(f"[MODE_COMPLIANCE] DB Error: {e}")
-                
+        # 1. Resolusi Identitas Dokumen Terpadu (PG dokumen & MySQL berita & Smart Fallback)
+        from backend.app.services.tools.document_resolver import find_valid_pdf_file, resolve_isolated_document
+        
+        ctx_nomor = context_isolation.get("nomor", "") if (context_isolation and isinstance(context_isolation, dict)) else ""
+        ctx_filename = context_isolation.get("filename", "") if (context_isolation and isinstance(context_isolation, dict)) else ""
+        
+        resolved = await resolve_isolated_document(
+            isolated_doc_id=isolated_doc_id,
+            doc_title=doc_title,
+            doc_nomor=ctx_nomor,
+            doc_filename=ctx_filename
+        )
+        pg_doc_id = resolved.get("pg_doc_id")
+        filename = resolved.get("filename")
+        file_path = resolved.get("file_path")
+        doc_title = resolved.get("title") or doc_title
+        doc_nomor = resolved.get("nomor") or ctx_nomor
+        doc_tanggal = resolved.get("tanggal") or (context_isolation.get("tanggal", "") if isinstance(context_isolation, dict) else "")
+        doc_jenis = resolved.get("jenis") or (context_isolation.get("category", "Regulasi") if isinstance(context_isolation, dict) else "Regulasi")
+
+        logger.info(f"[MODE_COMPLIANCE] Unified resolved: id={resolved.get('doc_id')}, title='{doc_title}', nomor='{doc_nomor}', file_path={file_path}")
+
         async def fallback_to_rag(reason: str):
             logger.warning(f"[MODE_COMPLIANCE] Fallback to RAG triggered: {reason}")
             yield format_sse(status="🔄 Mencari secara global", status_key="SEARCHING_GLOBAL", event_type=SSEEventType.STATUS)
             await asyncio.sleep(0.01)
             from backend.app.services.pipeline.modes.mode_documents import ModeDocuments
             fallback_handler = ModeDocuments()
+            
+            target_ctx = dict(context_isolation) if isinstance(context_isolation, dict) else {}
+            target_ctx.update({
+                "isolated_doc_id": resolved.get("doc_id") or isolated_doc_id,
+                "id_dokumen": resolved.get("doc_id") or isolated_doc_id,
+                "title": doc_title,
+                "nomor": doc_nomor,
+                "filename": filename
+            })
+            fb_routing = dict(routing_data) if isinstance(routing_data, dict) else {}
+            if doc_title or doc_nomor:
+                existing_q = fb_routing.get("queries") or [user_message]
+                target_q = f"{doc_title} {doc_nomor}".strip()
+                if target_q and target_q not in existing_q:
+                    fb_routing["queries"] = [target_q, *existing_q]
+                fb_routing["search_tags"] = [doc_title, doc_nomor, *(fb_routing.get("search_tags") or [])]
+
             async for chunk in fallback_handler.execute(
                 user_message=user_message,
                 chat_history=chat_history,
                 is_thinking=is_thinking,
                 attachments=attachments,
-                context_isolation=None,
-                routing_data=routing_data,
+                context_isolation=target_ctx,
+                routing_data=fb_routing,
                 request=request,
                 employee_name=employee_name,
                 current_user_npp=current_user_npp,
@@ -111,27 +120,41 @@ class ModeCompliance:
             ):
                 yield chunk
 
-        if not filename:
+        # Jika file fisik tidak ada, tetapi ada chunks di dokumen_chunk
+        text_map = None
+        all_base64_images = []
+        total_pages = 1
+        if (not file_path or not os.path.exists(file_path)) and resolved.get("has_chunks") and pg_doc_id:
+            try:
+                from backend.app.core.database import get_db
+                async with get_db() as pg_conn:
+                    c_rows = await pg_conn.fetch(
+                        "SELECT chunk_id, content, COALESCE(NULLIF(NULLIF(page_number, '0'), ''), '1') as page_number FROM dokumen_chunk WHERE dokumen_id = $1 ORDER BY chunk_id ASC LIMIT 50",
+                        pg_doc_id
+                    )
+                    if c_rows:
+                        text_map = []
+                        for idx, r in enumerate(c_rows):
+                            try:
+                                p_val = int(r["page_number"])
+                                p_0 = max(0, p_val - 1) if p_val > 1 else idx
+                                text_map.append({"page_num": p_0, "text": r["content"]})
+                            except Exception:
+                                text_map.append({"page_num": idx, "text": r["content"]})
+                        total_pages = len(text_map)
+                        logger.info(f"[MODE_COMPLIANCE] Loaded {len(text_map)} chunks directly from dokumen_chunk for pg_id={pg_doc_id}")
+            except Exception as chunk_err:
+                logger.warning(f"[MODE_COMPLIANCE] Error fetching chunks from PG: {chunk_err}")
+
+        if not file_path and not text_map:
             async for chunk in fallback_to_rag("File not found in DB or missing isolated_doc_id"):
                 yield chunk
             return
 
-        # 2. Resolve File Path via DocumentResolver
-        from backend.app.services.tools.document_resolver import find_valid_pdf_file
-        file_path = find_valid_pdf_file(filename)
-            
-        if not file_path or not os.path.exists(file_path):
-            async for chunk in fallback_to_rag(f"File physical path not found: {filename}"):
-                yield chunk
-            return
-
-        logger.info(f"[MODE_COMPLIANCE] Target file: {file_path}")
+        logger.info(f"[MODE_COMPLIANCE] Target file or text ready: file_path={file_path}, text_map_len={len(text_map) if text_map else 0}")
 
         # 3. Brain-First Check / Fast Parallel OCR & Rendering via Document Intelligence
-        doc_id_key = str(os.path.basename(file_path))
-        text_map = None
-        all_base64_images = None
-        total_pages = None
+        doc_id_key = str(os.path.basename(file_path)) if file_path else str(pg_doc_id or resolved.get('doc_id') or 'compliance_doc')
         brain = None
 
         if session_uuid and current_user_npp:
@@ -145,7 +168,7 @@ class ModeCompliance:
                 all_base64_images = cached_brain.get("images", [])
                 total_pages = cached_brain.get("total_pages", len(text_map))
 
-        if text_map is None:
+        if text_map is None and file_path and os.path.exists(file_path):
             yield format_sse(status="📄 Memuat dokumen", status_key="DOC_LOADING", event_type=SSEEventType.STATUS)
             await asyncio.sleep(0.01)
             cache_key = session_uuid or file_path
@@ -153,7 +176,7 @@ class ModeCompliance:
 
             if brain:
                 await brain.save_document(doc_id_key, {
-                    "title": os.path.basename(file_path),
+                    "title": doc_title or os.path.basename(file_path),
                     "text_map": text_map,
                     "images": all_base64_images,
                     "total_pages": total_pages,

@@ -379,17 +379,19 @@ export default function ChatPage({ isGuest,
               </button>
             )}
 
-            {/* 🏷️ CLAUDE-STYLE CHAT HEADER TITLE & POPOVER */}
-            <ChatHeaderTitle
-              sessionUuid={activeSessionId}
-              chatHistory={chatHistory}
-              setChatHistory={setChatHistory}
-              messages={messages}
-              handleClearChat={handleClearChat}
-              darkMode={darkMode}
-              language={language}
-              toast={toast}
-            />
+            {/* 🏷️ CLAUDE-STYLE CHAT HEADER TITLE & POPOVER (Hanya untuk pengguna login, bukan guest) */}
+            {hasSidebar && (
+              <ChatHeaderTitle
+                sessionUuid={activeSessionId}
+                chatHistory={chatHistory}
+                setChatHistory={setChatHistory}
+                messages={messages}
+                handleClearChat={handleClearChat}
+                darkMode={darkMode}
+                language={language}
+                toast={toast}
+              />
+            )}
 
             {!hasSidebar && (
               <img

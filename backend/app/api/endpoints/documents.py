@@ -120,6 +120,7 @@ async def preview_document_b64(encoded_filename: str):
     """
     from fastapi import Response
     from backend.app.core.paths import BASE_DIR
+    from backend.app.services.tools.document_resolver import find_valid_pdf_file
     import os
     import base64
     
@@ -130,7 +131,11 @@ async def preview_document_b64(encoded_filename: str):
         
     file_path = os.path.join(BASE_DIR, "file_peraturan", filename)
     if not os.path.exists(file_path):
-        raise HTTPException(status_code=404, detail="File tidak ditemukan")
+        alt = find_valid_pdf_file(filename)
+        if alt and os.path.exists(alt):
+            file_path = alt
+        else:
+            raise HTTPException(status_code=404, detail="File tidak ditemukan")
         
     with open(file_path, "rb") as f:
         content = f.read()
@@ -139,6 +144,17 @@ async def preview_document_b64(encoded_filename: str):
         content=content,
         media_type="application/octet-stream"
     )
+
+
+@router.get("/preview/{file_path:path}")
+@router.head("/preview/{file_path:path}")
+async def preview_document(file_path: str, request: Request):
+    """
+    Preview dokumen PDF langsung via URL file_path.
+    Menggunakan resolver pintar serve_file_peraturan untuk menangani alias atau file placeholder.
+    """
+    from run_chat_service import serve_file_peraturan
+    return await serve_file_peraturan(file_path, request)
 
 
 # ══════════════════════════════════════════════════════════════════════════════

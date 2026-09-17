@@ -18,7 +18,8 @@ from backend.app.services.pipeline.modes.mode_utils import (
     select_call2_module, 
     get_module_config, 
     build_call2_system_prompt,
-    sanitize_history_for_rag
+    sanitize_history_for_rag,
+    sanitize_history_for_pronoun
 )
 
 logger = logging.getLogger("MODE_DOCUMENTS")
@@ -98,18 +99,24 @@ class ModeDocuments:
 
             # 🧠 SMART RELEVANCE GATEKEEPER UNTUK SESSION BRAIN:
             # Periksa apakah dokumen di Brain masih cocok dengan yang dicari pengguna saat ini.
-            # Jika user menanyakan regulasi baru (Topic Shift, misal di Brain ada Audit tapi user cari PKB/Cuti),
+            # Jika user menanyakan regulasi baru (Topic Shift, misal di Brain ada PKB tapi user ganti fokus ke Urusan Dalam),
             # JANGAN biarkan Brain membajak sesi, langsung turun ke Global Database RAG!
             is_brain_relevant = True
             iso_id = ""
+            iso_title = ""
+            iso_nomor = ""
             if context_isolation and isinstance(context_isolation, dict):
                 iso_id = str(context_isolation.get("isolated_doc_id") or context_isolation.get("id_dokumen") or "")
+                iso_title = str(context_isolation.get("title") or context_isolation.get("doc_title") or "").strip().lower()
+                iso_nomor = str(context_isolation.get("nomor") or "").strip().lower()
 
-            if session_brain_docs and not iso_id:
+            if session_brain_docs:
                 manifest_data_preview = brain.get_manifest().get("documents", {}) if brain else {}
                 brain_tokens = []
+                brain_ids = set()
                 for b_item in session_brain_docs:
                     b_id = str(b_item.get("id") or b_item.get("doc_id")) if isinstance(b_item, dict) else str(b_item)
+                    brain_ids.add(b_id)
                     m_info = manifest_data_preview.get(b_id, {}) if isinstance(manifest_data_preview, dict) else {}
                     if isinstance(m_info, dict):
                         brain_tokens.append(f"{m_info.get('title', '')} {m_info.get('nomor', '')}".lower())
@@ -117,24 +124,41 @@ class ModeDocuments:
                         brain_tokens.append(str(m_info).lower())
                 brain_combined_text = " ".join(brain_tokens)
 
-                target_keywords = set()
-                for qj in query_judul_list:
-                    for word in str(qj or "").lower().split():
-                        if len(word) >= 3 and word not in ["dokumen", "peraturan", "terkait", "surat", "tentang", "mengenai", "nomor"]:
-                            target_keywords.add(word)
-                active_search_tags = routing_data.get("search_tags", [])
-                for tag in active_search_tags:
-                    for word in str(tag or "").lower().split():
-                        if len(word) >= 3:
-                            target_keywords.add(word)
+                # Jika ada context isolation eksplisit, verifikasi apakah dokumen di Brain cocok dengan target isolasi
+                if iso_id or iso_title or iso_nomor:
+                    matched_iso = False
+                    if iso_id and iso_id in brain_ids:
+                        matched_iso = True
+                    elif iso_nomor and any(iso_nomor in bt for bt in brain_tokens):
+                        matched_iso = True
+                    elif iso_title and any(iso_title in bt for bt in brain_tokens):
+                        matched_iso = True
 
-                if target_keywords:
-                    is_brain_relevant = any(kw in brain_combined_text for kw in target_keywords)
-                    if not is_brain_relevant:
+                    if not matched_iso:
+                        is_brain_relevant = False
                         logger.info(
-                            f"[MODE_DOCUMENTS] 🔄 Brain docs mismatch: Brain has '{brain_combined_text[:80]}' "
-                            f"but user targets '{target_keywords}'. Falling back to Global RAG."
+                            f"[MODE_DOCUMENTS] 🔄 Context isolation doc mismatch: Brain has {brain_ids} ('{brain_combined_text[:60]}') "
+                            f"but user isolated doc is id='{iso_id}', title='{iso_title}', nomor='{iso_nomor}'. Bypassing Brain -> Global RAG."
                         )
+                else:
+                    target_keywords = set()
+                    for qj in query_judul_list:
+                        for word in str(qj or "").lower().split():
+                            if len(word) >= 3 and word not in ["dokumen", "peraturan", "terkait", "surat", "tentang", "mengenai", "nomor"]:
+                                target_keywords.add(word)
+                    active_search_tags = routing_data.get("search_tags", [])
+                    for tag in active_search_tags:
+                        for word in str(tag or "").lower().split():
+                            if len(word) >= 3:
+                                target_keywords.add(word)
+
+                    if target_keywords:
+                        is_brain_relevant = any(kw in brain_combined_text for kw in target_keywords)
+                        if not is_brain_relevant:
+                            logger.info(
+                                f"[MODE_DOCUMENTS] 🔄 Brain docs mismatch: Brain has '{brain_combined_text[:80]}' "
+                                f"but user targets '{target_keywords}'. Falling back to Global RAG."
+                            )
 
             candidate_docs = []
 
@@ -224,6 +248,8 @@ class ModeDocuments:
             from backend.app.services.pipeline.call1_crag_verifier import verify_retrieved_documents_crag, ENABLE_CALL1_1_CRAG
             search_tags = routing_data.get("search_tags", [])
 
+            crag_primary_id = None
+            crag_reference_ids = []
             if candidate_docs and ENABLE_CALL1_1_CRAG and not iso_id:
                 # ── TURN 1: Validasi Awal (Kandidat Brain / MySQL) ─────────────────────────
                 crag_eval_t1 = await verify_retrieved_documents_crag(
@@ -234,6 +260,8 @@ class ModeDocuments:
                     request=request,
                     turn=1,
                 )
+                crag_primary_id = crag_eval_t1.get("primary_doc_id")
+                crag_reference_ids = crag_eval_t1.get("reference_doc_ids", [])
 
                 if not crag_eval_t1.get("is_relevant"):
                     logger.warning(
@@ -272,22 +300,32 @@ class ModeDocuments:
                         )
                         logger.info(
                             f"[MODE_DOCUMENTS] Turn 2 Call 1.1 CRAG result: is_relevant={crag_eval_t2.get('is_relevant')} | "
+                            f"primary_doc_id={crag_eval_t2.get('primary_doc_id')} | refs={crag_eval_t2.get('reference_doc_ids')} | "
                             f"reason: {crag_eval_t2.get('reason')}"
                         )
                         # Gunakan kandidat hasil pencarian ulang
                         candidate_docs = retry_docs
+                        crag_primary_id = crag_eval_t2.get("primary_doc_id")
+                        crag_reference_ids = crag_eval_t2.get("reference_doc_ids", [])
                     else:
                         logger.info("[MODE_DOCUMENTS] ℹ️ Re-search did not return new docs, retaining initial candidates as best-effort.")
                         candidate_docs = initial_candidates
 
 
             if candidate_docs:
-                # ── SPLIT: Aktif/Terbaru (Full PDF Read) vs Historis (Ringkasan Saja) ──────
-                # Urutkan kandidat: Berlaku di atas, kecocokan judul target, lalu skor retrieval dasar
+                # ── SPLIT: Dokumen Utama (Full PDF Read) vs Referensi/Historis (Ringkasan Saja) ──────
+                # Cek apakah query user meminta perbandingan eksplisit antar dokumen
+                is_comparative_query = bool(
+                    routing_data.get("is_comparative") or
+                    any(k in user_message.lower() for k in ["bandingkan", "perbandingan", "komparasi", "bedanya", "perbedaan"])
+                )
+                max_full_read = 2 if (is_comparative_query and len(candidate_docs) > 1) else 1
+
+                # Urutkan kandidat: Dokumen primer hasil CRAG di paling atas, lalu Berlaku, lalu skor
                 def candidate_rank_key(d):
-                    # 1. Status berlaku (1 jika Berlaku, 0 jika tidak)
+                    doc_id_str = str(d.get("id"))
+                    is_crag_primary = 1 if (crag_primary_id and doc_id_str == str(crag_primary_id)) else 0
                     berlaku_score = 1 if d.get("status_berlaku") == "Berlaku" else 0
-                    # 2. Kecocokan judul terhadap target yang dicari user (tanpa hardcode nama instansi)
                     target_match_score = 0.0
                     d_title = (str(d.get("judul", "")) + " " + str(d.get("noper", ""))).lower()
                     if query_judul_list:
@@ -295,9 +333,8 @@ class ModeDocuments:
                             qj_str = str(qj or "").lower().strip()
                             if qj_str and qj_str in d_title:
                                 target_match_score += 1.0
-                    # 3. Base retrieval score
                     base_score = float(d.get("score") or 0.0)
-                    return (berlaku_score, target_match_score, base_score)
+                    return (is_crag_primary, berlaku_score, target_match_score, base_score)
 
                 candidate_docs.sort(key=candidate_rank_key, reverse=True)
 
@@ -309,23 +346,25 @@ class ModeDocuments:
 
                     if is_supp:
                         historical_docs.append(doc)
-                    elif status == "Berlaku" or len(full_read_docs) < 1:
-                        # Ambil dokumen aktif paling relevan (maksimal 2 dokumen utama untuk full read agar responsif dan hemat CPU)
-                        if len(full_read_docs) < 2:
-                            full_read_docs.append(doc)
-                        else:
-                            historical_docs.append(doc)
+                    elif len(full_read_docs) < max_full_read:
+                        # Ambil dokumen aktif paling relevan (1 dokumen utama jika non-komparatif, maks 2 jika komparatif)
+                        full_read_docs.append(doc)
                     else:
                         historical_docs.append(doc)
 
-                # Jika tidak ada yang berstatus Berlaku sama sekali, ambil hingga 2 teratas sebagai full_read
-                if not full_read_docs:
+                # Fallback aman jika full_read_docs kosong
+                if not full_read_docs and candidate_docs:
                     non_supp = [d for d in candidate_docs if not d.get("is_supplementary", False)]
-                    full_read_docs = non_supp[:2] if non_supp else candidate_docs[:1]
+                    full_read_docs = non_supp[:1] if non_supp else candidate_docs[:1]
                     historical_docs = [d for d in candidate_docs if d not in full_read_docs]
 
                 doc_count = len(full_read_docs)
                 hist_count = len(historical_docs)
+                logger.info(
+                    f"[MODE_DOCUMENTS] 📄 Seleksi Dokumen: {doc_count} Dokumen Utama (Full PDF Read) | "
+                    f"{hist_count} Dokumen Referensi/Histori (Metadata Saja). Comparative={is_comparative_query}"
+                )
+
                 yield format_sse(status=f"📑 Menemukan {doc_count + hist_count} dokumen", status_key="DOCS_FOUND", event_type=SSEEventType.STATUS)
                 await asyncio.sleep(0.02)
                 
@@ -515,10 +554,13 @@ class ModeDocuments:
                     # Urutkan berdasarkan skor tertinggi
                     global_page_pool.sort(key=lambda x: x["score"], reverse=True)
 
-                    # Ambil Top 8 Seed Halaman Terbaik Lintas Dokumen
-                    top_seeds = [p for p in global_page_pool if p["score"] > 0.35][:8]
+                    # Ambil Top Seed Halaman Terbaik Lintas Dokumen
+                    # 1 Dokumen utama: 4 seed halaman terbaik sudah mencakup topik secara luas
+                    # Perbandingan komparatif 2 dokumen: maks 6 seed
+                    max_seeds = 6 if is_comparative_query else 4
+                    top_seeds = [p for p in global_page_pool if p["score"] > 0.35][:max_seeds]
                     if not top_seeds:
-                        top_seeds = global_page_pool[:4]
+                        top_seeds = global_page_pool[:min(max_seeds, len(global_page_pool))]
 
                     # Kelompokkan seed per dokumen untuk Tri-Window Expansion
                     seeds_by_doc = {}
@@ -530,9 +572,12 @@ class ModeDocuments:
 
                     # Terapkan Tri-Window Connected Context per dokumen
                     connected_pages_per_doc = {}
+                    max_pages_per_doc = 8 if is_comparative_query else 12
                     for d_id, seed_indices in seeds_by_doc.items():
                         t_map = doc_text_maps.get(d_id, [])
                         expanded_indices = expand_tri_window_context(seed_indices, t_map, total_pages=len(t_map))
+                        if len(expanded_indices) > max_pages_per_doc:
+                            expanded_indices = expanded_indices[:max_pages_per_doc]
                         connected_pages_per_doc[d_id] = expanded_indices
                         logger.info(f"[MODE_DOCUMENTS] Doc {d_id} Expanded Pages: {expanded_indices} (from seeds: {seed_indices})")
 
@@ -761,10 +806,11 @@ class ModeDocuments:
             # Sort by similarity/score and take up to 20 documents to preserve complete genealogy/silsilah history.
             rag_sources = sorted(unique_rag_sources, key=lambda x: x.get('score', x.get('similarity', 0)), reverse=True)[:20]
 
-        # ── Smart Context Truncation (Max ~50,000 chars total) ──
-        rag_budget = 40000 if not judul_context else 20000
-        judul_budget = 45000
-        community_budget = 3000
+        # ── Smart Context Truncation (Max ~28,000 chars / ~7,000 tokens) ──
+        # Menjamin ruang token yang sangat lega untuk thinking & output generation Call 2
+        rag_budget = 16000 if not judul_context else 8000
+        judul_budget = 24000
+        community_budget = 2500
         
         # Gabungkan dokumen fisik ke dalam satu block context
         combined_documents = ""
@@ -883,6 +929,10 @@ class ModeDocuments:
         if should_run_rag or routing_data.get("need_rag"):
             trimmed_messages = sanitize_history_for_rag(trimmed_messages)
             logger.info("[MODE_DOCUMENTS] 🛡️ History sanitized: past code blocks and web search artifacts stripped for clean RAG synthesis.")
+
+        # 🛡️ ANTI-PRIMING: Bersihkan kata ganti asisten di riwayat jika mode Formal / Akrab aktif
+        active_pronoun = routing_data.get("pronoun", "formal_saya_anda") if routing_data else "formal_saya_anda"
+        trimmed_messages = sanitize_history_for_pronoun(trimmed_messages, active_pronoun)
         
         # Inject OCR Images ke user message HANYA jika dokumen murni berupa scan (tanpa teks ekstraksi)
         if ocr_attachments and (not safe_rag_context or len(safe_rag_context) < 300):

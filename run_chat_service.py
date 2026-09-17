@@ -47,11 +47,27 @@ async def _warmup_and_pin_models():
         (settings.MODEL_ROUTER, "Gemma4 Router Engine", 4096),
         (settings.MODEL_PERSONA, "Gemma4 Agentic Engine", 16384),
     ]
-    chat_url = f"{settings.OLLAMA_BASE_URL}/api/chat"
+    # Cek model yang sudah aktif di VRAM melalui /api/ps
+    active_models = set()
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(5.0, connect=3.0)) as client:
+            ps_resp = await client.get(f"{settings.OLLAMA_BASE_URL}/api/ps")
+            if ps_resp.status_code == 200:
+                data = ps_resp.json()
+                for m in data.get("models", []):
+                    active_models.add(m.get("name", ""))
+                    active_models.add(m.get("model", ""))
+    except Exception as e:
+        logger.debug(f"[WARMUP] Could not fetch active models from /api/ps: {e}")
+
     for model_name, label, ctx_len in llm_models:
+        if model_name in active_models or any(model_name in am for am in active_models):
+            logger.info(f"✅ [WARMUP] {label} ({model_name}) is already active in VRAM.")
+            continue
+
         logger.info(f"⏳ [WARMUP] Pinning {label} ({model_name}, ctx={ctx_len}) ke VRAM...")
         try:
-            async with httpx.AsyncClient(timeout=httpx.Timeout(120.0, connect=10.0)) as client:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(180.0, connect=10.0)) as client:
                 payload = {
                     "model": model_name,
                     "messages": [{"role": "user", "content": "hi"}],
@@ -65,27 +81,32 @@ async def _warmup_and_pin_models():
                 else:
                     logger.warning(f"⚠️ [WARMUP] {label} warmup returned {resp.status_code}")
         except Exception as e:
-            logger.warning(f"⚠️ [WARMUP] {label} warmup failed: {e}")
+            err_msg = str(e) or "Operation timed out"
+            logger.warning(f"⚠️ [WARMUP] {label} warmup encountered ({type(e).__name__}): {err_msg}")
 
     # 2. Pin Embedding Model via /api/embed
     if getattr(settings, "MODEL_EMBEDDING", None):
         embed_model = settings.MODEL_EMBEDDING
-        logger.info(f"⏳ [WARMUP] Pinning Embedding Model ({embed_model}) ke VRAM...")
-        try:
-            async with httpx.AsyncClient(timeout=httpx.Timeout(120.0, connect=10.0)) as client:
-                embed_url = f"{settings.OLLAMA_BASE_URL}/api/embed"
-                payload = {
-                    "model": embed_model,
-                    "input": "pindad",
-                    "keep_alive": -1
-                }
-                resp = await client.post(embed_url, json=payload)
-                if resp.status_code == 200:
-                    logger.info(f"✅ [WARMUP] Embedding Model ({embed_model}) pinned successfully.")
-                else:
-                    logger.warning(f"⚠️ [WARMUP] Embedding warmup returned {resp.status_code}")
-        except Exception as e:
-            logger.warning(f"⚠️ [WARMUP] Embedding warmup failed: {e}")
+        if embed_model in active_models or any(embed_model in am for am in active_models):
+            logger.info(f"✅ [WARMUP] Embedding Model ({embed_model}) is already active in VRAM.")
+        else:
+            logger.info(f"⏳ [WARMUP] Pinning Embedding Model ({embed_model}) ke VRAM...")
+            try:
+                async with httpx.AsyncClient(timeout=httpx.Timeout(60.0, connect=10.0)) as client:
+                    embed_url = f"{settings.OLLAMA_BASE_URL}/api/embed"
+                    payload = {
+                        "model": embed_model,
+                        "input": "pindad",
+                        "keep_alive": -1
+                    }
+                    resp = await client.post(embed_url, json=payload)
+                    if resp.status_code == 200:
+                        logger.info(f"✅ [WARMUP] Embedding Model ({embed_model}) pinned successfully.")
+                    else:
+                        logger.warning(f"⚠️ [WARMUP] Embedding warmup returned {resp.status_code}")
+            except Exception as e:
+                err_msg = str(e) or "Operation timed out"
+                logger.warning(f"⚠️ [WARMUP] Embedding warmup encountered ({type(e).__name__}): {err_msg}")
 
 
 @asynccontextmanager
@@ -267,11 +288,79 @@ async def serve_accounts(file_path: str, request: Request, current_user_npp: Opt
     return FileResponse(abs_path)
 
 @app.get("/file_peraturan/{file_path:path}", tags=["Static Files"])
+@app.head("/file_peraturan/{file_path:path}", tags=["Static Files"])
 async def serve_file_peraturan(file_path: str, request: Request):
+    # 1. Direct match di FILE_PERATURAN_DIR
     abs_path = os.path.join(FILE_PERATURAN_DIR, file_path)
-    if not os.path.exists(abs_path):
-        raise HTTPException(status_code=404, detail="File tidak ditemukan")
-    return FileResponse(abs_path)
+    if os.path.exists(abs_path) and os.path.isfile(abs_path):
+        return FileResponse(abs_path)
+
+    # 2. Cek candidate dirs via find_valid_pdf_file
+    from backend.app.services.tools.document_resolver import find_valid_pdf_file
+    alt_file = find_valid_pdf_file(file_path)
+    if alt_file and os.path.exists(alt_file) and os.path.isfile(alt_file):
+        return FileResponse(alt_file)
+
+    # 3. Dynamic lookup ke DB untuk placeholder/alias (misal SKEP_18_P_BD_I_2018.pdf -> 5da9dbaca28ea42d1cd66c0aa9abd4b8.pdf)
+    try:
+        clean_name = os.path.basename(file_path)
+        from backend.app.core.database import get_db, get_peraturan_db
+
+        # A. Cek di PG dokumen: cari row dengan filename ini, lalu cari row lain dengan nomor yang sama (case-insensitive) yang punya file fisik
+        async with get_db() as pg_conn:
+            doc_row = await pg_conn.fetchrow(
+                "SELECT id, nomor, filename FROM dokumen WHERE filename = $1 LIMIT 1",
+                clean_name
+            )
+            if doc_row and doc_row["nomor"]:
+                nomor = doc_row["nomor"]
+                alt_rows = await pg_conn.fetch(
+                    "SELECT filename FROM dokumen WHERE nomor ILIKE $1 AND filename != $2 AND filename IS NOT NULL",
+                    nomor, clean_name
+                )
+                for ar in alt_rows:
+                    cand = find_valid_pdf_file(ar["filename"])
+                    if cand and os.path.exists(cand) and os.path.isfile(cand):
+                        return FileResponse(cand)
+
+        # B. Cek di MySQL berita: cari berdasarkan gambar/gambar2/gambar3, ambil noper
+        async with get_peraturan_db() as my_conn:
+            async with my_conn.cursor() as cur:
+                await cur.execute(
+                    "SELECT noper, judul FROM berita WHERE gambar = %s OR gambar2 = %s OR gambar3 = %s LIMIT 1",
+                    (clean_name, clean_name, clean_name)
+                )
+                b_row = await cur.fetchone()
+                if b_row and b_row[0]:
+                    noper = b_row[0].strip()
+                    async with get_db() as pg_conn:
+                        alt_rows = await pg_conn.fetch(
+                            "SELECT filename FROM dokumen WHERE nomor ILIKE $1 AND filename IS NOT NULL",
+                            f"%{noper}%"
+                        )
+                        for ar in alt_rows:
+                            cand = find_valid_pdf_file(ar["filename"])
+                            if cand and os.path.exists(cand) and os.path.isfile(cand):
+                                return FileResponse(cand)
+
+        # C. Pattern match dari nama file: misal SKEP_18_P_BD_I_2018.pdf -> %18%BD%I%2018%
+        name_no_ext = os.path.splitext(clean_name)[0]
+        parts = [p for p in name_no_ext.replace("-", "_").split("_") if p]
+        if len(parts) >= 3:
+            pattern = "%" + "%".join(parts[1:]) + "%"
+            async with get_db() as pg_conn:
+                alt_rows = await pg_conn.fetch(
+                    "SELECT filename FROM dokumen WHERE nomor ILIKE $1 AND filename IS NOT NULL LIMIT 5",
+                    pattern
+                )
+                for ar in alt_rows:
+                    cand = find_valid_pdf_file(ar["filename"])
+                    if cand and os.path.exists(cand) and os.path.isfile(cand):
+                        return FileResponse(cand)
+    except Exception as e:
+        logger.warning(f"⚠️ [SERVE_FILE_PERATURAN] Error resolving alias {file_path}: {e}")
+
+    raise HTTPException(status_code=404, detail="File tidak ditemukan")
 
 DOC_PAGES_DIR = "/home/qisthi/pinAi/backend/storage/doc_pages"
 os.makedirs(DOC_PAGES_DIR, exist_ok=True)

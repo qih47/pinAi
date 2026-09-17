@@ -33,10 +33,21 @@ def detect_precheck(user_message: str, chat_mode: str, has_attachment: bool, use
     
     # Deteksi domain publik yang dipadukan dengan kata pencarian berita/info (misal: pindad.com, kompas.com)
     has_web_domain = bool(re.search(r'\b[a-zA-Z0-9-]+\.(?:com|co\.id|id|org|net|gov|edu)\b', msg_lower))
-    has_search_intent = any(v in msg_lower for v in ["cari", "search", "berita", "kabar", "cek", "googling", "info", "tentang", "mengenai", "terbaru", "rilis"])
+    has_search_intent = any(v in msg_lower for v in ["cari", "search", "berita", "kabar", "cek", "googling", "info", "tentang", "mengenai", "terbaru", "rilis", "spesifikasi", "spek"])
     is_domain_search = has_web_domain and has_search_intent
 
-    is_public_web = any(kw in msg_lower for kw in _PUBLIC_WEB_KEYWORDS) or is_domain_search
+    # Deteksi rujukan tautan/link web dari percakapan sebelumnya (anaphora multi-turn)
+    _LINK_REF_KEYWORDS = [
+        "link itu", "link tadi", "link tersebut", "link nya", "linknya",
+        "web itu", "web tadi", "web tersebut", "web nya", "webnya",
+        "website itu", "website tadi", "website tersebut", "websitenya",
+        "tautan itu", "tautan tadi", "tautan tersebut", "tautannya",
+        "situs itu", "situs tadi", "situs tersebut", "situsnya",
+        "halaman itu", "halaman tadi", "halaman tersebut", "halamannya"
+    ]
+    has_link_reference = any(ref in msg_lower for ref in _LINK_REF_KEYWORDS)
+
+    is_public_web = any(kw in msg_lower for kw in _PUBLIC_WEB_KEYWORDS) or is_domain_search or has_link_reference
     _MAP_KEYWORDS = ["lokasi", "alamat", "dimana", "di mana", "koordinat", "peta", "letak pabrik", "kantor pusat", "fasilitas divisi"]
     is_map_query = any(kw in msg_lower for kw in _MAP_KEYWORDS)
     # Cek 'ik' (Instruksi Kerja) via word-boundary agar tidak false-positive di 'vulkanik', 'organik', dll
@@ -87,23 +98,23 @@ def detect_precheck(user_message: str, chat_mode: str, has_attachment: bool, use
     profanity = "low_misuh" if any(w in msg_lower for w in ["asu", "jancuk", "anjir", "bangsat"]) else "none"
 
     if user_default_pronoun in ["informal_gue_lo", "formal_saya_anda", "familiar_aku_kamu"]:
-        # 1. Prioritas absolut preferensi eksplisit user dari settings / onboarding
+        # 1. Prioritas absolut preferensi eksplisit user dari Settings UI (Single Source of Truth)
         pronoun = user_default_pronoun
         mirroring = "mirror_casual" if user_default_pronoun == "informal_gue_lo" else "stay_formal_safe"
-    elif has_explicit_gue_lo:
-        # 2. Mode Adaptif / Mirroring: user pakai gue/lo -> balas santai
-        pronoun, mirroring = "informal_gue_lo", "mirror_casual"
-    elif has_formal_pronoun:
-        # 2. Mode Adaptif / Mirroring: user pakai saya/anda -> balas formal
-        pronoun, mirroring = "formal_saya_anda", "stay_formal_safe"
-    elif has_aku_kamu:
-        # 2. Mode Adaptif / Mirroring: user pakai aku/kamu -> balas hangat
-        pronoun, mirroring = "familiar_aku_kamu", "mirror_casual"
-    elif slang:
-        # 2. Mode Adaptif / Mirroring: user pakai slang (cuy, bro, bos) -> balas santai
-        pronoun, mirroring = "informal_gue_lo", "mirror_casual"
+    elif user_default_pronoun == "adaptive_mirroring" or not user_default_pronoun:
+        # 2. Mode Adaptif: Menyesuaikan gaya bahasa secara dinamis per pesan yang dikirim user
+        if has_explicit_gue_lo:
+            pronoun, mirroring = "informal_gue_lo", "mirror_casual"
+        elif has_formal_pronoun:
+            pronoun, mirroring = "formal_saya_anda", "stay_formal_safe"
+        elif has_aku_kamu:
+            pronoun, mirroring = "familiar_aku_kamu", "mirror_casual"
+        elif slang:
+            pronoun, mirroring = "informal_gue_lo", "mirror_casual"
+        else:
+            pronoun, mirroring = "formal_saya_anda", "stay_formal_safe"
     else:
-        # 3. Default aman korporat Pindad jika belum ada input kata ganti eksplisit
+        # 3. Default aman korporat Pindad
         pronoun, mirroring = "formal_saya_anda", "stay_formal_safe"
 
     # Deteksi Nuansa Emosi & Mood User
@@ -113,10 +124,20 @@ def detect_precheck(user_message: str, chat_mode: str, has_attachment: bool, use
         tone_hint = "empathetic_supportive"
     elif any(w in msg_lower for w in ["cepet", "singkat", "to the point", "buruan", "sekarang", "langsung aja"]):
         tone_hint = "direct_concise"
-    elif has_formal_pronoun or not has_explicit_gue_lo:
+    elif pronoun == "formal_saya_anda":
         tone_hint = "formal"
-    else:
+    elif pronoun == "familiar_aku_kamu":
+        tone_hint = "friendly"
+    elif pronoun == "informal_gue_lo":
         tone_hint = "casual"
+    else:
+        tone_hint = "formal"
+
+    # Sanitasi slang agar tidak bocor ke prompt jika gaya bahasa formal atau familiar
+    if pronoun == "formal_saya_anda":
+        slang = []
+    elif pronoun == "familiar_aku_kamu":
+        slang = [s for s in slang if s in ["bro", "sis", "bang", "mas", "mba", "aa", "teteh"]]
 
     word_count = len(user_message.split())
     # Jangan anggap is_greeting jika pesannya terlalu panjang (kemungkinan ada instruksi setelah sapaan)
@@ -385,6 +406,35 @@ def sanitize_history_for_rag(messages: List[Dict[str, Any]]) -> List[Dict[str, A
     return sanitized
 
 
+def sanitize_history_for_pronoun(messages: List[Dict[str, Any]], pronoun: str) -> List[Dict[str, Any]]:
+    """
+    Membersihkan kata ganti asisten di riwayat percakapan sebelumnya agar tidak
+    mengontaminasi / mem-prime persona LLM saat pengguna telah mengunci pengaturan
+    ke mode Formal (Saya - Anda) atau Akrab (Aku - Kamu).
+    """
+    if not messages or pronoun not in ["formal_saya_anda", "familiar_aku_kamu"]:
+        return messages
+
+    import re
+    sanitized = []
+    for msg in messages:
+        if msg.get("role") == "assistant":
+            content = msg.get("content", "")
+            if pronoun == "formal_saya_anda":
+                # Netralkan kata slang/informal asisten di masa lalu menjadi formal
+                content = re.sub(r'\b(gue|gw|gua)\b', 'saya', content, flags=re.IGNORECASE)
+                content = re.sub(r'\b(lo|lu|elu)\b', 'Anda', content, flags=re.IGNORECASE)
+                content = re.sub(r'\b(cuy|bro|boss|bolo)\b', '', content, flags=re.IGNORECASE)
+            elif pronoun == "familiar_aku_kamu":
+                content = re.sub(r'\b(gue|gw|gua)\b', 'aku', content, flags=re.IGNORECASE)
+                content = re.sub(r'\b(lo|lu|elu)\b', 'kamu', content, flags=re.IGNORECASE)
+                content = re.sub(r'\b(cuy|boss|bolo)\b', '', content, flags=re.IGNORECASE)
+            sanitized.append({**msg, "content": content})
+        else:
+            sanitized.append(msg)
+    return sanitized
+
+
 def select_call2_module(routing: Dict[str, Any], has_rag_context: bool = False) -> str:
     # 🎯 Jika sudah ditemukan rujukan dokumen konkret (RAG / Peraturan / Lampiran),
     # utamakan menjawab langsung dengan RAG agar tidak menjebak pengguna dalam loop pertanyaan berulang!
@@ -538,6 +588,38 @@ def build_call2_system_prompt(
             from backend.app.services.pipeline.prompts.core_prompts import build_modular_visual_guidance
             visual_types = precheck.get("visual_types", [])
             prompt += "\n\n" + build_modular_visual_guidance(visual_types) + "\n\n"
+
+    # ── 🛡️ STRICT RECENCY-REINFORCED PRONOUN & STYLE ENFORCER (SINGLE SOURCE OF TRUTH) ──
+    pronoun = precheck.get("pronoun", "formal_saya_anda") if precheck else "formal_saya_anda"
+    if pronoun == "formal_saya_anda":
+        prompt += (
+            f"\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"🚨 INSTRUKSI FINAL MUTLAK: GAYA BAHASA RESMI 'FORMAL (SAYA - ANDA)'\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"• IDENTITAS KATA GANTI AI : 'Saya'.\n"
+            f"• LAWAN BICARA            : 'Anda' atau '{employee_name}'.\n"
+            f"• LARANGAN MUTLAK         : DILARANG KERAS menggunakan kata gaul/informal: 'gue', 'gw', 'lo', 'lu', 'aku', 'kamu', 'cuy', 'bro', 'boss', 'bolo'!\n"
+            f"• ATURAN ANTI-MIRRORING   : Pengguna telah mengunci pengaturan akun ke mode FORMAL. Meskipun pengguna dalam pesannya mengetik kata santai (seperti 'gw', 'elo', 'lu', 'cuy', 'bro'), atau meskipun asisten di riwayat chat sebelumnya pernah berbicara santai, kamu DILARANG KERAS meniru gaya santai tersebut! Kamu WAJIB menjawab murni dengan bahasa Indonesia baku, sopan, dan formal menggunakan 'Saya - Anda'.\n"
+        )
+    elif pronoun == "familiar_aku_kamu":
+        prompt += (
+            f"\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"🚨 INSTRUKSI FINAL MUTLAK: GAYA BAHASA RESMI 'AKRAB (AKU - KAMU)'\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"• IDENTITAS KATA GANTI AI : 'Aku'.\n"
+            f"• LAWAN BICARA            : 'Kamu' atau '{employee_name}'.\n"
+            f"• LARANGAN MUTLAK         : DILARANG KERAS menggunakan kata informal 'gue', 'gw', 'lo', 'lu'!\n"
+            f"• ATURAN ANTI-MIRRORING   : Pengguna telah mengunci pengaturan ke AKRAB (Aku - Kamu). Meskipun pengguna mengetik 'gw/elo/lo' atau asisten di riwayat sebelumnya pernah memakai kata lain, kamu WAJIB menjawab dengan hangat dan ramah menggunakan 'Aku - Kamu'.\n"
+        )
+    elif pronoun == "informal_gue_lo":
+        prompt += (
+            f"\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"🚨 INSTRUKSI FINAL MUTLAK: GAYA BAHASA RESMI 'SANTAI (GUE - LO)'\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"• IDENTITAS KATA GANTI AI : 'Gue / Gw'.\n"
+            f"• LAWAN BICARA            : 'Lo / Lu / {employee_name}'.\n"
+            f"• Gaya santai, asik, mengalir akrab, boleh menyelipkan sapaan akrab secara natural.\n"
+        )
 
     return prompt
 

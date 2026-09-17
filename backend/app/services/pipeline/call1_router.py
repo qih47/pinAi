@@ -972,7 +972,7 @@ def _validate_and_normalize_routing(
             routing["fetch_urls"] = valid_detected
             logger.info(f"[CALL1] Auto-populated fetch_urls from precheck detected URLs: {routing['fetch_urls']}")
 
-    # Jika user memberikan URL untuk dibaca langsung, prioritaskan URL Reader daripada DuckDuckGo Web Search / RAG
+    # Jika user memberikan URL untuk dibaca langsung, prioritaskan URL Reader (murni baca URL)
     if routing["fetch_urls"]:
         routing["is_web_search"] = False
         routing["need_rag"] = False
@@ -1416,6 +1416,8 @@ async def generate_call1_preset_routing(
     """
     if not user_message or not user_message.strip():
         return {}
+
+    precheck = precheck or {}
 
     from datetime import datetime
     from backend.app.services.pipeline.prompts.core_prompts import build_call1_preset_prompt

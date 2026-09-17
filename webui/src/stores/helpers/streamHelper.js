@@ -110,6 +110,9 @@ export async function performStream(set, get, messagesToSend, assistantMessage, 
                     keySubject: (typeof get().sessionTopics?.[activeSessionUuid] === 'object' ? get().sessionTopics[activeSessionUuid]?.keySubject : null) || get().keySubject || null,
                     forcedMode: activeForcedMode,
                     bypassRouter: activeBypassRouter,
+                    docTitle: streamOptions.doc_title || streamOptions.docTitle || get().activeIsolatedTitle || null,
+                    hintSource: streamOptions.hint_source || streamOptions.hintSource || null,
+                    contextIsolation: streamOptions.context_isolation || streamOptions.contextIsolation || null,
                     language: get().language || (typeof localStorage !== 'undefined' ? localStorage.getItem("cakra_language") : 'id') || 'id'
                 },
                 {

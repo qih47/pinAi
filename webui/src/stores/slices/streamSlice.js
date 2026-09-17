@@ -102,7 +102,7 @@ export const createStreamSlice = (set, get) => ({
         
         let effectiveChatMode = chatMode;
         if (currentIsolatedDocId && currentChatMode !== 'documents' && options?.forced_mode !== 'documents') {
-            effectiveChatMode = currentChatMode === 'compliance' ? 'compliance' : 'focus';
+            effectiveChatMode = (currentChatMode === 'compliance' || currentChatMode === 'redteam') ? currentChatMode : 'focus';
         }
 
         const userMessage = {

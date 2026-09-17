@@ -1,8 +1,8 @@
 import re
 import asyncio
 import logging
-from typing import List, Optional, Dict, Any, AsyncGenerator
-from urllib.parse import urlparse
+from typing import List, Optional, Dict, Any, AsyncGenerator, Tuple
+from urllib.parse import urlparse, urljoin
 import httpx
 
 logger = logging.getLogger("cakra.web_tools")
@@ -279,3 +279,177 @@ async def fetch_multiple_urls(urls: List[str]) -> str:
             combined_text += f"\n\n[Gagal membaca isi web dari {url}]\n"
             
     return combined_text
+
+
+_STATIC_FILE_EXTENSIONS = (
+    '.jpg', '.jpeg', '.png', '.gif', '.svg', '.webp', '.ico', 
+    '.pdf', '.zip', '.tar', '.gz', '.mp4', '.mp3', '.css', '.js', '.woff', '.woff2'
+)
+
+def _extract_internal_candidate_links(html_text: str, base_url: str) -> List[Dict[str, str]]:
+    """
+    Ekstrak daftar link internal dari HTML sebelum tag nav/a dibersihkan.
+    """
+    if not html_text:
+        return []
+    try:
+        from bs4 import BeautifulSoup
+        soup = BeautifulSoup(html_text, 'html.parser')
+        base_domain = urlparse(base_url).netloc.replace("www.", "")
+        candidates = []
+        seen = set()
+        for a in soup.find_all('a', href=True):
+            href = a['href'].strip()
+            if not href or href.startswith(('#', 'javascript:', 'mailto:', 'tel:')):
+                continue
+            full_url = urljoin(base_url, href)
+            parsed = urlparse(full_url)
+            if parsed.netloc.replace("www.", "") != base_domain:
+                continue
+            path_lower = parsed.path.lower()
+            if any(path_lower.endswith(ext) for ext in _STATIC_FILE_EXTENSIONS):
+                continue
+            clean_url = f"{parsed.scheme}://{parsed.netloc}{parsed.path}"
+            if clean_url in seen or clean_url.rstrip('/') == base_url.rstrip('/'):
+                continue
+            seen.add(clean_url)
+            text = a.get_text(strip=True) or a.get('title', '')
+            candidates.append({"url": clean_url, "path": parsed.path, "text": text})
+        return candidates
+    except Exception as e:
+        logger.debug(f"[URL Reader] Error extracting internal links: {e}")
+        return []
+
+
+async def fetch_webpage_with_discovery(
+    url: str,
+    user_query: str = ""
+) -> Tuple[Optional[str], List[Dict[str, str]]]:
+    """
+    Mengambil konten halaman web dengan penelusuran tautan anak (Sub-Link Discovery).
+    Jika URL berupa root domain dan query pengguna mencari topik/spesifikasi tertentu,
+    sistem secara otomatis mencari dan menelusuri sub-halaman relevan (misal: /weapon -> /ss3).
+    """
+    display_info = extract_url_display_info(url)
+    primary_node = {
+        "title": display_info["title"],
+        "domain": display_info["domain"],
+        "url": url
+    }
+    
+    parsed = urlparse(url)
+    is_root = (parsed.path.strip("/") == "" and not parsed.query)
+    
+    # Ambil konten halaman awal (Tier 1 fast HTTP dengan timeout aman 8s)
+    raw_html = ""
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(8.0, connect=4.0), follow_redirects=True, headers=_HTTP_HEADERS) as client:
+            resp = await client.get(url)
+            if resp.status_code == 200 and resp.text:
+                raw_html = resp.text
+    except Exception as e:
+        logger.debug(f"[URL Reader] Fast HTTP initial fetch failed for '{url}': {e}")
+
+    if not raw_html:
+        base_content = await fetch_webpage_content(url)
+        return base_content, [primary_node]
+        
+    main_markdown = _clean_html_to_markdown(raw_html)
+    
+    # Jika bukan root domain atau query kosong, kembalikan halaman ini saja
+    if not is_root or not user_query.strip():
+        return main_markdown, [primary_node]
+        
+    # Ekstrak kata kunci topik dari user_query (buang stopword umum)
+    user_words = [w.lower() for w in re.sub(r'[^a-zA-Z0-9\s-]', ' ', user_query).split() if len(w) >= 2]
+    stopwords = {
+        "cari", "carikan", "cek", "spesifikasi", "spek", "fitur", "detail", "rincian",
+        "pindad", "com", "co", "id", "dan", "yang", "ini", "itu", "link", "web", "website",
+        "situs", "tautan", "halaman", "tentang", "baca", "apa", "ada", "di", "ke", "dari",
+        "pada", "untuk", "info", "informasi", "tolong", "coba", "gimana", "bagaimana"
+    }
+    topic_keywords = [w for w in user_words if w not in stopwords]
+    if not topic_keywords:
+        return main_markdown, [primary_node]
+        
+    logger.info(f"[URL Reader] 🔍 Sub-link discovery active for '{url}' with topic keywords: {topic_keywords}")
+    
+    CATEGORY_KEYWORDS = ["weapon", "senjata", "product", "produk", "vehicle", "kendaraan", "munition", "munisi", "berita", "news", "press-release", "artikel"]
+    
+    candidate_links = _extract_internal_candidate_links(raw_html, url)
+    if not candidate_links:
+        return main_markdown, [primary_node]
+        
+    def _score(link: Dict[str, str]) -> int:
+        p_low = link["path"].lower()
+        t_low = link["text"].lower()
+        if any(ign in p_low for ign in ["/set-language", "/privacy", "/terms", "/kontak", "/contact", "/karir", "/career", "/login", "/sitemap"]):
+            return -100
+        score = 0
+        for kw in topic_keywords:
+            if kw in p_low:
+                score += 100
+            if kw in t_low:
+                score += 80
+        for ckw in CATEGORY_KEYWORDS:
+            if ckw in p_low:
+                score += 25
+            if ckw in t_low:
+                score += 20
+        return score
+
+    scored_links = [(_score(l), l) for l in candidate_links]
+    scored_links.sort(key=lambda x: x[0], reverse=True)
+    
+    discovered_nodes = [primary_node]
+    target_sub_link = None
+    
+    # 1. Cek kecocokan langsung pada halaman utama
+    top_direct = [l for s, l in scored_links if s >= 80]
+    if top_direct:
+        target_sub_link = top_direct[0]
+        logger.info(f"[URL Reader] 🎯 Direct sub-link match found on homepage: {target_sub_link['url']}")
+    else:
+        # 2. 1-Hop traversal melalui halaman kategori terkait
+        category_candidates = [l for s, l in scored_links if s >= 20][:2]
+        if category_candidates:
+            logger.info(f"[URL Reader] 🧭 Traversing category link(s): {[c['url'] for c in category_candidates]}")
+            try:
+                async with httpx.AsyncClient(timeout=httpx.Timeout(6.0, connect=3.0), follow_redirects=True, headers=_HTTP_HEADERS) as client:
+                    for cat in category_candidates:
+                        cat_resp = await client.get(cat["url"])
+                        if cat_resp.status_code == 200 and cat_resp.text:
+                            cat_links = _extract_internal_candidate_links(cat_resp.text, cat["url"])
+                            cat_scored = [(_score(l), l) for l in cat_links]
+                            cat_scored.sort(key=lambda x: x[0], reverse=True)
+                            cat_direct = [l for s, l in cat_scored if s >= 80]
+                            if cat_direct:
+                                target_sub_link = cat_direct[0]
+                                logger.info(f"[URL Reader] 🎯 Direct sub-link match found via category '{cat['url']}': {target_sub_link['url']}")
+                                break
+            except Exception as e:
+                logger.warning(f"[URL Reader] Category traversal error: {e}")
+
+    # Jika menemukan sub-link spesifik yang cocok dengan query
+    if target_sub_link:
+        sub_url = target_sub_link["url"]
+        sub_info = extract_url_display_info(sub_url)
+        sub_content = await fetch_webpage_content(sub_url)
+        if sub_content and len(sub_content.strip()) > 100:
+            raw_title = target_sub_link.get("text") or sub_info["title"]
+            clean_title = raw_title.strip() if raw_title.strip() else sub_info["title"]
+            discovered_nodes.append({
+                "title": clean_title,
+                "domain": sub_info["domain"],
+                "url": sub_url
+            })
+            combined_content = (
+                f"{main_markdown}\n\n"
+                f"==== ISI SUB-HALAMAN SPESIFIK: {sub_url} ({clean_title}) ====\n\n"
+                f"{sub_content}\n\n"
+                f"===========================================================\n"
+            )
+            logger.info(f"[URL Reader] ✅ Successfully discovered & injected sub-page {sub_url} ({len(sub_content)} chars)")
+            return combined_content, discovered_nodes
+
+    return main_markdown, discovered_nodes

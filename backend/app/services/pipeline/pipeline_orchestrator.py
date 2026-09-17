@@ -234,9 +234,10 @@ async def _sequential_pipeline_generator(
         active_forced_mode = getattr(payload, 'forced_mode', None)
         active_bypass_router = bool(getattr(payload, 'bypass_router', False))
         if active_isolated_doc_id and not active_forced_mode:
-            active_forced_mode = "documents"
+            target_mode = chat_mode if chat_mode in ["focus", "compliance", "redteam"] else "focus"
+            active_forced_mode = target_mode
             active_bypass_router = True
-            logger.info(f"[PIPELINE] ⚡ Client explicit isolated_doc_id={active_isolated_doc_id} -> activating bypass_router & forced_mode='documents'")
+            logger.info(f"[PIPELINE] ⚡ Client explicit isolated_doc_id={active_isolated_doc_id} -> activating bypass_router & forced_mode='{target_mode}'")
 
         # Susun context_isolation lengkap dengan identitas resmi dokumen (nomor, jenis, tanggal, judul)
         full_context_isolation = None
@@ -245,11 +246,11 @@ async def _sequential_pipeline_generator(
                 "isolated_doc_id": active_isolated_doc_id or active_hint_source.get("id") or raw_ctx_isolation.get("isolated_doc_id"),
                 "id_dokumen": active_isolated_doc_id or active_hint_source.get("id"),
                 "doc_id": active_isolated_doc_id or active_hint_source.get("id"),
-                "title": active_doc_title or active_hint_source.get("title") or raw_ctx_isolation.get("title"),
-                "doc_title": active_doc_title or active_hint_source.get("title") or raw_ctx_isolation.get("title"),
+                "title": active_doc_title or active_hint_source.get("title") or raw_ctx_isolation.get("title") or raw_ctx_isolation.get("doc_title"),
+                "doc_title": active_doc_title or active_hint_source.get("title") or raw_ctx_isolation.get("title") or raw_ctx_isolation.get("doc_title"),
                 "nomor": active_hint_source.get("nomor") or raw_ctx_isolation.get("nomor") or "",
                 "tanggal": active_hint_source.get("tanggal") or raw_ctx_isolation.get("tanggal") or "",
-                "jenis": active_hint_source.get("jenis") or active_hint_source.get("category") or raw_ctx_isolation.get("jenis") or "Regulasi",
+                "jenis": active_hint_source.get("jenis") or active_hint_source.get("category") or raw_ctx_isolation.get("jenis") or raw_ctx_isolation.get("category") or "Regulasi",
                 "filename": active_hint_source.get("filename") or raw_ctx_isolation.get("filename"),
                 "file_path": active_hint_source.get("file_path") or raw_ctx_isolation.get("file_path"),
             }
