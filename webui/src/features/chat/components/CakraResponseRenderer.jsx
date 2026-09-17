@@ -259,7 +259,7 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
         // 1. PARAGRAF (Spasi yang proporsional)
         p({ children, ...props }) {
             const { darkMode, theme, searchQuery, isStreaming, language } = latestProps.current;
-            return <p style={{ marginTop: 0, marginBottom: '14px', fontSize: '15px', lineHeight: '1.75', whiteSpace: 'normal', color: darkMode ? '#f1f5f9' : '#334155' }} {...props}>{recursiveHighlight(children, searchQuery)}</p>;
+            return <p style={{ marginTop: 0, marginBottom: '14px', minHeight: '1.75em', fontSize: '15px', lineHeight: '1.75', whiteSpace: 'normal', color: darkMode ? '#f1f5f9' : '#334155' }} {...props}>{recursiveHighlight(children, searchQuery)}</p>;
         },
 
         // 2. HEADINGS (Mengembalikan ukuran judul yang ke-reset oleh Tailwind!)
@@ -706,7 +706,7 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
                 return (
                     <div style={{ width: '100%' }}>
                         {displayContent && (
-                            <div className={isStreaming ? 'cakra-streaming-active' : ''}>
+                            <div className={isStreaming ? 'cakra-streaming-active' : ''} style={{ display: 'flow-root', width: '100%' }}>
                                 <ReactMarkdown
                                     children={displayContent}
                                     components={markdownComponents}

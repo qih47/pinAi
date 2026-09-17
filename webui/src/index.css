@@ -255,3 +255,23 @@
     transform: scale(1);
   }
 }
+
+/* ========================================================================== */
+/* 🛑 ANTI-GLITCH & ANTI-REBOUND SCROLL STABILIZATION DURING STREAMING       */
+/* ========================================================================== */
+
+/* Matikan browser native scroll anchoring di seluruh hierarki scroll chat
+   agar browser tidak menarik scroll ke atas saat ada baris/paragraf baru */
+.chat-main-scroll,
+.chat-main-scroll *,
+.assistant-content-container,
+.assistant-content-container * {
+  overflow-anchor: none !important;
+}
+
+/* Isolasi BFC (Block Formatting Context) untuk mencegah margin collapsing
+   antara elemen paragraf / markdown baru saat streaming */
+.assistant-content-container,
+.cakra-streaming-active {
+  display: flow-root;
+}

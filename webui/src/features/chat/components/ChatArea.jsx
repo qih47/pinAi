@@ -239,6 +239,7 @@ export default function ChatArea({
                 useWindowScroll={false}
                 itemContent={itemContent}
                 language={language}
+                atBottomThreshold={80}
                 atBottomStateChange={(atBottom) => {
                   if (onAtBottomChange) onAtBottomChange(atBottom);
                 }}
