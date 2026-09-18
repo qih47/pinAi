@@ -287,24 +287,95 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
             // paddingLeft memberi ruang aman biar angkanya gak kepotong
             return <ol style={{ marginLeft: '18px', paddingLeft: '12px', listStyleType: 'decimal', marginTop: '8px', marginBottom: '16px' }} {...props}>{recursiveHighlight(children, searchQuery)}</ol>;
         },
-        ul({ children, ...props }) {
+        ul({ children, className, ...props }) {
             const { darkMode, theme, searchQuery, isStreaming, language } = latestProps.current;
-            return <ul style={{ marginLeft: '18px', paddingLeft: '12px', listStyleType: 'disc', marginTop: '8px', marginBottom: '16px' }} {...props}>{recursiveHighlight(children, searchQuery)}</ul>;
+            const isTaskList = className?.includes('contains-task-list');
+            return (
+                <ul 
+                    className={className}
+                    style={{ 
+                        marginLeft: isTaskList ? '4px' : '18px', 
+                        paddingLeft: isTaskList ? '0px' : '12px', 
+                        listStyleType: isTaskList ? 'none' : 'disc', 
+                        marginTop: '8px', 
+                        marginBottom: '16px',
+                        width: '100%',
+                        maxWidth: '100%',
+                        boxSizing: 'border-box'
+                    }} 
+                    {...props}
+                >
+                    {recursiveHighlight(children, searchQuery)}
+                </ul>
+            );
         },
         li({ children, className, ...props }) {
             const { darkMode, theme, searchQuery, isStreaming, language } = latestProps.current;
             // Deteksi jika ini adalah task list item (checklist) dari remark-gfm
-            if (className === 'task-list-item') {
+            if (className?.includes('task-list-item')) {
+                const childArray = React.Children.toArray(children);
+                // Pisahkan elemen checkbox dari isi teks
+                const checkboxIndex = childArray.findIndex(child => 
+                    React.isValidElement(child) && (
+                        child.type === 'input' || 
+                        child.props?.type === 'checkbox' ||
+                        child.props?.className?.includes('text-indigo-600')
+                    )
+                );
+
+                const checkbox = checkboxIndex !== -1 ? childArray[checkboxIndex] : null;
+                const textContent = checkboxIndex !== -1 
+                    ? childArray.filter((_, idx) => idx !== checkboxIndex) 
+                    : childArray;
+
                 return (
-                    <li className="flex items-start gap-2 mb-2 group" style={{ listStyleType: 'none', paddingLeft: 0, marginLeft: '-18px' }} {...props}>
-                        <div className="mt-1 flex-shrink-0 cursor-pointer">
-                            {/* Input di-handle di bawah */}
-                            {recursiveHighlight(children, searchQuery)}
+                    <li 
+                        className="flex items-start gap-2.5 mb-2.5 w-full group" 
+                        style={{ 
+                            listStyleType: 'none', 
+                            paddingLeft: 0,
+                            marginLeft: 0,
+                            wordBreak: 'break-word',
+                            overflowWrap: 'anywhere'
+                        }} 
+                        {...props}
+                    >
+                        {checkbox && (
+                            <div className="mt-1 flex-shrink-0 flex items-center justify-center">
+                                {checkbox}
+                            </div>
+                        )}
+                        <div 
+                            className="flex-1 min-w-0" 
+                            style={{ 
+                                fontSize: '15px', 
+                                lineHeight: '1.75', 
+                                color: darkMode ? '#f1f5f9' : '#334155',
+                                wordBreak: 'break-word',
+                                overflowWrap: 'anywhere'
+                            }}
+                        >
+                            {recursiveHighlight(textContent, searchQuery)}
                         </div>
                     </li>
                 );
             }
-            return <li style={{ marginBottom: '12px', fontSize: '15px', lineHeight: '1.75', paddingLeft: '8px', color: darkMode ? '#f1f5f9' : '#334155' }} {...props}>{recursiveHighlight(children, searchQuery)}</li>;
+            return (
+                <li 
+                    style={{ 
+                        marginBottom: '12px', 
+                        fontSize: '15px', 
+                        lineHeight: '1.75', 
+                        paddingLeft: '8px', 
+                        color: darkMode ? '#f1f5f9' : '#334155',
+                        wordBreak: 'break-word',
+                        overflowWrap: 'anywhere'
+                    }} 
+                    {...props}
+                >
+                    {recursiveHighlight(children, searchQuery)}
+                </li>
+            );
         },
         input({ type, checked, disabled, ...props }) {
             const { darkMode, theme, searchQuery, isStreaming, language } = latestProps.current;
@@ -313,7 +384,7 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
                     <input
                         type="checkbox"
                         defaultChecked={checked}
-                        className="w-[18px] h-[18px] text-indigo-600 bg-white border-gray-300 rounded cursor-pointer mr-3 align-middle focus:ring-indigo-500 transition-all dark:bg-gray-800 dark:border-gray-600 shadow-sm"
+                        className="w-[18px] h-[18px] text-indigo-600 bg-white border-gray-300 rounded cursor-pointer align-middle focus:ring-indigo-500 transition-all dark:bg-gray-800 dark:border-gray-600 shadow-sm m-0"
                         style={{ cursor: 'pointer' }}
                         onChange={(e) => {
                             const el = e.target;
@@ -399,7 +470,10 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
             return <span {...props}>{recursiveHighlight(children, searchQuery)}</span>;
         },
         hr({ ...props }) {
-            const { darkMode } = latestProps.current;
+            const { darkMode, isStreaming } = latestProps.current;
+            if (isStreaming) {
+                return null;
+            }
             return <hr style={{ border: 'none', borderTop: `1px solid ${darkMode ? 'rgba(148, 163, 184, 0.2)' : 'rgba(203, 213, 225, 0.6)'}`, margin: '16px 0' }} {...props} />;
         },
 
@@ -697,8 +771,10 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
                         .replace(/\n(\s*[-*_━─—]{3,}\s*\n?){2,}/g, '\n---\n');
                 }
                 if (isStreaming && displayContent) {
-                    // Hindari flash horizontal rule saat teks berakhir sementara dengan trailing dashes/setext
-                    displayContent = displayContent.replace(/\n[-_]{2,}\s*$/, '\n');
+                    // Hilangkan sepenuhnya baris horizontal (---, ___, ***, _____) selama streaming agar tidak glitch / muncul list putih garis
+                    displayContent = displayContent
+                        .replace(/(?:^|\n)\s*[-*_━─—]{2,}\s*(?:\n|$)/g, '\n')
+                        .replace(/\n\s*[-*_━─—]{1,}\s*$/, '\n');
                 }
 
                 const answeredList = (messageIndex !== null && messageIndex !== undefined) ? wizardAnswers[messageIndex] : null;

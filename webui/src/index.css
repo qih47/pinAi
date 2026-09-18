@@ -220,16 +220,26 @@
 
 
 /* ========================================================================== */
-/* ✨ CLEAN STREAMING TEXT RENDERING — Crisp, no blur smear, zero glitch     */
+/* ✨ CLAUDE-STYLE STREAMING: TEKS KELUAR DARI BAYANGAN HITAM (ARAH KANAN)   */
 /* ========================================================================== */
 
-@keyframes streamBlockIn {
+/* Efek kemunculan halus saat paragraf baru dibuka */
+@keyframes claudeInkReveal {
   0% {
-    opacity: 0.85;
+    opacity: 0.25;
+    filter: blur(0.8px);
+    transform: translateY(1.5px);
   }
   100% {
     opacity: 1;
+    filter: blur(0);
+    transform: translateY(0);
   }
+}
+
+.cakra-streaming-active {
+  display: flow-root;
+  position: relative;
 }
 
 .cakra-streaming-active > p:last-child,
@@ -240,7 +250,62 @@
 .cakra-streaming-active > h3:last-child,
 .cakra-streaming-active > h4:last-child,
 .cakra-streaming-active > span:last-child {
-  animation: streamBlockIn 0.15s ease-out both;
+  animation: claudeInkReveal 0.18s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* 🌊 SHADOW TRAIL DI ARAH KANAN:
+   Pseudo-element yang menempel persis di ujung kanan teks yang sedang diketik.
+   Menggunakan lebar 150px dengan margin-left negatif -150px sehingga menimpa
+   huruf-huruf terbaru dengan gradasi bayangan pekat dari kanan ke transparan di kiri.
+   Saat huruf baru terus mengalir dari kanan, huruf tersebut seolah ditarik keluar dari kegelapan! */
+.dark .cakra-streaming-active > p:last-child::after,
+.dark .cakra-streaming-active > ul:last-child > li:last-child::after,
+.dark .cakra-streaming-active > ol:last-child > li:last-child::after,
+.dark .cakra-streaming-active > h1:last-child::after,
+.dark .cakra-streaming-active > h2:last-child::after,
+.dark .cakra-streaming-active > h3:last-child::after,
+.dark .cakra-streaming-active > h4:last-child::after {
+  content: '';
+  display: inline-block;
+  width: 150px;
+  margin-left: -150px;
+  height: 1.45em;
+  vertical-align: -0.22em;
+  background: linear-gradient(
+    to right,
+    transparent 0%,
+    rgba(21, 21, 23, 0.08) 20%,
+    rgba(21, 21, 23, 0.45) 50%,
+    rgba(21, 21, 23, 0.85) 75%,
+    #151517 95%,
+    #151517 100%
+  );
+  pointer-events: none;
+}
+
+html:not(.dark) .cakra-streaming-active > p:last-child::after,
+html:not(.dark) .cakra-streaming-active > ul:last-child > li:last-child::after,
+html:not(.dark) .cakra-streaming-active > ol:last-child > li:last-child::after,
+html:not(.dark) .cakra-streaming-active > h1:last-child::after,
+html:not(.dark) .cakra-streaming-active > h2:last-child::after,
+html:not(.dark) .cakra-streaming-active > h3:last-child::after,
+html:not(.dark) .cakra-streaming-active > h4:last-child::after {
+  content: '';
+  display: inline-block;
+  width: 150px;
+  margin-left: -150px;
+  height: 1.45em;
+  vertical-align: -0.22em;
+  background: linear-gradient(
+    to right,
+    transparent 0%,
+    rgba(255, 255, 255, 0.08) 20%,
+    rgba(255, 255, 255, 0.45) 50%,
+    rgba(255, 255, 255, 0.85) 75%,
+    #ffffff 95%,
+    #ffffff 100%
+  );
+  pointer-events: none;
 }
 
 

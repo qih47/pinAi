@@ -154,7 +154,7 @@ export default function ChatArea({
   const t = translations[language]?.chatArea || translations.id.chatArea;
 
   const FooterComponent = useCallback(() => {
-    const spacerHeight = activeModeTag ? 310 : 170;
+    const spacerHeight = activeModeTag ? 310 : 270;
     return (
       <>
         {isStreaming && lastAssistantIndex === -1 && (
