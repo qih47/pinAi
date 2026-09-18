@@ -514,6 +514,8 @@ export async function performStream(set, get, messagesToSend, assistantMessage, 
                                 thinking: activeThought,
                                 sources: assistantMessage.sources,
                                 metadata: assistantMessage.metadata,
+                                fileGenerations: assistantMessage.fileGenerations || [],
+                                allFilesDone: assistantMessage.allFilesDone || false,
                                 isStreaming: false,
                                 isThinking: false
                             };
@@ -563,3 +565,118 @@ export async function performStream(set, get, messagesToSend, assistantMessage, 
     }
     updateStreamState({ isStreaming: false, isLoading: false, isThinking: false, isEditRegenerating: false });
 }
+
+/**
+ * Robust Parser: Mengonversi sintaks raw <create_file> / <edit_file> dan [[ALL_FILES_COMPLETED]]
+ * menjadi placeholder [[CAKRA_FILE_PROCESS_LOG_...]] dan array fileGenerations agar
+ * teks tampil bersih dengan kartu file interaktif di semua varian respons.
+ */
+export function parseMessageFileTags(msg) {
+    if (!msg || !msg.content || typeof msg.content !== 'string') return msg;
+
+    let content = msg.content;
+    let allFilesDone = Boolean(msg.allFilesDone);
+
+    const hasAllFilesDoneSignal = content.includes('[[ALL_FILES_COMPLETED]]') || content.includes('<all_files_done');
+    if (hasAllFilesDoneSignal) {
+        allFilesDone = true;
+        content = content
+            .replace(/\[\[ALL_FILES_COMPLETED\]\]/g, '')
+            .replace(/<all_files_done\s*\/?>/gi, '');
+    }
+
+    if (!content.includes('<create_file') && !content.includes('<edit_file')) {
+        return {
+            ...msg,
+            content,
+            allFilesDone,
+            fileGenerations: msg.fileGenerations || []
+        };
+    }
+
+    const openTagRegex = /<(create_file|edit_file)\s+filename=["']([^"'>\s]+)["']\s*>/gi;
+    const closeTagRegex = /<\/(create_file|edit_file)\s*>/gi;
+
+    let textDisplay = "";
+    const parsedFileGens = [];
+    let lastIdx = 0;
+    let currentBatchIndex = 0;
+    let hasInjectedFirst = false;
+
+    let match;
+    openTagRegex.lastIndex = 0;
+    while ((match = openTagRegex.exec(content)) !== null) {
+        const precedingText = content.substring(lastIdx, match.index);
+
+        if (!hasInjectedFirst) {
+            textDisplay += precedingText;
+            textDisplay += `\n\n[[CAKRA_FILE_PROCESS_LOG_${currentBatchIndex}]]\n\n`;
+            hasInjectedFirst = true;
+        } else if (precedingText.trim().length > 0) {
+            currentBatchIndex++;
+            textDisplay += precedingText;
+            textDisplay += `\n\n[[CAKRA_FILE_PROCESS_LOG_${currentBatchIndex}]]\n\n`;
+        } else {
+            textDisplay += precedingText;
+        }
+
+        const filename = match[2];
+        const contentStart = openTagRegex.lastIndex;
+
+        closeTagRegex.lastIndex = contentStart;
+        const nextClose = closeTagRegex.exec(content);
+
+        const nextOpenRegex = /<(create_file|edit_file)\s+filename=/gi;
+        nextOpenRegex.lastIndex = contentStart;
+        const nextOpen = nextOpenRegex.exec(content);
+
+        let contentEnd = content.length;
+
+        if (nextClose && (!nextOpen || nextClose.index < nextOpen.index)) {
+            contentEnd = nextClose.index;
+            lastIdx = closeTagRegex.lastIndex;
+        } else if (nextOpen && (!nextClose || nextOpen.index < nextClose.index)) {
+            contentEnd = nextOpen.index;
+            lastIdx = nextOpen.index;
+            openTagRegex.lastIndex = lastIdx;
+        } else {
+            contentEnd = content.length;
+            lastIdx = content.length;
+        }
+
+        const codeContent = content.substring(contentStart, contentEnd);
+        parsedFileGens.push({ filename, stage: 'done', liveCode: codeContent, batchIndex: currentBatchIndex });
+    }
+    textDisplay += content.substring(lastIdx);
+
+    let fileGenerations = parsedFileGens;
+    if (msg.metadata && msg.metadata.artifacts && Array.isArray(msg.metadata.artifacts)) {
+        fileGenerations = parsedFileGens.map(pfg => {
+            const metaArt = msg.metadata.artifacts.find(a => a.filename === pfg.filename);
+            return {
+                ...pfg,
+                file_path: metaArt ? metaArt.file_path : null,
+                lines_count: metaArt ? metaArt.lines_count : 1
+            };
+        });
+        msg.metadata.artifacts.forEach(art => {
+            if (!fileGenerations.find(fg => fg.filename === art.filename)) {
+                fileGenerations.push({
+                    filename: art.filename,
+                    stage: 'done',
+                    file_path: art.file_path,
+                    liveCode: art.code || '',
+                    lines_count: art.lines_count || 1
+                });
+            }
+        });
+    }
+
+    return {
+        ...msg,
+        content: textDisplay,
+        allFilesDone,
+        fileGenerations: fileGenerations.length > 0 ? fileGenerations : (msg.fileGenerations || [])
+    };
+}
+

@@ -1,5 +1,5 @@
 import * as endpoints from "../../services/endpoints";
-import { performStream, normalizeAttachments } from "../helpers/streamHelper";
+import { performStream, normalizeAttachments, parseMessageFileTags } from "../helpers/streamHelper";
 
 export const createStreamSlice = (set, get) => ({
     stopStream: (sessionUuid = null) => {
@@ -254,6 +254,8 @@ export const createStreamSlice = (set, get) => ({
             isThinking: effectiveThinkingMode,
             isStreaming: true,
             thinking: '',
+            fileGenerations: [],
+            allFilesDone: false,
             statusKey: effectiveThinkingMode ? 'THINKING_PROGRESS' : null,
             statusMessage: effectiveThinkingMode ? 'THINKING_PROGRESS' : '',
             chatMode: effectiveChatMode,
@@ -394,22 +396,42 @@ export const createStreamSlice = (set, get) => ({
         // Siapkan struktur variants
         let existingVariants = [];
         if (Array.isArray(targetAssistantMsg.variants) && targetAssistantMsg.variants.length > 0) {
-            existingVariants = targetAssistantMsg.variants.map((v, i) => ({
-                ...v,
-                variant_index: v.variant_index || (i + 1)
-            }));
+            existingVariants = targetAssistantMsg.variants.map((v, i) => {
+                const parsedV = parseMessageFileTags({ ...v, role: 'assistant', metadata: targetAssistantMsg.metadata });
+                return {
+                    ...parsedV,
+                    variant_index: parsedV.variant_index || (i + 1)
+                };
+            });
         } else {
+            const parsedTarget = parseMessageFileTags(targetAssistantMsg);
             existingVariants = [{
-                id: targetAssistantMsg.id,
-                content: targetAssistantMsg.content,
-                thought: targetAssistantMsg.thought,
-                sources: targetAssistantMsg.sources,
-                metadata: targetAssistantMsg.metadata,
-                feedback: targetAssistantMsg.feedback,
-                timestamp: targetAssistantMsg.timestamp || targetAssistantMsg.created_at,
-                created_at: targetAssistantMsg.created_at || targetAssistantMsg.timestamp,
+                id: parsedTarget.id,
+                content: parsedTarget.content,
+                thought: parsedTarget.thought,
+                sources: parsedTarget.sources,
+                metadata: parsedTarget.metadata,
+                fileGenerations: parsedTarget.fileGenerations || [],
+                allFilesDone: parsedTarget.allFilesDone || false,
+                feedback: parsedTarget.feedback,
+                timestamp: parsedTarget.timestamp || parsedTarget.created_at,
+                created_at: parsedTarget.created_at || parsedTarget.timestamp,
                 variant_index: 1
             }];
+        }
+
+        // Pastikan varian aktif saat ini tersimpan sempurna dengan content & fileGenerations yang sudah rapi
+        const currentActiveVIdx = targetAssistantMsg.activeVariantIndex !== undefined ? targetAssistantMsg.activeVariantIndex : (existingVariants.length - 1);
+        if (existingVariants[currentActiveVIdx]) {
+            existingVariants[currentActiveVIdx] = {
+                ...existingVariants[currentActiveVIdx],
+                content: targetAssistantMsg.content,
+                thought: targetAssistantMsg.thought || targetAssistantMsg.thinking || '',
+                fileGenerations: targetAssistantMsg.fileGenerations || [],
+                allFilesDone: targetAssistantMsg.allFilesDone || false,
+                sources: targetAssistantMsg.sources,
+                metadata: targetAssistantMsg.metadata
+            };
         }
 
         const newVariantIndex = existingVariants.length + 1;
@@ -421,6 +443,8 @@ export const createStreamSlice = (set, get) => ({
             sources: null,
             metadata: null,
             feedback: null,
+            fileGenerations: [],
+            allFilesDone: false,
             isThinking: effectiveThinkingMode,
             isStreaming: true,
             variant_index: newVariantIndex,
@@ -438,6 +462,8 @@ export const createStreamSlice = (set, get) => ({
             sources: null,
             metadata: null,
             feedback: null,
+            fileGenerations: [],
+            allFilesDone: false,
             created_at: nowIso,
             timestamp: nowIso,
             isThinking: effectiveThinkingMode,
@@ -540,12 +566,22 @@ export const createStreamSlice = (set, get) => ({
         const targetMsg = messages[messageIdx];
         if (!targetMsg || !targetMsg.variants || !targetMsg.variants[targetVariantIdx]) return;
 
-        const selectedVariant = targetMsg.variants[targetVariantIdx];
+        let selectedVariant = targetMsg.variants[targetVariantIdx];
+        selectedVariant = parseMessageFileTags({
+            ...selectedVariant,
+            role: 'assistant',
+            metadata: targetMsg.metadata
+        });
+        targetMsg.variants[targetVariantIdx] = selectedVariant;
+
         const selectedThought = selectedVariant.thought || selectedVariant.thinking || '';
         const selectedTime = selectedVariant.created_at || selectedVariant.timestamp || targetMsg.created_at || targetMsg.timestamp;
         messages[messageIdx] = {
             ...targetMsg,
             ...selectedVariant,
+            content: selectedVariant.content,
+            fileGenerations: selectedVariant.fileGenerations || [],
+            allFilesDone: selectedVariant.allFilesDone || false,
             created_at: selectedTime,
             timestamp: selectedTime,
             thought: selectedThought,

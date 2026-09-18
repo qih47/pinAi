@@ -775,14 +775,47 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
                     displayContent = displayContent
                         .replace(/(?:^|\n)\s*[-*_━─—]{2,}\s*(?:\n|$)/g, '\n')
                         .replace(/\n\s*[-*_━─—]{1,}\s*$/, '\n');
+
+                    // ✨ AUTO-CLOSING DELIMITER SAAT STREAMING:
+                    // Mencegah '**' atau '`' muncul mentah sebelum ada penutup agar langsung render tebal / code badge
+                    const codeBlockCount = (displayContent.match(/```/g) || []).length;
+                    if (codeBlockCount % 2 === 0) {
+                        // 1. Tangani bold (**)
+                        const boldMatches = displayContent.match(/\*\*/g);
+                        if (boldMatches && boldMatches.length % 2 !== 0) {
+                            if (/\*\*\s*$/.test(displayContent)) {
+                                // Jika '**' baru saja muncul di ujung tanpa huruf setelahnya, sembunyikan sementara
+                                displayContent = displayContent.replace(/\*\*\s*$/, '');
+                            } else if (/\n+$/.test(displayContent)) {
+                                displayContent = displayContent.replace(/(\n+)$/, '**$1');
+                            } else {
+                                displayContent = displayContent + '**';
+                            }
+                        }
+
+                        // 2. Tangani inline code (`)
+                        const textWithoutCode = displayContent.replace(/```[\s\S]*?```/g, '');
+                        const backtickMatches = textWithoutCode.match(/`/g);
+                        if (backtickMatches && backtickMatches.length % 2 !== 0) {
+                            if (/`\s*$/.test(displayContent)) {
+                                displayContent = displayContent.replace(/`\s*$/, '');
+                            } else if (/\n+$/.test(displayContent)) {
+                                displayContent = displayContent.replace(/(\n+)$/, '`$1');
+                            } else {
+                                displayContent = displayContent + '`';
+                            }
+                        }
+                    }
                 }
 
                 const answeredList = (messageIndex !== null && messageIndex !== undefined) ? wizardAnswers[messageIndex] : null;
+                const hasPendingAction = Boolean(finalResponseBlock && (/\[ACTION:/i.test(finalResponseBlock) || /<(?:create_file|edit_file)/i.test(finalResponseBlock)));
+                const isTextActuallyStreaming = isStreaming && !hasPendingAction;
 
                 return (
                     <div style={{ width: '100%' }}>
                         {displayContent && (
-                            <div className={isStreaming ? 'cakra-streaming-active' : ''} style={{ display: 'flow-root', width: '100%' }}>
+                            <div className={isTextActuallyStreaming ? 'cakra-streaming-active' : ''} style={{ display: 'flow-root', width: '100%' }}>
                                 <ReactMarkdown
                                     children={displayContent}
                                     components={markdownComponents}

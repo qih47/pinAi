@@ -806,7 +806,7 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
                                         <CakraResponseRenderer
                                             rawContent={parts[0]}
                                             thinkingContent={msg.thinking || msg.thought || ''}
-                                            isStreaming={isThisMessageStreaming}
+                                            isStreaming={isThisMessageStreaming && !isFileProcessing}
                                             darkMode={darkMode}
                                             theme={theme}
                                             searchQuery={searchQuery}
@@ -837,7 +837,7 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
                                     key="renderer-0"
                                     rawContent={parts[0]}
                                     thinkingContent={msg.thinking || msg.thought || ''}
-                                    isStreaming={isThisMessageStreaming}
+                                    isStreaming={false}
                                     darkMode={darkMode}
                                     theme={theme}
                                     searchQuery={searchQuery}
@@ -851,6 +851,7 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
                             for (let i = 1; i < parts.length; i += 2) {
                                 const bIdx = parts[i] ? parseInt(parts[i], 10) : 0;
                                 const nextText = parts[i + 1] || '';
+                                const isLastPart = (i + 2 >= parts.length);
 
                                 renderedParts.push(
                                     <FileProcessLog
@@ -871,7 +872,7 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
                                             key={`renderer-${i + 1}`}
                                             rawContent={nextText}
                                             thinkingContent=""
-                                            isStreaming={isThisMessageStreaming}
+                                            isStreaming={isThisMessageStreaming && isLastPart && !isFileProcessing}
                                             darkMode={darkMode}
                                             theme={theme}
                                             searchQuery={searchQuery}
