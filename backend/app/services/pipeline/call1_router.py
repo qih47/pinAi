@@ -676,6 +676,12 @@ def _validate_and_normalize_routing(
         ]):
             routing["visual_types"].append("infographic")
 
+        # 7. Slides & Presentasi
+        if any(w in user_lower for w in [
+            "slide", "slides", "presentasi", "presentation", "powerpoint", "ppt", "dek presentasi"
+        ]):
+            routing["visual_types"].append("slides")
+
         if not routing["visual_types"]:
             routing["visual_types"] = ["mermaid"]
             
@@ -1588,6 +1594,10 @@ async def generate_call1_preset_routing(
                     "infografis", "infographic", "dashboard", "ringkasan visual", "kpi"
                 ]):
                     result["visual_types"].append("infographic")
+                if any(w in user_lower for w in [
+                    "slide", "slides", "presentasi", "presentation", "powerpoint", "ppt", "dek presentasi"
+                ]):
+                    result["visual_types"].append("slides")
                 if not result["visual_types"]:
                     result["visual_types"] = ["mermaid"]
 

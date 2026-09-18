@@ -25,6 +25,7 @@ const LazyWebSearchWidget = lazy(() => import('./WebSearchWidget'));
 const LazyUrlFetchTimelineWidget = lazy(() => import('./UrlFetchTimelineWidget'));
 const LazyInteractiveWizardWidget = lazy(() => import('./InteractiveWizardWidget'));
 const LazyDocWriterWidget = lazy(() => import('./DocWriterChatWidget'));
+const LazySlideDeckViewer = lazy(() => import('./SlideDeckViewer'));
 
 const remarkPluginsList = [remarkGfm, remarkMath];
 const rehypePluginsList = [rehypeKatex];
@@ -643,6 +644,14 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
                             language={language} 
                             isStreaming={isStreaming} 
                         />
+                    </Suspense>
+                );
+            }
+
+            if (!inline && match && (match[1] === 'slides' || match[1] === 'slide' || match[1] === 'presentation' || match[1] === 'slidedeck')) {
+                return (
+                    <Suspense fallback={<div className="animate-pulse p-8 border border-dashed rounded-xl text-sm text-center font-medium my-4">Menyiapkan Slide Presentasi...</div>}>
+                        <LazySlideDeckViewer rawContent={cleanCode} darkMode={darkMode} />
                     </Suspense>
                 );
             }

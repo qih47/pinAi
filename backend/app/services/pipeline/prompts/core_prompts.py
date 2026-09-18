@@ -77,12 +77,13 @@ Sebelum apapun, tentukan yurisdiksi topik: internal Pindad? dunia luar? pengetah
 ═══════════════════════════════════════════════════════════════
 DAFTAR KAPABILITAS LAIN (aktifkan HANYA jika relevan, boleh multi-true):
 ═══════════════════════════════════════════════════════════════
-• `requires_visual: true` + `"visual_types": ["mermaid"|"chart"|"gantt"|"datagrid"|"infographic"]`:
+• `requires_visual: true` + `"visual_types": ["mermaid"|"chart"|"gantt"|"datagrid"|"infographic"|"slides"]`:
   - mermaid: flowchart/sequence/arsitektur sistem
   - chart: grafik data numerik (bar/line/pie/perbandingan angka)
   - gantt: jadwal/timeline/roadmap proyek
   - datagrid: tabel data laporan berkolom
   - infographic: ringkasan visual cuaca/status/dasbor singkat
+  - slides: slide presentasi / bahan rapat / tayangan materi PowerPoint interaktif (contoh: "buatkan slide presentasi 4 halaman", "bikinin ppt tentang X", "materi rapat")
 • `is_map_query: true` — lokasi fisik, koordinat, alamat kantor/divisi/pabrik Pindad. (Bukan need_rag, bukan is_web_search — ini domain terpisah.)
 • `is_coding: true` — koding, skrip, query SQL, struktur data, komponen aplikasi.
 • `is_troubleshooting: true` — error terminal, stack trace, bug, log kegagalan, diagnosa sistem down.
@@ -249,7 +250,7 @@ TUGAS:
    - PENTING: Jika ada riwayat percakapan sebelumnya dan pesan merujuk ke topik yang sudah dibahas, pesan tersebut TIDAK AMBIGU!
 3. DETEKSI VISUALISASI DINAMIS (`"requires_visual": true`):
    - Jika pesan memerlukan representasi visual, sertakan array sub-tipe spesifik:
-     `"visual_types": ["mermaid" | "chart" | "gantt" | "datagrid" | "infographic" | "map"]`
+     `"visual_types": ["mermaid" | "chart" | "gantt" | "datagrid" | "infographic" | "slides" | "map"]`
 4. KAPABILITAS MODULAR TAMBAHAN (Hanya sertakan jika relevan dengan instruksi pengguna):
    - `"need_analytic": true`        -> analisis data, kalkulasi numerik, atau statistik
    - `"is_troubleshooting": true`  -> kendala teknis, stack trace, bug, atau error
@@ -636,6 +637,59 @@ VISUAL_GUIDANCE_INFOGRAPHIC = """[VISUALIZATION: DYNAMIC INFOGRAPHIC]
 Gunakan format markdown ```infographic untuk menyajikan infografis visual tingkat tinggi:
 Layout Cuaca (layout: "weather"), Roadmap Proyek (layout: "timeline"), atau Prosedur SOP (layout: "steps")."""
 
+VISUAL_GUIDANCE_SLIDES = """[VISUALIZATION: INLINE SLIDE & PRESENTATION DECK]
+Jika pengguna meminta bahan presentasi, slide show, atau rangkuman slide rapat (contoh: "buatkan slide presentasi tentang X"), gunakan format blok kode ```slides berisi JSON terstruktur berikut:
+```slides
+{
+  "theme": "pindad-dark",
+  "title": "Judul Dek Presentasi",
+  "slides": [
+    {
+      "layout": "title",
+      "title": "Judul Slide Utama",
+      "subtitle": "Subjudul Bahasan",
+      "presenter": "Divisi TI — PT Pindad"
+    },
+    {
+      "layout": "bullets",
+      "title": "Poin-Poin Utama",
+      "bullets": [
+        "Poin pembahasan pertama secara ringkas dan lugas",
+        "Poin pembahasan kedua dengan data pendukung",
+        "Poin pembahasan ketiga dan rencana aksi"
+      ],
+      "highlight": "Kunci utama keberhasilan implementasi program ini."
+    },
+    {
+      "layout": "two_columns",
+      "title": "Komparasi & Analisis Sektoral",
+      "left": {
+        "heading": "Kondisi Eksisting",
+        "items": ["Kendala operasional", "Proses manual"]
+      },
+      "right": {
+        "heading": "Target Optimal",
+        "items": ["Otomasi sistem", "Integrasi terpusat"]
+      }
+    },
+    {
+      "layout": "stats",
+      "title": "Pencapaian Kinerja",
+      "stat": "95%",
+      "stat_label": "Tingkat Keberhasilan Implementasi",
+      "highlight": "Melampaui target Q3 sebesar 10%."
+    },
+    {
+      "layout": "quote",
+      "title": "Kesimpulan Eksekutif",
+      "quote": "Inovasi dan otomasi adalah pilar kemandirian teknologi pertahanan.",
+      "author": "Direksi PT Pindad"
+    }
+  ]
+}
+```
+Pilihan layout slide yang valid: "title" (cover), "bullets" (daftar poin bernomor), "two_columns" (2 kartu split), "stats" (angka besar/metrik), "quote" (kutipan/kesimpulan)."""
+
 def build_modular_visual_guidance(visual_types: Optional[List[str]] = None) -> str:
     """
     Menyusun panduan visual secara modular berdasarkan visual_types yang diminta oleh Call 1.
@@ -666,6 +720,8 @@ def build_modular_visual_guidance(visual_types: Optional[List[str]] = None) -> s
         blocks.append(VISUAL_GUIDANCE_MAP)
     if any(t in norm_types for t in ["infographic", "cuaca", "dashboard"]):
         blocks.append(VISUAL_GUIDANCE_INFOGRAPHIC)
+    if any(t in norm_types for t in ["slides", "slide", "presentation", "presentasi", "ppt", "powerpoint", "slidedeck"]):
+        blocks.append(VISUAL_GUIDANCE_SLIDES)
     if any(t in norm_types for t in ["flowchart"]):
         blocks.append(VISUAL_GUIDANCE_FLOWCHART)
 
@@ -861,6 +917,7 @@ DYNAMIC_PROMPT_BLOCKS = {
     "map": VISUAL_GUIDANCE_MAP,
     "flowchart": VISUAL_GUIDANCE_FLOWCHART,
     "infographic": VISUAL_GUIDANCE_INFOGRAPHIC,
+    "slides": VISUAL_GUIDANCE_SLIDES,
 }
 
 # Komposit untuk Backward Compatibility modul yang membutuhkan semua fitur

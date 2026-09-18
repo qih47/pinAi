@@ -86,7 +86,7 @@ def detect_precheck(user_message: str, chat_mode: str, has_attachment: bool, use
     )
     is_docwriter = any(kw in msg_lower for kw in _DOCWRITER_KEYWORDS) or is_doc_draft or is_open_editor or is_doc_edit
 
-    _VISUAL_KEYWORDS = ["visual", "diagram", "alur", "flowchart", "grafik", "bagan"]
+    _VISUAL_KEYWORDS = ["visual", "diagram", "alur", "flowchart", "grafik", "bagan", "slide", "slides", "presentasi", "presentation", "ppt", "powerpoint"]
     requires_visual = any(kw in msg_lower for kw in _VISUAL_KEYWORDS)
 
     # Strict word-boundary regex untuk deteksi kata ganti eksplisit
@@ -1095,7 +1095,7 @@ def extract_call2_turn_context(content: str) -> Dict[str, Any]:
     clean_text = content
     clean_text = re.sub(r'<\|channel>thought.*?<channel\|>', '', clean_text, flags=re.DOTALL)
     clean_text = re.sub(r'<sources_json>[\s\S]*?</sources_json>', '', clean_text)
-    clean_text = re.sub(r'```(?:wizard|interactive_options|chart|chartjs|mermaid|datagrid|map|gantt|infographic|websearch|urlfetch)[\s\S]*?```', '', clean_text, flags=re.IGNORECASE)
+    clean_text = re.sub(r'```(?:wizard|interactive_options|chart|chartjs|mermaid|datagrid|map|gantt|infographic|slides|slide|presentation|websearch|urlfetch)[\s\S]*?```', '', clean_text, flags=re.IGNORECASE)
     clean_text = re.sub(r'```[a-zA-Z0-9_-]*\s*[\s\S]*?```', '', clean_text)
     clean_text = re.sub(r'<create_file[\s\S]*?</create_file>', '', clean_text)
     clean_text = clean_text.strip()
