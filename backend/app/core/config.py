@@ -37,7 +37,7 @@ class Settings(BaseSettings):
     ZIMBRA_EMAIL: Optional[str] = None
     ZIMBRA_PASSWORD: Optional[str] = None
 
-    MODEL_PERSONA: str = "gemma4:31b-ctx16k"  # Gemma4 Agentic Engine — ctx16k override (KV Cache 16384, hemat ~10GB VRAM vs default 65536)
+    MODEL_PERSONA: str = "gemma4:31b"       # Gemma4 Agentic Engine (Chat, Reasoning & Multimodal Vision, locked to 16k context via NUM_CTX_CORE)
     MODEL_ROUTER: str = "gemma4:e4b"       # Gemma4 Router Engine (Call 1 JSON)
     MODEL_EMBEDDING: str = "mxbai-embed-large:latest"  # Embedding untuk RAG
 
