@@ -29,6 +29,9 @@ from backend.app.utils.security_firewall import validate_attachment_security
 
 logger = logging.getLogger("COLLAB_SERVICE")
 
+# Anti-DoS Cooldown Tracker per Room untuk Ringkasan AI (maksimal 1 ringkasan per 20 detik)
+_summarize_cooldowns: Dict[str, float] = {}
+
 
 def clean_and_deduplicate_document(content: str) -> str:
     """
@@ -223,9 +226,16 @@ class CollabService:
 
     @staticmethod
     async def rename_room(room_id: str, new_name: str, npp: str) -> bool:
-        """Mengubah nama/judul ruang diskusi."""
+        """Mengubah nama/judul ruang diskusi. Hanya anggota aktif yang diizinkan."""
         logger.info(f"[COLLAB] User {npp} renaming room {room_id} to '{new_name}'")
         async with get_db() as conn:
+            member = await conn.fetchrow(
+                "SELECT role_in_room FROM collab_room_members WHERE room_id = $1 AND npp = $2 AND COALESCE(status, 'ACCEPTED') = 'ACCEPTED'",
+                uuid.UUID(room_id), npp
+            )
+            if not member:
+                raise PermissionError("Anda bukan anggota aktif ruang diskusi ini.")
+
             await conn.execute(
                 "UPDATE collab_rooms SET name = $1, updated_at = NOW() WHERE id = $2",
                 new_name.strip(), uuid.UUID(room_id)
@@ -234,9 +244,25 @@ class CollabService:
 
     @staticmethod
     async def archive_room(room_id: str, is_archived: bool, npp: str) -> bool:
-        """Mengarsipkan atau membatalkan arsip ruang diskusi."""
+        """Mengarsipkan atau membatalkan arsip ruang diskusi. Hanya pembuat atau OWNER/ADMIN yang diizinkan."""
         logger.info(f"[COLLAB] User {npp} set archive={is_archived} for room {room_id}")
         async with get_db() as conn:
+            room = await conn.fetchrow(
+                "SELECT created_by FROM collab_rooms WHERE id = $1",
+                uuid.UUID(room_id)
+            )
+            if not room:
+                raise ValueError("Ruang diskusi tidak ditemukan.")
+
+            member = await conn.fetchrow(
+                "SELECT role_in_room FROM collab_room_members WHERE room_id = $1 AND npp = $2 AND COALESCE(status, 'ACCEPTED') = 'ACCEPTED'",
+                uuid.UUID(room_id), npp
+            )
+            is_creator = (room["created_by"] == npp)
+            is_owner = bool(member and member["role_in_room"] in ("OWNER", "ADMIN"))
+            if not (is_creator or is_owner):
+                raise PermissionError("Hanya pembuat atau admin ruang diskusi yang berhak mengarsipkan ruangan ini.")
+
             await conn.execute(
                 "UPDATE collab_rooms SET is_archived = $1, updated_at = NOW() WHERE id = $2",
                 is_archived, uuid.UUID(room_id)
@@ -245,9 +271,25 @@ class CollabService:
 
     @staticmethod
     async def delete_room(room_id: str, npp: str) -> bool:
-        """Menghapus ruang diskusi beserta anggota dan pesannya (CASCADE)."""
+        """Menghapus ruang diskusi beserta anggota dan pesannya (CASCADE). Hanya pembuat atau OWNER yang diizinkan."""
         logger.info(f"[COLLAB] User {npp} deleting room {room_id}")
         async with get_db() as conn:
+            room = await conn.fetchrow(
+                "SELECT created_by FROM collab_rooms WHERE id = $1",
+                uuid.UUID(room_id)
+            )
+            if not room:
+                raise ValueError("Ruang diskusi tidak ditemukan.")
+
+            member = await conn.fetchrow(
+                "SELECT role_in_room FROM collab_room_members WHERE room_id = $1 AND npp = $2 AND COALESCE(status, 'ACCEPTED') = 'ACCEPTED'",
+                uuid.UUID(room_id), npp
+            )
+            is_creator = (room["created_by"] == npp)
+            is_owner = bool(member and member["role_in_room"] == "OWNER")
+            if not (is_creator or is_owner):
+                raise PermissionError("Hanya pembuat atau pemilik ruang diskusi yang berhak menghapus ruangan ini.")
+
             await conn.execute(
                 "DELETE FROM collab_rooms WHERE id = $1",
                 uuid.UUID(room_id)
@@ -319,9 +361,17 @@ class CollabService:
         """
         Memperbarui isi draf dokumen bersama di Document Pad dan membroadcast ke semua anggota.
         Otomatis menjalankan pembersihan dan deduplikasi di backend.
+        Hanya anggota aktif yang diizinkan mengedit dokumen.
         """
         cleaned_doc = clean_and_deduplicate_document(document_content)
         async with get_db() as conn:
+            member = await conn.fetchrow(
+                "SELECT role_in_room FROM collab_room_members WHERE room_id = $1 AND npp = $2 AND COALESCE(status, 'ACCEPTED') = 'ACCEPTED'",
+                uuid.UUID(room_id), npp
+            )
+            if not member:
+                raise PermissionError("Anda bukan anggota aktif ruang diskusi ini.")
+
             await conn.execute(
                 """
                 UPDATE collab_rooms 
@@ -351,6 +401,7 @@ class CollabService:
         Menambahkan poin catatan baru (addition) ke dokumen secara atomic di database.
         Mencegah penimpaan (overwrite) atau hilangnya catatan sebelumnya.
         Melakukan deduplikasi otomatis di backend sehingga poin yang sama tidak masuk dua kali.
+        Hanya anggota aktif yang diizinkan menambah catatan.
         """
         if not text or not text.strip():
             raise ValueError("Teks catatan tidak boleh kosong.")
@@ -368,6 +419,13 @@ class CollabService:
         clean_text = re.sub(r'([.!?;)]|```)\s*(\d+\.\s+[A-Za-z0-9_*])', r'\1\n\n\2', clean_text)
 
         async with get_db() as conn:
+            member = await conn.fetchrow(
+                "SELECT role_in_room FROM collab_room_members WHERE room_id = $1 AND npp = $2 AND COALESCE(status, 'ACCEPTED') = 'ACCEPTED'",
+                uuid.UUID(room_id), npp
+            )
+            if not member:
+                raise PermissionError("Anda bukan anggota aktif ruang diskusi ini.")
+
             # 1. Ambil dokumen terkini dari database
             row = await conn.fetchrow(
                 "SELECT document_content FROM collab_rooms WHERE id = $1",
@@ -431,8 +489,25 @@ class CollabService:
         Menyusun notulensi cerdas otomatis dari seluruh percakapan tim di ruangan
         dan memperbarui document_content di collab_rooms secara rapi & profesional.
         Mengintegrasikan draf dokumen yang ada tanpa menghilangkannya.
+        Hanya anggota aktif yang diizinkan memicu ringkasan. Dilengkapi cooldown anti-DoS.
         """
+        now = time.monotonic()
+        last_summary = _summarize_cooldowns.get(str(room_id), 0.0)
+        if now - last_summary < 20.0:
+            remaining = int(20.0 - (now - last_summary))
+            raise ValueError(f"Ringkasan AI baru saja dibuat. Harap tunggu {remaining} detik sebelum menyusun ulang.")
+
         async with get_db() as conn:
+            # 0. Verifikasi keanggotaan aktif
+            member = await conn.fetchrow(
+                "SELECT role_in_room FROM collab_room_members WHERE room_id = $1 AND npp = $2 AND COALESCE(status, 'ACCEPTED') = 'ACCEPTED'",
+                uuid.UUID(room_id), npp
+            )
+            if not member:
+                raise PermissionError("Anda bukan anggota aktif ruang diskusi ini.")
+
+            _summarize_cooldowns[str(room_id)] = now
+
             # 1. Ambil detail room
             room_row = await conn.fetchrow(
                 "SELECT id::text, name, topic, document_content FROM collab_rooms WHERE id = $1",
@@ -866,7 +941,16 @@ class CollabService:
     async def broadcast_typing(room_id: str, npp: str, user_name: str, is_typing: bool, photo_url: Optional[str] = None):
         """
         Menyebarkan indikator mengetik dari pengguna ke seluruh anggota ruangan.
+        Hanya anggota aktif yang diizinkan menyiarkan status typing.
         """
+        async with get_db() as conn:
+            member = await conn.fetchrow(
+                "SELECT 1 FROM collab_room_members WHERE room_id = $1 AND npp = $2 AND COALESCE(status, 'ACCEPTED') = 'ACCEPTED'",
+                uuid.UUID(room_id), npp
+            )
+            if not member:
+                return  # Abaikan jika bukan anggota aktif
+
         await collab_broadcast_manager.send_typing(
             room_id=room_id,
             sender=user_name,

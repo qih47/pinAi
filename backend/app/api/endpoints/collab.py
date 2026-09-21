@@ -17,7 +17,7 @@ from backend.app.services.collab.collab_service import CollabService
 from backend.app.services.collab.collab_broadcast_manager import collab_broadcast_manager
 from backend.app.core.database import get_db
 from backend.app.utils.upload_validator import UploadValidationError
-from backend.app.utils.security_firewall import check_rate_limit
+from backend.app.utils.security_firewall import check_rate_limit, assert_safe_content
 
 logger = logging.getLogger("COLLAB_API")
 router = APIRouter()
@@ -161,6 +161,14 @@ async def create_room(payload: CreateRoomRequest, current_user_npp: str = Depend
         raise HTTPException(status_code=401, detail="Sesi login tidak valid.")
     if not payload.name.strip():
         raise HTTPException(status_code=400, detail="Nama ruang diskusi wajib diisi.")
+
+    # Validasi konten aman
+    assert_safe_content(payload.name)
+    if payload.topic:
+        assert_safe_content(payload.topic)
+    if payload.document_content:
+        assert_safe_content(payload.document_content)
+
     try:
         room = await CollabService.create_room(
             name=payload.name.strip(),
@@ -203,9 +211,13 @@ async def rename_room_title(
         raise HTTPException(status_code=401, detail="Sesi login tidak valid.")
     if not payload.name.strip():
         raise HTTPException(status_code=400, detail="Nama ruangan tidak boleh kosong.")
+
+    assert_safe_content(payload.name)
     try:
         await CollabService.rename_room(room_id, payload.name, current_user_npp)
         return {"status": "success", "message": "Judul ruang diskusi berhasil diubah."}
+    except PermissionError as pe:
+        raise HTTPException(status_code=403, detail=str(pe))
     except Exception as e:
         logger.error(f"[COLLAB_API] Error renaming room: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -224,6 +236,8 @@ async def archive_room(
         await CollabService.archive_room(room_id, is_archived, current_user_npp)
         msg = "Ruang diskusi berhasil diarsipkan." if is_archived else "Ruang diskusi berhasil dipulihkan."
         return {"status": "success", "message": msg}
+    except PermissionError as pe:
+        raise HTTPException(status_code=403, detail=str(pe))
     except Exception as e:
         logger.error(f"[COLLAB_API] Error archiving room: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -240,6 +254,8 @@ async def delete_room(
     try:
         await CollabService.delete_room(room_id, current_user_npp)
         return {"status": "success", "message": "Ruang diskusi berhasil dihapus."}
+    except PermissionError as pe:
+        raise HTTPException(status_code=403, detail=str(pe))
     except Exception as e:
         logger.error(f"[COLLAB_API] Error deleting room: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -254,9 +270,15 @@ async def update_document(
     """Menyimpan draf dokumen di Document Pad dan menyinkronkan ke seluruh tim."""
     if not current_user_npp or current_user_npp == "GUEST":
         raise HTTPException(status_code=401, detail="Sesi login tidak valid.")
+
+    if payload.document_content:
+        assert_safe_content(payload.document_content)
+
     try:
         result = await CollabService.update_document(room_id, current_user_npp, payload.document_content)
         return result
+    except PermissionError as pe:
+        raise HTTPException(status_code=403, detail=str(pe))
     except Exception as e:
         logger.error(f"[COLLAB_API] Error updating document: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -271,6 +293,9 @@ async def append_to_document(
     """Menambahkan poin catatan baru (addition) ke dokumen secara atomic di database."""
     if not current_user_npp or current_user_npp == "GUEST":
         raise HTTPException(status_code=401, detail="Sesi login tidak valid.")
+
+    assert_safe_content(payload.text)
+
     try:
         result = await CollabService.append_to_document(
             room_id,
@@ -279,6 +304,8 @@ async def append_to_document(
             payload.sender_name
         )
         return result
+    except PermissionError as pe:
+        raise HTTPException(status_code=403, detail=str(pe))
     except Exception as e:
         logger.error(f"[COLLAB_API] Error appending to document: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -295,8 +322,11 @@ async def summarize_room(
     try:
         result = await CollabService.summarize_room(room_id, current_user_npp)
         return result
+    except PermissionError as pe:
+        raise HTTPException(status_code=403, detail=str(pe))
     except ValueError as ve:
-        raise HTTPException(status_code=404, detail=str(ve))
+        status_code = 429 if "tunggu" in str(ve).lower() else 400
+        raise HTTPException(status_code=status_code, detail=str(ve))
     except Exception as e:
         logger.error(f"[COLLAB_API] Error summarizing room: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -381,9 +411,16 @@ async def send_message(
     if not current_user_npp or current_user_npp == "GUEST":
         raise HTTPException(status_code=401, detail="Sesi login tidak valid.")
 
+    client_ip = request.client.host if request and request.client else "unknown"
+    if not check_rate_limit(client_ip, "chat"):
+        raise HTTPException(status_code=429, detail="Terlalu banyak pesan terkirim. Mohon tunggu sejenak.")
+
     message_text = (payload.message_text or "").strip()
     if not message_text and not payload.attachments:
         raise HTTPException(status_code=400, detail="Isi pesan atau lampiran tidak boleh kosong.")
+
+    if message_text:
+        assert_safe_content(message_text)
 
     # Ambil nama pengirim dari database
     sender_name = current_user_npp
@@ -409,6 +446,8 @@ async def send_message(
             request=request
         )
         return {"status": "success", "message": message}
+    except PermissionError as pe:
+        raise HTTPException(status_code=403, detail=str(pe))
     except Exception as e:
         logger.error(f"[COLLAB_API] Error posting message: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -426,6 +465,9 @@ async def edit_message(
         raise HTTPException(status_code=401, detail="Sesi login tidak valid.")
     if not payload.message_text.strip():
         raise HTTPException(status_code=400, detail="Isi pesan tidak boleh kosong.")
+
+    assert_safe_content(payload.message_text)
+
     try:
         updated = await CollabService.edit_message(
             room_id=room_id,
@@ -474,11 +516,31 @@ async def set_typing_status(
 async def stream_room_events(
     room_id: str,
     request: Request,
-    token: Optional[str] = Query(None)
+    token: Optional[str] = Query(None),
+    current_user_npp: Optional[str] = Depends(get_current_user_npp)
 ):
     """
     Stream Server-Sent Events (SSE) untuk update pesan, typing, dan dokumen real-time.
+    Memerlukan sesi terautentikasi dan status keanggotaan aktif di ruang diskusi.
     """
+    if not current_user_npp or current_user_npp == "GUEST":
+        raise HTTPException(
+            status_code=401,
+            detail="Autentikasi diperlukan untuk mengakses stream ruang diskusi."
+        )
+
+    import uuid
+    async with get_db() as conn:
+        member = await conn.fetchrow(
+            "SELECT role_in_room FROM collab_room_members WHERE room_id = $1 AND npp = $2 AND COALESCE(status, 'ACCEPTED') = 'ACCEPTED'",
+            uuid.UUID(room_id), current_user_npp
+        )
+        if not member:
+            raise HTTPException(
+                status_code=403,
+                detail="Akses ditolak. Anda bukan anggota aktif ruang diskusi ini."
+            )
+
     return StreamingResponse(
         collab_broadcast_manager.subscribe(room_id),
         media_type="text/event-stream",

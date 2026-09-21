@@ -9,10 +9,11 @@ import os
 import urllib.parse
 from pathlib import Path
 from typing import Dict, Any, Optional
-from fastapi import APIRouter, HTTPException, Request, Response, Query
+from fastapi import APIRouter, HTTPException, Request, Response, Query, Depends
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
+from backend.app.api.dependencies.auth import get_current_user_npp
 from backend.app.services.document_writer.doc_writer_service import doc_writer_service
 
 router = APIRouter(prefix="/doc-writer", tags=["Document Writer"])
@@ -68,14 +69,15 @@ async def get_templates():
 
 
 @router.post("/create")
-async def create_document(req: CreateDocRequest):
+async def create_document(req: CreateDocRequest, current_user_npp: Optional[str] = Depends(get_current_user_npp)):
     """
     Membuat dokumen baru berbasis template di folder user accounts/{npp}/.../docwriter/.
     """
+    resolved_npp = current_user_npp or req.npp or "guest"
     try:
         meta = doc_writer_service.create_document(
             template_id=req.template_id,
-            npp=req.npp or "guest",
+            npp=resolved_npp,
             session_id=req.session_id or "",
             room_id=req.room_id or "",
             initial_title=req.title
@@ -94,14 +96,16 @@ async def create_document(req: CreateDocRequest):
 async def get_active_document(
     npp: str = Query("", description="NPP pemilik"),
     session_id: str = Query("", description="ID sesi chat"),
-    room_id: str = Query("", description="ID collab room")
+    room_id: str = Query("", description="ID collab room"),
+    current_user_npp: Optional[str] = Depends(get_current_user_npp)
 ):
     """
     Mengambil dokumen aktif terakhir dari sesi chat atau ruang kolaborasi.
     """
+    resolved_npp = current_user_npp or npp or ""
     try:
         meta = doc_writer_service.get_active_document(
-            npp=npp,
+            npp=resolved_npp,
             session_id=session_id,
             room_id=room_id
         )
@@ -125,11 +129,13 @@ async def get_editor_config(
     npp: str = Query("", description="NPP pemilik"),
     session_id: str = Query("", description="ID sesi chat"),
     room_id: str = Query("", description="ID collab room"),
-    user_name: str = Query("Pegawai PT Pindad", description="Nama tampilan user")
+    user_name: str = Query("Pegawai PT Pindad", description="Nama tampilan user"),
+    current_user_npp: Optional[str] = Depends(get_current_user_npp)
 ):
     """
     Mengambil konfigurasi DocsAPI ONLYOFFICE lengkap dengan token JWT.
     """
+    resolved_npp = current_user_npp or npp or ""
     try:
         # Tentukan base_url backend yang dapat diakses oleh server ONLYOFFICE
         # Jika request melalui gateway localhost:8000, gunakan itu
@@ -138,7 +144,7 @@ async def get_editor_config(
         base_url = f"{scheme}://{host}"
 
         user_info = {
-            "npp": npp,
+            "npp": resolved_npp,
             "name": user_name,
             "session_id": session_id,
             "room_id": room_id
@@ -204,17 +210,18 @@ async def onlyoffice_callback(doc_id: str, request: Request):
 
 
 @router.post("/ai-edit")
-async def apply_ai_edit(req: AiEditRequest):
+async def apply_ai_edit(req: AiEditRequest, current_user_npp: Optional[str] = Depends(get_current_user_npp)):
     """
     Menerapkan perubahan teks/instruksi dari AI langsung ke berkas .docx dan me-reload editor.
     """
+    resolved_npp = current_user_npp or req.npp or ""
     try:
         result = await doc_writer_service.apply_ai_edit(
             doc_id=req.doc_id,
             instruction=req.instruction,
             section_id=req.section_id,
             content=req.content,
-            npp=req.npp or "",
+            npp=resolved_npp,
             session_id=req.session_id or "",
             room_id=req.room_id or ""
         )
@@ -230,12 +237,14 @@ async def download_document(
     doc_id: str,
     npp: str = Query("", description="NPP"),
     session_id: str = Query("", description="Sesi"),
-    room_id: str = Query("", description="Room")
+    room_id: str = Query("", description="Room"),
+    current_user_npp: Optional[str] = Depends(get_current_user_npp)
 ):
     """
     Mengunduh berkas Word (.docx) secara langsung ke komputer pengguna.
     """
-    doc_meta = doc_writer_service.locate_document(doc_id, npp=npp, session_id=session_id, room_id=room_id)
+    resolved_npp = current_user_npp or npp or ""
+    doc_meta = doc_writer_service.locate_document(doc_id, npp=resolved_npp, session_id=session_id, room_id=room_id)
     if not doc_meta or not Path(doc_meta["file_path"]).exists():
         raise HTTPException(status_code=404, detail=f"Dokumen '{doc_id}' tidak ditemukan.")
 

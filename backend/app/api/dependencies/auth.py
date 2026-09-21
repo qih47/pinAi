@@ -60,9 +60,15 @@ async def get_current_user_npp(
         if _is_valid_npp(query_npp):
             npp_clean = query_npp.strip()
 
-    # 1b. Fallback: Cek Bearer Session Token jika NPP belum valid di header
-    if not npp_clean and authorization and authorization.startswith("Bearer "):
-        token = authorization.replace("Bearer ", "").strip()
+    # 1b. Fallback: Cek Bearer Session Token jika NPP belum valid di header,
+    # atau dari query param ?token= (khusus EventSource / SSE di mana browser tidak mendukung header kustom)
+    token = None
+    if not npp_clean:
+        if authorization and authorization.startswith("Bearer "):
+            token = authorization.replace("Bearer ", "").strip()
+        elif request.query_params.get("token"):
+            token = request.query_params.get("token").strip()
+
         if token and token.lower() not in {"undefined", "null", "none", ""}:
             try:
                 async with get_db() as conn:
@@ -72,7 +78,7 @@ async def get_current_user_npp(
                     )
                     if session_row and session_row["npp"] and _is_valid_npp(session_row["npp"]):
                         npp_clean = session_row["npp"]
-                        logger.info(f"[AUTH] Resolved NPP '{npp_clean}' from Bearer session token.")
+                        logger.info(f"[AUTH] Resolved NPP '{npp_clean}' from session token.")
             except Exception as e:
                 logger.error(f"[AUTH] Failed to resolve session token: {e}")
 

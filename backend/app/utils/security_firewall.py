@@ -277,6 +277,15 @@ def _scan_for_prompt_injections_only(text: str, field_name: str = "input") -> No
             )
             raise InjectionException("PromptInjection", field_name, hashlib.sha256(text.encode()).hexdigest()[:12])
 
+_SAFE_TEXT_PAYLOAD_FIELDS = frozenset({
+    "content", "text", "raw_text", "sentence", "transcript", "speech_text",
+    "liveCode", "code", "fileGenerations", "chat_mode", "focus", "insight",
+    "lineage", "email_content", "email_subject", "instruction",
+    # Collab Space & Document Writer payload fields
+    "message_text", "document_content", "html_content", "topic", "prompt",
+    "rag_prompt", "query", "queries"
+})
+
 def _scan_dict_recursive(data: Any, path: str = "root", skip_injection: bool = False, prompt_injection_only: bool = False) -> None:
     """Recursively scan all string values in nested dicts/lists."""
     if isinstance(data, str):
@@ -287,8 +296,8 @@ def _scan_dict_recursive(data: Any, path: str = "root", skip_injection: bool = F
             _scan_for_injections(data, path)
     elif isinstance(data, dict):
         for k, v in data.items():
-            if str(k) in ("content", "text", "raw_text", "sentence", "transcript", "speech_text", "liveCode", "code", "fileGenerations", "chat_mode", "focus", "insight", "lineage", "email_content", "email_subject", "instruction"):
-                # Run ONLY prompt injection checks on these sensitive chat/text fields
+            if str(k) in _SAFE_TEXT_PAYLOAD_FIELDS:
+                # Run ONLY prompt injection checks on these sensitive chat/text/collab fields
                 _scan_dict_recursive(v, f"{path}.{k}", skip_injection=True, prompt_injection_only=True)
             else:
                 if not skip_injection and not prompt_injection_only:
