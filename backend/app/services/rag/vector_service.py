@@ -115,5 +115,24 @@ class VectorService:
             logger.info(f"[VECTOR_CACHE_MISS] Embedding generated and cached for query: {query[:50]}")
         return embedding
 
+    async def flush_embedding_vram(self) -> bool:
+        """
+        Unload model embedding di Ollama untuk melepaskan 
+        akumulasi CUDA scratch buffer & memory fragmentation setelah batch training/ingestion besar.
+        """
+        try:
+            client = get_shared_client()
+            url = f"{settings.OLLAMA_BASE_URL}/api/generate"
+            res = await client.post(
+                url,
+                json={"model": settings.MODEL_EMBEDDING, "keep_alive": 0},
+                timeout=15.0,
+            )
+            logger.info(f"[VECTOR_VRAM_FLUSH] Flushed/Unloaded {settings.MODEL_EMBEDDING}: {res.status_code}")
+            return res.status_code == 200
+        except Exception as e:
+            logger.warning(f"[VECTOR_VRAM_FLUSH_FAILED] Gagal flush embedding VRAM: {e}")
+            return False
+
 
 vector_service = VectorService()

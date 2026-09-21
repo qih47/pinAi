@@ -544,31 +544,33 @@ class NightlyTrainingOrchestrator:
         logger.info(f"📋 [QUEUE] Ditemukan {len(queue)} dokumen dalam antrean prioritas training.")
 
         docs_processed = 0
-        for doc in queue:
-            if self.stop_requested:
-                self.latest_log = "Training dihentikan oleh user"
-                break
-
-            if not self.is_within_training_window(force_run):
-                self.latest_log = "Jendela waktu malam berakhir (07:30 WIB)"
-                logger.info("⏰ [SCHEDULE] Jendela training malam berakhir (Pukul 07:30 WIB). Sistem standby hingga 18:00 besok.")
-                break
-
-            try:
-                success = await self.process_single_document(doc, force_run=force_run, page_limit=page_limit)
-                if success:
-                    docs_processed += 1
-                if max_docs and docs_processed >= max_docs:
-                    logger.info(f"🎯 [LIMIT] Mencapai batas maksimal {max_docs} dokumen untuk sesi ini.")
+        try:
+            for doc in queue:
+                if self.stop_requested:
+                    self.latest_log = "Training dihentikan oleh user"
                     break
-            except Exception as e:
-                logger.error(f"❌ [ORCHESTRATOR_DOC_FAILED] Dokumen {doc['dokumen_id']} gagal diproses: {e}")
-                continue
 
-        self.latest_log = f"Selesai. Total {docs_processed} dokumen tuntas."
-        logger.info(f"🏁 [NIGHTLY_FINISHED] Sesi training selesai. Total {docs_processed} dokumen diproses.")
-        await self.coordinator.close()
-        self.is_running = False
+                if not self.is_within_training_window(force_run):
+                    self.latest_log = "Jendela waktu malam berakhir (07:30 WIB)"
+                    logger.info("⏰ [SCHEDULE] Jendela training malam berakhir (Pukul 07:30 WIB). Sistem standby hingga 18:00 besok.")
+                    break
+
+                try:
+                    success = await self.process_single_document(doc, force_run=force_run, page_limit=page_limit)
+                    if success:
+                        docs_processed += 1
+                    if max_docs and docs_processed >= max_docs:
+                        logger.info(f"🎯 [LIMIT] Mencapai batas maksimal {max_docs} dokumen untuk sesi ini.")
+                        break
+                except Exception as e:
+                    logger.error(f"❌ [ORCHESTRATOR_DOC_FAILED] Dokumen {doc['dokumen_id']} gagal diproses: {e}")
+                    continue
+
+            self.latest_log = f"Selesai. Total {docs_processed} dokumen tuntas."
+            logger.info(f"🏁 [NIGHTLY_FINISHED] Sesi training selesai. Total {docs_processed} dokumen diproses.")
+        finally:
+            await self.coordinator.close()
+            self.is_running = False
 
 
 # ── GLOBAL SINGLETON ENGINE UNTUK DASHBOARD UI ──────────────────────────────────

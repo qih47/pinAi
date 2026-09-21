@@ -1303,3 +1303,5 @@ Keluarkan dalam format JSON array murni tanpa markdown wrapper:
 
     async def close(self):
         await self.http_client.aclose()
+        if hasattr(self, "vector_service") and self.vector_service:
+            await self.vector_service.flush_embedding_vram()
