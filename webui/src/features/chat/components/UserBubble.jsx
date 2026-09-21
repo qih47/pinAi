@@ -104,6 +104,8 @@ const UserBubble = memo(function UserBubble({
                     if (assetUrl && setPreviewImage) {
                       setPreviewImage(assetUrl);
                     }
+                  } else if (isPDF && assetUrl) {
+                    useChatStore.getState().setSplitScreen(true, assetUrl);
                   } else {
                     if (onFileClick) {
                       onFileClick({ type: 'file', content: file, title: fileName });

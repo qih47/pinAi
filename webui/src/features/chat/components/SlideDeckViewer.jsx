@@ -13,6 +13,7 @@ import {
   FileText
 } from 'lucide-react';
 import pptxgen from 'pptxgenjs';
+import { translations } from '../../../utils/translations';
 
 // Tema Warna Presets
 const THEMES = {
@@ -219,7 +220,8 @@ function parseSlideData(rawContent) {
   };
 }
 
-const SlideDeckViewer = ({ rawContent, darkMode = true }) => {
+const SlideDeckViewer = ({ rawContent, darkMode = true, language = 'id' }) => {
+  const t = translations[language]?.slideDeck || translations.id.slideDeck || {};
   const [currentSlide, setCurrentSlide] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -878,7 +880,7 @@ const SlideDeckViewer = ({ rawContent, darkMode = true }) => {
               borderColor: theme.cardBorder,
               backgroundColor: theme.cardBg 
             }}
-            title="Ganti Tema Warna"
+            title={t.changeTheme || "Ganti Tema Warna"}
           >
             <option value="pindad-dark" className="text-slate-900 bg-white">Pindad Navy</option>
             <option value="modern-dark" className="text-slate-900 bg-white">Modern Slate</option>
@@ -894,10 +896,10 @@ const SlideDeckViewer = ({ rawContent, darkMode = true }) => {
               borderColor: theme.cardBorder,
               backgroundColor: theme.cardBg 
             }}
-            title="Salin teks slide"
+            title={t.copySlide || "Salin teks slide"}
           >
             {copied ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} />}
-            <span className="hidden md:inline text-[11px]">{copied ? 'Tersalin' : 'Salin'}</span>
+            <span className="hidden md:inline text-[11px]">{copied ? (t.slideCopied || 'Tersalin') : (t.copySlide || 'Salin')}</span>
           </button>
 
           {/* Download PPTX Button */}
@@ -910,7 +912,7 @@ const SlideDeckViewer = ({ rawContent, darkMode = true }) => {
               color: theme.isDark ? '#071526' : '#FFFFFF',
               borderColor: 'transparent'
             }}
-            title="Download PowerPoint (.pptx)"
+            title={t.downloadPptx || "Download PowerPoint (.pptx)"}
           >
             <Download size={14} />
             <span className="text-[11px]">{isExporting ? 'Mengekspor...' : 'PPTX'}</span>
@@ -925,7 +927,7 @@ const SlideDeckViewer = ({ rawContent, darkMode = true }) => {
               borderColor: theme.cardBorder,
               backgroundColor: theme.cardBg 
             }}
-            title={isFullscreen ? 'Keluar Fullscreen (Esc)' : 'Mode Presentasi Layar Penuh'}
+            title={isFullscreen ? (t.exitFullscreen || 'Keluar Fullscreen (Esc)') : (t.fullscreenMode || 'Mode Presentasi Layar Penuh')}
           >
             {isFullscreen ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
           </button>
@@ -970,10 +972,10 @@ const SlideDeckViewer = ({ rawContent, darkMode = true }) => {
             color: theme.textColor, 
             borderColor: theme.cardBorder 
           }}
-          title="Slide Sebelumnya (←)"
+          title={t.prevSlide || "Slide Sebelumnya (←)"}
         >
           <ChevronLeft size={16} />
-          <span className="hidden sm:inline">Sebelumnya</span>
+          <span className="hidden sm:inline">{t.prevSlide ? t.prevSlide.replace(/\s*\(.*\)/, '') : "Sebelumnya"}</span>
         </button>
 
         {/* Slide Counter & Interactive Dots */}
@@ -991,7 +993,7 @@ const SlideDeckViewer = ({ rawContent, darkMode = true }) => {
                 style={{ 
                   backgroundColor: idx === safeCurrentIndex ? theme.accentColor : theme.textMuted 
                 }}
-                title={`Pindah ke Slide ${idx + 1}`}
+                title={t.goToSlide ? t.goToSlide.replace('{number}', idx + 1) : `Pindah ke Slide ${idx + 1}`}
               />
             ))}
           </div>
@@ -1016,9 +1018,9 @@ const SlideDeckViewer = ({ rawContent, darkMode = true }) => {
             color: theme.textColor, 
             borderColor: theme.cardBorder 
           }}
-          title="Slide Selanjutnya (→)"
+          title={t.nextSlide || "Slide Selanjutnya (→)"}
         >
-          <span className="hidden sm:inline">Selanjutnya</span>
+          <span className="hidden sm:inline">{t.nextSlide ? t.nextSlide.replace(/\s*\(.*\)/, '') : "Selanjutnya"}</span>
           <ChevronRight size={16} />
         </button>
       </div>

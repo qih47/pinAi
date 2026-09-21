@@ -1,6 +1,8 @@
 import logging
 import json
 import asyncio
+import os
+import re
 from datetime import datetime
 from typing import AsyncGenerator, List, Dict, Any, Optional
 from fastapi import Request
@@ -551,6 +553,52 @@ class ModeHub:
                 yield chunk
             return
 
+        # ── Fast-path Interceptor: Document Interrogator Explicit Focus ──────────
+        # Deteksi format [Fokus Dokumen "filename.pdf" Halaman X]: ...
+        if not has_attachment:
+            interrogator_match = re.search(
+                r'\[Fokus Dokumen\s+"([^"]+)"(?:\s+Halaman\s+([0-9\s,\-]+))?\]:\s*(.*)', 
+                user_message, 
+                re.DOTALL | re.IGNORECASE
+            )
+            if interrogator_match:
+                focus_filename = interrogator_match.group(1).strip()
+                focus_clean_name = os.path.basename(focus_filename)
+                
+                # Cari berkas fisik di lokasi-lokasi potensial (Brain images, uploads, peraturan)
+                candidate_paths = []
+                if session_uuid and current_user_npp:
+                    from backend.app.services.session.session_brain_service import SessionBrainService
+                    brain_svc = SessionBrainService(current_user_npp, session_uuid)
+                    candidate_paths.append(str(brain_svc.brain_dir / "images" / focus_clean_name))
+                    candidate_paths.append(str(brain_svc.brain_dir / "documents" / focus_clean_name))
+                
+                from backend.app.core.paths import UPLOAD_DIR, FILE_PERATURAN_DIR
+                candidate_paths.append(os.path.join(UPLOAD_DIR, focus_clean_name))
+                candidate_paths.append(os.path.join(FILE_PERATURAN_DIR, focus_clean_name))
+                
+                from backend.app.services.peraturan_service import _find_valid_pdf_file
+                cand_p = _find_valid_pdf_file(focus_clean_name)
+                if cand_p:
+                    candidate_paths.append(cand_p)
+
+                found_focus_path = None
+                for cp in candidate_paths:
+                    if cp and os.path.exists(cp) and os.path.isfile(cp):
+                        found_focus_path = cp
+                        break
+
+                if found_focus_path:
+                    logger.info(f"[MODE_HUB] 🎯 Interrogator Focus detected! Resolved physical file: {found_focus_path}")
+                    attachments = [{
+                        "name": focus_clean_name,
+                        "file_path": found_focus_path,
+                        "path": found_focus_path,
+                        "mime_type": "application/pdf"
+                    }]
+                    has_attachment = True
+                    precheck["has_attachment"] = True
+
         # ── Fast-path Bypass untuk Attachment ──────────────────────────────────────
         if has_attachment:
             logger.info("[MODE_HUB] Attachment detected! Bypassing Call 1 and routing to Attachment Mode.")
@@ -586,10 +634,38 @@ class ModeHub:
                 routing_data=precheck,
                 request=request,
                 employee_name=employee_name,
-                current_user_npp=current_user_npp
+                current_user_npp=current_user_npp,
+                session_uuid=session_uuid
             ):
                 yield chunk
             return
+
+        # ── Fast-path Bypass untuk Lanjutan Audit Dokumen Sesi (Multi-Turn) ─────────
+        if not has_attachment and session_uuid and current_user_npp:
+            try:
+                from backend.app.services.session.session_brain_service import SessionBrainService
+                from backend.app.services.pipeline.modes.mode_attachment import is_continuation_intent, is_audit_intent
+                brain = SessionBrainService(current_user_npp, session_uuid)
+                active_audit = brain.get_active_audit()
+                if active_audit and (is_continuation_intent(user_message) or is_audit_intent(user_message)):
+                    logger.info(f"[MODE_HUB] 📑 Active Document Audit continuation detected! Resuming batch: {active_audit.get('current_batch_label')}")
+                    handler = self.mode_handlers["attachment"]
+                    async for chunk in handler.execute(
+                        user_message=user_message,
+                        chat_history=chat_history,
+                        is_thinking=is_thinking,
+                        attachments=None,
+                        context_isolation=context_isolation,
+                        routing_data=precheck,
+                        request=request,
+                        employee_name=employee_name,
+                        current_user_npp=current_user_npp,
+                        session_uuid=session_uuid
+                    ):
+                        yield chunk
+                    return
+            except Exception as e:
+                logger.warning(f"[MODE_HUB] Gagal cek active audit continuation: {e}")
 
         # ── Step 2: Call 1 — Intent Classification & Routing ──────────────────────
         yield format_sse(status="🧠 Menganalisis", status_key="ANALYZING_INTENT", event_type=SSEEventType.STATUS)

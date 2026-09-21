@@ -80,11 +80,33 @@ class StructuralContinuityDetector:
 
 
 def extract_explicit_pages_from_query(query: str, total_pages: int) -> Set[int]:
-    """Mengekstrak nomor halaman majemuk dari pertanyaan pengguna (contoh: 'halaman 3 dan 5')."""
+    """Mengekstrak nomor halaman majemuk atau rentang dari pertanyaan pengguna (contoh: 'halaman 3 dan 5', 'halaman 16-18', 'hal 16 s/d 18')."""
     explicit_pages = set()
-    page_matches = re.finditer(r'(?:halaman|hal\.?|page)\s*([0-9\s,\-dan&sampai]+)', query, re.IGNORECASE)
+    # 1. Parsing rentang: "halaman 16-18", "hal 16 s/d 18", "halaman 16 sampai 18"
+    range_matches = re.finditer(r'(?:halaman|hal\.?|page)\s*([0-9]+)\s*(?:-|–|—|s/?d|sampai|to)\s*([0-9]+)', query, re.IGNORECASE)
+    for rm in range_matches:
+        start_p = int(rm.group(1))
+        end_p = int(rm.group(2))
+        if start_p <= end_p:
+            for p in range(start_p, end_p + 1):
+                p_idx = p - 1
+                if 0 <= p_idx < total_pages:
+                    explicit_pages.add(p_idx)
+
+    # 2. Parsing nomor tunggal atau daftar: "halaman 3, 4, 5", "hal 4"
+    page_matches = re.finditer(r'(?:halaman|hal\.?|page)\s*([0-9\s,\-–—dan&sampaito/sd]+)', query, re.IGNORECASE)
     for pm in page_matches:
         raw_part = pm.group(1)
+        # Ambil semua range di dalam raw_part jika ada
+        sub_ranges = re.findall(r'([0-9]+)\s*(?:-|–|—|s/?d|sampai|to)\s*([0-9]+)', raw_part, re.IGNORECASE)
+        for s_str, e_str in sub_ranges:
+            s_val, e_val = int(s_str), int(e_str)
+            if s_val <= e_val:
+                for p in range(s_val, e_val + 1):
+                    p_idx = p - 1
+                    if 0 <= p_idx < total_pages:
+                        explicit_pages.add(p_idx)
+        # Nomor individual
         nums = re.findall(r'\b([0-9]+)\b', raw_part)
         for n in nums:
             p_idx = int(n) - 1
@@ -306,8 +328,17 @@ async def two_stage_rerank_cluster_async(
         logger.info(f"[DOC_INTEL] 🎯 Stage 1 Seeds: {[p+1 for p in seed_pages]}")
 
     # Stage 2: Tri-Window Structural & Semantic Boundary Analysis
-    selected_pages = expand_tri_window_context(seed_pages, text_map, total_pages)
-    logger.info(f"[DOC_INTEL] 📑 Final Connected Pages: {[p+1 for p in selected_pages]}")
+    # PERCABANGAN MODULAR & AMAN:
+    # 1. JIKA user secara spesifik menargetkan halaman tertentu (explicit_pages, misal: "Halaman 4"),
+    #    fokus HANYA pada halaman tersebut tanpa memperlebar context ke halaman lain.
+    # 2. UNTUK SEMUA KASUS LAINNYA (pencarian semantik regulasi/klausul/pertanyaan umum):
+    #    Tri-Window Expansion TETAP BERJALAN 100% UTUH menjaga keutuhan pasal/ayat/tabel yang bersambung!
+    if explicit_pages:
+        selected_pages = seed_pages
+        logger.info(f"[DOC_INTEL] 🎯 Explicit Targeted Page(s) Selected (Bypassing Tri-Window Expansion): {[p+1 for p in selected_pages]}")
+    else:
+        selected_pages = expand_tri_window_context(seed_pages, text_map, total_pages)
+        logger.info(f"[DOC_INTEL] 📑 Tri-Window Connected Pages (100% Active): {[p+1 for p in selected_pages]}")
     
     file_path = kwargs.get("file_path")
     final_base64_images = []

@@ -44,6 +44,7 @@ export default function ChatPage({ isGuest,
   const archiveChat = useChatStore((state) => state.archiveChat);
   const pinChat = useChatStore((state) => state.pinChat);
   const renameChat = useChatStore((state) => state.renameChat);
+  const isSplitScreen = useChatStore((state) => state.isSplitScreen);
   const {
     activeIsolatedDocId, activeIsolatedTitle, activeSessionId, artifactContent, artifacts, authUser, baselineHeightRef, bottomRef, chatHistory, chatMode, chatModeRef, currentIsLoggedIn, currentThinking, currentUserData, darkMode, defaultGetGreeting, detectLang, docContent, docSearchQuery, documents, documentsTotal, fetchDocumentsList, fileInputRef, handleChatModeChange, handleClearChat, handleDownloadAllArtifacts, handleDownloadArtifact, handleDragLeave, handleDragOver, handleDrop, handleFileChange, handleFileClick, handleKeyDown, handleOpenArtifact, handlePaste, handleSubmit, handleSelectHint, handleThinkingModeChange, hasSidebar, input, inputShake, isArtifactLoading, isAuthenticated, isDocLoading, isDragOver, isEmptyChat, isLoading, isLoadingDocuments, isMobile, isMultiLine, isResizingRightSidebar, isStreaming, isStreamingText, isThinking, isThinkingMode, isThinkingModeRef, isUploadingFile, lastAssistantIndex, lastLoadedSessionRef, language, loadChatSession, logout, mainMarginLeft, mainMarginRight, messageSearchInputRef, messages, messagesContainerRef, msgSearchQuery, navigate, previewArtifact, previewDoc, previewImage, removeFilePreview, rightSidebarWidth, selectedFiles, selectedMode, sessionAttachments, setChatHistory, setChatMode, setContextIsolation, setDarkMode, setDocContent, setDocSearchQuery, setInput, setIsArtifactLoading, setIsDocLoading, setIsDragOver, setIsMobile, setIsMultiLine, setIsThinkingMode, setIsUploadingFile, setLanguage, setMsgSearchQuery, setPreviewArtifact, setPreviewDoc, setPreviewImage, setRightSidebarWidth, setSelectedFiles, setSelectedMode, setShowDocumentList, setShowMsgSearch, setShowRightSidebar, setShowScrollBottom, setSidebarOpen, setStagedAttachments, showDocumentList, showMsgSearch, showRightSidebar, showScrollBottom, showWelcome, sidebarOpen, singleLineWidthRef, stagedAttachments, startResizingRightSidebar, storeChatMode, textareaRef, theme, toast, toggleRightSidebar, triggerLogout, validateFile, wasLeftSidebarOpenRef
   } = chatLogic;
@@ -56,6 +57,7 @@ export default function ChatPage({ isGuest,
   }));
 
   const wasLeftSidebarOpenForDocWriterRef = React.useRef(false);
+  const hasLeftSplit = (!isMobile && (isSplitScreen || (isDocWriterOpen && !isGuest && corporateMode !== 'collab')));
 
   // ── Hanya munculkan icon Dokumen Studio jika diminta via AI (seperti Image 2) & BUKAN Guest ──
   const isAiActivated = useDocWriterStore((state) => state.isAiActivated);
@@ -322,7 +324,7 @@ export default function ChatPage({ isGuest,
           display: (corporateMode === 'mail' || corporateMode === 'collab' || corporateMode === 'archive' || isAllChatsOpen) ? 'none' : 'flex',
           alignItems: "center",
           justifyContent: "space-between",
-          width: "100%",
+          width: hasLeftSplit ? "50%" : "100%",
           paddingLeft: "12px",
           paddingRight: "12px",
 
@@ -333,18 +335,18 @@ export default function ChatPage({ isGuest,
           
           pointerEvents: "none", // 🔥 Biar klik bisa tembus ke Document Interrogator di bawahnya
 
-          // Posisi tetap di atas melayang
+          // Posisi tetap di atas melayang, bergeser ke kanan saat split screen aktif
           position: "absolute",
           top: 0,
-          left: 0,
+          left: hasLeftSplit ? "50%" : 0,
           right: 0,
           zIndex: 30,
           height: "56px",
-          transition: "width 0.3s ease-in-out",
+          transition: "left 0.4s cubic-bezier(0.2, 0.8, 0.2, 1), width 0.4s cubic-bezier(0.2, 0.8, 0.2, 1)",
         }}>
 
           {/* ── BLOK KIRI: Hamburger Menu & Claude-Style Header Title ── */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', pointerEvents: 'auto' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', pointerEvents: 'auto', minWidth: 0, flexShrink: 1 }}>
             {/* ☰ HAMBURGER MENU MOBILE */}
             {isMobile && hasSidebar && (
               <button
@@ -409,6 +411,7 @@ export default function ChatPage({ isGuest,
               alignItems: "center",
               gap: "8px",
               pointerEvents: "auto",
+              flexShrink: 0,
             }}
           >
             {/* ✚ TOMBOL NEW CHAT MOBILE */}

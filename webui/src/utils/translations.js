@@ -181,6 +181,8 @@ export const translations = {
       selectedRefs: "Rujukan Terpilih",
       pages: "Halaman",
       pageAbbrev: "Hal.",
+      targetBadgePage: "Hal {pages} ({count} hal)",
+      cancelFocusTooltip: "Batalkan fokus halaman dokumen",
       liveOllamaEmbed: "Live Ollama Embed",
       isolatedBanner: {
         switchMode: "Beralih Mode Analisis",
@@ -792,6 +794,57 @@ export const translations = {
       sent: "Terkirim",
       preparingOptions: "Menyiapkan opsi interaktif..."
     },
+    docAudit: {
+      title: "Audit Dokumen Kedinasan",
+      completedBadge: "Selesai 100%",
+      batchBadge: "Batch Hal {batch}",
+      completedSubtitle: "Seluruh {totalPages} halaman telah tuntas diperiksa",
+      batchSubtitle: "Pemeriksaan Halaman {batch} dari total {totalPages} Halaman",
+      completedBox: "Audit dokumen telah selesai sepenuhnya dari Halaman 1 hingga {totalPages}.",
+      criticalFindings: "Kritis: {count}",
+      majorFindings: "Mayor: {count}",
+      minorFindings: "Minor: {count}",
+      nextBatch: "Batch berikutnya:",
+      pageRange: "Halaman {nextBatch}",
+      toEnd: "{range} s/d selesai",
+      continueBtn: "Lanjut Audit Halaman {nextBatch}",
+      processingBtn: "Sedang Memproses...",
+      completedBtn: "✓ Telah Dilanjutkan",
+      failedBtn: "⚠️ Gagal - Coba Lagi Halaman {nextBatch}",
+      promptContinue: "Lanjut audit Halaman {nextBatch}",
+      promptFallback: "Lanjutkan audit dokumen ke batch halaman selanjutnya",
+      loadingWidget: "Memuat Progres Audit..."
+    },
+    pdfInterrogator: {
+      headerTitle: "Document Interrogator",
+      pageCount: "{count} Halaman",
+      sidebarTitle: "Halaman",
+      pageBadge: "Hal {pNum}",
+      toggleSidebarShow: "Tampilkan Sidebar Thumbnail",
+      toggleSidebarHide: "Sembunyikan Sidebar Thumbnail",
+      loadingDocument: "Memuat dokumen...",
+      loadingThumbnails: "Memuat thumbnail...",
+      loading: "Memuat...",
+      unsupportedFormat: "Format file ini belum mendukung tampilan interaktif di sini.",
+      close: "Tutup",
+      askPages: "Tanya ({count}) Hal",
+      resetSelection: "Reset Pilihan",
+      selectPageTooltip: "Pilih halaman untuk interogasi",
+      unselectPageTooltip: "Batal pilih halaman",
+      sendToChatTooltip: "Kirim halaman terpilih ke bilah input chat"
+    },
+    slideDeck: {
+      changeTheme: "Ganti Tema Warna",
+      copySlide: "Salin teks slide",
+      slideCopied: "Teks slide disalin!",
+      downloadPptx: "Download PowerPoint (.pptx)",
+      fullscreenMode: "Mode Presentasi Layar Penuh",
+      exitFullscreen: "Keluar Fullscreen (Esc)",
+      prevSlide: "Slide Sebelumnya (←)",
+      nextSlide: "Slide Selanjutnya (→)",
+      goToSlide: "Pindah ke Slide {number}",
+      preparingSlides: "Menyiapkan Slide Presentasi..."
+    },
     documentPill: {
       title: "Dokumen Rujukan PT Pindad",
       sessionDocs: "Dokumen di Sesi Ini",
@@ -897,7 +950,9 @@ export const translations = {
       ANALYZING_DOC_PAGES: "🔍 Menganalisis {pages} halaman dokumen rujukan",
       SUMMARIZING_PAGES: "📑 Merangkum seluruh {pages} halaman dokumen",
       ANALYZING_CLAUSES_PAGES: "🔍 Menganalisis klausul terkait pada {pages} halaman",
-      FOUND_CLAUSE_PAGE: "📌 Ditemukan Klausul pada Halaman {pages}!"
+      FOUND_CLAUSE_PAGE: "📌 Ditemukan Klausul pada Halaman {pages}!",
+      AUDITING_PAGES: "📑 Mengaudit Dokumen: Halaman {start}–{end} dari {total} Halaman",
+      ACCESS_DENIED: "🔒 Akses Dokumen Terbatas"
     }
   },
 
@@ -1083,6 +1138,8 @@ export const translations = {
       selectedRefs: "Selected References",
       pages: "Pages",
       pageAbbrev: "Pg.",
+      targetBadgePage: "Pg {pages} ({count} pgs)",
+      cancelFocusTooltip: "Cancel document page focus",
       liveOllamaEmbed: "Live Ollama Embed",
       isolatedBanner: {
         switchMode: "Switch Analysis Mode",
@@ -1696,6 +1753,57 @@ export const translations = {
       sent: "Sent",
       preparingOptions: "Preparing interactive options..."
     },
+    docAudit: {
+      title: "Official Document Audit",
+      completedBadge: "Completed 100%",
+      batchBadge: "Batch Pages {batch}",
+      completedSubtitle: "All {totalPages} pages have been thoroughly inspected",
+      batchSubtitle: "Inspection of Pages {batch} of {totalPages} Total Pages",
+      completedBox: "Document audit fully completed from Page 1 to {totalPages}.",
+      criticalFindings: "Critical: {count}",
+      majorFindings: "Major: {count}",
+      minorFindings: "Minor: {count}",
+      nextBatch: "Next batch:",
+      pageRange: "Pages {nextBatch}",
+      toEnd: "{range} to end",
+      continueBtn: "Continue Audit Pages {nextBatch}",
+      processingBtn: "Processing...",
+      completedBtn: "✓ Continued",
+      failedBtn: "⚠️ Failed - Retry Pages {nextBatch}",
+      promptContinue: "Continue audit Pages {nextBatch}",
+      promptFallback: "Continue document audit to the next batch of pages",
+      loadingWidget: "Loading Audit Progress..."
+    },
+    pdfInterrogator: {
+      headerTitle: "Document Interrogator",
+      pageCount: "{count} Pages",
+      sidebarTitle: "Pages",
+      pageBadge: "Pg {pNum}",
+      toggleSidebarShow: "Show Thumbnail Sidebar",
+      toggleSidebarHide: "Hide Thumbnail Sidebar",
+      loadingDocument: "Loading document...",
+      loadingThumbnails: "Loading thumbnails...",
+      loading: "Loading...",
+      unsupportedFormat: "This file format does not support interactive viewing here yet.",
+      close: "Close",
+      askPages: "Ask ({count}) Pgs",
+      resetSelection: "Reset Selection",
+      selectPageTooltip: "Select page for interrogation",
+      unselectPageTooltip: "Unselect page",
+      sendToChatTooltip: "Send selected pages to chat input"
+    },
+    slideDeck: {
+      changeTheme: "Change Color Theme",
+      copySlide: "Copy slide text",
+      slideCopied: "Slide text copied!",
+      downloadPptx: "Download PowerPoint (.pptx)",
+      fullscreenMode: "Fullscreen Presentation Mode",
+      exitFullscreen: "Exit Fullscreen (Esc)",
+      prevSlide: "Previous Slide (←)",
+      nextSlide: "Next Slide (→)",
+      goToSlide: "Go to Slide {number}",
+      preparingSlides: "Preparing Slide Presentation..."
+    },
     documentPill: {
       title: "PT Pindad Reference Documents",
       sessionDocs: "Session Documents",
@@ -1801,7 +1909,9 @@ export const translations = {
       ANALYZING_DOC_PAGES: "🔍 Analyzing {pages} reference document pages",
       SUMMARIZING_PAGES: "📑 Summarizing all {pages} document pages",
       ANALYZING_CLAUSES_PAGES: "🔍 Analyzing related clauses across {pages} pages",
-      FOUND_CLAUSE_PAGE: "📌 Clause Found on Page {pages}!"
+      FOUND_CLAUSE_PAGE: "📌 Clause Found on Page {pages}!",
+      AUDITING_PAGES: "📑 Auditing Document: Pages {start}–{end} of {total} Pages",
+      ACCESS_DENIED: "🔒 Document Access Restricted"
     }
   }
 };

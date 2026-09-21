@@ -63,6 +63,8 @@ export default function ChatInputArea({
   const activeModeTag = useChatStore(state => state.activeModeTag);
   const setActiveModeTag = useChatStore(state => state.setActiveModeTag);
   const activeIsolatedDocId = useChatStore(state => state.activeIsolatedDocId);
+  const targetedPdfContext = useChatStore(state => state.targetedPdfContext);
+  const clearTargetedPdfContext = useChatStore(state => state.clearTargetedPdfContext);
 
   // Auto-expand hints whenever activeModeTag changes
   useEffect(() => {
@@ -251,6 +253,42 @@ export default function ChatInputArea({
           chatMode={chatMode}
           language={language}
         />
+
+        {/* 🎯 BADGE TARGET HALAMAN PDF INTERROGATOR */}
+        {targetedPdfContext && (
+          <div className="w-full mb-2 flex items-center justify-between px-3 py-1.5 rounded-lg border text-xs font-medium animate-fadeIn transition-all"
+            style={{
+              background: darkMode ? 'rgba(59, 130, 246, 0.12)' : 'rgba(239, 246, 255, 0.95)',
+              borderColor: darkMode ? 'rgba(59, 130, 246, 0.35)' : 'rgba(191, 219, 254, 0.9)',
+              color: darkMode ? '#93c5fd' : '#1d4ed8'
+            }}
+          >
+            <div className="flex items-center space-x-2 truncate">
+              <span className="text-sm">🎯</span>
+              <span className="font-semibold truncate max-w-[200px] sm:max-w-[320px]">
+                {targetedPdfContext.fileName || "Dokumen"}
+              </span>
+              <span className="opacity-60">•</span>
+              <span className="px-1.5 py-0.5 rounded text-[11px] font-bold bg-blue-500/20 text-blue-400">
+                {translations[language]?.chat?.targetBadgePage
+                  ? translations[language].chat.targetBadgePage
+                      .replace('{pages}', targetedPdfContext.pages?.join(', '))
+                      .replace('{count}', targetedPdfContext.pages?.length || 0)
+                  : `Hal ${targetedPdfContext.pages?.join(', ')} (${targetedPdfContext.pages?.length} hal)`}
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={clearTargetedPdfContext}
+              className={`p-1 rounded-md transition-colors ${
+                darkMode ? 'hover:bg-blue-500/20 text-blue-300' : 'hover:bg-blue-100 text-blue-600'
+              }`}
+              title={translations[language]?.chat?.cancelFocusTooltip || "Batalkan fokus halaman dokumen"}
+            >
+              <X size={14} />
+            </button>
+          </div>
+        )}
 
         <AttachmentPreview
           selectedFiles={selectedFiles}

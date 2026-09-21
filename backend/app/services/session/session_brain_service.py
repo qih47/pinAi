@@ -197,6 +197,27 @@ class SessionBrainService:
             "created_at": manifest.get("created_at"),
         }
 
+    # ─── Active Document Audit ────────────────────────────────────────────────
+    def get_active_audit(self) -> Optional[Dict[str, Any]]:
+        """Ambil metadata progres audit dokumen aktif (jika ada)."""
+        manifest = self.get_manifest()
+        return manifest.get("active_audit")
+
+    async def save_active_audit(self, audit_data: Dict[str, Any]) -> None:
+        """Simpan atau perbarui status progres audit dokumen."""
+        manifest = self.get_manifest()
+        manifest["active_audit"] = audit_data
+        self._save_manifest(manifest)
+        logger.info(f"[BRAIN] 📑 Saved active audit: doc={audit_data.get('file_name')} batch={audit_data.get('current_batch_label')}")
+
+    def clear_active_audit(self) -> None:
+        """Hapus status audit aktif setelah tuntas atau direset."""
+        manifest = self.get_manifest()
+        if "active_audit" in manifest:
+            del manifest["active_audit"]
+            self._save_manifest(manifest)
+            logger.info(f"[BRAIN] 📑 Cleared active audit for session {self.session_id}")
+
     # ─── Cleanup ──────────────────────────────────────────────────────────────
     def clear_documents(self) -> int:
         """Hapus semua cache dokumen. Return jumlah file yang dihapus."""
@@ -212,6 +233,9 @@ class SessionBrainService:
         # Reset manifest documents
         manifest = self.get_manifest()
         manifest["documents"] = {}
+        if "active_audit" in manifest:
+            del manifest["active_audit"]
         self._save_manifest(manifest)
         logger.info(f"[BRAIN] 🗑️ Dihapus {deleted} cache dokumen sesi {self.session_id}")
         return deleted
+

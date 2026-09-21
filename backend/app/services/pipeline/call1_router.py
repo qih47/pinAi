@@ -760,6 +760,36 @@ def _validate_and_normalize_routing(
         routing["query_judul"] = []
         logger.info("[CALL1] 🌐 Resolving dual-intent conflict: is_web_search takes priority over need_rag for external data")
 
+    # 🎯 SELF-CORRECTION DYNAMIC CONTEXT RESOLUTION
+    # Sanggahan/koreksi user harus adaptif terhadap domain yang sedang dibahas:
+    if routing.get("is_self_correction"):
+        last_action = str(precheck.get("last_call2_action") or "").upper()
+        active_topic_lower = str(routing.get("active_topic") or precheck.get("active_topic") or "").lower()
+        key_sub_lower = str(routing.get("key_subject") or precheck.get("key_subject") or "").lower()
+
+        has_explicit_web_req = is_explicit_web or any(w in user_msg_lower for w in ["cari di web", "googling", "search di google", "riset online", "berita luar"])
+        has_doc_audit_context = (
+            "AUDIT" in last_action or "ATTACHMENT" in last_action or "REGULASI" in last_action 
+            or "DOKUMEN" in last_action or any(w in active_topic_lower for w in ["dokumen", "audit", "regulasi", "koreksi", "typo", "halaman"])
+            or any(w in key_sub_lower for w in ["dokumen", "audit", "regulasi", "koreksi", "typo", "halaman"])
+            or any(w in user_msg_lower for w in ["typo", "tulis tangan", "tulisan tangan", "halaman", "angka", "huruf", "dokumen", "lembar", "bukan typo"])
+        )
+
+        if not has_explicit_web_req:
+            if has_doc_audit_context:
+                logger.info("[CALL1] 🛡️ Dynamic Self-Correction: Local document/audit feedback detected -> disabling is_web_search, routing to document clarification context.")
+                routing["is_web_search"] = False
+                routing["queries"] = []
+                routing["is_chitchat"] = True
+            elif "CODING" in last_action or routing.get("is_coding"):
+                logger.info("[CALL1] 🛡️ Dynamic Self-Correction: Coding context detected -> maintaining is_coding.")
+                routing["is_web_search"] = False
+                routing["is_coding"] = True
+            elif routing.get("need_rag") or "REGULASI" in last_action:
+                logger.info("[CALL1] 🛡️ Dynamic Self-Correction: Regulation context detected -> maintaining need_rag.")
+                routing["is_web_search"] = False
+                routing["need_rag"] = True
+
     # ── 🔄 UNIVERSAL BIDIRECTIONAL CONTEXT SYNCHRONIZATION (CALL 2 ➔ CALL 1) ──
     # Mengetahui profil tindakan Call 2 pada turn sebelumnya (wizard, visual, coding, chitchat, RAG)
     is_replying_to_wizard = bool(

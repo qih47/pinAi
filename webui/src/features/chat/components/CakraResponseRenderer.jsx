@@ -26,6 +26,7 @@ const LazyUrlFetchTimelineWidget = lazy(() => import('./UrlFetchTimelineWidget')
 const LazyInteractiveWizardWidget = lazy(() => import('./InteractiveWizardWidget'));
 const LazyDocWriterWidget = lazy(() => import('./DocWriterChatWidget'));
 const LazySlideDeckViewer = lazy(() => import('./SlideDeckViewer'));
+const LazyDocAuditContinueWidget = lazy(() => import('./DocAuditContinueWidget'));
 
 const remarkPluginsList = [remarkGfm, remarkMath];
 const rehypePluginsList = [rehypeKatex];
@@ -145,8 +146,8 @@ const MarkdownTable = ({ children, darkMode, theme, searchQuery, language = 'id'
 
 const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkMode, theme, searchQuery = '', statusMessage, middleContent, language = 'id', messageIndex = null, isLastMessage = false }) => {
     const tGlobal = translations[language] || translations.id;
-    const latestProps = React.useRef({ darkMode, theme, searchQuery, isStreaming, language, rawContent });
-    latestProps.current = { darkMode, theme, searchQuery, isStreaming, language, rawContent };
+    const latestProps = React.useRef({ darkMode, theme, searchQuery, isStreaming, language, rawContent, messageIndex, isLastMessage });
+    latestProps.current = { darkMode, theme, searchQuery, isStreaming, language, rawContent, messageIndex, isLastMessage };
     const thinkStartTag = "<think>";
     const thinkEndTag = "</think>";
 
@@ -508,7 +509,7 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
         // 6. BLOK KODE (Tetap seperti milik lu aslinya, super aman)
         code({ node, inline, className, children, ...props }) {
             const { darkMode, theme, searchQuery, isStreaming, language } = latestProps.current;
-            const match = /language-(\w+)/.exec(className || '');
+            const match = /language-([\w-]+)/.exec(className || '');
             const cleanCode = String(children).replace(/\n$/, '');
 
             // Cegah leak blok wizard mentah ke UI syntax highlighter
@@ -649,9 +650,34 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
             }
 
             if (!inline && match && (match[1] === 'slides' || match[1] === 'slide' || match[1] === 'presentation' || match[1] === 'slidedeck')) {
+                const { darkMode, language } = latestProps.current;
+                const tSlide = translations[language]?.slideDeck || translations.id.slideDeck || {};
                 return (
-                    <Suspense fallback={<div className="animate-pulse p-8 border border-dashed rounded-xl text-sm text-center font-medium my-4">Menyiapkan Slide Presentasi...</div>}>
-                        <LazySlideDeckViewer rawContent={cleanCode} darkMode={darkMode} />
+                    <Suspense fallback={<div className="animate-pulse p-8 border border-dashed rounded-xl text-sm text-center font-medium my-4">{tSlide.preparingSlides || "Menyiapkan Slide Presentasi..."}</div>}>
+                        <LazySlideDeckViewer rawContent={cleanCode} darkMode={darkMode} language={language} />
+                    </Suspense>
+                );
+            }
+
+            if (!inline && match && (
+                match[1] === 'doc-audit-continue' || 
+                match[1] === 'docauditcontinue' || 
+                match[1] === 'audit-continue' ||
+                match[1] === 'doc-audit-final' ||
+                match[1] === 'docauditfinal' ||
+                match[1] === 'audit-final'
+            )) {
+                const { darkMode, language, messageIndex, isLastMessage } = latestProps.current;
+                const tAudit = translations[language]?.docAudit || translations.id.docAudit || {};
+                return (
+                    <Suspense fallback={<div className="animate-pulse p-4 border border-dashed rounded-xl text-xs text-center font-medium my-3">{tAudit.loadingWidget || "Memuat Progres Audit..."}</div>}>
+                        <LazyDocAuditContinueWidget 
+                            rawContent={cleanCode} 
+                            darkMode={darkMode}
+                            messageIndex={messageIndex}
+                            isLastMessage={isLastMessage}
+                            language={language}
+                        />
                     </Suspense>
                 );
             }

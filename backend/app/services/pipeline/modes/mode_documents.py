@@ -80,7 +80,8 @@ class ModeDocuments:
             from backend.app.services.rag.reranker_service import reranker_service
             from backend.app.services.pipeline.document_intelligence import (
                 extract_and_ocr_document_async,
-                expand_tri_window_context
+                expand_tri_window_context,
+                extract_explicit_pages_from_query
             )
             
             query_judul_list = routing_data.get("query_judul") or []
@@ -581,12 +582,29 @@ class ModeDocuments:
                         connected_pages_per_doc[d_id] = expanded_indices
                         logger.info(f"[MODE_DOCUMENTS] Doc {d_id} Expanded Pages: {expanded_indices} (from seeds: {seed_indices})")
 
+                    # 🎯 TARGETED EXPLICIT PAGE FOCUS CHECK:
+                    # Jika user secara eksplisit menyebutkan nomor halaman tertentu dalam query
+                    # (misalnya melalui Document Interrogator badge [Fokus Dokumen ... Halaman 5] atau "halaman 5"),
+                    # fokus HANYA pada halaman yang diminta dan hindari full-document injection!
+                    explicit_pages_per_doc = {}
+                    for doc in full_read_docs:
+                        d_id = doc.get("id")
+                        t_map = doc_text_maps.get(d_id, [])
+                        exp_pages = extract_explicit_pages_from_query(user_message, total_pages=len(t_map))
+                        if exp_pages:
+                            explicit_pages_per_doc[d_id] = sorted(list(exp_pages))
+                            connected_pages_per_doc[d_id] = explicit_pages_per_doc[d_id]
+                            logger.info(f"[MODE_DOCUMENTS] 🎯 [PAGE-FOCUS] Explicit targeted pages for Doc {d_id}: {explicit_pages_per_doc[d_id]} (bypassing full read)")
+
                     # 🧠 ADAPTIVE BRAIN-FIRST FULL INCLUSION:
                     # Untuk dokumen aktif sesi dari Brain yang berukuran <= 30 halaman,
                     # sertakan seluruh halamannya secara utuh HANYA jika dokumen tersebut adalah satu-satunya dokumen
                     # atau dokumen tersebut memang memiliki seed yang relevan dengan pertanyaan user!
+                    # PENTING: Jangan timpa jika user sudah menargetkan halaman spesifik.
                     for doc in full_read_docs:
                         d_id = doc.get("id")
+                        if d_id in explicit_pages_per_doc:
+                            continue
                         t_map = doc_text_maps.get(d_id, [])
                         if doc.get("_from_session_brain") and len(t_map) <= 30:
                             if len(full_read_docs) == 1 or d_id in seeds_by_doc:

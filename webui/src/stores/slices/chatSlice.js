@@ -39,9 +39,14 @@ export const createChatSlice = (set, get) => ({
             ghostWriterContent: "",
             sessionAttachments: [],
             activeWizard: null,
-            wizardAnswers: {}
+            wizardAnswers: {},
+            targetedPdfContext: null
         });
     },
+
+    targetedPdfContext: null, // { fileName: string, url: string, pages: number[] }
+    setTargetedPdfContext: (ctx) => set({ targetedPdfContext: ctx }),
+    clearTargetedPdfContext: () => set({ targetedPdfContext: null }),
 
     setContextIsolation: (docId, docTitle, mode = null, meta = null) => {
         set((state) => {

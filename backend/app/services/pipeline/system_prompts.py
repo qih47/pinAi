@@ -16,7 +16,8 @@ from .prompts.rag_prompts import (
     build_response_prompt_multi_document,
     build_response_prompt_analytic,
     build_attachment_system_prompt,
-    build_response_prompt_self_correction
+    build_response_prompt_self_correction,
+    build_doc_audit_system_prompt
 )
 from .prompts.file_prompts import (
     build_generate_file_call1_prompt,

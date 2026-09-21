@@ -1077,9 +1077,17 @@ export function useChatLogic({ isGuest,
       };
     }
 
+    const targetedPdfContext = useChatStore.getState().targetedPdfContext;
+    let finalInputText = input;
+    if (targetedPdfContext && targetedPdfContext.pages?.length > 0) {
+      const pageStr = targetedPdfContext.pages.join(', ');
+      finalInputText = `[Fokus Dokumen "${targetedPdfContext.fileName}" Halaman ${pageStr}]: ${input.trim()}`;
+      useChatStore.getState().clearTargetedPdfContext();
+    }
+
     // PERBAIKAN UTAMA: Meneruskan data berkas yang berhasil diunggah langsung ke fungsi sendMessage
     sendMessage(
-      input,
+      finalInputText,
       isGuest ? null : currentUserData?.npp,
       isGuest
         ? null

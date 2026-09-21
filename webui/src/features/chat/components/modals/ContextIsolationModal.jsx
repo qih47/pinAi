@@ -139,6 +139,7 @@ export default function ContextIsolationModal({
 }) {
   const t = translations[language]?.contextModal || translations.id.contextModal;
   const tChat = translations[language]?.chat || translations.id.chat;
+  const tPdf = translations[language]?.pdf || translations.id.pdf || {};
 
   const [docSearchQuery, setDocSearchQuery] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -1206,7 +1207,7 @@ export default function ContextIsolationModal({
                 </span>
                 {previewNumPages && (
                   <span style={{ fontSize: "12px", color: darkMode ? "#9ca3af" : "#6b7280", whiteSpace: "nowrap" }}>
-                    {previewViewMode === 'page' ? `Hal. ${previewPageNumber}/${previewNumPages}` : `${previewNumPages} Halaman`}
+                    {previewViewMode === 'page' ? `${tPdf.page || 'Hal'}. ${previewPageNumber}/${previewNumPages}` : `${previewNumPages} ${tPdf.pages || (language === 'en' ? 'Pages' : 'Halaman')}`}
                   </span>
                 )}
               </div>
@@ -1266,7 +1267,7 @@ export default function ContextIsolationModal({
                       cursor: "pointer",
                     }}
                   >
-                    {previewViewMode === 'scroll' ? "Gulir" : "Halaman"}
+                    {previewViewMode === 'scroll' ? (tPdf.modeScroll || "Gulir") : (tPdf.modePage || (language === 'en' ? "Page" : "Halaman"))}
                   </button>
                 )}
 
@@ -1354,8 +1355,8 @@ export default function ContextIsolationModal({
                     setPreviewPageNumber(1);
                   }}
                   loading={
-                    <div style={{ display: "flex", justifyContent: "center", alignItems: "center", height: "100%", color: darkMode ? "#9ca3af" : "#64748b" }}>
-                      Memuat halaman PDF...
+                    <div style={{ display: "flex", justifyContent: "center", alignItems: "center", height: "100%", color: darkMode ? "#9ca3af" : "#6b7280" }}>
+                      {t.loadingPdfPages || (language === 'en' ? "Loading PDF pages..." : "Memuat halaman PDF...")}
                     </div>
                   }
                   error={
