@@ -3,8 +3,8 @@ import { Globe, ChevronDown, ChevronUp, Clock, CheckCircle2 } from 'lucide-react
 import { translations } from '../../../utils/translations';
 
 const WebSearchWidget = ({ searchData, isStreaming, hasStartedResponding, darkMode = true, language = 'id' }) => {
-    // Open by default if streaming and hasn't started responding.
-    const [isOpen, setIsOpen] = useState(true);
+    // Terbuka HANYA saat aktif live streaming dan belum mulai merespons teks
+    const [isOpen, setIsOpen] = useState(() => Boolean(isStreaming && !hasStartedResponding));
     const [elapsedSec, setElapsedSec] = useState(0);
 
     const t = translations[language]?.webSearch || translations.id.webSearch;
@@ -31,8 +31,11 @@ const WebSearchWidget = ({ searchData, isStreaming, hasStartedResponding, darkMo
     }, [isLoading]);
 
     useEffect(() => {
+        // Jika TIDAK sedang streaming (misal reload halaman atau riwayat lama), jangan ubah state & jangan pasang timer
+        if (!isStreaming) return;
+
         if (isSearchComplete) {
-            // Beri jeda 800ms agar mata user sempat melihat status 'Selesai' (centang hijau) sebelum accordion menutup
+            // Beri jeda 800ms saat live stream agar user sempat melihat status 'Selesai' sebelum menutup otomatis
             const timer = setTimeout(() => {
                 setIsOpen(false);
             }, 800);
@@ -40,7 +43,7 @@ const WebSearchWidget = ({ searchData, isStreaming, hasStartedResponding, darkMo
         } else {
             setIsOpen(true);
         }
-    }, [isSearchComplete]);
+    }, [isSearchComplete, isStreaming]);
 
     if (!searchData && !isStreaming) return null;
     

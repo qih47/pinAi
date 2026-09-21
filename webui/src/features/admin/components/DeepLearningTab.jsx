@@ -564,8 +564,8 @@ const DeepLearningTab = () => {
           </div>
         )}
 
-        {/* 5-Worker Status Strip */}
-        <div className="mt-4 pt-3 border-t border-indigo-900/40 grid grid-cols-2 sm:grid-cols-5 gap-2 text-xs">
+        {/* 6-Worker Status Strip */}
+        <div className="mt-4 pt-3 border-t border-indigo-900/40 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 text-xs">
           <div className="bg-slate-900/80 border border-slate-800 rounded-lg p-2 flex flex-col">
             <span className="text-[10px] text-slate-400 font-medium">Worker 1: Text RAG</span>
             <span className="font-bold text-cyan-400 flex items-center gap-1 mt-0.5">
@@ -598,11 +598,19 @@ const DeepLearningTab = () => {
             </span>
           </div>
 
-          <div className="bg-slate-900/80 border border-slate-800 rounded-lg p-2 flex flex-col col-span-2 sm:col-span-1">
+          <div className="bg-slate-900/80 border border-slate-800 rounded-lg p-2 flex flex-col">
             <span className="text-[10px] text-slate-400 font-medium">Worker 5: LoRA Adapter</span>
             <span className="font-bold text-pink-400 flex items-center gap-1 mt-0.5">
               <span className={`w-1.5 h-1.5 rounded-full ${nightlyStatus?.workers?.w5_lora === 'RUNNING' ? 'bg-pink-400 animate-ping' : 'bg-slate-500'}`} />
               {nightlyStatus?.workers?.w5_lora || 'STANDBY'}
+            </span>
+          </div>
+
+          <div className="bg-slate-900/80 border border-slate-800 rounded-lg p-2 flex flex-col">
+            <span className="text-[10px] text-slate-400 font-medium">Worker 6: Multi-Skill</span>
+            <span className="font-bold text-rose-400 flex items-center gap-1 mt-0.5">
+              <span className={`w-1.5 h-1.5 rounded-full ${nightlyStatus?.workers?.w6_agentic === 'RUNNING' ? 'bg-rose-400 animate-ping' : 'bg-slate-500'}`} />
+              {nightlyStatus?.workers?.w6_agentic || 'STANDBY'}
             </span>
           </div>
         </div>
@@ -925,6 +933,21 @@ const DeepLearningTab = () => {
                       {liveMonitor?.artifacts?.lora_samples?.length || 0}
                     </span>
                   </button>
+
+                  <button
+                    onClick={() => setMonitorTab('agentic')}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                      monitorTab === 'agentic'
+                        ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40 shadow-sm'
+                        : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800/60'
+                    }`}
+                  >
+                    <Sparkles size={13} />
+                    Agentic (W6)
+                    <span className="ml-1 px-1.5 py-0.2 rounded-full text-[9px] bg-slate-800 text-rose-400 font-mono">
+                      {liveMonitor?.artifacts?.agentic_samples?.length || 0}
+                    </span>
+                  </button>
                 </div>
               </div>
 
@@ -935,7 +958,7 @@ const DeepLearningTab = () => {
                   <div className="px-3 py-2 bg-slate-950/80 border-b border-gray-800 flex items-center justify-between text-xs flex-wrap gap-2">
                     <div className="flex items-center gap-1 flex-wrap">
                       <span className="text-[10px] text-gray-500 font-medium mr-1">Filter:</span>
-                      {['ALL', 'W1-TEXT', 'W2-QA', 'W3-GRAPH', 'W4-VISION', 'W5-LORA', 'SYSTEM'].map(pill => (
+                      {['ALL', 'W1-TEXT', 'W2-QA', 'W3-GRAPH', 'W4-VISION', 'W5-LORA', 'W6-AGENTIC', 'SYSTEM'].map(pill => (
                         <button
                           key={pill}
                           onClick={() => setWorkerFilter(pill)}
@@ -1298,6 +1321,93 @@ const DeepLearningTab = () => {
                           <pre className="text-[11px] text-slate-300 font-mono bg-black/90 p-3 rounded-lg border border-gray-800 overflow-x-auto custom-scrollbar">
                             {typeof lora === 'object' ? JSON.stringify(lora, null, 2) : lora}
                           </pre>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* ── TAB 7: AGENTIC MULTI-SKILL NON-RAG ARTIFACTS (WORKER 6) ── */}
+              {monitorTab === 'agentic' && (
+                <div className="flex-1 flex flex-col overflow-hidden bg-slate-950/50">
+                  <div className="p-3 border-b border-gray-800 bg-slate-950/90 flex items-center justify-between">
+                    <div>
+                      <h4 className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
+                        <Sparkles className="w-3.5 h-3.5 text-rose-400" />
+                        Agentic Multi-Skill & Non-RAG Training Samples (Worker 6)
+                      </h4>
+                      <p className="text-[10px] text-gray-400 mt-0.5">
+                        Sampel latih sintetis di luar regulasi internal (Web Search, Coding, Corporate Tools, Map, Wizard, Chitchat) untuk keseimbangan model.
+                      </p>
+                    </div>
+                    <span className="px-2 py-0.5 rounded bg-rose-950 border border-rose-800 text-rose-300 text-xs font-bold font-mono">
+                      {liveMonitor?.artifacts?.agentic_samples?.length || 0} Samples
+                    </span>
+                  </div>
+
+                  <div className="flex-1 p-4 overflow-y-auto space-y-4 custom-scrollbar">
+                    {(!liveMonitor?.artifacts?.agentic_samples || liveMonitor.artifacts.agentic_samples.length === 0) ? (
+                      <div className="h-full flex flex-col items-center justify-center text-gray-500 text-xs">
+                        <Sparkles className="w-8 h-8 mb-2 opacity-30 text-rose-400" />
+                        <p>Belum ada sampel data Agentic Non-RAG yang diproduksi untuk bentangan saat ini.</p>
+                      </div>
+                    ) : (
+                      liveMonitor.artifacts.agentic_samples.map((ag, idx) => (
+                        <div key={idx} className="p-4 bg-slate-900/90 border border-rose-900/30 rounded-xl space-y-3">
+                          <div className="flex items-center justify-between text-xs">
+                            <div className="flex items-center gap-2">
+                              <span className="px-2 py-0.5 rounded bg-rose-950 text-rose-300 font-mono font-bold text-[10px] border border-rose-800 uppercase">
+                                {ag.domain || 'NON_RAG'}
+                              </span>
+                              <span className="text-[11px] text-slate-400 font-semibold">
+                                Sample #{idx + 1}
+                              </span>
+                            </div>
+                            <button
+                              onClick={() => copyToClipboard(ag, `agentic_${idx}`)}
+                              className="text-[10px] text-gray-400 hover:text-white flex items-center gap-1 font-mono"
+                            >
+                              {copiedKey === `agentic_${idx}` ? <Check size={11} className="text-emerald-400" /> : <Copy size={11} />}
+                              Copy JSON
+                            </button>
+                          </div>
+
+                          {/* Query Box */}
+                          <div className="bg-slate-950/70 p-2.5 rounded-lg border border-gray-800/80">
+                            <span className="text-[10px] font-bold text-cyan-400 uppercase tracking-wider block mb-1">
+                              Instruction / User Query
+                            </span>
+                            <p className="text-xs text-slate-200 font-medium">{ag.query}</p>
+                          </div>
+
+                          {/* Router JSON Target */}
+                          {ag.router_json && (
+                            <div className="bg-slate-950/70 p-2.5 rounded-lg border border-purple-900/30">
+                              <span className="text-[10px] font-bold text-purple-400 uppercase tracking-wider block mb-1">
+                                Call 1 Router Target (Deterministik JSON e4b)
+                              </span>
+                              <pre className="text-[10px] text-purple-200 font-mono bg-black/80 p-2 rounded overflow-x-auto custom-scrollbar">
+                                {JSON.stringify(ag.router_json, null, 2)}
+                              </pre>
+                            </div>
+                          )}
+
+                          {/* Thought CoT & Response */}
+                          <div className="bg-slate-950/70 p-2.5 rounded-lg border border-emerald-900/30">
+                            <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider block mb-1">
+                              Call 2 Core Response & CoT (&lt;think&gt;)
+                            </span>
+                            {ag.thought && (
+                              <div className="mb-2 p-2 bg-emerald-950/30 border border-emerald-900/40 rounded text-[11px] text-emerald-300/90 font-mono whitespace-pre-wrap">
+                                <span className="font-bold block text-[10px] text-emerald-400">🧠 Reasoning CoT:</span>
+                                {ag.thought}
+                              </div>
+                            )}
+                            <div className="p-2 bg-black/60 rounded text-xs text-slate-300 whitespace-pre-wrap">
+                              {ag.response}
+                            </div>
+                          </div>
                         </div>
                       ))
                     )}

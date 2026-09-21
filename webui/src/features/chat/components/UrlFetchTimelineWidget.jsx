@@ -3,13 +3,16 @@ import { ChevronDown, ChevronUp, ExternalLink, Clock } from 'lucide-react';
 import { translations } from '../../../utils/translations';
 
 const UrlFetchTimelineWidget = ({ data, isStreaming, hasStartedResponding, darkMode = true, language = 'id' }) => {
-    // Open by default if streaming and hasn't started responding.
-    const [isOpen, setIsOpen] = useState(true);
+    // Terbuka HANYA saat aktif live streaming dan belum mulai merespons teks
+    const [isOpen, setIsOpen] = useState(() => Boolean(isStreaming && !hasStartedResponding));
 
     const t = translations[language]?.webSearch || translations.id.webSearch;
 
     useEffect(() => {
-        if (hasStartedResponding || (!isStreaming && hasStartedResponding)) {
+        // Jika TIDAK sedang streaming (reload / riwayat), biarkan tetap tertutup default
+        if (!isStreaming) return;
+
+        if (hasStartedResponding) {
             setIsOpen(false);
         } else {
             setIsOpen(true);

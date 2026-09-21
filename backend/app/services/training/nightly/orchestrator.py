@@ -59,7 +59,8 @@ class NightlyTrainingOrchestrator:
             "w2_qa": "IDLE",
             "w3_graph": "IDLE",
             "w4_vision": "IDLE",
-            "w5_lora": "IDLE"
+            "w5_lora": "IDLE",
+            "w6_agentic": "IDLE"
         }
         self.started_at: Optional[str] = None
         self.latest_log: str = "Menunggu trigger..."
@@ -74,7 +75,9 @@ class NightlyTrainingOrchestrator:
             "chunks": [],
             "qa_pairs": [],
             "graph_triplets": [],
-            "lora_samples": []
+            "visual_diagrams": [],
+            "lora_samples": [],
+            "agentic_samples": []
         }
 
     @property
@@ -346,13 +349,14 @@ class NightlyTrainingOrchestrator:
                 spread_images_b64 = spread_data.get("images_b64") or spread_data.get("spread_images_b64", [])
                 raw_text = spread_data.get("raw_text", "")
 
-                # 4. Jalankan 5 Worker secara paralel memanfaatkan 4 slot Ollama (-np 4)
+                # 4. Jalankan 6 Worker secara paralel memanfaatkan 4 slot Ollama (-np 4)
                 self.worker_states = {
                     "w1_text": "RUNNING",
                     "w2_qa": "RUNNING",
                     "w3_graph": "RUNNING",
                     "w4_vision": "RUNNING",
-                    "w5_lora": "PENDING"
+                    "w5_lora": "PENDING",
+                    "w6_agentic": "RUNNING"
                 }
 
                 log_cb = self.add_terminal_log
@@ -389,8 +393,16 @@ class NightlyTrainingOrchestrator:
                     raw_text=raw_text,
                     log_cb=log_cb
                 )
+                # Task 6: Multi-Skill Agentic Non-RAG Synthetic Generator (Gemma-4 31B)
+                t6 = self.coordinator.run_worker6_agentic_generator(
+                    dokumen_id=dokumen_id,
+                    spread_label=spread_label,
+                    doc_title=judul,
+                    raw_text=raw_text,
+                    log_cb=log_cb
+                )
 
-                results = await asyncio.gather(t1, t2, t3, t4, return_exceptions=True)
+                results = await asyncio.gather(t1, t2, t3, t4, t6, return_exceptions=True)
 
                 # Validasi hasil paralel
                 w1_res = results[0] if not isinstance(results[0], Exception) else {"count": 0, "items": []}
@@ -408,15 +420,19 @@ class NightlyTrainingOrchestrator:
                 w4_chunks = w4_res.get("visual_chunks", 0) if isinstance(w4_res, dict) else 0
                 w4_items = w4_res.get("items", []) if isinstance(w4_res, dict) else []
 
+                w6_agentic = results[4] if not isinstance(results[4], Exception) else []
+
                 for i, res in enumerate(results):
                     if isinstance(res, Exception):
-                        logger.error(f"❌ [WORKER_PARALLEL_ERROR] Worker {i+1} error: {res}")
-                        self.add_terminal_log(f"W{i+1}", "ERROR", f"Error pada worker {i+1}: {str(res)}")
+                        worker_lbl = f"W{i+1}" if i < 4 else "W6"
+                        logger.error(f"❌ [WORKER_PARALLEL_ERROR] {worker_lbl} error: {res}")
+                        self.add_terminal_log(worker_lbl, "ERROR", f"Error pada {worker_lbl}: {str(res)}")
 
                 self.worker_states["w1_text"] = "DONE"
                 self.worker_states["w2_qa"] = "DONE"
                 self.worker_states["w3_graph"] = "DONE"
                 self.worker_states["w4_vision"] = "DONE"
+                self.worker_states["w6_agentic"] = "DONE"
 
                 for qa in w2_qa[:2]:
                     self.add_terminal_log("W2_QA", "INFO", f"  • Highlight: \"{qa.get('question')}\"")
@@ -427,9 +443,19 @@ class NightlyTrainingOrchestrator:
                 for vis in w4_items[:2]:
                     self.add_terminal_log("W4_VISION", "INFO", f"  • Visual: [{vis.get('type')}] {vis.get('title', '')[:50]}")
 
-                # Task 5: LoRA Fine-Tuning dataset ingest
+                for ag in w6_agentic[:2]:
+                    dom = ag.get("domain", "NON_RAG")
+                    q_snip = ag.get("query", "")[:50]
+                    self.add_terminal_log("W6_AGENTIC", "INFO", f"  • Non-RAG [{dom}]: \"{q_snip}...\"")
+
+                # Task 5: LoRA Fine-Tuning dataset ingest (RAG Q&A + Agentic Non-RAG)
                 self.worker_states["w5_lora"] = "RUNNING"
-                w5_res = await self.coordinator.run_worker5_lora_ingest(dokumen_id, w2_qa, log_cb=log_cb)
+                w5_res = await self.coordinator.run_worker5_lora_ingest(
+                    dokumen_id, 
+                    w2_qa, 
+                    agentic_samples=w6_agentic, 
+                    log_cb=log_cb
+                )
                 w5_count = w5_res.get("count", 0) if isinstance(w5_res, dict) else (w5_res if isinstance(w5_res, int) else 0)
                 w5_samples = w5_res.get("samples", []) if isinstance(w5_res, dict) else []
                 self.worker_states["w5_lora"] = "DONE"
@@ -447,7 +473,8 @@ class NightlyTrainingOrchestrator:
                     "qa_pairs": w2_qa,
                     "graph_triplets": w3_triplets,
                     "visual_diagrams": w4_items,
-                    "lora_samples": w5_samples
+                    "lora_samples": w5_samples,
+                    "agentic_samples": w6_agentic
                 }
 
                 # 5. Commit Checkpoint Bentangan Halaman
