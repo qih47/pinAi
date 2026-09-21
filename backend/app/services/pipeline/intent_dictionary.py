@@ -169,7 +169,7 @@ def extract_slang_mirror(text: str, user_pronoun: str = "formal_saya_anda") -> O
     target_dicts = [_lvl1_compiled]
     if user_pronoun == "familiar_aku_kamu":
         target_dicts.append(_lvl2_compiled)
-    elif user_pronoun == "informal_gue_lo":
+    elif user_pronoun in ["informal_gue_lo", "adaptive_mirroring"]:
         target_dicts.extend([_lvl2_compiled, _lvl3_compiled])
 
     for g_dict in target_dicts:

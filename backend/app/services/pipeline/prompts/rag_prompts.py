@@ -396,6 +396,8 @@ def build_response_prompt_rag(
         employee_name=employee_name,
         mode_title="REGULASI & DOKUMEN INTERNAL",
         pronoun=precheck.get("pronoun", "unknown"),
+        user_default_pronoun=precheck.get("user_default_pronoun"),
+        slang_mirror=precheck.get("slang_mirror"),
         tone_hint=precheck.get("tone_hint", "casual"),
         is_thinking=is_thinking,
         rag_context=rag_context[:_RAG_CONTEXT_MAX_CHARS] if rag_context else "",
@@ -415,6 +417,8 @@ def build_response_prompt_multi_document(
         employee_name=employee_name,
         mode_title="ANALISIS SILANG MULTIPLE DOKUMEN",
         pronoun=precheck.get("pronoun", "unknown"),
+        user_default_pronoun=precheck.get("user_default_pronoun"),
+        slang_mirror=precheck.get("slang_mirror"),
         tone_hint=precheck.get("tone_hint", "casual"),
         is_thinking=is_thinking,
         rag_context=rag_context[:_RAG_CONTEXT_MAX_CHARS] if rag_context else "",
@@ -432,6 +436,8 @@ def build_response_prompt_analytic(
         employee_name=employee_name,
         mode_title="DATA ANALYTIC & LOGICAL REASONING",
         pronoun=precheck.get("pronoun", "unknown"),
+        user_default_pronoun=precheck.get("user_default_pronoun"),
+        slang_mirror=precheck.get("slang_mirror"),
         tone_hint=precheck.get("tone_hint", "casual"),
         is_thinking=is_thinking
     )
@@ -452,6 +458,8 @@ def build_response_prompt_self_correction(
         employee_name=employee_name,
         mode_title="SELF-CORRECTION (MENGAKUI KESALAHAN)",
         pronoun=precheck.get("pronoun", "unknown"),
+        user_default_pronoun=precheck.get("user_default_pronoun"),
+        slang_mirror=precheck.get("slang_mirror"),
         tone_hint=precheck.get("tone_hint", "casual"),
         is_thinking=is_thinking
     )

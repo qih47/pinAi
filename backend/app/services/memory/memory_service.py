@@ -17,10 +17,16 @@ class MemoryService:
     def __init__(self):
         logger.info("[MEMORY_SERVICE_INIT] Memory management service initialized.")
 
-    async def get_employee_long_term_memory(self, npp: str, current_session_uuid: Optional[str] = None) -> str:
+    async def get_employee_long_term_memory(
+        self, 
+        npp: str, 
+        current_session_uuid: Optional[str] = None,
+        include_past_sessions: bool = True
+    ) -> str:
         """
         Menarik ringkasan memori masa lalu terkait pegawai berdasarkan NPP.
         Hasilnya bakal disuntikkan ke System Prompt agar AI ingat preferensi user dan topik obrolan di sesi lain.
+        Jika include_past_sessions=False, hanya memori profil inti yang diambil (hemat token untuk chitchat).
         """
         if npp == "GUEST" or not npp:
             return ""
@@ -37,8 +43,9 @@ class MemoryService:
                 rows = await conn.fetch(query, npp)
                 summaries = [f"{row['mem_key']}: {row['mem_value']}" for row in rows] if rows else []
 
-                # 2. 🔥 REAL-TIME CROSS-SESSION SYNC: Ambil topik dari 4 sesi obrolan terbaru milik user (selain sesi aktif saat ini)
-                recent_sessions = await conn.fetch("""
+                # 2. 🔥 REAL-TIME CROSS-SESSION SYNC: Ambil topik dari 4 sesi obrolan terbaru jika diizinkan
+                if include_past_sessions:
+                    recent_sessions = await conn.fetch("""
                     SELECT s.session_uuid, s.judul, s.memory_summary, s.started_at,
                            (SELECT m.message_text 
                             FROM chat_messages m 

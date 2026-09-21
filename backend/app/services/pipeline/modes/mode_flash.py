@@ -71,12 +71,23 @@ class ModeFlash:
         # Inject Employee Long-Term Memory (ai_memory & cross-session topics)
         if current_user_npp and current_user_npp != "GUEST":
             from backend.app.services.memory.memory_service import memory_service
-            employee_memory = await memory_service.get_employee_long_term_memory(current_user_npp, current_session_uuid=session_uuid)
+            # Khusus chitchat: jika tidak ada indikasi recall masa lalu, jangan dump 4 sesi lama ke prompt
+            is_recall = bool(routing_data and (routing_data.get("is_cross_session_recall") or routing_data.get("is_memory_recall")))
+            include_past = True if (module_name != "chitchat" or is_recall) else False
+            employee_memory = await memory_service.get_employee_long_term_memory(
+                current_user_npp, 
+                current_session_uuid=session_uuid,
+                include_past_sessions=include_past
+            )
             if employee_memory:
                 system_prompt += employee_memory
 
         # Inject Session Context (ai_document_chunks) — On-Demand atau Manifest
-        session_chunks = routing_data.get("_retrieved_session_chunks_text") or routing_data.get("_session_chunks_text", "")
+        # Khusus chitchat: jangan bawa teks mentah scraping URL lampau kecuali jika router meminta on-demand
+        if module_name == "chitchat":
+            session_chunks = routing_data.get("_retrieved_session_chunks_text", "")
+        else:
+            session_chunks = routing_data.get("_retrieved_session_chunks_text") or routing_data.get("_session_chunks_text", "")
         if session_chunks:
             system_prompt += "\n\n" + session_chunks
 
@@ -110,6 +121,10 @@ class ModeFlash:
         else:
             trimmed_messages = messages_dict[-6:] if len(messages_dict) > 6 else messages_dict
         
+        # Rampingkan balasan asisten yang terlalu panjang di putaran sebelumnya (hemat KV cache & prefill)
+        from backend.app.services.pipeline.modes.mode_utils import compact_history_messages
+        trimmed_messages = compact_history_messages(trimmed_messages, max_assistant_chars=600 if module_name != "chitchat" else 400)
+
         # 🛡️ ANTI-PRIMING: Bersihkan kata ganti asisten di riwayat jika mode Formal / Akrab aktif
         active_pronoun = routing_data.get("pronoun", "formal_saya_anda") if routing_data else "formal_saya_anda"
         trimmed_messages = sanitize_history_for_pronoun(trimmed_messages, active_pronoun)

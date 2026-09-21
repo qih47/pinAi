@@ -71,6 +71,8 @@ def build_response_prompt_coding(
         employee_name=employee_name,
         mode_title="CODING & TECHNICAL EXPERT",
         pronoun=precheck.get("pronoun", "unknown"),
+        user_default_pronoun=precheck.get("user_default_pronoun"),
+        slang_mirror=precheck.get("slang_mirror"),
         tone_hint=precheck.get("tone_hint", "casual"),
         is_ambiguous=precheck.get("is_ambiguous", False),
         is_thinking=is_thinking

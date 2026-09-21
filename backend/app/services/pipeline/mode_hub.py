@@ -78,7 +78,13 @@ class ModeHub:
         from backend.app.services.memory.memory_service import memory_service
         user_default_pronoun = await memory_service.get_employee_communication_preference(current_user_npp) if current_user_npp else "formal_saya_anda"
 
-        precheck = detect_precheck(user_message, chat_mode, has_attachment, user_default_pronoun=user_default_pronoun)
+        precheck = detect_precheck(
+            user_message, 
+            chat_mode, 
+            has_attachment, 
+            user_default_pronoun=user_default_pronoun,
+            chat_history=chat_history
+        )
         precheck["_user_message"] = user_message
         precheck["user_default_pronoun"] = user_default_pronoun
         precheck["client_context"] = client_context
@@ -954,7 +960,16 @@ class ModeHub:
                 if precheck.get("tone_hint") == "formal":
                     precheck["tone_hint"] = "casual"
         elif user_default_pronoun == "adaptive_mirroring":
-            precheck["slang_mirror"] = extract_slang_mirror(user_message, user_pronoun=precheck.get("pronoun", "formal_saya_anda"))
+            precheck["user_default_pronoun"] = "adaptive_mirroring"
+            # Prioritaskan pronoun yang sudah terdeteksi dari pesan / kontinuitas history
+            detected = precheck.get("pronoun")
+            if detected in ["informal_gue_lo", "familiar_aku_kamu", "formal_saya_anda"]:
+                pass
+            elif router_pronoun in ["informal_gue_lo", "familiar_aku_kamu", "formal_saya_anda"]:
+                precheck["pronoun"] = router_pronoun
+            else:
+                precheck["pronoun"] = "adaptive_mirroring"
+            precheck["slang_mirror"] = extract_slang_mirror(user_message, user_pronoun="adaptive_mirroring")
         elif router_pronoun:
             precheck["pronoun"] = router_pronoun
 
