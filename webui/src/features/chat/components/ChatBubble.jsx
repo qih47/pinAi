@@ -114,6 +114,21 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
         }
     }, [idx, regenerateAssistant, editAndRegenerate]);
 
+    const handleContinue = useCallback(() => {
+        const store = useChatStore.getState();
+        const send = store.sendMessage;
+        if (send) {
+            send(
+                tChat.continueResponse || "Lanjutkan",
+                store.userNpp,
+                null,
+                null,
+                store.chatMode || 'auto',
+                store.isThinkingMode !== undefined ? store.isThinkingMode : true
+            );
+        }
+    }, [tChat.continueResponse]);
+
     // TTS Audio State
     const [isAudioLoading, setIsAudioLoading] = useState(false);
     const [isAudioPlaying, setIsAudioPlaying] = useState(false);
@@ -965,6 +980,44 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
                         )}
 
                     </div>
+
+                    {/* ── TOMBOL LANJUTKAN (SIMPLE & MODERN) ── */}
+                    {!isThisMessageStreaming && (msg.is_truncated || msg.metadata?.is_truncated) && (
+                        <div style={{ marginTop: '8px', marginBottom: '6px' }}>
+                            <button
+                                type="button"
+                                onClick={handleContinue}
+                                style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '6px',
+                                    padding: '5px 12px',
+                                    borderRadius: '8px',
+                                    fontSize: '12px',
+                                    fontWeight: 500,
+                                    cursor: 'pointer',
+                                    background: darkMode ? 'rgba(255, 255, 255, 0.06)' : 'rgba(0, 0, 0, 0.04)',
+                                    color: darkMode ? '#cbd5e1' : '#475569',
+                                    border: darkMode ? '1px solid rgba(255, 255, 255, 0.1)' : '1px solid rgba(0, 0, 0, 0.1)',
+                                    transition: 'all 0.15s ease',
+                                }}
+                                onMouseEnter={(e) => {
+                                    e.currentTarget.style.background = darkMode ? 'rgba(255, 255, 255, 0.12)' : 'rgba(0, 0, 0, 0.08)';
+                                    e.currentTarget.style.color = darkMode ? '#f8fafc' : '#0f172a';
+                                }}
+                                onMouseLeave={(e) => {
+                                    e.currentTarget.style.background = darkMode ? 'rgba(255, 255, 255, 0.06)' : 'rgba(0, 0, 0, 0.04)';
+                                    e.currentTarget.style.color = darkMode ? '#cbd5e1' : '#475569';
+                                }}
+                                title={tChat.continueTooltip || "Lanjutkan respons sebelumnya"}
+                            >
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                                    <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                                </svg>
+                                <span>{tChat.continueResponse || "Lanjutkan"}</span>
+                            </button>
+                        </div>
+                    )}
 
                     {!isThisMessageStreaming && (
                         <>

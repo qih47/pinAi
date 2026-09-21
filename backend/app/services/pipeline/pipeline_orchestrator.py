@@ -280,6 +280,7 @@ async def _sequential_pipeline_generator(
         router_completion_tokens = 0
         gen_prompt_tokens = 0
         gen_completion_tokens = 0
+        is_truncated = False
 
         async for sse in agentic_engine:
             raw = sse.strip()
@@ -289,6 +290,9 @@ async def _sequential_pipeline_generator(
             try:
                 event_data = json.loads(raw)
                 event_type = event_data.get("event_type")
+
+                if event_data.get("is_truncated") or event_data.get("done_reason") == "length":
+                    is_truncated = True
 
                 if event_type == "pipeline_tokens":
                     router_prompt_tokens = event_data.get("router_prompt_tokens", 0)
@@ -329,7 +333,7 @@ async def _sequential_pipeline_generator(
             yield sse
 
         elapsed = (datetime.now() - start_time).total_seconds()
-        logger.info(f"[AGENTIC] Selesai | {len(full_response_text)} chars | {elapsed:.2f}s")
+        logger.info(f"[AGENTIC] Selesai | {len(full_response_text)} chars | {elapsed:.2f}s | Truncated: {is_truncated}")
 
     except asyncio.CancelledError:
         logger.warning("[AGENTIC] Client disconnected / Stream aborted.")
@@ -347,11 +351,11 @@ async def _sequential_pipeline_generator(
         nonlocal full_response_text, gen_prompt_tokens, gen_completion_tokens, router_prompt_tokens, router_completion_tokens
         try:
             if payload.session_uuid:
-                # --- INTERCEPT SHORT/TRUNCATED RESPONSE ---
+                # --- INTERCEPT EMPTY RESPONSE ONLY ---
                 clean_content = full_response_text.strip()
                 has_files = len(generated_artifacts) > 0
-                if not has_files and len(clean_content) < 12 and "Respons dihentikan" not in full_response_text:
-                    logger.warning(f"[AGENTIC] Respons terlalu pendek ({len(clean_content)} chars). Menggunakan fallback.")
+                if not has_files and len(clean_content) == 0 and "Respons dihentikan" not in full_response_text:
+                    logger.warning("[AGENTIC] Respons kosong dari model generator. Menggunakan fallback.")
                     full_response_text = "Mohon maaf, saya tidak dapat memproses pesan Anda dengan baik. Silakan coba beberapa saat lagi atau perjelas pertanyaan Anda."
 
                 ast_thought = full_thinking_text.strip() if full_thinking_text else f"Gemma Agentic | Mode: {chat_mode}"
@@ -406,6 +410,8 @@ async def _sequential_pipeline_generator(
                     logger.warning(f"[TOKEN_AUDIT] Gagal submit record_request_tokens task: {t_err}")
 
                 message_metadata = {"tokens": token_meta}
+                if is_truncated:
+                    message_metadata["is_truncated"] = True
                 if generated_artifacts:
                     message_metadata["artifacts"] = generated_artifacts
                 
@@ -508,5 +514,5 @@ async def _sequential_pipeline_generator(
     if payload.session_uuid:
         new_title = await chat_history_service.get_session_title(payload.session_uuid)
 
-    logger.info(f"[PIPELINE] Complete ✅ | Title: {new_title}")
-    yield format_sse("", "", True, sources=preloaded_rag_sources, event_type=SSEEventType.DONE, title=new_title)
+    logger.info(f"[PIPELINE] Complete ✅ | Title: {new_title} | Truncated: {is_truncated}")
+    yield format_sse("", "", True, sources=preloaded_rag_sources, event_type=SSEEventType.DONE, title=new_title, is_truncated=is_truncated)

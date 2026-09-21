@@ -62,7 +62,7 @@ LANGKAH 3 — RENCANA JAWABAN:
    - JANGAN mengulang pertanyaan kuesioner sebagai bullet point di teks jawaban.
 {% endif %}
 4. REKOMENDASI PROAKTIF (WAJIB MUTLAK): Jika di dalam dokumen sumber terdapat dokumen berupa Form, Formulir, Surat Izin, Surat Permohonan, atau Template Pengajuan, Anda DILARANG KERAS mengabaikannya! Anda WAJIB memberikannya sebagai REKOMENDASI/SUGESTI di akhir jawaban (contoh: "Sebagai informasi tambahan, terdapat dokumen format pengajuan..."), DAN WAJIB memasukkannya ke dalam `<sources_json>`!
-5. Jawaban akhir WAJIB sangat rinci — uraikan poin-poin regulasi, sebutkan nomor SKEP/pasal, dan rangkum secara terstruktur.
+5. Sesuaikan kedalaman jawaban dengan instruksi pengguna dan arahan format: jika meminta konfirmasi singkat/biner, berikan status dan pasal rujukan secara to-the-point; jika pertanyaan terbuka/analitis, uraikan poin-poin regulasi dan sebutkan nomor SKEP/pasal secara terstruktur.
 {% endif %}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -200,7 +200,7 @@ Pegawai yang kamu layani saat ini: **{{ employee_name }}**
 TUGAS UTAMA:
 1. Kamu saat ini sedang melihat dokumen, kode, atau gambar yang diunggah oleh pengguna (terlampir di pesan pengguna).
 2. PENTING: Ikuti SANGAT KETAT instruksi yang diberikan oleh pengguna dalam teks mereka. 
-   - Jika pengguna bertanya tentang "apa fungsi kode ini" atau meminta penjelasan, BERIKAN PENJELASAN YANG SANGAT DETAIL, KOMPREHENSIF, DAN MENDALAM. Jangan pernah merespons dengan 1 atau 2 kata saja kecuali pengguna secara eksplisit meminta "jawab 1 kata" atau "singkat saja".
+   - Sesuaikan kedalaman penjelasan dengan instruksi pengguna dan format yang diminta: jika pengguna meminta penjelasan mendalam, berikan penjabaran terstruktur; jika pengguna meminta jawaban ringkas atau konfirmasi biner (ya/tidak), berikan respons padat to-the-point sesuai instruksi pengguna.
    - Jika pengguna meminta analisis teknis/detail, berikan penjabaran teknis per baris atau per blok secara mendalam.
    - Jika pengguna hanya meminta konfirmasi (misal "benar tidak?"), barulah beri konfirmasi singkat.
 3. Jawab pertanyaan pengguna berdasarkan konten dari lampiran yang diberikan. Jika itu adalah kode, jelaskan arsitektur dan fungsinya.
@@ -399,6 +399,8 @@ def build_response_prompt_rag(
         user_default_pronoun=precheck.get("user_default_pronoun"),
         slang_mirror=precheck.get("slang_mirror"),
         tone_hint=precheck.get("tone_hint", "casual"),
+        response_format=precheck.get("response_format", "standard"),
+        format_constraint=precheck.get("format_constraint"),
         is_thinking=is_thinking,
         rag_context=rag_context[:_RAG_CONTEXT_MAX_CHARS] if rag_context else "",
         is_multi_document=False,
@@ -420,6 +422,8 @@ def build_response_prompt_multi_document(
         user_default_pronoun=precheck.get("user_default_pronoun"),
         slang_mirror=precheck.get("slang_mirror"),
         tone_hint=precheck.get("tone_hint", "casual"),
+        response_format=precheck.get("response_format", "standard"),
+        format_constraint=precheck.get("format_constraint"),
         is_thinking=is_thinking,
         rag_context=rag_context[:_RAG_CONTEXT_MAX_CHARS] if rag_context else "",
         is_multi_document=True,
@@ -439,13 +443,18 @@ def build_response_prompt_analytic(
         user_default_pronoun=precheck.get("user_default_pronoun"),
         slang_mirror=precheck.get("slang_mirror"),
         tone_hint=precheck.get("tone_hint", "casual"),
+        response_format=precheck.get("response_format", "standard"),
+        format_constraint=precheck.get("format_constraint"),
         is_thinking=is_thinking
     )
 
-def build_attachment_system_prompt(employee_name: str) -> str:
+def build_attachment_system_prompt(employee_name: str, precheck: Optional[Dict[str, Any]] = None) -> str:
+    pre = precheck or {}
     return prompt_manager.render(
         name="RESPONSE_PROMPT_ATTACHMENT",
-        employee_name=employee_name
+        employee_name=employee_name,
+        response_format=pre.get("response_format", "standard"),
+        format_constraint=pre.get("format_constraint"),
     )
 
 def build_response_prompt_self_correction(

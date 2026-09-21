@@ -57,24 +57,24 @@ class MemoryService:
                       AND s.judul IS NOT NULL AND s.judul != 'Obrolan Baru'
                     ORDER BY s.started_at DESC
                     LIMIT 4;
-                """, npp, str(current_session_uuid) if current_session_uuid else None)
-                
-                if recent_sessions:
-                    session_topics = []
-                    for s in recent_sessions:
-                        title = s['judul']
-                        summary = s['memory_summary']
-                        last_q = s['last_user_query']
-                        if summary and len(summary.strip()) > 5:
-                            session_topics.append(f"Topik '{title}': {summary.strip()}")
-                        elif last_q and len(last_q.strip()) > 3:
-                            clean_q = last_q.strip()[:80] + "..." if len(last_q.strip()) > 80 else last_q.strip()
-                            session_topics.append(f"Topik '{title}' (Membahas: \"{clean_q}\")")
-                        elif title:
-                            session_topics.append(f"Membahas '{title}'")
+                    """, npp, str(current_session_uuid) if current_session_uuid else None)
                     
-                    if session_topics:
-                        summaries.append("Riwayat Pembahasan di Sesi Lain:\n  • " + "\n  • ".join(session_topics[:4]))
+                    if recent_sessions:
+                        session_topics = []
+                        for s in recent_sessions:
+                            title = s['judul']
+                            summary = s['memory_summary']
+                            last_q = s['last_user_query']
+                            if summary and len(summary.strip()) > 5:
+                                session_topics.append(f"Topik '{title}': {summary.strip()}")
+                            elif last_q and len(last_q.strip()) > 3:
+                                clean_q = last_q.strip()[:80] + "..." if len(last_q.strip()) > 80 else last_q.strip()
+                                session_topics.append(f"Topik '{title}' (Membahas: \"{clean_q}\")")
+                            elif title:
+                                session_topics.append(f"Membahas '{title}'")
+                        
+                        if session_topics:
+                            summaries.append("Riwayat Pembahasan di Sesi Lain:\n  • " + "\n  • ".join(session_topics[:4]))
 
                 if not summaries:
                     return ""

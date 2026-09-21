@@ -221,6 +221,36 @@ def detect_precheck(
     else:
         need_rag_hint = None
         
+    # ── Deteksi Heuristik Format Respons Dinamis (Fast-Path / Safety Net) ─────
+    response_format = "standard"
+    format_constraint = None
+
+    # 1. Biner (Yes / No)
+    if re.search(r'\b(jawab(lah)?\s+(dengan\s+)?(hanya\s+)?(cuma\s+)?(iya|ya|tidak|benar|salah)\b|(iya|ya)\s+atau\s+tidak\b|yes\s+or\s+no\b|cuma\s+(iya|ya|tidak)\b|(iya|ya|tidak)\s+doang\b)', msg_lower):
+        response_format = "yes_no"
+        format_constraint = "Jawab hanya dengan Iya / Tidak / Benar / Salah"
+    # 2. Ringkas (Concise)
+    elif re.search(r'\b((jawab|jelas(kan)?|uraikan|terangkan)\s+(secara\s+)?singkat|singkat\s+(aja|saja)|to\s+the\s+point|jangan\s+(terlalu\s+)?(panjang|banyak)|jangan\s+bertele-tele|ringkas\s+(aja|saja)|secara\s+ringkas|(dalam|cukup|maksimal)?\s*[123]\s+kalimat)\b', msg_lower):
+        response_format = "concise"
+        sentence_match = re.search(r'([123]\s+kalimat|1\s+paragraf)', msg_lower)
+        if sentence_match:
+            format_constraint = f"Maksimal {sentence_match.group(1)}"
+        else:
+            format_constraint = "Jawab secara ringkas, padat, dan to-the-point"
+    # 3. Mendalam (Detailed)
+    elif re.search(r'\b(jelaskan\s+secara\s+(detail|rinci|lengkap|mendalam)|analisis\s+mendalam|kajian\s+lengkap|bahas\s+tuntas)\b', msg_lower):
+        response_format = "detailed"
+
+    # Multi-turn continuity: jika turn sebelumnya ada kesepakatan format khusus (misal biner)
+    if response_format == "standard" and chat_history and isinstance(chat_history, list):
+        recent_user_turns = [m.get("content", "") for m in chat_history if isinstance(m, dict) and m.get("role") == "user"][-2:]
+        for prev_msg in recent_user_turns:
+            prev_lower = str(prev_msg).lower()
+            if re.search(r'\b(jawab\s+(dengan\s+)?(hanya\s+)?(cuma\s+)?(iya|ya|tidak|benar|salah)\b|(iya|ya)\s+atau\s+tidak|cuma\s+jawab\s+iya|yes\s+or\s+no)\b', prev_lower):
+                response_format = "yes_no"
+                format_constraint = "Jawab hanya dengan Iya / Tidak / Benar / Salah"
+                break
+
     from backend.app.services.pipeline.intent_dictionary import extract_slang_mirror
     slang_mirror = extract_slang_mirror(user_message, user_pronoun=pronoun)
 
@@ -243,8 +273,11 @@ def detect_precheck(
         "is_generate_email": is_generate_email,
         "is_docwriter": is_docwriter,
         "is_map_query": is_map_query,
+        "response_format": response_format,
+        "format_constraint": format_constraint,
         "_user_message": user_message
     }
+
 
 def build_rule_based_queries(user_message: str, context_subject: str = "", context_topic: str = "") -> List[str]:
     """
@@ -717,7 +750,26 @@ def build_call2_system_prompt(
                 f"• Gaya profesional, sopan, ramah, dan solutif.\n"
             )
 
+    # ── 🎯 DYNAMIC RESPONSE SCALE FINAL ENFORCER ──────────────────────────────
+    if precheck:
+        resp_fmt = precheck.get("response_format")
+        fmt_cst = precheck.get("format_constraint")
+        if resp_fmt == "yes_no":
+            if "[KONTRAK FORMAT BINER MUTLAK" not in prompt:
+                prompt += (
+                    "\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                    "🚨 ATURAN MUTLAK FORMAT JAWABAN: BINER (IYA / TIDAK)\n"
+                    "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                    "Pengguna secara eksplisit meminta konfirmasi biner (Iya/Tidak/Benar/Salah).\n"
+                    "Kamu WAJIB menjawab HANYA dengan kata penegas ('Iya', 'Tidak', 'Benar', 'Salah') atau 1 kalimat pendek.\n"
+                    "DILARANG KERAS memberikan penjelasan panjang, tutorial, esai, atau basa-basi berlebih!\n"
+                )
+        elif resp_fmt == "concise" and fmt_cst:
+            if fmt_cst not in prompt:
+                prompt += f"\n\n🚨 BATASAN FORMAT KHUSUS: {fmt_cst}. Patuhi secara mutlak!\n"
+
     return prompt
+
 
 def get_module_config(module_name: str, precheck: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     configs = {

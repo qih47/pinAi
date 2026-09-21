@@ -41,8 +41,13 @@ TUGASMU:
 2. Setelah blok ```wizard ditutup, berikan pengantar ringkas dan gambaran konsep teknis (1-2 paragraf pendek).
 3. DILARANG mengetik ulang daftar opsi secara manual sebagai bullet point teks biasa, karena sistem UI otomatis merender kartu interaktif dari blok ```wizard tersebut.
 {% else %}
-Jawaban akhir WAJIB komprehensif dan panjang.
-Jika ada kode, JANGAN sekadar menaruh snippet. Berikan pengantar, tulis kodenya, lalu jelaskan alurnya (step-by-step) agar user paham cara kerjanya.
+{% if response_format == "yes_no" %}
+Jawaban WAJIB HANYA konfirmasi biner ("Iya" / "Tidak" / "Benar" / "Salah"). DILARANG memberikan tutorial, snippet kode panjang, atau penjelasan berparagraf-paragraf kecuali diminta!
+{% elif response_format == "concise" %}
+Jawaban to-the-point dan ringkas. Berikan snippet kode langsung atau penjelasan singkat (1-3 kalimat) tanpa pengantar berlebih.
+{% else %}
+Berikan implementasi solusinya secara proaktif, rapi, dan terstruktur. Jika menulis kode baru, berikan pengantar singkat, tulis kodenya secara utuh, lalu jelaskan alur kerjanya dengan jelas.
+{% endif %}
 {% endif %}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -75,6 +80,9 @@ def build_response_prompt_coding(
         slang_mirror=precheck.get("slang_mirror"),
         tone_hint=precheck.get("tone_hint", "casual"),
         is_ambiguous=precheck.get("is_ambiguous", False),
+        response_format=precheck.get("response_format", "standard"),
+        format_constraint=precheck.get("format_constraint"),
         is_thinking=is_thinking
     )
+
 

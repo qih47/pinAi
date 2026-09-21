@@ -484,12 +484,19 @@ export async function performStream(set, get, messagesToSend, assistantMessage, 
                             };
                         }
 
-                        // --- INTERCEPT SHORT/TRUNCATED RESPONSE ---
+                        // --- INTERCEPT EMPTY RESPONSE ONLY ---
                         const cleanContent = (assistantMessage.content || '').trim();
                         const hasFiles = assistantMessage.fileGenerations && assistantMessage.fileGenerations.length > 0;
-                        if (!hasFiles && cleanContent.length < 12) {
+                        if (!hasFiles && cleanContent.length === 0) {
                             assistantMessage.content = "Mohon maaf, saya tidak dapat memproses pesan Anda dengan baik. Silakan coba beberapa saat lagi atau perjelas pertanyaan Anda.";
-                            console.warn("[FE STREAM] Respons terlalu pendek, menggunakan fallback.");
+                            console.warn("[FE STREAM] Respons kosong, menggunakan fallback.");
+                        }
+                        if (data && data.is_truncated) {
+                            assistantMessage.is_truncated = true;
+                            assistantMessage.metadata = {
+                                ...(assistantMessage.metadata || {}),
+                                is_truncated: true
+                            };
                         }
                         if (data && data.eval_count && data.eval_duration) {
                             assistantMessage.eval_count = data.eval_count;

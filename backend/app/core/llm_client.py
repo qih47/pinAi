@@ -594,6 +594,7 @@ async def stream_ollama_chat(
                             eval_duration = chunk.get("eval_duration", 0)
                             prompt_eval_count = chunk.get("prompt_eval_count", 0)
                             prompt_eval_duration = chunk.get("prompt_eval_duration", 0)
+                            done_reason = chunk.get("done_reason", "")
                             if eval_count and eval_duration:
                                 yield_data["eval_count"] = eval_count
                                 yield_data["eval_duration"] = eval_duration
@@ -601,6 +602,10 @@ async def stream_ollama_chat(
                                 yield_data["prompt_eval_count"] = prompt_eval_count
                             if prompt_eval_duration:
                                 yield_data["prompt_eval_duration"] = prompt_eval_duration
+                            if done_reason:
+                                yield_data["done_reason"] = done_reason
+                            if done_reason == "length":
+                                yield_data["is_truncated"] = True
                                 
                         yield json.dumps(
                             yield_data,

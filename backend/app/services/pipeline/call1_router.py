@@ -599,11 +599,12 @@ def _validate_and_normalize_routing(
     # Deteksi cerdas: jika active_topic / key_subject menunjukkan sapaan/salam/cuaca/waktu, tandai is_chitchat = True
     if is_simple_greeting:
         routing["is_chitchat"] = True
+        routing["is_web_search"] = False
         routing["need_rag"] = False
         routing["queries"] = []
         routing["query_judul"] = []
         routing["search_tags"] = []
-        logger.info("[CALL1] 💬 Simple greeting detected -> forcing need_rag=False, is_chitchat=True, clearing query_judul & search_tags")
+        logger.info("[CALL1] 💬 Simple greeting detected -> forcing need_rag=False, is_web_search=False, is_chitchat=True, clearing query_judul & search_tags")
     elif not routing.get("need_rag") and not routing["is_coding"] and not routing["is_generate_file"]:
         if any(kw in topic_sub_text for kw in ["sapaan", "salam", "chitchat", "greeting", "kabar", "energi positif", "semangat pagi", "cuaca", "suhu", "waktu", "jam berapa", "tanggal berapa"]) or precheck.get("is_greeting") or precheck.get("is_chitchat"):
             routing["is_chitchat"] = True
@@ -1087,6 +1088,24 @@ def _validate_and_normalize_routing(
     lang = routing_json.get("detected_language", "id")
     routing["detected_language"] = lang if lang in valid_langs else "id"
 
+    # Ekstraksi dynamic response format dari Call 1 Router LLM
+    valid_formats = ["yes_no", "concise", "detailed", "standard"]
+    raw_resp_format = routing_json.get("response_format")
+    if raw_resp_format in valid_formats:
+        routing["response_format"] = raw_resp_format
+    elif precheck.get("response_format") in valid_formats:
+        routing["response_format"] = precheck["response_format"]
+    else:
+        routing["response_format"] = "standard"
+
+    raw_format_constraint = routing_json.get("format_constraint")
+    if isinstance(raw_format_constraint, str) and raw_format_constraint.strip():
+        routing["format_constraint"] = raw_format_constraint.strip()
+    elif precheck.get("format_constraint"):
+        routing["format_constraint"] = str(precheck["format_constraint"]).strip()
+    else:
+        routing["format_constraint"] = None
+
     # Ekstrak judul obrolan untuk sidebar kiri (Gemma 4 Call 1 LLM)
     from backend.app.services.pipeline.modes.mode_utils import format_session_title, GENERIC_SESSION_TITLES
     session_title = routing_json.get("session_title")
@@ -1215,7 +1234,7 @@ def _validate_and_normalize_routing(
         coding_keywords = ["koding", "coding", "code", "fungsi", "function", "script", "sql", "query", "endpoint", "api", "bug", "error", "trace", "python", "javascript", "react", "html", "css", "database"]
         file_keywords = ["buatkan file", "bikin file", "export", "ekspor", "unduh excel", "unduh word", "generate file", ".xlsx", ".docx", ".pdf", ".py"]
         email_keywords = ["buatkan email", "draf email", "kirim email", "tulis email"]
-        web_keywords = ["berita", "kabar", "terkini", "hari ini", "terbaru", "cuaca besok", "cuaca 7 hari", "saham", "kurs", "presiden", "juara", "pilkada", "gempa"]
+        web_keywords = ["berita", "kabar terbaru", "kabar terkini", "kabar pasar", "kabar bumn", "kabar dunia", "terkini", "hari ini", "terbaru", "cuaca besok", "cuaca 7 hari", "saham", "kurs", "presiden", "juara", "pilkada", "gempa"]
         map_keywords = ["lokasi", "alamat", "dimana", "peta", "gedung", "divisi", "turen", "bandung"]
         
         # 0. Prioritaskan Map / Location query
@@ -1243,7 +1262,7 @@ def _validate_and_normalize_routing(
                 routing["query_judul"] = [routing.get("key_subject") or user_message]
                 routing["queries"] = build_rule_based_queries(user_message, routing.get("key_subject"), routing.get("active_topic"))
             logger.info(f"[CALL1] 🛡️ Guard: Auto-activated need_rag | query_judul={routing['query_judul']}")
-        elif any(k in user_text for k in web_keywords):
+        elif any(k in user_text for k in web_keywords) and not is_simple_greeting:
             routing["is_web_search"] = True
             if not routing.get("queries"):
                 routing["queries"] = [routing.get("key_subject") or user_message]
@@ -1402,8 +1421,10 @@ def _build_fallback_routing(precheck: Dict[str, Any]) -> Dict[str, Any]:
         fallback["is_web_search"] = False
 
     # L. Web Search & Web Reader
-    web_kws = ["berita", "kabar", "terkini", "hari ini", "terbaru", "cuaca besok", "cuaca 7 hari", "saham", "kurs"]
-    if any(k in user_lower for k in web_kws) and not fallback["need_rag"]:
+    web_kws = ["berita", "kabar terbaru", "kabar terkini", "kabar pasar", "kabar bumn", "kabar dunia", "terkini", "hari ini", "terbaru", "cuaca besok", "cuaca 7 hari", "saham", "kurs"]
+    is_greeting_kws = ["hai", "halo", "apa kabar", "gimana kabar", "kabarnya", "selamat pagi", "selamat siang", "terima kasih", "makasih", "semangat"]
+    is_greeting_msg = any(kw in user_lower for kw in is_greeting_kws)
+    if any(k in user_lower for k in web_kws) and not fallback["need_rag"] and not is_greeting_msg:
         fallback["is_web_search"] = True
         fallback["queries"] = [user_message]
 
@@ -1412,9 +1433,14 @@ def _build_fallback_routing(precheck: Dict[str, Any]) -> Dict[str, Any]:
         fallback["is_web_search"] = False
 
     # N. Chitchat & Sapaan
-    if any(kw in user_lower for kw in ["hai", "halo", "selamat pagi", "selamat siang", "terima kasih", "makasih", "semangat"]):
+    if is_greeting_msg:
         if not fallback["need_rag"] and not fallback["is_coding"] and not fallback["is_generate_file"]:
             fallback["is_chitchat"] = True
+            fallback["is_web_search"] = False
+            fallback["queries"] = []
+
+    fallback["response_format"] = precheck.get("response_format", "standard")
+    fallback["format_constraint"] = precheck.get("format_constraint")
 
     # 4. Strict Guest Isolation Guard
     if is_guest:

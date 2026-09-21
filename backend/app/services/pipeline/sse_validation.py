@@ -117,6 +117,7 @@ def format_sse(
     eval_duration: int = 0,
     title: Optional[str] = None,
     prompt_eval_count: int = 0,
+    is_truncated: bool = False,
 ) -> str:
     """
     Format SSE event conforming to API Contract.
@@ -132,6 +133,8 @@ def format_sse(
         "event_type": event_type,
         "timestamp": datetime.utcnow().isoformat() + "Z",
     }
+    if is_truncated:
+        event["is_truncated"] = True
     if title:
         event["title"] = title
     if eval_count > 0:

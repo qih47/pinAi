@@ -61,7 +61,7 @@ Sebelum kamu menulis atau memodifikasi satu baris kode pun, kamu WAJIB melakukan
     - State/Store → `webui/src/stores/`
     - Hooks/Logic → `webui/src/hooks/` atau `/hooks/useChatLogic.js`
 
-## 📌 FASE 3: MANAJEMEN PENDAFTARAN OTOMATIS (REGISTRY)
+## 📌 FASE 3: MANAJEMEN PENDAFTARAN OTOMATIS (REGISTRY & I18N)
 Jika kamu membuat fitur atau modul baru, kamu TIDAK BOLEH membiarkannya mengambang:
 
 * **Jika Endpoint Backend Baru:**
@@ -75,14 +75,41 @@ Jika kamu membuat fitur atau modul baru, kamu TIDAK BOLEH membiarkannya mengamba
 
 * **Jika Mode Pipeline Baru:** Daftarkan handler-nya ke `backend/app/services/pipeline/mode_hub.py`.
 * **Jika State Frontend Baru:** Hubungkan ke store Zustand atau ekspor lewat Hook.
+* **Jika Teks UI / SSE Baru:** Setiap kali menambahkan fitur baru yang memunculkan label UI, tombol, status bar, modal, atau jenis event pesan SSE baru yang tampil ke pengguna, **WAJIB MENDAFTARKANNYA ke `webui/src/utils/translations.js`** (versi bahasa ID dan EN). DILARANG menulis string teks mentah/hardcoded langsung di dalam komponen presentasional tanpa i18n.
+
+## 🛡️ FASE 4: INTEGRASI DENGAN SECURITY FIREWALL (`security_firewall.py`)
+Setiap kali merancang fitur, menangani input baru, atau mengelola transmisi data (file, payload chat, URL, API endpoint):
+* **Wajib Konsultasi & Cek Aturan:** Periksa `backend/app/utils/security_firewall.py` untuk memastikan seluruh data divalidasi oleh layer pertahanan:
+  - *Layer 1 (Rate Limiting)*: Pastikan endpoint baru memiliki policy limit yang sesuai (`chat`, `upload`, `auth`, `global`).
+  - *Layer 2 (Input Validation)*: Verifikasi ukuran body, sanitasi null byte (`\x00`), dan control characters.
+  - *Layer 3 (Injection Detection)*: Proteksi terhadap SQLi, XSS, Path Traversal, SSTI, dan Command Injection.
+  - *Layer 4 & 6 (Content Safety & Semantic Anomaly)*: Deteksi konten berbahaya dan pola jailbreak/prompt injection.
+* **Prinsip Fail-Closed & Anti-False-Positive:** Jangan pernah membypass firewall, dan pastikan fitur yang sah tidak terblokir salah (*false-positive*).
+
+## 🔀 FASE 5: PRINSIP NON-DESTRUKTIF & PERCABANGAN KHUSUS (SAFE BRANCHING: A ➔ A1, B ➔ B1)
+* **Jangan Merusak Sistem yang Stabil:** Hindari merombak alur global atau mengganti kondisi umum yang berpotensi memicu efek domino destruktif.
+* **Prioritaskan Percabangan Terisolasi:** Jika menemukan kebutuhan khusus atau penanganan kasus tepi (*edge case*):
+  - Jika kasus A ➔ arahkan ke sub-cabang A1.
+  - Jika kasus B ➔ arahkan ke sub-cabang B1.
+  - Alur default yang sudah stabil tetap berjalan tanpa terganggu.
+* **Sinkronisasi Alur Parameter Lintas Jalur:** Setiap kali menambah atau memodifikasi parameter (misal di `precheck`, `routing`, atau context orchestrator):
+  - Lakukan audit terhadap SELURUH jalur konsumen yang memakai data tersebut (Flash Mode, Documents/RAG, Coding Expert, Analyst, Chitchat, SSE Streamer).
+  - JANGAN SAMPAI ketika memperbaiki 1 fungsi, fungsi lain yang semestinya ikut ke jalur tersebut malah putus atau tidak bekerja. Parameter baru harus bersifat aditif dan mempertahankan backward compatibility.
+
+## 🧠 FASE 6: PROMPT UNIVERSAL & INTELIJEN CALL 1 (BUKAN SELALU REGEX)
+* **Manfaatkan Kecerdasan Call 1:** Model Call 1 Router (Gemma 4) sudah sangat cerdas dan memiliki pemahaman semantik serta konteks multi-turn yang mendalam.
+* **Hindari Ketergantungan Regex Berlebih:** Jangan selalu menyelesaikan masalah klasifikasi atau formatting dengan tumpukan regex rapuh yang rentan false-positive/bentrok (seperti bentrok kata "kabar" di web search). Regex hanya difungsikan sebagai *fast-path* atau *safety net* komplementer, bukan penentu tunggal.
+* **Desain Prompt Universal (Anti-Overfitting):**
+  - Rancang instruksi prompt yang tegas, universal, dan berfokus pada mekanika perilaku (misal pemenuhan format jawaban dinamis: biner, singkat, komprehensif).
+  - **DILARANG KERAS OVERFITTING TOPIK:** Jangan memasukkan contoh kasus percakapan spesifik (seperti topik curhat keluarga, anak, emoji khusus uji coba `🍼`, dsb.) ke dalam prompt sistem. Prompt harus berlaku universal untuk topik apapun yang dibahas oleh pengguna.
 
 ## 🔄 WORKFLOW SIKLUS HIDUP EKSEKUSI
-1. **Analyze:** Gunakan `grep_search` atau `view_file` untuk memetakan arsitektur yang sudah ada.
+1. **Analyze:** Gunakan `grep_search` atau `view_file` untuk memetakan arsitektur yang sudah ada dan cek dependensi dengan `security_firewall.py`.
 2. **Draft Plan:** Jika perubahan besar, buat Implementation Plan terlebih dahulu.
-3. **Write & Register:** Tulis kode baru dan langsung daftarkan ke file master yang sesuai.
-4. **Audit:** Pastikan tidak ada circular import di Python atau infinite rerender di React.
+3. **Write & Register:** Tulis kode baru dan langsung daftarkan ke file master yang sesuai serta `translations.js`.
+4. **Audit & Sync:** Periksa sinkronisasi parameter lintas jalur, pastikan tidak ada circular import di Python atau infinite rerender di React.
 
-## 🧹 FASE 4: ATURAN PEMBERSIHAN FILE TESTING (CLEANUP)
+## 🧹 FASE 7: ATURAN PEMBERSIHAN FILE TESTING (CLEANUP)
 Jika kamu membuat script pengecekan, file test sementara, atau file dummy yang hanya digunakan untuk memverifikasi, kamu WAJIB MENGHAPUS file tersebut setelah task selesai.
 
 > 🚨 **CONSTRAINTS (BATASAN MUTLAK):**
