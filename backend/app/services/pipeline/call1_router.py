@@ -488,15 +488,15 @@ async def execute_call1_routing(
                 *_make_rows(f"   • Alasan Ambigu  : \"{routing.get('ambiguity_reason')}\"", indent_spaces=22)
             ]
 
+        history_str = "✅ True (Konteks Multi-turn Aktif)" if routing.get("needs_history") else "⚡ False (Bypass Riwayat / Single-turn Cepat)"
+
         c1_lines = [
             top_border,
-            *_make_rows("🧭 [CALL 1 ROUTING & DECISION DASHBOARD]"),
+            *_make_rows(f"📌 [CALL 1 ROUTING & DECISION DASHBOARD] (model: {effective_model}, {duration_call1_ms:.0f}ms)"),
             mid_border,
-            *_make_rows(f"🤖 Model Router     : {effective_model}"),
-            *_make_rows(f"🕒 Waktu Eksekusi   : {duration_call1_ms:.1f} ms ({duration_call1_ms/1000:.2f}s) | ctx={router_ctx} | predict={dynamic_predict}"),
-            *_make_rows(f"💬 Pesan Pengguna   : \"{clean_user_msg}\"", indent_spaces=22),
+            *_make_rows(f"👤 PESAN : \"{clean_user_msg}\""),
             mid_border,
-            *_make_rows("🎯 KEPUTUSAN KANAL DATA (BACKEND RETRIEVAL)"),
+            *_make_rows("🔎 KEPUTUSAN KANAL DATA (SUMBER TUNGGAL)"),
             *_make_rows(f"   • Need RAG       : {need_rag_str}"),
             *rag_specific_rows,
             *_make_rows(f"   • Web Search     : {web_search_str}"),
@@ -567,6 +567,7 @@ def _validate_and_normalize_routing(
         "fetch_urls": [],
         "session_chunk_ids": [],
         "wizard": None,
+        "needs_history": False,
     }
 
     routing = {**default_routing, **routing_json}
@@ -585,6 +586,16 @@ def _validate_and_normalize_routing(
     routing["is_deep_research"] = bool(routing_json.get("is_deep_research", False))
     routing["is_security_critical"] = bool(routing_json.get("is_security_critical", False))
     routing["is_chitchat"] = bool(routing_json.get("is_chitchat", False))
+    routing["needs_history"] = bool(routing_json.get("needs_history") is True)
+    has_prior_context = bool(precheck.get("has_prior_context")) or bool(precheck.get("has_prior_chitchat")) or bool(precheck.get("has_prior_coding")) or bool(precheck.get("has_prior_rag")) or bool(precheck.get("has_prior_visual"))
+    if is_first_chat and not has_prior_context:
+        routing["needs_history"] = False
+    elif (
+        routing.get("is_self_correction")
+        or precheck.get("is_replying_to_wizard")
+        or precheck.get("is_replying_to_assistant_question")
+    ):
+        routing["needs_history"] = True
     topic_sub_text = f"{routing['active_topic']} {routing['key_subject']}".lower()
     user_msg_lower = (user_message or "").lower()
 
@@ -1559,6 +1570,17 @@ async def generate_call1_preset_routing(
             result["key_subject"] = res_json["key_subject"].strip()
         if res_json.get("active_topic") and isinstance(res_json["active_topic"], str):
             result["active_topic"] = res_json["active_topic"].strip()
+
+        # Multi-turn history requirement
+        if res_json.get("needs_history") is True:
+            result["needs_history"] = True
+        elif is_first_chat:
+            result["needs_history"] = False
+        elif (
+            (precheck and precheck.get("is_replying_to_wizard"))
+            or (precheck and precheck.get("is_replying_to_assistant_question"))
+        ):
+            result["needs_history"] = True
 
         # Ambiguity flag & Universal Call 2 Synchronization:
         precheck = precheck or {}

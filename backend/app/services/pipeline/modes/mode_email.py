@@ -36,7 +36,6 @@ class ModeEmail:
         start_time = time.time()
         
         yield format_sse(status="📧 Menulis email", status_key="MAIL_INIT", event_type=SSEEventType.STATUS)
-        await asyncio.sleep(0.01)
 
         system_prompt = build_email_system_prompt(
             employee_name=employee_name,
@@ -44,14 +43,25 @@ class ModeEmail:
             is_thinking=is_thinking
         )
 
-        # Convert chat history to dict list (Maks 5 putaran dialog / 10 pesan)
-        messages_dict = [{"role": m.role, "content": m.content} for m in chat_history if getattr(m, "role", None) != "system"]
-        if not messages_dict or messages_dict[-1].get("role") != "user" or messages_dict[-1].get("content") != user_message:
-            messages_dict.append({"role": "user", "content": user_message})
-        trimmed_messages = messages_dict[-10:] if len(messages_dict) > 10 else messages_dict
+        # Convert chat history to dict list
+        from backend.app.services.pipeline.modes.mode_utils import resolve_history_messages
+        needs_history = bool(routing_data.get("needs_history", False)) if routing_data else False
+        active_pronoun = routing_data.get("pronoun", "formal_saya_anda") if routing_data else "formal_saya_anda"
+
+        trimmed_messages = resolve_history_messages(
+            chat_history=chat_history,
+            user_message=user_message,
+            needs_history=needs_history,
+            max_turns=6,
+            max_assistant_chars=600,
+            active_pronoun=active_pronoun,
+            strip_system=True,
+        )
         
         current_messages = [{"role": "system", "content": system_prompt}] + trimmed_messages
         
+        yield format_sse(status="✍️ Menyusun draf email...", status_key="DRAFTING_EMAIL", event_type=SSEEventType.STATUS)
+
         response_stream = stream_ollama_chat(
             messages=current_messages,
             model_name=settings.MODEL_PERSONA,
@@ -62,9 +72,14 @@ class ModeEmail:
         
         final_thinking = ""
         final_answer = ""
+        started_streaming = False
         
         try:
             async for chunk_line in response_stream:
+                if not started_streaming:
+                    started_streaming = True
+                    yield format_sse(status="", event_type=SSEEventType.STATUS)
+
                 try:
                     chunk = json.loads(chunk_line.strip())
                 except json.JSONDecodeError:
@@ -87,7 +102,7 @@ class ModeEmail:
             logger.warning("[MODE_EMAIL] Stream cancelled by client.")
             raise
             
-        # Log to DB
+        # Log to DB (non-blocking)
         session_uuid = routing_data.get("_session_uuid") if routing_data else None
         if session_uuid:
             from backend.app.services.chat.chat_history_service import chat_history_service
@@ -95,14 +110,14 @@ class ModeEmail:
                 "msg": f"Email Draft generated.",
                 "radar": {"dokumen": 10, "coding": 10, "chitchat": 10, "analitik": 10, "ambigu": 10}
             }
-            await chat_history_service.save_agent_step(
+            asyncio.create_task(chat_history_service.save_agent_step(
                 session_id=session_uuid,
                 step_number=3,
                 tool_called="LLM_EMAIL_ENGINE",
                 tool_input=user_message[:200],
                 observation=json.dumps(obs_dict)
-            )
+            ))
 
         duration = time.time() - start_time
-        logger.info(f"[MODE_EMAIL] Completed in {duration:.2f}s")
+        logger.info(f"[CALL2_EMAIL] ✅ Finished generation | needs_history={needs_history} | turns_sent={len(trimmed_messages)} | duration={duration:.2f}s")
         yield format_sse(status=f"✨ Email siap ({duration:.1f}s)", status_key="EMAIL_READY", event_type=SSEEventType.STATUS)

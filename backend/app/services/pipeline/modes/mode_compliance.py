@@ -4,6 +4,7 @@ import os
 import asyncio
 import base64
 import datetime
+import time
 from typing import AsyncGenerator, List, Dict, Any, Optional
 from fastapi import Request
 
@@ -42,7 +43,7 @@ class ModeCompliance:
         current_user_npp: Optional[str] = None,
         session_uuid: Optional[str] = None
     ) -> AsyncGenerator[str, None]:
-        
+        t_pre_start = time.time()
         logger.info("[MODE_COMPLIANCE] Starting Compliance Mode Execution")
         isolated_doc_id = None
         doc_title = None
@@ -59,7 +60,6 @@ class ModeCompliance:
             isolated_doc_id = request.isolated_doc_id
             
         yield format_sse(status="🎯 Membuka uji kepatuhan dokumen", status_key="OPENING_COMPLIANCE_TEST", event_type=SSEEventType.STATUS)
-        await asyncio.sleep(0.05)
 
         # 1. Resolusi Identitas Dokumen Terpadu (PG dokumen & MySQL berita & Smart Fallback)
         from backend.app.services.tools.document_resolver import find_valid_pdf_file, resolve_isolated_document
@@ -86,7 +86,6 @@ class ModeCompliance:
         async def fallback_to_rag(reason: str):
             logger.warning(f"[MODE_COMPLIANCE] Fallback to RAG triggered: {reason}")
             yield format_sse(status="🔄 Mencari secara global", status_key="SEARCHING_GLOBAL", event_type=SSEEventType.STATUS)
-            await asyncio.sleep(0.01)
             from backend.app.services.pipeline.modes.mode_documents import ModeDocuments
             fallback_handler = ModeDocuments()
             
@@ -163,32 +162,26 @@ class ModeCompliance:
             cached_brain = brain.get_document(doc_id_key)
             if cached_brain and "text_map" in cached_brain:
                 yield format_sse(status="🧠 Dari memori sesi", status_key="BRAIN_HIT", event_type=SSEEventType.STATUS)
-                await asyncio.sleep(0.01)
                 text_map = cached_brain["text_map"]
                 all_base64_images = cached_brain.get("images", [])
                 total_pages = cached_brain.get("total_pages", len(text_map))
 
         if text_map is None and file_path and os.path.exists(file_path):
             yield format_sse(status="📄 Memuat dokumen", status_key="DOC_LOADING", event_type=SSEEventType.STATUS)
-            await asyncio.sleep(0.01)
             cache_key = session_uuid or file_path
             text_map, all_base64_images, total_pages = await extract_and_ocr_document_async(file_path, cache_key=cache_key, render_images=True)
 
             if brain:
-                await brain.save_document(doc_id_key, {
+                asyncio.create_task(brain.save_document(doc_id_key, {
                     "title": doc_title or os.path.basename(file_path),
                     "text_map": text_map,
                     "images": all_base64_images,
                     "total_pages": total_pages,
-                })
+                }))
                 yield format_sse(status="💾 Menyimpan ke memori", status_key="BRAIN_SAVE", event_type=SSEEventType.STATUS)
-                await asyncio.sleep(0.01)
-
 
         # 4. Two-Stage Context-Aware Reranking & Structural Continuity Engine
         yield format_sse(status=f"🔍 Menganalisis seluruh {total_pages} halaman regulasi", status_key="ANALYZING_REGULATION_PAGES", event_type=SSEEventType.STATUS)
-        await asyncio.sleep(0.05)
-
 
         explicit_pages = extract_explicit_pages_from_query(user_message, total_pages)
         selected_pages, final_base64_images, final_extracted_text = await two_stage_rerank_cluster_async(
@@ -204,16 +197,25 @@ class ModeCompliance:
         # 5. Sampaikan SSE Bertahap ke frontend:
         halaman_str = ", ".join([str(p+1) for p in selected_pages])
         yield format_sse(status=f"📌 Ditemukan Klausul Terkait pada Halaman {halaman_str}!", status_key="FOUND_RELATED_CLAUSE_PAGE", event_type=SSEEventType.STATUS)
-        await asyncio.sleep(0.2)
         
         yield format_sse(status=f"⚖️ Menganalisis kepatuhan skenario terhadap klausul utuh", status_key="ANALYZING_COMPLIANCE_SCENARIO", event_type=SSEEventType.STATUS)
-        await asyncio.sleep(0.1)
 
-        # 6. Persiapkan Chat History & Prompt (Maks 5 putaran dialog / 10 pesan)
-        messages_dict = [{"role": m.role, "content": m.content} for m in chat_history if getattr(m, "role", None) != "system"]
-        if messages_dict and messages_dict[-1].get("role") == "user" and messages_dict[-1].get("content") == user_message:
-            messages_dict = messages_dict[:-1]
-        trimmed_messages = messages_dict[-10:] if len(messages_dict) > 10 else messages_dict
+        # 6. Persiapkan Chat History & Prompt
+        from backend.app.services.pipeline.modes.mode_utils import compact_history_messages, sanitize_history_for_pronoun
+        needs_history = bool(routing_data.get("needs_history", False)) if routing_data else False
+        active_pronoun = routing_data.get("pronoun", "formal_saya_anda") if routing_data else "formal_saya_anda"
+
+        if needs_history:
+            messages_dict = [{"role": m.role, "content": m.content} for m in chat_history if getattr(m, "role", None) != "system"]
+            if messages_dict and messages_dict[-1].get("role") == "user" and messages_dict[-1].get("content") == user_message:
+                messages_dict = messages_dict[:-1]
+            trimmed_messages = messages_dict[-6:] if len(messages_dict) > 6 else messages_dict
+            trimmed_messages = compact_history_messages(trimmed_messages, max_assistant_chars=600)
+            trimmed_messages = sanitize_history_for_pronoun(trimmed_messages, active_pronoun)
+            logger.info(f"[MODE_COMPLIANCE] 📚 Multi-turn active (needs_history=True). Kept {len(trimmed_messages)} prior turns.")
+        else:
+            trimmed_messages = []
+            logger.info("[MODE_COMPLIANCE] ⚡ Standalone query (needs_history=False). Pruned past chat history.")
         precheck = detect_precheck(user_message, "compliance", False)
 
         system_prompt = build_response_prompt_compliance(
@@ -262,12 +264,18 @@ class ModeCompliance:
                 "pages_selected": [p + 1 for p in selected_pages]
             }
             try:
-                await chat_history_service.save_active_tokens_observation(
+                asyncio.create_task(chat_history_service.save_active_tokens_observation(
                     session_uuid=session_uuid_to_use,
                     tokens_observation=obs_dict
-                )
+                ))
             except Exception as e:
                 logger.warning(f"[MODE_COMPLIANCE] Failed saving token obs: {e}")
+
+        # Real-time status SSE sebelum TTFT Call 2
+        yield format_sse(status="⚖️ Menyusun analisis kepatuhan...", status_key="DRAFTING_COMPLIANCE", event_type=SSEEventType.STATUS)
+
+        t_pre_elapsed = (time.time() - t_pre_start) * 1000
+        logger.info(f"[TIMING_BENCHMARK] [PRE_CALL2_COMPLIANCE] Done in {t_pre_elapsed:.2f}ms | Starting Call 2 stream")
 
         async for chunk in stream_ollama_chat(
             model_name=getattr(settings, "MODEL_PERSONA", "gemma4:31b"),
@@ -283,7 +291,6 @@ class ModeCompliance:
             if not started_streaming:
                 started_streaming = True
                 yield format_sse(status="", event_type=SSEEventType.STATUS)
-                await asyncio.sleep(0.01)
 
             buffer += chunk
             yield chunk
@@ -299,3 +306,4 @@ class ModeCompliance:
             "halaman": [p + 1 for p in selected_pages]
         }]
         yield format_sse("", "", False, sources=sources_list, event_type=SSEEventType.SOURCES)
+        logger.info(f"[CALL2_COMPLIANCE] ✅ Finished generation | needs_history={needs_history} | prior_turns_sent={len(trimmed_messages)}")

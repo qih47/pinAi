@@ -347,8 +347,18 @@ class ModeGenerateFile:
             existing_files_text=existing_artifacts_content,
         )
 
-        messages_dict = [{"role": m.role, "content": m.content} for m in chat_history]
-        trimmed_messages = messages_dict[-6:] if len(messages_dict) > 6 else messages_dict
+        from backend.app.services.pipeline.modes.mode_utils import resolve_history_messages
+        needs_history = bool(routing_data.get("needs_history", False)) if routing_data else False
+        active_pronoun = routing_data.get("pronoun", "formal_saya_anda") if routing_data else "formal_saya_anda"
+
+        trimmed_messages = resolve_history_messages(
+            chat_history=chat_history,
+            user_message=user_message,
+            needs_history=needs_history,
+            max_turns=6,
+            max_assistant_chars=600,
+            active_pronoun=active_pronoun,
+        )
 
         stream_messages = [
             {"role": "system", "content": system_prompt},
@@ -460,6 +470,7 @@ class ModeGenerateFile:
                         logger.error(f"[MODE_GENERATE_FILE] Flushed file write error for {fn}: {write_err}")
                         yield format_sse_file_status(stage="error", filename=fn)
 
+            logger.info(f"[CALL2_GENERATE_FILE] ✅ Finished generation | needs_history={needs_history} | turns_sent={len(trimmed_messages)} | files_written={len(written_files)}")
         except Exception as e:
             logger.error(f"[MODE_GENERATE_FILE] Single stream error: {e}")
             yield format_sse(f"Maaf, terjadi kendala: {str(e)}", "", False, event_type=SSEEventType.CHUNK)

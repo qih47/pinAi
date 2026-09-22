@@ -514,5 +514,6 @@ async def _sequential_pipeline_generator(
     if payload.session_uuid:
         new_title = await chat_history_service.get_session_title(payload.session_uuid)
 
-    logger.info(f"[PIPELINE] Complete ✅ | Title: {new_title} | Truncated: {is_truncated}")
+    elapsed_total = (datetime.now() - start_time).total_seconds()
+    logger.info(f"[PIPELINE] Complete ✅ | Title: {new_title} | Mode: {chat_mode} | Duration: {elapsed_total:.2f}s | Truncated: {is_truncated}")
     yield format_sse("", "", True, sources=preloaded_rag_sources, event_type=SSEEventType.DONE, title=new_title, is_truncated=is_truncated)

@@ -101,6 +101,15 @@ DAFTAR KAPABILITAS LAIN (aktifkan HANYA jika relevan, boleh multi-true):
 • `is_generate_email: true` — draf email/korespondensi formal korporat.
 • `is_docwriter: true` — user minta buka Dokumen Editor/Writer, atau susun draf naskah dinas (SE/SKEP/Nota Dinas). BUKAN ambigu (jangan barengi is_ambiguous).
 • `is_ambiguous: true` + `"ambiguity_reason": "..."` — permintaan masih umum/bercabang/router ragu (RAG vs Web vs Coding vs Visual). WAJIB isi ambiguity_reason spesifik. Saat aktif, JANGAN nyalakan need_rag/is_web_search — biar Call 2 pandu via wizard.
+• `needs_history: true` — HANYA aktifkan jika pesan user memerlukan konteks dari putaran percakapan sebelumnya untuk dapat dipahami atau dijawab secara benar:
+  - Menjawab, menanggapi, atau bereaksi terhadap pertanyaan, ajakan, opsi, atau pancingan diskusi yang diajukan AI pada putaran sebelumnya (contoh AI bertanya: "kamu tipe yang mantau drama politik atau pilih tutup kuping?" ➔ User menjawab: "nutup kuping aja dah", "ikut mantau dong", "dua-duanya", "males pusing").
+  - Obrolan / diskusi / curhat bersambung (multi-turn conversation) yang menyambung alur percakapan atau opini dari turn sebelumnya, termasuk respon singkat, reaksi santai, afirmasi, atau elaborasi topik yang sedang dibahas.
+  - Terdapat kata ganti / rujukan anaphora ("dia", "itu", "yang tadi", "kode tersebut", "dokumen barusan", "link tadi", "bagaimana dengannya?")
+  - Revisi / modifikasi konten sebelumnya ("ubah warnanya jadi biru", "ganti jadi bar chart", "tambah fitur sorting di script tadi")
+  - Merespon pertanyaan wizard / opsi dari AI sebelumnya ("Opsi 1", "yang React", "cuti tahunan", "setuju", "lanjutkan")
+  - Sanggahan / koreksi atas jawaban sebelumnya (`is_self_correction: true`)
+  - Pertanyaan lanjutan pendek yang menggantung ("kenapa?", "ada contoh lain?", "bagaimana cara pakainya?")
+  🚫 HILANGKAN key ini (DILARANG KERAS menulis false atau null) jika pesan benar-benar berdiri sendiri (standalone), pertanyaan baru tentang fakta/pengetahuan independen, atau topik baru yang tidak membutuhkan konteks lampau.
 • Format Jawaban Dinamis (opsional, sparse):
   - `"response_format"`: `"yes_no"` (jika user minta iya/tidak/benar/salah atau konfirmasi biner) | `"concise"` (jika user minta singkat/to-the-point/1-3 kalimat) | `"detailed"` (jika user minta detail/analisis mendalam)
   - `"format_constraint"`: string batasan spesifik dari pesan user jika ada (contoh: "1 kalimat", "tanpa penjelasan", "2 kalimat")
@@ -158,6 +167,14 @@ DAFTAR KAPABILITAS LAIN (aktifkan HANYA jika relevan, boleh multi-true):
 • Permintaan format biner (Iya/Tidak):
   User: "cuy jawab iya atau tidak aja: python itu interpreted bukan?"
   {"session_title": "Pertanyaan Sifat Python", "active_topic": "Pemrograman", "key_subject": "Sifat Eksekusi Python", "is_coding": true, "response_format": "yes_no", "format_constraint": "Jawab hanya dengan Iya atau Tidak"}
+
+• Pertanyaan lanjutan yang memerlukan konteks riwayat (needs_history):
+  User: "kalau yang tadi itu ada sanksinya ga?"
+  {"active_topic": "Regulasi Kepegawaian", "key_subject": "Sanksi Pelanggaran", "need_rag": true, "needs_history": true, "queries": ["sanksi pelanggaran ketentuan kerja"]}
+
+• Pertanyaan mandiri / topik baru (tanpa needs_history):
+  User: "siapa presiden pertama RI?"
+  {"session_title": "Presiden Pertama RI", "active_topic": "Sejarah Nasional", "key_subject": "Presiden Soekarno", "is_chitchat": true}
 
 • Chitchat umum/pop culture/opini (satu kategori, satu pola output):
   User: "eh menurut lo korupsi di indo bakal beres ga sih" / "sinopsis interstellar apa ya"
@@ -281,6 +298,7 @@ TUGAS:
    - `"is_coding": true`           -> implementasi script pemrograman, koding, fungsi, database query
    - `"is_web_search": true`       -> pencarian web / informasi internet terkini luar internal Pindad
    - `"is_map_query": true`        -> letak geografis, fasilitas pabrik, kantor, koordinat Pindad
+   - `"needs_history": true`       -> pesan user butuh konteks dari obrolan sebelumnya (jawaban/tanggapan atas pertanyaan/ajakan diskusi AI sebelumnya, dialog bersambung, kata rujukan/anaphora, revisi kode/visual, jawaban wizard, klarifikasi eliptis)
 5. Jika FIRST CHAT = true, WAJIB buatkan judul percakapan ringkas 2-4 kata -> "session_title": "..." (DILARANG KERAS 1 KATA, untuk pesan sapaan gunakan frasa akrab seperti "Sapaan Pagi yang Akrab" atau "Sapaan Pagi Brother").
 
 ATURAN OUTPUT JSON (WAJIB DIIKUTI — STRICT SPARSE JSON):

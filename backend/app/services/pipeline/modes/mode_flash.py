@@ -1,5 +1,6 @@
 import logging
 import json
+import asyncio
 from typing import AsyncGenerator, List, Dict, Any, Optional
 
 from fastapi import Request
@@ -114,20 +115,20 @@ class ModeFlash:
             except Exception as e:
                 logger.warning(f"[MODE_FLASH] Gagal mengambil snapshot dokumen aktif: {e}")
 
-        messages_dict = [{"role": m.role, "content": m.content} for m in chat_history]
-        # Mengambil lean history: 4 pesan terakhir untuk chitchat, 6 pesan untuk modul lainnya
-        if module_name == "chitchat":
-            trimmed_messages = messages_dict[-4:] if len(messages_dict) > 4 else messages_dict
-        else:
-            trimmed_messages = messages_dict[-6:] if len(messages_dict) > 6 else messages_dict
-        
-        # Rampingkan balasan asisten yang terlalu panjang di putaran sebelumnya (hemat KV cache & prefill)
-        from backend.app.services.pipeline.modes.mode_utils import compact_history_messages
-        trimmed_messages = compact_history_messages(trimmed_messages, max_assistant_chars=600 if module_name != "chitchat" else 400)
-
-        # 🛡️ ANTI-PRIMING: Bersihkan kata ganti asisten di riwayat jika mode Formal / Akrab aktif
+        from backend.app.services.pipeline.modes.mode_utils import resolve_history_messages
+        needs_history = bool(routing_data.get("needs_history", False)) if routing_data else False
         active_pronoun = routing_data.get("pronoun", "formal_saya_anda") if routing_data else "formal_saya_anda"
-        trimmed_messages = sanitize_history_for_pronoun(trimmed_messages, active_pronoun)
+        max_turns = 4 if module_name == "chitchat" else 6
+        max_assistant_chars = 400 if module_name == "chitchat" else 600
+
+        trimmed_messages = resolve_history_messages(
+            chat_history=chat_history,
+            user_message=user_message,
+            needs_history=needs_history,
+            max_turns=max_turns,
+            max_assistant_chars=max_assistant_chars,
+            active_pronoun=active_pronoun,
+        )
 
         stream_messages = [
             {"role": "system", "content": system_prompt},
@@ -168,13 +169,13 @@ class ModeFlash:
                     "max_ctx": num_ctx
                 }
             }
-            await chat_history_service.save_agent_step(
+            asyncio.create_task(chat_history_service.save_agent_step(
                 session_id=session_uuid_to_use,
                 step_number=2,
                 tool_called="CALL_2_FLASH",
                 tool_input=f"Prompt chars: {len(system_prompt)}",
                 observation=json.dumps(obs_dict)
-            )
+            ))
 
         try:
             from backend.app.services.pipeline.agentic_interceptor import agentic_stream_wrapper
@@ -189,6 +190,7 @@ class ModeFlash:
                 **module_config,
             ):
                 yield chunk
+            logger.info(f"[CALL2_FLASH] ✅ Finished generation | module={module_name} | needs_history={needs_history} | turns_sent={len(trimmed_messages)} | hist_tokens={hist_tokens}")
         except Exception as e:
             logger.error(f"[MODE_FLASH] Stream error: {e}")
             yield format_sse(f"Maaf, terjadi kendala teknis: {str(e)}", "", False, event_type=SSEEventType.CHUNK)

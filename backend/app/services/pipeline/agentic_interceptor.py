@@ -214,7 +214,6 @@ async def agentic_stream_wrapper(
                             
                             # Emit live status SSE
                             yield format_sse(status="🌐 Mencari di web", status_key="WEB_SEARCH_INIT", event_type=SSEEventType.STATUS)
-                            await asyncio.sleep(0.01)
 
                             # Eksekusi Web Search
                             widget_payload, web_context = await execute_in_line_web_search(tool_query)
@@ -226,7 +225,6 @@ async def agentic_stream_wrapper(
 
                             # Update status
                             yield format_sse(status="💡 Menyusun jawaban", status_key="DRAFTING_RESPONSE", event_type=SSEEventType.STATUS)
-                            await asyncio.sleep(0.01)
 
                             # Siapkan Turn 2 Prompt untuk melanjutkan jawaban
                             continuation_instruction = (

@@ -1,5 +1,6 @@
 import logging
 import json
+import asyncio
 from typing import AsyncGenerator, List, Dict, Any, Optional
 
 from fastapi import Request
@@ -61,10 +62,19 @@ class ModeGuest:
             system_prompt += "\n\n" + session_chunks
 
         # 4. Persiapkan Messages untuk Ollama
-        messages_dict = [{"role": m.role, "content": m.content} for m in chat_history]
-        # Mengambil 5 history + 1 current message = 6
-        trimmed_messages = messages_dict[-6:] if len(messages_dict) > 6 else messages_dict
-        
+        from backend.app.services.pipeline.modes.mode_utils import resolve_history_messages
+        needs_history = bool(routing_data.get("needs_history", False)) if routing_data else False
+        active_pronoun = routing_data.get("pronoun", "formal_saya_anda") if routing_data else "formal_saya_anda"
+
+        trimmed_messages = resolve_history_messages(
+            chat_history=chat_history,
+            user_message=user_message,
+            needs_history=needs_history,
+            max_turns=6,
+            max_assistant_chars=600,
+            active_pronoun=active_pronoun,
+        )
+
         stream_messages = [
             {"role": "system", "content": system_prompt},
             *trimmed_messages,
@@ -106,13 +116,13 @@ class ModeGuest:
                     "max_ctx": num_ctx
                 }
             }
-            await chat_history_service.save_agent_step(
+            asyncio.create_task(chat_history_service.save_agent_step(
                 session_id=session_uuid_to_use,
                 step_number=2,
                 tool_called="CALL_2_GUEST",
                 tool_input=f"Prompt chars: {len(system_prompt)}",
                 observation=json.dumps(obs_dict)
-            )
+            ))
 
         try:
             from backend.app.services.pipeline.agentic_interceptor import agentic_stream_wrapper
@@ -139,4 +149,4 @@ class ModeGuest:
             )
 
         yield format_sse("", "", True, event_type=SSEEventType.DONE)
-        logger.info("[MODE_GUEST] Execution complete")
+        logger.info(f"[CALL2_GUEST] ✅ Finished generation | needs_history={needs_history} | turns_sent={len(trimmed_messages)} | hist_tokens={hist_tokens}")

@@ -28,15 +28,19 @@ async def init_db_pool():
         )
 
         # 2. HRIS Database Pool (Login DB)
-        hris_pool = await asyncpg.create_pool(
-            host=settings.DB_LOGIN_HOST,
-            database=settings.DB_LOGIN_DATABASE,
-            user=settings.DB_LOGIN_USER,
-            password=settings.DB_LOGIN_PASSWORD,
-            min_size=3,
-            max_size=10,
-            command_timeout=60.0,
-        )
+        try:
+            hris_pool = await asyncpg.create_pool(
+                host=settings.DB_LOGIN_HOST,
+                database=settings.DB_LOGIN_DATABASE,
+                user=settings.DB_LOGIN_USER,
+                password=settings.DB_LOGIN_PASSWORD,
+                min_size=3,
+                max_size=10,
+                command_timeout=60.0,
+            )
+        except Exception as e:
+            logger.error(f"[DB_CONNECTION_POOL_ERROR] Failed to initialize HRIS DB pool: {e}")
+            hris_pool = None
 
         # 3. Peraturan Database Pool (MySQL)
         try:

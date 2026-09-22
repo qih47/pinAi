@@ -5,6 +5,7 @@ import os
 import asyncio
 import base64
 import datetime
+import time
 from typing import AsyncGenerator, List, Dict, Any, Optional
 from fastapi import Request
 
@@ -44,6 +45,7 @@ class ModeFocus:
         current_user_npp: Optional[str] = None,
         session_uuid: Optional[str] = None
     ) -> AsyncGenerator[str, None]:
+        t_pre_start = time.time()
         
         isolated_doc_id = None
         doc_title = None
@@ -54,7 +56,6 @@ class ModeFocus:
             isolated_doc_id = request.isolated_doc_id
             
         yield format_sse(status="🎯 Membuka dokumen fokus rujukan", status_key="OPENING_FOCUS_DOC", event_type=SSEEventType.STATUS)
-        await asyncio.sleep(0.05)
 
         # 1. Resolusi Identitas Dokumen Terpadu (PG dokumen & MySQL berita & Smart Fallback)
         from backend.app.services.tools.document_resolver import find_valid_pdf_file, resolve_isolated_document
@@ -78,15 +79,16 @@ class ModeFocus:
 
         logger.info(f"[MODE_FOCUS] Unified resolved: id={resolved.get('doc_id')}, title='{doc_title}', nomor='{doc_nomor}', file_path={file_path}")
 
-        # 3. Ekstrak Teks Dokumen
-        selected_pages = [0]
-        final_base64_images = []
+        # 2. Ekstraksi Dokumen Terpadu (Single-Doc High Precision)
         final_extracted_text = ""
+        final_base64_images = []
+        selected_pages = []
+        total_pages = 0
 
-        # Skenario A: File fisik ditemukan di disk -> Jalankan Document Intelligence & OCR
+        # Skenario A: File fisik ada di server (PDF asli)
         if file_path and os.path.exists(file_path):
             logger.info(f"[MODE_FOCUS] Processing physical file: {file_path}")
-            doc_id_key = str(pg_doc_id or isolated_doc_id or os.path.basename(file_path))
+            doc_id_key = str(resolved.get("doc_id") or pg_doc_id or isolated_doc_id or filename)
 
             text_map = None
             all_base64_images = None
@@ -99,19 +101,17 @@ class ModeFocus:
                 cached_brain = brain.get_document(doc_id_key)
                 if cached_brain and "text_map" in cached_brain:
                     yield format_sse(status="🧠 Dari memori sesi", status_key="BRAIN_HIT", event_type=SSEEventType.STATUS)
-                    await asyncio.sleep(0.35)
                     text_map = cached_brain["text_map"]
                     all_base64_images = cached_brain.get("images", [])
                     total_pages = cached_brain.get("total_pages", len(text_map))
 
             if text_map is None:
                 yield format_sse(status="📄 Memuat dokumen", status_key="DOC_LOADING", event_type=SSEEventType.STATUS)
-                await asyncio.sleep(0.2)
                 cache_key = session_uuid or file_path
                 text_map, all_base64_images, total_pages = await extract_and_ocr_document_async(file_path, cache_key=cache_key, render_images=True)
 
                 if brain:
-                    await brain.save_document(doc_id_key, {
+                    asyncio.create_task(brain.save_document(doc_id_key, {
                         "title": doc_title or filename or "Dokumen Rujukan",
                         "nomor": doc_nomor,
                         "jenis": doc_jenis,
@@ -120,14 +120,10 @@ class ModeFocus:
                         "text_map": text_map,
                         "images": all_base64_images,
                         "total_pages": total_pages,
-                    })
+                    }))
                     yield format_sse(status="💾 Menyimpan ke memori", status_key="BRAIN_SAVE", event_type=SSEEventType.STATUS)
-                    await asyncio.sleep(0.35)
-
 
             yield format_sse(status=f"🔍 Menganalisis {total_pages} halaman dokumen rujukan", status_key="ANALYZING_DOC_PAGES", event_type=SSEEventType.STATUS)
-            await asyncio.sleep(0.05)
-
 
             explicit_pages = extract_explicit_pages_from_query(user_message, total_pages)
             selected_pages, final_base64_images, final_extracted_text = await two_stage_rerank_cluster_async(
@@ -151,7 +147,6 @@ class ModeFocus:
                 cached_brain = brain.get_document(doc_id_key)
                 if cached_brain and "text_map" in cached_brain:
                     yield format_sse(status="🧠 Dari memori sesi", status_key="BRAIN_HIT", event_type=SSEEventType.STATUS)
-                    await asyncio.sleep(0.35)
                     text_map = cached_brain["text_map"]
                     final_extracted_text = "\n\n---\n\n".join(item["text"] for item in text_map)
                     selected_pages = [item.get("page_num", 0) for item in text_map[:5]]
@@ -159,7 +154,6 @@ class ModeFocus:
 
             if not final_extracted_text:
                 yield format_sse(status="📂 Mengambil teks utuh dari arsip dokumen", status_key="RETRIEVING_FULL_TEXT", event_type=SSEEventType.STATUS)
-                await asyncio.sleep(0.05)
 
                 try:
                     async with get_db() as pg_conn:
@@ -186,7 +180,7 @@ class ModeFocus:
                                 total_pages = len(text_map)
 
                                 if brain:
-                                    await brain.save_document(doc_id_key, {
+                                    asyncio.create_task(brain.save_document(doc_id_key, {
                                         "title": doc_title or filename or "Dokumen Rujukan",
                                         "nomor": doc_nomor,
                                         "jenis": doc_jenis,
@@ -194,9 +188,8 @@ class ModeFocus:
                                         "filename": filename,
                                         "text_map": text_map,
                                         "total_pages": total_pages,
-                                    })
+                                    }))
                                     yield format_sse(status="💾 Menyimpan ke memori", status_key="BRAIN_SAVE", event_type=SSEEventType.STATUS)
-                                    await asyncio.sleep(0.2)
                 except Exception as e:
                     logger.error(f"[MODE_FOCUS] Error fetching PG chunks: {e}")
 
@@ -204,7 +197,6 @@ class ModeFocus:
         if not final_extracted_text and not file_path:
             logger.warning(f"[MODE_FOCUS] Fallback to RAG triggered: File not found in DB or missing isolated_doc_id ({isolated_doc_id})")
             yield format_sse(status="🔄 Mencari secara global di arsip", status_key="SEARCHING_GLOBAL_ARCHIVE", event_type=SSEEventType.STATUS)
-            await asyncio.sleep(0.01)
             from backend.app.services.pipeline.modes.mode_documents import ModeDocuments
             fallback_handler = ModeDocuments()
             
@@ -243,13 +235,23 @@ class ModeFocus:
         # 4. Sampaikan SSE Status Halaman Dokumen Terfokus
         halaman_str = ", ".join([str(p+1 if isinstance(p, int) else p) for p in selected_pages])
         yield format_sse(status=f"📌 Konteks Terfokus: {doc_title or filename or 'Dokumen Rujukan'} (Hal. {halaman_str})", status_key="FOCUSED_CONTEXT", event_type=SSEEventType.STATUS)
-        await asyncio.sleep(0.1)
 
-        # 5. Persiapkan Chat History & Prompt Focus Eksklusif (Maks 5 putaran dialog / 10 pesan)
-        messages_dict = [{"role": m.role, "content": m.content} for m in chat_history if getattr(m, "role", None) != "system"]
-        if messages_dict and messages_dict[-1].get("role") == "user" and messages_dict[-1].get("content") == user_message:
-            messages_dict = messages_dict[:-1]
-        trimmed_messages = messages_dict[-10:] if len(messages_dict) > 10 else messages_dict
+        # 5. Persiapkan Chat History & Prompt Focus Eksklusif
+        from backend.app.services.pipeline.modes.mode_utils import compact_history_messages, sanitize_history_for_pronoun
+        needs_history = bool(routing_data.get("needs_history", False)) if routing_data else False
+        active_pronoun = routing_data.get("pronoun", "formal_saya_anda") if routing_data else "formal_saya_anda"
+
+        if needs_history:
+            messages_dict = [{"role": m.role, "content": m.content} for m in chat_history if getattr(m, "role", None) != "system"]
+            if messages_dict and messages_dict[-1].get("role") == "user" and messages_dict[-1].get("content") == user_message:
+                messages_dict = messages_dict[:-1]
+            trimmed_messages = messages_dict[-6:] if len(messages_dict) > 6 else messages_dict
+            trimmed_messages = compact_history_messages(trimmed_messages, max_assistant_chars=600)
+            trimmed_messages = sanitize_history_for_pronoun(trimmed_messages, active_pronoun)
+            logger.info(f"[MODE_FOCUS] 📚 Multi-turn active (needs_history=True). Kept {len(trimmed_messages)} prior turns.")
+        else:
+            trimmed_messages = []
+            logger.info("[MODE_FOCUS] ⚡ Standalone query (needs_history=False). Pruned past chat history.")
         precheck = detect_precheck(user_message, "focus", False)
 
         system_prompt = build_response_prompt_focus(
@@ -300,12 +302,18 @@ class ModeFocus:
                 "doc_title": doc_title or filename
             }
             try:
-                await chat_history_service.save_active_tokens_observation(
+                asyncio.create_task(chat_history_service.save_active_tokens_observation(
                     session_uuid=session_uuid_to_use,
                     tokens_observation=obs_dict
-                )
+                ))
             except Exception as e:
                 logger.warning(f"[MODE_FOCUS] Failed saving token obs: {e}")
+
+        # Real-time status SSE sebelum TTFT Call 2
+        yield format_sse(status="✍️ Menyusun analisis dokumen...", status_key="DRAFTING_RESPONSE", event_type=SSEEventType.STATUS)
+
+        t_pre_elapsed = (time.time() - t_pre_start) * 1000
+        logger.info(f"[TIMING_BENCHMARK] [PRE_CALL2_FOCUS] Done in {t_pre_elapsed:.2f}ms | Starting Call 2 stream")
 
         # 6. Stream Respons Ollama (Call 2 Focus)
         async for chunk in stream_ollama_chat(
@@ -322,7 +330,6 @@ class ModeFocus:
             if not started_streaming:
                 started_streaming = True
                 yield format_sse(status="", event_type=SSEEventType.STATUS)
-                await asyncio.sleep(0.01)
 
             buffer += chunk
             yield chunk
@@ -343,3 +350,4 @@ class ModeFocus:
             "halaman": [p + 1 for p in selected_pages] if selected_pages else None
         }]
         yield format_sse("", "", False, sources=sources_list, event_type=SSEEventType.SOURCES)
+        logger.info(f"[CALL2_FOCUS] ✅ Finished generation | needs_history={needs_history} | prior_turns_sent={len(trimmed_messages)}")

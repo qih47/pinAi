@@ -4,6 +4,7 @@ import os
 import asyncio
 import base64
 import datetime
+import time
 from typing import AsyncGenerator, List, Dict, Any, Optional
 from fastapi import Request
 
@@ -28,7 +29,7 @@ logger = logging.getLogger("MODE_ATTACHMENT")
 TEXT_EXTENSIONS = {
     "txt", "csv", "md", "py", "js", "jsx", "ts", "tsx", "html", "css",
     "json", "yaml", "yml", "xml", "php", "java", "cpp", "c", "h",
-    "sh", "bash", "dart", "swift", "go", "rs", "sql", "toml", "ini", "conf"
+    "sh", "bat", "sql", "log", "env", "ini", "conf", "toml"
 }
 
 def is_summary_intent(query: str) -> bool:
@@ -91,10 +92,10 @@ class ModeAttachment:
         current_user_npp: Optional[str] = None,
         session_uuid: Optional[str] = None
     ) -> AsyncGenerator[str, None]:
+        t_pre_start = time.time()
         logger.info("[MODE_ATTACHMENT] Starting execution")
         
         yield format_sse(status="👁️ Memindai file lampiran", status_key="SCANNING_ATTACHMENT", event_type=SSEEventType.STATUS)
-        await asyncio.sleep(0.02)
 
         # ── 1. Ekstraksi Path File Lampiran ─────────────────────────────────────
         pdf_file_path = None
@@ -179,14 +180,12 @@ class ModeAttachment:
                 cached_brain = brain.get_document(doc_id_key)
                 if cached_brain and "text_map" in cached_brain:
                     yield format_sse(status="🧠 Dari memori sesi", status_key="BRAIN_HIT", event_type=SSEEventType.STATUS)
-                    await asyncio.sleep(0.01)
                     text_map = cached_brain["text_map"]
                     all_base64_images = cached_brain.get("images", [])
                     total_pages = cached_brain.get("total_pages", len(text_map))
 
             if text_map is None:
                 yield format_sse(status="📄 Memuat dokumen", status_key="DOC_LOADING", event_type=SSEEventType.STATUS)
-                await asyncio.sleep(0.01)
                 cache_key = session_uuid or pdf_file_path
                 text_map, all_base64_images, total_pages = await extract_and_ocr_document_async(pdf_file_path, cache_key=cache_key)
 
@@ -198,7 +197,6 @@ class ModeAttachment:
                         "total_pages": total_pages,
                     })
                     yield format_sse(status="💾 Menyimpan ke memori", status_key="BRAIN_SAVE", event_type=SSEEventType.STATUS)
-                    await asyncio.sleep(0.01)
 
             # ── Deteksi Intent: Audit / Proofreader vs Ringkasan vs Targeted QA ───
             explicit_pages = extract_explicit_pages_from_query(user_message, total_pages)
@@ -259,7 +257,6 @@ class ModeAttachment:
                     status_key="AUDITING_PAGES",
                     event_type=SSEEventType.STATUS
                 )
-                await asyncio.sleep(0.05)
 
                 doc_builder = []
                 for p in range(start_idx, end_idx):
@@ -268,7 +265,7 @@ class ModeAttachment:
                         p_num = item.get("page_num", p) + 1
                         p_text = item.get("text", "").strip()
                         doc_builder.append(f"=== TEKS DOKUMEN HALAMAN {p_num} ===\n{p_text}")
-                final_extracted_text = "\n\n".join(doc_builder)
+                    final_extracted_text = "\n\n".join(doc_builder)
 
                 if all_base64_images and len(all_base64_images) > start_idx:
                     final_base64_images = all_base64_images[start_idx:end_idx]
@@ -278,7 +275,7 @@ class ModeAttachment:
                     if audit_is_last:
                         brain.clear_active_audit()
                     else:
-                        await brain.save_active_audit({
+                        asyncio.create_task(brain.save_active_audit({
                             "doc_id": doc_id_key,
                             "pdf_file_path": pdf_file_path or "",
                             "file_name": os.path.basename(pdf_file_path or "dokumen.pdf"),
@@ -287,12 +284,11 @@ class ModeAttachment:
                             "current_batch_label": f"{audit_start_page}-{audit_end_page}",
                             "total_pages": total_pages,
                             "batch_size": BATCH_SIZE
-                        })
+                        }))
 
             elif is_summary:
                 # Mode Rangkuman Dokumen Utuh
                 yield format_sse(status=f"📑 Merangkum seluruh {total_pages} halaman dokumen", status_key="SUMMARIZING_PAGES", event_type=SSEEventType.STATUS)
-                await asyncio.sleep(0.05)
 
                 if total_pages <= 40:
                     # Single-Pass Full Context
@@ -316,7 +312,6 @@ class ModeAttachment:
             else:
                 # Mode Targeted QA (Two-Stage Context-Aware Retrieval)
                 yield format_sse(status=f"🔍 Menganalisis klausul terkait pada {total_pages} halaman", status_key="ANALYZING_CLAUSES_PAGES", event_type=SSEEventType.STATUS)
-                await asyncio.sleep(0.05)
 
                 explicit_pages = extract_explicit_pages_from_query(user_message, total_pages)
                 selected_pages, final_base64_images, final_extracted_text = await two_stage_rerank_cluster_async(
@@ -330,7 +325,6 @@ class ModeAttachment:
 
                 halaman_str = ", ".join([str(p+1) for p in selected_pages])
                 yield format_sse(status=f"📌 Ditemukan Klausul pada Halaman {halaman_str}!", status_key="FOUND_CLAUSE_PAGE", event_type=SSEEventType.STATUS)
-                await asyncio.sleep(0.1)
 
         # ── 3. Susun Prompt & Context ───────────────────────────────────────────
         if is_audit_mode:
@@ -422,10 +416,14 @@ class ModeAttachment:
         logger.info(f"[MODE_ATTACHMENT] Fixed 16K context size locked: {num_ctx}")
         target_model = getattr(settings, "MODEL_PERSONA", "gemma4:31b")
 
-        yield format_sse(status="", event_type=SSEEventType.STATUS)
-        await asyncio.sleep(0.01)
+        # Real-time status SSE sebelum TTFT Call 2
+        yield format_sse(status="✍️ Menyusun analisis lampiran...", status_key="DRAFTING_RESPONSE", event_type=SSEEventType.STATUS)
+
+        t_pre_elapsed = (time.time() - t_pre_start) * 1000
+        logger.info(f"[TIMING_BENCHMARK] [PRE_CALL2_ATTACHMENT] Done in {t_pre_elapsed:.2f}ms | Starting Call 2 stream")
 
         buffer = ""
+        started_streaming = False
         try:
             async for chunk_line in stream_ollama_chat(
                 model_name=target_model,
@@ -438,6 +436,10 @@ class ModeAttachment:
                 stream_speed=0.01,
                 employee_name=employee_name
             ):
+                if not started_streaming:
+                    started_streaming = True
+                    yield format_sse(status="", event_type=SSEEventType.STATUS)
+
                 buffer += chunk_line
                 yield chunk_line
         except Exception as e:

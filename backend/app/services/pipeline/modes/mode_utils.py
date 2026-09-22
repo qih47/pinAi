@@ -2,6 +2,8 @@ import logging
 import re
 from typing import List, Dict, Any, Optional, Tuple
 
+logger = logging.getLogger("CAKRA_MODE_UTILS")
+
 _CODING_KEYWORDS = ["import ", "export ", "const ", "async ", "await ", "function", "def ", "return ", "class ", "select ", "docker", "sql ", "query", "react", "python", "javascript", "coding", "koding", "usecontext", "usememo", "typescript", "golang", "kotlin", "flutter", "dart", "frontend", "backend", "jsx", "html", "css", "tailwind"]
 _GREETING_KEYWORDS = ["hai", "halo", "hello", "hi ", "apa kabar", "selamat pagi", "selamat siang", "selamat sore", "selamat malam", "assalamualaikum", "pagi", "siang", "malam", "thanks", "thank you", "terima kasih", "makasih", "ok", "oke", "siap", "tq", "nuhun", "suwun", "mantap", "sip"]
 # CATATAN: 'ik' (Instruksi Kerja) sengaja TIDAK dimasukkan sebagai substring mentah agar tidak
@@ -539,6 +541,76 @@ def compact_history_messages(messages: List[Dict[str, Any]], max_assistant_chars
         compacted.append({**msg, "content": compacted_content})
 
     return compacted
+
+
+def resolve_history_messages(
+    chat_history: List[Any],
+    user_message: str,
+    needs_history: bool = True,
+    max_turns: int = 6,
+    max_assistant_chars: int = 600,
+    active_pronoun: str = "formal_saya_anda",
+    strip_system: bool = True,
+) -> List[Dict[str, Any]]:
+    """
+    Menyaring dan menyusun pesan riwayat percakapan untuk Call 2 secara non-destruktif:
+    - JALUR A1 (needs_history=True): Multi-turn aktif. Mengambil `max_turns` terakhir,
+      merampingkan pesan asisten panjang (compacting), dan sanitasi kata ganti.
+    - JALUR B1 (needs_history=False): Standalone query / efisiensi tinggi. Memangkas seluruh riwayat
+      lampau, hanya menyisakan turn pesan pengguna saat ini untuk kecepatan respon maksimal (TTFT)
+      dan bebas kontaminasi konteks (zero priming).
+    """
+    if not chat_history:
+        return [{"role": "user", "content": user_message}]
+
+    raw_messages: List[Dict[str, Any]] = []
+    for m in chat_history:
+        if isinstance(m, dict):
+            role = m.get("role")
+            content = m.get("content", "")
+            images = m.get("images")
+        else:
+            role = getattr(m, "role", None)
+            content = getattr(m, "content", "")
+            images = getattr(m, "images", None)
+
+        if strip_system and role == "system":
+            continue
+
+        entry: Dict[str, Any] = {"role": role or "user", "content": content or ""}
+        if images:
+            entry["images"] = images
+        raw_messages.append(entry)
+
+    # Pastikan pesan pengguna saat ini berada di akhir raw_messages
+    if not raw_messages or raw_messages[-1].get("role") != "user":
+        raw_messages.append({"role": "user", "content": user_message})
+    elif user_message and raw_messages[-1].get("content") != user_message:
+        if raw_messages[-1].get("role") == "user":
+            raw_messages[-1]["content"] = user_message
+        else:
+            raw_messages.append({"role": "user", "content": user_message})
+
+    # Percabangan Aman (Non-Destructive Safe Branching)
+    if not needs_history or len(raw_messages) <= 1:
+        # JALUR B1: Standalone query — pangkas riwayat lampau!
+        trimmed = [raw_messages[-1]]
+        bypassed_turns = len(raw_messages) - 1
+        logger.info(
+            f"[HISTORY_RESOLVER] ⚡ Standalone query (needs_history=False). "
+            f"Bypassed {bypassed_turns} past turn(s) -> Sending 1 lean user turn to Call 2."
+        )
+    else:
+        # JALUR A1: Multi-turn aktif — gunakan riwayat yang dicompact
+        trimmed = raw_messages[-max_turns:] if len(raw_messages) > max_turns else raw_messages
+        trimmed = compact_history_messages(trimmed, max_assistant_chars=max_assistant_chars)
+        trimmed = sanitize_history_for_pronoun(trimmed, active_pronoun)
+        logger.info(
+            f"[HISTORY_RESOLVER] 📚 Multi-turn context active (needs_history=True). "
+            f"Using {len(trimmed)} turn(s) out of {len(raw_messages)} (compacted & sanitized)."
+        )
+
+    return trimmed
 
 
 def select_call2_module(routing: Dict[str, Any], has_rag_context: bool = False) -> str:
@@ -1249,6 +1321,20 @@ def extract_call2_turn_context(content: str) -> Dict[str, Any]:
     clean_text = clean_text.strip()
     short_clean = clean_text[:280] + "..." if len(clean_text) > 280 else clean_text
 
+    # 7. ❓ Deteksi apakah asisten mengajukan pertanyaan / ajakan diskusi di akhir tanggapannya
+    clean_tail = clean_text[-300:] if len(clean_text) > 300 else clean_text
+    is_general_help = any(g in clean_tail.lower() for g in [
+        "ada yang bisa dibantu", "ada yang bisa saya bantu", "ada yang bisa cakra bantu", "ada yang perlu dibantu", "ada yang bisa kita bantu", "apa yang bisa cakra bantu"
+    ])
+    has_question = False
+    if not is_general_help:
+        has_question = "?" in clean_tail or any(q_kw in clean_tail.lower() for q_kw in [
+            "gimana menurut", "menurut lo", "menurut lu", "menurut anda", "menurut kamu",
+            "mau yang mana", "pilih mana", "tertarik yang mana", "kamu tipe yang", "lo tipe yang", "lu tipe yang",
+            "gimana, mau", "ada yang mau dicurhatin", "ada yang mau ditanyain"
+        ])
+    details["has_question"] = has_question
+
     combined_summary = " ".join(action_summaries)
     return {
         "action_type": action_type,
@@ -1360,6 +1446,20 @@ def build_call2_history_context(chat_history: List[Any], user_message: str = "")
         # 5. Chitchat state
         elif action_type == "CHITCHAT_DIJAWAB":
             last_call2_state["has_prior_chitchat"] = True
+
+        # 6. Deteksi jawaban / respon atas pertanyaan / ajakan asisten di turn sebelumnya
+        if details.get("has_question"):
+            last_call2_state["last_assistant_asked_question"] = True
+            if user_message:
+                u_clean = user_message.strip().lower()
+                words = u_clean.split()
+                is_standalone_cmd = any(cmd in u_clean for cmd in [
+                    "buatkan script", "buatkan file", "buka dokumen", "draft email", "cari regulasi",
+                    "skep nomor", "peraturan nomor", "cari di web", "googling"
+                ])
+                is_standalone_question = any(u_clean.startswith(qw) for qw in ["siapa ", "berapa ", "kapan ", "dimana ", "apakah "]) and not any(anaph in u_clean for anaph in ["itu", "dia", "tadi", "tersebut", "nya"])
+                if len(words) <= 35 and not is_standalone_cmd and not is_standalone_question:
+                    last_call2_state["is_replying_to_assistant_question"] = True
 
     return context_history_str, last_call2_state
 

@@ -37,7 +37,6 @@ async def run_rag_pipeline(
         return
 
     yield format_sse(status="🔍 Menelusuri dokumen", event_type=SSEEventType.STATUS)
-    await asyncio.sleep(0.01)
 
     start_time = time.time()
 
@@ -59,14 +58,8 @@ async def run_rag_pipeline(
             src["cache_hit"] = True
 
         yield format_sse(status="⚡ Menggunakan cache dokumen", event_type=SSEEventType.STATUS)
-        await asyncio.sleep(0.01)
-
         yield format_sse(status=f"✨ Menemukan {len(combined_sources)} dokumen", event_type=SSEEventType.STATUS)
-        await asyncio.sleep(0.01)
-
         yield format_sse("", "", False, sources=combined_sources, event_type=SSEEventType.SOURCES)
-        await asyncio.sleep(0.01)
-
         yield format_sse_pipeline_data({
             "context": cache_result["context"],
             "sources": combined_sources,
@@ -78,21 +71,16 @@ async def run_rag_pipeline(
         _run_parallel_rag(rewritten_queries, limit_per_query)
     )
 
-    slow_warned = False
-    while not rag_task.done():
-        await asyncio.sleep(0.5)
-        elapsed = time.time() - start_time
-        if elapsed > _SLOW_SEARCH_THRESHOLD_S and not slow_warned:
-            yield format_sse(status="⏳ Memeriksa arsip rujukan", event_type=SSEEventType.STATUS)
-            await asyncio.sleep(0.01)
-            slow_warned = True
-
     try:
-        combined_context, combined_sources, total_candidates = await rag_task
+        done, _ = await asyncio.wait({rag_task}, timeout=_SLOW_SEARCH_THRESHOLD_S)
+        if not done:
+            yield format_sse(status="⏳ Memeriksa arsip rujukan", event_type=SSEEventType.STATUS)
+            combined_context, combined_sources, total_candidates = await rag_task
+        else:
+            combined_context, combined_sources, total_candidates = await rag_task
     except Exception as e:
         logger.error(f"[RAG_PIPELINE] Parallel RAG error: {e}")
         yield format_sse(status="⚠️ Gagal mengakses dokumen rujukan", event_type=SSEEventType.STATUS)
-        await asyncio.sleep(0.01)
         yield format_sse_pipeline_data({"context": "", "sources": []})
         return
 
@@ -102,7 +90,6 @@ async def run_rag_pipeline(
         src["search_time_ms"] = duration_ms
 
     yield format_sse(status="📊 Memilih rujukan sesuai", event_type=SSEEventType.STATUS)
-    await asyncio.sleep(0.01)
 
     if combined_sources:
         doc_count = len(combined_sources)
@@ -110,17 +97,13 @@ async def run_rag_pipeline(
             status=f"✅ Menemukan {doc_count} rujukan dokumen",
             event_type=SSEEventType.STATUS,
         )
-        await asyncio.sleep(0.01)
-
         yield format_sse(
             "", "", False,
             sources=combined_sources,
             event_type=SSEEventType.SOURCES,
         )
-        await asyncio.sleep(0.01)
     else:
         yield format_sse(status="⚠️ Menggunakan pengetahuan internal", event_type=SSEEventType.STATUS)
-        await asyncio.sleep(0.01)
 
     logger.info(
         f"[RAG_PIPELINE] Done | {len(combined_context)} chars | "
@@ -128,11 +111,11 @@ async def run_rag_pipeline(
         f"{duration_ms}ms"
     )
 
-    # ── SPRINT 2: SAVE TO SEMANTIC CACHE ─────────────────────────────────────
+    # ── SPRINT 2: SAVE TO SEMANTIC CACHE (Non-blocking background task) ───────
     if combined_context and combined_sources and use_cache:
-        await _save_cache_for_queries(
+        asyncio.create_task(_save_cache_for_queries(
             rewritten_queries, combined_context, combined_sources, npp
-        )
+        ))
 
     yield format_sse_pipeline_data({"context": combined_context, "sources": combined_sources})
 

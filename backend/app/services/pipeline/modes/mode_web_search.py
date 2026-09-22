@@ -49,7 +49,6 @@ async def handle_web_search(
     display_query = " & ".join(clean_target_queries)
     logger.info(f"[Web Search] queries: {clean_target_queries} | display: '{display_query}'")
     yield format_sse(status="🌐 Mencari di web", status_key="WEB_SEARCH_INIT", event_type=SSEEventType.STATUS)
-    await asyncio.sleep(0.01)
     
     # 1. Ambil URL-read content yang sudah di-fetch oleh url_reader di mode_hub (jika ada)
     # Ini terjadi saat user mengetik domain seperti "pindad.com" di pesannya
@@ -150,7 +149,6 @@ async def handle_web_search(
     }
     widget_markdown = f"```websearch\n{json.dumps(search_payload)}\n```\n\n"
     yield format_sse(chunk=widget_markdown, event_type=SSEEventType.CHUNK)
-    await asyncio.sleep(0.01)
     
     # 5. Format hasil pencarian untuk dimasukkan ke konteks LLM
     web_context = format_search_results_for_llm(search_results)
@@ -167,7 +165,6 @@ async def handle_web_search(
     top_urls = [r["url"] for r in search_results[:3] if r.get("engine") != "url_reader"]
     if top_urls:
         yield format_sse(status=f"📖 Membaca {len(top_urls)} tautan", status_key="READING_URLS", event_type=SSEEventType.STATUS)
-        await asyncio.sleep(0.01)
         
         from backend.app.services.web_tools.url_reader import fetch_webpage_content
         
@@ -204,7 +201,6 @@ async def handle_web_search(
                 
         if all_chunks:
             yield format_sse(status="🎯 Menyaring fakta penting", status_key="FILTERING_FACTS", event_type=SSEEventType.STATUS)
-            await asyncio.sleep(0.01)
             
             chunk_texts = [c["text"] for c in all_chunks]
             scores = await reranker_service.compute_scores(display_query, chunk_texts)
@@ -266,7 +262,6 @@ async def handle_web_search(
     modified_messages.insert(0, {"role": "system", "content": system_prompt})
     
     yield format_sse(status="💡 Menyusun ringkasan", status_key="DRAFTING_SUMMARY", event_type=SSEEventType.STATUS)
-    await asyncio.sleep(0.01)
 
     # 5. Mulai streaming jawaban dari LLM dengan num_ctx=16384 dan num_predict=-1 (tak terbatas)
     response_stream = stream_ollama_chat(
@@ -297,4 +292,5 @@ async def handle_web_search(
         elif event_type == "status":
             yield format_sse(status=chunk.get("status", ""), event_type=SSEEventType.STATUS)
     
+    logger.info(f"[CALL2_WEB_SEARCH] ✅ Finished generation | needs_history={precheck.get('needs_history', False)} | turns_sent={len(modified_messages)-1}")
     yield format_sse(status="Selesai", event_type=SSEEventType.STATUS)

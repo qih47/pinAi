@@ -99,14 +99,20 @@ class ModeHub:
         is_title_generic = False
         if session_uuid:
             from backend.app.services.chat.chat_history_service import chat_history_service
-            # Cek apakah judul sesi saat ini masih placeholder/generik (misal: "Salam", "Obrolan Baru", "Obrolan Cakra AI")
-            existing_title = await chat_history_service.get_session_title(session_uuid)
+            # Paralelkan pembacaan title, manifest, dan document chunks untuk memangkas latensi I/O DB
+            existing_title, session_chunks_text, chunks_with_meta = await asyncio.gather(
+                chat_history_service.get_session_title(session_uuid),
+                chat_history_service.get_session_knowledge_manifest(session_uuid),
+                chat_history_service.get_session_document_chunks_with_meta(session_uuid),
+                return_exceptions=True
+            )
+            existing_title = existing_title if isinstance(existing_title, str) else ""
+            session_chunks_text = session_chunks_text if isinstance(session_chunks_text, str) else ""
+            chunks_with_meta = chunks_with_meta if isinstance(chunks_with_meta, list) else []
+
             GENERIC_TITLES = {"obrolan baru", "percakapan baru", "salam", "sapaan", "sapaan pembuka", "obrolan cakra ai", "new chat", "untitled", "halo", "hai", ""}
             is_title_generic = not existing_title or existing_title.strip().lower() in GENERIC_TITLES
 
-            # Gunakan katalog manifest ringkas (~50-100 token) alih-alih dump full text puluhan ribu karakter
-            session_chunks_text = await chat_history_service.get_session_knowledge_manifest(session_uuid)
-            chunks_with_meta = await chat_history_service.get_session_document_chunks_with_meta(session_uuid)
             if chunks_with_meta:
                 # Ekstrak domain URL yang pernah dikunjungi untuk multi-turn URL awareness
                 for c in chunks_with_meta:
@@ -131,7 +137,10 @@ class ModeHub:
                 visited_urls = list(set(visited_urls))  # deduplicate
                 logger.info(f"[MODE_HUB] Loaded {len(visited_urls)} previously visited URL(s) from session memory & chat history: {visited_urls}")
 
-        is_first_chat = (len(chat_history) <= 1) or is_title_generic
+        is_first_chat = (len(chat_history) <= 1)
+        needs_title_update = is_first_chat or is_title_generic
+        precheck["needs_title_update"] = needs_title_update
+        precheck["has_prior_context"] = not is_first_chat
         precheck["_session_chunks_text"] = session_chunks_text
         precheck["_session_uuid"] = session_uuid
         precheck["_visited_urls"] = visited_urls
@@ -217,7 +226,7 @@ class ModeHub:
                 "is_ambiguous", "requires_visual", "need_analytic", "is_troubleshooting",
                 "is_comparative", "has_actionable_workflow", "is_deep_research", "is_security_critical",
                 "is_generate_file", "is_generate_email", "is_docwriter", "is_coding",
-                "is_map_query", "is_chitchat", "is_web_search", "need_rag"
+                "is_map_query", "is_chitchat", "is_web_search", "need_rag", "needs_history"
             ]:
                 if preset_routing.get(cap) is True:
                     precheck[cap] = True
@@ -241,8 +250,8 @@ class ModeHub:
                     observation=json.dumps(obs_dict)
                 ))
 
-                # Update title sesi hanya jika first_chat dan ada judul yang valid
-                if is_first_chat:
+                # Update title sesi jika judul belum ada atau masih placeholder generik
+                if needs_title_update:
                     preset_title = preset_routing.get("session_title")
                     if preset_title:
                         await chat_history_service.update_title_direct(session_uuid, preset_title)
@@ -619,7 +628,7 @@ class ModeHub:
                     tool_input="File Attachment Found",
                     observation=json.dumps(obs_dict)
                 ))
-            if is_first_chat and session_uuid:
+            if needs_title_update and session_uuid:
                 try:
                     from backend.app.services.chat.chat_history_service import chat_history_service
                     file_name = attachments[0].get('file_name', 'Lampiran') if attachments else 'Lampiran'
@@ -675,7 +684,6 @@ class ModeHub:
 
         # ── Step 2: Call 1 — Intent Classification & Routing ──────────────────────
         yield format_sse(status="🧠 Menganalisis", status_key="ANALYZING_INTENT", event_type=SSEEventType.STATUS)
-        await asyncio.sleep(0.01)
 
         messages_dict = [{"role": m.role, "content": m.content} for m in chat_history]
         
@@ -694,7 +702,7 @@ class ModeHub:
             precheck=precheck,
             ocr_text=None,
             is_guest=is_guest,
-            is_first_chat=is_first_chat,
+            is_first_chat=needs_title_update,
             previous_topic=active_topic or precheck.get("active_topic"),
             previous_subject=key_subject or precheck.get("key_subject"),
         )
@@ -738,7 +746,6 @@ class ModeHub:
                 # Emit status Fetching dinamis untuk URL yang sedang diproses (tanpa trailing dots)
                 domain_name = display_info.get("domain") or u
                 yield format_sse(status=f"🌐 Mengunduh {domain_name}", event_type=SSEEventType.STATUS)
-                await asyncio.sleep(0.01)
                 
                 content, sub_nodes = await fetch_webpage_with_discovery(u, user_query=user_message)
                 if content:
@@ -774,10 +781,7 @@ class ModeHub:
                 }
                 # Kirim TEPAT 1 blok markdown ```urlfetch HANYA jika konten URL berhasil diunduh
                 yield format_sse(chunk=f"```urlfetch\n{json.dumps(final_fetch_payload)}\n```\n\n", event_type=SSEEventType.CHUNK)
-                await asyncio.sleep(0.01)
-                
                 yield format_sse(status="📖 Mengekstrak konten web", event_type=SSEEventType.STATUS)
-                await asyncio.sleep(0.01)
                 precheck["_session_chunks_text"] = precheck.get("_session_chunks_text", "") + f"\n\n[KONTEN WEB DARI URL DI CHAT]\n{url_contexts}"
                 precheck["has_url_context"] = True
 
@@ -834,12 +838,12 @@ class ModeHub:
             except Exception as e:
                 logger.error(f"[MODE_HUB] Failed on-demand chunk retrieval: {e}")
         
-        # ── Update Session Title (Gemma 4 Native / Fallback) ────────────────────────
+        # ── Update Session Title (Gemma 4 Native / Fallback) (Non-blocking background) ────────
         if routing_data.get("session_title") and session_uuid:
             try:
                 new_title = format_session_title(routing_data["session_title"], user_message=user_message)
                 from backend.app.services.chat.chat_history_service import chat_history_service
-                await chat_history_service.update_title_direct(session_uuid, new_title)
+                asyncio.create_task(chat_history_service.update_title_direct(session_uuid, new_title))
             except Exception as e:
                 logger.error(f"[MODE_HUB] Failed to update session title direct: {e}")
         
@@ -1077,6 +1081,11 @@ class ModeHub:
                     history_dicts[-1]["content"] = user_message
                 else:
                     history_dicts.append({"role": "user", "content": user_message})
+
+            needs_history_web = bool(routing_data.get("needs_history", False)) or bool(precheck.get("needs_history", False))
+            if not needs_history_web and len(history_dicts) > 1:
+                logger.info(f"[MODE_HUB] ⚡ Standalone web search (needs_history=False). Bypassing {len(history_dicts)-1} past turn(s) -> Sent 1 lean turn to Call 2.")
+                history_dicts = [history_dicts[-1]]
 
             # Gunakan query bersih dari Call 1 (queries[0]) alih-alih user_message mentah
             # Ini menghindari query kotor atau kombinasi kata penghubung '&' yang merusak hasil pencarian Google

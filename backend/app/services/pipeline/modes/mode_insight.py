@@ -115,8 +115,9 @@ class ModeInsight:
             
         messages = [user_msg]
         
-        model_name = getattr(settings, "MODEL_PERSONA", "gemma4:31b")
-        
+        yield format_sse(status="💡 Menganalisis wawasan dokumen...", status_key="DRAFTING_INSIGHT", event_type=SSEEventType.STATUS)
+
+        started_streaming = False
         async for chunk_str in stream_ollama_chat(
             model_name=model_name,
             messages=messages,
@@ -124,6 +125,10 @@ class ModeInsight:
             temperature=0.3,
             num_predict=-1
         ):
+            if not started_streaming:
+                started_streaming = True
+                yield format_sse(status="", event_type=SSEEventType.STATUS)
+
             try:
                 data = json.loads(chunk_str)
                 if "chunk" in data:

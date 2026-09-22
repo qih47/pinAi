@@ -3,6 +3,7 @@ import json
 import asyncio
 import os
 import re
+import time
 from typing import AsyncGenerator, List, Dict, Any, Optional
 
 from fastapi import Request
@@ -43,6 +44,7 @@ class ModeDocuments:
         session_uuid: Optional[str] = None
     ) -> AsyncGenerator[str, None]:
         logger.info("[MODE_DOCUMENTS] Starting execution")
+        t_mode_docs_start = time.perf_counter()
         
         # ── Step 1: Query Generation via Call 1 (Sudah dieksekusi di mode_hub) ────
         # Kita hanya perlu membaca hasil dari routing_data yang sudah diisi oleh ModeHub
@@ -367,7 +369,6 @@ class ModeDocuments:
                 )
 
                 yield format_sse(status=f"📑 Menemukan {doc_count + hist_count} dokumen", status_key="DOCS_FOUND", event_type=SSEEventType.STATUS)
-                await asyncio.sleep(0.02)
                 
                 global_page_pool = []
                 all_source_metadata = []
@@ -384,18 +385,14 @@ class ModeDocuments:
                             continue
                     uncached_docs.append(doc)
 
-                # Emit status cerdas tanpa kedipan berulang-ulang
+                # Emit status cerdas secara real-time tanpa penundaan artifisial
                 if cached_docs and not uncached_docs:
                     yield format_sse(status="🧠 Dari memori sesi", status_key="BRAIN_HIT", event_type=SSEEventType.STATUS)
-                    await asyncio.sleep(0.4)
                 elif cached_docs and uncached_docs:
                     yield format_sse(status="🧠 Dari memori sesi", status_key="BRAIN_HIT", event_type=SSEEventType.STATUS)
-                    await asyncio.sleep(0.35)
                     yield format_sse(status="📄 Memuat dokumen", status_key="DOC_LOADING", event_type=SSEEventType.STATUS)
-                    await asyncio.sleep(0.2)
                 else:
                     yield format_sse(status="📄 Memuat dokumen", status_key="DOC_LOADING", event_type=SSEEventType.STATUS)
-                    await asyncio.sleep(0.2)
 
                 newly_saved_count = 0
                 for doc in full_read_docs:
@@ -473,7 +470,6 @@ class ModeDocuments:
 
                 if newly_saved_count > 0:
                     yield format_sse(status="💾 Menyimpan ke memori", status_key="BRAIN_SAVE", event_type=SSEEventType.STATUS)
-                    await asyncio.sleep(0.35)
                 
                 # 1B. Historical docs — TIDAK baca PDF, buat daftar ringkas saja
 
@@ -519,7 +515,6 @@ class ModeDocuments:
                 if global_page_pool:
                     total_p_count = len(global_page_pool)
                     yield format_sse(status="🎯 Menyaring pasal relevan", status_key="FILTERING_RELEVANT_ARTICLES", event_type=SSEEventType.STATUS)
-                    await asyncio.sleep(0.02)
                     
                     # Multi-Query gabungan untuk BGE page scoring: padukan query cerdas Call 1 dan pertanyaan user
                     rag_queries_clean = [q.strip() for q in rag_queries if q and q.strip()]
@@ -625,7 +620,6 @@ class ModeDocuments:
                         
                     sse_summary = " & ".join(summary_parts)
                     yield format_sse(status="📄 Membaca pasal terpilih", status_key="READING_SELECTED_ARTICLES", event_type=SSEEventType.STATUS)
-                    await asyncio.sleep(0.02)
                     
                     # Susun judul_context dari Connected Pages yang utuh dan tidak terpotong
                     context_blocks = []
@@ -741,10 +735,8 @@ class ModeDocuments:
 
                             if event_type in (SSEEventType.THINKING, SSEEventType.STATUS):
                                 yield sse
-                                await asyncio.sleep(0.005)
                         except (json.JSONDecodeError, AttributeError):
                             yield sse
-                            await asyncio.sleep(0.01)
 
                 community_context = await task_community
                 
@@ -808,9 +800,7 @@ class ModeDocuments:
                     f"TIER 2 - AI_DIALOGUE_CORPUS : {'ADA' if has_community else 'TIDAK ADA'}\n" +
                     "="*40)
 
-        # ── Step 3: LLM Execution (Call 2) ────────────────────────────────────────
-        yield format_sse(status="✍️ Menyusun jawaban", status_key="DRAFTING_RESPONSE", event_type=SSEEventType.STATUS)
-        await asyncio.sleep(0.01)
+        # ── Context Aggregation & Deduplication ────────────────────────────────────
 
         if rag_sources:
             # Deduplikasi dokumen agar tidak ganda kartu di UI
@@ -880,13 +870,14 @@ class ModeDocuments:
                 "queries": formatted_queries,
                 "sources": sources_data
             }
-            await chat_history_service.save_agent_step(
+            # Non-blocking async background task: jangan gantung streaming generator untuk I/O DB
+            asyncio.create_task(chat_history_service.save_agent_step(
                 session_id=session_uuid,
                 step_number=2,
                 tool_called="RAG_SEARCH",
                 tool_input=str(formatted_queries),
                 observation=json.dumps(obs_json)
-            )
+            ))
 
         system_prompt = build_call2_system_prompt(
             module_name=module_name,
@@ -900,7 +891,12 @@ class ModeDocuments:
         # Inject Employee Long-Term Memory (ai_memory)
         if current_user_npp and current_user_npp != "GUEST":
             from backend.app.services.memory.memory_service import memory_service
-            employee_memory = await memory_service.get_employee_long_term_memory(current_user_npp)
+            is_recall = bool(routing_data and (routing_data.get("is_cross_session_recall") or routing_data.get("is_memory_recall")))
+            employee_memory = await memory_service.get_employee_long_term_memory(
+                current_user_npp,
+                current_session_uuid=session_uuid,
+                include_past_sessions=is_recall
+            )
             if employee_memory:
                 system_prompt += employee_memory
 
@@ -939,18 +935,23 @@ class ModeDocuments:
             manifest_text = routing_data.get("_session_chunks_text")
             system_prompt = manifest_text + "\n\n" + system_prompt
 
-        messages_dict = [{"role": m.role, "content": m.content} for m in chat_history]
-        # Mengambil 5 history + 1 current message = 6
-        trimmed_messages = messages_dict[-6:] if len(messages_dict) > 6 else messages_dict
+        from backend.app.services.pipeline.modes.mode_utils import resolve_history_messages
+        needs_history = bool(routing_data.get("needs_history", False)) if routing_data else False
+        active_pronoun = routing_data.get("pronoun", "formal_saya_anda") if routing_data else "formal_saya_anda"
+
+        trimmed_messages = resolve_history_messages(
+            chat_history=chat_history,
+            user_message=user_message,
+            needs_history=needs_history,
+            max_turns=6,
+            max_assistant_chars=600,
+            active_pronoun=active_pronoun,
+        )
         
         # 🛡️ ANTI-KONTAMINASI: Bersihkan history dari koding/web search sebelumnya jika RAG aktif
         if should_run_rag or routing_data.get("need_rag"):
             trimmed_messages = sanitize_history_for_rag(trimmed_messages)
             logger.info("[MODE_DOCUMENTS] 🛡️ History sanitized: past code blocks and web search artifacts stripped for clean RAG synthesis.")
-
-        # 🛡️ ANTI-PRIMING: Bersihkan kata ganti asisten di riwayat jika mode Formal / Akrab aktif
-        active_pronoun = routing_data.get("pronoun", "formal_saya_anda") if routing_data else "formal_saya_anda"
-        trimmed_messages = sanitize_history_for_pronoun(trimmed_messages, active_pronoun)
         
         # Inject OCR Images ke user message HANYA jika dokumen murni berupa scan (tanpa teks ekstraksi)
         if ocr_attachments and (not safe_rag_context or len(safe_rag_context) < 300):
@@ -974,7 +975,7 @@ class ModeDocuments:
         rag_tokens = len(safe_rag_context or "") // 4
         total_used = sys_tokens + hist_tokens + rag_tokens
         
-        # Log Agent Step for Call 2 Synthesis
+        # Log Agent Step for Call 2 Synthesis (Non-blocking background task)
         session_uuid = routing_data.get("_session_uuid") if routing_data else None
         if session_uuid:
             from backend.app.services.chat.chat_history_service import chat_history_service
@@ -988,19 +989,26 @@ class ModeDocuments:
                     "max_ctx": num_ctx
                 }
             }
-            await chat_history_service.save_agent_step(
+            asyncio.create_task(chat_history_service.save_agent_step(
                 session_id=session_uuid,
                 step_number=3,
                 tool_called="CALL_2_SYNTHESIS",
                 tool_input=f"Prompt chars: {len(system_prompt)} | Contexts: {len(safe_rag_context or '')}",
                 observation=json.dumps(obs_dict)
-            )
+            ))
 
         # State variables for stream interception
         intercept_buffer = ""
         is_intercepting = False
         json_intercepted = False
         
+        # ── Step 3: LLM Execution (Call 2) ────────────────────────────────────────
+        # Emit status tepat sebelum masuk ke Ollama agar UI pengguna live aktif selama masa tunggu prefill GPU
+        yield format_sse(status="✍️ Menyusun jawaban", status_key="DRAFTING_RESPONSE", event_type=SSEEventType.STATUS)
+
+        precall2_elapsed_ms = (time.perf_counter() - t_mode_docs_start) * 1000
+        logger.info(f"⚡ [TIMING_BENCHMARK] [PRE_CALL2_PREPARATION] Selesai seluruh persiapan dokumen & prompt dalam {precall2_elapsed_ms:.1f}ms ({precall2_elapsed_ms/1000:.2f}s) -> Dispatching ke Ollama Call 2.")
+
         try:
             async for chunk_line in stream_ollama_chat(
                 model_name=getattr(settings, "MODEL_PERSONA", "gemma4:31b"),
@@ -1236,3 +1244,5 @@ class ModeDocuments:
         # Flush buffer sisa jika stream selesai
         if intercept_buffer:
             yield format_sse(intercept_buffer, "", False, event_type=SSEEventType.CHUNK)
+
+        logger.info(f"[CALL2_DOCUMENTS] ✅ Finished generation | module={module_name} | needs_history={needs_history} | turns_sent={len(trimmed_messages)}")
