@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useCallback, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useCallback, useState } from 'react';
 import { Virtuoso } from 'react-virtuoso';
 import ChatBubble from './ChatBubble';
 import ChatNavigator from './ChatNavigator';
@@ -54,6 +54,7 @@ export default function ChatArea({
 }) {
   const virtuosoRef = useRef(null);
   const activeModeTag = useChatStore(state => state.activeModeTag);
+  const sessionUuid = useChatStore(state => state.sessionUuid);
   const messagesRef = useRef(messages);
   messagesRef.current = messages;
 
@@ -89,9 +90,17 @@ export default function ChatArea({
     prevIsStreamingRef.current = isStreaming;
   }, [isStreaming, messages.length]);
 
-  // SCROLL TO BOTTOM SAAT SESSION DI-LOAD
-  // Sama seperti ScrollBottomButton: scrollTo({ top: 9999999 }).
-  // Dua attempt: rAF (setelah DOM commit) + 200ms (setelah Virtuoso setup virtual padding).
+  // PRE-SNAP SCROLL CONTAINER SEBELUM PAINT:
+  // Memastikan container scroll langsung berada di posisi bawah saat pesan dimuat
+  // tanpa ada frame rendering yang menampilkan pesan teratas.
+  useLayoutEffect(() => {
+    if (messagesContainerRef?.current && messages.length > 0 && !isLoading) {
+      messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
+    }
+  }, [sessionUuid, isLoading, messages.length]);
+
+  // SCROLL TO BOTTOM SAAT SESSION DI-LOAD:
+  // Eksekusi snap instan (behavior: 'auto') tanpa penundaan/animasi meluncur
   const prevIsLoadingRef = useRef(isLoading);
   const prevMsgLenRef = useRef(messages.length);
   useEffect(() => {
@@ -107,9 +116,8 @@ export default function ChatArea({
           });
         }
       };
+      scrollToBottom();
       requestAnimationFrame(scrollToBottom);
-      setTimeout(scrollToBottom, 200);
-      setTimeout(scrollToBottom, 500); // Safeguard buat nunggu gambar/markdown
     }
 
     prevIsLoadingRef.current = isLoading;
@@ -233,8 +241,10 @@ export default function ChatArea({
             >
               <Virtuoso
                 ref={virtuosoRef}
+                key={sessionUuid || 'chat-default'}
                 style={{ width: '100%' }}
                 data={messages}
+                initialTopMostItemIndex={messages.length > 0 ? { index: messages.length - 1, align: 'end' } : 0}
                 customScrollParent={scrollParent}
                 useWindowScroll={false}
                 itemContent={itemContent}
