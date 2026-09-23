@@ -93,8 +93,9 @@ async def _warmup_and_pin_models():
         try:
             async with httpx.AsyncClient(timeout=httpx.Timeout(60.0, connect=5.0)) as client:
                 vllm_chat_url = f"{settings.VLLM_BASE_URL.rstrip('/')}/chat/completions"
+                target_vllm_persona = "/home/qisthi/models/gemma-4-31B-it-AWQ" if persona_model in ["gemma4:31b", "gemma-4-31B-it-AWQ"] else persona_model
                 payload = {
-                    "model": persona_model,
+                    "model": target_vllm_persona,
                     "messages": [{"role": "user", "content": "hi"}],
                     "max_tokens": 1,
                     "temperature": 0.1,

@@ -21,7 +21,7 @@ fi
 
 export PATH="/home/qisthi/vllm_env/bin:$PATH"
 export LD_LIBRARY_PATH=$(find /home/qisthi/vllm_env/lib/python3.10/site-packages/nvidia -type d -name "lib" 2>/dev/null | tr '\n' ':'):$LD_LIBRARY_PATH
-export VLLM_DISABLED_KERNELS="MarlinLinearKernel"
+# Marlin Linear Kernel enabled for high-performance AWQ GEMM (31+ tok/s, TTFT ~60ms)
 export VLLM_USE_FLASHINFER_SAMPLER=0
 
 echo "=================================================================="
@@ -41,4 +41,4 @@ exec "$VLLM_PYTHON" -m vllm.entrypoints.openai.api_server \
     --gpu-memory-utilization 0.65 \
     --max-model-len 16384 \
     --trust-remote-code \
-    --served-model-name "$MODEL_PATH"
+    --served-model-name "$MODEL_PATH" "gemma4:31b"

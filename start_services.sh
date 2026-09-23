@@ -59,7 +59,9 @@ stop_services() {
 }
 
 reset_vram() {
-    echo "🧹 Membersihkan VRAM Ollama..."
+    echo "🧹 Membersihkan VRAM (Ollama & vLLM)..."
+    pkill -9 -f "vllm.entrypoints" 2>/dev/null || true
+    fuser -k -9 8005/tcp 2>/dev/null || true
     if command -v ollama &>/dev/null; then
         for model in $(ollama ps 2>/dev/null | awk 'NR>1 {print $1}'); do
             if [ -n "$model" ]; then
@@ -100,6 +102,11 @@ case "${1:-all}" in
         fuser -k -9 8003/tcp 2>/dev/null || true
         start_service "auth_service" "run_auth_service.py"
         ;;
+    vllm)
+        pkill -9 -f "vllm.entrypoints" 2>/dev/null || true
+        fuser -k -9 8005/tcp 2>/dev/null || true
+        bash "$ROOT/run_vllm_service.sh"
+        ;;
     frontend)
         fuser -k -9 5173/tcp 2>/dev/null || true
         start_frontend
@@ -129,7 +136,7 @@ case "${1:-all}" in
         ;;
     *)
         echo "Unknown command: $1"
-        echo "Usage: $0 [all|stop|reset-vram|gateway|chat|analytics|auth|frontend]"
+        echo "Usage: $0 [all|stop|reset-vram|vllm|gateway|chat|analytics|auth|frontend]"
         exit 1
         ;;
 esac

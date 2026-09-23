@@ -533,8 +533,9 @@ async def stream_ollama_chat(
         }
 
         if is_vllm:
+            target_vllm_model = "/home/qisthi/models/gemma-4-31B-it-AWQ" if model_name in ["gemma4:31b", "gemma-4-31B-it-AWQ"] else model_name
             payload = {
-                "model": model_name,
+                "model": target_vllm_model,
                 "messages": messages,
                 "stream": True,
                 "temperature": temperature,
