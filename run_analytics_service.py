@@ -1,3 +1,4 @@
+#!/home/qisthi/pinAi/rag_env/bin/python
 """
 CAKRA AI - Analytics Service
 Runs on port 8002.

@@ -1,3 +1,4 @@
+#!/home/qisthi/pinAi/rag_env/bin/python
 """
 CAKRA AI - API Gateway
 Runs on port 8000.

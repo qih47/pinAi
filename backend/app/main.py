@@ -63,31 +63,66 @@ async def _warmup_and_pin_models():
     """
     import httpx
 
-    llm_models = [
-        (getattr(settings, "MODEL_ROUTER", "gemma4:e4b"), "Router (Call 1)", 4096),
-        (settings.MODEL_PERSONA, "Gemma4 Agentic Engine (Call 2)", 16384),
-    ]
+    is_vllm = getattr(settings, "LLM_ENGINE", "ollama") == "vllm"
 
-    chat_url = f"{settings.OLLAMA_BASE_URL}/api/chat"
+    # 1. Warmup Router Model (Ollama)
+    router_model = getattr(settings, "MODEL_ROUTER", "gemma4:e4b")
+    logger.info(f"⏳ [WARMUP] Pinning Router (Call 1) ({router_model}, ctx=4096) ke Ollama VRAM...")
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(60.0, connect=5.0)) as client:
+            ollama_chat_url = f"{settings.OLLAMA_BASE_URL}/api/chat"
+            payload = {
+                "model": router_model,
+                "messages": [{"role": "user", "content": "hi"}],
+                "stream": False,
+                "keep_alive": -1,
+                "options": {"temperature": 0.1, "num_predict": 1, "num_ctx": 4096, "num_batch": 512},
+            }
+            resp = await client.post(ollama_chat_url, json=payload)
+            if resp.status_code == 200:
+                logger.info(f"✅ [WARMUP] Router ({router_model}) pinned successfully.")
+            else:
+                logger.warning(f"⚠️ [WARMUP] Router warmup returned {resp.status_code}")
+    except Exception as e:
+        logger.warning(f"⚠️ [WARMUP] Router ({router_model}) warmup failed: {e}")
 
-    for model_name, label, ctx_len in llm_models:
-        logger.info(f"⏳ [WARMUP] Pinning {label} ({model_name}, ctx={ctx_len}) ke VRAM...")
+    # 2. Warmup Persona Model (vLLM atau Ollama)
+    persona_model = settings.MODEL_PERSONA
+    if is_vllm:
+        logger.info(f"⏳ [WARMUP] Verifying vLLM Engine readiness for Persona Model ({persona_model})...")
         try:
-            async with httpx.AsyncClient(timeout=httpx.Timeout(120.0, connect=10.0)) as client:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(60.0, connect=5.0)) as client:
+                vllm_chat_url = f"{settings.VLLM_BASE_URL.rstrip('/')}/chat/completions"
                 payload = {
-                    "model": model_name,
+                    "model": persona_model,
+                    "messages": [{"role": "user", "content": "hi"}],
+                    "max_tokens": 1,
+                    "temperature": 0.1,
+                }
+                resp = await client.post(vllm_chat_url, json=payload)
+                if resp.status_code == 200:
+                    logger.info(f"✅ [WARMUP] vLLM Engine ({persona_model}) is active & warm.")
+                else:
+                    logger.warning(f"⚠️ [WARMUP] vLLM warmup returned {resp.status_code}: {resp.text}")
+        except Exception as e:
+            logger.warning(f"⚠️ [WARMUP] vLLM warmup encountered: {e}")
+    else:
+        logger.info(f"⏳ [WARMUP] Pinning Gemma4 Agentic Engine ({persona_model}) ke Ollama VRAM...")
+        try:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(180.0, connect=10.0)) as client:
+                ollama_chat_url = f"{settings.OLLAMA_BASE_URL}/api/chat"
+                payload = {
+                    "model": persona_model,
                     "messages": [{"role": "user", "content": "hi"}],
                     "stream": False,
-                    "keep_alive": -1,   # permanent — tidak di-evict sampai service restart
-                    "options": {"temperature": 0.1, "num_predict": 1, "num_ctx": ctx_len, "num_batch": 512},
+                    "keep_alive": -1,
+                    "options": {"temperature": 0.1, "num_predict": 1, "num_ctx": 16384, "num_batch": 512},
                 }
-                resp = await client.post(chat_url, json=payload)
+                resp = await client.post(ollama_chat_url, json=payload)
                 if resp.status_code == 200:
-                    logger.info(f"✅ [WARMUP] {label} ({model_name}) pinned successfully.")
-                else:
-                    logger.warning(f"⚠️ [WARMUP] {label} ({model_name}) warmup returned {resp.status_code}")
+                    logger.info(f"✅ [WARMUP] Persona Engine ({persona_model}) pinned successfully.")
         except Exception as e:
-            logger.warning(f"⚠️ [WARMUP] {label} ({model_name}) warmup failed: {e}")
+            logger.warning(f"⚠️ [WARMUP] Persona Engine ({persona_model}) warmup failed: {e}")
 
     # Khusus embedding — pakai endpoint /api/embed bukan /api/chat
     if getattr(settings, "MODEL_EMBEDDING", None):

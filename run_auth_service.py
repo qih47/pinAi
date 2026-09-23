@@ -1,3 +1,4 @@
+#!/home/qisthi/pinAi/rag_env/bin/python
 """
 CAKRA AI - Auth Service
 Runs on port 8003.

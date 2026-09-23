@@ -33,6 +33,9 @@ class Settings(BaseSettings):
     DB_PERATURAN_PASSWORD: str = "postgres"
 
     OLLAMA_BASE_URL: str = "http://localhost:11434"
+    LLM_ENGINE: str = "vllm"                   # "vllm" (Hybrid: 31B in vLLM) atau "ollama"
+    VLLM_BASE_URL: str = "http://localhost:8005/v1"
+    VLLM_TIMEOUT_S: float = 180.0
 
     ZIMBRA_EMAIL: Optional[str] = None
     ZIMBRA_PASSWORD: Optional[str] = None

@@ -226,7 +226,11 @@ async def stream_ollama_chat(
     gpu_semaphore = getattr(request.app.state, "gpu_limit", None) if (request and hasattr(request, "app")) else None
     if gpu_semaphore is None:
         gpu_semaphore = get_gpu_semaphore()
-    url = f"{settings.OLLAMA_BASE_URL}/api/chat"
+    is_vllm = getattr(settings, "LLM_ENGINE", "ollama") == "vllm"
+    if is_vllm:
+        url = f"{settings.VLLM_BASE_URL.rstrip('/')}/chat/completions"
+    else:
+        url = f"{settings.OLLAMA_BASE_URL}/api/chat"
     
     # Inject Privacy & Security Guardrail
     messages = _inject_global_guardrail(messages)
@@ -528,22 +532,42 @@ async def stream_ollama_chat(
             **kwargs,
         }
 
-        payload = {
-            "model": model_name,
-            "messages": messages,
-            "stream": True,
-            "think": is_thinking,
-            "options": ollama_options,
-            "keep_alive": keep_alive,
-        }
+        if is_vllm:
+            payload = {
+                "model": model_name,
+                "messages": messages,
+                "stream": True,
+                "temperature": temperature,
+                "top_p": ollama_options.get("top_p", 0.95),
+            }
+            # vLLM validates: input_tokens + max_tokens <= max_model_len (16384).
+            # In Ollama, num_predict=8192 is an unconstrained upper bound.
+            # In vLLM, hardcoding max_tokens=8192 causes HTTP 400 if input_tokens > 8192.
+            # Therefore: omit max_tokens when num_predict >= 8192 so vLLM dynamically uses
+            # all available remaining context (identical to Ollama). Only clamp and send
+            # max_tokens if explicitly constrained by token_budget or caller (< 8192).
+            if token_budget or (num_predict and num_predict < 8192):
+                est_input_tokens = int(total_chars / 3.0) + 200
+                max_ctx = getattr(settings, "NUM_CTX_CORE", 16384)
+                safe_max_tokens = max(128, min(num_predict, max_ctx - est_input_tokens - 64))
+                payload["max_tokens"] = safe_max_tokens
+        else:
+            payload = {
+                "model": model_name,
+                "messages": messages,
+                "stream": True,
+                "think": is_thinking,
+                "options": ollama_options,
+                "keep_alive": keep_alive,
+            }
 
         client = get_shared_client()
         try:
             async with client.stream("POST", url, json=payload) as response:
                 if response.status_code != 200:
                     error_text = await response.aread()
-                    logger.error(f"[LLM_CLIENT] Ollama error {response.status_code}: {error_text}")
-                    yield json.dumps({"error": f"Ollama Error: {response.status_code}"}) + "\n"
+                    logger.error(f"[LLM_CLIENT] {'vLLM' if is_vllm else 'Ollama'} error {response.status_code}: {error_text}")
+                    yield json.dumps({"error": f"{'vLLM' if is_vllm else 'Ollama'} Error: {response.status_code}"}) + "\n"
                     return
 
                 full_response = ""
@@ -556,19 +580,45 @@ async def stream_ollama_chat(
                     if not line:
                         continue
 
-                    chunk = json.loads(line)
-                    message_chunk = chunk.get("message", {})
-                    content = message_chunk.get("content", "")
-                    thought = message_chunk.get("thinking", "")
-                    done = chunk.get("done", False)
+                    if is_vllm:
+                        if not line.startswith("data: "):
+                            continue
+                        data_str = line[6:].strip()
+                        if data_str == "[DONE]":
+                            done = True
+                            content = ""
+                            thought = ""
+                        else:
+                            try:
+                                chunk = json.loads(data_str)
+                            except Exception:
+                                continue
+                            choices = chunk.get("choices", [])
+                            if choices:
+                                delta = choices[0].get("delta", {})
+                                content = delta.get("content", "") or ""
+                                thought = delta.get("reasoning_content", "") or delta.get("thought", "") or ""
+                                finish_reason = choices[0].get("finish_reason")
+                                done = (finish_reason is not None)
+                            else:
+                                content = ""
+                                thought = ""
+                                done = False
+                    else:
+                        chunk = json.loads(line)
+                        message_chunk = chunk.get("message", {})
+                        content = message_chunk.get("content", "")
+                        thought = message_chunk.get("thinking", "")
+                        done = chunk.get("done", False)
 
                     if content or thought or done:
                         if first_token and (content or thought):
                             ttft_ms = (datetime.now() - inference_start_time).total_seconds() * 1000
                             queue_ms_log = queue_wait_time * 1000
+                            engine_label = "vLLM" if is_vllm else "Ollama"
                             logger.info(
                                 f"⚡ [TIMING_BENCHMARK] [CALL2_TTFT] First Token Received! "
-                                f"Ollama Prefill TTFT: {ttft_ms:.1f}ms ({ttft_ms/1000:.2f}s) | "
+                                f"{engine_label} Prefill TTFT: {ttft_ms:.1f}ms ({ttft_ms/1000:.2f}s) | "
                                 f"GPU Queue Wait: {queue_ms_log:.1f}ms | "
                                 f"Input Payload: ~{total_chars//4:,} tokens"
                             )
