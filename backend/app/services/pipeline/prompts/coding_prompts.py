@@ -9,11 +9,24 @@ from .core_prompts import (
     get_base_persona,
     COMMON_TONE_GUIDANCE,
     CORE_TONE_AND_IDENTITY,
+    DYNAMIC_TONE_AND_PRONOUN,
+    STATIC_CORE_PERSONA_AND_SAFETY,
+    STATIC_FACTUAL_AND_FORMAT_RULES,
+    get_dynamic_user_and_ambient,
     DATA_TABLES_AND_FORM_GUIDANCE,
 )
 from backend.app.services.pipeline.prompt_manager import prompt_manager
 
-PROMPT_CODING_TEMPLATE = """{{ get_base_persona(employee_name, mode_title) }}""" + """
+# ═══════════════════════════════════════════════════════════════════════════════
+# PROMPT CODING TEMPLATE (PREFIX CACHING RESTRUCTURED)
+# ═══════════════════════════════════════════════════════════════════════════════
+PROMPT_CODING_TEMPLATE = (
+    STATIC_CORE_PERSONA_AND_SAFETY
+    + "\n"
+    + STATIC_FACTUAL_AND_FORMAT_RULES
+    + "\n"
+    + DATA_TABLES_AND_FORM_GUIDANCE
+    + """
 {% if is_thinking %}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 🚨 CRITICAL SYSTEM ENFORCEMENT: CRITICAL THINKING LANGUAGE
@@ -50,15 +63,17 @@ Berikan implementasi solusinya secara proaktif, rapi, dan terstruktur. Jika menu
 {% endif %}
 {% endif %}
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-🎨 GAYA BAHASA & ATURAN
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-""" + CORE_TONE_AND_IDENTITY + "\n" + DATA_TABLES_AND_FORM_GUIDANCE + """
-• Sapa {{ employee_name }} dengan ramah.
 • WAJIB gunakan markdown code block.
 • DILARANG hallucination API/Fungsi.
 • DILARANG menyebut nama model LLM lain.
 """
+    + "\n"
+    + DYNAMIC_TONE_AND_PRONOUN
+    + """
+• Sapa {{ employee_name }} dengan ramah.
+"""
+    + "\n{{ get_dynamic_user_and_ambient(employee_name, mode_title) }}\n"
+)
 
 prompt_manager.register_default(
     name="RESPONSE_PROMPT_CODING",

@@ -162,54 +162,43 @@ class MemoryService:
         url = f"{settings.OLLAMA_BASE_URL}/api/chat"
         memories_to_save: List[Dict[str, str]] = []
         
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            for npp, messages in chats_per_employee.items():
-                full_chat_log = "\n".join([f"User: {msg}" for msg in messages])
-                
-                # Atur prompt agar Qwen memuntahkan subjek singkat (key) dan ringkasan ringkas (value)
-                system_prompt = (
-                    "Anda adalah modul ekstraksi memori jangka panjang CAKRA AI.\n"
-                    "Tugas Anda adalah merangkum log obrolan pegawai menjadi format JSON murni dengan dua field:\n"
-                    "1. 'key': Topik/Proyek utama yang dibahas (singkat, maks 3 kata, contoh: 'Optimasi Database', 'Project Web Material').\n"
-                    "2. 'value': Ringkasan fakta krusial dalam 1-2 kalimat menggunakan sudut pandang ketiga (contoh: 'Pegawai sedang melakukan debugging fungsional pada form registrasi material menggunakan CodeIgniter 4.').\n\n"
-                    "Output WAJIB berupa JSON murni tanpa markdown!"
-                )
+        from backend.app.core.llm_client import generate_json_response
+        for npp, messages in chats_per_employee.items():
+            full_chat_log = "\n".join([f"User: {msg}" for msg in messages])
+            
+            # Atur prompt agar model memuntahkan subjek singkat (key) dan ringkasan ringkas (value)
+            system_prompt = (
+                "Anda adalah modul ekstraksi memori jangka panjang CAKRA AI.\n"
+                "Tugas Anda adalah merangkum log obrolan pegawai menjadi format JSON murni dengan dua field:\n"
+                "1. 'key': Topik/Proyek utama yang dibahas (singkat, maks 3 kata, contoh: 'Optimasi Database', 'Project Web Material').\n"
+                "2. 'value': Ringkasan fakta krusial dalam 1-2 kalimat menggunakan sudut pandang ketiga (contoh: 'Pegawai sedang melakukan debugging fungsional pada form registrasi material menggunakan CodeIgniter 4.').\n\n"
+                "Output WAJIB berupa JSON murni tanpa markdown!"
+            )
 
-                payload = {
-                    "model": settings.MODEL_ROUTER,
-                    "messages": [
+            try:
+                parsed_json = await generate_json_response(
+                    model_name=settings.MODEL_ROUTER,
+                    messages=[
                         {"role": "system", "content": system_prompt},
                         {"role": "user", "content": f"Ekstrak memori dari log obrolan ini:\n{full_chat_log}"}
                     ],
-                    "stream": False,
-                    "keep_alive": -1,
-                    "options": {
-                        "temperature": 0.2,
-                        "num_ctx": 4096,
-                        "num_batch": 512,
-                    }
-                }
-
-                try:
-                    response = await client.post(url, json=payload)
-                    if response.status_code == 200:
-                        content_text = response.json().get("message", {}).get("content", "").strip()
-                        # Bersihkan tag markdown if any
-                        if content_text.startswith("```json"):
-                            content_text = content_text.split("```json")[1].split("```")[0].strip()
-                        
-                        parsed_json = json.loads(content_text)
-                        mem_key = parsed_json.get("key", "Aktivitas Umum")
-                        mem_value = parsed_json.get("value")
-                        
-                        if mem_value:
-                            memories_to_save.append({
-                                "npp": npp, 
-                                "mem_key": mem_key, 
-                                "mem_value": mem_value
-                            })
-                except Exception as llm_err:
-                    logger.error(f"[MEMORY_CONSOLIDATION_LLM_WARNING] Failed LLM summary for NPP {npp}: {str(llm_err)}")
+                    temperature=0.2,
+                    num_ctx=4096,
+                    num_predict=512,
+                    timeout=30.0
+                )
+                
+                mem_key = parsed_json.get("key", "Aktivitas Umum")
+                mem_value = parsed_json.get("value")
+                
+                if mem_value:
+                    memories_to_save.append({
+                        "npp": npp, 
+                        "mem_key": mem_key, 
+                        "mem_value": mem_value
+                    })
+            except Exception as llm_err:
+                logger.error(f"[MEMORY_CONSOLIDATION_LLM_WARNING] Failed LLM summary for NPP {npp}: {str(llm_err)}")
 
         # PHASE 3: Buka kembali DB instant, eksekusi penyimpanan massal secara atomik
         processed_count = 0

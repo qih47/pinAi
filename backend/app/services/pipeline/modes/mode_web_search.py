@@ -170,10 +170,10 @@ async def handle_web_search(
         
         async def _scrape_one(url: str) -> str:
             try:
-                content = await fetch_webpage_content(url)
+                content = await asyncio.wait_for(fetch_webpage_content(url), timeout=4.0)
                 return content or ""
             except Exception as e:
-                logger.warning(f"[Web Search] Deep scrape failed for {url}: {e}")
+                logger.warning(f"[Web Search] Deep scrape failed or timed out for {url}: {e}")
                 return ""
         
         # Semua URL di-crawl secara paralel

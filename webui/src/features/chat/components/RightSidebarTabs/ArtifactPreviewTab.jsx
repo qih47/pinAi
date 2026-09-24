@@ -23,7 +23,8 @@ export default function ArtifactPreviewTab({
   t
 }) {
   const ext = previewArtifact?.filename?.split('.').pop()?.toLowerCase();
-  const isMarkdownOrText = ext === 'md' || ext === 'txt';
+  const isMarkdown = ext === 'md';
+  const isPlainText = ext === 'txt' || ext === 'text' || ext === 'log';
   const isUIPreviewable = ext === 'jsx' || ext === 'js' || ext === 'html';
   let content = artifactContent || previewArtifact.code || '// Void Content';
 
@@ -161,12 +162,30 @@ export default function ArtifactPreviewTab({
             <div style={{ width: "24px", height: "24px", border: "2px solid rgba(99,102,241,0.1)", borderTopColor: "#6366f1", borderRadius: "50%", animation: "rotate-spin 0.6s linear infinite" }} />
             <span style={{ fontSize: "12px" }}>{t.loadingArtifact}</span>
           </div>
+        ) : isMarkdown ? (
+          <div style={{ padding: "24px", color: theme.textColor }}>
+            <CakraResponseRenderer rawContent={content} thinkingContent="" isStreaming={false} darkMode={darkMode} theme={theme} searchQuery="" statusMessage="" />
+          </div>
+        ) : isPlainText ? (
+          <div style={{ padding: "20px 24px", flex: 1, overflowY: "auto", overflowX: "hidden" }}>
+            <pre
+              style={{
+                margin: 0,
+                width: "100%",
+                fontFamily: '"JetBrains Mono", "Fira Code", "SF Mono", Menlo, Consolas, "Courier New", monospace',
+                fontSize: "12.5px",
+                lineHeight: "1.65",
+                color: darkMode ? "#e2e8f0" : "#1e293b",
+                whiteSpace: "pre-wrap",
+                wordBreak: "break-word",
+                overflowWrap: "anywhere",
+                tabSize: 4,
+              }}
+            >
+              {content}
+            </pre>
+          </div>
         ) : (
-          isMarkdownOrText ? (
-            <div style={{ padding: "24px", color: theme.textColor }}>
-              <CakraResponseRenderer rawContent={content} thinkingContent="" isStreaming={false} darkMode={darkMode} theme={theme} searchQuery="" statusMessage="" />
-            </div>
-          ) : (
             <div style={{ padding: "20px", display: "flex", flexDirection: "column", height: "100%", minHeight: "600px" }}>
               <div style={{
                 background: '#1e1e1e',
@@ -247,7 +266,7 @@ export default function ArtifactPreviewTab({
               </div>
             </div>
           )
-        )}
+        }
       </div>
 
       <div style={{ padding: "8px 20px", background: darkMode ? '#151618' : '#f8fafc', fontSize: "11px", color: "#64748b", fontFamily: 'monospace', display: 'flex', justifyContent: 'space-between', borderTop: `1px solid ${darkMode ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)'}` }}>

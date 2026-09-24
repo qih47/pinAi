@@ -63,48 +63,47 @@ async def _warmup_and_pin_models():
     import httpx
     is_vllm = getattr(settings, "LLM_ENGINE", "ollama") == "vllm"
 
-    # 1. Warmup Router Model (Ollama)
-    router_model = getattr(settings, "MODEL_ROUTER", "gemma4:e4b")
-    logger.info(f"⏳ [WARMUP] Pinning Gemma4 Router Engine ({router_model}, ctx=4096) ke Ollama VRAM...")
-    try:
-        async with httpx.AsyncClient(timeout=httpx.Timeout(60.0, connect=5.0)) as client:
-            ollama_chat_url = f"{settings.OLLAMA_BASE_URL}/api/chat"
-            payload = {
-                "model": router_model,
-                "messages": [{"role": "user", "content": "hi"}],
-                "stream": False,
-                "keep_alive": -1,
-                "options": {"temperature": 0.1, "num_predict": 1, "num_ctx": 4096, "num_batch": 512},
-            }
-            resp = await client.post(ollama_chat_url, json=payload)
-            if resp.status_code == 200:
-                logger.info(f"✅ [WARMUP] Router Engine ({router_model}) pinned successfully.")
-            else:
-                logger.warning(f"⚠️ [WARMUP] Router Engine warmup returned {resp.status_code}")
-    except Exception as e:
-        logger.warning(f"⚠️ [WARMUP] Router Engine warmup failed: {e}")
-
-    # 2. Warmup Persona Model (vLLM atau Ollama)
-    persona_model = settings.MODEL_PERSONA
     if is_vllm:
-        logger.info(f"⏳ [WARMUP] Verifying vLLM Engine readiness for Persona Model ({persona_model})...")
+        # vLLM melayani baik Router (Call 1 & 1.1) maupun Persona (Call 2) via 31B AWQ
+        logger.info("⏳ [WARMUP] Verifying vLLM Unified 31B Engine readiness on port 8005 for Call 1 & Call 2...")
         try:
             async with httpx.AsyncClient(timeout=httpx.Timeout(60.0, connect=5.0)) as client:
                 vllm_chat_url = f"{settings.VLLM_BASE_URL.rstrip('/')}/chat/completions"
+                target_vllm_persona = "/home/qisthi/models/gemma-4-31B-it-AWQ"
                 payload = {
-                    "model": persona_model,
+                    "model": target_vllm_persona,
                     "messages": [{"role": "user", "content": "hi"}],
                     "max_tokens": 1,
                     "temperature": 0.1,
                 }
                 resp = await client.post(vllm_chat_url, json=payload)
                 if resp.status_code == 200:
-                    logger.info(f"✅ [WARMUP] vLLM Engine ({persona_model}) is active & warm.")
+                    logger.info("✅ [WARMUP] vLLM Unified Engine (31B AWQ) is active & warm for Call 1 & Call 2.")
                 else:
                     logger.warning(f"⚠️ [WARMUP] vLLM warmup returned {resp.status_code}: {resp.text}")
         except Exception as e:
             logger.warning(f"⚠️ [WARMUP] vLLM warmup encountered: {e}")
     else:
+        # Fallback Mode: Warmup Router & Persona di Ollama
+        router_model = getattr(settings, "MODEL_ROUTER", "gemma4:e4b")
+        logger.info(f"⏳ [WARMUP] Pinning Gemma4 Router Engine ({router_model}, ctx=4096) ke Ollama VRAM...")
+        try:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(60.0, connect=5.0)) as client:
+                ollama_chat_url = f"{settings.OLLAMA_BASE_URL}/api/chat"
+                payload = {
+                    "model": router_model,
+                    "messages": [{"role": "user", "content": "hi"}],
+                    "stream": False,
+                    "keep_alive": -1,
+                    "options": {"temperature": 0.1, "num_predict": 1, "num_ctx": 4096, "num_batch": 512},
+                }
+                resp = await client.post(ollama_chat_url, json=payload)
+                if resp.status_code == 200:
+                    logger.info(f"✅ [WARMUP] Router Engine ({router_model}) pinned successfully.")
+        except Exception as e:
+            logger.warning(f"⚠️ [WARMUP] Router Engine warmup failed: {e}")
+
+        persona_model = settings.MODEL_PERSONA
         logger.info(f"⏳ [WARMUP] Pinning Gemma4 Agentic Engine ({persona_model}) ke Ollama VRAM...")
         try:
             async with httpx.AsyncClient(timeout=httpx.Timeout(180.0, connect=10.0)) as client:
@@ -118,7 +117,7 @@ async def _warmup_and_pin_models():
                 }
                 resp = await client.post(ollama_chat_url, json=payload)
                 if resp.status_code == 200:
-                    logger.info(f"✅ [WARMUP] Persona Engine pinned successfully.")
+                    logger.info("✅ [WARMUP] Persona Engine pinned successfully.")
         except Exception as e:
             logger.warning(f"⚠️ [WARMUP] Persona Engine warmup failed: {e}")
 

@@ -922,6 +922,79 @@ async def generate_json_response(
         httpx.HTTPStatusError: Saat Ollama return status error
     """
     logger_local = logging.getLogger("CAKRA_LLM_CLIENT")
+    is_vllm = getattr(settings, "LLM_ENGINE", "ollama") == "vllm"
+    start_time = datetime.now()
+    client = get_shared_client()
+    gpu_semaphore = get_gpu_semaphore()
+
+    if is_vllm:
+        vllm_url = f"{settings.VLLM_BASE_URL.rstrip('/')}/chat/completions"
+        target_vllm_model = "/home/qisthi/models/gemma-4-31B-it-AWQ" if model_name in ["gemma4:31b", "gemma-4-31B-it-AWQ", "gemma4:e4b"] or "/home/qisthi/models/" in model_name else model_name
+
+        payload = {
+            "model": target_vllm_model,
+            "messages": messages,
+            "temperature": temperature,
+            "stream": False,
+            "max_tokens": min(num_predict, 2048),
+            "response_format": {"type": "json_object"}
+        }
+
+        logger_local.debug(
+            f"[JSON_GEN_VLLM] Calling vLLM 31B | model: {target_vllm_model} | "
+            f"max_tokens: {payload['max_tokens']}"
+        )
+
+        try:
+            q_start = datetime.now()
+            async with gpu_semaphore:
+                q_wait_ms = (datetime.now() - q_start).total_seconds() * 1000
+                if q_wait_ms > 50:
+                    logger_local.info(f"⏳ [TIMING_BENCHMARK] [JSON_GEN_VLLM] GPU Semaphore antre {q_wait_ms:.1f}ms")
+                response = await client.post(vllm_url, json=payload, timeout=httpx.Timeout(timeout, connect=10.0))
+
+            if response.status_code != 200:
+                error_text = response.text
+                logger_local.error(
+                    f"[JSON_GEN_VLLM] vLLM HTTP error {response.status_code}: {error_text[:200]}"
+                )
+                raise httpx.HTTPStatusError(
+                    f"vLLM returned {response.status_code}",
+                    request=response.request,
+                    response=response,
+                )
+
+            result = response.json()
+            choices = result.get("choices", [])
+            if not choices:
+                raise ValueError(f"[JSON_GEN_VLLM] Model {target_vllm_model} returned empty choices")
+
+            message_content = choices[0].get("message", {}).get("content", "")
+            if not message_content or not message_content.strip():
+                raise ValueError(f"[JSON_GEN_VLLM] Model {target_vllm_model} returned empty content")
+
+            parsed_json = _extract_json_from_response(message_content, target_vllm_model)
+            if isinstance(parsed_json, dict):
+                usage = result.get("usage", {})
+                parsed_json["_prompt_tokens"] = usage.get("prompt_tokens", 0)
+                parsed_json["_completion_tokens"] = usage.get("completion_tokens", 0)
+
+            elapsed = (datetime.now() - start_time).total_seconds()
+            elapsed_ms = elapsed * 1000
+            logger_local.info(
+                f"⚡ [TIMING_BENCHMARK] [JSON_GEN_VLLM] Selesai dalam {elapsed_ms:.1f}ms ({elapsed:.2f}s) | "
+                f"Model: {target_vllm_model} | prompt_tokens: {parsed_json.get('_prompt_tokens', 0)} | completion_tokens: {parsed_json.get('_completion_tokens', 0)}"
+            )
+            return parsed_json
+
+        except httpx.TimeoutException as te:
+            logger_local.error(f"[JSON_GEN_VLLM] Timeout calling vLLM model {target_vllm_model}: {str(te)}")
+            raise
+        except Exception as e:
+            logger_local.error(f"[JSON_GEN_VLLM] Unexpected error during vLLM JSON inference: {str(e)}")
+            raise
+
+    # ── FALLBACK OLLAMA ──
     url = f"{settings.OLLAMA_BASE_URL}/api/chat"
 
     ollama_options = {
@@ -946,13 +1019,9 @@ async def generate_json_response(
     }
 
     logger_local.debug(
-        f"[JSON_GEN] Calling Gemma 4 | model: {model_name} | "
+        f"[JSON_GEN] Calling Gemma 4 (Ollama) | model: {model_name} | "
         f"num_ctx: {num_ctx} | num_predict: {num_predict}"
     )
-
-    start_time = datetime.now()
-    client = get_shared_client()
-    gpu_semaphore = get_gpu_semaphore()
 
     try:
         q_start = datetime.now()

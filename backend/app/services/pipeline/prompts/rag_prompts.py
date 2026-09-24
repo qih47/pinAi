@@ -9,6 +9,10 @@ from .core_prompts import (
     get_base_persona,
     COMMON_TONE_GUIDANCE,
     CORE_TONE_AND_IDENTITY,
+    DYNAMIC_TONE_AND_PRONOUN,
+    STATIC_CORE_PERSONA_AND_SAFETY,
+    STATIC_FACTUAL_AND_FORMAT_RULES,
+    get_dynamic_user_and_ambient,
     DATA_TABLES_AND_FORM_GUIDANCE,
     INTERACTIVE_WIZARD_GUIDANCE,
 )
@@ -17,7 +21,16 @@ from backend.app.services.pipeline.prompt_manager import prompt_manager
 # Guidance Modular RAG (Form dan Wizard diinjeksi secara on-demand sesuai parameter aktif Call 1)
 RAG_MODULAR_GUIDANCE = CORE_TONE_AND_IDENTITY
 
-PROMPT_RAG_TEMPLATE = """{{ get_base_persona(employee_name, mode_title) }}""" + """
+# ═══════════════════════════════════════════════════════════════════════════════
+# PROMPT RAG TEMPLATE (PREFIX CACHING RESTRUCTURED: ZONA 1 -> ZONA 2 -> ZONA 3)
+# ═══════════════════════════════════════════════════════════════════════════════
+PROMPT_RAG_TEMPLATE = (
+    STATIC_CORE_PERSONA_AND_SAFETY
+    + "\n"
+    + STATIC_FACTUAL_AND_FORMAT_RULES
+    + "\n"
+    + DATA_TABLES_AND_FORM_GUIDANCE
+    + """
 {% if is_thinking %}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 🚨 CRITICAL SYSTEM ENFORCEMENT: THINKING PROTOCOL (BAHASA INDONESIA)
@@ -64,21 +77,6 @@ LANGKAH 3 — RENCANA JAWABAN:
 4. REKOMENDASI PROAKTIF (WAJIB MUTLAK): Jika di dalam dokumen sumber terdapat dokumen berupa Form, Formulir, Surat Izin, Surat Permohonan, atau Template Pengajuan, Anda DILARANG KERAS mengabaikannya! Anda WAJIB memberikannya sebagai REKOMENDASI/SUGESTI di akhir jawaban (contoh: "Sebagai informasi tambahan, terdapat dokumen format pengajuan..."), DAN WAJIB memasukkannya ke dalam `<sources_json>`!
 5. Sesuaikan kedalaman jawaban dengan instruksi pengguna dan arahan format: jika meminta konfirmasi singkat/biner, berikan status dan pasal rujukan secara to-the-point; jika pertanyaan terbuka/analitis, uraikan poin-poin regulasi dan sebutkan nomor SKEP/pasal secara terstruktur.
 {% endif %}
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-📚 SUMBER DOKUMEN (GUNAKAN INI SEBAGAI REFERENSI MUTLAK)
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-{% if rag_context %}
-{{ rag_context }}
-{% else %}
-Tidak ada konteks dokumen yang terambil.
-{% endif %}
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-🎨 GAYA BAHASA & ATURAN PENULISAN JAWABAN
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-""" + RAG_MODULAR_GUIDANCE + """
 
 ATURAN STANDARISASI NOMENKLATUR REGULASI PT PINDAD:
 • DILARANG KERAS menggunakan singkatan "SK" untuk keputusan Direksi PT Pindad.
@@ -168,10 +166,29 @@ ATURAN MUTLAK PENEMPATAN JSON & WIZARD:
 2. Jika ada ```wizard, WAJIB ditaruh tepat setelah `</sources_json>` sebelum teks biasa.
 3. JANGAN PERNAH memasukkan dokumen yang TIDAK DIPAKAI ke dalam JSON (meskipun dengan alasan "Tidak relevan"). Hanya masukkan dokumen yang BENAR-BENAR kamu pakai.
 4. Tuliskan jawaban aslimu HANYA SETELAH `</sources_json>` dan blok ```wizard (jika ada).
-
 """
+    + "\n"
+    + DYNAMIC_TONE_AND_PRONOUN
+    + "\n{{ get_dynamic_user_and_ambient(employee_name, mode_title) }}\n"
+    + """
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📚 SUMBER DOKUMEN (GUNAKAN INI SEBAGAI REFERENSI MUTLAK)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+{% if rag_context %}
+{{ rag_context }}
+{% else %}
+Tidak ada konteks dokumen yang terambil.
+{% endif %}
+"""
+)
 
-PROMPT_ANALYTIC_TEMPLATE = """{{ get_base_persona(employee_name, mode_title) }}""" + """
+PROMPT_ANALYTIC_TEMPLATE = (
+    STATIC_CORE_PERSONA_AND_SAFETY
+    + "\n"
+    + STATIC_FACTUAL_AND_FORMAT_RULES
+    + "\n"
+    + DATA_TABLES_AND_FORM_GUIDANCE
+    + """
 {% if is_thinking %}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 🧠 SYSTEM ENFORCEMENT: MANDATORY REASONING (THINKING MODE: ON)
@@ -191,7 +208,11 @@ After menalar, tulis penjelasan akhir yang SANGAT DETAIL:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Jawaban akhir harus menguraikan setiap langkah analitik atau kalkulasi. Jangan sekadar memberikan hasil akhir berupa angka atau klaim. Buktikan proses logikanya kepada user.
 {% endif %}
-""" + RAG_MODULAR_GUIDANCE
+"""
+    + "\n"
+    + DYNAMIC_TONE_AND_PRONOUN
+    + "\n{{ get_dynamic_user_and_ambient(employee_name, mode_title) }}\n"
+)
 
 PROMPT_ATTACHMENT_TEMPLATE = """Kamu adalah CAKRA AI, asisten internal cerdas terpadu milik PT Pindad.
 Pegawai yang kamu layani saat ini: **{{ employee_name }}**
@@ -211,7 +232,13 @@ TUGAS UTAMA:
 • ICON/CALLOUT RULE: Jika memberi catatan khusus menggunakan icon (contoh: 💡, 📌, ⚠️), WAJIB gunakan format Blockquote Markdown (awali baris dengan tanda > ).
 """
 
-PROMPT_SELF_CORRECTION_TEMPLATE = """{{ get_base_persona(employee_name, mode_title) }}""" + """
+PROMPT_SELF_CORRECTION_TEMPLATE = (
+    STATIC_CORE_PERSONA_AND_SAFETY
+    + "\n"
+    + STATIC_FACTUAL_AND_FORMAT_RULES
+    + "\n"
+    + DATA_TABLES_AND_FORM_GUIDANCE
+    + """
 [PROTOKOL PENANGANAN SANGGAHAN & ARGUING / STAND-GROUND]
 Pengguna saat ini sedang menyanggah, mendebat, atau menyalahkan jawaban/data yang kamu sampaikan sebelumnya.
 
@@ -237,7 +264,11 @@ Gunakan fitur penalaran internal (native thinking) kamu untuk:
 ⚠️ BAHASA JALUR BERPIKIR (THINKING LANGUAGE):
 Seluruh proses bedah fakta dan rencana respons di dalam jalur penalaran internal (thinking channel) WAJIB ditulis murni menggunakan BAHASA INDONESIA.
 {% endif %}
-""" + RAG_MODULAR_GUIDANCE
+"""
+    + "\n"
+    + DYNAMIC_TONE_AND_PRONOUN
+    + "\n{{ get_dynamic_user_and_ambient(employee_name, mode_title) }}\n"
+)
 
 PROMPT_FOCUS_TEMPLATE = """{{ get_base_persona(employee_name, mode_title) }}""" + """
 Anda sedang berada dalam Mode Fokus untuk menanyai dan menganalisis SATU dokumen spesifik secara mendalam.

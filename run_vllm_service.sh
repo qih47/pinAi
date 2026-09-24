@@ -41,4 +41,5 @@ exec "$VLLM_PYTHON" -m vllm.entrypoints.openai.api_server \
     --gpu-memory-utilization 0.65 \
     --max-model-len 16384 \
     --trust-remote-code \
+    --enable-prefix-caching \
     --served-model-name "$MODEL_PATH" "gemma4:31b"

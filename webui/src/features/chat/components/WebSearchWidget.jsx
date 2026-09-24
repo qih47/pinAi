@@ -11,7 +11,7 @@ const WebSearchWidget = ({ searchData, isStreaming, hasStartedResponding, darkMo
 
     const results = Array.isArray(searchData) ? searchData : (searchData?.results || []);
     const isLoading = isStreaming && results.length === 0;
-    
+
     // Status Analisis:
     // Selama results sudah ada tapi respons teks LLM belum mulai keluar -> sedang menganalisis (prefill LLM)
     const isAnalyzing = isStreaming && results.length > 0 && !hasStartedResponding;
@@ -46,23 +46,22 @@ const WebSearchWidget = ({ searchData, isStreaming, hasStartedResponding, darkMo
     }, [isSearchComplete, isStreaming]);
 
     if (!searchData && !isStreaming) return null;
-    
-    let originalQuery = !Array.isArray(searchData) && searchData?.query 
-        ? searchData.query 
+
+    let originalQuery = !Array.isArray(searchData) && searchData?.query
+        ? searchData.query
         : (results[0]?.title || "");
-        
+
     let displayQuery = originalQuery || (t.searchingWebReferences || "Penelusuran Web");
-    
+
     return (
         <div className="my-4 w-full max-w-3xl font-sans">
             {/* Top Level Accordion Header */}
-            <div 
+            <div
                 onClick={() => setIsOpen(!isOpen)}
                 className="flex items-center gap-2 mb-3 cursor-pointer select-none group w-fit"
             >
-                <span className={`text-[14px] font-medium transition-colors line-clamp-1 flex items-center gap-2 ${
-                    darkMode ? 'text-[#9e9e9e] group-hover:text-[#c4c4c4]' : 'text-slate-600 group-hover:text-slate-900'
-                }`}>
+                <span className={`text-[14px] font-medium transition-colors line-clamp-1 flex items-center gap-2 ${darkMode ? 'text-[#9e9e9e] group-hover:text-[#c4c4c4]' : 'text-slate-600 group-hover:text-slate-900'
+                    }`}>
                     {isLoading ? (
                         <>
                             <span className="inline-block w-2 h-2 rounded-full bg-indigo-500 animate-ping" />
@@ -71,7 +70,7 @@ const WebSearchWidget = ({ searchData, isStreaming, hasStartedResponding, darkMo
                     ) : isAnalyzing ? (
                         <>
                             <span className={`inline-block w-2 h-2 rounded-full animate-pulse ${darkMode ? 'bg-indigo-400' : 'bg-indigo-600'}`} />
-                            <span className={darkMode ? 'text-indigo-300' : 'text-indigo-600'}>{t.analyzingResults || "Menganalisis hasil pencarian..."}</span>
+                            <span className={darkMode ? 'text-indigo-300' : 'text-indigo-600'}>{t.readingWebLinks || "Membaca tautan web..."}</span>
                         </>
                     ) : isSearchComplete ? (
                         t.searchResults || "Hasil penelusuran informasi dari web"
@@ -85,57 +84,51 @@ const WebSearchWidget = ({ searchData, isStreaming, hasStartedResponding, darkMo
             </div>
 
             {/* Collapsible Main Container */}
-            <div 
-                className={`transition-all duration-300 ease-in-out origin-top overflow-hidden relative ${
-                    isOpen ? 'max-h-[600px] opacity-100 scale-y-100' : 'max-h-0 opacity-0 scale-y-0'
-                }`}
+            <div
+                className={`transition-all duration-300 ease-in-out origin-top overflow-hidden relative ${isOpen ? 'max-h-[600px] opacity-100 scale-y-100' : 'max-h-0 opacity-0 scale-y-0'
+                    }`}
             >
                 {/* Timeline Vertical Line */}
-                <div className={`absolute left-[9px] top-[14px] bottom-[14px] w-[2px] z-0 ${
-                    darkMode ? 'bg-[#333333]' : 'bg-slate-200'
-                }`}></div>
+                <div className={`absolute left-[9px] top-[14px] bottom-[14px] w-[2px] z-0 ${darkMode ? 'bg-[#333333]' : 'bg-slate-200'
+                    }`}></div>
 
                 <div className="flex flex-col gap-4 relative z-10 pl-0">
-                    
+
                     {/* Step 1: Web Search */}
                     <div>
                         <div className="flex items-center gap-3 mb-3">
-                            <div className={`py-1 px-1 rounded-full z-10 relative flex items-center justify-center ${
-                                darkMode ? 'bg-[#1e1e1e]' : 'bg-white border border-slate-200 shadow-sm'
-                            }`}>
-                                <Globe className={`w-[14px] h-[14px] flex-shrink-0 ${
-                                    darkMode ? 'text-[#888888]' : 'text-indigo-600'
-                                }`} />
+                            <div className={`py-1 px-1 rounded-full z-10 relative flex items-center justify-center ${darkMode ? 'bg-[#1e1e1e]' : 'bg-white border border-slate-200 shadow-sm'
+                                }`}>
+                                <Globe className={`w-[14px] h-[14px] flex-shrink-0 ${darkMode ? 'text-[#888888]' : 'text-indigo-600'
+                                    }`} />
                             </div>
-                            <span className={`text-[13.5px] font-medium truncate flex-grow ${
-                                darkMode ? 'text-[#888888]' : 'text-slate-700'
-                            }`}>
+                            <span className={`text-[13.5px] font-medium truncate flex-grow ${darkMode ? 'text-[#888888]' : 'text-slate-700'
+                                }`}>
                                 "{displayQuery}"
                             </span>
-                            <span className={`text-[12px] whitespace-nowrap ${
-                                darkMode ? 'text-[#666666]' : 'text-slate-400'
-                            }`}>
+                            <span className={`text-[12px] whitespace-nowrap ${darkMode ? 'text-[#666666]' : 'text-slate-400'
+                                }`}>
                                 {(t.resultsCount || "{count} results").replace('{count}', results.length)}
                             </span>
                         </div>
-                        
+
                         <div className="ml-[26px]">
-                            <div className={`rounded-xl border overflow-hidden transition-colors ${
-                                darkMode 
-                                    ? 'border-[#2a2a2a] bg-[#1c1c1c] shadow-[0_4px_20px_rgba(0,0,0,0.3)]' 
-                                    : 'border-slate-200/90 bg-white shadow-[0_4px_20px_rgba(0,0,0,0.06)]'
-                            }`}>
-                                <div className="flex flex-col max-h-[240px] overflow-y-auto p-1.5 custom-scrollbar" 
-                                     style={{
-                                         scrollbarWidth: 'thin',
-                                         scrollbarColor: darkMode ? '#444 transparent' : '#cbd5e1 transparent'
-                                     }}>
-                                    <style dangerouslySetInnerHTML={{__html: `
+                            <div className={`rounded-xl border overflow-hidden transition-colors ${darkMode
+                                ? 'border-[#2a2a2a] bg-[#1c1c1c] shadow-[0_4px_20px_rgba(0,0,0,0.3)]'
+                                : 'border-slate-200/90 bg-white shadow-[0_4px_20px_rgba(0,0,0,0.06)]'
+                                }`}>
+                                <div className="flex flex-col max-h-[240px] overflow-y-auto p-1.5 custom-scrollbar"
+                                    style={{
+                                        scrollbarWidth: 'thin',
+                                        scrollbarColor: darkMode ? '#444 transparent' : '#cbd5e1 transparent'
+                                    }}>
+                                    <style dangerouslySetInnerHTML={{
+                                        __html: `
                                         .custom-scrollbar::-webkit-scrollbar { width: 6px; }
                                         .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
                                         .custom-scrollbar::-webkit-scrollbar-thumb { background-color: ${darkMode ? '#444' : '#cbd5e1'}; border-radius: 10px; }
                                     `}} />
-                                    
+
                                     {isLoading ? (
                                         <div className={`p-3 text-xs flex items-center gap-2 ${darkMode ? 'text-gray-400' : 'text-slate-500'}`}>
                                             <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-ping" />
@@ -147,48 +140,45 @@ const WebSearchWidget = ({ searchData, isStreaming, hasStartedResponding, darkMo
                                             try {
                                                 hostname = new URL(item.url).hostname;
                                                 hostname = hostname.replace(/^www\./, '');
-                                            } catch(e) {
+                                            } catch (e) {
                                                 hostname = item.url || '';
                                             }
-                                            
+
                                             return (
-                                                <a 
-                                                    key={idx} 
+                                                <a
+                                                    key={idx}
                                                     href={item.url}
                                                     target="_blank"
                                                     rel="noopener noreferrer"
-                                                    className={`flex items-center justify-between p-2.5 rounded-lg transition-all group/item cursor-pointer ${
-                                                        darkMode 
-                                                            ? 'hover:bg-[#252525]' 
-                                                            : 'hover:bg-slate-50'
-                                                    }`}
+                                                    className={`flex items-center justify-between p-2.5 rounded-lg transition-all group/item cursor-pointer ${darkMode
+                                                        ? 'hover:bg-[#252525]'
+                                                        : 'hover:bg-slate-50'
+                                                        }`}
                                                 >
                                                     <div className="flex items-center gap-3 overflow-hidden flex-1 pr-4">
-                                                         <div className="w-[18px] h-[18px] flex-shrink-0 flex items-center justify-center bg-transparent">
-                                                            <img 
+                                                        <div className="w-[18px] h-[18px] flex-shrink-0 flex items-center justify-center bg-transparent">
+                                                            <img
                                                                 src={`https://www.google.com/s2/favicons?domain=${hostname}&sz=32`}
                                                                 className="w-full h-full object-contain opacity-80 group-hover/item:opacity-100 transition-opacity"
                                                                 alt=""
-                                                                onError={(e) => { 
-                                                                    e.target.onerror = null; 
+                                                                onError={(e) => {
+                                                                    e.target.onerror = null;
                                                                     e.target.src = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="%23666" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>';
                                                                 }}
                                                             />
                                                         </div>
-                                                        <span className={`text-[13.5px] font-medium truncate transition-colors ${
-                                                            darkMode 
-                                                                ? 'text-[#d4d4d4] group-hover/item:text-white' 
-                                                                : 'text-slate-800 group-hover/item:text-indigo-600'
-                                                        }`}>
+                                                        <span className={`text-[13.5px] font-medium truncate transition-colors ${darkMode
+                                                            ? 'text-[#d4d4d4] group-hover/item:text-white'
+                                                            : 'text-slate-800 group-hover/item:text-indigo-600'
+                                                            }`}>
                                                             {item.title}
                                                         </span>
                                                     </div>
                                                     <div className="flex items-center gap-3 flex-shrink-0">
-                                                        <span className={`text-[12px] transition-colors ${
-                                                            darkMode 
-                                                                ? 'text-[#666666]' 
-                                                                : 'text-slate-400 group-hover/item:text-slate-500'
-                                                        }`}>
+                                                        <span className={`text-[12px] transition-colors ${darkMode
+                                                            ? 'text-[#666666]'
+                                                            : 'text-slate-400 group-hover/item:text-slate-500'
+                                                            }`}>
                                                             {hostname}
                                                         </span>
                                                     </div>
@@ -205,29 +195,26 @@ const WebSearchWidget = ({ searchData, isStreaming, hasStartedResponding, darkMo
                     {results.length > 0 && (
                         <div className="flex flex-col gap-3 mt-1 ml-[1px]">
                             <div className="flex items-center gap-3">
-                                <div className={`py-0.5 rounded-full z-10 relative flex items-center justify-center w-[18px] ${
-                                    darkMode ? 'bg-[#1e1e1e]' : 'bg-white border border-slate-200 shadow-sm'
-                                }`}>
+                                <div className={`py-0.5 rounded-full z-10 relative flex items-center justify-center w-[18px] ${darkMode ? 'bg-[#1e1e1e]' : 'bg-white border border-slate-200 shadow-sm'
+                                    }`}>
                                     {isAnalyzing ? (
                                         <span className="w-2.5 h-2.5 rounded-full bg-indigo-500 animate-pulse" />
                                     ) : (
                                         <Clock className={`w-[14px] h-[14px] ${darkMode ? 'text-[#888888]' : 'text-slate-400'}`} />
                                     )}
                                 </div>
-                                <span className={`text-[13.5px] ${
-                                    isAnalyzing 
-                                        ? (darkMode ? 'text-indigo-300 font-medium' : 'text-indigo-600 font-medium') 
-                                        : (darkMode ? 'text-[#888888]' : 'text-slate-500')
-                                }`}>
+                                <span className={`text-[13.5px] ${isAnalyzing
+                                    ? (darkMode ? 'text-indigo-300 font-medium' : 'text-indigo-600 font-medium')
+                                    : (darkMode ? 'text-[#888888]' : 'text-slate-500')
+                                    }`}>
                                     {t.analyzingResults || "Menganalisis hasil pencarian..."}
                                 </span>
                             </div>
 
                             {isSearchComplete && (
                                 <div className="flex items-center gap-3">
-                                    <div className={`py-0.5 rounded-full z-10 relative flex items-center justify-center w-[18px] ${
-                                        darkMode ? 'bg-[#1e1e1e]' : 'bg-white border border-slate-200 shadow-sm'
-                                    }`}>
+                                    <div className={`py-0.5 rounded-full z-10 relative flex items-center justify-center w-[18px] ${darkMode ? 'bg-[#1e1e1e]' : 'bg-white border border-slate-200 shadow-sm'
+                                        }`}>
                                         <CheckCircle2 className={`w-[14px] h-[14px] ${darkMode ? 'text-emerald-400' : 'text-emerald-600'}`} />
                                     </div>
                                     <span className={`text-[13.5px] font-medium ${darkMode ? 'text-emerald-400' : 'text-emerald-600'}`}>

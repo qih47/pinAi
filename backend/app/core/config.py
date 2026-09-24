@@ -40,9 +40,9 @@ class Settings(BaseSettings):
     ZIMBRA_EMAIL: Optional[str] = None
     ZIMBRA_PASSWORD: Optional[str] = None
 
-    MODEL_PERSONA: str = "gemma4:31b"       # Gemma4 Agentic Engine (Chat, Reasoning & Multimodal Vision, locked to 16k context via NUM_CTX_CORE)
-    MODEL_ROUTER: str = "gemma4:e4b"       # Gemma4 Router Engine (Call 1 JSON)
-    MODEL_EMBEDDING: str = "mxbai-embed-large:latest"  # Embedding untuk RAG
+    MODEL_PERSONA: str = "/home/qisthi/models/gemma-4-31B-it-AWQ"       # Gemma4 Agentic Engine (Chat, Reasoning & Multimodal Vision)
+    MODEL_ROUTER: str = "/home/qisthi/models/gemma-4-31B-it-AWQ"        # Gemma4 Unified Engine (Call 1 & 1.1 JSON Routing via vLLM)
+    MODEL_EMBEDDING: str = "mxbai-embed-large:latest"  # Embedding untuk RAG (Ollama)
 
     NUM_CTX_CORE: int = 16384                # Standardisasi context window untuk Core Model (Cegah VRAM reload)
     NUM_CTX_ROUTER: int = 4096               # Standardisasi context window untuk Router Model

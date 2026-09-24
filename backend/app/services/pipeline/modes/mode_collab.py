@@ -35,8 +35,8 @@ class ModeCollab:
     """
 
     def __init__(self):
-        self.router_model = getattr(settings, "MODEL_ROUTER", "gemma4:e4b")
-        self.persona_model = getattr(settings, "MODEL_PERSONA", "gemma4:31b")
+        self.router_model = getattr(settings, "MODEL_ROUTER", "/home/qisthi/models/gemma-4-31B-it-AWQ")
+        self.persona_model = getattr(settings, "MODEL_PERSONA", "/home/qisthi/models/gemma-4-31B-it-AWQ")
 
     async def should_intervene(
         self,

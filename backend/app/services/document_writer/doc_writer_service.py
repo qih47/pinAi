@@ -759,7 +759,7 @@ class DocWriterService:
             )
 
             action_plan = await generate_json_response(
-                model_name=getattr(settings, "ROUTER_MODEL", "gemma4:e4b"),
+                model_name=getattr(settings, "MODEL_ROUTER", getattr(settings, "ROUTER_MODEL", "/home/qisthi/models/gemma-4-31B-it-AWQ")),
                 messages=[
                     {"role": "system", "content": prompt_system},
                     {"role": "user", "content": user_prompt}

@@ -140,7 +140,7 @@ async def verify_retrieved_documents_crag(
         .replace("{{ candidates_summary }}", candidates_summary)
     )
 
-    model = getattr(settings, "MODEL_ROUTER", "gemma4:e4b")
+    model = getattr(settings, "MODEL_ROUTER", "/home/qisthi/models/gemma-4-31B-it-AWQ")
     router_ctx = getattr(settings, "NUM_CTX_ROUTER", 4096)
 
     t0 = datetime.now()
@@ -155,7 +155,7 @@ async def verify_retrieved_documents_crag(
             keep_alive=-1,
             num_ctx=router_ctx,
             num_predict=260,
-            timeout=5.0,
+            timeout=15.0,
         )
         duration_ms = (datetime.now() - t0).total_seconds() * 1000
 

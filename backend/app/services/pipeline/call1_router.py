@@ -293,7 +293,7 @@ async def execute_call1_routing(
     dynamic_predict = 350 if is_first_chat else 250
 
     # Tentukan model yang digunakan
-    effective_model = model_name or getattr(settings, "MODEL_ROUTER", "gemma4:e4b")
+    effective_model = model_name or getattr(settings, "MODEL_ROUTER", "/home/qisthi/models/gemma-4-31B-it-AWQ")
 
     # Kunci num_ctx adaptif: Gemma (vocab 256k -> ~3.1k tokens) cukup 4096. Model lain (Granite/Llama/MiniCPM vocab 128k -> ~5.1k tokens) butuh 8192.
     if any(k in effective_model.lower() for k in ["granite", "llama", "mistral", "qwen", "minicpm"]):
@@ -1504,7 +1504,7 @@ async def generate_call1_preset_routing(
         previous_topic=previous_topic,
         previous_subject=previous_subject,
     )
-    model = getattr(settings, "MODEL_ROUTER", "gemma4:e4b")
+    model = getattr(settings, "MODEL_ROUTER", "/home/qisthi/models/gemma-4-31B-it-AWQ")
     router_ctx = getattr(settings, "NUM_CTX_ROUTER", 4096)
 
     try:
@@ -1744,7 +1744,7 @@ async def generate_call1_web_queries(user_message: str, request: Optional[Reques
     from backend.app.services.web_tools.web_search import sanitize_web_query
 
     clean_fallback = sanitize_web_query(user_message.strip())
-    model = getattr(settings, "MODEL_ROUTER", "gemma4:e4b")
+    model = getattr(settings, "MODEL_ROUTER", "/home/qisthi/models/gemma-4-31B-it-AWQ")
     router_ctx = getattr(settings, "NUM_CTX_ROUTER", 4096)
 
     prompt = (

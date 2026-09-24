@@ -246,10 +246,20 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
         // 🌐 Otomatis linkify domain mentah agar selalu bisa diklik sebagai tautan
         final = linkifyRawDomains(final);
 
-        // 🧹 Bersihkan titik terisolasi yang berdiri sendiri di baris baru setelah sitasi / list (misal "\n.\n" atau "\n.")
-        final = final.replace(/\n\s*\.\s*(?=\n|$)/g, '\n');
-        final = final.replace(/(\[[^\]]+\]\([^\)]+\))\s*\n\s*\.\s*/g, '$1\n');
-        final = final.replace(/(\[[^\]]+\]\([^\)]+\))\s*\.\s*(?=\n|$)/g, '$1');
+        // 🧹 Bersihkan titik terisolasi yang berdiri sendiri di baris baru setelah sitasi / list (gunakan [ \t] agar tidak memakan newline)
+        final = final.replace(/\n[ \t]*\.[ \t]*(?=\n|$)/g, '\n');
+        final = final.replace(/(\[[^\]]+\]\([^\)]+\))[ \t]*\n[ \t]*\.[ \t]*/g, '$1\n');
+        final = final.replace(/(\[[^\]]+\]\([^\)]+\))[ \t]*\.[ \t]*(?=\n|$)/g, '$1');
+
+        // 🎯 Normalisasi pemisah baris sitasi & penomoran (anti-nempel sebaris):
+        // 1. Pisahkan judul bagian bernomor / kesimpulan yang langsung nempel sebaris setelah sitasi link
+        final = final.replace(/(\[[^\]]+\]\([^\)]+\))[ \t]*\.?[ \t]+(\*\*\d+\.|\d+\.\s+[A-Za-z]|Kesimpulan[a-zA-Z]*:|Gitu ceritanya)/g, '$1.\n\n$2');
+
+        // 2. Pastikan ada double enter sebelum penomoran utama baru atau blok kesimpulan
+        final = final.replace(/([^\n])\n(\*\*\d+\.|\d+\.\s+[A-Za-z]|Kesimpulan[a-zA-Z]*:)/g, '$1\n\n$2');
+
+        // 3. Pastikan penutup persona santai seperti 'Gitu ceritanya' tampil di paragraf tersendiri
+        final = final.replace(/([.!?])[ \t]+(Gitu ceritanya)/g, '$1\n\n$2');
 
         return { thinkingBlock: thinking, finalResponseBlock: final, wizardBlock: wizard, isWizardStreaming };
     }, [rawContent, thinkingContent]);
