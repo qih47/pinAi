@@ -4,8 +4,7 @@ import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import ThoughtAccordion from './ThoughtAccordion';
-import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
-import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
+import { SyntaxHighlighter, vscDarkPlus } from '../../../utils/syntaxHighlighter';
 import CodeBlockHeader from './CodeBlockHeader';
 import ChatActionWidgets from './ChatActionWidgets';
 import { Suspense, lazy } from 'react';
@@ -19,11 +18,10 @@ const LazyGanttViewer = lazy(() => import('./GanttViewer'));
 const LazyTimelineInfographic = lazy(() => import('./TimelineInfographic'));
 const LazyChartViewer = lazy(() => import('./ChartViewer'));
 const LazyReactFlowViewer = lazy(() => import('./ReactFlowViewer'));
-import DataGridViewer from './DataGridViewer';
+const LazyDataGridViewer = lazy(() => import('./DataGridViewer'));
 const LazyMapViewer = lazy(() => import('./MapViewer'));
 const LazyWebSearchWidget = lazy(() => import('./WebSearchWidget'));
 const LazyUrlFetchTimelineWidget = lazy(() => import('./UrlFetchTimelineWidget'));
-const LazyInteractiveWizardWidget = lazy(() => import('./InteractiveWizardWidget'));
 const LazyDocWriterWidget = lazy(() => import('./DocWriterChatWidget'));
 const LazySlideDeckViewer = lazy(() => import('./SlideDeckViewer'));
 const LazyDocAuditContinueWidget = lazy(() => import('./DocAuditContinueWidget'));
@@ -700,7 +698,9 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
 
             if (!inline && match && (match[1] === 'datagrid' || match[1] === 'tablejson')) {
                 return (
-                    <DataGridViewer chartCode={cleanCode} darkMode={darkMode} isStreaming={isStreaming} language={language} />
+                    <Suspense fallback={<div className="animate-pulse p-8 border border-dashed rounded-xl text-sm text-center font-medium my-4">Memuat Data Grid...</div>}>
+                        <LazyDataGridViewer chartCode={cleanCode} darkMode={darkMode} isStreaming={isStreaming} language={language} />
+                    </Suspense>
                 );
             }
 

@@ -37,10 +37,10 @@ start_frontend() {
 }
 
 stop_services() {
-    echo "🛑 Stopping running CAKRA services..."
-    # 1. Kill via PID files
+    echo "🛑 Stopping running CAKRA services (Preserving vLLM Engine in VRAM)..."
+    # 1. Kill via PID files (kecuali vllm.pid agar forever load tidak terputus)
     for pidfile in "$LOG_DIR"/*.pid; do
-        if [ -f "$pidfile" ]; then
+        if [ -f "$pidfile" ] && [ "$(basename "$pidfile")" != "vllm.pid" ]; then
             pid=$(cat "$pidfile")
             kill -9 "$pid" 2>/dev/null || true
             rm -f "$pidfile"
@@ -54,7 +54,7 @@ stop_services() {
     pkill -9 -f "run_analytics_service.py" 2>/dev/null || true
     pkill -9 -f "dev:chat" 2>/dev/null || true
 
-    # 3. Clean network ports (preserve 5174 for Analytics dashboard)
+    # 3. Clean network ports (preserve 8005 for vLLM & 5174 for Analytics dashboard)
     fuser -k -9 8000/tcp 8001/tcp 8002/tcp 8003/tcp 5173/tcp 2>/dev/null || true
 }
 
@@ -62,6 +62,7 @@ reset_vram() {
     echo "🧹 Membersihkan VRAM (Ollama & vLLM)..."
     pkill -9 -f "vllm.entrypoints" 2>/dev/null || true
     fuser -k -9 8005/tcp 2>/dev/null || true
+    rm -f "$LOG_DIR/vllm.pid"
     if command -v ollama &>/dev/null; then
         for model in $(ollama ps 2>/dev/null | awk 'NR>1 {print $1}'); do
             if [ -n "$model" ]; then
@@ -117,7 +118,16 @@ case "${1:-all}" in
         echo "============================================================"
         stop_services
         
-        echo "🚀 Meluncurkan seluruh service secara paralel..."
+        # Cek / start vLLM Engine secara otomatis (Forever Loaded)
+        if curl -s http://127.0.0.1:8005/health &>/dev/null; then
+            echo "  ⚡ vLLM Engine aktif di port 8005 (Preserving forever load - zero recompilation delay)"
+        else
+            echo "  🚀 Meluncurkan vLLM Engine di background..."
+            nohup bash "$ROOT/run_vllm_service.sh" > "$LOG_DIR/vllm.log" 2>&1 &
+            echo $! > "$LOG_DIR/vllm.pid"
+        fi
+
+        echo "🚀 Meluncurkan seluruh microservice secara paralel..."
         start_service "auth_service"      "run_auth_service.py"
         start_service "analytics_service" "run_analytics_service.py"
         start_service "chat_service"      "run_chat_service.py"
@@ -126,6 +136,7 @@ case "${1:-all}" in
 
         echo "============================================================"
         echo "  ✅ All services launched in parallel in < 1 second!"
+        echo "  vLLM Engine     → http://localhost:8005 (Marlin AWQ 31B)"
         echo "  API Gateway     → http://localhost:8000"
         echo "  Chat Service    → http://localhost:8001"
         echo "  Analytics Svc   → http://localhost:8002"

@@ -1,6 +1,5 @@
 import React, { useState } from "react";
-import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
-import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
+import { SyntaxHighlighter, vscDarkPlus } from '../../../../utils/syntaxHighlighter';
 import CakraResponseRenderer from "../CakraResponseRenderer";
 import { IconChevronLeft, IconCopy, IconClose, getArtifactFileIcon } from "./RightSidebarIcons";
 import { useChatStore } from "../../../../stores/chatStore";

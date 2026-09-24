@@ -117,8 +117,14 @@ Hanya keluarkan daftar pertanyaan. Setiap pertanyaan harus berada di baris baru 
             questions = []
             full_response = ""
             model_name = settings.MODEL_PERSONA
+            import json
             async for chunk in stream_ollama_chat(model_name, [{"role": "user", "content": prompt}], request):
-                full_response += chunk
+                try:
+                    data = json.loads(chunk)
+                    if "chunk" in data:
+                        full_response += data["chunk"]
+                except Exception:
+                    full_response += str(chunk)
                 
             for line in full_response.split('\n'):
                 line = line.strip()

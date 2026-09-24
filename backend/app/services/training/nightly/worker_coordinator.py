@@ -53,6 +53,49 @@ class WorkerCoordinator:
         VRAM 48GB sangat leluasa menampung inferensi simultan gemma4:31b (24GB).
         num_predict=-1: Tidak membatasi panjang output — wajib untuk Unlimited Q&A.
         """
+        is_vllm = getattr(settings, "LLM_ENGINE", "ollama") == "vllm"
+        if is_vllm:
+            vllm_url = getattr(settings, "VLLM_BASE_URL", "http://localhost:8005/v1").rstrip("/")
+            vllm_model = "/home/qisthi/models/gemma-4-31B-it-AWQ" if self.model_name in ["gemma4:31b", "gemma-4-31B-it-AWQ"] else self.model_name
+
+            messages = []
+            if system_prompt:
+                messages.append({"role": "system", "content": system_prompt})
+
+            if images:
+                user_parts = []
+                for img_b64 in images:
+                    clean_b64 = img_b64.split(",")[-1] if "," in img_b64 else img_b64
+                    user_parts.append({
+                        "type": "image_url",
+                        "image_url": {"url": f"data:image/png;base64,{clean_b64}"}
+                    })
+                user_parts.append({"type": "text", "text": prompt})
+                messages.append({"role": "user", "content": user_parts})
+            else:
+                messages.append({"role": "user", "content": prompt})
+
+            vllm_payload: Dict[str, Any] = {
+                "model": vllm_model,
+                "messages": messages,
+                "stream": False,
+                "temperature": 0.3,
+            }
+
+            try:
+                resp = await self.http_client.post(f"{vllm_url}/chat/completions", json=vllm_payload)
+                if resp.status_code == 200:
+                    rdata = resp.json()
+                    choices = rdata.get("choices", [])
+                    if choices:
+                        return choices[0].get("message", {}).get("content", "").strip()
+                    return ""
+                logger.error(f"[VLLM_ERROR] Status {resp.status_code}: {resp.text[:200]}")
+                return ""
+            except Exception as e:
+                logger.error(f"[VLLM_EXCEPTION] Gagal query vLLM {self.model_name}: {e}")
+                return ""
+
         payload: Dict[str, Any] = {
             "model": self.model_name,
             "prompt": prompt,

@@ -35,23 +35,21 @@ const DocAuditContinueWidget = ({
         }
     }
 
-    if (!data) return null;
-
     const isCompletedStatus = Boolean(
-        data.is_complete || 
-        (typeof data.status === 'string' && data.status.toUpperCase().includes('COMPLET'))
+        data?.is_complete || 
+        (typeof data?.status === 'string' && data?.status.toUpperCase().includes('COMPLET'))
     );
-    const totalPages = Number(data.total_pages || data.total_pages_audited || 5);
-    const currentEnd = isCompletedStatus ? totalPages : Number(data.current_end || totalPages);
-    const currentBatch = data.current_batch || (isCompletedStatus ? `1-${totalPages}` : "1-5");
-    const nextBatch = isCompletedStatus ? null : data.next_batch;
+    const totalPages = Number(data?.total_pages || data?.total_pages_audited || 5);
+    const currentEnd = isCompletedStatus ? totalPages : Number(data?.current_end || totalPages);
+    const currentBatch = data?.current_batch || (isCompletedStatus ? `1-${totalPages}` : "1-5");
+    const nextBatch = isCompletedStatus ? null : data?.next_batch;
     const isComplete = Boolean(isCompletedStatus || currentEnd >= totalPages);
 
     const progressPercent = Math.min(Math.round((currentEnd / totalPages) * 100), 100);
 
     // ── EVALUASI RIWAYAT PERCAKAPAN (CONVERSATION HISTORY INSPECTION) ──
     const continuationStatus = useMemo(() => {
-        if (isComplete) return { status: 'completed' };
+        if (!data || isComplete) return { status: 'completed' };
 
         // 1. Periksa pesan-pesan setelah pesan asisten ini (idx > messageIndex)
         if (messageIndex !== null && Array.isArray(messages) && messages.length > messageIndex + 1) {
@@ -121,7 +119,7 @@ const DocAuditContinueWidget = ({
         }
 
         return { status: 'idle' };
-    }, [messages, messageIndex, isComplete, currentEnd, globalIsStreaming]);
+    }, [data, messages, messageIndex, isComplete, currentEnd, globalIsStreaming]);
 
     // Reset local processing jika status di riwayat sudah tersinkronisasi
     useEffect(() => {
@@ -129,6 +127,8 @@ const DocAuditContinueWidget = ({
             setLocalProcessing(false);
         }
     }, [continuationStatus.status]);
+
+    if (!data) return null;
 
     const isProcessing = Boolean(localProcessing || continuationStatus.status === 'processing');
     const isAlreadyContinued = continuationStatus.status === 'completed';

@@ -70,10 +70,12 @@ export const OllamaProfiler = () => {
       });
 
       if (active) {
-        const isPinnedForever = active.expires_at && new Date(active.expires_at).getFullYear() > new Date().getFullYear() + 10;
-        const vramPercent = active.size_vram && active.size ? (active.size_vram / active.size) * 100 : 100;
+        const isPinnedForever = (active.expires_at && new Date(active.expires_at).getFullYear() > new Date().getFullYear() + 10) || active.is_vllm;
+        const vramPercent = active.size_vram && active.size ? Math.min(100, (active.size_vram / active.size) * 100) : 100;
+        const role = active.is_vllm ? 'Agentic Core Engine (vLLM Marlin AWQ)' : item.role;
         return {
           ...item,
+          role,
           isLoaded: true,
           size_vram: active.size_vram,
           size: active.size,

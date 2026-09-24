@@ -81,7 +81,7 @@ async def main():
 
     # 2. Cek apakah berada dalam jendela waktu jika bukan force-now
     if not args.force_now and not orchestrator.is_within_training_window():
-        logger.info("⏰ [OUTSIDE_WINDOW] Saat ini di luar jadwal training (Hari Kerja 18:00 - 07:30 WIB / Weekend Marathon Jumat 18:00 s.d. Senin 08:00 WIB). Standby.")
+        logger.info("⏰ [OUTSIDE_WINDOW] Saat ini di luar jadwal training (Hari Kerja 18:00 - 07:30 WIB / Weekend Marathon Jumat 17:00 s.d. Senin 08:00 WIB). Standby.")
         try:
             fcntl.flock(lock_fd, fcntl.LOCK_UN)
             lock_fd.close()

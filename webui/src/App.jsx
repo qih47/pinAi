@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, Suspense, lazy } from "react";
 import {
   BrowserRouter,
   Routes,
@@ -7,16 +7,16 @@ import {
   useParams,
 } from "react-router-dom";
 import ChatPage from "@/features/chat/ChatPage";
-import LoginPage from "@/features/auth/LoginPage"; // 👈 IMPORT LOGIN ENGINE
-import WelcomeWizardPage from "@/features/auth/WelcomeWizardPage"; // 👈 First-Time User Setup OOBE
-import CacheStatsPage from "@/features/admin/CacheStatsPage"; // 👈 W13 & W15: Cache & Search Stats Dashboard
-import { useChatAuthStore } from "@/stores/authStore"; // 👈 IMPORT AUTH STORE
+const LoginPage = lazy(() => import("@/features/auth/LoginPage"));
+const WelcomeWizardPage = lazy(() => import("@/features/auth/WelcomeWizardPage"));
+const CacheStatsPage = lazy(() => import("@/features/admin/CacheStatsPage"));
+import { useChatAuthStore } from "@/stores/authStore";
 import { useChatStore } from "@/stores/chatStore";
 import Loading from "./components/Loading";
 import Layout from "./components/Layout";
 import ToastProvider from "./components/ui/ToastProvider";
-import { useTokenRefresh } from "./hooks/useTokenRefresh"; // 👈 W18: Token auto-refresh
-import OllamaThinkTest from '@/features/chat/components/OllamaThinkTest';
+import { useTokenRefresh } from "./hooks/useTokenRefresh";
+const OllamaThinkTest = lazy(() => import("@/features/chat/components/OllamaThinkTest"));
 
 // Komponen redirect: jika analytics dibuka di port 5173, arahkan ke port 5174
 function AnalyticsRedirect() {
@@ -152,71 +152,73 @@ function AppContent() {
   useTokenRefresh();
 
   return (
-    <Routes>
-      {/* 🔐 RUTE /login OTOMATIS REDIRECT KE GUEST & MEMBUKA MODAL LOGIN */}
-      <Route path="/login" element={<LoginRedirect />} />
-      <Route path="/welcome" element={<WelcomeRouteWrapper />} />
+    <Suspense fallback={<Loading />}>
+      <Routes>
+        {/* 🔐 RUTE /login OTOMATIS REDIRECT KE GUEST & MEMBUKA MODAL LOGIN */}
+        <Route path="/login" element={<LoginRedirect />} />
+        <Route path="/welcome" element={<WelcomeRouteWrapper />} />
 
-      {/* ⚡ W13 & W15: Admin Cache & Performance Dashboard */}
-      <Route path="/admin/cache-stats" element={<CacheStatsPage />} />
-      
-      <Route path="/test-think" element={<OllamaThinkTest />} />
-      <Route path="/" element={<Navigate to="/chat/guest" replace />} />
+        {/* ⚡ W13 & W15: Admin Cache & Performance Dashboard */}
+        <Route path="/admin/cache-stats" element={<CacheStatsPage />} />
+        
+        <Route path="/test-think" element={<OllamaThinkTest />} />
+        <Route path="/" element={<Navigate to="/chat/guest" replace />} />
 
-      {/* 🔒 /analytics di port ini tidak valid — redirect ke port 5174 */}
-      <Route
-        path="/analytics"
-        element={
-          <AnalyticsRedirect />
-        }
-      />
-      <Route
-        path="/analytics/*"
-        element={
-          <AnalyticsRedirect />
-        }
-      />
+        {/* 🔒 /analytics di port ini tidak valid — redirect ke port 5174 */}
+        <Route
+          path="/analytics"
+          element={
+            <AnalyticsRedirect />
+          }
+        />
+        <Route
+          path="/analytics/*"
+          element={
+            <AnalyticsRedirect />
+          }
+        />
 
-      <Route element={<Layout />}>
-        <Route
-          path="/chat/guest"
-          element={<SessionRouteWrapper isGuest={true} />}
-        />
-        <Route
-          path="/chat/new"
-          element={<SessionRouteWrapper isGuest={false} />}
-        />
-        <Route
-          path="/chat/:sessionId"
-          element={<SessionRouteWrapper isGuest={false} />}
-        />
-        {/* 👥 Mega Fitur: CAKRA Collab Space (Diskusi Tim & AI Teammate Workspace) */}
-        <Route
-          path="/collab"
-          element={<SessionRouteWrapper isGuest={false} corporateMode="collab" />}
-        />
-        <Route
-          path="/collab/:roomId"
-          element={<SessionRouteWrapper isGuest={false} corporateMode="collab" />}
-        />
-        <Route
-          path="/corporate/mail"
-          element={<SessionRouteWrapper isGuest={false} corporateMode="mail" />}
-        />
-        <Route
-          path="/corporate/notadinas"
-          element={<SessionRouteWrapper isGuest={false} corporateMode="notadinas" />}
-        />
-        <Route
-          path="/corporate/vendor"
-          element={<SessionRouteWrapper isGuest={false} corporateMode="vendor" />}
-        />
-        {/* 📦 Pusat Arsip (Archive Hub) */}
-        <Route
-          path="/archive"
-          element={<SessionRouteWrapper isGuest={false} corporateMode="archive" />}
-        />
-      </Route>
-    </Routes>
+        <Route element={<Layout />}>
+          <Route
+            path="/chat/guest"
+            element={<SessionRouteWrapper isGuest={true} />}
+          />
+          <Route
+            path="/chat/new"
+            element={<SessionRouteWrapper isGuest={false} />}
+          />
+          <Route
+            path="/chat/:sessionId"
+            element={<SessionRouteWrapper isGuest={false} />}
+          />
+          {/* 👥 Mega Fitur: CAKRA Collab Space (Diskusi Tim & AI Teammate Workspace) */}
+          <Route
+            path="/collab"
+            element={<SessionRouteWrapper isGuest={false} corporateMode="collab" />}
+          />
+          <Route
+            path="/collab/:roomId"
+            element={<SessionRouteWrapper isGuest={false} corporateMode="collab" />}
+          />
+          <Route
+            path="/corporate/mail"
+            element={<SessionRouteWrapper isGuest={false} corporateMode="mail" />}
+          />
+          <Route
+            path="/corporate/notadinas"
+            element={<SessionRouteWrapper isGuest={false} corporateMode="notadinas" />}
+          />
+          <Route
+            path="/corporate/vendor"
+            element={<SessionRouteWrapper isGuest={false} corporateMode="vendor" />}
+          />
+          {/* 📦 Pusat Arsip (Archive Hub) */}
+          <Route
+            path="/archive"
+            element={<SessionRouteWrapper isGuest={false} corporateMode="archive" />}
+          />
+        </Route>
+      </Routes>
+    </Suspense>
   );
 }

@@ -140,13 +140,13 @@ class NightlyTrainingOrchestrator:
     def is_within_training_window(self, force_run: bool = False, current_dt: Optional[datetime] = None) -> bool:
         """
         Mengecek apakah saat ini berada dalam rentang waktu training:
-        1. Hari Kerja (Senin - Jumat pagi):
+        1. Hari Kerja (Senin - Kamis malam s.d. Jumat pagi):
            - 18:00 sore s/d 07:30 pagi (toleransi batch s.d. 08:00 WIB).
         2. Weekend Marathon (Jumat sore s/d Senin pagi):
-           - Dimulai Jumat pukul 18:00 (6 sore) WIB.
+           - Dimulai Jumat pukul 17:00 (5 sore) WIB (selepas jam kantor).
            - Sepanjang Sabtu (24 jam non-stop tanpa batas jam).
            - Sepanjang Minggu (24 jam non-stop tanpa batas jam).
-           - Berakhir Senin pukul 07:30 WIB (hard stop 08:00 WIB).
+           - Berakhir Senin pukul 07:30 WIB (hard stop 08:00 WIB untuk persiapan jam kerja).
         """
         if force_run:
             return True
@@ -161,8 +161,23 @@ class NightlyTrainingOrchestrator:
         if weekday in (5, 6):
             return True
 
-        # Hari Kerja (Senin s/d Jumat):
-        # Termasuk Jumat malam (mulai jam 18:00) dan Senin dini hari (s.d. 07:30)
+        # Jumat: Mulai Weekend Marathon pukul 17:00 WIB (Jumat sore)
+        if weekday == 4:
+            friday_marathon_start = dtime(17, 0)
+            if current_time >= friday_marathon_start:
+                return True
+            # Jumat dini hari sebelum 07:30 WIB (lanjutan training Kamis malam)
+            if current_time < self.soft_stop_time:
+                return True
+            return False
+
+        # Senin: Lanjutan Weekend Marathon dini hari s.d. 07:30 WIB, dan Senin malam mulai 18:00 WIB
+        if weekday == 0:
+            if current_time < self.soft_stop_time or current_time >= self.start_time:
+                return True
+            return False
+
+        # Hari Kerja Biasa (Selasa, Rabu, Kamis):
         if self.start_time <= current_time or current_time < self.soft_stop_time:
             return True
 
@@ -173,7 +188,7 @@ class NightlyTrainingOrchestrator:
         Mengecek apakah sudah lewat 07:50 mendekati 08:00 WIB.
         Catatan: Pada hari Sabtu & Minggu (Weekend Marathon), hard stop dinonaktifkan
         sepenuhnya karena training berjalan 24 jam non-stop tanpa batasan jam.
-        Hard stop hanya berlaku pada hari kerja (Senin pagi s/d Jumat pagi).
+        Hard stop hanya berlaku pada pagi hari kerja (Senin pagi s/d Jumat pagi).
         """
         if current_dt is None:
             current_dt = datetime.now()
@@ -519,52 +534,76 @@ class NightlyTrainingOrchestrator:
 
         logger.info("=" * 70)
         logger.info(f"🚀 CAKRA AI NIGHTLY TRAINING ENGINE DIMULAI (Model: {self.model_name})")
-        logger.info("⏰ Jendela: Hari Kerja (18:00 - 07:30 WIB) | Weekend Marathon (Jumat 18:00 s.d. Senin 08:00 WIB Non-Stop)")
+        logger.info("⏰ Jendela: Hari Kerja (18:00 - 07:30 WIB) | Weekend Marathon (Jumat 17:00 s.d. Senin 08:00 WIB Non-Stop)")
         logger.info("🎯 Database Target: ragdb (Eksklusif)")
         logger.info("=" * 70)
 
-        # 1. Sync & enroll dokumen dari ragdb
+        # 1. Sync & enroll dokumen baru dari ragdb di awal
         await self.sync_ragdb_documents_to_checkpoints()
-
-        # 2. Ambil antrean dokumen prioritas
-        if specific_doc_id:
-            async with get_ragdb_conn() as conn:
-                row = await conn.fetchrow("SELECT * FROM nightly_training_checkpoints WHERE dokumen_id = $1", specific_doc_id)
-                queue = [dict(row)] if row else []
-        else:
-            raw_queue = await CheckpointManager.get_next_documents_queue(limit=50)
-            queue = [d for d in raw_queue if d.get("file_path") and os.path.exists(d["file_path"])]
-
-        if not queue:
-            self.latest_log = "Semua dokumen di ragdb sudah selesai! Antrean kosong."
-            logger.info("✅ [NIGHTLY_ORCHESTRATOR] Semua dokumen di ragdb sudah selesai diproses! Antrean kosong.")
-            self.is_running = False
-            return
-
-        logger.info(f"📋 [QUEUE] Ditemukan {len(queue)} dokumen dalam antrean prioritas training.")
 
         docs_processed = 0
         try:
-            for doc in queue:
+            # 2. LOOP CONTINUOUS: Berjalan nonstop selama dalam jendela waktu training
+            while self.is_within_training_window(force_run):
                 if self.stop_requested:
                     self.latest_log = "Training dihentikan oleh user"
+                    logger.info("🛑 [ORCHESTRATOR] Stop requested by user.")
                     break
 
-                if not self.is_within_training_window(force_run):
-                    self.latest_log = "Jendela waktu malam berakhir (07:30 WIB)"
-                    logger.info("⏰ [SCHEDULE] Jendela training malam berakhir (Pukul 07:30 WIB). Sistem standby hingga 18:00 besok.")
-                    break
-
-                try:
-                    success = await self.process_single_document(doc, force_run=force_run, page_limit=page_limit)
-                    if success:
-                        docs_processed += 1
-                    if max_docs and docs_processed >= max_docs:
-                        logger.info(f"🎯 [LIMIT] Mencapai batas maksimal {max_docs} dokumen untuk sesi ini.")
-                        break
-                except Exception as e:
-                    logger.error(f"❌ [ORCHESTRATOR_DOC_FAILED] Dokumen {doc['dokumen_id']} gagal diproses: {e}")
+                # Cek disk space safety sebelum ambil batch baru
+                if not self.check_disk_space_safety():
+                    self.latest_log = "Sisa ruang disk kritis (< 5 GB). Standby demi keamanan sistem."
+                    logger.warning("⚠️ [DISK_SPACE] Menunda proses training karena ruang disk < 5 GB.")
+                    await asyncio.sleep(60)
                     continue
+
+                # Ambil batch dokumen berikutnya dari antrean prioritas (50 per round)
+                if specific_doc_id:
+                    async with get_ragdb_conn() as conn:
+                        row = await conn.fetchrow("SELECT * FROM nightly_training_checkpoints WHERE dokumen_id = $1", specific_doc_id)
+                        queue = [dict(row)] if row else []
+                else:
+                    raw_queue = await CheckpointManager.get_next_documents_queue(limit=50)
+                    queue = [d for d in raw_queue if d.get("file_path") and os.path.exists(d["file_path"])]
+
+                if not queue:
+                    self.latest_log = "Semua dokumen di ragdb sudah selesai! Antrean kosong."
+                    logger.info("✅ [NIGHTLY_ORCHESTRATOR] Semua dokumen di ragdb sudah selesai diproses! Antrean kosong.")
+                    break
+
+                logger.info(f"📋 [QUEUE] Ditemukan {len(queue)} dokumen dalam antrean prioritas training.")
+
+                batch_processed_in_round = 0
+                for doc in queue:
+                    if self.stop_requested:
+                        self.latest_log = "Training dihentikan oleh user"
+                        break
+
+                    if not self.is_within_training_window(force_run):
+                        self.latest_log = "Jendela waktu training berakhir"
+                        logger.info("⏰ [SCHEDULE] Jendela training berakhir. Sistem standby hingga jadwal berikutnya.")
+                        break
+
+                    try:
+                        success = await self.process_single_document(doc, force_run=force_run, page_limit=page_limit)
+                        if success:
+                            docs_processed += 1
+                            batch_processed_in_round += 1
+                        if max_docs and docs_processed >= max_docs:
+                            logger.info(f"🎯 [LIMIT] Mencapai batas maksimal {max_docs} dokumen untuk sesi ini.")
+                            break
+                    except Exception as e:
+                        logger.error(f"❌ [ORCHESTRATOR_DOC_FAILED] Dokumen {doc['dokumen_id']} gagal diproses: {e}")
+                        continue
+
+                # Jika memproses single dokumen atau sudah mencapai max_docs, akhiri while loop
+                if specific_doc_id or (max_docs and docs_processed >= max_docs):
+                    break
+
+                # Jika dalam 1 batch 50 dokumen tidak ada dokumen yang berhasil (misal file hilang semua), jeda sebentar
+                if batch_processed_in_round == 0:
+                    logger.info("⏸️ [BATCH_ROUND] Batch ini tidak memproses halaman baru. Menunggu 10 detik sebelum polling batch berikutnya...")
+                    await asyncio.sleep(10)
 
             self.latest_log = f"Selesai. Total {docs_processed} dokumen tuntas."
             logger.info(f"🏁 [NIGHTLY_FINISHED] Sesi training selesai. Total {docs_processed} dokumen diproses.")
@@ -701,7 +740,7 @@ async def get_nightly_dashboard_status() -> Dict[str, Any]:
         "stats": stats,
         "tiered_stats": tiered_stats,
         "schedule": {
-            "window": "Hari Kerja: 18:00 - 07:30 WIB | Weekend Marathon: Jumat 18:00 s/d Senin 08:00 WIB (Non-Stop)",
+            "window": "Hari Kerja: 18:00 - 07:30 WIB | Weekend Marathon: Jumat 17:00 s/d Senin 08:00 WIB (Non-Stop)",
             "hard_stop": "08:00 WIB (Senin - Jumat)",
             "mode": "Otomatis via Cronjob & Tombol Manual"
         }

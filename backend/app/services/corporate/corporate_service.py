@@ -14,10 +14,37 @@ from backend.app.services.pipeline.prompts.core_prompts import (
 logger = logging.getLogger("CAKRA_CORPORATE_SERVICE")
 
 async def generate_text_response(model_name: str, prompt: str, temperature: float = 0.3) -> str:
-    """Helper to generate non-streaming text response from Ollama."""
+    """Helper to generate non-streaming text response from vLLM or Ollama."""
+    is_vllm = getattr(settings, "LLM_ENGINE", "ollama") == "vllm"
+    if is_vllm:
+        vllm_url = f"{settings.VLLM_BASE_URL.rstrip('/')}/chat/completions"
+        vllm_model = "/home/qisthi/models/gemma-4-31B-it-AWQ" if model_name in ["gemma4:31b", "gemma-4-31B-it-AWQ"] else model_name
+        vllm_payload = {
+            "model": vllm_model,
+            "messages": [{"role": "user", "content": prompt}],
+            "stream": False,
+            "temperature": temperature,
+        }
+        try:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(120.0, connect=10.0)) as client:
+                response = await client.post(vllm_url, json=vllm_payload)
+                if response.status_code == 200:
+                    result = response.json()
+                    choices = result.get("choices", [])
+                    if choices:
+                        return choices[0].get("message", {}).get("content", "").strip()
+                    return ""
+                else:
+                    logger.error(f"[CORPORATE] vLLM error {response.status_code}: {response.text}")
+                    return "Mohon maaf, terjadi kesalahan pada AI engine saat memproses permintaan."
+        except Exception as e:
+            logger.error(f"[CORPORATE] vLLM request failed: {e}")
+            return "Mohon maaf, terjadi kesalahan pada AI engine saat memproses permintaan."
+
     url = f"{settings.OLLAMA_BASE_URL}/api/chat"
+    ollama_model = "gemma4:31b" if ("31b" in model_name.lower() or "awq" in model_name.lower()) else model_name
     payload = {
-        "model": model_name,
+        "model": ollama_model,
         "messages": [{"role": "user", "content": prompt}],
         "stream": False,
         "think": False,

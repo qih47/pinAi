@@ -8,6 +8,7 @@ import logging
 from typing import List, Dict, Any, Optional
 
 from backend.app.core import database
+from backend.app.core.config import settings
 from backend.app.utils.request_logging import recent_latencies
 
 logger = logging.getLogger("CAKRA_ANALYTICS")
@@ -176,6 +177,31 @@ async def get_ollama_running_models() -> List[Dict[str, Any]]:
                     })
     except Exception as e:
         logger.debug(f"Chat service PyTorch models check: {e}")
+
+    # 3. Fetch vLLM Engine status (Gemma 4 31B AWQ Marlin)
+    vllm_url = getattr(settings, "VLLM_BASE_URL", "http://localhost:8005/v1").rstrip("/")
+    try:
+        async with httpx.AsyncClient(timeout=3.0) as client:
+            res = await client.get(f"{vllm_url}/models")
+            if res.status_code == 200:
+                vllm_data = res.json()
+                vllm_models = vllm_data.get("data", [])
+                if vllm_models:
+                    models.append({
+                        "name": "gemma4:31b",
+                        "model": "gemma4:31b",
+                        "size": 19050000000,  # ~19.05 GB safetensors
+                        "size_vram": 22858993664,  # ~21.8 GB VRAM allocation in RTX A40
+                        "expires_at": "2318-12-12T00:00:00.000000+07:00",
+                        "context_length": 16384,
+                        "is_vllm": True,
+                        "details": {
+                            "format": "AWQ Marlin (Tensor Core)",
+                            "family": "gemma4"
+                        }
+                    })
+    except Exception as e:
+        logger.debug(f"vLLM models check: {e}")
 
     return models
 

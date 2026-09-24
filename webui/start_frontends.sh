@@ -10,13 +10,13 @@ echo "🧹 Membersihkan proses Chat Vite (port 5173)..."
 fuser -k -9 5173/tcp 2>/dev/null || true
 
 echo "🚀 Starting Chat Frontend (5173)..."
-npm run dev:chat -- --host --force &
+npm run dev:chat -- --host &
 CHAT_PID=$!
 
 ANALYTICS_PID=""
 if ! fuser 5174/tcp >/dev/null 2>&1; then
     echo "🚀 Starting Analytics Frontend (5174)..."
-    npm run dev:analytics -- --host --force &
+    npm run dev:analytics -- --host &
     ANALYTICS_PID=$!
 else
     echo "⚡ Analytics Frontend (5174) is already active, preserving running instance."

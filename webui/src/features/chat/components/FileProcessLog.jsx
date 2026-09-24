@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
-import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
+import { SyntaxHighlighter, vscDarkPlus } from '../../../utils/syntaxHighlighter';
 import { translations } from '../../../utils/translations';
 
 const PulseLoader = () => (

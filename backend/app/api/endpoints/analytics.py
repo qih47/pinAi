@@ -401,40 +401,56 @@ async def execute_operation(action: str, body: Optional[OperationRequest] = None
         return {"status": "success", "message": "Rolling restart triggered...", "timestamp": datetime.now().isoformat()}
 
     elif action == "reload_llm":
-        # Preload / Warm-up Ollama model into VRAM
+        # Preload / Warm-up vLLM or Ollama model into VRAM
         from backend.app.core.config import settings
         import httpx
         try:
             async with httpx.AsyncClient(timeout=60.0) as client:
-                resp = await client.post(
-                    f"{settings.OLLAMA_BASE_URL}/api/generate",
-                    json={
-                        "model": settings.MODEL_PERSONA,
-                        "prompt": "ping",
-                        "keep_alive": -1,
-                        "options": {
-                            "num_predict": 1,
-                            "num_ctx": getattr(settings, "NUM_CTX_CORE", 16384)
+                if getattr(settings, "LLM_ENGINE", "ollama") == "vllm":
+                    vllm_url = f"{settings.VLLM_BASE_URL.rstrip('/')}/chat/completions"
+                    target_model = "/home/qisthi/models/gemma-4-31B-it-AWQ" if settings.MODEL_PERSONA in ["gemma4:31b", "gemma-4-31B-it-AWQ"] else settings.MODEL_PERSONA
+                    resp = await client.post(
+                        vllm_url,
+                        json={
+                            "model": target_model,
+                            "messages": [{"role": "user", "content": "ping"}],
+                            "max_tokens": 1,
+                            "temperature": 0.1,
                         }
-                    }
-                )
+                    )
+                    engine_name = "vLLM Engine (AWQ Marlin)"
+                else:
+                    resp = await client.post(
+                        f"{settings.OLLAMA_BASE_URL}/api/generate",
+                        json={
+                            "model": settings.MODEL_PERSONA,
+                            "prompt": "ping",
+                            "keep_alive": -1,
+                            "options": {
+                                "num_predict": 1,
+                                "num_ctx": getattr(settings, "NUM_CTX_CORE", 16384)
+                            }
+                        }
+                    )
+                    engine_name = "Ollama"
+
                 if resp.status_code == 200:
                     return {
                         "status": "success",
-                        "message": f"Model {settings.MODEL_PERSONA} successfully reloaded & locked in VRAM (num_ctx={getattr(settings, 'NUM_CTX_CORE', 16384)}).",
+                        "message": f"Model {settings.MODEL_PERSONA} ({engine_name}) successfully reloaded & locked in VRAM.",
                         "timestamp": datetime.now().isoformat()
                     }
                 else:
                     return {
                         "status": "warning",
-                        "message": f"Ollama response status: {resp.status_code}",
+                        "message": f"{engine_name} response status: {resp.status_code}",
                         "timestamp": datetime.now().isoformat()
                     }
         except Exception as e:
-            logger.error(f"[OPERATIONS] Failed to reload Ollama: {e}")
+            logger.error(f"[OPERATIONS] Failed to reload LLM engine: {e}")
             return {
                 "status": "error",
-                "message": f"Failed to connect to Ollama: {str(e)}",
+                "message": f"Exception reloading model: {str(e)}",
                 "timestamp": datetime.now().isoformat()
             }
 

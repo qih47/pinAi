@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, Suspense, lazy } from "react";
 import { useLocation } from "react-router-dom";
 import cakraLogo from "../../assets/cakra.png";
 import { styles } from "./chatPage.styles";
@@ -6,27 +6,29 @@ import ChatArea from "./components/ChatArea";
 import GuestWelcome from "../../components/ui/GuestWelcome";
 import Sidebar from "./components/Sidebar";
 import HeaderDropdownMenu from "./components/HeaderDropdownMenu";
-import PreviewImageModal from "./components/modals/PreviewImageModal";
-import ContextIsolationModal from "./components/modals/ContextIsolationModal";
-import GhostWriterModal from "./components/modals/GhostWriterModal";
-import QuickTipsModal from "./components/modals/QuickTipsModal";
-import LoginModal from "../auth/LoginModal";
-import NextcloudModal from "./components/NextcloudModal";
 import RightSidebar from "./components/RightSidebar";
 import ChatInputArea from "./components/ChatInputArea";
-import EmailTriageTab from "../corporate/EmailTriageTab";
-import DocumentGeneratorTab from "../corporate/DocumentGeneratorTab";
-import VendorAnalyzerTab from "../corporate/VendorAnalyzerTab";
-import CollabWorkspace from "../collab/components/CollabWorkspace";
-import ArchiveTab from "../archive/ArchiveTab";
-import PdfInterrogator from "./components/PdfInterrogator";
-import DocWriterWorkspace from "../doc_writer/components/DocWriterWorkspace";
-import { useDocWriterStore } from "../../stores/docWriterStore";
-import { useChatStore } from "../../stores/chatStore";
-import AllChatsView from "./components/AllChatsView";
 import ChatHeaderTitle from "./components/ChatHeaderTitle";
 import { translations } from "../../utils/translations";
 import { useChatLogic } from "./hooks/useChatLogic";
+import { useDocWriterStore } from "../../stores/docWriterStore";
+import { useChatStore } from "../../stores/chatStore";
+
+// 🚀 LAZY LOAD HEAVY WORKSPACES & SPECIALIZED TABS (Instant Initial Chat Load)
+const PreviewImageModal = lazy(() => import("./components/modals/PreviewImageModal"));
+const ContextIsolationModal = lazy(() => import("./components/modals/ContextIsolationModal"));
+const GhostWriterModal = lazy(() => import("./components/modals/GhostWriterModal"));
+const QuickTipsModal = lazy(() => import("./components/modals/QuickTipsModal"));
+const LoginModal = lazy(() => import("../auth/LoginModal"));
+const NextcloudModal = lazy(() => import("./components/NextcloudModal"));
+const EmailTriageTab = lazy(() => import("../corporate/EmailTriageTab"));
+const DocumentGeneratorTab = lazy(() => import("../corporate/DocumentGeneratorTab"));
+const VendorAnalyzerTab = lazy(() => import("../corporate/VendorAnalyzerTab"));
+const CollabWorkspace = lazy(() => import("../collab/components/CollabWorkspace"));
+const ArchiveTab = lazy(() => import("../archive/ArchiveTab"));
+const PdfInterrogator = lazy(() => import("./components/PdfInterrogator"));
+const DocWriterWorkspace = lazy(() => import("../doc_writer/components/DocWriterWorkspace"));
+const AllChatsView = lazy(() => import("./components/AllChatsView"));
 
 export default function ChatPage({ isGuest,
   isLoggedIn: propsIsLoggedIn,
@@ -617,15 +619,19 @@ export default function ChatPage({ isGuest,
 
         {/* WRAPPER FOR SPLIT SCREEN */}
         <div style={{ flex: 1, display: "flex", flexDirection: "row", overflow: "hidden", marginTop: 0 }}>
-          <PdfInterrogator darkMode={darkMode} language={language} isMobile={isMobile} />
+          <Suspense fallback={null}>
+            <PdfInterrogator darkMode={darkMode} language={language} isMobile={isMobile} />
+          </Suspense>
           {!isGuest && isDocWriterOpen && corporateMode !== 'collab' && (
-            <DocWriterWorkspace
-              darkMode={darkMode}
-              theme={theme}
-              isMobile={isMobile}
-              sessionId={activeSessionId}
-              roomId={null}
-            />
+            <Suspense fallback={<div className="flex-1 flex items-center justify-center p-8 text-sm opacity-60">Memuat Dokumen Studio...</div>}>
+              <DocWriterWorkspace
+                darkMode={darkMode}
+                theme={theme}
+                isMobile={isMobile}
+                sessionId={activeSessionId}
+                roomId={null}
+              />
+            </Suspense>
           )}
           <div
             style={{
@@ -650,60 +656,62 @@ export default function ChatPage({ isGuest,
                 flexDirection: "column",
               }}
             >
-              {corporateMode === 'mail' && <EmailTriageTab theme={theme} darkMode={darkMode} userData={currentUserData} language={language} isMobile={isMobile} toggleSidebar={() => setSidebarOpen(!sidebarOpen)} />}
-              {corporateMode === 'notadinas' && <DocumentGeneratorTab theme={theme} darkMode={darkMode} userData={currentUserData} language={language} />}
-              {corporateMode === 'vendor' && <VendorAnalyzerTab theme={theme} darkMode={darkMode} userData={currentUserData} language={language} />}
-              {corporateMode === 'collab' && (
-                <CollabWorkspace
-                  theme={theme}
-                  darkMode={darkMode}
-                  userData={currentUserData}
-                  language={language}
-                  isMobile={isMobile}
-                  sidebarOpen={sidebarOpen}
-                  setSidebarOpen={setSidebarOpen}
-                  toggleSidebar={() => setSidebarOpen(!sidebarOpen)}
-                  onOpenArtifact={handleOpenArtifact}
-                  toggleRightSidebar={toggleRightSidebar}
-                  showRightSidebar={showRightSidebar}
-                />
-              )}
-              {corporateMode === 'archive' && (
-                <ArchiveTab
-                  theme={theme}
-                  darkMode={darkMode}
-                  userData={currentUserData}
-                  language={language}
-                  isMobile={isMobile}
-                  toggleSidebar={() => setSidebarOpen(!sidebarOpen)}
-                  setChatHistory={setChatHistory}
-                />
-              )}
+              <Suspense fallback={<div className="flex-1 flex items-center justify-center p-8 text-sm opacity-60">Memuat konten...</div>}>
+                {corporateMode === 'mail' && <EmailTriageTab theme={theme} darkMode={darkMode} userData={currentUserData} language={language} isMobile={isMobile} toggleSidebar={() => setSidebarOpen(!sidebarOpen)} />}
+                {corporateMode === 'notadinas' && <DocumentGeneratorTab theme={theme} darkMode={darkMode} userData={currentUserData} language={language} />}
+                {corporateMode === 'vendor' && <VendorAnalyzerTab theme={theme} darkMode={darkMode} userData={currentUserData} language={language} />}
+                {corporateMode === 'collab' && (
+                  <CollabWorkspace
+                    theme={theme}
+                    darkMode={darkMode}
+                    userData={currentUserData}
+                    language={language}
+                    isMobile={isMobile}
+                    sidebarOpen={sidebarOpen}
+                    setSidebarOpen={setSidebarOpen}
+                    toggleSidebar={() => setSidebarOpen(!sidebarOpen)}
+                    onOpenArtifact={handleOpenArtifact}
+                    toggleRightSidebar={toggleRightSidebar}
+                    showRightSidebar={showRightSidebar}
+                  />
+                )}
+                {corporateMode === 'archive' && (
+                  <ArchiveTab
+                    theme={theme}
+                    darkMode={darkMode}
+                    userData={currentUserData}
+                    language={language}
+                    isMobile={isMobile}
+                    toggleSidebar={() => setSidebarOpen(!sidebarOpen)}
+                    setChatHistory={setChatHistory}
+                  />
+                )}
 
-              {isAllChatsOpen && (
-                <AllChatsView
-                  chatHistory={chatHistory}
-                  setChatHistory={setChatHistory}
-                  currentSessionId={activeSessionId}
-                  onSelectChat={(sessionUuid) => {
-                    setIsAllChatsOpen(false);
-                    loadChatSession(sessionUuid);
-                  }}
-                  onNewChat={() => {
-                    setIsAllChatsOpen(false);
-                    handleClearChat();
-                  }}
-                  onClose={() => setIsAllChatsOpen(false)}
-                  deleteChat={deleteChat}
-                  archiveChat={archiveChat}
-                  pinChat={pinChat}
-                  renameChat={renameChat}
-                  darkMode={darkMode}
-                  theme={theme}
-                  language={language}
-                  userData={currentUserData}
-                />
-              )}
+                {isAllChatsOpen && (
+                  <AllChatsView
+                    chatHistory={chatHistory}
+                    setChatHistory={setChatHistory}
+                    currentSessionId={activeSessionId}
+                    onSelectChat={(sessionUuid) => {
+                      setIsAllChatsOpen(false);
+                      loadChatSession(sessionUuid);
+                    }}
+                    onNewChat={() => {
+                      setIsAllChatsOpen(false);
+                      handleClearChat();
+                    }}
+                    onClose={() => setIsAllChatsOpen(false)}
+                    deleteChat={deleteChat}
+                    archiveChat={archiveChat}
+                    pinChat={pinChat}
+                    renameChat={renameChat}
+                    darkMode={darkMode}
+                    theme={theme}
+                    language={language}
+                    userData={currentUserData}
+                  />
+                )}
+              </Suspense>
 
               {!corporateMode && !isAllChatsOpen && (
                 <>
@@ -864,20 +872,24 @@ export default function ChatPage({ isGuest,
       </main>
 
       {/* 🔒 W7: Modal Pilihan Dokumen Regulasi (Context Isolation) */}
-      <ContextIsolationModal
-        showModal={showDocumentList}
-        onClose={() => setShowDocumentList(false)}
-        documents={documents}
-        documentsTotal={documentsTotal}
-        fetchDocumentsList={fetchDocumentsList}
-        isLoadingDocuments={isLoadingDocuments}
-        activeIsolatedDocId={activeIsolatedDocId}
-        onSelectDocument={setContextIsolation}
-        handleChatModeChange={handleChatModeChange}
-        theme={theme}
-        darkMode={darkMode}
-        language={language}
-      />
+      {showDocumentList && (
+        <Suspense fallback={null}>
+          <ContextIsolationModal
+            showModal={showDocumentList}
+            onClose={() => setShowDocumentList(false)}
+            documents={documents}
+            documentsTotal={documentsTotal}
+            fetchDocumentsList={fetchDocumentsList}
+            isLoadingDocuments={isLoadingDocuments}
+            activeIsolatedDocId={activeIsolatedDocId}
+            onSelectDocument={setContextIsolation}
+            handleChatModeChange={handleChatModeChange}
+            theme={theme}
+            darkMode={darkMode}
+            language={language}
+          />
+        </Suspense>
+      )}
       {false && (
         <div
           style={{
@@ -1115,38 +1127,43 @@ export default function ChatPage({ isGuest,
         language={language}
       />
 
-      {/* 🖼️ IMAGE PREVIEW MODAL */}
-      <PreviewImageModal
-        previewImage={previewImage}
-        onClose={() => setPreviewImage(null)}
-      />
+      <Suspense fallback={null}>
+        {/* 🖼️ IMAGE PREVIEW MODAL */}
+        {previewImage && (
+          <PreviewImageModal
+            previewImage={previewImage}
+            onClose={() => setPreviewImage(null)}
+          />
+        )}
 
-      {/* ☁️ NEXTCLOUD MODAL */}
-      <NextcloudModal 
-        darkMode={darkMode}
-        language={language}
-        onFileSelect={(files) => {
-          // Add downloaded file to selectedFiles
-          setSelectedFiles((prev) => [...prev, ...files]);
-        }}
-      />
+        {/* ☁️ NEXTCLOUD MODAL */}
+        <NextcloudModal 
+          darkMode={darkMode}
+          language={language}
+          onFileSelect={(files) => {
+            // Add downloaded file to selectedFiles
+            setSelectedFiles((prev) => [...prev, ...files]);
+          }}
+        />
 
-      {/* ✍️ GHOSTWRITER MODAL */}
-      <GhostWriterModal darkMode={darkMode} theme={theme} language={language} />
+        {/* ✍️ GHOSTWRITER MODAL */}
+        <GhostWriterModal darkMode={darkMode} theme={theme} language={language} />
 
-      {/* 💡 QUICK TIPS ONBOARDING MODAL (Karyawan Terautentikasi Saja, Tidak Muncul di Guest) */}
-      {!isGuest && currentIsLoggedIn && (
-        <QuickTipsModal darkMode={darkMode} language={language} isGuest={isGuest} />
-      )}
+        {/* 💡 QUICK TIPS ONBOARDING MODAL (Karyawan Terautentikasi Saja, Tidak Muncul di Guest) */}
+        {!isGuest && currentIsLoggedIn && (
+          <QuickTipsModal darkMode={darkMode} language={language} isGuest={isGuest} />
+        )}
 
-
-      {/* 🔐 INTERACTIVE LOGIN MODAL (NPP & HRIS PASSWORD) */}
-      <LoginModal 
-        isOpen={isLoginModalOpen} 
-        onClose={() => setIsLoginModalOpen(false)} 
-        darkMode={darkMode} 
-        language={language} 
-      />
+        {/* 🔐 INTERACTIVE LOGIN MODAL (NPP & HRIS PASSWORD) */}
+        {isLoginModalOpen && (
+          <LoginModal 
+            isOpen={isLoginModalOpen} 
+            onClose={() => setIsLoginModalOpen(false)} 
+            darkMode={darkMode} 
+            language={language} 
+          />
+        )}
+      </Suspense>
     </div>
   );
 }

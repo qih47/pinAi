@@ -21,6 +21,116 @@ logger = logging.getLogger("CAKRA_LLM")
 _THINK_PATTERN = re.compile(r"<think>.*?</think>", re.DOTALL | re.IGNORECASE)
 
 
+class _StreamDemuxer:
+    """
+    Robust sliding-window demuxer for LLM token streaming.
+    Splits channel thinking tags (<|channel>thought, <thought>, <thinking>, <thinking_protocol>)
+    into 'thought' and final response into 'content', correctly handling tokens that are split
+    across subword boundaries (e.g. ['<', 'thinking', '_protocol>']).
+    """
+    START_MARKERS = ["<|channel>thought\n", "<|channel>thought", "<thought>", "<thinking>", "<thinking_protocol>"]
+    END_MARKERS = ["<channel|>", "</thought>", "</thinking>", "</thinking_protocol>"]
+
+    def __init__(self):
+        self.in_thought = False
+        self.buffer = ""
+        self.thought_started = True
+        self.content_started = True
+
+    def _find_marker(self, text, markers):
+        earliest_idx = -1
+        best_marker = None
+        for m in markers:
+            idx = text.find(m)
+            if idx != -1:
+                if earliest_idx == -1 or idx < earliest_idx:
+                    earliest_idx = idx
+                    best_marker = m
+        return earliest_idx, best_marker
+
+    def _longest_prefix_match(self, text, markers):
+        max_match = 0
+        for m in markers:
+            for l in range(min(len(text), len(m) - 1), 0, -1):
+                if text.endswith(m[:l]):
+                    if l > max_match:
+                        max_match = l
+                    break
+        return max_match
+
+    def feed(self, chunk: str):
+        self.buffer += chunk
+        output = []
+
+        while self.buffer:
+            if not self.in_thought:
+                if not self.content_started:
+                    self.buffer = self.buffer.lstrip("\r\n")
+                    if not self.buffer:
+                        break
+                    self.content_started = True
+
+                idx, marker = self._find_marker(self.buffer, self.START_MARKERS)
+                if idx != -1:
+                    pre_content = self.buffer[:idx]
+                    if pre_content:
+                        output.append(("", pre_content))
+                    self.buffer = self.buffer[idx + len(marker):]
+                    self.in_thought = True
+                    self.thought_started = False
+                else:
+                    p_len = self._longest_prefix_match(self.buffer, self.START_MARKERS)
+                    if p_len > 0:
+                        emit = self.buffer[:-p_len]
+                        self.buffer = self.buffer[-p_len:]
+                        if emit:
+                            output.append(("", emit))
+                        break
+                    else:
+                        output.append(("", self.buffer))
+                        self.buffer = ""
+                        break
+            else:
+                if not self.thought_started:
+                    self.buffer = self.buffer.lstrip("\r\n")
+                    if not self.buffer:
+                        break
+                    self.thought_started = True
+
+                idx, marker = self._find_marker(self.buffer, self.END_MARKERS)
+                if idx != -1:
+                    thought_content = self.buffer[:idx]
+                    if thought_content:
+                        output.append((thought_content, ""))
+                    self.buffer = self.buffer[idx + len(marker):]
+                    self.in_thought = False
+                    self.content_started = False
+                else:
+                    p_len = self._longest_prefix_match(self.buffer, self.END_MARKERS)
+                    if p_len > 0:
+                        emit = self.buffer[:-p_len]
+                        self.buffer = self.buffer[-p_len:]
+                        if emit:
+                            output.append((emit, ""))
+                        break
+                    else:
+                        output.append((self.buffer, ""))
+                        self.buffer = ""
+                        break
+
+        return output
+
+    def flush(self):
+        output = []
+        if self.buffer:
+            if self.in_thought:
+                output.append((self.buffer, ""))
+            else:
+                output.append(("", self.buffer))
+            self.buffer = ""
+        return output
+
+
 def _extract_json_from_response(raw: str, model_name: str) -> Dict[str, Any]:
     """
     Ekstrak JSON dari response Gemma 4.
@@ -210,7 +320,7 @@ def _inject_global_guardrail(messages: List[Dict[str, str]]) -> List[Dict[str, s
 async def stream_ollama_chat(
     model_name: str,
     messages: List[Dict[str, str]],
-    request: Request,
+    request: Optional[Request] = None,
     temperature: float = 1.0,
     session_uuid: Optional[str] = None,
     keep_alive: int = -1,  # Forever — model tetap di VRAM
@@ -424,8 +534,13 @@ async def stream_ollama_chat(
         BORDER_W = INNER_W + 2
 
         def _make_rows2(text: str, inner_width: int = INNER_W, indent_spaces: int = 4) -> list:
-            import wcwidth
-            w_text = wcwidth.wcswidth(text)
+            try:
+                import wcwidth
+                _get_w = wcwidth.wcswidth
+            except Exception:
+                _get_w = len
+
+            w_text = _get_w(text)
             if w_text <= inner_width:
                 pad = inner_width - w_text
                 return [f"║ {text}{' ' * max(0, pad)} ║"]
@@ -441,7 +556,7 @@ async def stream_ollama_chat(
                 if not w:
                     continue
                 cand = (curr + " " + w) if curr.strip() else (prefix_indent + w)
-                if wcwidth.wcswidth(cand) <= inner_width:
+                if _get_w(cand) <= inner_width:
                     curr = cand
                 else:
                     if curr.strip():
@@ -540,7 +655,10 @@ async def stream_ollama_chat(
                 "stream": True,
                 "temperature": temperature,
                 "top_p": ollama_options.get("top_p", 0.95),
+                "skip_special_tokens": False if is_thinking else True,
             }
+            if is_thinking:
+                payload["chat_template_kwargs"] = {"enable_thinking": True, "thinking": True}
             # vLLM validates: input_tokens + max_tokens <= max_model_len (16384).
             # In Ollama, num_predict=8192 is an unconstrained upper bound.
             # In vLLM, hardcoding max_tokens=8192 causes HTTP 400 if input_tokens > 8192.
@@ -576,19 +694,24 @@ async def stream_ollama_chat(
                 first_token = True
                 current_mode = None
                 ttft_ms = 0.0
+                demuxer = _StreamDemuxer()
+                streamed_token_count = 0
+                done = False
 
                 async for line in response.aiter_lines():
                     if not line:
                         continue
 
+                    items_to_process = []
                     if is_vllm:
                         if not line.startswith("data: "):
                             continue
                         data_str = line[6:].strip()
                         if data_str == "[DONE]":
                             done = True
-                            content = ""
-                            thought = ""
+                            for th, co in demuxer.flush():
+                                items_to_process.append((th, co, False, {}))
+                            items_to_process.append(("", "", True, {}))
                         else:
                             try:
                                 chunk = json.loads(data_str)
@@ -597,22 +720,36 @@ async def stream_ollama_chat(
                             choices = chunk.get("choices", [])
                             if choices:
                                 delta = choices[0].get("delta", {})
-                                content = delta.get("content", "") or ""
-                                thought = delta.get("reasoning_content", "") or delta.get("thought", "") or ""
+                                raw_content = delta.get("content", "") or ""
+                                raw_thought = delta.get("reasoning_content", "") or delta.get("thought", "") or ""
                                 finish_reason = choices[0].get("finish_reason")
-                                done = (finish_reason is not None)
-                            else:
-                                content = ""
-                                thought = ""
-                                done = False
+                                is_done_choice = (finish_reason is not None)
+
+                                if raw_thought:
+                                    items_to_process.append((raw_thought, "", False, chunk))
+                                if raw_content:
+                                    for th, co in demuxer.feed(raw_content):
+                                        items_to_process.append((th, co, False, chunk))
+
+                                if is_done_choice:
+                                    for th, co in demuxer.flush():
+                                        items_to_process.append((th, co, False, chunk))
+                                    items_to_process.append(("", "", True, chunk))
                     else:
                         chunk = json.loads(line)
                         message_chunk = chunk.get("message", {})
                         content = message_chunk.get("content", "")
                         thought = message_chunk.get("thinking", "")
-                        done = chunk.get("done", False)
+                        chunk_done = chunk.get("done", False)
+                        items_to_process.append((thought, content, chunk_done, chunk))
 
-                    if content or thought or done:
+                    for thought, content, chunk_done, meta_chunk in items_to_process:
+                        if not (content or thought or chunk_done):
+                            continue
+
+                        if chunk_done:
+                            done = True
+
                         if first_token and (content or thought):
                             ttft_ms = (datetime.now() - inference_start_time).total_seconds() * 1000
                             queue_ms_log = queue_wait_time * 1000
@@ -626,6 +763,7 @@ async def stream_ollama_chat(
                             first_token = False
 
                         if thought:
+                            streamed_token_count += 1
                             accumulated_thinking += thought
                             if current_mode != "thinking":
                                 current_mode = "thinking"
@@ -633,19 +771,29 @@ async def stream_ollama_chat(
                             print(thought, end="", flush=True)
 
                         if content:
+                            streamed_token_count += 1
                             full_response += content
                             if current_mode != "answering":
                                 current_mode = "answering"
                                 print("\n[GEMMA_ANSWER] ", end="", flush=True)
                             print(content, end="", flush=True)
 
-                        yield_data = {"chunk": content, "thinking": thought, "done": done, "event_type": "chunk"}
-                        if done:
-                            eval_count = chunk.get("eval_count", 0)
-                            eval_duration = chunk.get("eval_duration", 0)
-                            prompt_eval_count = chunk.get("prompt_eval_count", 0)
-                            prompt_eval_duration = chunk.get("prompt_eval_duration", 0)
-                            done_reason = chunk.get("done_reason", "")
+                        yield_data = {"chunk": content, "thinking": thought, "done": chunk_done, "event_type": "chunk"}
+                        if chunk_done:
+                            if is_vllm:
+                                usage = meta_chunk.get("usage", {}) or {}
+                                eval_count = usage.get("completion_tokens") or streamed_token_count
+                                prompt_eval_count = usage.get("prompt_tokens") or (total_chars // 4)
+                                eval_duration = int((datetime.now() - inference_start_time).total_seconds() * 1e9)
+                                prompt_eval_duration = int((ttft_ms / 1000.0) * 1e9)
+                                done_reason = meta_chunk.get("choices", [{}])[0].get("finish_reason", "stop") if meta_chunk.get("choices") else "stop"
+                            else:
+                                eval_count = meta_chunk.get("eval_count", 0)
+                                eval_duration = meta_chunk.get("eval_duration", 0)
+                                prompt_eval_count = meta_chunk.get("prompt_eval_count", 0)
+                                prompt_eval_duration = meta_chunk.get("prompt_eval_duration", 0)
+                                done_reason = meta_chunk.get("done_reason", "")
+
                             if eval_count and eval_duration:
                                 yield_data["eval_count"] = eval_count
                                 yield_data["eval_duration"] = eval_duration
@@ -663,14 +811,9 @@ async def stream_ollama_chat(
                             ensure_ascii=False,
                         ) + "\n"
 
-                        if done:
+                        if chunk_done:
                             print("\n", flush=True)
                             elapsed_time = (datetime.now() - inference_start_time).total_seconds()
-                            prompt_eval_count = chunk.get("prompt_eval_count", 0)
-                            prompt_eval_duration = chunk.get("prompt_eval_duration", 0)
-                            eval_count = chunk.get("eval_count", 0)
-                            eval_duration = chunk.get("eval_duration", 0)
-
                             prefill_tps = (prompt_eval_count / (prompt_eval_duration / 1e9)) if (prompt_eval_count and prompt_eval_duration) else 0.0
                             gen_tps = (eval_count / (eval_duration / 1e9)) if (eval_count and eval_duration) else 0.0
                             prefill_sec = (prompt_eval_duration / 1e9) if prompt_eval_duration else (ttft_ms / 1000)
