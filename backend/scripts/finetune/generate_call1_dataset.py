@@ -143,9 +143,57 @@ DOCWRITER_TOPICS = [
     ("buat dokumen telaahan staf untuk perpanjangan sewa gudang amunisi", "Telaahan Staf Sewa Gudang", "telaahan")
 ]
 
+URL_READ_TOPICS = [
+    ("tolong baca dan rangkum isi artikel https://pindad.com/berita-terbaru-tank-harimau", "Rangkuman Berita Pindad", "Berita Tank Harimau"),
+    ("https://huggingface.co/Comfy-Org/Qwen-Image-2.1 versi ini di download lebih banyak dari pada https://huggingface.co/Qwen/Qwen-Image-2.1 coba cek", "Komparasi Model AI HuggingFace", "Qwen-Image-2.1 ComfyUI vs Official"),
+    ("buka tautan https://github.com/vllm-project/vllm dan jelaskan fitur terbarunya", "Bedah Fitur vLLM", "Fitur Terbaru vLLM Repository"),
+    ("coba cek spesifikasi teknis di link https://defensereview.com/anoa-6x6 apa saja", "Spesifikasi Anoa 6x6", "Spesifikasi Kendaraan Anoa 6x6"),
+    ("ringkas isi pengumuman tender di https://lpse.kemhan.go.id/eproc4/lelang/view/123", "Ringkasan Tender Kemhan", "Pengumuman Tender LPSE Kemhan"),
+]
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # GENERATOR ENGINE
 # ═══════════════════════════════════════════════════════════════════════════════
+
+def to_sparse_router_json(router_dict: Dict[str, Any]) -> Dict[str, Any]:
+    """Sanitasi dictionary routing agar 100% mematuhi kaidah Lean Sparse JSON."""
+    sparse: Dict[str, Any] = {}
+    if not isinstance(router_dict, dict):
+        return {"active_topic": "General", "key_subject": "General Inquiry"}
+
+    if "session_title" in router_dict and router_dict["session_title"]:
+        sparse["session_title"] = router_dict["session_title"]
+
+    sparse["active_topic"] = router_dict.get("active_topic") or "General"
+    sparse["key_subject"] = router_dict.get("key_subject") or "General Inquiry"
+
+    bool_flags = [
+        "need_rag", "is_web_search", "is_url_read", "is_coding", "is_troubleshooting",
+        "is_docwriter", "is_generate_file", "is_generate_email",
+        "is_map_query", "is_ambiguous", "is_chitchat", "is_self_correction",
+        "requires_visual", "needs_history"
+    ]
+    for flag in bool_flags:
+        if router_dict.get(flag) is True:
+            sparse[flag] = True
+
+    list_fields = ["queries", "query_judul", "search_tags", "visual_types"]
+    for lfield in list_fields:
+        val = router_dict.get(lfield)
+        if isinstance(val, list) and len(val) > 0:
+            sparse[lfield] = val
+
+    str_fields = ["ambiguity_reason", "rag_reason", "response_format", "format_constraint"]
+    for sfield in str_fields:
+        val = router_dict.get(sfield)
+        if isinstance(val, str) and val.strip():
+            sparse[sfield] = val.strip()
+
+    if isinstance(router_dict.get("wizard"), dict) and router_dict["wizard"]:
+        sparse["wizard"] = router_dict["wizard"]
+
+    return sparse
+
 
 def generate_sample(sample_type: str) -> Dict[str, Any]:
     """Generate one high-quality training instance for Call 1 Router."""
@@ -157,122 +205,87 @@ def generate_sample(sample_type: str) -> Dict[str, Any]:
     if sample_type == "DOCUMENTS":
         cat = random.choice(DOC_CATEGORIES)
         user_msg, key_subj, queries = random.choice(cat["examples"])
-        pronoun = random.choice(PRONOUNS)
-        tone = "formal" if pronoun == "formal_saya_anda" else "casual"
         
-        target_json = {
+        target_json = to_sparse_router_json({
             "active_topic": cat["topic"],
             "key_subject": key_subj,
             "need_rag": True,
-            "queries": queries,
-            "query_judul": [cat["doc_title"]],
-            "is_coding": False,
-            "is_ambiguous": False,
-            "pronoun": pronoun,
-            "tone_hint": tone
-        }
+        })
 
     elif sample_type == "WEB_SEARCH":
         user_msg, active_top, raw_q = random.choice(WEB_SEARCH_TOPICS)
-        pronoun = random.choice(PRONOUNS)
         
-        target_json = {
+        target_json = to_sparse_router_json({
             "active_topic": active_top,
             "key_subject": raw_q,
-            "need_rag": False,
             "is_web_search": True,
-            "queries": [raw_q],
-            "query_judul": [],
-            "is_coding": False,
-            "is_ambiguous": False,
-            "pronoun": pronoun,
-            "tone_hint": "casual"
-        }
+        })
 
     elif sample_type == "CODING":
         user_msg, active_top, lang = random.choice(CODING_TOPICS)
-        pronoun = random.choice(PRONOUNS)
         
-        target_json = {
+        target_json = to_sparse_router_json({
             "active_topic": active_top,
             "key_subject": f"Pemrograman {lang.upper()}",
-            "need_rag": False,
             "is_coding": True,
-            "is_ambiguous": False,
-            "pronoun": pronoun,
-            "tone_hint": "direct_concise"
-        }
+            "is_troubleshooting": True if "error" in user_msg.lower() or "perbaiki" in user_msg.lower() else False
+        })
 
     elif sample_type == "EMAIL":
         user_msg, active_top, tone = random.choice(EMAIL_TOPICS)
-        pronoun = "formal_saya_anda" if tone == "formal" else "informal_gue_lo"
         
-        target_json = {
+        target_json = to_sparse_router_json({
             "active_topic": "Penyusunan Surat & Email",
             "key_subject": active_top,
-            "need_rag": False,
-            "is_generate_email": True,
-            "is_ambiguous": False,
-            "pronoun": pronoun,
-            "tone_hint": tone
-        }
+            "is_generate_email": True
+        })
 
     elif sample_type == "DOCWRITER":
         user_msg, active_top, doc_type = random.choice(DOCWRITER_TOPICS)
-        pronoun = "formal_saya_anda"
         
-        target_json = {
+        target_json = to_sparse_router_json({
             "active_topic": "Penyusunan Dokumen Resmi (Document Studio)",
             "key_subject": active_top,
-            "need_rag": False,
-            "is_docwriter": True,
-            "is_ambiguous": False,
-            "pronoun": pronoun,
-            "tone_hint": "formal"
-        }
+            "is_docwriter": True
+        })
+
+    elif sample_type == "URL_READ":
+        user_msg, active_top, key_subj = random.choice(URL_READ_TOPICS)
+        target_json = to_sparse_router_json({
+            "active_topic": active_top,
+            "key_subject": key_subj,
+            "is_url_read": True,
+            "is_comparative": True if any(w in user_msg.lower() for w in ["vs", "bandingkan", "beda"]) else False
+        })
 
     elif sample_type == "GENERATE_FILE":
         user_msg, active_top, ext = random.choice(GENERATE_FILE_TOPICS)
-        pronoun = random.choice(PRONOUNS)
         
-        target_json = {
+        target_json = to_sparse_router_json({
             "active_topic": "Pembuatan Berkas & File",
             "key_subject": active_top,
-            "need_rag": False,
-            "is_generate_file": True,
-            "is_ambiguous": False,
-            "pronoun": pronoun,
-            "tone_hint": "direct_concise"
-        }
+            "is_generate_file": True
+        })
 
     elif sample_type == "AMBIGUOUS":
         user_msg, active_top, wizard_obj = random.choice(AMBIGUOUS_TOPICS)
-        pronoun = random.choice(PRONOUNS)
         
-        target_json = {
+        target_json = to_sparse_router_json({
             "active_topic": active_top,
             "key_subject": active_top,
-            "need_rag": False,
             "is_ambiguous": True,
-            "queries": [],
-            "query_judul": [],
-            "wizard": wizard_obj,
-            "pronoun": pronoun,
-            "tone_hint": "casual"
-        }
+            "ambiguity_reason": "Kebutuhan pengguna belum terperinci secara spesifik.",
+            "wizard": wizard_obj
+        })
 
     else:  # CHITCHAT / GREETING
         user_msg, active_top, pronoun, tone = random.choice(CHITCHAT_TOPICS)
         
-        target_json = {
+        target_json = to_sparse_router_json({
             "active_topic": active_top,
             "key_subject": "Sapaan Percakapan",
-            "need_rag": False,
-            "is_chitchat": True,
-            "is_ambiguous": False,
-            "pronoun": pronoun,
-            "tone_hint": tone
-        }
+            "is_chitchat": True
+        })
 
     # ShareGPT Conversation Format
     return {
@@ -320,8 +333,8 @@ def main():
         db_records = fetch_unlimited_db_samples()
         if db_records:
             system_prompt = (
-                "Kamu adalah model klasifikasi dan router intent presisi tinggi untuk CAKRA AI PT Pindad. "
-                "Tugasmu adalah menganalisis query pengguna dan mengeluarkan keputusan routing JSON deterministik."
+                "Kamu adalah Cakra Router (Call 1) yang sangat presisi dan deterministik. "
+                "Analisis pesan pengguna dan kembalikan sparse JSON routing payload murni."
             )
             for r in db_records:
                 q_text = r.get("generated_question", "").strip()
@@ -329,17 +342,12 @@ def main():
                     continue
                 doc_title = r.get("judul", "Regulasi PT Pindad")
                 page_str = r.get("page_range", "")
-                router_target = {
+                router_target = to_sparse_router_json({
                     "active_topic": "Regulasi & Kebijakan PT PINDAD",
                     "key_subject": doc_title,
                     "need_rag": True,
                     "rag_reason": f"Menanyakan regulasi internal {doc_title}",
-                    "queries": [q_text, doc_title],
-                    "is_chitchat": False,
-                    "is_ambiguous": False,
-                    "pronoun": "formal_saya_anda",
-                    "tone_hint": "direct_concise"
-                }
+                })
                 generated_data.append({
                     "conversations": [
                         {"from": "system", "value": system_prompt},
@@ -353,14 +361,15 @@ def main():
     if not generated_data or args.samples > 0:
         total_samples = args.samples if args.samples > 0 else 1000
         distribution = [
-            ("DOCUMENTS", 0.35),
+            ("DOCUMENTS", 0.30),
             ("DOCWRITER", 0.15),
             ("WEB_SEARCH", 0.15),
+            ("URL_READ", 0.10),
             ("CODING", 0.15),
-            ("EMAIL", 0.10),
-            ("GENERATE_FILE", 0.05),
-            ("AMBIGUOUS", 0.03),
-            ("CHITCHAT", 0.02),
+            ("EMAIL", 0.08),
+            ("GENERATE_FILE", 0.04),
+            ("AMBIGUOUS", 0.02),
+            ("CHITCHAT", 0.01),
         ]
         counts = {t: int(total_samples * ratio) for t, ratio in distribution}
         for sample_type, count in counts.items():

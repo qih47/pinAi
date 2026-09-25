@@ -691,16 +691,45 @@ def build_call2_system_prompt(
             VISUAL_GUIDANCE_MAP,
         )
 
-        # 🛡️ STRICT ISOLATION GUARD: Jika need_rag=True murni regulasi (tanpa kombo coding/web)
+        # 📡 INJEKSI SINYAL REFERENSI ROUTER (CALL 1) SEBAGAI PANDUAN AWAL
+        suggested_tools = []
+        if precheck.get("is_url_read") or precheck.get("_detected_urls"):
+            raw_urls = precheck.get("_detected_urls") or []
+            suggested_tools.append(f"urlfetch ({', '.join(raw_urls)})" if raw_urls else "urlfetch")
+        if precheck.get("need_rag"):
+            suggested_tools.append("docsearch (Regulasi / Dokumen Internal Pindad)")
+        if precheck.get("is_web_search"):
+            suggested_tools.append("websearch (Pencarian Web / Data Eksternal)")
+        if precheck.get("is_map_query"):
+            suggested_tools.append("map_search (Peta & Fasilitas Lokasi)")
+
+        topic = precheck.get("active_topic", "")
+        subject = precheck.get("key_subject", "")
+        if suggested_tools or topic or subject:
+            radar_lines = [
+                "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+                "📡 [SINYAL REFERENSI ROUTER (CALL 1)]",
+                "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            ]
+            if suggested_tools:
+                radar_lines.append(f"• Rekomendasi Alat : {', '.join(suggested_tools)}")
+            if topic:
+                radar_lines.append(f"• Topik Terdeteksi : {topic}")
+            if subject:
+                radar_lines.append(f"• Subjek Spesifik  : {subject}")
+            radar_lines.append("• Prinsip Mandiri  : Sinyal di atas adalah panduan awal. Kamu adalah Master Agentic Orchestrator: berdaulat penuh memutuskan apakah alat benar-benar diperlukan dan merumuskan query terbaikmu sendiri.")
+            prompt += "\n\n" + "\n".join(radar_lines) + "\n"
+
+        # 🛡️ FACTUAL ISOLATION & AGENTIC VERIFICATION: Jika need_rag=True murni regulasi
         if (precheck.get("need_rag") or module_name in ["rag", "multi_document"]) and not precheck.get("is_coding") and not precheck.get("is_web_search"):
             prompt += (
                 "\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-                "🚨 ATURAN MUTLAK ISOLASI REGULASI & DOKUMEN (ANTI-KONTAMINASI CODING & WEB SEARCH)\n"
+                "📌 PEDOMAN SUMBER & VERIFIKASI DOKUMEN REGULASI INTERNAL\n"
                 "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
                 "1. Sesi ini adalah verifikasi dokumen, regulasi, SOP, atau kebijakan resmi internal PT Pindad.\n"
-                "2. DILARANG KERAS memunculkan, mengutip, atau meneruskan potongan kode program/koding/script dari percakapan sebelumnya.\n"
-                "3. DILARANG KERAS menggunakan atau mencampur data hasil pencarian web luar (web search).\n"
-                "4. Jawaban WAJIB 100% berfokus pada pasal, regulasi, SOP, dan rujukan dokumen internal yang tersedia.\n"
+                "2. Rujukan utama adalah konteks dokumen yang telah disediakan di atas. Dilarang mengarang aturan yang tidak ada buktinya.\n"
+                "3. DILARANG KERAS memunculkan atau meneruskan potongan kode program/koding/script dari percakapan sebelumnya.\n"
+                "4. Jika klausul spesifik yang dicari belum ada di konteks di atas atau pengguna menyanggah ketiadaan pasal, kamu BERWENANG memanggil alat ```docsearch atau ```websearch secara mandiri untuk melengkapi data sebelum menyimpulkan jawaban.\n"
             )
 
         # Injeksi Wizard jika ambigu pada modul selain ambiguous

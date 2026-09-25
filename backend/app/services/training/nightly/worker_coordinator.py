@@ -24,6 +24,59 @@ from .page_parser import StitchedSection, BookPageReader
 
 logger = logging.getLogger("CAKRA_WORKER_COORDINATOR")
 
+
+def to_sparse_router_json(router_dict: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Men-sanitasi dictionary routing agar 100% mematuhi kaidah Lean Sparse JSON:
+    1. Mempertahankan active_topic dan key_subject (wajib).
+    2. Hanya menyertakan key boolean jika bernilai True.
+    3. Hanya menyertakan list jika tidak kosong (misal: queries, query_judul, search_tags).
+    4. Hanya menyertakan string pendukung jika tidak kosong (misal: ambiguity_reason, rag_reason).
+    5. Menghapus dead fields: pronoun, tone_hint, fetch_urls, dan semua boolean False.
+    """
+    sparse: Dict[str, Any] = {}
+
+    if not isinstance(router_dict, dict):
+        return {"active_topic": "General", "key_subject": "General Inquiry"}
+
+    if "session_title" in router_dict and router_dict["session_title"]:
+        sparse["session_title"] = router_dict["session_title"]
+
+    sparse["active_topic"] = router_dict.get("active_topic") or "General"
+    sparse["key_subject"] = router_dict.get("key_subject") or "General Inquiry"
+
+    # Boolean flags aktif (HANYA sertakan jika bernilai True murni)
+    bool_flags = [
+        "need_rag", "is_web_search", "is_url_read", "is_coding", "is_troubleshooting",
+        "is_docwriter", "is_generate_file", "is_generate_email",
+        "is_map_query", "is_ambiguous", "is_chitchat", "is_self_correction",
+        "requires_visual", "needs_history"
+    ]
+    for flag in bool_flags:
+        if router_dict.get(flag) is True:
+            sparse[flag] = True
+
+    # List fields (HANYA sertakan jika memiliki elemen)
+    list_fields = ["queries", "query_judul", "search_tags", "visual_types"]
+    for lfield in list_fields:
+        val = router_dict.get(lfield)
+        if isinstance(val, list) and len(val) > 0:
+            sparse[lfield] = val
+
+    # Contextual string fields (HANYA sertakan jika tidak kosong)
+    str_fields = ["ambiguity_reason", "rag_reason", "response_format", "format_constraint"]
+    for sfield in str_fields:
+        val = router_dict.get(sfield)
+        if isinstance(val, str) and val.strip():
+            sparse[sfield] = val.strip()
+
+    # Nested structures jika ada
+    if isinstance(router_dict.get("wizard"), dict) and router_dict["wizard"]:
+        sparse["wizard"] = router_dict["wizard"]
+
+    return sparse
+
+
 class WorkerCoordinator:
     def __init__(self, ollama_url: Optional[str] = None, model_name: Optional[str] = None):
         self.ollama_url = (ollama_url or settings.OLLAMA_BASE_URL).rstrip("/")
@@ -803,7 +856,7 @@ Keluarkan HANYA JSON array berikut (tanpa pengantar markdown apapun di luar blok
         Mengakumulasi pasangan Q&A dari Worker 2 (RAG) dan sampel sintesis dari Worker 6 (Non-RAG)
         menjadi dataset latih seimbang (JSONL) secara SIMULTAN dan UNLIMITED:
         1. Call 2 Core: data/finetune/nightly_cakra_core.jsonl (Reasoning CoT & Respon Akurat)
-        2. Call 1 Router e4b: data/finetune/nightly_call1_router.jsonl (Intent Router Classification)
+        2. Call 1 Router: data/finetune/nightly_call1_router.jsonl (Lean Sparse JSON Classification)
         """
         if not qa_pairs and not agentic_samples:
             return {"count": 0, "samples": [], "router_count": 0}
@@ -874,25 +927,20 @@ Keluarkan HANYA JSON array berikut (tanpa pengantar markdown apapun di luar blok
                         count_core += 1
                         all_samples.append(sample_core)
 
-                        # Sample Call 1 Router e4b (Deterministik JSON Routing - RAG True)
-                        router_target = {
+                        # Sample Call 1 Router (Deterministik Lean Sparse JSON Routing - RAG True)
+                        router_target = to_sparse_router_json({
                             "active_topic": "Regulasi & Kebijakan PT PINDAD",
                             "key_subject": pasal_ref,
                             "need_rag": True,
                             "rag_reason": f"Menanyakan regulasi internal PT Pindad ({pasal_ref})",
-                            "queries": [q_text, pasal_ref],
-                            "is_chitchat": False,
-                            "is_ambiguous": False,
-                            "pronoun": "formal_saya_anda",
-                            "tone_hint": "direct_concise"
-                        }
+                        })
                         sample_router = {
                             "conversations": [
                                 {
                                     "from": "system",
                                     "value": (
-                                        "Kamu adalah model klasifikasi dan router intent presisi tinggi untuk CAKRA AI PT Pindad. "
-                                        "Tugasmu adalah menganalisis query pengguna dan mengeluarkan keputusan routing JSON deterministik."
+                                        "Kamu adalah Cakra Router (Call 1) yang sangat presisi dan deterministik. "
+                                        "Analisis pesan pengguna dan kembalikan sparse JSON routing payload murni."
                                     )
                                 },
                                 {
@@ -956,14 +1004,17 @@ Keluarkan HANYA JSON array berikut (tanpa pengantar markdown apapun di luar blok
                         count_core += 1
                         all_samples.append(sample_core_agentic)
 
-                        # Sample Call 1 Router e4b (Deterministik JSON Routing - Non-RAG)
+                        # Sample Call 1 Router (Deterministik Lean Sparse JSON Routing - Non-RAG)
+                        clean_router_obj = to_sparse_router_json(router_obj)
+                        clean_router_obj.pop("need_rag", None)  # Sparse: hilangkan need_rag untuk Non-RAG
+
                         sample_router_agentic = {
                             "conversations": [
                                 {
                                     "from": "system",
                                     "value": (
-                                        "Kamu adalah model klasifikasi dan router intent presisi tinggi untuk CAKRA AI PT Pindad. "
-                                        "Tugasmu adalah menganalisis query pengguna dan mengeluarkan keputusan routing JSON deterministik."
+                                        "Kamu adalah Cakra Router (Call 1) yang sangat presisi dan deterministik. "
+                                        "Analisis pesan pengguna dan kembalikan sparse JSON routing payload murni."
                                     )
                                 },
                                 {
@@ -972,7 +1023,7 @@ Keluarkan HANYA JSON array berikut (tanpa pengantar markdown apapun di luar blok
                                 },
                                 {
                                     "from": "gpt",
-                                    "value": json.dumps(router_obj, ensure_ascii=False)
+                                    "value": json.dumps(clean_router_obj, ensure_ascii=False)
                                 }
                             ],
                             "metadata": {
@@ -987,7 +1038,7 @@ Keluarkan HANYA JSON array berikut (tanpa pengantar markdown apapun di luar blok
                 log_cb(
                     "W5_LORA", 
                     "SUCCESS", 
-                    f"Tersimpan: +{count_core} Core CoT & +{count_router} Router e4b "
+                    f"Tersimpan: +{count_core} Core CoT & +{count_router} Router "
                     f"({qa_len} RAG + {agentic_len} Non-RAG) ke dataset latih."
                 )
             logger.info(
@@ -1014,7 +1065,7 @@ Keluarkan HANYA JSON array berikut (tanpa pengantar markdown apapun di luar blok
         menggunakan skema Hybrid Round-Robin.
         
         Melatih kedua model secara simultan:
-        - Call 1 Router e4b (Deterministik JSON Routing dengan need_rag: false)
+        - Call 1 Router (Deterministik Lean Sparse JSON Routing)
         - Call 2 Core 31b (Reasoning CoT <think>...</think> + Respon Akurat tanpa halusinasi pasal)
         """
         import re
@@ -1024,37 +1075,37 @@ Keluarkan HANYA JSON array berikut (tanpa pengantar markdown apapun di luar blok
                 "domain": "WEB_SEARCH",
                 "name": "Pencarian Web & Riset Eksternal",
                 "description": "Fakta terkini alutsista/militer global (Leopard 2, Abrams, Rafale, drone), kurs valuta asing impor baja/komponen, berita industri pertahanan, regulasi kementerian luar.",
-                "default_flags": {"is_web_search": True, "need_rag": False}
+                "default_flags": {"is_web_search": True}
             },
             {
                 "domain": "CODING",
                 "name": "Software Engineering & Troubleshooting",
                 "description": "Pemrograman sistem, debugging bug/error (axios 401, CORS, DB deadlock), skrip otomatisasi Python/Bash, IoT telemetry sensor alutsista, API security, modul FastAPI/Express.",
-                "default_flags": {"is_coding": True, "is_troubleshooting": True, "need_rag": False}
+                "default_flags": {"is_coding": True, "is_troubleshooting": True}
             },
             {
                 "domain": "CORPORATE",
                 "name": "Corporate Persuratan & Naskah Dinas",
-                "description": "Penyusunan draf Nota Dinas permohonan pemeliharaan pabrik/mesin, Memorandum kedinasan, draf email profesional ke vendor DEFEND ID, format RAB Excel pengadaan suku cadang.",
-                "default_flags": {"is_generate_file": True, "is_generate_email": True, "is_docwriter": True, "need_rag": False}
+                "description": "Penyusunan draf Nota Dinas permohonan pemeliharaan pabrik/mesin, Memorandum kedinasan, draf surat resmi ke vendor DEFEND ID, atau format dokumen dinas lainnya.",
+                "default_flags": {"is_docwriter": True}
             },
             {
                 "domain": "MAP_GEO",
                 "name": "Geospatial & Fasilitas Pabrik Pindad",
                 "description": "Lokasi dan koordinat divisi munisi Turen Malang, kantor pusat Bandung Kiara Condong, fasilitas uji tembak Batujajar, logistik armada, dan jam operasional fasilitas.",
-                "default_flags": {"is_map_query": True, "need_rag": False}
+                "default_flags": {"is_map_query": True}
             },
             {
                 "domain": "WIZARD",
                 "name": "Ambigu & Wizard Interaktif",
                 "description": "Instruksi pengguna yang ambigu atau butuh klarifikasi (contoh: 'Bikinin aplikasi web', 'Pengadaan laptop divisi baru') di mana AI memicu panduan klarifikasi terstruktur.",
-                "default_flags": {"is_ambiguous": True, "need_rag": False}
+                "default_flags": {"is_ambiguous": True}
             },
             {
                 "domain": "CHITCHAT",
                 "name": "Persona Empati & Sapaan Santai",
                 "description": "Sapaan santai ('Halo cuy', 'Selamat pagi'), ucapan apresiasi rekan kerja, interaksi hangat manusiawi, dan koreksi diri santai tanpa mengutip pasal.",
-                "default_flags": {"is_chitchat": True, "need_rag": False}
+                "default_flags": {"is_chitchat": True}
             }
         ]
 
@@ -1084,25 +1135,14 @@ Dua Domain Sasaran:
 Untuk SETIAP domain, ciptakan 1 pasangan instruksi dan respon berkualitas tinggi (hybrid: konteks industri pertahanan / teknologi / korporat BUMN DEFEND ID):
 1. "domain": "{d1['domain']}" atau "{d2['domain']}"
 2. "query": Pertanyaan realistis dari pengguna (bisa gaya santai "cuy/bro" atau formal dinas).
-3. "router_json": Target keputusan routing deterministik Call 1 Router e4b:
-   - "active_topic": string topik ringkas
-   - "key_subject": string subjek utama
-   - "need_rag": false (MUTLAK FALSE karena bukan regulasi internal!)
-   - "queries": list query pencarian jika web search, atau kosong []
-   - "is_web_search": boolean
-   - "is_coding": boolean
-   - "is_troubleshooting": boolean
-   - "is_generate_file": boolean
-   - "is_generate_email": boolean
-   - "is_docwriter": boolean
-   - "is_map_query": boolean
-   - "is_ambiguous": boolean
-   - "ambiguity_reason": string atau ""
-   - "is_chitchat": boolean
-   - "is_self_correction": boolean
-   - "requires_visual": boolean
-   - "pronoun": "formal_saya_anda" atau "casual_aku_kamu" atau "santai_bro_cuy"
-   - "tone_hint": "direct_concise" atau "supportive"
+3. "router_json": Target keputusan routing deterministik Call 1 Router (LEAN SPARSE JSON):
+   - "active_topic": string topik ringkas (2-3 kata)
+   - "key_subject": string subjek utama (2-5 kata)
+   - ATURAN SPARSE JSON: HANYA sertakan boolean yang bernilai TRUE dan list yang memiliki isi!
+   - 🚫 DILARANG menyertakan boolean false (JANGAN tulis "need_rag": false, "is_coding": false, dll).
+   - 🚫 DILARANG menyertakan field pronoun atau tone_hint.
+   - Pilihan boolean aktif (pilih HANYA yang bernilai true): "is_web_search", "is_coding", "is_troubleshooting", "is_docwriter", "is_generate_file", "is_generate_email", "is_map_query", "is_ambiguous", "is_chitchat", "requires_visual".
+   - "ambiguity_reason": string alasan HANYA jika is_ambiguous bernilai true.
 4. "thought": Penalaran analitis mendalam di dalam <think>...</think> (CoT) yang menjelaskan kenapa query ini BUKAN RAG dan bagaimana menyusun solusi terbaik yang lugas, sistematis, dan solutif.
 5. "response": Jawaban model Call 2 Core yang lengkap, profesional, berkualitas tinggi, format markdown rapi (gunakan code block jika koding, format surat dinas jika persuratan), dan TIDAK MENGARANG nomor pasal regulasi internal.
 
@@ -1114,22 +1154,7 @@ Keluarkan dalam format JSON array murni tanpa markdown wrapper:
     "router_json": {{
       "active_topic": "...",
       "key_subject": "...",
-      "need_rag": false,
-      "queries": [],
-      "is_web_search": false,
-      "is_coding": false,
-      "is_troubleshooting": false,
-      "is_generate_file": false,
-      "is_generate_email": false,
-      "is_docwriter": false,
-      "is_map_query": false,
-      "is_ambiguous": false,
-      "ambiguity_reason": "",
-      "is_chitchat": false,
-      "is_self_correction": false,
-      "requires_visual": false,
-      "pronoun": "formal_saya_anda",
-      "tone_hint": "direct_concise"
+      "is_web_search": true
     }},
     "thought": "1. Analisis Kebutuhan: ...\\n2. Klasifikasi Non-RAG: ...\\n3. Strategi Respon: ...",
     "response": "..."
@@ -1137,7 +1162,12 @@ Keluarkan dalam format JSON array murni tanpa markdown wrapper:
   {{
     "domain": "{d2['domain']}",
     "query": "...",
-    "router_json": {{ ... }},
+    "router_json": {{
+      "active_topic": "...",
+      "key_subject": "...",
+      "is_coding": true,
+      "is_troubleshooting": true
+    }},
     "thought": "1. Analisis Kebutuhan: ...\\n2. Klasifikasi Non-RAG: ...\\n3. Strategi Respon: ...",
     "response": "..."
   }}
@@ -1156,10 +1186,11 @@ Keluarkan dalam format JSON array murni tanpa markdown wrapper:
             if isinstance(parsed, list):
                 for item in parsed:
                     if isinstance(item, dict) and item.get("query") and item.get("response"):
-                        # Pastikan need_rag selalu False untuk Worker 6
-                        r_json = item.get("router_json") or {}
-                        r_json["need_rag"] = False
-                        item["router_json"] = r_json
+                        # Pastikan router_json selalu diformat ke Sparse Lean JSON murni
+                        raw_rjson = item.get("router_json") or {}
+                        sparse_r = to_sparse_router_json(raw_rjson)
+                        sparse_r.pop("need_rag", None)  # Sparse: Jangan sertakan need_rag pada non-RAG
+                        item["router_json"] = sparse_r
                         generated_samples.append(item)
 
             if not generated_samples:
@@ -1180,7 +1211,7 @@ Keluarkan dalam format JSON array murni tanpa markdown wrapper:
         return generated_samples
 
     def _generate_fallback_agentic_samples(self, d1: Dict[str, Any], d2: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """Fallback deterministic samples jika LLM menghasilkan output non-JSON."""
+        """Fallback deterministic samples jika LLM menghasilkan output non-JSON (Lean Sparse JSON Format)."""
         fallback_map = {
             "WEB_SEARCH": {
                 "domain": "WEB_SEARCH",
@@ -1188,22 +1219,8 @@ Keluarkan dalam format JSON array murni tanpa markdown wrapper:
                 "router_json": {
                     "active_topic": "Komparasi Alutsista Dunia",
                     "key_subject": "SS2-V4 vs M4 Carbine",
-                    "need_rag": False,
-                    "queries": ["spesifikasi SS2-V4 Pindad vs M4 Carbine", "effective range SS2-V4 M4"],
                     "is_web_search": True,
-                    "is_coding": False,
-                    "is_troubleshooting": False,
-                    "is_generate_file": False,
-                    "is_generate_email": False,
-                    "is_docwriter": False,
-                    "is_map_query": False,
-                    "is_ambiguous": False,
-                    "ambiguity_reason": "",
-                    "is_chitchat": False,
-                    "is_self_correction": False,
-                    "requires_visual": True,
-                    "pronoun": "formal_saya_anda",
-                    "tone_hint": "direct_concise"
+                    "requires_visual": True
                 },
                 "thought": "1. Analisis Kebutuhan: Pengguna meminta komparasi teknis alutsista senapan serbu.\n2. Klasifikasi Non-RAG: Membutuhkan data spesifikasi standar militer internasional, bukan regulasi internal Pindad (need_rag=False, is_web_search=True).\n3. Strategi Respon: Sajikan tabel komparasi kaliber, jarak efektif, laju tembakan, dan keunggulan masing-masing.",
                 "response": "Berikut adalah perbandingan teknis antara **SS2-V4 (PT Pindad)** dan **M4 Carbine**:\n\n| Parameter | SS2-V4 Pindad | M4 Carbine |\n|---|---|---|\n| **Kaliber** | 5.56 x 45 mm NATO | 5.56 x 45 mm NATO |\n| **Jarak Efektif** | 400 - 500 meter | ~360 - 500 meter |\n| **Panjang Laras** | 500 mm (Heavy barrel untuk presisi) | 370 mm (14.5 inci) |\n| **Sistem Operasi** | Gas operated, rotating bolt | Direct impingement gas system |\n| **Karakter Utama** | Akurasi tinggi untuk penembak mahir / sniper support | Ringan dan manuver lincah untuk pertempuran jarak dekat (CQB) |\n\n*Catatan*: SS2-V4 didesain khusus dengan laras yang lebih panjang dan teropong optik (ACOG/teleskopik) untuk meningkatkan akurasi tembakan presisi di medan tempur."
@@ -1214,22 +1231,7 @@ Keluarkan dalam format JSON array murni tanpa markdown wrapper:
                 "router_json": {
                     "active_topic": "Backend Security & Auth",
                     "key_subject": "FastAPI JWT Validation",
-                    "need_rag": False,
-                    "queries": [],
-                    "is_web_search": False,
-                    "is_coding": True,
-                    "is_troubleshooting": False,
-                    "is_generate_file": False,
-                    "is_generate_email": False,
-                    "is_docwriter": False,
-                    "is_map_query": False,
-                    "is_ambiguous": False,
-                    "ambiguity_reason": "",
-                    "is_chitchat": False,
-                    "is_self_correction": False,
-                    "requires_visual": False,
-                    "pronoun": "santai_bro_cuy",
-                    "tone_hint": "direct_concise"
+                    "is_coding": True
                 },
                 "thought": "1. Analisis Kebutuhan: Pengguna meminta pembuatan skrip middleware/dependency autentikasi JWT di FastAPI.\n2. Klasifikasi Non-RAG: Ini murni rekayasa perangkat lunak teknis (is_coding=True, need_rag=False).\n3. Strategi Respon: Berikan kode Python modular menggunakan PyJWT dan HTTPBearer dengan error handling 401 Unauthorized.",
                 "response": "Berikut implementasi dependency autentikasi JWT yang aman dan modular di FastAPI:\n\n```python\nfrom fastapi import Depends, HTTPException, status\nfrom fastapi.security import HTTPBearer, HTTPAuthorizationCredentials\nimport jwt\n\nSECRET_KEY = \"YOUR_SECURE_SECRET_KEY\"\nALGORITHM = \"HS256\"\nsecurity = HTTPBearer()\n\nasync def verify_jwt_token(credentials: HTTPAuthorizationCredentials = Depends(security)) -> dict:\n    token = credentials.credentials\n    try:\n        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])\n        return payload\n    except jwt.ExpiredSignatureError:\n        raise HTTPException(\n            status_code=status.HTTP_401_UNAUTHORIZED,\n            detail=\"Token telah kedaluwarsa.\"\n        )\n    except jwt.InvalidTokenError:\n        raise HTTPException(\n            status_code=status.HTTP_401_UNAUTHORIZED,\n            detail=\"Token autentikasi tidak valid.\"\n        )\n```\nDependency ini siap disematkan pada endpoint dengan `user = Depends(verify_jwt_token)`."
@@ -1240,24 +1242,9 @@ Keluarkan dalam format JSON array murni tanpa markdown wrapper:
                 "router_json": {
                     "active_topic": "Naskah Dinas & Administrasi",
                     "key_subject": "Nota Dinas Kalibrasi Mesin CNC",
-                    "need_rag": False,
-                    "queries": [],
-                    "is_web_search": False,
-                    "is_coding": False,
-                    "is_troubleshooting": False,
-                    "is_generate_file": True,
-                    "is_generate_email": False,
-                    "is_docwriter": True,
-                    "is_map_query": False,
-                    "is_ambiguous": False,
-                    "ambiguity_reason": "",
-                    "is_chitchat": False,
-                    "is_self_correction": False,
-                    "requires_visual": False,
-                    "pronoun": "formal_saya_anda",
-                    "tone_hint": "direct_concise"
+                    "is_docwriter": True
                 },
-                "thought": "1. Analisis Kebutuhan: Penyusunan Nota Dinas internal BUMN untuk pemeliharaan/kalibrasi alat produksi.\n2. Klasifikasi Non-RAG: Ini pembuatan dokumen dinas (is_docwriter=True, is_generate_file=True, need_rag=False).\n3. Strategi Respon: Sajikan format standar Nota Dinas formal dengan kepala surat, perihal, dasar pertimbangan, dan butir permohonan.",
+                "thought": "1. Analisis Kebutuhan: Penyusunan Nota Dinas internal BUMN untuk pemeliharaan/kalibrasi alat produksi.\n2. Klasifikasi Non-RAG: Ini pembuatan dokumen dinas (is_docwriter=True, need_rag=False).\n3. Strategi Respon: Sajikan format standar Nota Dinas formal dengan kepala surat, perihal, dasar pertimbangan, dan butir permohonan.",
                 "response": "Berikut draf **Nota Dinas** resmi:\n\n**NOTA DINAS**\nNomor: ND/      /MN/     /2026\n\n**Kepada**: Kepala Divisi Pemeliharaan & Fasilitas\n**Dari**: Kepala Departemen Produksi Munisi\n**Tanggal**: 21 September 2026\n**Perihal**: Permohonan Kalibrasi Rutin Alat Ukur Mesin CNC Lini Produksi\n\n---\n\n1. Memperhatikan standar mutu produksi munisi dan jadwal pemeliharaan berkala peralatan industri tahun 2026, bersama ini kami sampaikan permohonan pelaksanaan kalibrasi alat ukur pada lini mesin CNC.\n\n2. Kalibrasi diperlukan guna menjamin kepresisian dimensi selongsong dan proyektil sesuai toleransi teknis yang dipersyaratkan.\n\n3. Sehubungan dengan hal tersebut, kami mohon bantuan tim fasilitas untuk menjadwalkan pemeriksaan dan penerbitan sertifikat kalibrasi internal.\n\nDemikian kami sampaikan, atas perhatian dan kerja samanya kami ucapkan terima kasih.\n\n**Kepala Departemen Produksi Munisi**\n\n*(Tanda Tangan & Nama Terang)*"
             },
             "MAP_GEO": {
@@ -1266,22 +1253,7 @@ Keluarkan dalam format JSON array murni tanpa markdown wrapper:
                 "router_json": {
                     "active_topic": "Geospatial Fasilitas Pindad",
                     "key_subject": "Divisi Munisi Turen Malang",
-                    "need_rag": False,
-                    "queries": [],
-                    "is_web_search": False,
-                    "is_coding": False,
-                    "is_troubleshooting": False,
-                    "is_generate_file": False,
-                    "is_generate_email": False,
-                    "is_docwriter": False,
-                    "is_map_query": True,
-                    "is_ambiguous": False,
-                    "ambiguity_reason": "",
-                    "is_chitchat": False,
-                    "is_self_correction": False,
-                    "requires_visual": False,
-                    "pronoun": "formal_saya_anda",
-                    "tone_hint": "direct_concise"
+                    "is_map_query": True
                 },
                 "thought": "1. Analisis Kebutuhan: Pengguna menanyakan lokasi fasilitas pabrik munisi PT Pindad.\n2. Klasifikasi Non-RAG: Ini pertanyaan lokasi/geospatial (is_map_query=True, need_rag=False).\n3. Strategi Respon: Jelaskan lokasi Divisi Munisi di Turen, Malang, Jawa Timur beserta spesialisasi produksinya.",
                 "response": "Fasilitas **Divisi Munisi PT Pindad** berlokasi di **Kecamatan Turen, Kabupaten Malang, Jawa Timur**.\n\n**Fungsi Utama Fasilitas Turen**:\n- **Produksi Munisi Kaliber Kecil (MKK)**: Kaliber 5.56 mm, 7.62 mm, 9 mm, dll.\n- **Produksi Munisi Kaliber Khusus & Sedang**: Munisi mortir, granat tangan, munisi gas air mata, dan munisi artileri ringan.\n- **Pengujian Balistik**: Memiliki fasilitas uji tembak terintegrasi untuk verifikasi tekanan laras, kecepatan laras, dan presisi sebaran proyektil."
@@ -1292,22 +1264,9 @@ Keluarkan dalam format JSON array murni tanpa markdown wrapper:
                 "router_json": {
                     "active_topic": "Perencanaan Sistem Informasi",
                     "key_subject": "Aplikasi Inventaris",
-                    "need_rag": False,
-                    "queries": [],
-                    "is_web_search": False,
                     "is_coding": True,
-                    "is_troubleshooting": False,
-                    "is_generate_file": False,
-                    "is_generate_email": False,
-                    "is_docwriter": False,
-                    "is_map_query": False,
                     "is_ambiguous": True,
-                    "ambiguity_reason": "Kebutuhan platform, database, dan alur otorisasi inventaris belum dispesifikasikan.",
-                    "is_chitchat": False,
-                    "is_self_correction": False,
-                    "requires_visual": False,
-                    "pronoun": "formal_saya_anda",
-                    "tone_hint": "supportive"
+                    "ambiguity_reason": "Kebutuhan platform, database, dan alur otorisasi inventaris belum dispesifikasikan."
                 },
                 "thought": "1. Analisis Kebutuhan: Pengguna meminta pembuatan aplikasi inventaris kantor namun belum merinci kebutuhan teknis.\n2. Klasifikasi Non-RAG: Pertanyaan ambigu yang membutuhkan klarifikasi bertahap (is_ambiguous=True, need_rag=False).\n3. Strategi Respon: Pandu pengguna dengan 3 pertanyaan penjelas (arsitektur web/desktop, database yang dipakai, fitur kunci barcode/approval).",
                 "response": "Siap, saya bantu rancang arsitektur aplikasi inventaris kantornya! Agar sistem yang dibangun tepat sasaran, mohon konfirmasi beberapa hal berikut:\n\n1. **Target Platform**: Apakah berupa aplikasi berbasis Web (React + FastAPI/Node.js) atau aplikasi Desktop/Mobile?\n2. **Fitur Pelacakan**: Apakah memerlukan integrasi Barcode / QR Code scanner untuk label barang?\n3. **Alur Persetujuan (Workflow)**: Apakah ada hierarki approval (misal: staf mengajukan peminjaman $\\rightarrow$ disetujui atasan)?\n\nSetelah aspek di atas ditentukan, saya akan langsung siapkan skema database PostgreSQL dan kode boilerplatenya!"
@@ -1318,22 +1277,7 @@ Keluarkan dalam format JSON array murni tanpa markdown wrapper:
                 "router_json": {
                     "active_topic": "Sapaan & Persona",
                     "key_subject": "Greeting",
-                    "need_rag": False,
-                    "queries": [],
-                    "is_web_search": False,
-                    "is_coding": False,
-                    "is_troubleshooting": False,
-                    "is_generate_file": False,
-                    "is_generate_email": False,
-                    "is_docwriter": False,
-                    "is_map_query": False,
-                    "is_ambiguous": False,
-                    "ambiguity_reason": "",
-                    "is_chitchat": True,
-                    "is_self_correction": False,
-                    "requires_visual": False,
-                    "pronoun": "formal_saya_anda",
-                    "tone_hint": "supportive"
+                    "is_chitchat": True
                 },
                 "thought": "1. Analisis Kebutuhan: Sapaan ramah dari pengguna di pagi hari.\n2. Klasifikasi Non-RAG: Percakapan persona santai (is_chitchat=True, need_rag=False).\n3. Strategi Respon: Balas dengan salam hangat, santun, dan menunjukkan kesiapan mendukung operasional pertahanan dan kedinasan.",
                 "response": "Selamat pagi! Terima kasih atas semangatnya. Seluruh modul dan kapabilitas CAKRA AI telah siap siaga untuk mendukung kebutuhan analisis, regulasi, kodingan, maupun persuratan dinas Anda hari ini. Ada yang bisa saya bantu sekarang?"

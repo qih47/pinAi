@@ -186,7 +186,7 @@ class ModeFlash:
                 is_thinking=is_thinking,
                 employee_name=employee_name,
                 session_uuid=session_uuid_to_use,
-                max_tool_loops=1,
+                max_tool_loops=2,
                 **module_config,
             ):
                 yield chunk

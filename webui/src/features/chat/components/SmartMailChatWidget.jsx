@@ -6,6 +6,7 @@ import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import apiClient from '../../../services/apiClient';
 import { translations } from '../../../utils/translations';
+import { escapeCurrencyDollars } from './CakraResponseRenderer';
 
 export default function SmartMailChatWidget({ initialData, darkMode, theme, language = 'id' }) {
     const tGlobal = translations[language] || translations.id;
@@ -174,7 +175,7 @@ export default function SmartMailChatWidget({ initialData, darkMode, theme, lang
                     ) : (
                         <div className={`w-full min-h-[250px] p-4 rounded-lg text-sm border overflow-auto prose ${darkMode ? 'bg-[#1E1E22] border-slate-600 prose-invert max-w-none' : 'bg-slate-50 border-slate-300 max-w-none'}`}>
                             <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
-                                {draftData.body || ""}
+                                {escapeCurrencyDollars(draftData.body || "")}
                             </ReactMarkdown>
                         </div>
                     )}

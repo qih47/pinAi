@@ -415,6 +415,10 @@ async def _sequential_pipeline_generator(
                 if generated_artifacts:
                     message_metadata["artifacts"] = generated_artifacts
                 
+                # 🛡️ Bersihkan tag <sources_json> dari teks simpanan DB jika ada sisa
+                clean_db_text = re.sub(r'<\s*sources_json\s*>[\s\S]*?<\/\s*sources_json\s*>', '', full_response_text, flags=re.IGNORECASE)
+                clean_db_text = re.sub(r'<\s*/?\s*sources_json\s*>', '', clean_db_text, flags=re.IGNORECASE).strip()
+
                 if is_regenerate_event:
                     # REGENERATE: Simpan sebagai varian baru tanpa menimpa respons sebelumnya
                     actual_parent_id = payload.parent_id
@@ -461,7 +465,7 @@ async def _sequential_pipeline_generator(
                     await chat_history_service.save_chat_message(
                         session_id=payload.session_uuid,
                         role="assistant",
-                        text=full_response_text,
+                        text=clean_db_text,
                         thought=ast_thought,
                         sources=preloaded_rag_sources,
                         metadata=message_metadata,
@@ -473,7 +477,7 @@ async def _sequential_pipeline_generator(
                         session_id=payload.session_uuid,
                         edit_index=payload.edit_index + 1,
                         role="assistant",
-                        text=full_response_text,
+                        text=clean_db_text,
                         thought=ast_thought,
                         sources=preloaded_rag_sources,
                         metadata=message_metadata
@@ -482,7 +486,7 @@ async def _sequential_pipeline_generator(
                     await chat_history_service.save_chat_message(
                         session_id=payload.session_uuid,
                         role="assistant",
-                        text=full_response_text,
+                        text=clean_db_text,
                         thought=ast_thought,
                         sources=preloaded_rag_sources,
                         metadata=message_metadata,
@@ -493,7 +497,7 @@ async def _sequential_pipeline_generator(
                         await chat_history_service.save_dialogue_corpus(
                             session_uuid=payload.session_uuid,
                             user_text=user_message,
-                            assistant_text=full_response_text,
+                            assistant_text=clean_db_text,
                             context_document=f"Gemma Agentic | Mode: {chat_mode}",
                             metadata={
                                 "mode": chat_mode, 

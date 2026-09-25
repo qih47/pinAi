@@ -9,6 +9,7 @@ import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
 import { translations } from "../../../../utils/translations";
 import { getApiBase } from "../../../../services/endpoints";
+import { escapeCurrencyDollars } from "../CakraResponseRenderer";
 
 pdfjs.GlobalWorkerOptions.workerSrc = new URL(
     'pdfjs-dist/build/pdf.worker.min.mjs',
@@ -1084,7 +1085,7 @@ export default function ContextIsolationModal({
                                   strong: ({ node, ...props }) => <strong style={{ fontWeight: 600, color: theme.textColor }} {...props} />
                                 }}
                               >
-                                {insightData}
+                                {escapeCurrencyDollars(insightData || "")}
                               </ReactMarkdown>
                             </div>
                           </div>

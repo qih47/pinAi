@@ -997,252 +997,30 @@ class ModeDocuments:
                 observation=json.dumps(obs_dict)
             ))
 
-        # State variables for stream interception
-        intercept_buffer = ""
-        is_intercepting = False
-        json_intercepted = False
-        
-        # ── Step 3: LLM Execution (Call 2) ────────────────────────────────────────
-        # Emit status tepat sebelum masuk ke Ollama agar UI pengguna live aktif selama masa tunggu prefill GPU
+        # ── Step 3: LLM Execution (Call 2 via Agentic Interceptor) ─────────────────
+        # Emit status tepat sebelum masuk ke LLM agar UI pengguna live aktif selama masa tunggu prefill GPU
         yield format_sse(status="✍️ Menyusun jawaban", status_key="DRAFTING_RESPONSE", event_type=SSEEventType.STATUS)
 
         precall2_elapsed_ms = (time.perf_counter() - t_mode_docs_start) * 1000
         logger.info(f"⚡ [TIMING_BENCHMARK] [PRE_CALL2_PREPARATION] Selesai seluruh persiapan dokumen & prompt dalam {precall2_elapsed_ms:.1f}ms ({precall2_elapsed_ms/1000:.2f}s) -> Dispatching ke Ollama Call 2.")
 
         try:
-            async for chunk_line in stream_ollama_chat(
+            from backend.app.services.pipeline.agentic_interceptor import agentic_stream_wrapper
+            async for chunk in agentic_stream_wrapper(
                 model_name=getattr(settings, "MODEL_PERSONA", "gemma4:31b"),
                 messages=stream_messages,
                 request=request,
-                keep_alive=-1,
                 is_thinking=is_thinking,
+                employee_name=employee_name,
+                session_uuid=session_uuid,
+                rag_sources=rag_sources,
+                max_tool_loops=2,
                 **module_config,
             ):
-                try:
-                    chunk_data = json.loads(chunk_line.strip())
-                    chunk_text = chunk_data.get("chunk", "")
-                    native_thought = chunk_data.get("thinking", "")
-                    
-                    eval_count = chunk_data.get("eval_count", 0)
-                    eval_duration = chunk_data.get("eval_duration", 0)
-                    
-                    # # Log CCTV untuk debug tag <think>
-                    # if native_thought:
-                    #     logger.info(f"[CCTV THINK] {native_thought.strip()}")
-                    # if "<think>" in chunk_text or "</think>" in chunk_text:
-                    #     logger.warning(f"[CCTV ALERT] Tag Think nyampur di chunk_text: {chunk_text}")
-
-                except (json.JSONDecodeError, AttributeError):
-                    chunk_text = chunk_line if isinstance(chunk_line, str) else ""
-                    native_thought = ""
-                    eval_count = 0
-                    eval_duration = 0
-
-                # Tampilkan thought hanya jika is_thinking (dari FE) True
-                if native_thought and is_thinking:
-                    yield format_sse("", native_thought, False, event_type=SSEEventType.THINKING)
-                    
-                if chunk_text:
-                    if not json_intercepted:
-                        intercept_buffer += chunk_text
-                        if "<sources_json>" in intercept_buffer and not is_intercepting:
-                            is_intercepting = True
-                            
-                        if is_intercepting:
-                            if "</sources_json>" in intercept_buffer:
-                                is_intercepting = False
-                                json_intercepted = True
-                                
-                                start_idx = intercept_buffer.find("<sources_json>") + len("<sources_json>")
-                                end_idx = intercept_buffer.find("</sources_json>")
-                                json_str = intercept_buffer[start_idx:end_idx].strip()
-                                
-                                filtered_sources = []
-                                parsing_success = False
-                                try:
-                                    if json_str:
-                                        json_str = re.sub(r'```json|```', '', json_str).strip()
-                                        used_docs = json.loads(json_str)
-                                        
-                                        # SPRINT 5: Python-level filter to forcefully drop hallucinated unused docs
-                                        valid_used_docs = []
-                                        for doc in used_docs:
-                                            alasan = str(doc.get("alasan", "")).lower()
-                                            if any(neg in alasan for neg in ["tidak digunakan", "tidak relevan", "tidak dipakai", "tidak merujuk", "tidak digunakan karena"]):
-                                                logger.warning(f"[MODE_DOCUMENTS] 🚫 Membuang doc {doc.get('id')} secara paksa karena alasan: {alasan}")
-                                                continue
-                                            valid_used_docs.append(doc)
-                                        used_docs = valid_used_docs
-                                        
-                                        used_ids = [str(doc.get("id", "")) for doc in used_docs]
-                                        
-                                        missing_docs = []
-                                        for doc in used_docs:
-                                            doc_id = str(doc.get("id", "")).strip()
-                                            doc_judul = str(doc.get("judul", "")).strip().lower()
-                                            found = False
-                                            
-                                            # 1. Coba cocokkan langsung di memory (rag_sources) via ID, Noper, atau Judul
-                                            for src in rag_sources:
-                                                src_id = str(src.get("id", "")).strip()
-                                                src_nomor = str(src.get("nomor") or src.get("noper") or "").strip().lower()
-                                                src_title = str(src.get("title") or src.get("judul") or src.get("raw_judul") or "").strip().lower()
-                                                
-                                                # Match by ID
-                                                if doc_id and (doc_id == src_id):
-                                                    if src not in filtered_sources:
-                                                        filtered_sources.append(src)
-                                                    found = True
-                                                    break
-                                                    
-                                                # Match by Noper (contoh: "SKEP/1/P/BD/II/2025" ada di "SKEP/1/P/BD/II/2025, SKEP/1a/P/BD/II/2025")
-                                                if doc_id and src_nomor and (doc_id.lower() in src_nomor or src_nomor in doc_id.lower()):
-                                                    if src not in filtered_sources:
-                                                        filtered_sources.append(src)
-                                                    found = True
-                                                    break
-                                                    
-                                                # Match by Judul
-                                                if doc_judul and src_title and len(doc_judul) > 5 and (doc_judul in src_title or src_title in doc_judul):
-                                                    if src not in filtered_sources:
-                                                        filtered_sources.append(src)
-                                                    found = True
-                                                    break
-                                                    
-                                            if not found:
-                                                missing_docs.append(doc)
-                                                
-                                        if missing_docs:
-                                            from backend.app.core.database import get_peraturan_db
-                                            async with get_peraturan_db() as conn_my:
-                                                async with conn_my.cursor() as cur:
-                                                    for mdoc in missing_docs:
-                                                        m_id = str(mdoc.get("id", "")).strip()
-                                                        m_judul = str(mdoc.get("judul", "")).strip()
-                                                        row = None
-                                                        
-                                                        # Coba fetch by ID jika angka
-                                                        if m_id.isdigit():
-                                                            sql = """
-                                                                SELECT b.id_berita, b.judul, b.gambar, b.gambar2, b.gambar3, k.nama_kategori, b.noper
-                                                                FROM berita b
-                                                                LEFT JOIN kategori k ON b.id_kategori = k.id_kategori
-                                                                WHERE b.id_berita = %s
-                                                            """
-                                                            await cur.execute(sql, (int(m_id),))
-                                                            row = await cur.fetchone()
-                                                        
-                                                        # Coba fetch by Noper atau Judul LIKE
-                                                        if not row and m_id:
-                                                            sql = """
-                                                                SELECT b.id_berita, b.judul, b.gambar, b.gambar2, b.gambar3, k.nama_kategori, b.noper
-                                                                FROM berita b
-                                                                LEFT JOIN kategori k ON b.id_kategori = k.id_kategori
-                                                                WHERE b.noper LIKE %s OR b.judul LIKE %s
-                                                                ORDER BY b.id_berita DESC
-                                                                LIMIT 1
-                                                            """
-                                                            noper_like = f"%{m_id}%"
-                                                            judul_like = f"%{m_judul}%" if m_judul else noper_like
-                                                            await cur.execute(sql, (noper_like, judul_like))
-                                                            row = await cur.fetchone()
-                                                            if row:
-                                                                logger.info(f"[MODE_DOCUMENTS] 🌟 AI Memory Recovered from DB by Noper/Judul: '{m_id}' -> ID {row[0]}")
-                                                        
-                                                        if row:
-                                                            id_berita, db_judul, gambar, gambar2, gambar3, nama_kategori, noper = row
-                                                            
-                                                            valid_file = _find_valid_pdf_file(gambar, gambar2, gambar3)
-                                                            filtered_sources.append({
-                                                                "id": str(id_berita),
-                                                                "title": db_judul,
-                                                                "document_title": db_judul,
-                                                                "filename": os.path.basename(valid_file) if valid_file else None,
-                                                                "file_path": f"file_peraturan/{os.path.basename(valid_file)}" if valid_file else None,
-                                                                "jenis": nama_kategori or "Regulasi",
-                                                                "nomor": noper or "N/A",
-                                                                "score_label": "AI_MEMORY_RECOVERED",
-                                                                "score": 1.0
-                                                            })
-                                        parsing_success = True
-                                except Exception as e:
-                                    logger.warning(f"[MODE_DOCUMENTS] Gagal parse sources_json: {e}. Raw: {json_str}")
-                                
-                                if parsing_success and filtered_sources:
-                                    seen_final = set()
-                                    unique_final = []
-                                    for f_src in filtered_sources:
-                                        f_key = str(f_src.get("id") or f_src.get("filename") or f_src.get("title") or "")
-                                        if f_key and f_key not in seen_final:
-                                            seen_final.add(f_key)
-                                            unique_final.append(f_src)
-                                    final_sources = unique_final
-                                else:
-                                    final_sources = []
-
-
-                                # ── Enrich final_sources dengan total_pages ────────────────
-                                # Hitung HANYA untuk dokumen yang benar-benar digunakan Gemma
-                                # (bukan semua kandidat RAG). Jalankan paralel via executor.
-                                if final_sources:
-                                    def _count_pages_sync(abs_path: str) -> int:
-                                        try:
-                                            import fitz
-                                            doc = fitz.open(abs_path)
-                                            n = len(doc)
-                                            doc.close()
-                                            return n
-                                        except Exception:
-                                            return 0
-
-                                    _loop = asyncio.get_running_loop()
-                                    _tasks = []
-                                    for _src in final_sources:
-                                        _filename = os.path.basename(_src.get("file_path", "") or "")
-                                        _abs = os.path.join(FILE_PERATURAN_DIR, _filename) if _filename else ""
-                                        if _abs and os.path.exists(_abs):
-                                            _tasks.append(_loop.run_in_executor(None, _count_pages_sync, _abs))
-                                        else:
-                                            async def _zero(): return 0
-                                            _tasks.append(_zero())
-
-                                    _page_results = await asyncio.gather(*_tasks, return_exceptions=True)
-                                    for _src, _n in zip(final_sources, _page_results):
-                                        n_pages = _n if isinstance(_n, int) else 0
-                                        if n_pages > 0:
-                                            _src["total_pages"] = str(n_pages)
-                                        # Pertahankan nilai total_pages sebelumnya (misal dari Brain/PG) jika ada
-                                        elif not _src.get("total_pages"):
-                                            _src["total_pages"] = ""
-                                        
-                                        # Jika total_pages ada, pastikan page_number tidak lagi menampilkan deretan Hal 1, 2, ...
-                                        if _src.get("total_pages"):
-                                            _src["page_number"] = ""
-                                    logger.info(f"[MODE_DOCUMENTS] ✅ total_pages dihitung untuk {len(final_sources)} dokumen terpilih Gemma")
-                                
-                                yield format_sse("", "", False, sources=final_sources, event_type=SSEEventType.SOURCES)
-                                
-                                remainder = intercept_buffer[end_idx + len("</sources_json>"):]
-                                if remainder:
-                                    yield format_sse(remainder, "", False, event_type=SSEEventType.CHUNK)
-                                intercept_buffer = ""
-                        else:
-                            # Jika tidak ada tag <sources_json> di awal, jangan dump raw rag_sources ke FE
-                            if len(intercept_buffer) > 25 and "<sources_json>" not in intercept_buffer:
-                                json_intercepted = True
-                                yield format_sse(intercept_buffer, "", False, event_type=SSEEventType.CHUNK)
-                                intercept_buffer = ""
-                    else:
-                        yield format_sse(chunk_text, "", False, event_type=SSEEventType.CHUNK, eval_count=eval_count, eval_duration=eval_duration)
-                elif eval_count > 0:
-                    yield format_sse("", "", False, event_type=SSEEventType.CHUNK, eval_count=eval_count, eval_duration=eval_duration)
+                yield chunk
 
         except Exception as e:
-            logger.error(f"[MODE_DOCUMENTS] Stream error: {e}")
+            logger.error(f"[MODE_DOCUMENTS] Stream error: {e}", exc_info=True)
             yield format_sse(f"Maaf, terjadi kendala teknis: {str(e)}", "", False, event_type=SSEEventType.CHUNK)
-            
-        # Flush buffer sisa jika stream selesai
-        if intercept_buffer:
-            yield format_sse(intercept_buffer, "", False, event_type=SSEEventType.CHUNK)
 
         logger.info(f"[CALL2_DOCUMENTS] ✅ Finished generation | module={module_name} | needs_history={needs_history} | turns_sent={len(trimmed_messages)}")

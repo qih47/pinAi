@@ -5,23 +5,27 @@ Mendeteksi dan menangani Autonomous Tool-Calling (seperti ```websearch) di tenga
 stream Call 2 secara non-destruktif tanpa mengganggu alur teks reguler.
 """
 
+import os
 import json
 import re
 import asyncio
 import logging
 from typing import AsyncGenerator, List, Dict, Any, Optional
+from datetime import datetime
 from fastapi import Request
 
 from backend.app.core.config import settings
 from backend.app.core.llm_client import stream_ollama_chat
 from backend.app.services.pipeline.sse_validation import format_sse, SSEEventType
-from backend.app.services.web_tools.web_search import perform_web_search, format_search_results_for_llm, sanitize_web_query
-from backend.app.services.web_tools.url_reader import fetch_webpage_content
+from backend.app.services.pipeline.tool_dispatcher import dispatch_agentic_tool, ToolResult
 
 logger = logging.getLogger("CAKRA_AGENTIC_INTERCEPTOR")
 
-_RE_WEBSEARCH_OPEN = re.compile(r"```websearch", re.IGNORECASE)
+_RE_TOOL_OPEN = re.compile(r"```(websearch|docsearch|python_calc|web_search|doc_search|calc|urlfetch|url_fetch|read_url|fetch_url|map_search|map|geocode)", re.IGNORECASE)
 _RE_TRIPLE_BACKTICKS = re.compile(r"```")
+_RE_SOURCES_OPEN = re.compile(r"<\s*sources_json\s*>", re.IGNORECASE)
+_RE_SOURCES_CLOSE = re.compile(r"<\s*/\s*sources_json\s*>", re.IGNORECASE)
+
 
 
 async def execute_in_line_web_search(query: str) -> tuple[Dict[str, Any], str]:
@@ -81,6 +85,173 @@ async def execute_in_line_web_search(query: str) -> tuple[Dict[str, Any], str]:
     return widget_payload, web_context
 
 
+FILE_PERATURAN_DIR = getattr(settings, "FILE_PERATURAN_DIR", "/home/qisthi/pinAi/file_peraturan")
+
+
+async def resolve_and_enrich_sources(json_str: str, rag_sources: Optional[List[Dict[str, Any]]] = None) -> List[Dict[str, Any]]:
+    """
+    Memvalidasi dan merekonsiliasi dokumen referensi dari tag <sources_json>
+    dengan candidate sources di memori atau database MySQL secara non-destruktif.
+    """
+    clean_sources = list(rag_sources or [])
+    filtered_sources = []
+    
+    try:
+        clean_json_str = re.sub(r'```json|```', '', json_str).strip()
+        if not clean_json_str:
+            return []
+        
+        used_docs = json.loads(clean_json_str)
+        if not isinstance(used_docs, list):
+            return []
+
+        # Filter out dokumen dengan alasan negatif
+        valid_used_docs = []
+        for doc in used_docs:
+            if not isinstance(doc, dict):
+                continue
+            alasan = str(doc.get("alasan", "")).lower()
+            if any(neg in alasan for neg in ["tidak digunakan", "tidak relevan", "tidak dipakai", "tidak merujuk"]):
+                continue
+            valid_used_docs.append(doc)
+
+        missing_docs = []
+        for doc in valid_used_docs:
+            doc_id = str(doc.get("id", "")).strip()
+            doc_judul = str(doc.get("judul", "")).strip().lower()
+            found = False
+
+            # 1. Match di memory (clean_sources) via ID, Nomor, atau Judul
+            for src in clean_sources:
+                src_id = str(src.get("id", "")).strip()
+                src_nomor = str(src.get("nomor") or src.get("noper") or "").strip().lower()
+                src_title = str(src.get("title") or src.get("judul") or src.get("raw_judul") or "").strip().lower()
+
+                if doc_id and (doc_id == src_id):
+                    if src not in filtered_sources:
+                        filtered_sources.append(src)
+                    found = True
+                    break
+
+                if doc_id and src_nomor and (doc_id.lower() in src_nomor or src_nomor in doc_id.lower()):
+                    if src not in filtered_sources:
+                        filtered_sources.append(src)
+                    found = True
+                    break
+
+                if doc_judul and src_title and len(doc_judul) > 5 and (doc_judul in src_title or src_title in doc_judul):
+                    if src not in filtered_sources:
+                        filtered_sources.append(src)
+                    found = True
+                    break
+
+            if not found and (doc_id or doc_judul):
+                missing_docs.append(doc)
+
+        # 2. Database lookup fallback jika dokumen tidak ada di memory RAG awal
+        if missing_docs:
+            try:
+                from backend.app.core.database import get_peraturan_db
+                from backend.app.services.peraturan_service import _find_valid_pdf_file
+
+                async with get_peraturan_db() as conn_my:
+                    async with conn_my.cursor() as cur:
+                        for mdoc in missing_docs:
+                            m_id = str(mdoc.get("id", "")).strip()
+                            m_judul = str(mdoc.get("judul", "")).strip()
+                            row = None
+
+                            if m_id.isdigit():
+                                sql = """
+                                    SELECT b.id_berita, b.judul, b.gambar, b.gambar2, b.gambar3, k.nama_kategori, b.noper
+                                    FROM berita b
+                                    LEFT JOIN kategori k ON b.id_kategori = k.id_kategori
+                                    WHERE b.id_berita = %s
+                                """
+                                await cur.execute(sql, (int(m_id),))
+                                row = await cur.fetchone()
+
+                            if not row and m_id:
+                                sql = """
+                                    SELECT b.id_berita, b.judul, b.gambar, b.gambar2, b.gambar3, k.nama_kategori, b.noper
+                                    FROM berita b
+                                    LEFT JOIN kategori k ON b.id_kategori = k.id_kategori
+                                    WHERE b.noper LIKE %s OR b.judul LIKE %s
+                                    ORDER BY b.id_berita DESC
+                                    LIMIT 1
+                                """
+                                noper_like = f"%{m_id}%"
+                                judul_like = f"%{m_judul}%" if m_judul else noper_like
+                                await cur.execute(sql, (noper_like, judul_like))
+                                row = await cur.fetchone()
+
+                            if row:
+                                id_berita, db_judul, gambar, gambar2, gambar3, nama_kategori, noper = row
+                                valid_file = _find_valid_pdf_file(gambar, gambar2, gambar3)
+                                filename = os.path.basename(valid_file) if valid_file else None
+                                filtered_sources.append({
+                                    "id": str(id_berita),
+                                    "title": db_judul,
+                                    "document_title": db_judul,
+                                    "filename": filename,
+                                    "file_path": f"file_peraturan/{filename}" if filename else None,
+                                    "jenis": nama_kategori or "Regulasi",
+                                    "nomor": noper or "N/A",
+                                    "score_label": "AI_MEMORY_RECOVERED",
+                                    "score": 1.0,
+                                })
+            except Exception as e_db:
+                logger.warning(f"[AGENTIC_INTERCEPTOR] DB lookup fallback error: {e_db}")
+
+        # 3. Deduplikasi final_sources
+        seen_final = set()
+        unique_final = []
+        for f_src in filtered_sources:
+            f_key = str(f_src.get("id") or f_src.get("filename") or f_src.get("title") or "")
+            if f_key and f_key not in seen_final:
+                seen_final.add(f_key)
+                unique_final.append(f_src)
+        final_sources = unique_final
+
+        # 4. Hitung total_pages untuk dokumen yang terpilih
+        if final_sources:
+            def _count_pages_sync(abs_path: str) -> int:
+                try:
+                    import fitz
+                    doc = fitz.open(abs_path)
+                    n = len(doc)
+                    doc.close()
+                    return n
+                except Exception:
+                    return 0
+
+            _loop = asyncio.get_running_loop()
+            _tasks = []
+            for _src in final_sources:
+                _filename = os.path.basename(_src.get("file_path", "") or "")
+                _abs = os.path.join(FILE_PERATURAN_DIR, _filename) if _filename else ""
+                if _abs and os.path.exists(_abs):
+                    _tasks.append(_loop.run_in_executor(None, _count_pages_sync, _abs))
+                else:
+                    async def _zero(): return 0
+                    _tasks.append(_zero())
+
+            _page_results = await asyncio.gather(*_tasks, return_exceptions=True)
+            for _src, _n in zip(final_sources, _page_results):
+                n_pages = _n if isinstance(_n, int) else 0
+                if n_pages > 0:
+                    _src["total_pages"] = str(n_pages)
+                    _src["page_number"] = ""
+                elif not _src.get("total_pages"):
+                    _src["total_pages"] = ""
+
+        return final_sources
+
+    except Exception as e:
+        logger.warning(f"[AGENTIC_INTERCEPTOR] Error resolving sources_json: {e}")
+        return []
+
+
 async def agentic_stream_wrapper(
     model_name: str,
     messages: List[Dict[str, str]],
@@ -90,16 +261,20 @@ async def agentic_stream_wrapper(
     is_thinking: bool = False,
     employee_name: str = "Pegawai",
     session_uuid: Optional[str] = None,
-    max_tool_loops: int = 1,
+    rag_sources: Optional[List[Dict[str, Any]]] = None,
+    max_tool_loops: int = 2,
+    current_user_npp: Optional[str] = None,
     **kwargs,
 ) -> AsyncGenerator[str, None]:
     """
-    Membungkus stream_ollama_chat dengan ReAct interceptor.
-    Jika tidak ada tool call, stream dialirkan langsung tanpa delay (zero overhead).
-    Jika model mengeluarkan ```websearch, tool dieksekusi dan jawabannya dilanjutkan di bubble yang sama.
+    Membungkus stream_ollama_chat dengan ReAct interceptor universal (MCP-Ready).
+    Mendukung in-stream tool execution (websearch, docsearch, python_calc) dan
+    sources_json filtering secara terpadu dan non-destruktif.
     """
     accumulated_full_text = ""
     current_messages = list(messages)
+    current_rag_sources = list(rag_sources) if rag_sources is not None else None
+    sources_emitted = False
     loop_count = 0
 
     while loop_count <= max_tool_loops:
@@ -119,8 +294,10 @@ async def agentic_stream_wrapper(
         tool_tag = None
         tool_buffer = ""
         tool_executed = False
-        tool_query = None
         pre_tool_text = ""
+
+        is_capturing_sources = False
+        sources_buffer = ""
 
         try:
             async for chunk_line in stream_gen:
@@ -145,113 +322,240 @@ async def agentic_stream_wrapper(
                     yield format_sse("", native_thought, False, event_type=SSEEventType.THINKING)
 
                 if not chunk_text:
-                    if (eval_count > 0 or prompt_eval_count > 0 or is_truncated) and not is_capturing_tool:
+                    if (eval_count > 0 or prompt_eval_count > 0 or is_truncated) and not is_capturing_tool and not is_capturing_sources:
                         yield format_sse("", "", False, event_type=SSEEventType.CHUNK, eval_count=eval_count, eval_duration=eval_duration, prompt_eval_count=prompt_eval_count, is_truncated=is_truncated)
                     continue
 
-                # 2. Track text stream
+                # 2. Tangkap tag <sources_json> jika belum pernah diproses
+                if not sources_emitted:
+                    if not is_capturing_sources:
+                        combined = buffer + chunk_text
+                        open_m = _RE_SOURCES_OPEN.search(combined)
+                        if open_m:
+                            s_start = open_m.start()
+                            s_end = open_m.end()
+                            # Flush teks sebelum <sources_json> jika ada
+                            if s_start > 0:
+                                pre_sources = combined[:s_start]
+                                yield format_sse(pre_sources, "", False, event_type=SSEEventType.CHUNK)
+                                accumulated_full_text += pre_sources
+                                pre_tool_text += pre_sources
+                            
+                            is_capturing_sources = True
+                            sources_buffer = combined[s_end:]
+                            buffer = ""
+                            
+                            # Cek langsung apakah closing tag juga sudah ada dalam sources_buffer
+                            close_m = _RE_SOURCES_CLOSE.search(sources_buffer)
+                            if close_m:
+                                sources_json_str = sources_buffer[:close_m.start()].strip()
+                                remainder = sources_buffer[close_m.end():]
+                                
+                                is_capturing_sources = False
+                                sources_emitted = True
+                                sources_buffer = ""
+                                
+                                final_sources = await resolve_and_enrich_sources(sources_json_str, current_rag_sources)
+                                logger.info(f"[AGENTIC_INTERCEPTOR] 📚 Emitting {len(final_sources)} resolved sources to client")
+                                yield format_sse("", "", False, sources=final_sources, event_type=SSEEventType.SOURCES)
+                                
+                                chunk_text = remainder
+                                if not chunk_text:
+                                    continue
+                            else:
+                                continue
+                    else:
+                        sources_buffer += chunk_text
+                        close_m = _RE_SOURCES_CLOSE.search(sources_buffer)
+                        if close_m:
+                            sources_json_str = sources_buffer[:close_m.start()].strip()
+                            remainder = sources_buffer[close_m.end():]
+                            
+                            is_capturing_sources = False
+                            sources_emitted = True
+                            sources_buffer = ""
+                            
+                            # Parse dan emit SSEEventType.SOURCES
+                            final_sources = await resolve_and_enrich_sources(sources_json_str, current_rag_sources)
+                            logger.info(f"[AGENTIC_INTERCEPTOR] 📚 Emitting {len(final_sources)} resolved sources to client")
+                            yield format_sse("", "", False, sources=final_sources, event_type=SSEEventType.SOURCES)
+                            
+                            # Lanjutkan pemrosesan sisa teks setelah tag penutup
+                            chunk_text = remainder
+                            if not chunk_text:
+                                continue
+                        else:
+                            continue
+
+                # 3. Track text stream & deteksi tool calling
                 if not is_capturing_tool:
                     buffer += chunk_text
                     
-                    # Deteksi pembuka blok ```websearch
-                    open_match = _RE_WEBSEARCH_OPEN.search(buffer)
-                    if open_match:
-                        # Teks sebelum blok ```websearch dialirkan langsung ke user
-                        preamble = buffer[:open_match.start()]
-                        if preamble:
-                            yield format_sse(preamble, "", False, event_type=SSEEventType.CHUNK)
-                            accumulated_full_text += preamble
-                            pre_tool_text += preamble
+                    # 🛡️ BUFFER HOLDING: Tahan potongan tag <sources_json> agar token pembuka tidak bocor ke klien
+                    if not sources_emitted:
+                        last_lt = buffer.rfind('<')
+                        if last_lt != -1:
+                            tail_candidate = buffer[last_lt:].lower()
+                            # Jika tail_candidate merupakan awalan dari "<sources_json>" dan belum selesai ditutup '>'
+                            if "<sources_json>".startswith(tail_candidate) and ">" not in tail_candidate:
+                                if last_lt > 0:
+                                    safe_to_flush = buffer[:last_lt]
+                                    buffer = buffer[last_lt:]
+                                    yield format_sse(safe_to_flush, "", False, event_type=SSEEventType.CHUNK)
+                                    accumulated_full_text += safe_to_flush
+                                    pre_tool_text += safe_to_flush
+                                continue
 
-                        is_capturing_tool = True
-                        tool_tag = "websearch"
-                        # Sisakan karakter setelah ```websearch
-                        tool_buffer = buffer[open_match.end():]
-                        buffer = ""
-                        logger.info("[AGENTIC_TOOL] 🎯 Intercepted ```websearch open tag during stream!")
-                    else:
-                        last_bt = buffer.rfind('`')
-                        if last_bt != -1:
-                            potential = buffer[last_bt:]
-                            if len(potential) > 20:
-                                yield format_sse(buffer, "", False, event_type=SSEEventType.CHUNK)
-                                accumulated_full_text += buffer
-                                pre_tool_text += buffer
-                                buffer = ""
-                            elif last_bt > 0:
-                                safe_to_flush = buffer[:last_bt]
-                                buffer = buffer[last_bt:]
+                    bt_idx = buffer.find("```")
+                    if bt_idx != -1:
+                        tail = buffer[bt_idx:]
+                        open_match = _RE_TOOL_OPEN.search(tail)
+                        if open_match:
+                            preamble = buffer[:bt_idx + open_match.start()]
+                            if preamble:
+                                yield format_sse(preamble, "", False, event_type=SSEEventType.CHUNK)
+                                accumulated_full_text += preamble
+                                pre_tool_text += preamble
+
+                            is_capturing_tool = True
+                            tool_tag = open_match.group(1).lower()
+                            tool_buffer = tail[open_match.end():]
+                            buffer = ""
+                            logger.info(f"[AGENTIC_TOOL] 🎯 Intercepted ```{tool_tag} open tag during stream!")
+                        elif len(tail) < 30 and "\n" not in tail[3:]:
+                            # Masih mungkin bagian dari tag tool (misal: ```doc...), tahan tail di buffer
+                            if bt_idx > 0:
+                                safe_to_flush = buffer[:bt_idx]
+                                buffer = tail
                                 yield format_sse(safe_to_flush, "", False, event_type=SSEEventType.CHUNK)
                                 accumulated_full_text += safe_to_flush
                                 pre_tool_text += safe_to_flush
+                            continue
                         else:
-                            # Tidak ada backtick sama sekali: langsung stream tanpa ditahan!
+                            # Bukan tool agentic kita (misal: ```sql atau ```html umum), flush normal
                             yield format_sse(buffer, "", False, event_type=SSEEventType.CHUNK)
                             accumulated_full_text += buffer
                             pre_tool_text += buffer
                             buffer = ""
+                    else:
+                        # Tidak ada ```. Cek apakah ada 1 atau 2 backtick menggantung di ujung akhir buffer
+                        if buffer.endswith("``"):
+                            safe_to_flush = buffer[:-2]
+                            buffer = "``"
+                            if safe_to_flush:
+                                yield format_sse(safe_to_flush, "", False, event_type=SSEEventType.CHUNK)
+                                accumulated_full_text += safe_to_flush
+                                pre_tool_text += safe_to_flush
+                        elif buffer.endswith("`"):
+                            safe_to_flush = buffer[:-1]
+                            buffer = "`"
+                            if safe_to_flush:
+                                yield format_sse(safe_to_flush, "", False, event_type=SSEEventType.CHUNK)
+                                accumulated_full_text += safe_to_flush
+                                pre_tool_text += safe_to_flush
+                        else:
+                            yield format_sse(buffer, "", False, event_type=SSEEventType.CHUNK)
+                            accumulated_full_text += buffer
+                            pre_tool_text += buffer
+                            buffer = ""
+
                 else:
-                    # Sedang menangkap isi JSON di dalam blok ```websearch
+                    # Sedang menangkap payload di dalam blok tool
                     tool_buffer += chunk_text
                     close_match = _RE_TRIPLE_BACKTICKS.search(tool_buffer)
                     if close_match:
-                        # Blok tool selesai ditutup!
-                        raw_json_str = tool_buffer[:close_match.start()].strip()
-                        remaining_text = tool_buffer[close_match.end():]
+                        raw_payload_str = tool_buffer[:close_match.start()].strip()
+                        tool_executed = True
+                        is_capturing_tool = False
                         
-                        logger.info(f"[AGENTIC_TOOL] Extracted tool JSON payload: {raw_json_str}")
-                        try:
-                            parsed_payload = json.loads(raw_json_str)
-                            tool_query = parsed_payload.get("query") or parsed_payload.get("q")
-                        except Exception as parse_err:
-                            logger.warning(f"[AGENTIC_TOOL] JSON parse failed, trying regex: {parse_err}")
-                            m_q = re.search(r'["\']query["\']\s*:\s*["\']([^"\']+)["\']', raw_json_str)
-                            tool_query = m_q.group(1) if m_q else raw_json_str.replace("{", "").replace("}", "").strip()
+                        logger.info(f"[AGENTIC_TOOL] Executing tool '{tool_tag}' with payload: {raw_payload_str[:120]}...")
+                        
+                        yield format_sse(status=f"🛠️ Menjalankan alat: {tool_tag}...", status_key="AGENTIC_TOOL_START", event_type=SSEEventType.STATUS)
 
-                        if tool_query:
-                            tool_executed = True
-                            is_capturing_tool = False
-                            
-                            # Emit live status SSE
-                            yield format_sse(status="🌐 Mencari di web", status_key="WEB_SEARCH_INIT", event_type=SSEEventType.STATUS)
+                        # Eksekusi via Universal Tool Dispatcher
+                        tool_result = await dispatch_agentic_tool(tool_tag, raw_payload_str)
+                        
+                        # Jika tool docsearch menghasilkan dokumen baru, catat ke current_rag_sources
+                        if tool_result.tool_name == "docsearch" and current_rag_sources is not None:
+                            for d in tool_result.display_data.get("documents", []):
+                                d_id = str(d.get("doc_id") or d.get("id") or "")
+                                if d_id and not any(str(s.get("id", "")) == d_id for s in current_rag_sources):
+                                    current_rag_sources.append({
+                                        "id": d_id,
+                                        "title": d.get("title", ""),
+                                        "document_title": d.get("title", ""),
+                                        "content": d.get("snippet", ""),
+                                        "score": d.get("score", 1.0)
+                                    })
 
-                            # Eksekusi Web Search
-                            widget_payload, web_context = await execute_in_line_web_search(tool_query)
-                            
-                            # Kirim enriched websearch markdown block ke UI
-                            enriched_block = f"\n```websearch\n{json.dumps(widget_payload)}\n```\n\n"
-                            yield format_sse(enriched_block, "", False, event_type=SSEEventType.CHUNK)
-                            accumulated_full_text += enriched_block
+                        # Jika tool urlfetch sukses dan ada session_uuid, simpan ke session memory agar multi-turn aware
+                        if tool_result.tool_name == "urlfetch" and session_uuid and tool_result.status == "success":
+                            try:
+                                from backend.app.services.chat.chat_history_service import chat_history_service
+                                clean_sample = " ".join(tool_result.llm_context.replace("=== KONTEN DARI TAUTAN WEB ===", "").split())[:180]
+                                u_nodes = tool_result.display_data.get("nodes", [])
+                                u_list = [n.get("url") for n in u_nodes if n.get("url")]
+                                tgt_title = u_list[0] if u_list else "Tautan Web"
+                                asyncio.create_task(chat_history_service.save_document_chunk(
+                                    session_uuid=session_uuid,
+                                    npp=current_user_npp or "Pegawai",
+                                    content=tool_result.llm_context[:30000],
+                                    file_id=None,
+                                    chunk_metadata={
+                                        "type": "web",
+                                        "source": "url_read",
+                                        "title": tgt_title,
+                                        "urls": u_list,
+                                        "summary": f"Konten web {tgt_title}: {clean_sample}...",
+                                        "fetched_at": datetime.now().isoformat()
+                                    }
+                                ))
+                            except Exception as e_mem:
+                                logger.warning(f"[AGENTIC_INTERCEPTOR] Gagal menyimpan chunk urlfetch ke memori sesi: {e_mem}")
 
-                            # Update status
-                            yield format_sse(status="💡 Menyusun jawaban", status_key="DRAFTING_RESPONSE", event_type=SSEEventType.STATUS)
+                        # Kirim enriched JSON block ke UI (akan dirender oleh Frontend)
+                        enriched_block = f"\n```{tool_result.tool_name}\n{json.dumps(tool_result.display_data)}\n```\n\n"
+                        yield format_sse(enriched_block, "", False, event_type=SSEEventType.CHUNK)
+                        accumulated_full_text += enriched_block
 
-                            # Siapkan Turn 2 Prompt untuk melanjutkan jawaban
-                            continuation_instruction = (
-                                f"\n\n[SISTEM: HASIL PENCARIAN WEB UNTUK '{tool_query}']:\n"
-                                f"{web_context}\n\n"
-                                f"[INSTRUKSI LANJUTAN]:\n"
-                                f"Kamu telah mendapatkan data pencarian web di atas. Lanjutkan jawabanmu SEKARANG secara natural dari teks pembuka yang telah kamu katakan sebelumnya.\n"
-                                f"Sajikan data cuaca/informasi tersebut secara detail, lengkap dengan tabel (```datagrid) atau grafik tren (```recharts) jika relevan. JANGAN ulangi sapaan awal."
-                            )
+                        yield format_sse(status="💡 Menyusun analisis...", status_key="DRAFTING_RESPONSE", event_type=SSEEventType.STATUS)
 
-                            current_messages.append({"role": "assistant", "content": pre_tool_text.strip()})
-                            current_messages.append({"role": "user", "content": continuation_instruction})
-                            
-                            loop_count += 1
-                            break # Break dari inner stream generator untuk memulai Turn 2
-                        else:
-                            # Jika tidak ada query valid, kembalikan buffer sebagai teks
-                            fallback_text = f"```websearch\n{raw_json_str}\n```"
-                            yield format_sse(fallback_text, "", False, event_type=SSEEventType.CHUNK)
-                            accumulated_full_text += fallback_text
-                            is_capturing_tool = False
+                        safe_context = tool_result.llm_context[:6500] if len(tool_result.llm_context) > 6500 else tool_result.llm_context
+                        continuation_instruction = (
+                            f"\n\n[SISTEM: HASIL EKSEKUSI ALAT '{tool_result.tool_name.upper()}']:\n"
+                            f"{safe_context}\n\n"
+                            f"[INSTRUKSI LANJUTAN]:\n"
+                            f"Kamu telah menerima hasil eksekusi alat di atas. Lanjutkan jawabanmu SEKARANG secara natural dari teks pembuka yang telah kamu katakan sebelumnya.\n"
+                            f"Sajikan jawaban secara akurat, lengkap, dan terstruktur dengan tetap konsisten mematuhi pengaturan kata ganti & gaya bahasa (Saya-Anda / Gue-Lo / Aku-Kamu) aktifmu. JANGAN mengulangi sapaan awal."
+                        )
+                        if loop_count + 1 >= max_tool_loops:
+                            continuation_instruction += "\n(Batas panggilan alat tercapai: Berikan simpulan akhir tuntas sekarang tanpa memanggil alat lagi)."
 
-            # Flush sisa buffer normal jika tool tidak dieksekusi
+                        current_messages.append({"role": "assistant", "content": pre_tool_text.strip()})
+                        current_messages.append({"role": "user", "content": continuation_instruction})
+                        
+                        loop_count += 1
+                        break # Break dari inner stream untuk memulai loop berikutnya
+
+            if is_capturing_sources and sources_buffer:
+                is_capturing_sources = False
+                sources_emitted = True
+                try:
+                    final_sources = await resolve_and_enrich_sources(sources_buffer.strip(), current_rag_sources)
+                    if final_sources:
+                        logger.info(f"[AGENTIC_INTERCEPTOR] 📚 Emitting {len(final_sources)} sources at stream end")
+                        yield format_sse("", "", False, sources=final_sources, event_type=SSEEventType.SOURCES)
+                except Exception as e:
+                    logger.warning(f"[AGENTIC_INTERCEPTOR] Incomplete sources_buffer parse at stream end: {e}")
+
             if not tool_executed and buffer:
-                yield format_sse(buffer, "", False, event_type=SSEEventType.CHUNK)
-                accumulated_full_text += buffer
-                buffer = ""
+                # Bersihkan jika buffer menyisakan potongan tag <sources_json>
+                if not sources_emitted and buffer.strip().startswith("<") and "<sources_json>".startswith(buffer.strip().lower()):
+                    buffer = ""
+                if buffer:
+                    yield format_sse(buffer, "", False, event_type=SSEEventType.CHUNK)
+                    accumulated_full_text += buffer
+                    buffer = ""
 
         except Exception as e:
             logger.error(f"[AGENTIC_TOOL] Error in agentic stream loop: {e}", exc_info=True)
@@ -259,5 +563,4 @@ async def agentic_stream_wrapper(
             return
 
         if not tool_executed:
-            # Tidak ada tool yang dipanggil atau loop sudah selesai normal
             break

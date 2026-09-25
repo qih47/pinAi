@@ -96,26 +96,37 @@ def is_incidental_url(url: str, full_text: str = "") -> bool:
 def extract_urls_from_text(text: str) -> List[str]:
     """
     Ekstrak semua URL yang ada di dalam teks, menyaring URL insidental dari log error/koding.
+    Mendukung skema eksplisit (http/https) untuk semua TLD (termasuk .co, .io, .ai, .dev, dll)
+    serta bare domain tanpa protokol.
     """
     if not text:
         return []
 
+    # 1. Skema eksplisit (http/https) dengan TLD valid (2-24 karakter)
+    # 2. Bare domain (dengan/tanpa www) untuk TLD umum
     url_pattern = re.compile(
-        r'(?:https?://)?(?:www\.)?[-a-zA-Z0-9@:%_\+~#=]{1,256}\s*\.\s*(?:com|co\.id|id|org|net|gov|edu|mil)\b(?:[-a-zA-Z0-9()@:%_\+.~#?&//=]*)',
+        r'(?:https?://[a-zA-Z0-9][-a-zA-Z0-9@:%._\+~#=]{0,256}\.[a-zA-Z0-9()]{2,24}\b(?:[-a-zA-Z0-9()@:%_\+.~#?&//=]*))|'
+        r'(?:(?:www\.)?[-a-zA-Z0-9@:%_\+~#=]{1,256}\s*\.\s*(?:com|co\.id|id|go\.id|ac\.id|net|org|edu|gov|mil|io|ai|co|dev|app|xyz|tech|site|online|me|cc|tv|gg|sh|to)\b(?:[-a-zA-Z0-9()@:%_\+.~#?&//=]*))',
         re.IGNORECASE
     )
 
     matches = url_pattern.findall(text)
 
     valid_urls = []
+    seen = set()
     for match in matches:
-        clean_match = match.replace(' ', '')
+        clean_match = match.replace(' ', '').rstrip('.,;!?')
+        # Tangani trailing closing parenthesis jika URL berada di dalam kurung kalimat
+        if clean_match.endswith(')') and clean_match.count('(') < clean_match.count(')'):
+            clean_match = clean_match.rstrip(')')
+
         if not clean_match.startswith('http://') and not clean_match.startswith('https://'):
             url_to_check = f'https://{clean_match}'
         else:
             url_to_check = clean_match
 
-        if not is_incidental_url(url_to_check, text):
+        if url_to_check not in seen and not is_incidental_url(url_to_check, text):
+            seen.add(url_to_check)
             valid_urls.append(url_to_check)
 
     return valid_urls

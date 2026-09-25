@@ -263,34 +263,25 @@ async def handle_web_search(
     
     yield format_sse(status="💡 Menyusun ringkasan", status_key="DRAFTING_SUMMARY", event_type=SSEEventType.STATUS)
 
-    # 5. Mulai streaming jawaban dari LLM dengan num_ctx=16384 dan num_predict=-1 (tak terbatas)
-    response_stream = stream_ollama_chat(
-        messages=modified_messages,
-        model_name=getattr(settings, "MODEL_PERSONA", "gemma4:31b"),
-        is_thinking=is_thinking,
-        temperature=0.4,
-        num_ctx=16384,
-        num_predict=-1,
-        request=request
-    )
-    
-    async for chunk_line in response_stream:
-        try:
-            chunk = json.loads(chunk_line.strip())
-        except json.JSONDecodeError:
-            continue
+    # 5. Mulai streaming jawaban dari LLM via Agentic Interceptor (num_ctx=16384, num_predict=-1)
+    try:
+        from backend.app.services.pipeline.agentic_interceptor import agentic_stream_wrapper
+        async for chunk in agentic_stream_wrapper(
+            model_name=getattr(settings, "MODEL_PERSONA", "gemma4:31b"),
+            messages=modified_messages,
+            request=request,
+            is_thinking=is_thinking,
+            employee_name=employee_name,
+            session_uuid=precheck.get("session_uuid") if precheck else None,
+            temperature=0.4,
+            num_ctx=16384,
+            num_predict=-1,
+            max_tool_loops=2,
+        ):
+            yield chunk
+    except Exception as e:
+        logger.error(f"[MODE_WEB_SEARCH] Stream error: {e}", exc_info=True)
+        yield format_sse(f"Maaf, terjadi kendala teknis saat menyusun ringkasan: {str(e)}", "", False, event_type=SSEEventType.CHUNK)
 
-        event_type = chunk.get("event_type", "chunk")
-        if event_type == "chunk":
-            char = chunk.get("chunk", "")
-            thought = chunk.get("thinking", "")
-            
-            if thought:
-                yield format_sse(thinking=thought, event_type=SSEEventType.THINKING)
-            elif char:
-                yield format_sse(chunk=char, event_type=SSEEventType.CHUNK)
-        elif event_type == "status":
-            yield format_sse(status=chunk.get("status", ""), event_type=SSEEventType.STATUS)
-    
     logger.info(f"[CALL2_WEB_SEARCH] ✅ Finished generation | needs_history={precheck.get('needs_history', False)} | turns_sent={len(modified_messages)-1}")
     yield format_sse(status="Selesai", event_type=SSEEventType.STATUS)

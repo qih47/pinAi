@@ -119,6 +119,7 @@ class NightlyTrainingOrchestrator:
 
         return {
             "is_running": self.is_running,
+            "stop_requested": self.stop_requested,
             "started_at": self.started_at,
             "current_doc": {
                 "id": self.current_doc_id,
@@ -185,22 +186,27 @@ class NightlyTrainingOrchestrator:
 
     def is_approaching_hard_stop(self, current_dt: Optional[datetime] = None) -> bool:
         """
-        Mengecek apakah sudah lewat 07:50 mendekati 08:00 WIB.
+        Mengecek apakah sudah lewat 07:50 atau sudah >= 08:00 WIB pada hari kerja.
         Catatan: Pada hari Sabtu & Minggu (Weekend Marathon), hard stop dinonaktifkan
         sepenuhnya karena training berjalan 24 jam non-stop tanpa batasan jam.
-        Hard stop hanya berlaku pada pagi hari kerja (Senin pagi s/d Jumat pagi).
+        Hard stop hanya berlaku pada hari kerja (Senin pagi s/d Jumat sore sebelum jam 17:00).
         """
         if current_dt is None:
             current_dt = datetime.now()
 
         weekday = current_dt.weekday()
-        # Nonaktifkan hard stop di hari Sabtu dan Minggu
+        # Nonaktifkan hard stop di hari Sabtu dan Minggu (Weekend Marathon 24 jam)
         if weekday in (5, 6):
             return False
 
         current_time = current_dt.time()
         cutoff_margin = dtime(7, 50)
-        if cutoff_margin <= current_time < self.hard_stop_time:
+        # Pada hari Jumat: jam marathon weekend dimulai pukul 17:00
+        # Pada hari kerja lainnya: jam training malam dimulai pukul 18:00
+        daytime_end = dtime(17, 0) if weekday == 4 else self.start_time
+
+        # Jika sudah >= 07:50 WIB dan masih dalam jam kerja siang (sebelum training malam dimulai):
+        if cutoff_margin <= current_time < daytime_end:
             return True
         return False
 
@@ -584,8 +590,16 @@ class NightlyTrainingOrchestrator:
                         logger.info("⏰ [SCHEDULE] Jendela training berakhir. Sistem standby hingga jadwal berikutnya.")
                         break
 
+                    if self.is_approaching_hard_stop():
+                        self.latest_log = "Hard stop 08:00 WIB tercapai. VRAM dibebaskan untuk jam operasional."
+                        logger.warning("🚨 [HARD_STOP_0800] Batas mutlak 08:00 WIB tercapai. Menghentikan antrean training!")
+                        break
+
                     try:
                         success = await self.process_single_document(doc, force_run=force_run, page_limit=page_limit)
+                        if self.is_approaching_hard_stop():
+                            logger.info("⏰ [SCHEDULE] Hard stop tercapai setelah dokumen selesai. Menghentikan antrean.")
+                            break
                         if success:
                             docs_processed += 1
                             batch_processed_in_round += 1
@@ -676,6 +690,7 @@ async def get_nightly_dashboard_status() -> Dict[str, Any]:
     if _last_dash_status_cache is not None and (now - _last_dash_status_time < 3.0):
         cached = dict(_last_dash_status_cache)
         cached["is_running"] = orchestrator.is_running
+        cached["stop_requested"] = orchestrator.stop_requested
         cached["started_at"] = orchestrator.started_at
         cached["latest_log"] = orchestrator.latest_log
         cached["workers"] = dict(orchestrator.workers)
@@ -728,6 +743,7 @@ async def get_nightly_dashboard_status() -> Dict[str, Any]:
 
     result = {
         "is_running": orchestrator.is_running,
+        "stop_requested": orchestrator.stop_requested,
         "started_at": orchestrator.started_at,
         "current_doc": {
             "id": orchestrator.current_doc_id,

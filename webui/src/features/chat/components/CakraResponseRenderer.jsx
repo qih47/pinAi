@@ -25,6 +25,7 @@ const LazyUrlFetchTimelineWidget = lazy(() => import('./UrlFetchTimelineWidget')
 const LazyDocWriterWidget = lazy(() => import('./DocWriterChatWidget'));
 const LazySlideDeckViewer = lazy(() => import('./SlideDeckViewer'));
 const LazyDocAuditContinueWidget = lazy(() => import('./DocAuditContinueWidget'));
+const LazyAgenticProcessCard = lazy(() => import('./AgenticProcessCard'));
 
 const remarkPluginsList = [remarkGfm, remarkMath];
 const rehypePluginsList = [rehypeKatex];
@@ -47,6 +48,19 @@ const linkifyRawDomains = (text) => {
                 return `[${cleanMatch}](${href})${suffix}`;
             }
         );
+    }).join('');
+};
+
+// 💵 ESCAPE CURRENCY DOLLARS: Cegah simbol mata uang ($5, $35, $1.400) keliru dianggap delimiter LaTeX oleh remark-math / KaTeX
+export const escapeCurrencyDollars = (text) => {
+    if (!text || typeof text !== 'string') return text;
+    // Lindungi blok kode ```...```, inline code `...`, dan blok math display $$...$$
+    const parts = text.split(/(```[\s\S]*?(?:```|$)|`[^`\n]+`|\$\$[\s\S]*?\$\$)/g);
+    return parts.map((part, idx) => {
+        if (idx % 2 === 1) return part; // Jangan ubah isi code block atau math display $$...$$
+        // Ubah $ yang diikuti angka (misal: $5 -> \$5, $35 -> \$35, $1.400 -> \$1.400, $ 50 -> \$ 50)
+        // Dengan di-escape (\$), remark-math tidak akan menjadikannya delimiter math, dan ReactMarkdown akan merendernya sebagai $ asli
+        return part.replace(/(?<!\\)\$\s*(?=\d)/g, '\\$');
     }).join('');
 };
 
@@ -156,6 +170,12 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
         const thinking = thinkingContent || "";
         let final = rawContent || "";
 
+        // 🛡️ Bersihkan tag <sources_json>...</sources_json> agar tidak pernah tampil di teks obrolan
+        final = final.replace(/<\s*sources_json\s*>[\s\S]*?<\/\s*sources_json\s*>/gi, '');
+        // Tangani jika sedang streaming dan tag penutup belum tiba
+        final = final.replace(/<\s*sources_json\s*>[\s\S]*$/gi, '');
+        final = final.replace(/<\s*\/?\s*sources_json\s*>/gi, '');
+
         // Samarkan kata 'mermaid' menjadi 'Cakra AI Diagram' agar user tidak bingung,
         // tapi JANGAN ubah ```mermaid agar engine render tetap jalan
         final = final.replace(/\bmermaid\b/gi, (match, offset, string) => {
@@ -245,6 +265,9 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
 
         // 🌐 Otomatis linkify domain mentah agar selalu bisa diklik sebagai tautan
         final = linkifyRawDomains(final);
+
+        // 💵 Cegah simbol mata uang ($5, $35, $50, $1.400) keliru terparse sebagai KaTeX math
+        final = escapeCurrencyDollars(final);
 
         // 🧹 Bersihkan titik terisolasi yang berdiri sendiri di baris baru setelah sitasi / list (gunakan [ \t] agar tidak memakan newline)
         final = final.replace(/\n[ \t]*\.[ \t]*(?=\n|$)/g, '\n');
@@ -577,7 +600,48 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
                 let hasStartedResponding = false;
                 if (rawContent && rawContent.includes('```websearch')) {
                     const wsIdx = rawContent.indexOf('```websearch');
-                    const afterOpen = rawContent.substring(wsIdx + 12);
+                    const afterWs = rawContent.substring(wsIdx + 12);
+                    const closeFenceIdx = afterWs.indexOf('```');
+                    if (closeFenceIdx !== -1) {
+                        const afterClose = afterWs.substring(closeFenceIdx + 3).trim();
+                        hasStartedResponding = afterClose.length > 0;
+                    }
+                }
+
+                return (
+                    <Suspense fallback={<div className="animate-pulse p-4 border rounded-xl text-xs text-gray-400 font-medium my-2">Memuat penelusuran web...</div>}>
+                        <LazyWebSearchWidget 
+                            searchData={searchData} 
+                            isStreaming={isStreaming} 
+                            hasStartedResponding={hasStartedResponding} 
+                            darkMode={darkMode} 
+                            language={language} 
+                        />
+                    </Suspense>
+                );
+            }
+
+            if (!inline && match && (match[1] === 'docsearch' || match[1] === 'python_calc')) {
+                let toolData = null;
+                try {
+                    toolData = JSON.parse(cleanCode);
+                } catch (e) {
+                    try {
+                        const firstBrace = cleanCode.indexOf('{');
+                        const lastBrace = cleanCode.lastIndexOf('}');
+                        if (firstBrace !== -1 && lastBrace !== -1) {
+                            toolData = JSON.parse(cleanCode.substring(firstBrace, lastBrace + 1));
+                        }
+                    } catch (e2) {
+                        toolData = { raw: cleanCode };
+                    }
+                }
+                const { rawContent, isStreaming, darkMode, language } = latestProps.current;
+                let hasStartedResponding = false;
+                const toolBlockTag = `\`\`\`${match[1]}`;
+                if (rawContent && rawContent.includes(toolBlockTag)) {
+                    const wsIdx = rawContent.indexOf(toolBlockTag);
+                    const afterOpen = rawContent.substring(wsIdx + toolBlockTag.length);
                     const closeFenceIdx = afterOpen.indexOf('```');
                     if (closeFenceIdx !== -1) {
                         const afterClose = afterOpen.substring(closeFenceIdx + 3).trim();
@@ -585,11 +649,16 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
                     }
                 }
 
-                const tGlobal = translations[language]?.webSearch || translations.id.webSearch;
-
                 return (
-                    <Suspense fallback={<div className={`animate-pulse p-3 border rounded-xl text-xs font-medium my-2 ${darkMode ? 'border-[#2d2d2d] bg-[#1e1e1e] text-gray-400' : 'border-slate-200 bg-slate-50 text-slate-500'}`}>{tGlobal.loadingResults || "Memuat hasil pencarian..."}</div>}>
-                        <LazyWebSearchWidget searchData={searchData} isStreaming={isStreaming} hasStartedResponding={hasStartedResponding} darkMode={darkMode} language={language} />
+                    <Suspense fallback={<div className={`animate-pulse p-3 border rounded-xl text-xs font-medium my-2 ${darkMode ? 'border-[#2d2d2d] bg-[#1e1e1e] text-gray-400' : 'border-slate-200 bg-slate-50 text-slate-500'}`}>Memuat proses...</div>}>
+                        <LazyAgenticProcessCard 
+                            toolData={toolData} 
+                            toolType={match[1]} 
+                            isStreaming={isStreaming} 
+                            hasStartedResponding={hasStartedResponding} 
+                            darkMode={darkMode} 
+                            language={language} 
+                        />
                     </Suspense>
                 );
             }

@@ -191,17 +191,19 @@ def train(args):
     tokenizer.save_pretrained(args.output_dir)
     print(f"💾 LoRA Adapter berhasil disimpan ke: {args.output_dir}")
 
-    # 6. Petunjuk Export GGUF untuk Ollama
+    # 6. Petunjuk Deployment ke vLLM (Native Multi-LoRA)
     print("\n" + "=" * 60)
-    print("📋 LANGKAH SELANJUTNYA: EXPORT KE OLLAMA (GGUF)")
+    print("📋 LANGKAH DEPLOYMENT: vLLM NATIVE MULTI-LORA")
     print("=" * 60)
-    print("Jalankan perintah berikut untuk mengonversi adapter ke GGUF:")
+    print(f"  vLLM membaca adapter ini secara native langsung dari folder:")
+    print(f"  --> {os.path.abspath(args.output_dir)}")
+    print("\n  Tambahkan argumen berikut pada run_vllm_service.sh:")
+    print(f"    --enable-lora --lora-modules cakra-router={os.path.abspath(args.output_dir)}")
+    print("=" * 60)
     if use_unsloth:
+        print("\n  (Opsional jika ingin convert ke GGUF/Ollama):")
         print(f"  model.save_pretrained_gguf('{args.output_dir}_gguf', tokenizer, quantization_method='q8_0')")
-    else:
-        print(f"  python llama.cpp/convert_hf_to_gguf.py {args.output_dir} --outtype q8_0")
-    print(f"  ollama create cakra-router -f Modelfile.cakra-router")
-    print("=" * 60)
+        print(f"  ollama create cakra-router -f Modelfile.cakra-router")
 
 
 def main():

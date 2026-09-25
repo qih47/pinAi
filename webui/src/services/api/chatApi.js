@@ -221,21 +221,6 @@ export async function streamChat(
         }
         if (!cleanedLine) continue;
 
-        // 🛡️ Intercept raw <sources_json> tags if emitted directly by LLM or handler
-        if (cleanedLine.includes("<sources_json>")) {
-          try {
-            const start = cleanedLine.indexOf("<sources_json>") + "<sources_json>".length;
-            const end = cleanedLine.indexOf("</sources_json>");
-            const jsonStr = end !== -1 ? cleanedLine.substring(start, end) : cleanedLine.substring(start);
-            const parsedSources = JSON.parse(jsonStr.trim());
-            if (Array.isArray(parsedSources) && onSources) {
-              onSources(parsedSources);
-            }
-          } catch (e) {
-            console.debug("[SSE] Raw sources_json parse handled:", e);
-          }
-          continue;
-        }
 
         try {
           const parsedData = JSON.parse(cleanedLine);
@@ -279,8 +264,26 @@ export async function streamChat(
             onSources(parsedData.sources);
           }
           
-          if (parsedData.chunk !== undefined && parsedData.chunk && onChunk) {
-            onChunk(parsedData.chunk);
+          if (parsedData.chunk !== undefined && parsedData.chunk) {
+            let chunkText = parsedData.chunk;
+            // 🛡️ Filter tag <sources_json>...</sources_json> jika ada yang bocor di dalam chunk
+            if (typeof chunkText === 'string' && chunkText.includes("<sources_json>")) {
+              const srcMatch = chunkText.match(/<\s*sources_json\s*>([\s\S]*?)<\/\s*sources_json\s*>/i);
+              if (srcMatch) {
+                try {
+                  const parsed = JSON.parse(srcMatch[1].trim());
+                  if (Array.isArray(parsed) && onSources) {
+                    onSources(parsed);
+                  }
+                } catch (err) {
+                  console.debug("[SSE] Fallback chunk sources_json parse:", err);
+                }
+                chunkText = chunkText.replace(/<\s*sources_json\s*>[\s\S]*?<\/\s*sources_json\s*>/gi, '');
+              }
+            }
+            if (chunkText && onChunk) {
+              onChunk(chunkText);
+            }
           }
 
           // Handle topic & key subject update from Call 1 Router

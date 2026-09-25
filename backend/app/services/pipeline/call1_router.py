@@ -3,7 +3,7 @@ Call 1 Router — Intent Classifier & Query Generator
 ====================================================
 
 Deterministic JSON routing dengan 12 parameter kontrol.
-Karakteristik: temp=0.0, num_predict=200, num_ctx=4096, is_thinking=False
+Karakteristik: temp=0.0, num_predict=200/150, num_ctx=4096, is_thinking=False
 
 Model: gemma4:31b (Single Model Architecture)
 """
@@ -289,8 +289,9 @@ async def execute_call1_routing(
         {"role": "user", "content": stripped_message},
     ]
 
-    # Alokasi num_predict dinamis hemat token untuk kecepatan respons maksimal (~1.2s - 1.5s)
-    dynamic_predict = 350 if is_first_chat else 250
+    # Alokasi num_predict dinamis hemat token untuk kecepatan respons maksimal (~0.8s - 1.2s)
+    # Dioptimalkan ke 200/150 karena Call 1 kini lean tanpa beban query generation
+    dynamic_predict = 200 if is_first_chat else 150
 
     # Tentukan model yang digunakan
     effective_model = model_name or getattr(settings, "MODEL_ROUTER", "/home/qisthi/models/gemma-4-31B-it-AWQ")
@@ -343,8 +344,8 @@ async def execute_call1_routing(
 
         # ── KOTAK 1: [CALL 1 ROUTING & DECISION DASHBOARD] ────────────────────
         active_mode = "GENERAL / CHITCHAT"
-        if routing.get("fetch_urls"):
-            active_mode = f"URL READER ({', '.join(routing.get('fetch_urls'))})"
+        if precheck.get("_detected_urls"):
+            active_mode = f"URL READER ({', '.join(precheck.get('_detected_urls', []))})"
         elif routing.get("is_chitchat") or routing.get("is_greeting"):
             active_mode = "CHITCHAT / OBROLAN SANTAI"
         elif routing.get("need_rag"):
@@ -375,6 +376,8 @@ async def execute_call1_routing(
         visual_str = f"✅ {', '.join(vt)}" if (routing.get("requires_visual") and vt) else "❌ None"
 
         active_features = []
+        if routing.get("is_url_read"):
+            active_features.append("URL Reader")
         if routing.get("is_ambiguous"):
             active_features.append("Decision Wizard")
         if routing.get("is_troubleshooting"):
@@ -456,8 +459,8 @@ async def execute_call1_routing(
         mid_border = "╠" + ("═" * BORDER_W) + "╣"
         bot_border = "╚" + ("═" * BORDER_W) + "╝"
 
-        fetch_urls_list = routing.get("fetch_urls", [])
-        fetch_urls_str = f"✅ {fetch_urls_list}" if fetch_urls_list else "❌ None"
+        detected_urls_list = precheck.get("_detected_urls", [])
+        detected_urls_str = f"✅ {detected_urls_list}" if detected_urls_list else "❌ None"
 
         raw_qj = routing.get("query_judul", [])
         qj_str = f"✅ {raw_qj}" if raw_qj else "❌ None (Semua Dokumen)"
@@ -500,7 +503,7 @@ async def execute_call1_routing(
             *_make_rows(f"   • Need RAG       : {need_rag_str}"),
             *rag_specific_rows,
             *_make_rows(f"   • Web Search     : {web_search_str}"),
-            *_make_rows(f"   • URL Reader     : {fetch_urls_str}", indent_spaces=22),
+            *_make_rows(f"   • URL Reader     : {detected_urls_str}", indent_spaces=22),
             *query_rows,
             mid_border,
             *_make_rows("🧩 KEPUTUSAN KANAL FORMAT CALL 2 (KOMPONEN AKTIF)"),
@@ -549,6 +552,7 @@ def _validate_and_normalize_routing(
         "is_generate_file": False,  # MODE GENERATE FILE: True jika user meminta dibuatkan file
         "is_generate_email": False, # MODE EMAIL: True jika user meminta dibuatkan email
         "is_docwriter": False,      # MODE DOC WRITER: True jika user meminta draf naskah dinas atau buka editor
+        "is_url_read": False,       # MODE URL READER: True jika user melampirkan URL spesifik untuk dibaca/dirangkum/dibandingkan
         "need_analytic": False,
         "is_self_correction": False,
         "is_ambiguous": False,
@@ -579,6 +583,9 @@ def _validate_and_normalize_routing(
     routing["is_generate_file"] = bool(routing_json.get("is_generate_file", False))
     routing["is_generate_email"] = bool(routing_json.get("is_generate_email", False))
     routing["is_docwriter"] = bool(routing_json.get("is_docwriter", False)) or bool(precheck.get("is_docwriter", False))
+    routing["is_url_read"] = bool(routing_json.get("is_url_read", False))
+    if precheck.get("_detected_urls") and not routing_json.get("need_rag") and not routing_json.get("is_web_search"):
+        routing["is_url_read"] = True
     routing["is_coding"] = bool(routing_json.get("is_coding", False))
     routing["is_troubleshooting"] = bool(routing_json.get("is_troubleshooting", False))
     routing["is_comparative"] = bool(routing_json.get("is_comparative", False))
@@ -771,6 +778,13 @@ def _validate_and_normalize_routing(
         routing["need_rag"] = False
         routing["query_judul"] = []
         logger.info("[CALL1] 🌐 Resolving dual-intent conflict: is_web_search takes priority over need_rag for external data")
+
+    # 🌐 Penyelarasan URL Reader vs Web Search:
+    # Jika is_url_read aktif dan pengguna TIDAK meminta pencarian web luar secara eksplisit, matikan is_web_search
+    if routing.get("is_url_read") and not routing_json.get("is_web_search") and not is_explicit_web:
+        routing["is_web_search"] = False
+        routing["queries"] = []
+        logger.info("[CALL1] 🔗 is_url_read active without explicit web search request -> setting is_web_search=False, queries=[]")
 
     # 🎯 SELF-CORRECTION DYNAMIC CONTEXT RESOLUTION
     # Sanggahan/koreksi user harus adaptif terhadap domain yang sedang dibahas:
@@ -998,32 +1012,9 @@ def _validate_and_normalize_routing(
     else:
         routing["tone_hint"] = "casual"
 
-    from backend.app.services.web_tools.url_reader import is_incidental_url
-
-    fetch_urls = routing_json.get("fetch_urls", [])
-    if isinstance(fetch_urls, list):
-        routing["fetch_urls"] = [
-            str(u).strip() for u in fetch_urls 
-            if isinstance(u, str) and (u.strip().startswith("http://") or u.strip().startswith("https://"))
-            and not is_incidental_url(str(u).strip(), user_message)
-        ]
-    elif isinstance(fetch_urls, str) and (fetch_urls.strip().startswith("http://") or fetch_urls.strip().startswith("https://")):
-        clean_u = fetch_urls.strip()
-        routing["fetch_urls"] = [clean_u] if not is_incidental_url(clean_u, user_message) else []
-    else:
-        routing["fetch_urls"] = []
-
-    # Fallback jika model lupa menyertakan fetch_urls tapi ada URL/domain valid di pesan user
-    if not routing["fetch_urls"] and precheck.get("_detected_urls"):
-        valid_detected = [u for u in precheck.get("_detected_urls") if not is_incidental_url(u, user_message)]
-        if valid_detected:
-            routing["fetch_urls"] = valid_detected
-            logger.info(f"[CALL1] Auto-populated fetch_urls from precheck detected URLs: {routing['fetch_urls']}")
-
-    # Jika user memberikan URL untuk dibaca langsung, prioritaskan URL Reader (murni baca URL)
-    if routing["fetch_urls"]:
-        routing["is_web_search"] = False
-        routing["need_rag"] = False
+    # fetch_urls tidak lagi dihasilkan oleh Call 1 — URL fetching ditangani secara
+    # deterministik oleh mode_hub berdasarkan regex detection (precheck["_detected_urls"])
+    routing["fetch_urls"] = []
 
     queries = routing.get("queries") or routing_json.get("queries", [])
     is_web_search = bool(routing.get("is_web_search", False))
@@ -1139,7 +1130,7 @@ def _validate_and_normalize_routing(
         routing["session_title"] = None
 
     # Override dengan precheck jika ada hint yang kuat (HANYA jika bukan public web search, bukan URL reader, dan BUKAN chitchat/greeting/closing)
-    if precheck.get("need_rag_hint") is True and not routing["need_rag"] and not routing.get("is_web_search") and not routing.get("fetch_urls") and not precheck.get("is_public_web") and not routing.get("is_chitchat") and not routing.get("is_greeting"):
+    if precheck.get("need_rag_hint") is True and not routing["need_rag"] and not routing.get("is_web_search") and not precheck.get("has_url_context") and not precheck.get("is_public_web") and not routing.get("is_chitchat") and not routing.get("is_greeting"):
         logger.warning("[CALL1] Precheck override: need_rag forced to True")
         routing["need_rag"] = True
 
@@ -1222,7 +1213,7 @@ def _validate_and_normalize_routing(
     capability_flags = [
         routing.get("need_rag"),
         routing.get("is_web_search"),
-        bool(routing.get("fetch_urls")),
+        bool(precheck.get("_detected_urls")),
         routing.get("is_coding"),
         routing.get("is_generate_file"),
         routing.get("is_generate_email"),
@@ -1337,7 +1328,8 @@ def _build_fallback_routing(precheck: Dict[str, Any]) -> Dict[str, Any]:
         "query_judul": [],
         "search_tags": [],
         "context_snippets": [],
-        "fetch_urls": valid_detected_urls,
+        "fetch_urls": [],  # Tidak lagi diisi oleh fallback — ditangani deterministik oleh mode_hub
+        "is_url_read": bool(valid_detected_urls),
         "is_web_search": False,
         "is_coding": bool(precheck.get("is_coding", False)),
         "is_docwriter": bool(precheck.get("is_docwriter", False)) and not is_guest,
@@ -1439,9 +1431,8 @@ def _build_fallback_routing(precheck: Dict[str, Any]) -> Dict[str, Any]:
         fallback["is_web_search"] = True
         fallback["queries"] = [user_message]
 
-    # M. Prioritas URL Reader atas Web Search
-    if fallback["fetch_urls"]:
-        fallback["is_web_search"] = False
+    # URL Reader kini ditangani deterministik oleh mode_hub (bukan di fallback routing)
+    # Tidak perlu lagi mematikan is_web_search berdasarkan fetch_urls di sini
 
     # N. Chitchat & Sapaan
     if is_greeting_msg:
@@ -1679,12 +1670,12 @@ async def generate_call1_preset_routing(
                 if not result["visual_types"]:
                     result["visual_types"] = ["mermaid"]
 
-        # Modular capability flags (Garansi 17 Kapabilitas Lengkap & Utuh)
+        # Modular capability flags (Garansi 18 Kapabilitas Lengkap & Utuh)
         for flag in [
             "need_analytic", "is_troubleshooting", "is_comparative", 
             "has_actionable_workflow", "is_deep_research", "is_security_critical", 
             "is_generate_file", "is_docwriter", "is_generate_email", 
-            "is_coding", "is_web_search", "is_map_query"
+            "is_coding", "is_url_read", "is_web_search", "is_map_query"
         ]:
             if res_json.get(flag) is True:
                 result[flag] = True

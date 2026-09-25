@@ -785,6 +785,16 @@ export const translations = {
       readingWebLinks: "Membaca tautan web...",
       loadingResults: "Memuat hasil pencarian..."
     },
+    agentic: {
+      searchedWeb: "Penelusuran Web",
+      searchedDocs: "Pemeriksaan Regulasi Internal",
+      executedCalc: "Kalkulasi Matematis Python",
+      analyzing: "Menganalisis hasil...",
+      completed: "Selesai diproses",
+      resultsCount: "{count} referensi ditemukan",
+      docsCount: "{count} dokumen dicocokkan",
+      executionSuccess: "Kalkulasi selesai dengan presisi"
+    },
     wizard: {
       defaultQuestion: "Silakan pilih opsi berikut:",
       typeCustom: "Ketik sendiri jawaban...",
@@ -1745,6 +1755,16 @@ export const translations = {
       fetchLinksHeaderDone: "Results from web links",
       readingWebLinks: "Reading web links...",
       loadingResults: "Loading search results..."
+    },
+    agentic: {
+      searchedWeb: "Web Search",
+      searchedDocs: "Internal Regulation Check",
+      executedCalc: "Python Mathematical Calculation",
+      analyzing: "Analyzing results...",
+      completed: "Process completed",
+      resultsCount: "{count} references found",
+      docsCount: "{count} documents matched",
+      executionSuccess: "Calculation completed with precision"
     },
     wizard: {
       defaultQuestion: "Please select an option below:",

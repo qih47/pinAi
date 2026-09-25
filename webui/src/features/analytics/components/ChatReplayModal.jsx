@@ -5,6 +5,7 @@ import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import apiClient from '../../../services/apiClient';
+import { escapeCurrencyDollars } from '../../chat/components/CakraResponseRenderer';
 
 const formatDateTime = (isoString, includeSeconds = false) => {
   if (!isoString) return '—';
@@ -230,7 +231,7 @@ export const ChatReplayModal = ({ npp, onClose }) => {
                               )}
                               
                               <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
-                                {msg.message_text}
+                                {escapeCurrencyDollars(msg.message_text || "")}
                               </ReactMarkdown>
 
                               {msg.metadata?.artifacts && msg.metadata.artifacts.length > 0 && (

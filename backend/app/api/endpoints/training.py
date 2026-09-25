@@ -164,7 +164,7 @@ async def reset_nightly_training_from_zero(clean_artifacts: bool = True):
     Mereset seluruh progres training ke titik awal (Dokumen 1, Halaman 1):
     1. Menghentikan orchestrator jika sedang berjalan
     2. Mereset checkpoint status 2.245 dokumen ke PENDING (last_completed_page = 0)
-    3. Mengosongkan & mengarsipkan dataset JSONL Call 1 Router e4b dan Call 2 Core
+    3. Mengosongkan & mengarsipkan dataset JSONL Call 1 Router dan Call 2 Core
     4. Membersihkan chunks testing di ragdb
     """
     try:

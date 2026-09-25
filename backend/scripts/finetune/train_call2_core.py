@@ -167,6 +167,14 @@ def train(args):
     model.save_pretrained(args.output_dir)
     tokenizer.save_pretrained(args.output_dir)
     print(f"💾 Adapter tersimpan ke: {args.output_dir}")
+    print("\n" + "=" * 60)
+    print("📋 LANGKAH DEPLOYMENT: vLLM NATIVE MULTI-LORA")
+    print("=" * 60)
+    print(f"  vLLM membaca adapter ini secara native langsung dari folder:")
+    print(f"  --> {os.path.abspath(args.output_dir)}")
+    print("\n  Tambahkan argumen berikut pada run_vllm_service.sh:")
+    print(f"    --enable-lora --lora-modules cakra-core={os.path.abspath(args.output_dir)}")
+    print("=" * 60)
 
 
 def main():

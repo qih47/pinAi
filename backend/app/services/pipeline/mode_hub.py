@@ -70,6 +70,7 @@ class ModeHub:
         Main entry point for stream.py to route the request to the correct mode handler.
         """
         logger.info(f"[MODE_HUB] Starting execution for chat_mode: {chat_mode.upper()}")
+        effective_req_mode = (forced_mode or "").lower().strip()
         
         # ── Step 1: Pre-check rule-based ──────────────────────────────────────────
         has_attachment = bool(attachments) or has_new_document
@@ -124,7 +125,8 @@ class ModeHub:
             if chat_history:
                 try:
                     from backend.app.services.web_tools.url_reader import extract_urls_from_text
-                    for m in chat_history:
+                    past_messages = chat_history[:-1] if (chat_history and getattr(chat_history[-1], 'role', '') == 'user' and getattr(chat_history[-1], 'content', '') == user_message) else chat_history
+                    for m in past_messages:
                         content_str = getattr(m, "content", "") or ""
                         if content_str:
                             for u in extract_urls_from_text(content_str):
@@ -221,17 +223,17 @@ class ModeHub:
                 request=request,
             )
 
-            # Inject routing params ke precheck secara dinamis & konsisten (17 Kapabilitas Lengkap)
+            # Inject routing params ke precheck secara dinamis & konsisten (18 Kapabilitas Lengkap)
             for cap in [
                 "is_ambiguous", "requires_visual", "need_analytic", "is_troubleshooting",
                 "is_comparative", "has_actionable_workflow", "is_deep_research", "is_security_critical",
-                "is_generate_file", "is_generate_email", "is_docwriter", "is_coding",
+                "is_generate_file", "is_generate_email", "is_docwriter", "is_coding", "is_url_read",
                 "is_map_query", "is_chitchat", "is_web_search", "need_rag", "needs_history"
             ]:
                 if preset_routing.get(cap) is True:
                     precheck[cap] = True
 
-            for list_field in ["visual_types", "queries", "query_judul", "search_tags", "fetch_urls"]:
+            for list_field in ["visual_types", "queries", "query_judul", "search_tags"]:
                 if preset_routing.get(list_field):
                     precheck[list_field] = preset_routing[list_field]
 
@@ -730,14 +732,21 @@ class ModeHub:
                 "router_completion_tokens": router_c_tokens,
             }) + "\n"
 
-        # ── Step 3.5: Progressive URL Fetching Stepper (100% Call 1 Single Source of Truth) ───
+        # ── Step 3.5: Progressive URL Fetching Stepper (Deterministik via regex detection) ───
         url_contexts = ""
         from backend.app.services.web_tools.url_reader import extract_url_display_info, fetch_webpage_content, fetch_webpage_with_discovery
         
-        approved_fetch_urls = routing_data.get("fetch_urls", [])
+        # URL fetching kini dipicu oleh deteksi regex deterministik (bukan Call 1)
+        # Hanya fetch URL baru yang belum ada di session memory
+        detected_fetch_urls = precheck.get("_detected_urls", [])
+        already_in_memory = set(precheck.get("_visited_urls", []))
+        approved_fetch_urls = [u for u in detected_fetch_urls if u not in already_in_memory]
 
-        if approved_fetch_urls:
-            logger.info(f"[MODE_HUB] Call 1 approved {len(approved_fetch_urls)} URL(s) for live progressive fetching: {approved_fetch_urls}")
+        # HANYA jalankan blocking fetch di mode_hub jika user EKSPLISIT memilih pill tag tertentu
+        # Pada mode default/auto (Master Agentic Flow), urlfetch didelegasikan sepenuhnya ke Call 2 in-stream
+        is_explicit_pill_mode = effective_req_mode in ["documents", "document", "rag", "focus", "compliance", "redteam", "websearch", "search", "web"]
+        if approved_fetch_urls and is_explicit_pill_mode:
+            logger.info(f"[MODE_HUB] Regex-detected {len(approved_fetch_urls)} new URL(s) for live progressive fetching: {approved_fetch_urls}")
             
             collected_nodes = []
             for u in approved_fetch_urls:
@@ -1025,23 +1034,28 @@ class ModeHub:
             chat_mode = "email"
             logger.info(f"[MODE_HUB] 🔒 Enforcing email mode due to mode={effective_req_mode}")
 
-        # ── Override Router if URL Context Exists ─────────────────────────────────
-        if precheck.get("has_url_context"):
+        # ── Override Router if URL Context Exists / is_url_read ─────────────────────
+        if precheck.get("has_url_context") or routing_data.get("is_url_read"):
             precheck["is_chitchat"] = False
             precheck["need_rag"] = False
-            # Jika URL berhasil di-fetch (url_contexts ada isinya), TIDAK perlu web search lagi
-            # — konten sudah diinject ke _session_chunks_text dan akan tersedia untuk LLM
-            # Hanya fallback ke web search jika URL fetch gagal/kosong
+            # Jika user menghendaki is_url_read dan URL berhasil di-fetch:
+            # Matikan web search KECUALI jika user secara eksplisit juga meminta web search (kasus kombo)
+            has_explicit_web = bool(routing_data.get("is_web_search", False)) and bool(routing_data.get("queries"))
             if url_contexts and url_contexts.strip():
-                precheck["is_web_search"] = False
-                logger.info("[MODE_HUB] URL content fetched successfully → murni URL reader, skipping web search")
+                if not has_explicit_web:
+                    precheck["is_web_search"] = False
+                    logger.info("[MODE_HUB] URL content fetched successfully → murni URL reader, skipping web search")
+                else:
+                    logger.info("[MODE_HUB] URL content fetched AND explicit web search requested → combo mode")
             else:
-                precheck["is_web_search"] = True
-                logger.info("[MODE_HUB] URL fetch failed/empty → falling back to web search")
+                # Fallback: jika fetch gagal/kosong dan ada query web search, biarkan web search jalan
+                if has_explicit_web:
+                    precheck["is_web_search"] = True
+                    logger.info("[MODE_HUB] URL fetch failed/empty → falling back to web search")
 
         # ── 🌍 Geocoding Tool Calling (Nominatim) ──────────────────────────────────
         is_map = bool(routing_data.get("is_map_query")) or bool(precheck.get("is_map_query"))
-        if is_map:
+        if is_map and is_explicit_pill_mode:
             yield format_sse(status="🌍 Mencari koordinat peta", event_type=SSEEventType.STATUS)
             from backend.app.services.tools.geocoding import geocode_osm
             
@@ -1069,8 +1083,11 @@ class ModeHub:
 
         # ── Web Search Mode Routing ─────────────────────────────────────
         # JANGAN izinkan web search jika need_rag bernilai True atau user secara eksplisit mengunci mode Dokumen
-        if precheck.get("is_web_search", False) and not precheck.get("need_rag", False) and effective_req_mode not in ["documents", "document", "rag"]:
-            logger.info("[MODE_HUB] Routing to Web Search Mode.")
+        # HANYA masuk ke handle_web_search jika user secara EKSPLISIT memilih pill tag websearch dari FE
+        # Pada mode auto/general, websearch didelegasikan sepenuhnya ke Call 2 in-stream!
+        is_explicit_web_tag = effective_req_mode in ["websearch", "search", "web"]
+        if is_explicit_web_tag and precheck.get("is_web_search", False) and not precheck.get("need_rag", False):
+            logger.info("[MODE_HUB] Routing to Web Search Mode (Explicit Pill Tag).")
             from backend.app.services.pipeline.modes.mode_web_search import handle_web_search
             # Convert ChatMessageSchema to dict
             history_dicts = [m.model_dump() for m in chat_history]
@@ -1128,10 +1145,12 @@ class ModeHub:
                 logger.info("[MODE_HUB] Ambiguous intent detected → routing to FLASH mode for guided wizard clarification")
                 mode = "flash"
             else:
-                # Gunakan precheck (bukan routing_data) agar override URL context (need_rag=False)
-                # tidak tertimpa oleh nilai raw dari routing_data
+                # 🛡️ SAFE BRANCHING:
+                # HANYA masuk ke mode documents jika user EKSPLISIT memilih pill tag dokumen/focus/compliance/redteam
+                # Pada mode default/auto, masuk ke FLASH mode di mana Call 2 memanggil docsearch in-stream jika dibutuhkan
+                is_explicit_doc_mode = effective_req_mode in ["documents", "document", "rag", "focus", "compliance", "redteam"]
                 need_rag = precheck.get("need_rag", False) and not (precheck.get("is_map_query", False) or routing_data.get("is_map_query", False))
-                if need_rag and not is_guest:
+                if need_rag and not is_guest and is_explicit_doc_mode:
                     mode = "documents"
                 else:
                     mode = "guest" if is_guest else "flash"

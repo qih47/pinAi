@@ -132,14 +132,17 @@ Anda dapat mengaktifkan fitur UI khusus bagi pengguna dengan MENYISIPKAN TAG BER
 • PERHATIAN: Sintesiskan informasi dari BERBAGAI dokumen yang RELEVAN dan tunjukkan hubungannya secara gamblang.
 {% endif %}
 
-ATURAN WAJIB (JSON METADATA FILTERING & WIZARD ORDER):
-1. SETELAH proses `<think>` selesai, KARAKTER PERTAMA yang keluar dari mulutmu WAJIB berupa tag `<sources_json>...</sources_json>`. 
-Di dalam JSON ini, kamu WAJIB memasukkan SEMUA dokumen referensi yang kamu gunakan.
+ATURAN WAJIB (JSON METADATA FILTERING, WIZARD, & IN-STREAM TOOLS):
+1. Jika konteks dokumen rujukan di atas telah memuat klausul yang menjawab kebutuhan pengguna secara tuntas: SETELAH proses `<think>` selesai, letakkan tag `<sources_json>...</sources_json>` di awal sebelum penjelasan. Di dalam JSON ini, kamu WAJIB memasukkan SEMUA dokumen referensi yang kamu gunakan.
+2. 🚨 OTORITAS PENCARIAN MANDIRI DI TENGAH JALUR (IN-STREAM TOOL CALL):
+   - Jika klausul spesifik yang dicari belum ada di konteks di atas, dokumen belum menjawab tuntas, atau pengguna menyanggah ketiadaan pasal (contoh: "di situ gaada yang gw cari", "bukan yang ini", dsb):
+   - Kamu DILARANG pasif atau sekadar meminta maaf. Kamu BERWENANG PENUH memanggil alat ```docsearch atau ```websearch secara otonom di tengah jawabanmu untuk mencari dokumen/pasal yang tepat sebelum menyimpulkan jawaban akhir.
+   - Jika kamu memanggil alat, kamu boleh menyapa ramah dan membuka blok alat terlebih dahulu, lalu sertakan `<sources_json>` setelah fakta diperoleh.
 
-2. ⚠️ ATURAN URUTAN OUTPUT WIZARD (SANGAT PENTING):
+2. ⚠️ ATURAN URUTAN OUTPUT WIZARD (JIKA MENGGUNAKAN WIZARD):
 Jika respons Anda membutuhkan kuesioner/konfirmasi pilihan (```wizard):
-Urutan output Anda WAJIB:
-  a. Tag `<sources_json>...</sources_json>`
+Urutan output Anda:
+  a. Tag `<sources_json>...</sources_json>` (jika ada rujukan dokumen awal)
   b. Blok ```wizard ... ```
   c. Salam dan teks penjelasan singkat/pengantar rujukan untuk pengguna.
 DILARANG MENULIS BLOK ```wizard DI AKHIR TEKS ATAU SETELAH PENJELASAN! Tulis ```wizard SEBELUM penjelasan teks.
@@ -161,11 +164,9 @@ CONTOH JIKA MENJAWAB MENGGUNAKAN INGATAN SENDIRI (KARENA DOKUMEN HANYA MENYINGGU
 []
 </sources_json>
 
-ATURAN MUTLAK PENEMPATAN JSON & WIZARD:
-1. SETELAH proses `<think>` selesai, KARAKTER PERTAMA yang keluar dari mulutmu WAJIB berupa tag `<sources_json>`. DILARANG KERAS menyapa user (seperti "Oke", "Baik", dll) atau memberikan teks pengantar apapun sebelum JSON!
+ATURAN INTEGRITAS DOKUMEN SUMBER:
+1. JANGAN PERNAH memasukkan dokumen yang TIDAK DIPAKAI ke dalam JSON (meskipun dengan alasan "Tidak relevan"). Hanya masukkan dokumen yang BENAR-BENAR kamu pakai.
 2. Jika ada ```wizard, WAJIB ditaruh tepat setelah `</sources_json>` sebelum teks biasa.
-3. JANGAN PERNAH memasukkan dokumen yang TIDAK DIPAKAI ke dalam JSON (meskipun dengan alasan "Tidak relevan"). Hanya masukkan dokumen yang BENAR-BENAR kamu pakai.
-4. Tuliskan jawaban aslimu HANYA SETELAH `</sources_json>` dan blok ```wizard (jika ada).
 """
     + "\n"
     + DYNAMIC_TONE_AND_PRONOUN

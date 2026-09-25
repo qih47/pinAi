@@ -182,7 +182,7 @@ const DeepLearningTab = () => {
   const [isResetting, setIsResetting] = useState(false);
 
   const handleResetNightly = async () => {
-    if (!window.confirm("⚠️ PERINGATAN RESET TRAINING KE TITIK 0:\n\nApakah Anda yakin ingin me-reset seluruh progres training malam kembali ke Titik 0 (Dokumen #1, Halaman 1)?\n\n- Seluruh 2.245 dokumen akan dikembalikan ke status PENDING\n- Dataset JSONL Call 1 Router e4b dan Call 2 Core akan diarsipkan dan dikosongkan untuk mulai fresh\n- Database MySQL peraturan_db tetap 100% aman (Read-Only)")) return;
+    if (!window.confirm("⚠️ PERINGATAN RESET TRAINING KE TITIK 0:\n\nApakah Anda yakin ingin me-reset seluruh progres training malam kembali ke Titik 0 (Dokumen #1, Halaman 1)?\n\n- Seluruh 2.245 dokumen akan dikembalikan ke status PENDING\n- Dataset JSONL Call 1 Router dan Call 2 Core akan diarsipkan dan dikosongkan untuk mulai fresh\n- Database MySQL peraturan_db tetap 100% aman (Read-Only)")) return;
     setIsResetting(true);
     try {
       const res = await apiClient.post('/training/nightly/reset?clean_artifacts=true');
@@ -463,11 +463,25 @@ const DeepLearningTab = () => {
             {nightlyStatus?.is_running ? (
               <button
                 onClick={handleStopNightly}
-                disabled={isNightlyStopping}
-                className="flex items-center gap-2 bg-rose-600 hover:bg-rose-500 disabled:opacity-50 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-lg shadow-rose-900/30 transition-all cursor-pointer"
+                disabled={isNightlyStopping || nightlyStatus?.stop_requested}
+                className={`flex items-center gap-2 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-lg transition-all ${
+                  isNightlyStopping || nightlyStatus?.stop_requested
+                    ? "bg-amber-600/90 hover:bg-amber-600 cursor-wait shadow-amber-900/30"
+                    : "bg-rose-600 hover:bg-rose-500 cursor-pointer shadow-rose-900/30"
+                }`}
+                title={nightlyStatus?.stop_requested ? "Sedang menuntaskan halaman aktif dan menyimpan checkpoint..." : "Hentikan training malam"}
               >
-                {isNightlyStopping ? <Activity className="w-4 h-4 animate-spin" /> : <Square className="w-4 h-4 fill-white" />}
-                Hentikan & Checkpoint
+                {isNightlyStopping || nightlyStatus?.stop_requested ? (
+                  <>
+                    <Activity className="w-4 h-4 animate-spin text-amber-200" />
+                    <span>Menyimpan Checkpoint Halaman...</span>
+                  </>
+                ) : (
+                  <>
+                    <Square className="w-4 h-4 fill-white" />
+                    <span>Hentikan & Checkpoint</span>
+                  </>
+                )}
               </button>
             ) : (
               <div className="flex items-center gap-2 flex-wrap">
@@ -1385,7 +1399,7 @@ const DeepLearningTab = () => {
                           {ag.router_json && (
                             <div className="bg-slate-950/70 p-2.5 rounded-lg border border-purple-900/30">
                               <span className="text-[10px] font-bold text-purple-400 uppercase tracking-wider block mb-1">
-                                Call 1 Router Target (Deterministik JSON e4b)
+                                Call 1 Router Target (Lean Sparse JSON)
                               </span>
                               <pre className="text-[10px] text-purple-200 font-mono bg-black/80 p-2 rounded overflow-x-auto custom-scrollbar">
                                 {JSON.stringify(ag.router_json, null, 2)}
