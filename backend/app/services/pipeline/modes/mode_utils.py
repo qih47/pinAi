@@ -705,6 +705,10 @@ def build_call2_system_prompt(
 
         topic = precheck.get("active_topic", "")
         subject = precheck.get("key_subject", "")
+        query_judul = precheck.get("query_judul") or []
+        queries = precheck.get("queries") or []
+        need_rag_active = bool(precheck.get("need_rag"))
+
         if suggested_tools or topic or subject:
             radar_lines = [
                 "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
@@ -717,20 +721,39 @@ def build_call2_system_prompt(
                 radar_lines.append(f"• Topik Terdeteksi : {topic}")
             if subject:
                 radar_lines.append(f"• Subjek Spesifik  : {subject}")
-            radar_lines.append("• Prinsip Mandiri  : Sinyal di atas adalah panduan awal. Kamu adalah Master Agentic Orchestrator: berdaulat penuh memutuskan apakah alat benar-benar diperlukan dan merumuskan query terbaikmu sendiri.")
+            if query_judul:
+                radar_lines.append(f"• Target Dokumen   : {query_judul}")
+            if queries:
+                radar_lines.append(f"• Usulan Query RAG : {queries}")
+
+            if need_rag_active and not rag_context:
+                radar_lines.append("• MANDAT DOKUMEN INTERNAL (MUTLAK): Pertanyaan menyangkut regulasi/kebijakan internal PT Pindad. Kamu WAJIB membuka blok alat ```docsearch dengan query_judul di atas untuk memverifikasi klausul resmi dari arsip atau memori sesi (Brain). DILARANG KERAS langsung menjawab pasal regulasi dari memori/asumsi tanpa memanggil ```docsearch!")
+            else:
+                radar_lines.append("• Prinsip Mandiri  : Sinyal di atas adalah panduan awal. Kamu adalah Master Agentic Orchestrator: berdaulat penuh memutuskan apakah alat benar-benar diperlukan dan merumuskan query terbaikmu sendiri.")
             prompt += "\n\n" + "\n".join(radar_lines) + "\n"
 
         # 🛡️ FACTUAL ISOLATION & AGENTIC VERIFICATION: Jika need_rag=True murni regulasi
         if (precheck.get("need_rag") or module_name in ["rag", "multi_document"]) and not precheck.get("is_coding") and not precheck.get("is_web_search"):
-            prompt += (
-                "\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-                "📌 PEDOMAN SUMBER & VERIFIKASI DOKUMEN REGULASI INTERNAL\n"
-                "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-                "1. Sesi ini adalah verifikasi dokumen, regulasi, SOP, atau kebijakan resmi internal PT Pindad.\n"
-                "2. Rujukan utama adalah konteks dokumen yang telah disediakan di atas. Dilarang mengarang aturan yang tidak ada buktinya.\n"
-                "3. DILARANG KERAS memunculkan atau meneruskan potongan kode program/koding/script dari percakapan sebelumnya.\n"
-                "4. Jika klausul spesifik yang dicari belum ada di konteks di atas atau pengguna menyanggah ketiadaan pasal, kamu BERWENANG memanggil alat ```docsearch atau ```websearch secara mandiri untuk melengkapi data sebelum menyimpulkan jawaban.\n"
-            )
+            if not rag_context:
+                prompt += (
+                    "\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                    "📌 PEDOMAN SUMBER & VERIFIKASI DOKUMEN REGULASI INTERNAL\n"
+                    "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                    "1. Sesi ini adalah verifikasi dokumen, regulasi, SOP, atau kebijakan resmi internal PT Pindad.\n"
+                    "2. Belum ada kutipan dokumen yang dilampirkan. Kamu WAJIB memanggil alat ```docsearch terlebih dahulu untuk menarik pasal/ayat resmi dari memori sesi (Brain) atau arsip database.\n"
+                    "3. Dilarang keras mengarang nomor pasal, isi ayat, atau rincian aturan dari asumsi/memori sebelum diverifikasi lewat ```docsearch.\n"
+                    "4. DILARANG KERAS memunculkan atau meneruskan potongan kode program/koding/script dari percakapan sebelumnya.\n"
+                )
+            else:
+                prompt += (
+                    "\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                    "📌 PEDOMAN SUMBER & VERIFIKASI DOKUMEN REGULASI INTERNAL\n"
+                    "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                    "1. Sesi ini adalah verifikasi dokumen, regulasi, SOP, atau kebijakan resmi internal PT Pindad.\n"
+                    "2. Rujukan utama adalah konteks dokumen yang telah disediakan di atas. Dilarang mengarang aturan yang tidak ada buktinya.\n"
+                    "3. DILARANG KERAS memunculkan atau meneruskan potongan kode program/koding/script dari percakapan sebelumnya.\n"
+                    "4. Jika klausul spesifik yang dicari belum ada di konteks di atas atau pengguna menyanggah ketiadaan pasal, kamu BERWENANG memanggil alat ```docsearch atau ```websearch secara mandiri untuk melengkapi data sebelum menyimpulkan jawaban.\n"
+                )
 
         # Injeksi Wizard jika ambigu pada modul selain ambiguous
         if precheck.get("is_ambiguous") and module_name != "ambiguous":

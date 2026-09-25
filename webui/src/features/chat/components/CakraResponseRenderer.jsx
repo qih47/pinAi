@@ -156,12 +156,23 @@ const MarkdownTable = ({ children, darkMode, theme, searchQuery, language = 'id'
     );
 };
 
-const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkMode, theme, searchQuery = '', statusMessage, middleContent, language = 'id', messageIndex = null, isLastMessage = false }) => {
+const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkMode, theme, searchQuery = '', statusMessage, statusKey, activeTool, middleContent, language = 'id', messageIndex = null, isLastMessage = false }) => {
     const tGlobal = translations[language] || translations.id;
-    const latestProps = React.useRef({ darkMode, theme, searchQuery, isStreaming, language, rawContent, messageIndex, isLastMessage });
-    latestProps.current = { darkMode, theme, searchQuery, isStreaming, language, rawContent, messageIndex, isLastMessage };
+    const latestProps = React.useRef({ darkMode, theme, searchQuery, isStreaming, language, rawContent, messageIndex, isLastMessage, statusMessage, statusKey, activeTool });
+    latestProps.current = { darkMode, theme, searchQuery, isStreaming, language, rawContent, messageIndex, isLastMessage, statusMessage, statusKey, activeTool };
     const thinkStartTag = "<think>";
     const thinkEndTag = "</think>";
+
+    const effectiveActiveTool = activeTool || (() => {
+        if (!statusKey) return null;
+        const upper = statusKey.toUpperCase();
+        if (upper.includes('WEBSEARCH') || upper.includes('WEB_SEARCH')) return 'websearch';
+        if (upper.includes('URLFETCH') || upper.includes('URL_FETCH') || upper.includes('READ_URL')) return 'urlfetch';
+        if (upper.includes('DOCSEARCH') || upper.includes('DOC_SEARCH')) return 'docsearch';
+        if (upper.includes('CALC')) return 'python_calc';
+        if (upper.includes('MAP')) return 'map_search';
+        return null;
+    })();
 
     const wizardAnswers = useChatStore(state => state.wizardAnswers);
     const setActiveWizard = useChatStore(state => state.setActiveWizard);
@@ -175,6 +186,11 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
         // Tangani jika sedang streaming dan tag penutup belum tiba
         final = final.replace(/<\s*sources_json\s*>[\s\S]*$/gi, '');
         final = final.replace(/<\s*\/?\s*sources_json\s*>/gi, '');
+
+        // 🛡️ Bersihkan HANYA partial/unclosed tool block (yang belum memiliki penutup ```) saat streaming agar tidak merender blok JSON mentah
+        if (isStreaming) {
+            final = final.replace(/```(?:websearch|docsearch|urlfetch|python_calc|map_search)(?:(?!```)[\s\S])*$/i, '').trim();
+        }
 
         // Samarkan kata 'mermaid' menjadi 'Cakra AI Diagram' agar user tidak bingung,
         // tapi JANGAN ubah ```mermaid agar engine render tetap jalan
@@ -596,7 +612,7 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
                         searchData = null;
                     }
                 }
-                const { rawContent, isStreaming, darkMode, language } = latestProps.current;
+                const { rawContent, isStreaming, darkMode, language, statusMessage } = latestProps.current;
                 let hasStartedResponding = false;
                 if (rawContent && rawContent.includes('```websearch')) {
                     const wsIdx = rawContent.indexOf('```websearch');
@@ -609,13 +625,14 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
                 }
 
                 return (
-                    <Suspense fallback={<div className="animate-pulse p-4 border rounded-xl text-xs text-gray-400 font-medium my-2">Memuat penelusuran web...</div>}>
+                    <Suspense fallback={<div className="animate-pulse p-4 border rounded-xl text-xs text-gray-400 font-medium my-2">Memuat penelusuran web</div>}>
                         <LazyWebSearchWidget 
                             searchData={searchData} 
                             isStreaming={isStreaming} 
                             hasStartedResponding={hasStartedResponding} 
                             darkMode={darkMode} 
                             language={language} 
+                            statusText={statusMessage}
                         />
                     </Suspense>
                 );
@@ -636,7 +653,7 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
                         toolData = { raw: cleanCode };
                     }
                 }
-                const { rawContent, isStreaming, darkMode, language } = latestProps.current;
+                const { rawContent, isStreaming, darkMode, language, statusMessage } = latestProps.current;
                 let hasStartedResponding = false;
                 const toolBlockTag = `\`\`\`${match[1]}`;
                 if (rawContent && rawContent.includes(toolBlockTag)) {
@@ -650,7 +667,7 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
                 }
 
                 return (
-                    <Suspense fallback={<div className={`animate-pulse p-3 border rounded-xl text-xs font-medium my-2 ${darkMode ? 'border-[#2d2d2d] bg-[#1e1e1e] text-gray-400' : 'border-slate-200 bg-slate-50 text-slate-500'}`}>Memuat proses...</div>}>
+                    <Suspense fallback={<div className={`animate-pulse p-3 border rounded-xl text-xs font-medium my-2 ${darkMode ? 'border-[#2d2d2d] bg-[#1e1e1e] text-gray-400' : 'border-slate-200 bg-slate-50 text-slate-500'}`}>Memuat proses</div>}>
                         <LazyAgenticProcessCard 
                             toolData={toolData} 
                             toolType={match[1]} 
@@ -658,6 +675,7 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
                             hasStartedResponding={hasStartedResponding} 
                             darkMode={darkMode} 
                             language={language} 
+                            statusText={statusMessage}
                         />
                     </Suspense>
                 );
@@ -678,19 +696,20 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
                         fetchPayload = null;
                     }
                 }
-                const { isStreaming, darkMode, rawContent, language } = latestProps.current;
+                const { isStreaming, darkMode, rawContent, language, statusMessage } = latestProps.current;
                 const hasTextAfterBlock = rawContent && rawContent.includes('```urlfetch') && rawContent.split('```urlfetch')[1]?.split('```')[1]?.trim().length > 5;
                 const hasStartedResponding = Boolean(hasTextAfterBlock || !isStreaming);
                 const tGlobal = translations[language]?.webSearch || translations.id.webSearch;
 
                 return (
-                    <Suspense fallback={<div className="animate-pulse p-2 text-xs text-gray-400 font-medium my-2">{tGlobal.readingWebLinks || "Membaca tautan web..."}</div>}>
+                    <Suspense fallback={<div className="animate-pulse p-2 text-xs text-gray-400 font-medium my-2">{tGlobal.readingWebLinks || "Membaca tautan web"}</div>}>
                         <LazyUrlFetchTimelineWidget 
                             data={fetchPayload} 
                             isStreaming={isStreaming} 
                             hasStartedResponding={hasStartedResponding} 
                             darkMode={darkMode} 
                             language={language}
+                            statusText={statusMessage}
                         />
                     </Suspense>
                 );
@@ -924,7 +943,24 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
 
                 const answeredList = (messageIndex !== null && messageIndex !== undefined) ? wizardAnswers[messageIndex] : null;
                 const hasPendingAction = Boolean(finalResponseBlock && (/\[ACTION:/i.test(finalResponseBlock) || /<(?:create_file|edit_file)/i.test(finalResponseBlock)));
-                const isTextActuallyStreaming = isStreaming && !hasPendingAction;
+
+                // 🎯 DETEKSI STATUS EKSEKUSI ALAT AGAR EFEK GELAP/INK-TRAIL TIDAK MENUTUPI TEKS
+                // Jika ada tool yang aktif atau sedang dipersiapkan/dieksekusi, maka teks TIDAK lagi streaming!
+                const isToolExecuting = Boolean(
+                    effectiveActiveTool ||
+                    (statusKey && (statusKey.startsWith('TOOL_') || statusKey.startsWith('AGENTIC_TOOL_'))) ||
+                    (rawContent && /```(?:websearch|docsearch|urlfetch|python_calc|map_search)/i.test(rawContent) && (() => {
+                        // Cek apakah ada teks kelanjutan yang sedang aktif streaming setelah blok tool terakhir
+                        const lastToolMatch = [...rawContent.matchAll(/```(?:websearch|docsearch|urlfetch|python_calc|map_search)[\s\S]*?```/gi)].pop();
+                        if (lastToolMatch) {
+                            const textAfter = rawContent.substring(lastToolMatch.index + lastToolMatch[0].length).trim();
+                            return textAfter.length === 0; // Jika belum ada teks kelanjutan, berarti tool masih/baru selesai dieksekusi
+                        }
+                        return true; // Blok tool belum tertutup
+                    })())
+                );
+
+                const isTextActuallyStreaming = isStreaming && !hasPendingAction && !isToolExecuting;
 
                 return (
                     <div style={{ width: '100%' }}>
@@ -936,6 +972,49 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
                                     remarkPlugins={remarkPluginsList}
                                     rehypePlugins={rehypePluginsList}
                                 />
+                            </div>
+                        )}
+                        
+                        {/* 🛠️ LIVE STREAMING TOOL ACCORDION (Jika tool sedang jalan tapi blok markdown belum tiba) */}
+                        {isStreaming && effectiveActiveTool && !rawContent?.includes(`\`\`\`${effectiveActiveTool}`) && (
+                            <div className="w-full animate-fadeInUp" style={{ animationDuration: '0.2s' }}>
+                                {effectiveActiveTool === 'websearch' && (
+                                    <Suspense fallback={null}>
+                                        <LazyWebSearchWidget
+                                            searchData={null}
+                                            isStreaming={true}
+                                            hasStartedResponding={false}
+                                            darkMode={darkMode}
+                                            language={language}
+                                            statusText={statusMessage}
+                                        />
+                                    </Suspense>
+                                )}
+                                {effectiveActiveTool === 'urlfetch' && (
+                                    <Suspense fallback={null}>
+                                        <LazyUrlFetchTimelineWidget
+                                            data={null}
+                                            isStreaming={true}
+                                            hasStartedResponding={false}
+                                            darkMode={darkMode}
+                                            language={language}
+                                            statusText={statusMessage}
+                                        />
+                                    </Suspense>
+                                )}
+                                {(effectiveActiveTool === 'docsearch' || effectiveActiveTool === 'python_calc' || effectiveActiveTool === 'map_search') && (
+                                    <Suspense fallback={null}>
+                                        <LazyAgenticProcessCard
+                                            toolData={null}
+                                            toolType={effectiveActiveTool}
+                                            isStreaming={true}
+                                            hasStartedResponding={false}
+                                            darkMode={darkMode}
+                                            language={language}
+                                            statusText={statusMessage}
+                                        />
+                                    </Suspense>
+                                )}
                             </div>
                         )}
                         

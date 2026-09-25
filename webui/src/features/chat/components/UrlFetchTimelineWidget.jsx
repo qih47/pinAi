@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { ChevronDown, ChevronUp, ExternalLink, Clock } from 'lucide-react';
 import { translations } from '../../../utils/translations';
 
-const UrlFetchTimelineWidget = ({ data, isStreaming, hasStartedResponding, darkMode = true, language = 'id' }) => {
+const UrlFetchTimelineWidget = ({ data, isStreaming, hasStartedResponding, darkMode = true, language = 'id', statusText }) => {
     // Terbuka HANYA saat aktif live streaming dan belum mulai merespons teks
     const [isOpen, setIsOpen] = useState(() => Boolean(isStreaming && !hasStartedResponding));
 
@@ -19,17 +19,17 @@ const UrlFetchTimelineWidget = ({ data, isStreaming, hasStartedResponding, darkM
         }
     }, [hasStartedResponding, isStreaming]);
 
-    if (!data) return null;
+    if (!data && !isStreaming) return null;
 
-    const nodes = data.nodes || [];
-    const currentFetching = data.fetching;
-    const activity = data.activity;
+    const nodes = data?.nodes || [];
+    const currentFetching = data?.fetching;
+    const activity = data?.activity;
 
-    if (nodes.length === 0 && !currentFetching) return null;
+    if (nodes.length === 0 && !currentFetching && !isStreaming) return null;
 
     const headerText = hasStartedResponding 
         ? (t.fetchLinksHeaderDone || "Hasil penelusuran informasi dari tautan")
-        : (t.fetchLinksHeader || "Menelusuri informasi dari tautan");
+        : (statusText || t.fetchLinksHeader || "Mengunduh konten tautan");
 
     return (
         <div className="my-4 w-full max-w-3xl font-sans">
@@ -38,8 +38,11 @@ const UrlFetchTimelineWidget = ({ data, isStreaming, hasStartedResponding, darkM
                 onClick={() => setIsOpen(!isOpen)}
                 className="flex items-center gap-2 mb-3 cursor-pointer select-none group w-fit"
             >
-                <span className="text-[14px] font-medium text-[#9e9e9e] transition-colors line-clamp-1 group-hover:text-[#c4c4c4]">
-                    {headerText}
+                <span className="text-[14px] font-medium text-[#9e9e9e] transition-colors line-clamp-1 group-hover:text-[#c4c4c4] flex items-center gap-2">
+                    {isStreaming && !hasStartedResponding && (
+                        <span className="inline-block w-2 h-2 rounded-full bg-cyan-500 animate-ping" />
+                    )}
+                    <span>{headerText}</span>
                 </span>
                 <span className="text-[#888888] flex items-center justify-center">
                     {isOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}

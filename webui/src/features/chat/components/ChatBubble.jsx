@@ -760,7 +760,7 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
                                 style={{
                                     fontSize: 13.5,
                                     fontStyle: 'italic',
-                                    paddingRight: 6,
+                                    paddingRight: 4,
                                     paddingLeft: 1,
                                     background: 'linear-gradient(90deg, #94a3b8 0%, #e2e8f0 50%, #94a3b8 100%)',
                                     backgroundSize: '200% 100%',
@@ -774,10 +774,10 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
                             >
                                 {displayThought}
                             </span>
-                            <span style={{ display: 'inline-flex', gap: '2px', alignItems: 'center', height: '14px', lineHeight: 1 }}>
-                                <span style={{ fontSize: 16, color: theme.secondaryText || '#94a3b8', animation: 'dotBounce 0.8s infinite ease-in-out', display: 'inline-block' }}>.</span>
-                                <span style={{ fontSize: 16, color: theme.secondaryText || '#94a3b8', animation: 'dotBounce 0.8s infinite ease-in-out 0.15s', display: 'inline-block' }}>.</span>
-                                <span style={{ fontSize: 16, color: theme.secondaryText || '#94a3b8', animation: 'dotBounce 0.8s infinite ease-in-out 0.3s', display: 'inline-block' }}>.</span>
+                            <span style={{ display: 'inline-flex', gap: '2px', alignItems: 'center', height: '14px', lineHeight: 1, marginLeft: '2px' }}>
+                                <span style={{ fontSize: 16, color: theme?.secondaryText || '#94a3b8', animation: 'dotBounce 0.8s infinite ease-in-out', display: 'inline-block' }}>.</span>
+                                <span style={{ fontSize: 16, color: theme?.secondaryText || '#94a3b8', animation: 'dotBounce 0.8s infinite ease-in-out 0.15s', display: 'inline-block' }}>.</span>
+                                <span style={{ fontSize: 16, color: theme?.secondaryText || '#94a3b8', animation: 'dotBounce 0.8s infinite ease-in-out 0.3s', display: 'inline-block' }}>.</span>
                             </span>
                         </span>
                     ) : (
@@ -826,6 +826,8 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
                                             theme={theme}
                                             searchQuery={searchQuery}
                                             statusMessage={resolveStatusMessage(msg, language)}
+                                            statusKey={msg.statusKey}
+                                            activeTool={msg.activeTool}
                                             messageIndex={idx}
                                             isLastMessage={isLastMessage}
                                             language={language}
@@ -892,6 +894,8 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
                                             theme={theme}
                                             searchQuery={searchQuery}
                                             statusMessage={resolveStatusMessage(msg, language)}
+                                            statusKey={msg.statusKey}
+                                            activeTool={msg.activeTool}
                                             messageIndex={idx}
                                             isLastMessage={isLastMessage}
                                             language={language}

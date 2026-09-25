@@ -27,7 +27,8 @@ const AgenticProcessCard = ({
     isStreaming = false,
     hasStartedResponding = false,
     darkMode = true,
-    language = 'id'
+    language = 'id',
+    statusText
 }) => {
     // Parsing payload jika masih string
     const data = React.useMemo(() => {
@@ -92,22 +93,26 @@ const AgenticProcessCard = ({
 
     // Header label
     const getHeaderLabel = () => {
+        if (isComplete) {
+            if (isCalc) return isError ? (t.calcFailed || "Kalkulasi matematis (terkendala)") : (t.calcComplete || "Hasil kalkulasi matematis presisi");
+            if (isDoc) return t.docSearchComplete || "Hasil penelusuran regulasi internal";
+            return t.genericComplete || "Hasil proses alat otonom";
+        }
+        if (statusText) return statusText;
         if (isCalc) {
-            if (isExecuting) return `Mengeksekusi perhitungan presisi (${elapsedSec}s)...`;
-            if (isAnalyzing) return "Menganalisis hasil kalkulasi...";
-            if (isComplete) return isError ? "Kalkulasi matematis (terkendala)" : "Hasil kalkulasi matematis presisi";
-            return "Kalkulasi matematis via Python Sandbox";
+            if (isExecuting) return (t.calcRunning || "Menjalankan komputasi ({elapsed}s)").replace('{elapsed}', elapsedSec);
+            if (isAnalyzing) return t.calcAnalyzing || "Menganalisis hasil komputasi";
+            return t.calcDefault || "Kalkulasi matematis via Python Sandbox";
         }
         if (isDoc) {
-            if (isExecuting) return `Mencari regulasi internal (${elapsedSec}s)...`;
-            if (isAnalyzing) return "Menganalisis dokumen peraturan...";
-            if (isComplete) return "Hasil penelusuran regulasi internal";
-            return "Pencarian regulasi & SOP internal";
+            if (isExecuting) return (t.docSearching || "Menelusuri regulasi internal ({elapsed}s)").replace('{elapsed}', elapsedSec);
+            if (isAnalyzing) return t.docAnalyzing || "Menganalisis dokumen peraturan";
+            return t.docSearchDefault || "Pencarian regulasi & SOP internal";
         }
-        return "Proses alat otonom";
+        return t.genericRunning || "Proses alat otonom";
     };
 
-    const displayIntent = data.intent || data.query || (isCalc ? "Kalkulasi matematis via Python Sandbox" : "Pencarian regulasi internal");
+    const displayQuery = data.query || data.intent || (isCalc ? (t.calcDefault || "Kalkulasi matematis via Python Sandbox") : (t.docSearchDefault || "Pencarian regulasi internal"));
 
     return (
         <div className="my-4 w-full max-w-3xl font-sans">
@@ -170,13 +175,22 @@ const AgenticProcessCard = ({
                             </div>
                             <span className={`text-[13.5px] font-medium truncate flex-grow ${
                                 darkMode ? 'text-[#888888]' : 'text-slate-700'
-                            }`}>
-                                "{displayIntent}"
+                            }`} title={data.intent ? `Maksud: ${data.intent}` : undefined}>
+                                "{displayQuery}"
+                                {data.intent && data.query && data.intent.toLowerCase() !== data.query.toLowerCase() && (
+                                    <span className={`ml-2 text-[12px] font-normal opacity-75 hidden sm:inline`}>
+                                        ({data.intent})
+                                    </span>
+                                )}
                             </span>
                             <span className={`text-[12px] whitespace-nowrap ${
                                 darkMode ? 'text-[#666666]' : 'text-slate-400'
                             }`}>
-                                {isCalc ? "sandbox execution" : `${data.documents?.length || 0} referensi`}
+                                {isCalc 
+                                    ? (t.sandboxExecution || "sandbox execution") 
+                                    : (isExecuting && (!data.documents || data.documents.length === 0))
+                                        ? (t.searchingReferences || "Mencari referensi...")
+                                        : `${data.documents?.length || 0} ${t.referencesCount || (language === 'en' ? 'references' : 'referensi')}`}
                             </span>
                         </div>
 
@@ -295,6 +309,15 @@ const AgenticProcessCard = ({
 
                                                                 {/* Opsi 2: Metadata Dokumen Ringkas & Informatif */}
                                                                 <div className="flex items-center gap-1.5 mt-1 flex-wrap text-[10.5px]">
+                                                                    {(doc.cache_hit || doc._from_session_brain) && (
+                                                                        <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wide ${
+                                                                            darkMode 
+                                                                                ? 'bg-purple-500/15 text-purple-300 border border-purple-500/25' 
+                                                                                : 'bg-purple-50 text-purple-700 border border-purple-200'
+                                                                        }`}>
+                                                                            {t.fromSessionBrain || (language === 'en' ? '🧠 Session Memory' : '🧠 Memori Sesi')}
+                                                                        </span>
+                                                                    )}
                                                                     {doc.jenis && (
                                                                         <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wide ${
                                                                             darkMode 
@@ -325,7 +348,7 @@ const AgenticProcessCard = ({
                                                                         <>
                                                                             <span className="text-gray-500 select-none">•</span>
                                                                             <span className={`${darkMode ? 'text-gray-400' : 'text-slate-500'}`}>
-                                                                                {doc.total_pages} {language === 'en' ? 'Pages' : 'Halaman'}
+                                                                                {doc.total_pages} {t.pages || (language === 'en' ? 'Pages' : 'Halaman')}
                                                                             </span>
                                                                         </>
                                                                     )}
@@ -341,10 +364,10 @@ const AgenticProcessCard = ({
                                                                         ? 'bg-white/5 group-hover/item:bg-amber-500/20 text-gray-400 group-hover/item:text-amber-300 border border-white/5 group-hover/item:border-amber-500/30' 
                                                                         : 'bg-slate-200/60 group-hover/item:bg-amber-50 text-slate-600 group-hover/item:text-amber-700 border border-slate-200 group-hover/item:border-amber-300'
                                                                 }`}
-                                                                title={fileUrl ? "Buka Dokumen PDF (Integrator Split-Screen)" : "Buka Portal Peraturan Resmi"}
+                                                                title={fileUrl ? (t.openPdfTooltip || "Buka Dokumen PDF (Integrator Split-Screen)") : (t.openDocTooltip || "Buka Portal Peraturan Resmi")}
                                                             >
                                                                 <ExternalLink className="w-3 h-3" />
-                                                                <span>{fileUrl ? 'PDF' : 'Buka'}</span>
+                                                                <span>{fileUrl ? (t.openPdf || 'PDF') : (t.openDoc || 'Buka')}</span>
                                                             </div>
                                                         </div>
                                                     </div>
@@ -352,7 +375,14 @@ const AgenticProcessCard = ({
                                             })
                                         ) : (
                                             <div className={`p-3 text-[12px] ${darkMode ? 'text-gray-400' : 'text-slate-600'}`}>
-                                                {data.message || "Pencarian regulasi internal selesai dijalankan."}
+                                                {isExecuting ? (
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping" />
+                                                        <span>{t.searchingInternalArchive || (language === 'en' ? "Searching internal regulation archive..." : "Menelusuri arsip regulasi internal...")}</span>
+                                                    </div>
+                                                ) : (
+                                                    data.message || t.noMatchingRegulation || (language === 'en' ? "No matching internal regulation documents found." : "Tidak ditemukan dokumen regulasi internal yang cocok.")
+                                                )}
                                             </div>
                                         )}
                                     </div>
@@ -379,7 +409,7 @@ const AgenticProcessCard = ({
                                         ? (darkMode ? 'text-indigo-300 font-medium' : 'text-indigo-600 font-medium')
                                         : (darkMode ? 'text-[#888888]' : 'text-slate-500')
                                 }`}>
-                                    {isCalc ? "Menganalisis hasil kalkulasi..." : "Menganalisis hasil penelusuran..."}
+                                    {isCalc ? (t.analyzingCalcResults || "Menganalisis hasil kalkulasi...") : (t.analyzingDocResults || "Menganalisis hasil penelusuran...")}
                                 </span>
                             </div>
 
@@ -399,7 +429,7 @@ const AgenticProcessCard = ({
                                             ? 'text-rose-500'
                                             : (darkMode ? 'text-emerald-400' : 'text-emerald-600')
                                     }`}>
-                                        {isError ? "Selesai (dengan catatan error)" : "Done"}
+                                        {isError ? (t.doneWithError || "Selesai (dengan catatan error)") : (t.done || (language === 'en' ? "Done" : "Selesai"))}
                                     </span>
                                 </div>
                             )}

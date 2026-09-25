@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Globe, ChevronDown, ChevronUp, Clock, CheckCircle2 } from 'lucide-react';
 import { translations } from '../../../utils/translations';
 
-const WebSearchWidget = ({ searchData, isStreaming, hasStartedResponding, darkMode = true, language = 'id' }) => {
+const WebSearchWidget = ({ searchData, isStreaming, hasStartedResponding, darkMode = true, language = 'id', statusText }) => {
     // Terbuka HANYA saat aktif live streaming dan belum mulai merespons teks
     const [isOpen, setIsOpen] = useState(() => Boolean(isStreaming && !hasStartedResponding));
     const [elapsedSec, setElapsedSec] = useState(0);
@@ -65,17 +65,17 @@ const WebSearchWidget = ({ searchData, isStreaming, hasStartedResponding, darkMo
                     {isLoading ? (
                         <>
                             <span className="inline-block w-2 h-2 rounded-full bg-indigo-500 animate-ping" />
-                            <span>{(t.searchingInfoWithTime || "Menelusuri informasi dari web ({elapsed}s)").replace('{elapsed}', elapsedSec)}</span>
+                            <span>{statusText || (t.searchingInfo || "Mencari di mesin pencari")}</span>
                         </>
                     ) : isAnalyzing ? (
                         <>
                             <span className={`inline-block w-2 h-2 rounded-full animate-pulse ${darkMode ? 'bg-indigo-400' : 'bg-indigo-600'}`} />
-                            <span className={darkMode ? 'text-indigo-300' : 'text-indigo-600'}>{t.readingWebLinks || "Membaca tautan web..."}</span>
+                            <span className={darkMode ? 'text-indigo-300' : 'text-indigo-600'}>{statusText || (t.readingWebLinks || "Membaca isi tautan web")}</span>
                         </>
                     ) : isSearchComplete ? (
                         t.searchResults || "Hasil penelusuran informasi dari web"
                     ) : (
-                        t.searchingInfo || "Menelusuri informasi dari web"
+                        statusText || t.searchingInfo || "Mencari di mesin pencari"
                     )}
                 </span>
                 <span className={`flex items-center justify-center transition-colors ${darkMode ? 'text-[#888888] group-hover:text-[#c4c4c4]' : 'text-slate-400 group-hover:text-slate-600'}`}>

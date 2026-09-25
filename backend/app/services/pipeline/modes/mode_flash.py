@@ -186,6 +186,7 @@ class ModeFlash:
                 is_thinking=is_thinking,
                 employee_name=employee_name,
                 session_uuid=session_uuid_to_use,
+                current_user_npp=current_user_npp,
                 max_tool_loops=2,
                 **module_config,
             ):

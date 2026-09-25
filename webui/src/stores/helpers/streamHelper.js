@@ -172,11 +172,23 @@ export async function performStream(set, get, messagesToSend, assistantMessage, 
                         }
                     },
                     onStatus: (statusStr, statusKey) => {
-                        // Dipanggil oleh RAG / pipeline statis
+                        // Dipanggil oleh RAG / pipeline statis / agentic tool
+                        let activeTool = assistantMessage.activeTool || null;
+                        if (statusKey) {
+                            const upperKey = statusKey.toUpperCase();
+                            if (upperKey.includes('WEBSEARCH') || upperKey.includes('WEB_SEARCH')) activeTool = 'websearch';
+                            else if (upperKey.includes('URLFETCH') || upperKey.includes('URL_FETCH') || upperKey.includes('READ_URL')) activeTool = 'urlfetch';
+                            else if (upperKey.includes('DOCSEARCH') || upperKey.includes('DOC_SEARCH')) activeTool = 'docsearch';
+                            else if (upperKey.includes('CALC')) activeTool = 'python_calc';
+                            else if (upperKey.includes('MAP')) activeTool = 'map_search';
+                            else if (upperKey === 'DRAFTING_RESPONSE' || upperKey === 'FINISHED') activeTool = null;
+                        }
+
                         const updatedAssistantMsg = {
                             ...assistantMessage,
                             statusMessage: statusStr,
-                            statusKey: statusKey || assistantMessage.statusKey || null
+                            statusKey: statusKey || assistantMessage.statusKey || null,
+                            activeTool: activeTool
                         };
                         assistantMessage = updatedAssistantMsg;
 
@@ -452,7 +464,7 @@ export async function performStream(set, get, messagesToSend, assistantMessage, 
                         }
                     },
                     onDone: (data) => {
-                        assistantMessage = { ...assistantMessage, isStreaming: false, isThinking: false };
+                        assistantMessage = { ...assistantMessage, isStreaming: false, isThinking: false, activeTool: null };
 
                         // 📚 MERGE DOKUMEN RUJUKAN dari hint di akhir stream jika belum terdaftar
                         if (streamOptions?.hint_source) {

@@ -17,7 +17,7 @@ from fastapi import Request
 from backend.app.core.config import settings
 from backend.app.core.llm_client import stream_ollama_chat
 from backend.app.services.pipeline.sse_validation import format_sse, SSEEventType
-from backend.app.services.pipeline.tool_dispatcher import dispatch_agentic_tool, ToolResult
+from backend.app.services.pipeline.tool_dispatcher import dispatch_agentic_tool, dispatch_agentic_tool_stream, ToolResult
 
 logger = logging.getLogger("CAKRA_AGENTIC_INTERCEPTOR")
 
@@ -240,8 +240,10 @@ async def resolve_and_enrich_sources(json_str: str, rag_sources: Optional[List[D
             for _src, _n in zip(final_sources, _page_results):
                 n_pages = _n if isinstance(_n, int) else 0
                 if n_pages > 0:
-                    _src["total_pages"] = str(n_pages)
-                    _src["page_number"] = ""
+                    if not _src.get("total_pages"):
+                        _src["total_pages"] = str(n_pages)
+                    if not _src.get("page_number"):
+                        _src["page_number"] = ""
                 elif not _src.get("total_pages"):
                     _src["total_pages"] = ""
 
@@ -422,6 +424,28 @@ async def agentic_stream_wrapper(
                             tool_buffer = tail[open_match.end():]
                             buffer = ""
                             logger.info(f"[AGENTIC_TOOL] 🎯 Intercepted ```{tool_tag} open tag during stream!")
+
+                            _norm_tag = tool_tag
+                            if _norm_tag in ("web_search", "websearch"):
+                                _norm_tag = "websearch"
+                            elif _norm_tag in ("doc_search", "docsearch"):
+                                _norm_tag = "docsearch"
+                            elif _norm_tag in ("url_fetch", "read_url", "fetch_url", "urlfetch"):
+                                _norm_tag = "urlfetch"
+                            elif _norm_tag in ("calc", "python_calc"):
+                                _norm_tag = "python_calc"
+                            elif _norm_tag in ("map", "geocode", "map_search"):
+                                _norm_tag = "map_search"
+
+                            tool_initial_statuses = {
+                                "websearch": ("Mencari di mesin pencari", "TOOL_WEBSEARCH_SEARCHING"),
+                                "docsearch": ("Membuka arsip regulasi", "TOOL_DOCSEARCH_OPENING"),
+                                "urlfetch": ("Mengunduh konten tautan", "TOOL_URLFETCH_DOWNLOADING"),
+                                "python_calc": ("Menjalankan komputasi", "TOOL_CALC_RUNNING"),
+                                "map_search": ("Menelusuri koordinat peta", "TOOL_MAP_SEARCHING"),
+                            }
+                            init_status = tool_initial_statuses.get(_norm_tag, (f"Menyiapkan alat {_norm_tag}", f"TOOL_{_norm_tag.upper()}_PREPARING"))
+                            yield format_sse(status=init_status[0], status_key=init_status[1], event_type=SSEEventType.STATUS)
                         elif len(tail) < 30 and "\n" not in tail[3:]:
                             # Masih mungkin bagian dari tag tool (misal: ```doc...), tahan tail di buffer
                             if bt_idx > 0:
@@ -470,12 +494,39 @@ async def agentic_stream_wrapper(
                         
                         logger.info(f"[AGENTIC_TOOL] Executing tool '{tool_tag}' with payload: {raw_payload_str[:120]}...")
                         
-                        yield format_sse(status=f"🛠️ Menjalankan alat: {tool_tag}...", status_key="AGENTIC_TOOL_START", event_type=SSEEventType.STATUS)
+                        # Eksekusi via Universal Tool Dispatcher Stream (menghasilkan SSE status progresif)
+                        tool_result = None
+                        preview_emitted = False
+                        async for item in dispatch_agentic_tool_stream(
+                            tool_tag,
+                            raw_payload_str,
+                            session_uuid=session_uuid,
+                            current_user_npp=current_user_npp,
+                            request=request
+                        ):
+                            if isinstance(item, tuple):
+                                status_msg, status_k = item
+                                if status_msg in ("TOOL_PREVIEW", "DOCUMENTS_PREVIEW"):
+                                    if not preview_emitted:
+                                        # Kirim enriched JSON block preview awal agar UI langsung menampilkan widget secara realtime
+                                        preview_block = f"\n```{tool_tag}\n{json.dumps(status_k)}\n```\n\n"
+                                        yield format_sse(preview_block, "", False, event_type=SSEEventType.CHUNK)
+                                        accumulated_full_text += preview_block
+                                        preview_emitted = True
+                                else:
+                                    yield format_sse(status=status_msg, status_key=status_k, event_type=SSEEventType.STATUS)
+                            else:
+                                tool_result = item
 
-                        # Eksekusi via Universal Tool Dispatcher
-                        tool_result = await dispatch_agentic_tool(tool_tag, raw_payload_str)
+                        if tool_result is None:
+                            tool_result = ToolResult(
+                                tool_name=tool_tag,
+                                status="error",
+                                display_data={"error": "Tool execution returned no result"},
+                                llm_context="[Gagal menjalankan alat]"
+                            )
                         
-                        # Jika tool docsearch menghasilkan dokumen baru, catat ke current_rag_sources
+                        # Jika tool docsearch menghasilkan dokumen baru, catat ke current_rag_sources dengan metadata lengkap
                         if tool_result.tool_name == "docsearch" and current_rag_sources is not None:
                             for d in tool_result.display_data.get("documents", []):
                                 d_id = str(d.get("doc_id") or d.get("id") or "")
@@ -484,6 +535,17 @@ async def agentic_stream_wrapper(
                                         "id": d_id,
                                         "title": d.get("title", ""),
                                         "document_title": d.get("title", ""),
+                                        "nomor": d.get("nomor") or d.get("noper") or "",
+                                        "noper": d.get("nomor") or d.get("noper") or "",
+                                        "tanggal": d.get("tanggal", ""),
+                                        "total_pages": str(d.get("total_pages", "")),
+                                        "page": str(d.get("page") or d.get("page_number") or ""),
+                                        "page_number": str(d.get("page") or d.get("page_number") or ""),
+                                        "jenis": d.get("jenis") or "Regulasi",
+                                        "stataktif": d.get("stataktif") or "Berlaku",
+                                        "status_berlaku": d.get("stataktif") or "Berlaku",
+                                        "filename": d.get("filename") or "",
+                                        "file_path": d.get("file_path") or "",
                                         "content": d.get("snippet", ""),
                                         "score": d.get("score", 1.0)
                                     })
@@ -513,21 +575,38 @@ async def agentic_stream_wrapper(
                             except Exception as e_mem:
                                 logger.warning(f"[AGENTIC_INTERCEPTOR] Gagal menyimpan chunk urlfetch ke memori sesi: {e_mem}")
 
-                        # Kirim enriched JSON block ke UI (akan dirender oleh Frontend)
-                        enriched_block = f"\n```{tool_result.tool_name}\n{json.dumps(tool_result.display_data)}\n```\n\n"
-                        yield format_sse(enriched_block, "", False, event_type=SSEEventType.CHUNK)
-                        accumulated_full_text += enriched_block
+                        # Kirim enriched JSON block ke UI (akan dirender oleh Frontend jika belum dipancarkan saat preview)
+                        if not preview_emitted:
+                            enriched_block = f"\n```{tool_result.tool_name}\n{json.dumps(tool_result.display_data)}\n```\n\n"
+                            yield format_sse(enriched_block, "", False, event_type=SSEEventType.CHUNK)
+                            accumulated_full_text += enriched_block
 
-                        yield format_sse(status="💡 Menyusun analisis...", status_key="DRAFTING_RESPONSE", event_type=SSEEventType.STATUS)
+                        yield format_sse(status="Menyusun jawaban", status_key="DRAFTING_RESPONSE", event_type=SSEEventType.STATUS)
 
-                        safe_context = tool_result.llm_context[:6500] if len(tool_result.llm_context) > 6500 else tool_result.llm_context
-                        continuation_instruction = (
-                            f"\n\n[SISTEM: HASIL EKSEKUSI ALAT '{tool_result.tool_name.upper()}']:\n"
-                            f"{safe_context}\n\n"
-                            f"[INSTRUKSI LANJUTAN]:\n"
-                            f"Kamu telah menerima hasil eksekusi alat di atas. Lanjutkan jawabanmu SEKARANG secara natural dari teks pembuka yang telah kamu katakan sebelumnya.\n"
-                            f"Sajikan jawaban secara akurat, lengkap, dan terstruktur dengan tetap konsisten mematuhi pengaturan kata ganti & gaya bahasa (Saya-Anda / Gue-Lo / Aku-Kamu) aktifmu. JANGAN mengulangi sapaan awal."
-                        )
+                        # Batas kuota konteks LLM aman (~8.750 - 9.000 token, di bawah 10k token)
+                        safe_context = tool_result.llm_context[:35000] if len(tool_result.llm_context) > 35000 else tool_result.llm_context
+                        if tool_result.tool_name == "docsearch":
+                            continuation_instruction = (
+                                f"\n\n[SISTEM: HASIL EKSEKUSI ALAT 'DOCSEARCH']:\n"
+                                f"{safe_context}\n\n"
+                                f"[INSTRUKSI LANJUTAN]:\n"
+                                f"Kamu telah menerima hasil pembacaan dokumen regulasi di atas. Evaluasi apakah dokumen di atas RELEVAN dan MEMUAT klausul yang dibutuhkan pengguna:\n"
+                                f"- JIKA INFORMASI SUDAH LENGKAP & RELEVAN:\n"
+                                f"  1. AWALI respon lanjutanmu dengan tag <sources_json>[{{\"id\": \"ID_DOKUMEN\", \"judul\": \"JUDUL_DOKUMEN\", \"alasan\": \"alasan penggunaan\"}}]</sources_json> HANYA untuk dokumen yang kamu jadikan referensi (gunakan ID dan Judul dokumen dari data di atas). Tag ini otomatis diproses sistem menjadi kartu sitasi resmi dan tidak akan ditampilkan sebagai teks mentah.\n"
+                                f"  2. Setelah tag </sources_json>, lanjutkan jawabanmu secara tuntas, akurat, dan terstruktur menyambung respons sebelumnya. Patuhi gaya bahasa & kata ganti aktifmu.\n"
+                                f"- JIKA HASIL TIDAK RELEVAN, SALAH DOKUMEN, ATAU KURANG LENGKAP: Kamu WAJIB LANGSUNG MEMANGGIL ALAT LAGI (misal ```docsearch dengan kata kunci substansi yang lebih spesifik, atau ```websearch jika topik tidak ada di arsip internal) DI BAWAH KALIMATMU SEKARANG JUGA! DILARANG KERAS hanya berjanji dalam bentuk teks tanpa menyertakan blok pemanggilan alatnya!\n"
+                                f"Tetap konsisten menjaga gaya bahasa aktifmu. JANGAN mengulangi sapaan awal."
+                            )
+                        else:
+                            continuation_instruction = (
+                                f"\n\n[SISTEM: HASIL EKSEKUSI ALAT '{tool_result.tool_name.upper()}']:\n"
+                                f"{safe_context}\n\n"
+                                f"[INSTRUKSI LANJUTAN]:\n"
+                                f"Kamu telah menerima hasil eksekusi alat di atas. Evaluasi apakah dokumen/data di atas RELEVAN dan MEMUAT informasi yang dibutuhkan pengguna:\n"
+                                f"- JIKA INFORMASI SUDAH LENGKAP & RELEVAN: Lanjutkan jawabanmu secara tuntas, akurat, dan terstruktur menyambung respons sebelumnya. Patuhi gaya bahasa & kata ganti aktifmu.\n"
+                                f"- JIKA HASIL TIDAK RELEVAN, SALAH DOKUMEN, ATAU KURANG LENGKAP: Kamu WAJIB LANGSUNG MEMANGGIL ALAT LAGI (misal ```docsearch dengan kata kunci substansi yang lebih spesifik, atau ```websearch jika topik tidak ada di arsip internal) DI BAWAH KALIMATMU SEKARANG JUGA! DILARANG KERAS hanya berjanji dalam bentuk teks tanpa menyertakan blok pemanggilan alatnya!\n"
+                                f"Tetap konsisten menjaga gaya bahasa aktifmu. JANGAN mengulangi sapaan awal."
+                            )
                         if loop_count + 1 >= max_tool_loops:
                             continuation_instruction += "\n(Batas panggilan alat tercapai: Berikan simpulan akhir tuntas sekarang tanpa memanggil alat lagi)."
 

@@ -793,7 +793,33 @@ export const translations = {
       completed: "Selesai diproses",
       resultsCount: "{count} referensi ditemukan",
       docsCount: "{count} dokumen dicocokkan",
-      executionSuccess: "Kalkulasi selesai dengan presisi"
+      executionSuccess: "Kalkulasi selesai dengan presisi",
+      searchingReferences: "Mencari referensi...",
+      searchingInternalArchive: "Menelusuri arsip regulasi internal...",
+      noMatchingRegulation: "Tidak ditemukan dokumen regulasi internal yang cocok.",
+      referencesCount: "referensi",
+      sandboxExecution: "sandbox execution",
+      fromSessionBrain: "🧠 Memori Sesi",
+      docSearchComplete: "Hasil penelusuran regulasi internal",
+      calcComplete: "Hasil kalkulasi matematis presisi",
+      calcFailed: "Kalkulasi matematis (terkendala)",
+      genericComplete: "Hasil proses alat otonom",
+      genericRunning: "Proses alat otonom",
+      docSearching: "Menelusuri regulasi internal ({elapsed}s)",
+      docAnalyzing: "Menganalisis dokumen peraturan",
+      docSearchDefault: "Pencarian regulasi & SOP internal",
+      calcRunning: "Menjalankan komputasi ({elapsed}s)",
+      calcAnalyzing: "Menganalisis hasil komputasi",
+      calcDefault: "Kalkulasi matematis via Python Sandbox",
+      analyzingCalcResults: "Menganalisis hasil kalkulasi...",
+      analyzingDocResults: "Menganalisis hasil penelusuran...",
+      done: "Selesai",
+      doneWithError: "Selesai (dengan catatan error)",
+      pages: "Halaman",
+      openPdf: "PDF",
+      openDoc: "Buka",
+      openPdfTooltip: "Buka Dokumen PDF (Integrator Split-Screen)",
+      openDocTooltip: "Buka Portal Peraturan Resmi"
     },
     wizard: {
       defaultQuestion: "Silakan pilih opsi berikut:",
@@ -936,6 +962,19 @@ export const translations = {
       FINISHED: "Selesai",
       THINKING_DEFAULT: "🧠 Berpikir",
       THINKING_DONE: "✨ Selesai berpikir",
+      // ── AGENTIC TOOL STATUS KEYS ──
+      AGENTIC_TOOL_START: "🛠️ Menjalankan alat",
+      TOOL_WEBSEARCH_SEARCHING: "Mencari di mesin pencari",
+      TOOL_WEBSEARCH_RERANKING: "Menyaring rujukan web",
+      TOOL_WEBSEARCH_SCRAPING: "Membaca isi tautan web",
+      TOOL_DOCSEARCH_OPENING: "Membuka arsip regulasi",
+      TOOL_DOCSEARCH_SEARCHING: "Menelusuri klausul rujukan",
+      TOOL_DOCSEARCH_SCORING: "Menilai relevansi dokumen",
+      TOOL_URLFETCH_DOWNLOADING: "Mengunduh konten tautan",
+      TOOL_URLFETCH_PARSING: "Mengekstrak isi halaman",
+      TOOL_CALC_RUNNING: "Menjalankan komputasi",
+      TOOL_MAP_SEARCHING: "Menelusuri koordinat peta",
+      TOOL_GENERIC_RUNNING: "Menjalankan alat",
       // ── PRESET & VISUAL STATUS KEYS ──
       WEB_INIT: "🌐 Menjelajah web",
       DIAGRAM_INIT: "📐 Merancang alur",
@@ -1764,7 +1803,33 @@ export const translations = {
       completed: "Process completed",
       resultsCount: "{count} references found",
       docsCount: "{count} documents matched",
-      executionSuccess: "Calculation completed with precision"
+      executionSuccess: "Calculation completed with precision",
+      searchingReferences: "Searching references...",
+      searchingInternalArchive: "Searching internal regulation archive...",
+      noMatchingRegulation: "No matching internal regulation documents found.",
+      referencesCount: "references",
+      sandboxExecution: "sandbox execution",
+      fromSessionBrain: "🧠 Session Memory",
+      docSearchComplete: "Results from internal regulations",
+      calcComplete: "Precise mathematical calculation results",
+      calcFailed: "Mathematical calculation (encountered issue)",
+      genericComplete: "Autonomous tool process results",
+      genericRunning: "Autonomous tool process",
+      docSearching: "Searching internal regulations ({elapsed}s)",
+      docAnalyzing: "Analyzing regulatory documents",
+      docSearchDefault: "Internal regulation & SOP search",
+      calcRunning: "Executing computation ({elapsed}s)",
+      calcAnalyzing: "Analyzing computation results",
+      calcDefault: "Mathematical calculation via Python Sandbox",
+      analyzingCalcResults: "Analyzing calculation results...",
+      analyzingDocResults: "Analyzing search results...",
+      done: "Done",
+      doneWithError: "Completed (with error notes)",
+      pages: "Pages",
+      openPdf: "PDF",
+      openDoc: "Open",
+      openPdfTooltip: "Open PDF Document (Split-Screen Integrator)",
+      openDocTooltip: "Open Official Regulation Portal"
     },
     wizard: {
       defaultQuestion: "Please select an option below:",
@@ -1907,6 +1972,19 @@ export const translations = {
       FINISHED: "Done",
       THINKING_DEFAULT: "🧠 Thinking",
       THINKING_DONE: "✨ Thinking done",
+      // ── AGENTIC TOOL STATUS KEYS ──
+      AGENTIC_TOOL_START: "🛠️ Executing tool",
+      TOOL_WEBSEARCH_SEARCHING: "Searching web engines",
+      TOOL_WEBSEARCH_RERANKING: "Filtering web references",
+      TOOL_WEBSEARCH_SCRAPING: "Reading web pages content",
+      TOOL_DOCSEARCH_OPENING: "Opening regulatory archive",
+      TOOL_DOCSEARCH_SEARCHING: "Searching reference clauses",
+      TOOL_DOCSEARCH_SCORING: "Scoring document relevance",
+      TOOL_URLFETCH_DOWNLOADING: "Downloading link content",
+      TOOL_URLFETCH_PARSING: "Extracting page content",
+      TOOL_CALC_RUNNING: "Running computation",
+      TOOL_MAP_SEARCHING: "Searching map coordinates",
+      TOOL_GENERIC_RUNNING: "Executing tool",
       // ── PRESET & VISUAL STATUS KEYS ──
       WEB_INIT: "🌐 Browsing web",
       DIAGRAM_INIT: "📐 Designing flow",
@@ -2166,6 +2244,16 @@ export function resolveStatusMessage(statusInput, language = 'id', explicitKey =
     if (cleanR.includes('mencari di web')) return stripDots(sseDict.WEB_SEARCH_INIT || '🌐 Searching the web');
     if (cleanR.includes('menyaring fakta')) return stripDots(sseDict.FILTERING_FACTS || '🎯 Filtering key facts');
     if (cleanR.includes('menyusun ringkasan')) return stripDots(sseDict.DRAFTING_SUMMARY || '💡 Drafting summary');
+    if (cleanR.includes('mesin pencari') || cleanR.includes('mencari di mesin pencari')) return stripDots(sseDict.TOOL_WEBSEARCH_SEARCHING || 'Searching web engines');
+    if (cleanR.includes('rujukan web') || cleanR.includes('menyaring rujukan web')) return stripDots(sseDict.TOOL_WEBSEARCH_RERANKING || 'Filtering web references');
+    if (cleanR.includes('isi tautan web') || cleanR.includes('membaca isi tautan web')) return stripDots(sseDict.TOOL_WEBSEARCH_SCRAPING || 'Reading web pages content');
+    if (cleanR.includes('arsip regulasi') || cleanR.includes('membuka arsip regulasi')) return stripDots(sseDict.TOOL_DOCSEARCH_OPENING || 'Opening regulatory archive');
+    if (cleanR.includes('klausul rujukan') || cleanR.includes('menelusuri klausul rujukan')) return stripDots(sseDict.TOOL_DOCSEARCH_SEARCHING || 'Searching reference clauses');
+    if (cleanR.includes('relevansi dokumen') || cleanR.includes('menilai relevansi dokumen')) return stripDots(sseDict.TOOL_DOCSEARCH_SCORING || 'Scoring document relevance');
+    if (cleanR.includes('mengunduh konten tautan') || cleanR.includes('konten tautan')) return stripDots(sseDict.TOOL_URLFETCH_DOWNLOADING || 'Downloading link content');
+    if (cleanR.includes('mengekstrak isi halaman') || cleanR.includes('isi halaman')) return stripDots(sseDict.TOOL_URLFETCH_PARSING || 'Extracting page content');
+    if (cleanR.includes('menjalankan komputasi') || cleanR.includes('komputasi')) return stripDots(sseDict.TOOL_CALC_RUNNING || 'Running computation');
+    if (cleanR.includes('koordinat peta') || cleanR.includes('menelusuri koordinat peta')) return stripDots(sseDict.TOOL_MAP_SEARCHING || 'Searching map coordinates');
     if (cleanR.includes('berpikir') || cleanR.includes('menganalisis konteks')) return stripDots(sseDict.THINKING_PROGRESS || 'Thinking');
   }
 
