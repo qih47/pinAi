@@ -1,7 +1,7 @@
 """
 CAKRA AI — Universal Tool Dispatcher (MCP-Ready Architecture)
 ============================================================
-Pusat eksekusi tools otonom Call 2 yang modular, aman, dan non-destruktif.
+Pusat eksekusi tools otonom Response Synthesizer yang modular, aman, dan non-destruktif.
 Mendukung tool internal native (web_search, doc_search, python_calc) dan
 siap dihubungkan ke remote MCP Server di masa depan via adapter.
 """
@@ -161,17 +161,17 @@ async def execute_doc_search_tool_stream(
     """
     Eksekusi alur RAG lengkap untuk tool docsearch:
     0. Brain-First Check: Cek ketersediaan dokumen di Memori Sesi (Brain)
-    1. Call 1.1 CRAG Verifier untuk mengevaluasi Brain kandidat atau fallback ke MySQL
+    1. Context Verifier (CRAG) untuk mengevaluasi Brain kandidat atau fallback ke MySQL
     2. Seleksi dokumen utama (full read PDF, max 2 jika komparatif) vs dokumen histori
     3. Ekstraksi teks fisik PDF per halaman atau gunakan cache Brain jika tersedia
     4. Simpan dokumen baru yang berhasil diekstrak ke SessionBrain
     5. BGE Cross-Encoder Reranking per halaman & Integrasi Halaman Eksplisit
     6. Tri-Window connected context expansion (±1 halaman)
-    7. Perakitan konteks pasal/klausul asli untuk disuntikkan ke Call 2
+    7. Perakitan konteks pasal/klausul asli untuk disuntikkan ke Response Synthesizer
     """
     from backend.app.core.paths import FILE_PERATURAN_DIR
     from backend.app.services.peraturan_service import get_candidate_documents_metadata
-    from backend.app.services.pipeline.context_verifier import verify_retrieval_context, verify_retrieved_documents_crag, ENABLE_CALL1_1_CRAG
+    from backend.app.services.pipeline.context_verifier import verify_retrieval_context, verify_retrieved_documents_crag, ENABLE_CONTEXT_VERIFIER
     from backend.app.services.rag.reranker_service import reranker_service
     from backend.app.services.pipeline.document_intelligence import (
         extract_and_ocr_document_async,
@@ -318,7 +318,7 @@ async def execute_doc_search_tool_stream(
                     })
                     logger.info(f"[TOOL_DISPATCHER] 🧠 [BRAIN-HIT] Dokumen aktif sesi {b_id} ('{doc_title}') disiapkan dari Brain.")
 
-        # ── STEP 1: Call 1.1 CRAG QC Verifier (Brain Validasi / Fallback ke MySQL) ──
+        # ── STEP 1: Context Verifier (CRAG QC / Validasi Brain / Fallback ke MySQL) ──
         crag_primary_id = None
         if candidate_docs and is_brain_relevant:
             yield ("🧠 Mengakses dokumen dari memori sesi", "BRAIN_HIT")
@@ -331,7 +331,7 @@ async def execute_doc_search_tool_stream(
             if is_direct_title_hit:
                 crag_primary_id = candidate_docs[0]["id"]
                 logger.info(f"[TOOL_DISPATCHER] ⚡ Brain Direct Hit untuk {crag_primary_id}: Relevansi judul pasti, lewati re-evaluasi CRAG LLM.")
-            elif ENABLE_CALL1_1_CRAG:
+            elif ENABLE_CONTEXT_VERIFIER:
                 crag_eval = await verify_retrieved_documents_crag(
                     user_query=clean_query,
                     target_judul_list=query_judul_list,
@@ -359,7 +359,7 @@ async def execute_doc_search_tool_stream(
                 search_tags=search_tags_list
             ) or []
 
-            if candidate_docs and ENABLE_CALL1_1_CRAG:
+            if candidate_docs and ENABLE_CONTEXT_VERIFIER:
                 yield ("Menilai relevansi dokumen", "TOOL_DOCSEARCH_SCORING")
                 crag_eval = await verify_retrieved_documents_crag(
                     user_query=clean_query,
@@ -377,7 +377,7 @@ async def execute_doc_search_tool_stream(
                     suggested_tags = crag_eval.get("suggested_tags") or search_tags_list
 
                     logger.warning(
-                        f"[TOOL_DISPATCHER] ⚠️ Turn 1 Call 1.1 CRAG flagged candidates as NOT RELEVANT "
+                        f"[TOOL_DISPATCHER] ⚠️ Turn 1 Context Verifier (CRAG) flagged candidates as NOT RELEVANT "
                         f"({crag_eval.get('reason')}). Retrying with suggested: qj={suggested_qj}"
                     )
                     yield ("Menajamkan pencarian regulasi", "CRAG_RETRY")

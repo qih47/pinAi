@@ -272,10 +272,10 @@ class ModeCollab:
         if members_str:
             system_context += f"Anggota Tim di Ruangan Ini: {members_str}\n"
 
-        # Sinkronisasi Call 1 -> Call 2: Teruskan hasil evaluasi batin Call 1 ke System Context Call 2
+        # Sinkronisasi Dispatcher -> Responder: Teruskan hasil evaluasi batin Dispatcher ke System Context Responder
         if eval_reason:
             system_context += (
-                f"\n--- EVALUASI INTERVENSI TIM (CALL 1) ---\n"
+                f"\n--- EVALUASI INTERVENSI TIM (DISPATCHER) ---\n"
                 f"Tujuan Respon: {eval_reason}\n"
                 f"-----------------------------------------\n"
             )

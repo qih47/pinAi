@@ -855,8 +855,8 @@ Keluarkan HANYA JSON array berikut (tanpa pengantar markdown apapun di luar blok
         """
         Mengakumulasi pasangan Q&A dari Worker 2 (RAG) dan sampel sintesis dari Worker 6 (Non-RAG)
         menjadi dataset latih seimbang (JSONL) secara SIMULTAN dan UNLIMITED:
-        1. Call 2 Core: data/finetune/nightly_cakra_core.jsonl (Reasoning CoT & Respon Akurat)
-        2. Call 1 Router: data/finetune/nightly_call1_router.jsonl (Lean Sparse JSON Classification)
+        1. Responder Core: data/finetune/nightly_cakra_core.jsonl (Reasoning CoT & Respon Akurat)
+        2. Dispatcher Router: data/finetune/nightly_dispatcher_router.jsonl (Lean Sparse JSON Classification)
         """
         if not qa_pairs and not agentic_samples:
             return {"count": 0, "samples": [], "router_count": 0}
@@ -869,7 +869,7 @@ Keluarkan HANYA JSON array berikut (tanpa pengantar markdown apapun di luar blok
 
         os.makedirs(self.finetune_data_dir, exist_ok=True)
         core_file = os.path.join(self.finetune_data_dir, "nightly_cakra_core.jsonl")
-        router_file = os.path.join(self.finetune_data_dir, "nightly_call1_router.jsonl")
+        router_file = os.path.join(self.finetune_data_dir, "nightly_dispatcher_router.jsonl")
 
         count_core = 0
         count_router = 0

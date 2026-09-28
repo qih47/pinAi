@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """
-CAKRA AI — Call 1 Router Benchmark & Evaluation Engine
+CAKRA AI — Dispatcher Router Benchmark & Evaluation Engine
 ======================================================
 Menguji model `cakra-router` (via Ollama / PyTorch) pada 50+ test cases uji
 dan mengukur akurasi routing, format-compliance, dan kecepatan TTFT (ms).
 
 Usage:
-    python backend/scripts/finetune/evaluate_call1_router.py --model "cakra-router"
+    python backend/scripts/finetune/evaluate_dispatcher_router.py --model "cakra-router"
 """
 
 import time

@@ -9,7 +9,7 @@ from backend.app.api.schemas.chat_schemas import ChatMessageSchema
 from backend.app.services.pipeline.sse_validation import format_sse, SSEEventType
 from backend.app.core.llm_client import stream_ollama_chat
 from backend.app.core.config import settings
-from backend.app.services.pipeline.modes.mode_utils import select_call2_module, get_module_config, build_call2_system_prompt, sanitize_history_for_pronoun
+from backend.app.services.pipeline.modes.mode_utils import select_responder_module, get_module_config, build_responder_system_prompt, sanitize_history_for_pronoun
 
 logger = logging.getLogger("MODE_FLASH")
 
@@ -46,11 +46,11 @@ class ModeFlash:
             routing_data["is_docwriter"] = False
         
         # Select module
-        module_name = select_call2_module(routing_data, has_rag_context=False)
+        module_name = select_responder_module(routing_data, has_rag_context=False)
         logger.info(f"[MODE_FLASH] Selected module: {module_name}")
 
         # Build prompt
-        system_prompt = build_call2_system_prompt(
+        system_prompt = build_responder_system_prompt(
             module_name=module_name,
             employee_name=employee_name,
             precheck=routing_data,
@@ -155,7 +155,7 @@ class ModeFlash:
         rag_tokens = 0 # Flash mode tidak pakai RAG
         total_used = sys_tokens + hist_tokens + rag_tokens
         
-        # Log Agent Step for Call 2 Flash
+        # Log Agent Step for Responder Flash
         session_uuid_to_use = session_uuid or (routing_data.get("_session_uuid") if routing_data else None)
         if session_uuid_to_use:
             from backend.app.services.chat.chat_history_service import chat_history_service
@@ -172,7 +172,7 @@ class ModeFlash:
             asyncio.create_task(chat_history_service.save_agent_step(
                 session_id=session_uuid_to_use,
                 step_number=2,
-                tool_called="CALL_2_FLASH",
+                tool_called="RESPONDER_FLASH",
                 tool_input=f"Prompt chars: {len(system_prompt)}",
                 observation=json.dumps(obs_dict)
             ))
@@ -191,7 +191,7 @@ class ModeFlash:
                 **module_config,
             ):
                 yield chunk
-            logger.info(f"[CALL2_FLASH] ✅ Finished generation | module={module_name} | needs_history={needs_history} | turns_sent={len(trimmed_messages)} | hist_tokens={hist_tokens}")
+            logger.info(f"[RESPONDER_FLASH] ✅ Finished generation | module={module_name} | needs_history={needs_history} | turns_sent={len(trimmed_messages)} | hist_tokens={hist_tokens}")
         except Exception as e:
             logger.error(f"[MODE_FLASH] Stream error: {e}")
             yield format_sse(f"Maaf, terjadi kendala teknis: {str(e)}", "", False, event_type=SSEEventType.CHUNK)

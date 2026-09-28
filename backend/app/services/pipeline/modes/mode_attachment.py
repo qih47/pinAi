@@ -518,7 +518,7 @@ class ModeAttachment:
         target_model = getattr(settings, "MODEL_PERSONA", "gemma4:31b")
 
         t_pre_elapsed = (time.time() - t_pre_start) * 1000
-        logger.info(f"[TIMING_BENCHMARK] [PRE_CALL2_ATTACHMENT] Done in {t_pre_elapsed:.2f}ms | Starting Call 2 stream")
+        logger.info(f"[TIMING_BENCHMARK] [PRE_RESPONDER_ATTACHMENT] Done in {t_pre_elapsed:.2f}ms | Starting Responder stream")
 
         # ── Dynamic Progress Status Carousel Selama Menunggu TTFT LLM Prefill ──
         status_steps = []

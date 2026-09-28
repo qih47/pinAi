@@ -147,9 +147,9 @@ async def print_dashboard():
 
 def colorize_log_line(line: str) -> str:
     """Format dan warnai log keyword penting."""
-    if "[CALL1]" in line or "CAKRA_ROUTER" in line:
+    if "[DISPATCHER" in line or "CAKRA_ROUTER" in line:
         return f"{YELLOW}{line}{RESET}"
-    if "[CALL2" in line or "[GEMMA_ANSWER]" in line:
+    if "[RESPONDER" in line or "[GEMMA_ANSWER]" in line:
         return f"{GREEN}{line}{RESET}"
     if "ERROR" in line or "Traceback" in line or "Exception" in line:
         return f"{RED}{BOLD}{line}{RESET}"

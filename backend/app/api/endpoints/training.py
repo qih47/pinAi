@@ -70,7 +70,7 @@ async def get_active_jobs():
         logger.error(f"Failed to fetch job statuses: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-# ── NIGHTLY 5-WORKER TRAINING ENDPOINTS (RAGDB ONLY) ────────────────────────
+# ── NIGHTLY 6-WORKER TRAINING ENDPOINTS (RAGDB ONLY) ────────────────────────
 from backend.app.services.training.nightly.orchestrator import (
     trigger_nightly_training,
     stop_nightly_training,

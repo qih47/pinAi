@@ -277,7 +277,7 @@ class ModeFocus:
             valid_images = [img for img in final_base64_images if img and len(img) > 100]
             if valid_images:
                 user_payload["images"] = valid_images[:12]
-                logger.info(f"[MODE_FOCUS] 🖼️ Injected {len(user_payload['images'])} page images into Call 2 (Gemma Vision)")
+                logger.info(f"[MODE_FOCUS] 🖼️ Injected {len(user_payload['images'])} page images into Responder (Gemma Vision)")
             
         current_messages = [{"role": "system", "content": system_prompt}] + trimmed_messages + [user_payload]
 
@@ -309,13 +309,13 @@ class ModeFocus:
             except Exception as e:
                 logger.warning(f"[MODE_FOCUS] Failed saving token obs: {e}")
 
-        # Real-time status SSE sebelum TTFT Call 2
+        # Real-time status SSE sebelum TTFT Responder
         yield format_sse(status="✍️ Menyusun analisis dokumen...", status_key="DRAFTING_RESPONSE", event_type=SSEEventType.STATUS)
 
         t_pre_elapsed = (time.time() - t_pre_start) * 1000
-        logger.info(f"[TIMING_BENCHMARK] [PRE_CALL2_FOCUS] Done in {t_pre_elapsed:.2f}ms | Starting Call 2 stream")
+        logger.info(f"[TIMING_BENCHMARK] [PRE_RESPONDER_FOCUS] Done in {t_pre_elapsed:.2f}ms | Starting Responder stream")
 
-        # 6. Stream Respons Ollama (Call 2 Focus)
+        # 6. Stream Respons LLM (Responder Focus)
         async for chunk in stream_ollama_chat(
             model_name=getattr(settings, "MODEL_PERSONA", "gemma4:31b"),
             messages=current_messages,
@@ -350,4 +350,4 @@ class ModeFocus:
             "halaman": [p + 1 for p in selected_pages] if selected_pages else None
         }]
         yield format_sse("", "", False, sources=sources_list, event_type=SSEEventType.SOURCES)
-        logger.info(f"[CALL2_FOCUS] ✅ Finished generation | needs_history={needs_history} | prior_turns_sent={len(trimmed_messages)}")
+        logger.info(f"[RESPONDER_FOCUS] ✅ Finished generation | needs_history={needs_history} | prior_turns_sent={len(trimmed_messages)}")

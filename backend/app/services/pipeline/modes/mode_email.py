@@ -119,5 +119,5 @@ class ModeEmail:
             ))
 
         duration = time.time() - start_time
-        logger.info(f"[CALL2_EMAIL] ✅ Finished generation | needs_history={needs_history} | turns_sent={len(trimmed_messages)} | duration={duration:.2f}s")
+        logger.info(f"[RESPONDER_EMAIL] ✅ Finished generation | needs_history={needs_history} | turns_sent={len(trimmed_messages)} | duration={duration:.2f}s")
         yield format_sse(status=f"✨ Email siap ({duration:.1f}s)", status_key="EMAIL_READY", event_type=SSEEventType.STATUS)

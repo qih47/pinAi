@@ -1,7 +1,7 @@
 """
 Mode Generate File — Interceptor-Analyst Pipeline (REFACTOR ANTI-BOCOR)
 =======================================================================
-Arsitektur: Dual-Call + Live XML Parser + SSE Meta-Signals + Hard Break Enforcement
+Arsitektur: Dispatcher-Responder + Live XML Parser + SSE Meta-Signals + Hard Break Enforcement
 """
 
 import re
@@ -339,8 +339,8 @@ class ModeGenerateFile:
         except Exception as e:
             logger.warning(f"[MODE_GENERATE_FILE] Gagal membaca existing artifacts/attachments: {e}")
 
-        from backend.app.services.pipeline.system_prompts import build_generate_file_call1_prompt
-        system_prompt = build_generate_file_call1_prompt(
+        from backend.app.services.pipeline.system_prompts import build_generate_file_dispatcher_prompt
+        system_prompt = build_generate_file_dispatcher_prompt(
             employee_name=employee_name,
             pronoun=pronoun,
             tone_hint=tone_hint,
@@ -470,7 +470,7 @@ class ModeGenerateFile:
                         logger.error(f"[MODE_GENERATE_FILE] Flushed file write error for {fn}: {write_err}")
                         yield format_sse_file_status(stage="error", filename=fn)
 
-            logger.info(f"[CALL2_GENERATE_FILE] ✅ Finished generation | needs_history={needs_history} | turns_sent={len(trimmed_messages)} | files_written={len(written_files)}")
+            logger.info(f"[RESPONDER_GENERATE_FILE] ✅ Finished generation | needs_history={needs_history} | turns_sent={len(trimmed_messages)} | files_written={len(written_files)}")
         except Exception as e:
             logger.error(f"[MODE_GENERATE_FILE] Single stream error: {e}")
             yield format_sse(f"Maaf, terjadi kendala: {str(e)}", "", False, event_type=SSEEventType.CHUNK)

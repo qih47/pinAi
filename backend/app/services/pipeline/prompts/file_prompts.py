@@ -13,7 +13,7 @@ from .core_prompts import (
 )
 from backend.app.services.pipeline.prompt_manager import prompt_manager
 
-PROMPT_FILE_GENERATE_CALL1_TEMPLATE = """Kamu adalah CAKRA AI, asisten internal PT Pindad dalam mode pembuatan file.
+PROMPT_FILE_GENERATE_DISPATCHER_TEMPLATE = """Kamu adalah CAKRA AI, asisten internal PT Pindad dalam mode pembuatan file.
 Pegawai yang kamu layani: **{{ employee_name }}**
 
 [ABSOLUTE SAFETY RULES]
@@ -84,7 +84,7 @@ Kamu BISA dan BOLEH mengedit file-file tersebut (baik Existing Files maupun Atta
 {% endif %}
 """
 
-PROMPT_FILE_EDIT_CALL1_TEMPLATE = """Kamu adalah CAKRA AI, asisten internal PT Pindad dalam mode edit file.
+PROMPT_FILE_EDIT_DISPATCHER_TEMPLATE = """Kamu adalah CAKRA AI, asisten internal PT Pindad dalam mode edit file.
 Pegawai yang kamu layani: **{{ employee_name }}**
 
 [ABSOLUTE SAFETY RULES]
@@ -124,7 +124,7 @@ ATURAN KERAS:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 """ + CORE_TONE_AND_IDENTITY + "\n" + DATA_TABLES_AND_FORM_GUIDANCE
 
-PROMPT_FILE_GENERATE_CALL2_TEMPLATE = """Kamu adalah CAKRA AI, asisten internal cerdas terpadu milik PT Pindad.
+PROMPT_FILE_GENERATE_RESPONDER_TEMPLATE = """Kamu adalah CAKRA AI, asisten internal cerdas terpadu milik PT Pindad.
 Pegawai yang kamu layani saat ini: **{{ employee_name }}**
 
 [ABSOLUTE SAFETY RULES]
@@ -142,7 +142,7 @@ Konten file:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 🎯 TUGASMU SEBAGAI PRESENTER HASIL
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Kamu adalah KELANJUTAN LANGSUNG dari proses pembuatan file (Call 1) yang baru saja selesai.
+Kamu adalah KELANJUTAN LANGSUNG dari proses pembuatan file yang baru saja selesai.
 Tugasmu adalah mempresentasikan hasil file yang baru saja digenerate kepada user secara mulus tanpa mengulang sapaan.
 
 PANDUAN PRESENTASI:
@@ -166,36 +166,36 @@ Sampaikan hasil pengerjaan file **{{ filename }}** kepada user dengan gaya natur
 """
 
 prompt_manager.register_default(
-    name="FILE_GENERATE_CALL1",
-    template_str=PROMPT_FILE_GENERATE_CALL1_TEMPLATE,
+    name="FILE_GENERATE_DISPATCHER",
+    template_str=PROMPT_FILE_GENERATE_DISPATCHER_TEMPLATE,
     description="Sistem mode pembuatan file (Generate File)."
 )
 
 prompt_manager.register_default(
-    name="FILE_EDIT_CALL1",
-    template_str=PROMPT_FILE_EDIT_CALL1_TEMPLATE,
+    name="FILE_EDIT_DISPATCHER",
+    template_str=PROMPT_FILE_EDIT_DISPATCHER_TEMPLATE,
     description="Sistem mode editor file tunggal (Edit File)."
 )
 
 prompt_manager.register_default(
-    name="FILE_GENERATE_CALL2",
-    template_str=PROMPT_FILE_GENERATE_CALL2_TEMPLATE,
+    name="FILE_GENERATE_RESPONDER",
+    template_str=PROMPT_FILE_GENERATE_RESPONDER_TEMPLATE,
     description="Asisten penganalisis file yang baru saja dibuat/diedit."
 )
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# MODE: GENERATE FILE — INTERCEPTOR-ANALYST PIPELINE
+# MODE: GENERATE FILE — DISPATCHER-RESPONDER PIPELINE
 # ═══════════════════════════════════════════════════════════════════════════════
 
-def build_generate_file_call1_prompt(
+def build_generate_file_dispatcher_prompt(
     employee_name: str, 
     pronoun: str = "unknown",
     tone_hint: str = "casual",
     existing_files_text: str = ""
 ) -> str:
     return prompt_manager.render(
-        name="FILE_GENERATE_CALL1",
+        name="FILE_GENERATE_DISPATCHER",
         employee_name=employee_name,
         pronoun=pronoun,
         tone_hint=tone_hint,
@@ -203,8 +203,7 @@ def build_generate_file_call1_prompt(
     )
 
 
-
-def build_edit_file_call1_prompt(
+def build_edit_file_dispatcher_prompt(
     employee_name: str,
     filename: str,
     existing_content: str,
@@ -212,7 +211,7 @@ def build_edit_file_call1_prompt(
 ) -> str:
     truncated = existing_content[:6000] if len(existing_content) > 6000 else existing_content
     return prompt_manager.render(
-        name="FILE_EDIT_CALL1",
+        name="FILE_EDIT_DISPATCHER",
         employee_name=employee_name,
         filename=filename,
         truncated=truncated,
@@ -220,8 +219,7 @@ def build_edit_file_call1_prompt(
     )
 
 
-
-def build_generate_file_call2_analyst_prompt(
+def build_generate_file_responder_prompt(
     employee_name: str,
     filename: str,
     file_content: str,
@@ -229,10 +227,9 @@ def build_generate_file_call2_analyst_prompt(
 ) -> str:
     truncated_content = file_content[:8000] if len(file_content) > 8000 else file_content
     return prompt_manager.render(
-        name="FILE_GENERATE_CALL2",
+        name="FILE_GENERATE_RESPONDER",
         employee_name=employee_name,
         filename=filename,
         truncated_content=truncated_content,
         pronoun=pronoun
     )
-

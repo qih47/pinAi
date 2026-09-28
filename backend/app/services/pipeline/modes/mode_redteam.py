@@ -277,11 +277,11 @@ class ModeRedTeam:
             except Exception as e:
                 logger.warning(f"[MODE_REDTEAM] Failed saving token obs: {e}")
 
-        # Real-time status SSE sebelum TTFT Call 2
+        # Real-time status SSE sebelum TTFT Responder
         yield format_sse(status="⚔️ Menyusun analisis red-team...", status_key="DRAFTING_REDTEAM", event_type=SSEEventType.STATUS)
 
         t_pre_elapsed = (time.time() - t_pre_start) * 1000
-        logger.info(f"[TIMING_BENCHMARK] [PRE_CALL2_REDTEAM] Done in {t_pre_elapsed:.2f}ms | Starting Call 2 stream")
+        logger.info(f"[TIMING_BENCHMARK] [PRE_RESPONDER_REDTEAM] Done in {t_pre_elapsed:.2f}ms | Starting Responder stream")
 
         async for chunk in stream_ollama_chat(
             model_name=getattr(settings, "MODEL_PERSONA", "gemma4:31b"),
@@ -312,4 +312,4 @@ class ModeRedTeam:
             "halaman": [p + 1 for p in selected_pages]
         }]
         yield format_sse("", "", False, sources=sources_list, event_type=SSEEventType.SOURCES)
-        logger.info(f"[CALL2_REDTEAM] ✅ Finished generation | needs_history={needs_history} | prior_turns_sent={len(trimmed_messages)}")
+        logger.info(f"[RESPONDER_REDTEAM] ✅ Finished generation | needs_history={needs_history} | prior_turns_sent={len(trimmed_messages)}")

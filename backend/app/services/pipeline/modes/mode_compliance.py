@@ -238,7 +238,7 @@ class ModeCompliance:
             valid_images = [img for img in final_base64_images if img and len(img) > 100]
             if valid_images:
                 user_payload["images"] = valid_images[:12]
-                logger.info(f"[MODE_COMPLIANCE] 🖼️ Injected {len(user_payload['images'])} page images into Call 2 (Gemma Vision)")
+                logger.info(f"[MODE_COMPLIANCE] 🖼️ Injected {len(user_payload['images'])} page images into Responder (Gemma Vision)")
             
         current_messages = [{"role": "system", "content": system_prompt}] + trimmed_messages + [user_payload]
 
@@ -271,11 +271,11 @@ class ModeCompliance:
             except Exception as e:
                 logger.warning(f"[MODE_COMPLIANCE] Failed saving token obs: {e}")
 
-        # Real-time status SSE sebelum TTFT Call 2
+        # Real-time status SSE sebelum TTFT Responder
         yield format_sse(status="⚖️ Menyusun analisis kepatuhan...", status_key="DRAFTING_COMPLIANCE", event_type=SSEEventType.STATUS)
 
         t_pre_elapsed = (time.time() - t_pre_start) * 1000
-        logger.info(f"[TIMING_BENCHMARK] [PRE_CALL2_COMPLIANCE] Done in {t_pre_elapsed:.2f}ms | Starting Call 2 stream")
+        logger.info(f"[TIMING_BENCHMARK] [PRE_RESPONDER_COMPLIANCE] Done in {t_pre_elapsed:.2f}ms | Starting Responder stream")
 
         async for chunk in stream_ollama_chat(
             model_name=getattr(settings, "MODEL_PERSONA", "gemma4:31b"),
@@ -306,4 +306,4 @@ class ModeCompliance:
             "halaman": [p + 1 for p in selected_pages]
         }]
         yield format_sse("", "", False, sources=sources_list, event_type=SSEEventType.SOURCES)
-        logger.info(f"[CALL2_COMPLIANCE] ✅ Finished generation | needs_history={needs_history} | prior_turns_sent={len(trimmed_messages)}")
+        logger.info(f"[RESPONDER_COMPLIANCE] ✅ Finished generation | needs_history={needs_history} | prior_turns_sent={len(trimmed_messages)}")

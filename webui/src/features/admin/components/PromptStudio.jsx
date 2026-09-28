@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Terminal, 
   Save, 
@@ -8,12 +8,44 @@ import {
   CheckCircle2, 
   Search, 
   Tag, 
-  Eye, 
-  Layers, 
-  Sparkles,
   RotateCcw
 } from 'lucide-react';
 import apiClient from '../../../services/apiClient';
+
+const CATEGORY_STYLES = {
+  ALL: {
+    badge: 'bg-gray-800 text-gray-300 border-gray-700',
+    activeTab: 'bg-purple-600 text-white shadow-purple-900/40',
+    inactiveTab: 'bg-gray-800/60 text-gray-400 hover:text-gray-200'
+  },
+  ROUTER: {
+    badge: 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20',
+    activeTab: 'bg-cyan-600 text-white shadow-cyan-900/40',
+    inactiveTab: 'bg-gray-800/60 text-gray-400 hover:text-gray-200'
+  },
+  RAG: {
+    badge: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
+    activeTab: 'bg-emerald-600 text-white shadow-emerald-900/40',
+    inactiveTab: 'bg-gray-800/60 text-gray-400 hover:text-gray-200'
+  },
+  SECURITY: {
+    badge: 'bg-rose-500/10 text-rose-400 border-rose-500/20',
+    activeTab: 'bg-rose-600 text-white shadow-rose-900/40',
+    inactiveTab: 'bg-gray-800/60 text-gray-400 hover:text-gray-200'
+  },
+  CORPORATE: {
+    badge: 'bg-amber-500/10 text-amber-400 border-amber-500/20',
+    activeTab: 'bg-amber-600 text-white shadow-amber-900/40',
+    inactiveTab: 'bg-gray-800/60 text-gray-400 hover:text-gray-200'
+  },
+  CORE: {
+    badge: 'bg-purple-500/10 text-purple-400 border-purple-500/20',
+    activeTab: 'bg-purple-600 text-white shadow-purple-900/40',
+    inactiveTab: 'bg-gray-800/60 text-gray-400 hover:text-gray-200'
+  }
+};
+
+const CATEGORIES = ['ALL', 'CORE', 'ROUTER', 'RAG', 'SECURITY', 'CORPORATE'];
 
 export function PromptStudio() {
   const [prompts, setPrompts] = useState([]);
@@ -23,7 +55,7 @@ export function PromptStudio() {
   const [saving, setSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [activeCategory, setActiveCategory] = useState('ALL'); // 'ALL' | 'ROUTER' | 'RAG' | 'CORE' | 'SECURITY'
+  const [activeCategory, setActiveCategory] = useState('ALL');
 
   const fetchPrompts = async () => {
     try {
@@ -81,21 +113,54 @@ export function PromptStudio() {
     setEditedTemplate(prev => prev + ` {{ ${varName} }} `);
   };
 
-  // Categorize helper
-  const getPromptCategory = (name) => {
+  // Robust category resolver
+  const getPromptCategory = (prompt) => {
+    if (prompt?.category && prompt.category.toUpperCase() !== 'CORE') {
+      return prompt.category.toUpperCase();
+    }
+    const name = typeof prompt === 'string' ? prompt : (prompt?.name || '');
     const n = name.toLowerCase();
-    if (n.includes('router') || n.includes('intent') || n.includes('classify')) return 'ROUTER';
-    if (n.includes('rag') || n.includes('peraturan') || n.includes('document')) return 'RAG';
-    if (n.includes('security') || n.includes('guardrail') || n.includes('redteam')) return 'SECURITY';
-    return 'CORE';
+    const d = (prompt?.description || '').toLowerCase();
+    
+    if (n.includes('router') || n.includes('routing') || n.includes('dispatcher') || n.includes('preset') || n.includes('intent') || n.includes('classify')) {
+      return 'ROUTER';
+    }
+    if (n.includes('security') || n.includes('guardrail') || n.includes('redteam') || n.includes('compliance') || n.includes('threat')) {
+      return 'SECURITY';
+    }
+    if (n.includes('rag') || n.includes('peraturan') || n.includes('document') || n.includes('doc_audit') || n.includes('focus') || n.includes('insight') || n.includes('attachment')) {
+      return 'RAG';
+    }
+    if (n.includes('corporate') || n.includes('nota_dinas') || n.includes('smart_mail') || n.includes('vendor_analyzer') || n.includes('email') || d.includes('email')) {
+      return 'CORPORATE';
+    }
+    return prompt?.category ? prompt.category.toUpperCase() : 'CORE';
   };
 
-  const filteredPrompts = prompts.filter(p => {
-    const matchesSearch = !searchQuery || p.name.toLowerCase().includes(searchQuery.toLowerCase()) || (p.description && p.description.toLowerCase().includes(searchQuery.toLowerCase()));
-    const cat = getPromptCategory(p.name);
-    const matchesCat = activeCategory === 'ALL' || cat === activeCategory;
-    return matchesSearch && matchesCat;
-  });
+  // Calculate items count per category for dynamic badges
+  const categoryCounts = useMemo(() => {
+    const counts = { ALL: prompts.length, CORE: 0, ROUTER: 0, RAG: 0, SECURITY: 0, CORPORATE: 0 };
+    prompts.forEach(p => {
+      const cat = getPromptCategory(p);
+      if (counts[cat] !== undefined) {
+        counts[cat]++;
+      } else {
+        counts.CORE++;
+      }
+    });
+    return counts;
+  }, [prompts]);
+
+  const filteredPrompts = useMemo(() => {
+    return prompts.filter(p => {
+      const matchesSearch = !searchQuery || 
+        p.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+        (p.description && p.description.toLowerCase().includes(searchQuery.toLowerCase()));
+      const cat = getPromptCategory(p);
+      const matchesCat = activeCategory === 'ALL' || cat === activeCategory;
+      return matchesSearch && matchesCat;
+    });
+  }, [prompts, searchQuery, activeCategory]);
 
   const COMMON_VARIABLES = [
     "user_query",
@@ -116,11 +181,14 @@ export function PromptStudio() {
     );
   }
 
+  const selectedCategory = selectedPrompt ? getPromptCategory(selectedPrompt) : 'CORE';
+  const selectedCatStyle = CATEGORY_STYLES[selectedCategory] || CATEGORY_STYLES.CORE;
+
   return (
     <div className="flex h-full bg-[#0B0F19] border border-gray-800 rounded-2xl overflow-hidden animate-in fade-in duration-500">
       
       {/* Sidebar: Prompt List */}
-      <div className="w-80 border-r border-gray-800 bg-[#090C15] flex flex-col shrink-0">
+      <div className="w-84 border-r border-gray-800 bg-[#090C15] flex flex-col shrink-0">
         <div className="p-4 border-b border-gray-800 bg-slate-950">
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-xs font-bold text-gray-200 flex items-center gap-2 uppercase tracking-wider">
@@ -145,17 +213,25 @@ export function PromptStudio() {
 
           {/* Category Filter Pills */}
           <div className="flex items-center gap-1 overflow-x-auto custom-scrollbar pb-1">
-            {['ALL', 'CORE', 'ROUTER', 'RAG', 'SECURITY'].map(cat => (
-              <button
-                key={cat}
-                onClick={() => setActiveCategory(cat)}
-                className={`text-[10px] font-semibold px-2 py-0.5 rounded-md transition-colors ${
-                  activeCategory === cat ? 'bg-purple-600 text-white' : 'bg-gray-800/60 text-gray-400 hover:text-gray-200'
-                }`}
-              >
-                {cat}
-              </button>
-            ))}
+            {CATEGORIES.map(cat => {
+              const count = categoryCounts[cat] || 0;
+              const isActive = activeCategory === cat;
+              const style = CATEGORY_STYLES[cat] || CATEGORY_STYLES.CORE;
+              return (
+                <button
+                  key={cat}
+                  onClick={() => setActiveCategory(cat)}
+                  className={`text-[10px] font-semibold px-2 py-0.5 rounded-md transition-all flex items-center gap-1 shrink-0 ${
+                    isActive ? style.activeTab : style.inactiveTab
+                  }`}
+                >
+                  <span>{cat}</span>
+                  <span className={`text-[9px] px-1 rounded-full ${isActive ? 'bg-black/30 text-white' : 'bg-gray-800 text-gray-400'}`}>
+                    {count}
+                  </span>
+                </button>
+              );
+            })}
           </div>
         </div>
 
@@ -163,12 +239,13 @@ export function PromptStudio() {
         <div className="flex-1 overflow-y-auto p-3 space-y-2 custom-scrollbar">
           {filteredPrompts.length === 0 ? (
             <div className="text-center text-gray-600 py-10 text-xs font-mono">
-              Tidak ada prompt ditemukan.
+              Tidak ada prompt pada kategori {activeCategory}.
             </div>
           ) : (
             filteredPrompts.map(p => {
               const isSelected = selectedPrompt?.name === p.name;
-              const cat = getPromptCategory(p.name);
+              const cat = getPromptCategory(p);
+              const catStyle = CATEGORY_STYLES[cat] || CATEGORY_STYLES.CORE;
               return (
                 <div 
                   key={p.name}
@@ -179,15 +256,20 @@ export function PromptStudio() {
                       : 'bg-slate-950/60 border-gray-800/80 hover:border-gray-700 hover:bg-slate-900/60'
                   }`}
                 >
-                  <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-start justify-between gap-2 mb-1">
                     <h3 className={`text-xs font-semibold truncate ${isSelected ? 'text-purple-300' : 'text-gray-300'}`}>
                       {p.name}
                     </h3>
-                    <span className="text-[9px] px-1.5 py-0.5 rounded bg-gray-800 text-cyan-400 font-mono">
-                      v{p.version || 1}
-                    </span>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded border uppercase tracking-wider ${catStyle.badge}`}>
+                        {cat}
+                      </span>
+                      <span className="text-[9px] px-1.5 py-0.5 rounded bg-gray-800 text-cyan-400 font-mono">
+                        v{p.version || 1}
+                      </span>
+                    </div>
                   </div>
-                  <p className="text-[10px] text-gray-500 mt-1 line-clamp-1">
+                  <p className="text-[10px] text-gray-500 line-clamp-1">
                     {p.description || "System prompt template"}
                   </p>
                 </div>
@@ -204,8 +286,11 @@ export function PromptStudio() {
             <div className="p-4 border-b border-gray-800 bg-[#090C15] flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 shrink-0">
               <div>
                 <div className="flex items-center gap-2">
+                  <span className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded border ${selectedCatStyle.badge}`}>
+                    {selectedCategory}
+                  </span>
                   <span className="text-[10px] uppercase font-bold text-purple-400 bg-purple-500/10 px-2 py-0.5 rounded border border-purple-500/20">
-                    Jinja2 Template
+                    Jinja2
                   </span>
                   <h3 className="text-sm font-bold text-gray-200 flex items-center gap-2">
                     <Terminal size={14} className="text-gray-500" /> {selectedPrompt.name}

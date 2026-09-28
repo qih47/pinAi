@@ -21,7 +21,7 @@ from backend.app.services.pipeline.modes.mode_email import ModeEmail
 from backend.app.services.pipeline.modes.mode_collab import ModeCollab
 
 from backend.app.services.pipeline.modes.mode_utils import detect_precheck, format_session_title
-from backend.app.services.pipeline.dispatcher_router import dispatch_intent_route, execute_call1_routing
+from backend.app.services.pipeline.dispatcher_router import dispatch_intent_route
 from backend.app.services.pipeline.sse_validation import format_sse, SSEEventType
 
 logger = logging.getLogger("CAKRA_MODE_HUB")
@@ -147,20 +147,20 @@ class ModeHub:
         precheck["_session_uuid"] = session_uuid
         precheck["_visited_urls"] = visited_urls
 
-        # ── Ekstrak Context History untuk Multi-Turn Reasoning (Universal Call 1/Preset ⇄ Call 2 Sync) ──
-        from backend.app.services.pipeline.modes.mode_utils import build_call2_history_context
-        context_history_str, last_call2_state = build_call2_history_context(chat_history, user_message=user_message)
+        # ── Ekstrak Context History untuk Multi-Turn Reasoning (Universal Dispatcher/Preset ⇄ Responder Sync) ──
+        from backend.app.services.pipeline.modes.mode_utils import build_responder_history_context
+        context_history_str, last_responder_state = build_responder_history_context(chat_history, user_message=user_message)
         
-        # Inject state Call 2 terakhir ke precheck agar Preset dan Call 1 Utama mengetahui aksi Call 2 sebelumnya
-        if last_call2_state:
-            precheck.update(last_call2_state)
+        # Inject state Responder terakhir ke precheck agar Preset dan Dispatcher Utama mengetahui aksi Responder sebelumnya
+        if last_responder_state:
+            precheck.update(last_responder_state)
             logger.info(
-                f"[MODE_HUB] 🔄 Universal Call 2 State Sync: action={last_call2_state.get('last_call2_action')} | "
-                f"replying_wizard={last_call2_state.get('is_replying_to_wizard')} | "
-                f"wizard_confirm={last_call2_state.get('is_wizard_confirmation')} | "
-                f"prior_visual={last_call2_state.get('has_prior_visual')} | "
-                f"prior_coding={last_call2_state.get('has_prior_coding')} | "
-                f"prior_chitchat={last_call2_state.get('has_prior_chitchat')}"
+                f"[MODE_HUB] 🔄 Universal Responder State Sync: action={last_responder_state.get('last_responder_action')} | "
+                f"replying_wizard={last_responder_state.get('is_replying_to_wizard')} | "
+                f"wizard_confirm={last_responder_state.get('is_wizard_confirmation')} | "
+                f"prior_visual={last_responder_state.get('has_prior_visual')} | "
+                f"prior_coding={last_responder_state.get('has_prior_coding')} | "
+                f"prior_chitchat={last_responder_state.get('has_prior_chitchat')}"
             )
 
         # ── Step 1.5: Intercept URLs (Web Reader) — deteksi dulu, fetch nanti paralel ─────
@@ -176,7 +176,7 @@ class ModeHub:
                 if skipped:
                     logger.info(f"[MODE_HUB] Skipping {len(skipped)} already-visited URL(s): {skipped}")
                 if urls_in_text:
-                    logger.info(f"[MODE_HUB] Detected {len(urls_in_text)} new URL(s). Will fetch in parallel with Call1.")
+                    logger.info(f"[MODE_HUB] Detected {len(urls_in_text)} new URL(s). Will fetch in parallel with Dispatcher.")
                     precheck["has_url_context"] = True  # tandai dulu agar routing tahu
                     precheck["_detected_urls"] = urls_in_text
                 elif skipped:
@@ -207,11 +207,11 @@ class ModeHub:
 
         # ── ⚡ FAST-PATH BYPASS CALL 1 ROUTER (Jalur A: Klik Preset / Hint Item) ───
         if (bypass_router or forced_mode) and forced_mode:
-            logger.info(f"[MODE_HUB] ⚡ Bypassing Call 1 Router due to explicit preset hint selection. Forced Mode: {forced_mode}")
+            logger.info(f"[MODE_HUB] ⚡ Bypassing Dispatcher Router due to explicit preset hint selection. Forced Mode: {forced_mode}")
             forced_mode_clean = forced_mode.lower().strip()
 
             # 🎯 JALUR PRESET ROUTING: Panggil e4b untuk deteksi ambiguitas, multi-turn queries, + generate title
-            from backend.app.services.pipeline.dispatcher_router import dispatch_preset_route, generate_call1_preset_routing
+            from backend.app.services.pipeline.dispatcher_router import dispatch_preset_route
             preset_routing = await dispatch_preset_route(
                 user_message=user_message,
                 forced_mode=forced_mode_clean,
@@ -283,7 +283,7 @@ class ModeHub:
                 precheck["is_web_search"] = True
                 precheck["need_rag"] = False
 
-                from backend.app.services.pipeline.dispatcher_router import generate_dispatcher_web_queries, generate_call1_web_queries
+                from backend.app.services.pipeline.dispatcher_router import generate_dispatcher_web_queries
                 clean_queries = await generate_dispatcher_web_queries(user_message, request)
                 precheck["queries"] = clean_queries if clean_queries else [user_message]
 
@@ -694,10 +694,10 @@ class ModeHub:
         # context_history_str sudah diekstrak di awal eksekusi
 
 
-        call1_start_t = datetime.now()
+        dispatcher_start_t = datetime.now()
 
-        # ── Call 1 Router (gemma4:e4b) ──────────────────────────────────────────
-        routing_data = await execute_call1_routing(
+        # ── Dispatcher Router (gemma4:e4b) ──────────────────────────────────────────
+        routing_data = await dispatch_intent_route(
             request=request,
             user_message=user_message,
             context_history_str=context_history_str,
@@ -709,8 +709,8 @@ class ModeHub:
             previous_subject=key_subject or precheck.get("key_subject"),
         )
 
-        call1_ms = (datetime.now() - call1_start_t).total_seconds() * 1000
-        logger.info(f"⚡ [TIMING_BENCHMARK] Call1 Router selesai dalam {call1_ms:.1f}ms ({call1_ms/1000:.2f}s) | Active Topic: {routing_data.get('active_topic')} | Key Subject: {routing_data.get('key_subject')}")
+        dispatcher_ms = (datetime.now() - dispatcher_start_t).total_seconds() * 1000
+        logger.info(f"⚡ [TIMING_BENCHMARK] Dispatcher Router selesai dalam {dispatcher_ms:.1f}ms ({dispatcher_ms/1000:.2f}s) | Active Topic: {routing_data.get('active_topic')} | Key Subject: {routing_data.get('key_subject')}")
 
         # ── Step 3.2: Emit Dynamic Topic & Entity Update to Frontend Store ───────
         current_active_topic = routing_data.get("active_topic")

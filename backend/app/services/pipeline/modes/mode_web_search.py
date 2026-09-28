@@ -30,10 +30,10 @@ async def handle_web_search(
     if precheck is None:
         precheck = {}
     
-    # Ambil semua query dari Call 1 (mendukung multi-query paralel untuk komparasi / multi-topik)
-    queries_from_call1 = precheck.get("queries", [])
-    if isinstance(queries_from_call1, list) and queries_from_call1:
-        target_queries = [sanitize_web_query(q.strip(), user_message=query) for q in queries_from_call1 if isinstance(q, str) and q.strip()]
+    # Ambil semua query dari Dispatcher (mendukung multi-query paralel untuk komparasi / multi-topik)
+    queries_from_dispatcher = precheck.get("queries", [])
+    if isinstance(queries_from_dispatcher, list) and queries_from_dispatcher:
+        target_queries = [sanitize_web_query(q.strip(), user_message=query) for q in queries_from_dispatcher if isinstance(q, str) and q.strip()]
     else:
         target_queries = [sanitize_web_query(query.strip(), user_message=query)] if query.strip() else []
 
@@ -151,5 +151,5 @@ async def handle_web_search(
         logger.error(f"[MODE_WEB_SEARCH] Stream error: {e}", exc_info=True)
         yield format_sse(f"Maaf, terjadi kendala teknis saat menyusun ringkasan: {str(e)}", "", False, event_type=SSEEventType.CHUNK)
 
-    logger.info(f"[CALL2_WEB_SEARCH] ✅ Finished generation | needs_history={precheck.get('needs_history', False)} | turns_sent={len(modified_messages)-1}")
+    logger.info(f"[RESPONDER_WEB_SEARCH] ✅ Finished generation | needs_history={precheck.get('needs_history', False)} | turns_sent={len(modified_messages)-1}")
     yield format_sse(status="Selesai", event_type=SSEEventType.STATUS)

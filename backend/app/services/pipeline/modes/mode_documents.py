@@ -16,9 +16,9 @@ from backend.app.core.paths import FILE_PERATURAN_DIR
 from backend.app.core.llm_client import stream_ollama_chat
 from backend.app.services.peraturan_service import _find_valid_pdf_file
 from backend.app.services.pipeline.modes.mode_utils import (
-    select_call2_module, 
+    select_responder_module, 
     get_module_config, 
-    build_call2_system_prompt,
+    build_responder_system_prompt,
     sanitize_history_for_rag,
     sanitize_history_for_pronoun
 )
@@ -46,7 +46,7 @@ class ModeDocuments:
         logger.info("[MODE_DOCUMENTS] Starting execution")
         t_mode_docs_start = time.perf_counter()
         
-        # ── Step 1: Query Generation via Call 1 (Sudah dieksekusi di mode_hub) ────
+        # ── Step 1: Query Generation via Dispatcher (Sudah dieksekusi di mode_hub) ────
         # Kita hanya perlu membaca hasil dari routing_data yang sudah diisi oleh ModeHub
         if not routing_data:
             routing_data = {}
@@ -248,12 +248,12 @@ class ModeDocuments:
 
             # ⚡ CONTEXT VERIFIER (CRAG) (2-Turn Quality Control Gatekeeper)
             # Wajib mengevaluasi kandidat dokumen, baik yang bersumber dari Memori Sesi (Brain) maupun Database!
-            from backend.app.services.pipeline.context_verifier import verify_retrieval_context, verify_retrieved_documents_crag, ENABLE_CALL1_1_CRAG
+            from backend.app.services.pipeline.context_verifier import verify_retrieval_context, verify_retrieved_documents_crag, ENABLE_CONTEXT_VERIFIER
             search_tags = routing_data.get("search_tags", [])
 
             crag_primary_id = None
             crag_reference_ids = []
-            if candidate_docs and ENABLE_CALL1_1_CRAG and not iso_id:
+            if candidate_docs and ENABLE_CONTEXT_VERIFIER and not iso_id:
                 # ── TURN 1: Validasi Awal (Kandidat Brain / MySQL) ─────────────────────────
                 crag_eval_t1 = await verify_retrieved_documents_crag(
                     user_query=user_message,
@@ -268,7 +268,7 @@ class ModeDocuments:
 
                 if not crag_eval_t1.get("is_relevant"):
                     logger.warning(
-                        f"[MODE_DOCUMENTS] ⚠️ Turn 1 Call 1.1 CRAG flagged candidates as NOT RELEVANT ({crag_eval_t1.get('reason')}). "
+                        f"[MODE_DOCUMENTS] ⚠️ Turn 1 Context Verifier (CRAG) flagged candidates as NOT RELEVANT ({crag_eval_t1.get('reason')}). "
                         f"Running 1x targeted re-search with QC suggestions..."
                     )
                     yield format_sse(status="🔄 Menajamkan pencarian regulasi", status_key="CRAG_RETRY", event_type=SSEEventType.STATUS)
@@ -302,7 +302,7 @@ class ModeDocuments:
                             turn=2,
                         )
                         logger.info(
-                            f"[MODE_DOCUMENTS] Turn 2 Call 1.1 CRAG result: is_relevant={crag_eval_t2.get('is_relevant')} | "
+                            f"[MODE_DOCUMENTS] Turn 2 Context Verifier (CRAG) result: is_relevant={crag_eval_t2.get('is_relevant')} | "
                             f"primary_doc_id={crag_eval_t2.get('primary_doc_id')} | refs={crag_eval_t2.get('reference_doc_ids')} | "
                             f"reason: {crag_eval_t2.get('reason')}"
                         )
@@ -516,7 +516,7 @@ class ModeDocuments:
                     total_p_count = len(global_page_pool)
                     yield format_sse(status="🎯 Menyaring pasal relevan", status_key="FILTERING_RELEVANT_ARTICLES", event_type=SSEEventType.STATUS)
                     
-                    # Multi-Query gabungan untuk BGE page scoring: padukan query cerdas Call 1 dan pertanyaan user
+                    # Multi-Query gabungan untuk BGE page scoring: padukan query cerdas Dispatcher dan pertanyaan user
                     rag_queries_clean = [q.strip() for q in rag_queries if q and q.strip()]
                     effective_page_query = " ".join(dict.fromkeys(rag_queries_clean + [user_message]))
                     logger.info(f"[MODE_DOCUMENTS] Scoring {len(global_page_pool)} pages using combined effective query: '{effective_page_query}'")
@@ -835,9 +835,9 @@ class ModeDocuments:
         safe_rag_context = combined_documents if combined_documents else None
 
 
-        # Pilih modul Call 2 dengan konteks RAG yang valid (baik dari MySQL maupun Vector RAG)
+        # Pilih modul Responder dengan konteks RAG yang valid (baik dari MySQL maupun Vector RAG)
         has_context = bool(safe_rag_context or rag_sources or judul_sources)
-        module_name = select_call2_module(routing_data, has_rag_context=has_context)
+        module_name = select_responder_module(routing_data, has_rag_context=has_context)
         logger.info(f"[MODE_DOCUMENTS] Selected module: {module_name} (has_context={has_context})")
 
         # ── Log Agent Step for Hybrid RAG Search (Semantic + Title) ──
@@ -879,7 +879,7 @@ class ModeDocuments:
                 observation=json.dumps(obs_json)
             ))
 
-        system_prompt = build_call2_system_prompt(
+        system_prompt = build_responder_system_prompt(
             module_name=module_name,
             employee_name=employee_name,
             precheck=routing_data,
@@ -992,17 +992,17 @@ class ModeDocuments:
             asyncio.create_task(chat_history_service.save_agent_step(
                 session_id=session_uuid,
                 step_number=3,
-                tool_called="CALL_2_SYNTHESIS",
+                tool_called="RESPONDER_SYNTHESIS",
                 tool_input=f"Prompt chars: {len(system_prompt)} | Contexts: {len(safe_rag_context or '')}",
                 observation=json.dumps(obs_dict)
             ))
 
-        # ── Step 3: LLM Execution (Call 2 via Agentic Interceptor) ─────────────────
+        # ── Step 3: LLM Execution (Responder via Agentic Interceptor) ─────────────────
         # Emit status tepat sebelum masuk ke LLM agar UI pengguna live aktif selama masa tunggu prefill GPU
         yield format_sse(status="✍️ Menyusun jawaban", status_key="DRAFTING_RESPONSE", event_type=SSEEventType.STATUS)
 
-        precall2_elapsed_ms = (time.perf_counter() - t_mode_docs_start) * 1000
-        logger.info(f"⚡ [TIMING_BENCHMARK] [PRE_CALL2_PREPARATION] Selesai seluruh persiapan dokumen & prompt dalam {precall2_elapsed_ms:.1f}ms ({precall2_elapsed_ms/1000:.2f}s) -> Dispatching ke Ollama Call 2.")
+        preresponder_elapsed_ms = (time.perf_counter() - t_mode_docs_start) * 1000
+        logger.info(f"⚡ [TIMING_BENCHMARK] [PRE_RESPONDER_PREPARATION] Selesai seluruh persiapan dokumen & prompt dalam {preresponder_elapsed_ms:.1f}ms ({preresponder_elapsed_ms/1000:.2f}s) -> Dispatching ke Responder LLM.")
 
         try:
             from backend.app.services.pipeline.agentic_interceptor import agentic_stream_wrapper
@@ -1023,4 +1023,4 @@ class ModeDocuments:
             logger.error(f"[MODE_DOCUMENTS] Stream error: {e}", exc_info=True)
             yield format_sse(f"Maaf, terjadi kendala teknis: {str(e)}", "", False, event_type=SSEEventType.CHUNK)
 
-        logger.info(f"[CALL2_DOCUMENTS] ✅ Finished generation | module={module_name} | needs_history={needs_history} | turns_sent={len(trimmed_messages)}")
+        logger.info(f"[RESPONDER_DOCUMENTS] ✅ Finished generation | module={module_name} | needs_history={needs_history} | turns_sent={len(trimmed_messages)}")

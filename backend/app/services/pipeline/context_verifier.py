@@ -1,5 +1,5 @@
 """
-Call 1.1 CRAG Verifier — Fast-Path Document Retrieval Quality Control
+Context Verifier — Fast-Path Document Retrieval Quality Control
 ======================================================================
 Model: gemma4:e4b (Single Model Architecture, Router Engine)
 Tugas: Memverifikasi secara instan (~200ms-400ms, non-thinking, non-stream)
@@ -7,8 +7,8 @@ Tugas: Memverifikasi secara instan (~200ms-400ms, non-thinking, non-stream)
        relevan dengan apa yang diminta user.
 
 Fitur:
-- Logging presisi milidetik: ⚡ [TIMING_BENCHMARK] [CALL1.1_CRAG]
-- Feature Toggle: ENABLE_CALL1_1_CRAG (bisa diaktifkan/dinonaktifkan tanpa merusak pipeline)
+- Logging presisi milidetik: ⚡ [TIMING_BENCHMARK] [CONTEXT_VERIFIER]
+- Feature Toggle: ENABLE_CONTEXT_VERIFIER (bisa diaktifkan/dinonaktifkan tanpa merusak pipeline)
 - Sugesti query alternatif jika dokumen meleset untuk 1x re-search.
 """
 
@@ -24,8 +24,8 @@ from backend.app.core.llm_client import generate_json_response
 
 logger = logging.getLogger("CAKRA_CRAG_VERIFIER")
 
-# 🎛️ Feature Toggle: Set False jika ingin menonaktifkan Call 1.1 secara instan
-ENABLE_CALL1_1_CRAG = True
+# 🎛️ Feature Toggle: Set False jika ingin menonaktifkan Context Verifier secara instan
+ENABLE_CONTEXT_VERIFIER = True
 
 
 CRAG_VERIFIER_SYSTEM_PROMPT = """Kamu adalah Quality Control (QC) verifikator dokumen instan CAKRA AI PT Pindad.
@@ -88,7 +88,7 @@ async def verify_retrieved_documents_crag(
     Mendukung Turn 1 (validasi awal Brain/MySQL) dan Turn 2 (validasi hasil retry).
     Menghasilkan primary_doc_id (dokumen inti) dan reference_doc_ids (dokumen pendukung).
     """
-    if not ENABLE_CALL1_1_CRAG:
+    if not ENABLE_CONTEXT_VERIFIER:
         default_primary = str(candidate_docs[0].get("id")) if candidate_docs else None
         default_refs = [str(d.get("id")) for d in candidate_docs[1:]] if len(candidate_docs) > 1 else []
         return {
@@ -160,7 +160,7 @@ async def verify_retrieved_documents_crag(
         duration_ms = (datetime.now() - t0).total_seconds() * 1000
 
         if not isinstance(res_json, dict):
-            logger.warning(f"[CALL1.1_CRAG] Non-dict response from model: {res_json}")
+            logger.warning(f"[CONTEXT_VERIFIER] Non-dict response from model: {res_json}")
             default_primary = str(candidate_docs[0].get("id")) if candidate_docs else None
             default_refs = [str(d.get("id")) for d in candidate_docs[1:]] if len(candidate_docs) > 1 else []
             return {
@@ -197,7 +197,7 @@ async def verify_retrieved_documents_crag(
         suggested_tags = [str(t).strip() for t in res_json.get("suggested_tags", []) if str(t).strip()]
 
         logger.info(
-            f"⚡ [TIMING_BENCHMARK] [CALL1.1_CRAG] Evaluasi selesai dalam {duration_ms:.1f}ms ({duration_ms/1000:.2f}s) | "
+            f"⚡ [TIMING_BENCHMARK] [CONTEXT_VERIFIER] Evaluasi selesai dalam {duration_ms:.1f}ms ({duration_ms/1000:.2f}s) | "
             f"is_relevant={is_relevant} | primary_doc_id={primary_doc_id} | refs={reference_doc_ids} | reason: {reason}"
         )
 
@@ -214,7 +214,7 @@ async def verify_retrieved_documents_crag(
 
     except Exception as e:
         duration_ms = (datetime.now() - t0).total_seconds() * 1000
-        logger.warning(f"[CALL1.1_CRAG] Error saat evaluasi ({duration_ms:.1f}ms): {e} -> Graceful fallback is_relevant=True")
+        logger.warning(f"[CONTEXT_VERIFIER] Error saat evaluasi ({duration_ms:.1f}ms): {e} -> Graceful fallback is_relevant=True")
         default_primary = str(candidate_docs[0].get("id")) if candidate_docs else None
         default_refs = [str(d.get("id")) for d in candidate_docs[1:]] if len(candidate_docs) > 1 else []
         return {

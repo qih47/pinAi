@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """
-CAKRA AI — Call 1 Router QLoRA / SFT Training Pipeline
+CAKRA AI — Dispatcher Router QLoRA / SFT Training Pipeline
 ======================================================
 Melatih model router deterministik `cakra-router` menggunakan QLoRA (4-bit).
 Kompatibel dengan Unsloth & Hugging Face TRL SFTTrainer.
 
 Usage:
-    python backend/scripts/finetune/train_call1_router.py \
+    python backend/scripts/finetune/train_dispatcher_router.py \
         --model_name "unsloth/gemma-2-9b-it-bnb-4bit" \
-        --dataset "data/finetune/call1_train_3000.jsonl" \
+        --dataset "data/finetune/dispatcher_train_3000.jsonl" \
         --output_dir "models/adapters/cakra-router-lora" \
         --epochs 3 \
         --batch_size 4
@@ -209,7 +209,7 @@ def train(args):
 def main():
     parser = argparse.ArgumentParser(description="Fine-tune Cakra Router via QLoRA")
     parser.add_argument("--model_name", type=str, default="unsloth/gemma-2-9b-it-bnb-4bit", help="Hugging Face / Unsloth Base Model")
-    parser.add_argument("--dataset", type=str, default="data/finetune/call1_train_3000.jsonl", help="Training JSONL dataset")
+    parser.add_argument("--dataset", type=str, default="data/finetune/dispatcher_train_3000.jsonl", help="Training JSONL dataset")
     parser.add_argument("--output_dir", type=str, default="models/adapters/cakra-router-lora", help="Output directory for LoRA adapter")
     parser.add_argument("--epochs", type=int, default=3, help="Training Epochs")
     parser.add_argument("--batch_size", type=int, default=4, help="Batch Size per device")

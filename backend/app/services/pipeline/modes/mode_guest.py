@@ -37,17 +37,17 @@ class ModeGuest:
         
         logger.info("[MODE_GUEST] Starting execution for Guest User")
         
-        # 1. Tentukan modul Call 2 untuk Guest berdasarkan routing_data
+        # 1. Tentukan modul Responder untuk Guest berdasarkan routing_data
         if not routing_data:
             routing_data = {}
             
-        from backend.app.services.pipeline.modes.mode_utils import select_call2_module
-        module_name = select_call2_module(routing_data, has_rag_context=False)
+        from backend.app.services.pipeline.modes.mode_utils import select_responder_module
+        module_name = select_responder_module(routing_data, has_rag_context=False)
         logger.info(f"[MODE_GUEST] Selected guest module: {module_name}")
         
         # 2. Build Custom Guest System Prompt
-        from backend.app.services.pipeline.guest_prompts import build_call2_system_prompt_guest
-        system_prompt = build_call2_system_prompt_guest(module_name, precheck=routing_data)
+        from backend.app.services.pipeline.guest_prompts import build_guest_responder_prompt
+        system_prompt = build_guest_responder_prompt(module_name, precheck=routing_data)
 
         # 3. Fetch Community Knowledge untuk Guest
         from backend.app.services.pipeline.community_knowledge import search_community_knowledge
@@ -102,7 +102,7 @@ class ModeGuest:
         rag_tokens = 0 # Guest mode tidak pakai RAG
         total_used = sys_tokens + hist_tokens + rag_tokens
 
-        # Log Agent Step for Call 2 Guest
+        # Log Agent Step for Responder Guest
         session_uuid_to_use = session_uuid or (routing_data.get("_session_uuid") if routing_data else None)
         if session_uuid_to_use:
             from backend.app.services.chat.chat_history_service import chat_history_service
@@ -119,7 +119,7 @@ class ModeGuest:
             asyncio.create_task(chat_history_service.save_agent_step(
                 session_id=session_uuid_to_use,
                 step_number=2,
-                tool_called="CALL_2_GUEST",
+                tool_called="RESPONDER_GUEST",
                 tool_input=f"Prompt chars: {len(system_prompt)}",
                 observation=json.dumps(obs_dict)
             ))
@@ -149,4 +149,4 @@ class ModeGuest:
             )
 
         yield format_sse("", "", True, event_type=SSEEventType.DONE)
-        logger.info(f"[CALL2_GUEST] ✅ Finished generation | needs_history={needs_history} | turns_sent={len(trimmed_messages)} | hist_tokens={hist_tokens}")
+        logger.info(f"[RESPONDER_GUEST] ✅ Finished generation | needs_history={needs_history} | turns_sent={len(trimmed_messages)} | hist_tokens={hist_tokens}")

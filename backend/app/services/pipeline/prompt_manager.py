@@ -1,9 +1,24 @@
 import logging
-from typing import Dict
+from typing import Dict, Optional
 from jinja2 import Environment, meta, Template, BaseLoader
 from backend.app.core.database import get_db
 
 logger = logging.getLogger("CAKRA_PROMPT_MANAGER")
+
+
+def infer_prompt_category(name: str, description: str = "") -> str:
+    """Klasifikasi kategori prompt secara konsisten untuk Prompt Studio."""
+    n = name.upper()
+    if any(k in n for k in ["ROUTING", "DISPATCHER", "PRESET", "ROUTER", "INTENT", "CLASSIFY"]):
+        return "ROUTER"
+    if any(k in n for k in ["SECURITY", "REDTEAM", "GUARDRAIL", "COMPLIANCE", "THREAT"]):
+        return "SECURITY"
+    if any(k in n for k in ["RAG", "DOC_AUDIT", "FOCUS", "INSIGHT", "ATTACHMENT", "PERATURAN"]):
+        return "RAG"
+    if any(k in n for k in ["CORPORATE", "NOTA_DINAS", "SMART_MAIL", "VENDOR_ANALYZER", "EMAIL"]):
+        return "CORPORATE"
+    return "CORE"
+
 
 class PromptManager:
     """
@@ -17,11 +32,12 @@ class PromptManager:
         self.env = Environment(loader=BaseLoader()) 
         self._default_prompts = {}
         
-    def register_default(self, name: str, template_str: str, description: str):
-        """Daftarkan fallback prompt hardcoded."""
+    def register_default(self, name: str, template_str: str, description: str, category: Optional[str] = None):
+        """Daftarkan fallback prompt hardcoded beserta kategori."""
         self._default_prompts[name] = {
             "template": template_str,
-            "description": description
+            "description": description,
+            "category": category or infer_prompt_category(name, description)
         }
 
     async def initialize(self):
@@ -29,26 +45,32 @@ class PromptManager:
         logger.info("[PROMPT_MANAGER] Initializing dynamic prompts cache...")
         try:
             async with get_db() as conn:
+                # Pastikan kolom category tersedia
+                await conn.execute("ALTER TABLE system_prompts ADD COLUMN IF NOT EXISTS category VARCHAR(50) DEFAULT 'CORE'")
+
+                # Bersihkan row legacy/obsolete jika ada
+                await conn.execute("DELETE FROM system_prompts WHERE name LIKE '%CALL1%' OR name LIKE '%CALL2%'")
+
                 # Ambil semua dari DB
-                rows = await conn.fetch("SELECT name, template FROM system_prompts")
+                rows = await conn.fetch("SELECT name, template, category FROM system_prompts")
                 db_prompts = {row['name']: row['template'] for row in rows}
                 
                 # Cek apakah ada prompt default yang belum masuk DB
                 for name, data in self._default_prompts.items():
+                    cat = data.get("category") or infer_prompt_category(name, data.get("description", ""))
                     if name not in db_prompts:
-                        logger.info(f"[PROMPT_MANAGER] Seeding default prompt into DB: {name}")
+                        logger.info(f"[PROMPT_MANAGER] Seeding default prompt into DB: {name} (Category: {cat})")
                         await conn.execute(
-                            "INSERT INTO system_prompts (name, template, description) VALUES ($1, $2, $3)",
-                            name, data["template"], data["description"]
+                            "INSERT INTO system_prompts (name, template, description, category) VALUES ($1, $2, $3, $4)",
+                            name, data["template"], data["description"], cat
                         )
                         db_prompts[name] = data["template"]
                     else:
-                        # 🔥 UPDATE: Selalu overwrite isi DB dengan versi terbaru dari file Python
-                        # agar perubahan prompt di file .py selalu tersinkronisasi ke DB
-                        logger.info(f"[PROMPT_MANAGER] Updating prompt in DB from Python default: {name}")
+                        # Selalu overwrite isi DB dengan versi terbaru dari file Python
+                        logger.info(f"[PROMPT_MANAGER] Updating prompt in DB from Python default: {name} (Category: {cat})")
                         await conn.execute(
-                            "UPDATE system_prompts SET template = $1, description = $2 WHERE name = $3",
-                            data["template"], data["description"], name
+                            "UPDATE system_prompts SET template = $1, description = $2, category = $3 WHERE name = $4",
+                            data["template"], data["description"], cat, name
                         )
                         db_prompts[name] = data["template"]
                 
@@ -100,8 +122,15 @@ class PromptManager:
         """Mengambil semua prompt dari database untuk Prompt Studio."""
         try:
             async with get_db() as conn:
-                rows = await conn.fetch("SELECT name, template, description, version, updated_at FROM system_prompts ORDER BY name ASC")
-                return [dict(r) for r in rows]
+                await conn.execute("ALTER TABLE system_prompts ADD COLUMN IF NOT EXISTS category VARCHAR(50) DEFAULT 'CORE'")
+                rows = await conn.fetch("SELECT name, template, description, category, version, updated_at FROM system_prompts ORDER BY name ASC")
+                results = []
+                for r in rows:
+                    item = dict(r)
+                    if not item.get("category"):
+                        item["category"] = infer_prompt_category(item["name"], item.get("description") or "")
+                    results.append(item)
+                return results
         except Exception as e:
             logger.error(f"Failed to fetch prompts: {e}")
             raise RuntimeError(f"Database error: {e}")

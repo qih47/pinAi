@@ -2,13 +2,13 @@
 # ==============================================================================
 # CAKRA AI — Master Fine-Tuning Pipeline Runner (Unlimited by Training)
 # ==============================================================================
-# Skrip automasi untuk training QLoRA cakra-router (Call 1 e4b) dan cakra-core (Call 2).
+# Skrip automasi untuk training QLoRA cakra-router (Dispatcher e4b) dan cakra-core (Responder).
 # Menggunakan dataset akumulatif hasil training regulasi tanpa batas sampel.
 #
 # Usage:
 #   ./backend/scripts/finetune/run_finetune_pipeline.sh all
-#   ./backend/scripts/finetune/run_finetune_pipeline.sh call1
-#   ./backend/scripts/finetune/run_finetune_pipeline.sh call2
+#   ./backend/scripts/finetune/run_finetune_pipeline.sh dispatcher
+#   ./backend/scripts/finetune/run_finetune_pipeline.sh responder
 # ==============================================================================
 
 set -e
@@ -20,12 +20,12 @@ echo "🚀 CAKRA AI ENTERPRISE FINE-TUNING PIPELINE (UNLIMITED BY TRAINING)"
 echo "Target: $TARGET"
 echo "================================================================="
 
-ROUTER_DATASET="data/finetune/nightly_call1_router.jsonl"
+ROUTER_DATASET="data/finetune/nightly_dispatcher_router.jsonl"
 CORE_DATASET="data/finetune/nightly_cakra_core.jsonl"
 
-if [ "$TARGET" == "all" ] || [ "$TARGET" == "call1" ]; then
+if [ "$TARGET" == "all" ] || [ "$TARGET" == "dispatcher" ] || [ "$TARGET" == "router" ]; then
     echo ""
-    echo "▶️ [STEP 1/2] Menyiapkan Dataset Call 1 Router e4b (Unlimited)..."
+    echo "▶️ [STEP 1/2] Menyiapkan Dataset Dispatcher Router e4b (Unlimited)..."
     if [ ! -s "$ROUTER_DATASET" ]; then
         echo "   Dataset $ROUTER_DATASET kosong atau belum ada, mengekstrak dari ragdb..."
         ./rag_env/bin/python backend/scripts/finetune/generate_dispatcher_dataset.py \
@@ -43,9 +43,9 @@ if [ "$TARGET" == "all" ] || [ "$TARGET" == "call1" ]; then
         --epochs 3
 fi
 
-if [ "$TARGET" == "all" ] || [ "$TARGET" == "call2" ] || [ "$TARGET" == "responder" ]; then
+if [ "$TARGET" == "all" ] || [ "$TARGET" == "responder" ] || [ "$TARGET" == "core" ]; then
     echo ""
-    echo "▶️ [STEP 1/2] Menyiapkan Dataset CoT Call 2 Core (Unlimited)..."
+    echo "▶️ [STEP 1/2] Menyiapkan Dataset CoT Responder Core (Unlimited)..."
     if [ ! -s "$CORE_DATASET" ]; then
         echo "   Dataset $CORE_DATASET kosong atau belum ada, mengekstrak dari ragdb..."
         ./rag_env/bin/python backend/scripts/finetune/generate_responder_dataset.py \

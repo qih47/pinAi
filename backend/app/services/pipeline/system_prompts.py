@@ -2,7 +2,7 @@
 System Prompts Barrel Export
 """
 from .prompts.core_prompts import (
-    build_call1_routing_prompt,
+    build_dispatcher_prompt,
     build_response_prompt_ambiguous,
     build_response_prompt_general_expert,
     build_response_prompt_chitchat,
@@ -20,7 +20,8 @@ from .prompts.rag_prompts import (
     build_doc_audit_system_prompt
 )
 from .prompts.file_prompts import (
-    build_generate_file_call1_prompt,
-    build_edit_file_call1_prompt,
-    build_generate_file_call2_analyst_prompt
+    build_generate_file_dispatcher_prompt,
+    build_edit_file_dispatcher_prompt,
+    build_generate_file_responder_prompt
 )
+

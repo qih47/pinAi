@@ -2,10 +2,13 @@ import asyncio
 import httpx
 import json
 
+import pytest
+
 OLLAMA_URL = "http://localhost:11434/api/chat"
 MODEL_NAME = "gemma4:12b"
 
-async def test_native_thinking(enable_thinking: bool):
+@pytest.mark.asyncio
+async def test_native_thinking(enable_thinking: bool = False):
     print(f"\n🚀 ===== MENGETES MODEL: {MODEL_NAME} (THINKING: {enable_thinking}) =====")
     
     # 🔴 PERBAIKAN 1: Pindahkan "think" ke root level payload utama!

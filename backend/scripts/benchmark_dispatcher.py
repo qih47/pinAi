@@ -1,23 +1,23 @@
 #!/usr/bin/env python3
 """
 ================================================================================
-⚡ CAKRA AI — Call 1 Router Benchmark & Ground Truth Evaluation Suite
+⚡ CAKRA AI — Dispatcher Router Benchmark & Ground Truth Evaluation Suite
 ================================================================================
 Menguji akurasi routing, multi-flag classification, dan kecepatan (ms)
 pada 18 Ground Truth Test Cases.
 
 Usage:
     # 1. Menguji model default router (gemma4:e4b):
-    PYTHONPATH=. ./rag_env/bin/python backend/scripts/benchmark_call1.py
+    PYTHONPATH=. ./rag_env/bin/python backend/scripts/benchmark_dispatcher.py
 
     # 2. Menguji model tertentu (misal: granite4.2:8b):
-    PYTHONPATH=. ./rag_env/bin/python backend/scripts/benchmark_call1.py --model granite4.2:8b
+    PYTHONPATH=. ./rag_env/bin/python backend/scripts/benchmark_dispatcher.py --model granite4.2:8b
 
     # 3. Menguji dan membandingkan semua model + export JSON:
-    PYTHONPATH=. ./rag_env/bin/python backend/scripts/benchmark_call1.py --all --output results.json
+    PYTHONPATH=. ./rag_env/bin/python backend/scripts/benchmark_dispatcher.py --all --output results.json
 
     # 4. Menguji murni kecerdasan model tanpa regex precheck:
-    PYTHONPATH=. ./rag_env/bin/python backend/scripts/benchmark_call1.py --no-precheck
+    PYTHONPATH=. ./rag_env/bin/python backend/scripts/benchmark_dispatcher.py --no-precheck
 ================================================================================
 """
 
@@ -29,7 +29,7 @@ import argparse
 import asyncio
 from typing import Dict, Any, List
 
-from backend.app.services.pipeline.dispatcher_router import dispatch_intent_route, execute_call1_routing
+from backend.app.services.pipeline.dispatcher_router import dispatch_intent_route
 from backend.app.services.pipeline.modes.mode_utils import detect_precheck
 
 # 18 Ground Truth Benchmark Test Cases
@@ -228,7 +228,7 @@ async def evaluate_model(model_name: str, use_precheck: bool = True) -> Dict[str
     print(f"⏳ Melakukan VRAM Warmup untuk {model_name}...")
     try:
         w_precheck = detect_precheck("halo", "default", False) if use_precheck else {}
-        await execute_call1_routing(
+        await dispatch_intent_route(
             request=DummyReq(),
             user_message="halo",
             context_history_str="",
@@ -248,7 +248,7 @@ async def evaluate_model(model_name: str, use_precheck: bool = True) -> Dict[str
         t0 = time.perf_counter()
         precheck = detect_precheck(tc["msg"], "default", False) if use_precheck else {}
         try:
-            res = await execute_call1_routing(
+            res = await dispatch_intent_route(
                 request=DummyReq(),
                 user_message=tc["msg"],
                 context_history_str=tc["hist"],

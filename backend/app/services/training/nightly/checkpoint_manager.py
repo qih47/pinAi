@@ -304,7 +304,7 @@ class CheckpointManager:
         timestamp_str = datetime.now().strftime("%Y%m%d_%H%M%S")
 
         backed_up_files = []
-        for fname in ["nightly_cakra_core.jsonl", "nightly_call1_router.jsonl"]:
+        for fname in ["nightly_cakra_core.jsonl", "nightly_dispatcher_router.jsonl"]:
             fpath = os.path.join(finetune_dir, fname)
             if os.path.exists(fpath) and os.path.getsize(fpath) > 0:
                 bak_path = os.path.join(finetune_dir, f"{fname}.bak_{timestamp_str}")

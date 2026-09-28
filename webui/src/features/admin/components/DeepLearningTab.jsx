@@ -1,17 +1,17 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { 
-  Brain, 
-  FileText, 
-  Activity, 
-  Database, 
-  GitMerge, 
-  FileImage, 
-  Play, 
-  CheckCircle2, 
-  XCircle, 
-  Clock, 
-  Layers, 
-  Sparkles, 
+import {
+  Brain,
+  FileText,
+  Activity,
+  Database,
+  GitMerge,
+  FileImage,
+  Play,
+  CheckCircle2,
+  XCircle,
+  Clock,
+  Layers,
+  Sparkles,
   RotateCcw,
   Search,
   Moon,
@@ -49,12 +49,12 @@ const DeepLearningTab = () => {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Nightly 5-Worker Training State
+  // Nightly 6-Worker Training State
   const [nightlyStatus, setNightlyStatus] = useState(null);
   const [isNightlyStarting, setIsNightlyStarting] = useState(false);
   const [isNightlyStopping, setIsNightlyStopping] = useState(false);
   const [isSyncingCatalog, setIsSyncingCatalog] = useState(false);
-  
+
   // Live Job Monitor & Two-Page Spread State
   const [liveMonitor, setLiveMonitor] = useState(null);
   const [monitorTab, setMonitorTab] = useState('terminal'); // 'terminal' | 'chunks' | 'qa' | 'graph' | 'lora'
@@ -218,7 +218,7 @@ const DeepLearningTab = () => {
     if (!window.confirm("Sinkronkan katalog peraturan dari database berita MySQL ke antrean ragdb? (Aman, 100% Read-Only ke MySQL)")) return;
     setIsSyncingCatalog(true);
     try {
-      const res = await apiClient.post('/training/nightly/sync-catalog');
+      const res = await apiClient.post('/training/nightly/sync-catalog', {}, { timeout: 120000 });
       const data = res.data?.data;
       alert(`Sinkronisasi Selesai!\n• Total Dokumen: ${data?.total_mysql_records || 0}\n• Tier 1 (Berlaku): ${data?.tier1_active_regulations || 0}\n• Tier 2 (Dicabut): ${data?.tier2_obsolete_regulations || 0}`);
       await fetchNightlyStatus();
@@ -310,13 +310,13 @@ const DeepLearningTab = () => {
 
   const renderStatusBadge = (status) => {
     switch (status) {
-      case 'RUNNING': 
+      case 'RUNNING':
         return <span className="flex items-center gap-1 text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded text-xs font-semibold"><Activity className="w-3 h-3 animate-pulse" /> Running</span>;
-      case 'DONE': 
+      case 'DONE':
         return <span className="flex items-center gap-1 text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded text-xs font-semibold"><CheckCircle2 className="w-3 h-3" /> Done</span>;
-      case 'FAILED': 
+      case 'FAILED':
         return <span className="flex items-center gap-1 text-red-400 bg-red-500/10 px-2 py-0.5 rounded text-xs font-semibold"><XCircle className="w-3 h-3" /> Failed</span>;
-      default: 
+      default:
         return <span className="flex items-center gap-1 text-slate-400 bg-slate-500/10 px-2 py-0.5 rounded text-xs font-semibold"><Clock className="w-3 h-3" /> Pending</span>;
     }
   };
@@ -328,11 +328,11 @@ const DeepLearningTab = () => {
     { id: 'VISION_RAG', icon: <FileImage />, title: "Vision RAG", desc: "ColPali image-based vectorization" }
   ];
 
-  const filteredPipelineDocs = sourceDocs.filter(d => 
+  const filteredPipelineDocs = sourceDocs.filter(d =>
     !searchQuery || d.judul?.toLowerCase().includes(searchQuery.toLowerCase()) || d.noper?.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const filteredSyntheticDocs = syntheticDocs.filter(d => 
+  const filteredSyntheticDocs = syntheticDocs.filter(d =>
     !searchQuery || d.judul?.toLowerCase().includes(searchQuery.toLowerCase()) || d.noper?.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
@@ -342,7 +342,7 @@ const DeepLearningTab = () => {
 
   return (
     <div className="flex flex-col gap-6 text-slate-200 animate-in fade-in duration-500">
-      
+
       {/* Header & Stats Banner */}
       <div className="bg-[#0B0F19] border border-gray-800 rounded-2xl p-6 relative overflow-hidden">
         <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6">
@@ -385,41 +385,38 @@ const DeepLearningTab = () => {
         <div className="flex items-center gap-2 border-b border-gray-800 mt-6 pt-2">
           <button
             onClick={() => setActiveSubTab('pipelines')}
-            className={`flex items-center gap-2 px-4 py-2.5 text-sm font-semibold rounded-t-lg transition-all ${
-              activeSubTab === 'pipelines'
+            className={`flex items-center gap-2 px-4 py-2.5 text-sm font-semibold rounded-t-lg transition-all ${activeSubTab === 'pipelines'
                 ? 'text-cyan-400 border-b-2 border-cyan-400 bg-cyan-900/20'
                 : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800/40'
-            }`}
+              }`}
           >
             <Layers size={16} /> Ingestion & Model Pipelines
           </button>
           <button
             onClick={() => setActiveSubTab('synthetic')}
-            className={`flex items-center gap-2 px-4 py-2.5 text-sm font-semibold rounded-t-lg transition-all ${
-              activeSubTab === 'synthetic'
+            className={`flex items-center gap-2 px-4 py-2.5 text-sm font-semibold rounded-t-lg transition-all ${activeSubTab === 'synthetic'
                 ? 'text-purple-400 border-b-2 border-purple-400 bg-purple-900/20'
                 : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800/40'
-            }`}
+              }`}
           >
             <Sparkles size={16} /> Synthetic Q&A Generation
           </button>
           <button
             onClick={() => setActiveSubTab('jobs')}
-            className={`flex items-center gap-2 px-4 py-2.5 text-sm font-semibold rounded-t-lg transition-all ${
-              activeSubTab === 'jobs'
+            className={`flex items-center gap-2 px-4 py-2.5 text-sm font-semibold rounded-t-lg transition-all ${activeSubTab === 'jobs'
                 ? 'text-emerald-400 border-b-2 border-emerald-400 bg-emerald-900/20'
                 : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800/40'
-            }`}
+              }`}
           >
             <Activity size={16} /> Live Job Monitor ({jobs.length})
           </button>
         </div>
       </div>
 
-      {/* ── NIGHTLY 5-WORKER AUTOMATED TRAINING & FINE-TUNING PANEL ── */}
+      {/* ── NIGHTLY 6-WORKER AUTOMATED TRAINING & FINE-TUNING PANEL ── */}
       <div className="bg-gradient-to-r from-indigo-950/40 via-purple-950/30 to-slate-900/60 border border-indigo-500/30 rounded-2xl p-5 relative overflow-hidden backdrop-blur-sm shadow-xl">
         <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
-          
+
           {/* Left: Title, Badges & Schedule Info */}
           <div className="flex items-start gap-3.5">
             <div className={`p-3 rounded-xl border ${nightlyStatus?.is_running ? 'bg-indigo-500/20 border-indigo-400 text-indigo-300 animate-pulse' : 'bg-slate-800/80 border-slate-700 text-indigo-400'}`}>
@@ -428,7 +425,7 @@ const DeepLearningTab = () => {
             <div>
               <div className="flex items-center gap-2.5 flex-wrap">
                 <h2 className="text-base font-bold text-white flex items-center gap-2">
-                  Nightly 5-Worker Training & Fine-Tuning
+                  Nightly 6-Worker Training & Fine-Tuning
                 </h2>
                 {nightlyStatus?.is_running ? (
                   <span className="flex items-center gap-1.5 text-xs font-semibold px-2.5 py-0.5 rounded-full bg-blue-500/20 border border-blue-500/40 text-blue-300 animate-pulse">
@@ -464,11 +461,10 @@ const DeepLearningTab = () => {
               <button
                 onClick={handleStopNightly}
                 disabled={isNightlyStopping || nightlyStatus?.stop_requested}
-                className={`flex items-center gap-2 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-lg transition-all ${
-                  isNightlyStopping || nightlyStatus?.stop_requested
+                className={`flex items-center gap-2 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-lg transition-all ${isNightlyStopping || nightlyStatus?.stop_requested
                     ? "bg-amber-600/90 hover:bg-amber-600 cursor-wait shadow-amber-900/30"
                     : "bg-rose-600 hover:bg-rose-500 cursor-pointer shadow-rose-900/30"
-                }`}
+                  }`}
                 title={nightlyStatus?.stop_requested ? "Sedang menuntaskan halaman aktif dan menyimpan checkpoint..." : "Hentikan training malam"}
               >
                 {isNightlyStopping || nightlyStatus?.stop_requested ? (
@@ -665,11 +661,10 @@ const DeepLearningTab = () => {
                   <h3 className="text-sm font-bold text-white flex items-center gap-2">
                     Live Training Cockpit: Bentangan 2 Halaman & Multi-Worker Monitor
                   </h3>
-                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
-                    liveMonitor?.is_running 
-                      ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 animate-pulse' 
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${liveMonitor?.is_running
+                      ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 animate-pulse'
                       : 'bg-slate-800 text-slate-400 border-slate-700'
-                  }`}>
+                    }`}>
                     {liveMonitor?.is_running ? 'ACTIVE SCANNING' : 'STANDBY'}
                   </span>
                 </div>
@@ -706,7 +701,7 @@ const DeepLearningTab = () => {
 
           {/* Cockpit Split Grid */}
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-            
+
             {/* ── LEFT COLUMN (5 cols): TWO-PAGE SPREAD VIEWER ── */}
             <div className="lg:col-span-5 bg-[#0B0F19] border border-gray-800 rounded-2xl p-4 flex flex-col h-[700px]">
               <div className="flex items-center justify-between pb-3 border-b border-gray-800 mb-3">
@@ -723,7 +718,7 @@ const DeepLearningTab = () => {
 
               {/* Dual Book Canvas */}
               <div className="relative flex-1 bg-[#060911] border border-slate-800 rounded-xl overflow-hidden flex shadow-2xl p-2 gap-2">
-                
+
                 {/* Center Book Spine Shadow */}
                 <div className="absolute inset-y-0 left-1/2 -translate-x-1/2 w-6 bg-gradient-to-r from-black/50 via-black/80 to-black/50 pointer-events-none z-10" />
 
@@ -758,8 +753,8 @@ const DeepLearningTab = () => {
 
                       <div className="flex-1 flex items-center justify-center overflow-hidden relative">
                         {leftImg ? (
-                          <img 
-                            src={getImageUrl(leftImg)} 
+                          <img
+                            src={getImageUrl(leftImg)}
                             alt="Left Page Spread"
                             className="max-h-[550px] w-full object-contain rounded cursor-zoom-in group-hover:brightness-105 transition-all shadow-md"
                             onClick={() => setPreviewImageModal(getImageUrl(leftImg))}
@@ -778,7 +773,7 @@ const DeepLearningTab = () => {
                       <div className="pt-2 border-t border-slate-800/60 flex items-center justify-between text-[10px]">
                         <span className="text-gray-500 font-mono">Page Left</span>
                         {leftImg && (
-                          <button 
+                          <button
                             onClick={() => setPreviewImageModal(getImageUrl(leftImg))}
                             className="text-cyan-400 hover:text-cyan-300 flex items-center gap-1 font-semibold"
                           >
@@ -811,8 +806,8 @@ const DeepLearningTab = () => {
 
                       <div className="flex-1 flex items-center justify-center overflow-hidden relative">
                         {rightImg ? (
-                          <img 
-                            src={getImageUrl(rightImg)} 
+                          <img
+                            src={getImageUrl(rightImg)}
                             alt="Right Page Spread"
                             className="max-h-[550px] w-full object-contain rounded cursor-zoom-in group-hover:brightness-105 transition-all shadow-md"
                             onClick={() => setPreviewImageModal(getImageUrl(rightImg))}
@@ -837,7 +832,7 @@ const DeepLearningTab = () => {
                       <div className="pt-2 border-t border-slate-800/60 flex items-center justify-between text-[10px]">
                         <span className="text-gray-500 font-mono">Page Right</span>
                         {rightImg && (
-                          <button 
+                          <button
                             onClick={() => setPreviewImageModal(getImageUrl(rightImg))}
                             className="text-purple-400 hover:text-purple-300 flex items-center gap-1 font-semibold"
                           >
@@ -854,17 +849,16 @@ const DeepLearningTab = () => {
 
             {/* ── RIGHT COLUMN (7 cols): MULTI-WORKER TERMINAL & TRAINING ARTIFACTS COCKPIT ── */}
             <div className="lg:col-span-7 bg-[#0B0F19] border border-gray-800 rounded-2xl flex flex-col h-[700px] overflow-hidden">
-              
+
               {/* Cockpit Sub-tabs Bar */}
               <div className="p-3 border-b border-gray-800 bg-slate-900/70 flex items-center justify-between flex-wrap gap-2">
                 <div className="flex items-center gap-1.5 flex-wrap">
                   <button
                     onClick={() => setMonitorTab('terminal')}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                      monitorTab === 'terminal'
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${monitorTab === 'terminal'
                         ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm'
                         : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800/60'
-                    }`}
+                      }`}
                   >
                     <Terminal size={13} />
                     Live Terminal
@@ -875,11 +869,10 @@ const DeepLearningTab = () => {
 
                   <button
                     onClick={() => setMonitorTab('chunks')}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                      monitorTab === 'chunks'
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${monitorTab === 'chunks'
                         ? 'bg-blue-500/20 text-blue-300 border border-blue-500/40 shadow-sm'
                         : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800/60'
-                    }`}
+                      }`}
                   >
                     <FileText size={13} />
                     Chunks (W1)
@@ -890,11 +883,10 @@ const DeepLearningTab = () => {
 
                   <button
                     onClick={() => setMonitorTab('qa')}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                      monitorTab === 'qa'
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${monitorTab === 'qa'
                         ? 'bg-purple-500/20 text-purple-300 border border-purple-500/40 shadow-sm'
                         : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800/60'
-                    }`}
+                      }`}
                   >
                     <Sparkles size={13} />
                     Synthetic Q&A (W2)
@@ -905,11 +897,10 @@ const DeepLearningTab = () => {
 
                   <button
                     onClick={() => setMonitorTab('graph')}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                      monitorTab === 'graph'
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${monitorTab === 'graph'
                         ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shadow-sm'
                         : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800/60'
-                    }`}
+                      }`}
                   >
                     <Network size={13} />
                     Triples (W3)
@@ -920,11 +911,10 @@ const DeepLearningTab = () => {
 
                   <button
                     onClick={() => setMonitorTab('visual')}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                      monitorTab === 'visual'
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${monitorTab === 'visual'
                         ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-sm'
                         : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800/60'
-                    }`}
+                      }`}
                   >
                     <Eye size={13} />
                     Visual (W4)
@@ -935,11 +925,10 @@ const DeepLearningTab = () => {
 
                   <button
                     onClick={() => setMonitorTab('lora')}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                      monitorTab === 'lora'
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${monitorTab === 'lora'
                         ? 'bg-pink-500/20 text-pink-300 border border-pink-500/40 shadow-sm'
                         : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800/60'
-                    }`}
+                      }`}
                   >
                     <Code2 size={13} />
                     LoRA Data (W5)
@@ -950,11 +939,10 @@ const DeepLearningTab = () => {
 
                   <button
                     onClick={() => setMonitorTab('agentic')}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                      monitorTab === 'agentic'
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${monitorTab === 'agentic'
                         ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40 shadow-sm'
                         : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800/60'
-                    }`}
+                      }`}
                   >
                     <Sparkles size={13} />
                     Agentic (W6)
@@ -976,11 +964,10 @@ const DeepLearningTab = () => {
                         <button
                           key={pill}
                           onClick={() => setWorkerFilter(pill)}
-                          className={`text-[10px] font-mono px-2 py-0.5 rounded transition-colors ${
-                            workerFilter === pill
+                          className={`text-[10px] font-mono px-2 py-0.5 rounded transition-colors ${workerFilter === pill
                               ? 'bg-cyan-500/30 text-cyan-300 font-bold border border-cyan-500/50'
                               : 'bg-slate-900 text-gray-400 hover:text-gray-200'
-                          }`}
+                            }`}
                         >
                           {pill}
                         </button>
@@ -1476,7 +1463,7 @@ const DeepLearningTab = () => {
       ) : (
         /* ── TWO-COLUMN VIEW FOR PIPELINES & SYNTHETIC ── */
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-          
+
           {/* Left 2 Columns: Table of Documents */}
           <div className="xl:col-span-2 bg-[#0B0F19] border border-gray-800 rounded-2xl overflow-hidden flex flex-col h-[650px]">
             <div className="p-4 border-b border-gray-800 bg-slate-900/60 flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3">
@@ -1490,7 +1477,7 @@ const DeepLearningTab = () => {
                   className="bg-transparent border-none outline-none text-xs text-gray-200 w-full placeholder-gray-500"
                 />
               </div>
-              
+
               <div className="flex items-center gap-2 shrink-0">
                 {activeSubTab === 'synthetic' && (
                   <button
@@ -1502,8 +1489,8 @@ const DeepLearningTab = () => {
                     Train All Missing
                   </button>
                 )}
-                <button 
-                  onClick={fetchData} 
+                <button
+                  onClick={fetchData}
                   className="p-2 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-300 transition-colors"
                   title="Refresh Data"
                 >
@@ -1516,7 +1503,7 @@ const DeepLearningTab = () => {
             <div className="flex-1 overflow-auto p-4 custom-scrollbar">
               {loading ? (
                 <div className="animate-pulse space-y-3">
-                  {[1,2,3,4,5].map(i => <div key={i} className="h-16 bg-slate-800/40 rounded-xl" />)}
+                  {[1, 2, 3, 4, 5].map(i => <div key={i} className="h-16 bg-slate-800/40 rounded-xl" />)}
                 </div>
               ) : activeSubTab === 'pipelines' ? (
                 filteredPipelineDocs.length === 0 ? (
@@ -1539,7 +1526,7 @@ const DeepLearningTab = () => {
                             </div>
                           </div>
                         </div>
-                        
+
                         <div className="flex items-center gap-3 shrink-0">
                           {doc.is_embedded ? (
                             <span className="flex items-center gap-1.5 px-3 py-1 bg-emerald-500/10 text-emerald-400 rounded-full text-xs font-semibold border border-emerald-500/20">
@@ -1550,15 +1537,14 @@ const DeepLearningTab = () => {
                               <XCircle className="w-3.5 h-3.5" /> Pending
                             </span>
                           )}
-                          
-                          <button 
+
+                          <button
                             onClick={() => { setSelectedDoc(doc); setShowModal(true); }}
                             disabled={doc.is_embedded}
-                            className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                              doc.is_embedded 
+                            className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-semibold transition-all ${doc.is_embedded
                                 ? 'bg-slate-800 text-slate-600 cursor-not-allowed'
                                 : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white shadow-lg shadow-blue-500/20'
-                            }`}
+                              }`}
                           >
                             <Play className="w-3 h-3" /> Train
                           </button>
@@ -1588,7 +1574,7 @@ const DeepLearningTab = () => {
                             </div>
                           </div>
                         </div>
-                        
+
                         <div className="flex items-center gap-3 shrink-0">
                           {doc.is_synthetic_embedded ? (
                             <span className="flex items-center gap-1.5 px-3 py-1 bg-purple-500/10 text-purple-400 rounded-full text-xs font-semibold border border-purple-500/20">
@@ -1599,15 +1585,14 @@ const DeepLearningTab = () => {
                               <XCircle className="w-3.5 h-3.5" /> No QA
                             </span>
                           )}
-                          
-                          <button 
+
+                          <button
                             onClick={() => handleSingleSyntheticSubmit(doc.id)}
                             disabled={doc.is_synthetic_embedded}
-                            className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                              doc.is_synthetic_embedded 
+                            className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-semibold transition-all ${doc.is_synthetic_embedded
                                 ? 'bg-slate-800 text-slate-600 cursor-not-allowed'
                                 : 'bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white shadow-lg shadow-purple-500/20'
-                            }`}
+                              }`}
                           >
                             <Play className="w-3 h-3" /> Gen QA
                           </button>
@@ -1628,7 +1613,7 @@ const DeepLearningTab = () => {
               </h3>
               <span className="text-xs text-gray-500 font-mono">{jobs.length} total</span>
             </div>
-            
+
             <div className="flex-1 overflow-auto p-4 space-y-4 custom-scrollbar">
               {jobs.length === 0 ? (
                 <div className="h-full flex flex-col items-center justify-center text-slate-500 text-sm">
@@ -1647,10 +1632,10 @@ const DeepLearningTab = () => {
                         {renderStatusBadge(job.status)}
                       </div>
                       <span className="text-[10px] font-mono text-gray-500" title={job.job_id}>
-                        {job.job_id?.substring(0,8)}...
+                        {job.job_id?.substring(0, 8)}...
                       </span>
                     </div>
-                    
+
                     {job.status === 'RUNNING' && (
                       <div className="space-y-1.5">
                         <div className="flex justify-between text-xs font-mono">
@@ -1658,14 +1643,14 @@ const DeepLearningTab = () => {
                           <span className="text-cyan-400 font-bold">{job.progress}%</span>
                         </div>
                         <div className="h-2 w-full bg-slate-800 rounded-full overflow-hidden">
-                          <div 
+                          <div
                             className="h-full bg-gradient-to-r from-cyan-500 via-indigo-500 to-purple-500 transition-all duration-500"
                             style={{ width: `${job.progress}%` }}
                           />
                         </div>
                       </div>
                     )}
-                    
+
                     <div className="bg-black/60 p-2.5 rounded-lg text-[10px] font-mono text-slate-400 h-20 overflow-y-auto whitespace-pre-wrap border border-gray-800/60 custom-scrollbar">
                       {job.logs || "Sedang menjalankan alur pipeline..."}
                     </div>
@@ -1679,11 +1664,11 @@ const DeepLearningTab = () => {
 
       {/* Fullscreen Image Preview Zoom Modal */}
       {previewImageModal && (
-        <div 
+        <div
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-200"
           onClick={() => setPreviewImageModal(null)}
         >
-          <div 
+          <div
             className="relative max-w-4xl max-h-[90vh] bg-slate-950 border border-gray-700 rounded-2xl overflow-hidden shadow-2xl p-2 flex flex-col"
             onClick={(e) => e.stopPropagation()}
           >
@@ -1692,15 +1677,15 @@ const DeepLearningTab = () => {
                 <FileImage size={14} /> Inspeksi Resolusi Tinggi Halaman Dokumen
               </span>
               <div className="flex items-center gap-2">
-                <a 
-                  href={previewImageModal} 
-                  target="_blank" 
-                  rel="noreferrer" 
+                <a
+                  href={previewImageModal}
+                  target="_blank"
+                  rel="noreferrer"
                   className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-gray-300 flex items-center gap-1 text-[11px]"
                 >
                   <ExternalLink size={12} /> Buka Tab Baru
                 </a>
-                <button 
+                <button
                   onClick={() => setPreviewImageModal(null)}
                   className="p-1 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-white"
                 >
@@ -1709,9 +1694,9 @@ const DeepLearningTab = () => {
               </div>
             </div>
             <div className="flex-1 overflow-auto p-4 flex items-center justify-center bg-black/40">
-              <img 
-                src={previewImageModal} 
-                alt="Zoomed Document Page" 
+              <img
+                src={previewImageModal}
+                alt="Zoomed Document Page"
                 className="max-h-[75vh] w-auto object-contain rounded shadow-lg"
               />
             </div>
@@ -1727,7 +1712,7 @@ const DeepLearningTab = () => {
               <h3 className="text-xl font-bold text-slate-200">Konfigurasi Pelatihan AI</h3>
               <p className="text-sm text-gray-400 mt-1">Dokumen: <span className="text-cyan-400 font-semibold">{selectedDoc.judul}</span></p>
             </div>
-            
+
             <div className="p-6">
               <label className="text-sm font-semibold text-slate-300 mb-4 block">Pilih Metode Ingesti (Deep Learning Architecture):</label>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1735,11 +1720,10 @@ const DeepLearningTab = () => {
                   <button
                     key={method.id}
                     onClick={() => setTrainingMethod(method.id)}
-                    className={`flex items-start gap-4 p-4 rounded-xl border text-left transition-all ${
-                      trainingMethod === method.id 
-                        ? 'bg-purple-500/10 border-purple-500/50 ring-1 ring-purple-500 shadow-lg shadow-purple-500/10' 
+                    className={`flex items-start gap-4 p-4 rounded-xl border text-left transition-all ${trainingMethod === method.id
+                        ? 'bg-purple-500/10 border-purple-500/50 ring-1 ring-purple-500 shadow-lg shadow-purple-500/10'
                         : 'bg-slate-950 border-gray-800 hover:border-gray-700 hover:bg-slate-900'
-                    }`}
+                      }`}
                   >
                     <div className={`p-2.5 rounded-lg ${trainingMethod === method.id ? 'bg-purple-500/20 text-purple-400' : 'bg-slate-800 text-slate-400'}`}>
                       {React.cloneElement(method.icon, { className: 'w-5 h-5' })}
@@ -1754,13 +1738,13 @@ const DeepLearningTab = () => {
             </div>
 
             <div className="p-4 border-t border-gray-800 bg-slate-950 flex justify-end gap-3">
-              <button 
+              <button
                 onClick={() => setShowModal(false)}
                 className="px-5 py-2 text-slate-400 hover:text-white text-sm font-semibold rounded-lg hover:bg-gray-800 transition-colors"
               >
                 Batal
               </button>
-              <button 
+              <button
                 onClick={handleSubmitPipelineJob}
                 disabled={isSubmitting}
                 className="px-5 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white text-sm font-semibold rounded-lg transition-all flex items-center gap-2 disabled:opacity-50"

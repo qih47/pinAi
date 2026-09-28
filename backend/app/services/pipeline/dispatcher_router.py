@@ -25,10 +25,10 @@ logger = logging.getLogger("CAKRA_ROUTER")
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
-def extract_routing_signals_for_call1(user_content: str) -> str:
+def extract_routing_signals_for_dispatcher(user_content: str) -> str:
     """
     Memotong lemak token (kodingan/log panjang) dari teks user untuk
-    menjaga context window Call 1, tanpa menghilangkan instruksi manusia.
+    menjaga context window Dispatcher, tanpa menghilangkan instruksi manusia.
     """
     # Hapus ISI FILE secara total dari pertimbangan routing
     user_content = re.sub(r'--- ISI FILE:.*?-------------------', '', user_content, flags=re.DOTALL)
@@ -225,11 +225,11 @@ def _sanitize_rag_title_and_tags(
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# CALL 1 EXECUTION
+# DISPATCHER ROUTING EXECUTION
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
-async def execute_call1_routing(
+async def dispatch_intent_route(
     request: Request,
     user_message: str,
     context_history_str: str,
@@ -242,18 +242,18 @@ async def execute_call1_routing(
     model_name: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
-    Execute Call 1: Intent Classification & Routing.
+    Execute Dispatcher Routing: Intent Classification & Routing.
 
     Returns:
       Dict dengan 12 parameter routing.
     """
-    from backend.app.services.pipeline.system_prompts import build_call1_routing_prompt
+    from backend.app.services.pipeline.system_prompts import build_dispatcher_prompt
 
     # Quick bypass HANYA untuk sapaan murni 1-2 kata (misal: "halo", "pagi", "hai")
     is_complex = precheck.get("is_coding", False) or precheck.get("is_doc_query", False) or precheck.get("is_generate_email", False)
     is_pure_greeting = (precheck.get("is_greeting", False) or precheck.get("is_chitchat", False)) and len(user_message.split()) <= 2 and not is_complex
     if is_pure_greeting and not is_first_chat:
-        logger.info("[CALL1] ⚡ Pure greeting detected -> Quick routing bypass")
+        logger.info("[DISPATCHER_ROUTER] ⚡ Pure greeting detected -> Quick routing bypass")
         return _build_fallback_routing(precheck)
 
     # ⚡ FAST PATH: Kelanjutan langsung (lanjut, gas, terapkan) jika riwayat sebelumnya adalah koding/file
@@ -261,7 +261,7 @@ async def execute_call1_routing(
     clean_msg = user_message.strip().lower()
     has_prior_coding = "<create_file" in context_history_str or "is_generate_file" in context_history_str or "GENERATE_FILE" in context_history_str
     if clean_msg in continuation_keywords and has_prior_coding and not is_first_chat:
-        logger.info(f"[CALL1] ⚡ Direct continuation '{clean_msg}' detected -> 0ms Fast-Path to GENERATE_FILE")
+        logger.info(f"[DISPATCHER_ROUTER] ⚡ Direct continuation '{clean_msg}' detected -> 0ms Fast-Path to GENERATE_FILE")
         fast_routing = _build_fallback_routing(precheck)
         fast_routing["is_generate_file"] = True
         fast_routing["is_coding"] = True
@@ -278,10 +278,10 @@ async def execute_call1_routing(
         precheck["previous_subject"] = previous_subject
 
     # Smart Signal Stripping
-    stripped_message = extract_routing_signals_for_call1(user_message)
+    stripped_message = extract_routing_signals_for_dispatcher(user_message)
 
     # Build prompt
-    system_prompt = build_call1_routing_prompt(
+    system_prompt = build_dispatcher_prompt(
         user_message=stripped_message,
         context_history_str=context_history_str,
         precheck=precheck,
@@ -311,13 +311,13 @@ async def execute_call1_routing(
         router_ctx = getattr(settings, "NUM_CTX_ROUTER", 4096)
 
     logger.info(
-        f"[CALL1] Executing routing | model={effective_model} | user_msg_len={len(user_message)} | stripped_len={len(stripped_message)} | "
+        f"[DISPATCHER_ROUTER] Executing routing | model={effective_model} | user_msg_len={len(user_message)} | stripped_len={len(stripped_message)} | "
         f"dynamic_num_predict={dynamic_predict} | prompt_chars={len(system_prompt) + len(stripped_message)} | ctx={router_ctx}"
     )
 
     try:
         from datetime import datetime
-        t0_call1 = datetime.now()
+        t0_dispatcher = datetime.now()
         routing_json = await generate_json_response(
             model_name=effective_model,
             messages=messages,
@@ -330,7 +330,7 @@ async def execute_call1_routing(
             num_predict=dynamic_predict,
             timeout=120.0,
         )
-        duration_call1_ms = (datetime.now() - t0_call1).total_seconds() * 1000
+        duration_dispatcher_ms = (datetime.now() - t0_dispatcher).total_seconds() * 1000
 
         # Bersihkan setiap field bernilai False, None, atau empty array agar benar-benar sparse
         clean_sparse_json = {
@@ -503,7 +503,7 @@ async def execute_call1_routing(
 
         c1_lines = [
             top_border,
-            *_make_rows(f"📌 [CALL 1 ROUTING & DECISION DASHBOARD] (model: {effective_model}, {duration_call1_ms:.0f}ms)"),
+            *_make_rows(f"📌 [DISPATCHER ROUTING & DECISION DASHBOARD] (model: {effective_model}, {duration_dispatcher_ms:.0f}ms)"),
             mid_border,
             *_make_rows(f"👤 PESAN : \"{clean_user_msg}\""),
             mid_border,
@@ -529,7 +529,7 @@ async def execute_call1_routing(
         return routing
 
     except Exception as e:
-        logger.error(f"[CALL1] Error: {e} → fallback to rule-based routing")
+        logger.error(f"[DISPATCHER_ROUTER] Error: {e} → fallback to rule-based routing")
         return _build_fallback_routing(precheck)
 
 
@@ -630,7 +630,7 @@ def _validate_and_normalize_routing(
         routing["queries"] = []
         routing["query_judul"] = []
         routing["search_tags"] = []
-        logger.info("[CALL1] 💬 Simple greeting detected -> forcing need_rag=False, is_web_search=False, is_chitchat=True, clearing query_judul & search_tags")
+        logger.info("[DISPATCHER_ROUTER] 💬 Simple greeting detected -> forcing need_rag=False, is_web_search=False, is_chitchat=True, clearing query_judul & search_tags")
     elif not routing.get("need_rag") and not routing["is_coding"] and not routing["is_generate_file"]:
         if any(kw in topic_sub_text for kw in ["sapaan", "salam", "chitchat", "greeting", "kabar", "energi positif", "semangat pagi", "cuaca", "suhu", "waktu", "jam berapa", "tanggal berapa"]) or precheck.get("is_greeting") or precheck.get("is_chitchat"):
             routing["is_chitchat"] = True
@@ -716,7 +716,7 @@ def _validate_and_normalize_routing(
     if routing["is_map_query"]:
         routing["need_rag"] = False
         routing["query_judul"] = []
-        logger.info("[CALL1] 🌍 is_map_query detected -> overriding need_rag=False")
+        logger.info("[DISPATCHER_ROUTER] 🌍 is_map_query detected -> overriding need_rag=False")
     
     raw_chunk_ids = routing_json.get("session_chunk_ids", [])
     if isinstance(raw_chunk_ids, list):
@@ -737,12 +737,12 @@ def _validate_and_normalize_routing(
 
     # Otomatis aktifkan is_web_search jika ada queries dan bukan dokumen internal / bukan koding / bukan cuaca saat ini
     if is_current_weather:
-        logger.info("[CALL1] ⛅ Cuaca lokal saat ini terdeteksi. Mematikan is_web_search agar dijawab instan via Ambient Context Persona.")
+        logger.info("[DISPATCHER_ROUTER] ⛅ Cuaca lokal saat ini terdeteksi. Mematikan is_web_search agar dijawab instan via Ambient Context Persona.")
         routing["is_web_search"] = False
         routing["queries"] = []
         routing["is_chitchat"] = True
     elif is_opinion and not is_explicit_web:
-        logger.info("[CALL1] 💬 Pesan opini/afirmasi/chitchat terdeteksi. Mematikan is_web_search agar dijawab empatik & reflektif via Persona Core.")
+        logger.info("[DISPATCHER_ROUTER] 💬 Pesan opini/afirmasi/chitchat terdeteksi. Mematikan is_web_search agar dijawab empatik & reflektif via Persona Core.")
         routing["is_web_search"] = False
         routing["queries"] = []
         routing["is_chitchat"] = True
@@ -764,7 +764,7 @@ def _validate_and_normalize_routing(
             routing["need_rag"] = True
             routing["is_web_search"] = False
             routing["is_chitchat"] = False
-            logger.info("[CALL1] 📚 Document signal or forced doc mode detected with queries -> setting need_rag=True")
+            logger.info("[DISPATCHER_ROUTER] 📚 Document signal or forced doc mode detected with queries -> setting need_rag=True")
         else:
             routing["is_web_search"] = False
             routing["queries"] = []
@@ -781,23 +781,23 @@ def _validate_and_normalize_routing(
         routing["is_web_search"] = False
         if not routing.get("queries"):
             routing["queries"] = [user_message]
-        logger.info("[CALL1] 📚 Resolving document/web intent: internal document intent takes priority (need_rag=True, is_web_search=False)")
+        logger.info("[DISPATCHER_ROUTER] 📚 Resolving document/web intent: internal document intent takes priority (need_rag=True, is_web_search=False)")
     elif routing.get("is_web_search") and routing.get("need_rag"):
         routing["need_rag"] = False
         routing["query_judul"] = []
-        logger.info("[CALL1] 🌐 Resolving dual-intent conflict: is_web_search takes priority over need_rag for external data")
+        logger.info("[DISPATCHER_ROUTER] 🌐 Resolving dual-intent conflict: is_web_search takes priority over need_rag for external data")
 
     # 🌐 Penyelarasan URL Reader vs Web Search:
     # Jika is_url_read aktif dan pengguna TIDAK meminta pencarian web luar secara eksplisit, matikan is_web_search
     if routing.get("is_url_read") and not routing_json.get("is_web_search") and not is_explicit_web:
         routing["is_web_search"] = False
         routing["queries"] = []
-        logger.info("[CALL1] 🔗 is_url_read active without explicit web search request -> setting is_web_search=False, queries=[]")
+        logger.info("[DISPATCHER_ROUTER] 🔗 is_url_read active without explicit web search request -> setting is_web_search=False, queries=[]")
 
     # 🎯 SELF-CORRECTION DYNAMIC CONTEXT RESOLUTION
     # Sanggahan/koreksi user harus adaptif terhadap domain yang sedang dibahas:
     if routing.get("is_self_correction"):
-        last_action = str(precheck.get("last_call2_action") or "").upper()
+        last_action = str(precheck.get("last_responder_action") or "").upper()
         active_topic_lower = str(routing.get("active_topic") or precheck.get("active_topic") or "").lower()
         key_sub_lower = str(routing.get("key_subject") or precheck.get("key_subject") or "").lower()
 
@@ -811,44 +811,44 @@ def _validate_and_normalize_routing(
 
         if not has_explicit_web_req:
             if has_doc_audit_context:
-                logger.info("[CALL1] 🛡️ Dynamic Self-Correction: Local document/audit feedback detected -> disabling is_web_search, routing to document clarification context.")
+                logger.info("[DISPATCHER_ROUTER] 🛡️ Dynamic Self-Correction: Local document/audit feedback detected -> disabling is_web_search, routing to document clarification context.")
                 routing["is_web_search"] = False
                 routing["queries"] = []
                 routing["is_chitchat"] = True
             elif "CODING" in last_action or routing.get("is_coding"):
-                logger.info("[CALL1] 🛡️ Dynamic Self-Correction: Coding context detected -> maintaining is_coding.")
+                logger.info("[DISPATCHER_ROUTER] 🛡️ Dynamic Self-Correction: Coding context detected -> maintaining is_coding.")
                 routing["is_web_search"] = False
                 routing["is_coding"] = True
             elif routing.get("need_rag") or "REGULASI" in last_action:
-                logger.info("[CALL1] 🛡️ Dynamic Self-Correction: Regulation context detected -> maintaining need_rag.")
+                logger.info("[DISPATCHER_ROUTER] 🛡️ Dynamic Self-Correction: Regulation context detected -> maintaining need_rag.")
                 routing["is_web_search"] = False
                 routing["need_rag"] = True
 
-    # ── 🔄 UNIVERSAL BIDIRECTIONAL CONTEXT SYNCHRONIZATION (CALL 2 ➔ CALL 1) ──
-    # Mengetahui profil tindakan Call 2 pada turn sebelumnya (wizard, visual, coding, chitchat, RAG)
+    # ── 🔄 UNIVERSAL BIDIRECTIONAL CONTEXT SYNCHRONIZATION (RESPONDER ➔ DISPATCHER) ──
+    # Mengetahui profil tindakan Responder pada turn sebelumnya (wizard, visual, coding, chitchat, RAG)
     is_replying_to_wizard = bool(
         precheck.get("is_replying_to_wizard") 
         or precheck.get("is_wizard_confirmation") 
-        or (context_history_str and "[CALL2_ACTION: WIZARD_DITANYAKAN]" in context_history_str)
+        or (context_history_str and "[RESPONDER_ACTION: WIZARD_DITANYAKAN]" in context_history_str)
     )
     has_prior_visual = bool(
         precheck.get("has_prior_visual") 
-        or (context_history_str and "[CALL2_ACTION: VISUAL_DIBUAT]" in context_history_str)
+        or (context_history_str and "[RESPONDER_ACTION: VISUAL_DIBUAT]" in context_history_str)
     )
     has_prior_coding = bool(
         precheck.get("has_prior_coding") 
-        or (context_history_str and "[CALL2_ACTION: KODE_FILE_DIBUAT]" in context_history_str)
+        or (context_history_str and "[RESPONDER_ACTION: KODE_FILE_DIBUAT]" in context_history_str)
     )
     has_prior_chitchat = bool(
         precheck.get("has_prior_chitchat") 
-        or (context_history_str and "[CALL2_ACTION: CHITCHAT_DIJAWAB]" in context_history_str)
+        or (context_history_str and "[RESPONDER_ACTION: CHITCHAT_DIJAWAB]" in context_history_str)
     )
 
     # 1. 🧙 Penanganan Konfirmasi Wizard:
     if is_replying_to_wizard:
-        # 🛡️ ANTI-LOOP: User sedang menjawab pertanyaan wizard Call 2, TIDAK BOLEH ambigu lagi!
+        # 🛡️ ANTI-LOOP: User sedang menjawab pertanyaan wizard Responder, TIDAK BOLEH ambigu lagi!
         routing["is_ambiguous"] = False
-        logger.info("[CALL1] 🎯 Resolving Wizard Answer from Call 2 -> Overriding is_ambiguous=False")
+        logger.info("[DISPATCHER_ROUTER] 🎯 Resolving Wizard Answer from Responder -> Overriding is_ambiguous=False")
         
         # Resolusi Domain Berdasarkan Jawaban User / Opsi Wizard:
         # A. Visual / Grafik / Diagram (misal: "bikin chart pie", "bar chart", "flowchart")
@@ -891,7 +891,7 @@ def _validate_and_normalize_routing(
             if not routing["visual_types"]:
                 last_vt = precheck.get("last_visual_type") or "chart"
                 routing["visual_types"] = [last_vt]
-            logger.info(f"[CALL1] 📊 Continuous Visual Refinement detected -> requires_visual=True, visual_types={routing['visual_types']}")
+            logger.info(f"[DISPATCHER_ROUTER] 📊 Continuous Visual Refinement detected -> requires_visual=True, visual_types={routing['visual_types']}")
 
     # 3. 💻 Penanganan Kelanjutan Koding (Call 2 baru saja membuat kode/file):
     if has_prior_coding and not routing["need_rag"]:
@@ -899,7 +899,7 @@ def _validate_and_normalize_routing(
         if any(w in user_msg_lower for w in coding_cont_kw) and len(user_message.split()) <= 15:
             routing["is_coding"] = True
             routing["is_chitchat"] = False
-            logger.info("[CALL1] 💻 Continuous Coding Refinement detected -> is_coding=True")
+            logger.info("[DISPATCHER_ROUTER] 💻 Continuous Coding Refinement detected -> is_coding=True")
 
     # 4. 💬 Penanganan Kelanjutan Basa-basi (Call 2 baru saja menjawab chitchat):
     if has_prior_chitchat and not routing["need_rag"] and not routing["is_coding"] and not routing["requires_visual"]:
@@ -910,7 +910,7 @@ def _validate_and_normalize_routing(
             routing["is_chitchat"] = True
             routing["is_web_search"] = False
             routing["is_ambiguous"] = False
-            logger.info("[CALL1] 💬 Continuous Casual / Chitchat flow detected -> is_chitchat=True")
+            logger.info("[DISPATCHER_ROUTER] 💬 Continuous Casual / Chitchat flow detected -> is_chitchat=True")
 
     # 5. 📚 Penanganan Kelanjutan Dokumen / Regulasi Multi-turn:
     # Jika percakapan sebelumnya membahas dokumen/PKB/regulasi dan pesan lanjutan menanyakan rincian
@@ -923,7 +923,7 @@ def _validate_and_normalize_routing(
             routing["is_web_search"] = False
             if not routing.get("queries"):
                 routing["queries"] = [user_message]
-            logger.info(f"[CALL1] 📚 Continuous Document Context detected from history -> need_rag=True, queries={routing['queries']}")
+            logger.info(f"[DISPATCHER_ROUTER] 📚 Continuous Document Context detected from history -> need_rag=True, queries={routing['queries']}")
 
     # ── ATURAN STRICT MODE DOKUMEN (USER EXPLICIT INTENT OVERRIDE) ───────────
     # Jika user secara manual mengunci Mode Dokumen (forced_mode), pastikan need_rag aktif HANYA jika bukan web search atau koding
@@ -940,7 +940,7 @@ def _validate_and_normalize_routing(
         routing["is_ambiguous"] = False
         if not routing.get("queries"):
             routing["queries"] = [user_message]
-        logger.info(f"[CALL1] 📚 Explicit Document Mode enforced: need_rag=True, queries={routing['queries']}")
+        logger.info(f"[DISPATCHER_ROUTER] 📚 Explicit Document Mode enforced: need_rag=True, queries={routing['queries']}")
 
     # ── ATURAN DOKUMEN WRITER & DRAF NASKAH DINAS (OVERRIDE AMBIGUOUS) ─────────
     # Jika pengguna meminta membuka editor atau membuat draf naskah dinas resmi (SE, SKEP, Memo),
@@ -968,7 +968,7 @@ def _validate_and_normalize_routing(
         routing["is_ambiguous"] = False
         routing["is_chitchat"] = False
         routing["is_greeting"] = False
-        logger.info("[CALL1] 📄 Document Writer intent enforced -> is_docwriter=True & is_ambiguous=False")
+        logger.info("[DISPATCHER_ROUTER] 📄 Document Writer intent enforced -> is_docwriter=True & is_ambiguous=False")
 
     # ── ATURAN STRICT AMBIGUOUS GATE ──────────────────────────────────────────
     # Jika is_ambiguous True, paksa need_rag = False dan kosongkan search queries/web search
@@ -979,22 +979,22 @@ def _validate_and_normalize_routing(
         routing["query_judul"] = []
         routing["search_tags"] = []
         routing["is_web_search"] = False
-        logger.info(f"[CALL1] ❓ Ambiguity Gate activated -> reason: '{routing.get('ambiguity_reason')}'")
+        logger.info(f"[DISPATCHER_ROUTER] ❓ Ambiguity Gate activated -> reason: '{routing.get('ambiguity_reason')}'")
 
     # ── ATURAN STRICT MUTUAL EXCLUSION: need_rag VS is_web_search & is_coding ─────────────
     # need_rag (dokumen internal Pindad) dan is_web_search/is_coding DILARANG KERAS sama-sama aktif!
     if routing.get("is_web_search") and not is_explicit_doc_mode:
         # Jika web search aktif (misal DPR RI, berita, internet), matikan need_rag
         if routing.get("need_rag"):
-            logger.info("[CALL1] 🌐 Web search is active. Setting need_rag=False.")
+            logger.info("[DISPATCHER_ROUTER] 🌐 Web search is active. Setting need_rag=False.")
             routing["need_rag"] = False
     elif routing.get("need_rag"):
         routing["is_web_search"] = False
         if routing.get("is_coding"):
-            logger.warning("[CALL1] 🛡️ Strict Mutual Exclusion: need_rag=True, forcing is_coding=False!")
+            logger.warning("[DISPATCHER_ROUTER] 🛡️ Strict Mutual Exclusion: need_rag=True, forcing is_coding=False!")
             routing["is_coding"] = False
         if routing.get("is_generate_file"):
-            logger.warning("[CALL1] 🛡️ Strict Mutual Exclusion: need_rag=True, forcing is_generate_file=False!")
+            logger.warning("[DISPATCHER_ROUTER] 🛡️ Strict Mutual Exclusion: need_rag=True, forcing is_generate_file=False!")
             routing["is_generate_file"] = False
 
     # Tangkap jika model mengembalikan pronoun sebagai boolean flag atau inheritance dari precheck
@@ -1051,7 +1051,7 @@ def _validate_and_normalize_routing(
     )
     routing["query_judul"] = clean_qj
     routing["search_tags"] = clean_st
-    logger.info(f"[CALL1] Sanitized query_judul: {routing['query_judul']} | search_tags: {routing['search_tags']}")
+    logger.info(f"[DISPATCHER_ROUTER] Sanitized query_judul: {routing['query_judul']} | search_tags: {routing['search_tags']}")
 
     context_snippets = routing_json.get("context_snippets", [])
     if isinstance(context_snippets, list):
@@ -1139,16 +1139,16 @@ def _validate_and_normalize_routing(
 
     # Override dengan precheck jika ada hint yang kuat (HANYA jika bukan public web search, bukan URL reader, dan BUKAN chitchat/greeting/closing)
     if precheck.get("need_rag_hint") is True and not routing["need_rag"] and not routing.get("is_web_search") and not precheck.get("has_url_context") and not precheck.get("is_public_web") and not routing.get("is_chitchat") and not routing.get("is_greeting"):
-        logger.warning("[CALL1] Precheck override: need_rag forced to True")
+        logger.warning("[DISPATCHER_ROUTER] Precheck override: need_rag forced to True")
         routing["need_rag"] = True
 
     if precheck.get("is_coding") and not routing["is_coding"]:
-        logger.warning("[CALL1] Precheck override: is_coding forced to True")
+        logger.warning("[DISPATCHER_ROUTER] Precheck override: is_coding forced to True")
         routing["is_coding"] = True
         
 
     if precheck.get("is_generate_email") and not routing["is_generate_email"]:
-        logger.warning("[CALL1] Precheck override: is_generate_email forced to True")
+        logger.warning("[DISPATCHER_ROUTER] Precheck override: is_generate_email forced to True")
         routing["is_generate_email"] = True
 
     # Sanity check: Jika user meminta diagram, flowchart, grafik, arsitektur, atau data dummy TANPA instruksi cari di web
@@ -1162,7 +1162,7 @@ def _validate_and_normalize_routing(
             "cari di web", "google", "berita", "terbaru", "terkini", "internet", "cuaca", "saham", "inflasi"
         ])
         if is_visual_creation and not has_explicit_web_kw:
-            logger.warning("[CALL1] Sanitizing false positive is_web_search on visual diagram/chart task")
+            logger.warning("[DISPATCHER_ROUTER] Sanitizing false positive is_web_search on visual diagram/chart task")
             routing["is_web_search"] = False
             routing["queries"] = []
 
@@ -1173,7 +1173,7 @@ def _validate_and_normalize_routing(
         has_file_intent = any(k in user_msg_lower for k in file_export_keywords)
         is_plain_data_query = any(k in user_msg_lower for k in ["data dummy", "data dumy", "data simulasi", "perbandingan penjualan", "contoh data", "tabel perbandingan", "tabel dummy", "angka dummy"])
         if is_plain_data_query and not has_file_intent:
-            logger.warning("[CALL1] Sanitizing false positive is_generate_file/is_coding on plain chat data simulation request")
+            logger.warning("[DISPATCHER_ROUTER] Sanitizing false positive is_generate_file/is_coding on plain chat data simulation request")
             routing["is_generate_file"] = False
             routing["is_coding"] = False
             routing["requires_visual"] = True
@@ -1193,12 +1193,12 @@ def _validate_and_normalize_routing(
 
         if not routing.get("queries"):
             routing["queries"] = rule_based_queries if rule_based_queries else ([user_msg] if user_msg else [])
-            logger.info(f"[CALL1] Rule-based queries fallback generated: {routing['queries']}")
+            logger.info(f"[DISPATCHER_ROUTER] Rule-based queries fallback generated: {routing['queries']}")
         else:
             # 🎯 Percayai query cerdas dari Call 1 (Gemma) secara langsung tanpa pemotongan/penimpaan paksa
             gemma_queries = [q.strip() for q in routing["queries"] if q and q.strip()]
             routing["queries"] = gemma_queries[:3]
-            logger.info(f"[CALL1] Using intelligent queries from Gemma Router: {routing['queries']}")
+            logger.info(f"[DISPATCHER_ROUTER] Using intelligent queries from Gemma Router: {routing['queries']}")
 
     # Final cleanup: buang string kosong / spasi dari queries
     if isinstance(routing.get("queries"), list):
@@ -1252,38 +1252,38 @@ def _validate_and_normalize_routing(
             routing["is_map_query"] = True
             routing["need_rag"] = False
             routing["query_judul"] = []
-            logger.info("[CALL1] 🛡️ Guard: Auto-activated is_map_query (location intent takes precedence)")
+            logger.info("[DISPATCHER_ROUTER] 🛡️ Guard: Auto-activated is_map_query (location intent takes precedence)")
         elif any(k in user_text for k in visual_keywords) or precheck.get("requires_visual"):
             routing["requires_visual"] = True
-            logger.info("[CALL1] 🛡️ Guard: Auto-activated requires_visual (visual/chart intent detected)")
+            logger.info("[DISPATCHER_ROUTER] 🛡️ Guard: Auto-activated requires_visual (visual/chart intent detected)")
         elif any(k in user_text for k in file_keywords):
             routing["is_generate_file"] = True
-            logger.info("[CALL1] 🛡️ Guard: Auto-activated is_generate_file (file intent detected)")
+            logger.info("[DISPATCHER_ROUTER] 🛡️ Guard: Auto-activated is_generate_file (file intent detected)")
         elif any(k in user_text for k in email_keywords):
             routing["is_generate_email"] = True
-            logger.info("[CALL1] 🛡️ Guard: Auto-activated is_generate_email (email intent detected)")
+            logger.info("[DISPATCHER_ROUTER] 🛡️ Guard: Auto-activated is_generate_email (email intent detected)")
         elif any(k in user_text for k in coding_keywords) or precheck.get("is_coding"):
             routing["is_coding"] = True
-            logger.info("[CALL1] 🛡️ Guard: Auto-activated is_coding (coding intent detected)")
+            logger.info("[DISPATCHER_ROUTER] 🛡️ Guard: Auto-activated is_coding (coding intent detected)")
         elif any(k in user_text for k in rag_keywords) or precheck.get("is_doc_query") or precheck.get("need_rag_hint"):
             routing["need_rag"] = True
             if not routing.get("query_judul"):
                 from backend.app.services.pipeline.modes.mode_utils import build_rule_based_queries
                 routing["query_judul"] = [routing.get("key_subject") or user_message]
                 routing["queries"] = build_rule_based_queries(user_message, routing.get("key_subject"), routing.get("active_topic"))
-            logger.info(f"[CALL1] 🛡️ Guard: Auto-activated need_rag | query_judul={routing['query_judul']}")
+            logger.info(f"[DISPATCHER_ROUTER] 🛡️ Guard: Auto-activated need_rag | query_judul={routing['query_judul']}")
         elif any(k in user_text for k in web_keywords) and not is_simple_greeting:
             routing["is_web_search"] = True
             if not routing.get("queries"):
                 routing["queries"] = [routing.get("key_subject") or user_message]
-            logger.info(f"[CALL1] 🛡️ Guard: Auto-activated is_web_search | queries={routing['queries']}")
+            logger.info(f"[DISPATCHER_ROUTER] 🛡️ Guard: Auto-activated is_web_search | queries={routing['queries']}")
     # 🔒 GUEST HARD-WALL SECURITY GUARD:
     # Tamu DILARANG KERAS mengakses dokumen/arsip internal PT Pindad dan Document Studio dalam kondisi apapun!
     # TAPI tamu TETAP BISA melakukan web search publik!
     if is_guest:
         routing["is_docwriter"] = False
         if routing.get("need_rag"):
-            logger.info("[CALL1] 🛡️ Guest Mode: Forcing need_rag=False (RAG hard-block for Guest)")
+            logger.info("[DISPATCHER_ROUTER] 🛡️ Guest Mode: Forcing need_rag=False (RAG hard-block for Guest)")
             routing["need_rag"] = False
             routing["query_judul"] = []
             # Jika tidak ada kapabilitas lain yang aktif, cek apakah web search bisa diaktifkan
@@ -1301,7 +1301,7 @@ def _validate_and_normalize_routing(
                     routing["is_web_search"] = True
                     if not routing.get("queries"):
                         routing["queries"] = [routing.get("key_subject") or user_message]
-                    logger.info("[CALL1] 🌐 Guest Mode: RAG blocked but is_public_web → activating web search")
+                    logger.info("[DISPATCHER_ROUTER] 🌐 Guest Mode: RAG blocked but is_public_web → activating web search")
                 else:
                     routing["is_chitchat"] = True
         routing["is_multi_document"] = False
@@ -1461,10 +1461,10 @@ def _build_fallback_routing(precheck: Dict[str, Any]) -> Dict[str, Any]:
         if not fallback.get("is_web_search"):
             fallback["queries"] = []
 
-    logger.info(f"[CALL1] Fallback routing constructed successfully | need_rag={fallback['need_rag']} | is_coding={fallback['is_coding']} | is_ambiguous={fallback['is_ambiguous']} | requires_visual={fallback['requires_visual']}")
+    logger.info(f"[DISPATCHER_ROUTER] Fallback routing constructed successfully | need_rag={fallback['need_rag']} | is_coding={fallback['is_coding']} | is_ambiguous={fallback['is_ambiguous']} | requires_visual={fallback['requires_visual']}")
     return fallback
 
-async def generate_call1_preset_routing(
+async def dispatch_preset_route(
     user_message: str,
     forced_mode: str = "auto",
     is_first_chat: bool = False,
@@ -1492,10 +1492,10 @@ async def generate_call1_preset_routing(
     precheck = precheck or {}
 
     from datetime import datetime
-    from backend.app.services.pipeline.prompts.core_prompts import build_call1_preset_prompt
+    from backend.app.services.pipeline.prompts.core_prompts import build_preset_dispatcher_prompt
     from backend.app.services.pipeline.modes.mode_utils import format_session_title, GENERIC_SESSION_TITLES
 
-    prompt = build_call1_preset_prompt(
+    prompt = build_preset_dispatcher_prompt(
         user_message=user_message.strip(),
         forced_mode=forced_mode,
         is_first_chat=is_first_chat,
@@ -1547,7 +1547,7 @@ async def generate_call1_preset_routing(
             result["query_judul"] = clean_qj
         if clean_st:
             result["search_tags"] = clean_st
-        logger.info(f"[CALL1_PRESET_ROUTING] Sanitized query_judul: {result.get('query_judul', [])} | search_tags: {result.get('search_tags', [])}")
+        logger.info(f"[PRESET_DISPATCHER] Sanitized query_judul: {result.get('query_judul', [])} | search_tags: {result.get('search_tags', [])}")
 
         # Proteksi sapaan di preset:
         user_msg_p_lower = user_message.lower()
@@ -1562,7 +1562,7 @@ async def generate_call1_preset_routing(
             result["queries"] = []
             result["query_judul"] = []
             result["search_tags"] = []
-            logger.info("[CALL1_PRESET_ROUTING] 💬 Greeting detected in preset mode -> forcing need_rag=False, is_chitchat=True")
+            logger.info("[PRESET_DISPATCHER] 💬 Greeting detected in preset mode -> forcing need_rag=False, is_chitchat=True")
 
         # Entity tracking
         if res_json.get("key_subject") and isinstance(res_json["key_subject"], str):
@@ -1581,20 +1581,33 @@ async def generate_call1_preset_routing(
         ):
             result["needs_history"] = True
 
-        # Ambiguity flag & Universal Call 2 Synchronization:
+        # Ambiguity flag & Universal Responder Synchronization:
         precheck = precheck or {}
-        is_replying_to_wizard = precheck.get("is_replying_to_wizard") or precheck.get("is_wizard_confirmation") or ("[CALL2_ACTION: WIZARD_DITANYAKAN]" in context_history_str)
-        has_prior_visual = precheck.get("has_prior_visual") or ("[CALL2_ACTION: VISUAL_DIBUAT]" in context_history_str)
-        has_prior_coding = precheck.get("has_prior_coding") or ("[CALL2_ACTION: KODE_FILE_DIBUAT]" in context_history_str)
-        has_prior_chitchat = precheck.get("has_prior_chitchat") or ("[CALL2_ACTION: CHITCHAT_DIJAWAB]" in context_history_str)
+        is_replying_to_wizard = (
+            precheck.get("is_replying_to_wizard") 
+            or precheck.get("is_wizard_confirmation") 
+            or ("[RESPONDER_ACTION: WIZARD_DITANYAKAN]" in context_history_str)
+        )
+        has_prior_visual = (
+            precheck.get("has_prior_visual") 
+            or ("[RESPONDER_ACTION: VISUAL_DIBUAT]" in context_history_str)
+        )
+        has_prior_coding = (
+            precheck.get("has_prior_coding") 
+            or ("[RESPONDER_ACTION: KODE_FILE_DIBUAT]" in context_history_str)
+        )
+        has_prior_chitchat = (
+            precheck.get("has_prior_chitchat") 
+            or ("[RESPONDER_ACTION: CHITCHAT_DIJAWAB]" in context_history_str)
+        )
         has_prior_context = bool(context_history_str and context_history_str.strip())
         is_detailed_confirmation = any(user_message.strip().lower().startswith(kw) for kw in ["gunakan ", "pilih ", "fokus pada ", "rujuk ", "opsi ", "chart ", "buatkan ", "bikin "]) or len(user_message.strip()) > 40
 
-        # Jika user merespon/mengonfirmasi pilihan wizard dari Call 2:
+        # Jika user merespon/mengonfirmasi pilihan wizard dari Responder:
         if is_replying_to_wizard:
             # 🛡️ ANTI-LOOP: Jangan pernah tandai ambigu lagi saat user menjawab wizard!
             result["is_ambiguous"] = False
-            logger.info("[CALL1_PRESET_ROUTING] 🎯 Resolving Wizard Answer from Call 2 -> Enforcing is_ambiguous=False")
+            logger.info("[PRESET_DISPATCHER] 🎯 Resolving Wizard Answer from Responder -> Enforcing is_ambiguous=False")
             
             # Jika user menjawab chart/pie/bar di jalur preset:
             user_lower_p = user_message.lower()
@@ -1612,7 +1625,7 @@ async def generate_call1_preset_routing(
         elif res_json.get("is_ambiguous") is True and not is_detailed_confirmation and not has_prior_context:
             result["is_ambiguous"] = True
             result["ambiguity_reason"] = str(res_json.get("ambiguity_reason") or "").strip()
-            logger.info(f"[CALL1_PRESET_ROUTING] ❓ Ambiguity detected -> reason: '{result['ambiguity_reason']}'")
+            logger.info(f"[PRESET_DISPATCHER] ❓ Ambiguity detected -> reason: '{result['ambiguity_reason']}'")
         is_guest_user = bool(precheck.get("is_guest", False))
         if not is_guest_user and (
             precheck.get("is_docwriter")
@@ -1699,11 +1712,11 @@ async def generate_call1_preset_routing(
             k: v for k, v in result.items()
             if v is not False and v is not None and v != [] and v != ""
         }
-        logger.info(f"⚡ [CALL1_PRESET_ROUTING] Result in {duration_ms:.1f}ms: {clean_result} (mode={forced_mode}, first_chat={is_first_chat})")
+        logger.info(f"⚡ [PRESET_DISPATCHER] Result in {duration_ms:.1f}ms: {clean_result} (mode={forced_mode}, first_chat={is_first_chat})")
         return clean_result
 
     except Exception as e:
-        logger.warning(f"[CALL1_PRESET_ROUTING] Gagal via LLM: {e}")
+        logger.warning(f"[PRESET_DISPATCHER] Gagal via LLM: {e}")
 
 
     # Fallback: jika first_chat, coba generate title dari teks user saja
@@ -1716,12 +1729,11 @@ async def generate_call1_preset_routing(
     return {}
 
 
-async def generate_call1_preset_title(user_message: str, request: Optional[Request] = None) -> Optional[str]:
+async def generate_preset_dispatcher_title(user_message: str, request: Optional[Request] = None) -> Optional[str]:
     """
-    Deprecated: dipertahankan sebagai backward-compat alias.
-    Gunakan generate_call1_preset_routing() untuk jalur preset.
+    Menghasilkan judul sesi jalur preset.
     """
-    result = await generate_call1_preset_routing(
+    result = await dispatch_preset_route(
         user_message=user_message,
         forced_mode="auto",
         is_first_chat=True,
@@ -1731,7 +1743,7 @@ async def generate_call1_preset_title(user_message: str, request: Optional[Reque
 
 
 
-async def generate_call1_web_queries(user_message: str, request: Optional[Request] = None) -> List[str]:
+async def generate_dispatcher_web_queries(user_message: str, request: Optional[Request] = None) -> List[str]:
     """
     Menghasilkan 1-2 kata kunci pencarian web cerdas via Gemma 4 e4b
     dari pesan user yang santai/penuh keluhan (< 300 ms).
@@ -1776,16 +1788,11 @@ async def generate_call1_web_queries(user_message: str, request: Optional[Reques
             clean_queries = [sanitize_web_query(str(q), user_message=user_message) for q in queries if str(q).strip()]
             clean_queries = [q for q in clean_queries if q]
             if clean_queries:
-                logger.info(f"⚡ [CALL1_WEB_QUERIES] Generated {clean_queries} in {duration_ms:.1f}ms (from: '{user_message}')")
+                logger.info(f"⚡ [DISPATCHER_WEB_QUERIES] Generated {clean_queries} in {duration_ms:.1f}ms (from: '{user_message}')")
                 return clean_queries
     except Exception as e:
-        logger.warning(f"[CALL1_WEB_QUERIES] Gagal generate query via LLM: {e}")
+        logger.warning(f"[DISPATCHER_WEB_QUERIES] Gagal generate query via LLM: {e}")
 
     return [clean_fallback] if clean_fallback else [user_message.strip()]
 
-
-# ── Standarisasi Arsitektur Kognitif (Agnostik) ──────────────────────────────
-dispatch_intent_route = execute_call1_routing
-dispatch_preset_route = generate_call1_preset_routing
-generate_dispatcher_web_queries = generate_call1_web_queries
 

@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """
-CAKRA AI — Call 1 Router Synthetic Dataset Generator
+CAKRA AI — Dispatcher Router Synthetic Dataset Generator
 ===================================================
 Menghasilkan ribuan dataset sintetis terstruktur (ShareGPT / Alpaca JSONL format)
 untuk melatih model `cakra-router` agar 100% deterministik dan sub-detik.
 
 Usage:
-    python backend/scripts/finetune/generate_call1_dataset.py --output data/call1_train.jsonl --samples 3000
+    python backend/scripts/finetune/generate_dispatcher_dataset.py --output data/finetune/dispatcher_train.jsonl --samples 3000
 """
 
 import os
@@ -318,8 +318,8 @@ def fetch_unlimited_db_samples() -> List[Dict[str, Any]]:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Generate dataset for Call 1 Router (Unlimited by Training)")
-    parser.add_argument("--output", type=str, default="data/finetune/nightly_call1_router.jsonl", help="Output JSONL filepath")
+    parser = argparse.ArgumentParser(description="Generate dataset for Dispatcher Router (Unlimited by Training)")
+    parser.add_argument("--output", type=str, default="data/finetune/nightly_dispatcher_router.jsonl", help="Output JSONL filepath")
     parser.add_argument("--samples", type=int, default=0, help="Number of synthetic samples (0 = Unlimited by DB)")
     parser.add_argument("--from-db", action="store_true", help="Extract all actual questions from ragdb rag_document_questions")
     args = parser.parse_args()

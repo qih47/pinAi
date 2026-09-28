@@ -6,7 +6,7 @@ logger = logging.getLogger("CAKRA_PROMPTS")
 
 _RAG_CONTEXT_MAX_CHARS = 60_000
 
-CALL1_ROUTING_PROMPT_TEMPLATE = """Kamu adalah CAKRA AI Router — sistem analisis semantik, penalaran konteks multi-turn, dan klasifikasi intensi cerdas PT Pindad.
+DISPATCHER_ROUTING_PROMPT_TEMPLATE = """Kamu adalah CAKRA AI Router — sistem analisis semantik, penalaran konteks multi-turn, dan klasifikasi intensi cerdas PT Pindad.
 
 TUGAS UTAMA:
 Pahami maksud pesan pengguna secara holistik. Identifikasi topik/entitas inti dari riwayat percakapan, lalu aktifkan kapabilitas sistem yang relevan dalam format JSON SPARSE MURNI (hanya key aktif bernilai true/string/array; DILARANG menulis key bernilai false, null, atau array kosong).
@@ -85,12 +85,12 @@ OUTPUT JSON:
 """
 
 prompt_manager.register_default(
-    name="CALL1_ROUTING_PROMPT",
-    template_str=CALL1_ROUTING_PROMPT_TEMPLATE,
+    name="DISPATCHER_ROUTING_PROMPT",
+    template_str=DISPATCHER_ROUTING_PROMPT_TEMPLATE,
     description="Sistem inti klasifikasi Intent AI. Mengembalikan JSON struktur routing (need_rag, is_coding, dll)."
 )
 
-def build_call1_routing_prompt(
+def build_dispatcher_prompt(
     user_message: str,
     context_history_str: str,
     precheck: Dict[str, Any],
@@ -104,7 +104,7 @@ def build_call1_routing_prompt(
     forced_mode = str(precheck.get("forced_mode") or "").lower().strip()
     is_forced_doc_mode = (forced_mode in ["documents", "document", "rag"]) and not is_guest
     
-    # Lightweight boolean flags — NO giant text dumping into Call 1 prompt!
+    # Lightweight boolean flags — NO giant text dumping into Dispatcher prompt!
     has_prior_url_context = bool(precheck.get("_visited_urls")) or bool(precheck.get("has_url_context"))
     has_prior_doc_context = bool(precheck.get("_session_chunks_text")) or bool(precheck.get("_retrieved_session_chunks_text"))
     
@@ -117,7 +117,7 @@ def build_call1_routing_prompt(
     current_date_str = f"{hari_ini}, {now.day} {bulan_ini} {now.year}"
 
     return prompt_manager.render(
-        name="CALL1_ROUTING_PROMPT",
+        name="DISPATCHER_ROUTING_PROMPT",
         user_message=user_message,
         context_history_str=context_history_str,
         has_prior_doc_context=has_prior_doc_context,
@@ -133,12 +133,7 @@ def build_call1_routing_prompt(
     )
 
 
-# ── Standarisasi Arsitektur Kognitif (Agnostik) ──────────────────────────────
-DISPATCHER_ROUTING_PROMPT_TEMPLATE = CALL1_ROUTING_PROMPT_TEMPLATE
-build_dispatcher_prompt = build_call1_routing_prompt
-
-
-CALL1_PRESET_PROMPT_TEMPLATE = """Kamu adalah asisten analisis cepat jalur preset CAKRA AI PT Pindad.
+PRESET_DISPATCHER_PROMPT_TEMPLATE = """Kamu adalah asisten analisis cepat jalur preset CAKRA AI PT Pindad.
 
 MODE PRESET AKTIF: {{ forced_mode }}
 PESAN PENGGUNA: {{ user_message }}
@@ -163,12 +158,12 @@ TUGAS:
    - PENTING: `query_judul` WAJIB berupa array string token istilah/wadah (DILARANG 1 string kalimat panjang).
    - Jika first_chat atau pesan sudah mandiri:
      -> "queries": ["{{ user_message }}"]
-2. DETEKSI AMBIGUITAS & RESOLUSI WIZARD / SIKLUS CALL 2 (`"is_ambiguous": true`):
+2. DETEKSI AMBIGUITAS & RESOLUSI WIZARD / SIKLUS RESPONDER (`"is_ambiguous": true`):
    - Analisis apakah pesan pengguna AMBIGU, bercabang, atau router RAGU menentukan sub-fitur sebelum dieksekusi di mode {{ forced_mode }}. Jika ambigu, WAJIB sertakan: `"is_ambiguous": true` dan `"ambiguity_reason": "alasan spesifik keraguan dan aspek yang perlu diklarifikasi"`.
-   - 🚨 RESOLUSI WIZARD (MUTLAK): Jika di riwayat percakapan Call 2 sebelumnya menyajikan wizard `[CALL2_ACTION: WIZARD_DITANYAKAN]`, dan pesan pengguna saat ini adalah jawaban/pilihan opsi (contoh: "Cuti Tahunan", "bikin chart pie", "opsi 1", "lanjut"):
+   - 🚨 RESOLUSI WIZARD (MUTLAK): Jika di riwayat percakapan sebelumnya menyajikan wizard `[RESPONDER_ACTION: WIZARD_DITANYAKAN]`, dan pesan pengguna saat ini adalah jawaban/pilihan opsi (contoh: "Cuti Tahunan", "bikin chart pie", "opsi 1", "lanjut"):
      PESAN INI DEFINITIF TIDAK AMBIGU! JANGAN AKTIFKAN `is_ambiguous`!
      Sebaliknya, gabungkan judul/topik wizard dan pilihan user ke dalam field `"queries"` atau aktifkan `"requires_visual": true` jika memilih jenis chart/visual!
-   - 🚨 KELANJUTAN VISUAL: Jika Call 2 sebelumnya `[CALL2_ACTION: VISUAL_DIBUAT]` dan user meminta perubahan warna/data/tampilan, aktifkan `"requires_visual": true`.
+   - 🚨 KELANJUTAN VISUAL: Jika giliran sebelumnya menghasilkan visual `[RESPONDER_ACTION: VISUAL_DIBUAT]` dan user meminta perubahan warna/data/tampilan, aktifkan `"requires_visual": true`.
    - PENTING: Jika ada riwayat percakapan sebelumnya dan pesan merujuk ke topik yang sudah dibahas, pesan tersebut TIDAK AMBIGU!
 3. DETEKSI VISUALISASI DINAMIS (`"requires_visual": true`):
    - Jika pesan memerlukan representasi visual, sertakan array sub-tipe spesifik:
@@ -213,12 +208,12 @@ OUTPUT JSON:
 """
 
 prompt_manager.register_default(
-    name="CALL1_PRESET_PROMPT",
-    template_str=CALL1_PRESET_PROMPT_TEMPLATE,
+    name="PRESET_DISPATCHER_PROMPT",
+    template_str=PRESET_DISPATCHER_PROMPT_TEMPLATE,
     description="Prompt jalur preset dengan multi-turn awareness, query rewriting, ambiguitas, dan visual/analytic flag."
 )
 
-def build_call1_preset_prompt(
+def build_preset_dispatcher_prompt(
     user_message: str,
     forced_mode: str,
     is_first_chat: bool,
@@ -227,7 +222,7 @@ def build_call1_preset_prompt(
     previous_subject: Optional[str] = None,
 ) -> str:
     return prompt_manager.render(
-        name="CALL1_PRESET_PROMPT",
+        name="PRESET_DISPATCHER_PROMPT",
         user_message=user_message,
         forced_mode=forced_mode,
         is_first_chat="true" if is_first_chat else "false",
@@ -237,21 +232,9 @@ def build_call1_preset_prompt(
     )
 
 
-# --- Backward-compat alias (tidak digunakan lagi, dipertahankan agar import lama tidak error) ---
-CALL1_PRESET_TITLE_PROMPT_TEMPLATE = CALL1_PRESET_PROMPT_TEMPLATE
-
-def build_call1_preset_title_prompt(user_message: str) -> str:
-    """Deprecated: gunakan build_call1_preset_prompt() untuk jalur preset."""
-    return build_call1_preset_prompt(user_message, forced_mode="auto", is_first_chat=True)
-
-
-PRESET_DISPATCHER_PROMPT_TEMPLATE = CALL1_PRESET_PROMPT_TEMPLATE
-build_preset_dispatcher_prompt = build_call1_preset_prompt
-
-
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# CALL 2: 7 MODUL EXPERT PROMPT DENGAN DETAIL AMPLIFIER
+# RESPONDER CORE: 7 MODUL EXPERT PROMPT DENGAN DETAIL AMPLIFIER
 # ═══════════════════════════════════════════════════════════════════════════════
 
 # ── STATIC CORE PERSONA & SAFETY (100% STATIS, ZERO VARIABEL JINJA) ───────────
@@ -1295,7 +1278,7 @@ def build_response_prompt_chitchat(
 # BACKWARD COMPATIBILITY
 # ═══════════════════════════════════════════════════════════════════════════════
 def build_intent_analysis_prompt(user_message, context_history_str, precheck, ocr_text=None):
-    return build_call1_routing_prompt(user_message, context_history_str, precheck, ocr_text)
+    return build_dispatcher_prompt(user_message, context_history_str, precheck, ocr_text)
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # BACKWARD COMPATIBILITY HELPERS FOR OTHER PROMPT FILES

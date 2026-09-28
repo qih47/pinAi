@@ -128,9 +128,14 @@ class PeraturanLineageSyncService:
         skipped_no_file = 0
 
         async with get_ragdb_conn() as conn:
-            # Ambil dokumen yang saat ini sudah COMPLETED agar tidak tertimpa
-            completed_rows = await conn.fetch("SELECT dokumen_id FROM nightly_training_checkpoints WHERE status = 'COMPLETED'")
-            completed_ids = {r["dokumen_id"] for r in completed_rows}
+            # Ambil semua checkpoint yang sudah ada untuk caching halaman & status
+            checkpoint_rows = await conn.fetch("SELECT dokumen_id, total_pages, status FROM nightly_training_checkpoints")
+            existing_checkpoints = {r["dokumen_id"]: r for r in checkpoint_rows}
+            completed_ids = {r["dokumen_id"] for r in checkpoint_rows if r["status"] == "COMPLETED"}
+
+            batch_dokumen = []
+            batch_completed = []
+            batch_pending = []
 
             for r in raw_berita:
                 doc_id = r["id_berita"]
@@ -160,63 +165,80 @@ class PeraturanLineageSyncService:
                 latest_act_id = latest_active_map.get(doc_id)
                 linkper_str = r.get("linkper") or ""
 
-                # Hitung jumlah halaman fisik jika belum selesai
-                total_pages = 0
-                try:
-                    doc = fitz.open(pdf_path)
-                    total_pages = len(doc)
-                    doc.close()
-                except Exception:
+                # Hitung jumlah halaman fisik hanya jika belum pernah tercatat
+                cached_cp = existing_checkpoints.get(doc_id)
+                if cached_cp and (cached_cp.get("total_pages") or 0) > 0:
+                    total_pages = cached_cp["total_pages"]
+                else:
                     total_pages = 0
+                    try:
+                        doc = fitz.open(pdf_path)
+                        total_pages = len(doc)
+                        doc.close()
+                    except Exception:
+                        total_pages = 0
 
-                # 4a. Update / Insert tabel dokumen
-                await conn.execute("""
+                # Data untuk tabel dokumen
+                batch_dokumen.append((doc_id, judul, nomor, filename))
+
+                # Data untuk tabel checkpoints
+                if doc_id in completed_ids:
+                    batch_completed.append((
+                        doc_id, judul, nomor, pdf_path, total_pages, priority_tier, is_berlaku,
+                        mencabut_str, revoked_by_str, latest_act_id, linkper_str
+                    ))
+                else:
+                    batch_pending.append((
+                        doc_id, judul, nomor, pdf_path, total_pages, priority_tier, is_berlaku,
+                        mencabut_str, revoked_by_str, latest_act_id, linkper_str
+                    ))
+
+            # Eksekusi batch secara bulk (2-3 query saja, bukan 4.000+ query sequential!)
+            if batch_dokumen:
+                await conn.executemany("""
                     INSERT INTO dokumen (id, judul, nomor, filename, status)
                     VALUES ($1, $2, $3, $4, 'draft')
                     ON CONFLICT (id) DO UPDATE 
                     SET judul = EXCLUDED.judul,
                         nomor = EXCLUDED.nomor,
                         filename = EXCLUDED.filename
-                """, doc_id, judul, nomor, filename)
+                """, batch_dokumen)
 
-                # 4b. Update / Insert tabel nightly_training_checkpoints
-                if doc_id in completed_ids:
-                    # Jangan reset status COMPLETED
-                    await conn.execute("""
-                        UPDATE nightly_training_checkpoints
-                        SET judul = $2,
-                            nomor_dokumen = $3,
-                            file_path = $4,
-                            total_pages = CASE WHEN total_pages = 0 THEN $5 ELSE total_pages END,
-                            priority_tier = $6,
-                            is_berlaku = $7,
-                            mencabut_ids = $8,
-                            revoked_by_ids = $9,
-                            latest_active_id = $10,
-                            linkper = $11
-                        WHERE dokumen_id = $1
-                    """, doc_id, judul, nomor, pdf_path, total_pages, priority_tier, is_berlaku,
-                        mencabut_str, revoked_by_str, latest_act_id, linkper_str)
-                else:
-                    await conn.execute("""
-                        INSERT INTO nightly_training_checkpoints (
-                            dokumen_id, judul, nomor_dokumen, file_path, total_pages,
-                            priority_tier, is_berlaku, mencabut_ids, revoked_by_ids,
-                            latest_active_id, linkper, status
-                        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'PENDING')
-                        ON CONFLICT (dokumen_id) DO UPDATE 
-                        SET judul = EXCLUDED.judul,
-                            nomor_dokumen = EXCLUDED.nomor_dokumen,
-                            file_path = EXCLUDED.file_path,
-                            total_pages = CASE WHEN nightly_training_checkpoints.total_pages = 0 THEN EXCLUDED.total_pages ELSE nightly_training_checkpoints.total_pages END,
-                            priority_tier = EXCLUDED.priority_tier,
-                            is_berlaku = EXCLUDED.is_berlaku,
-                            mencabut_ids = EXCLUDED.mencabut_ids,
-                            revoked_by_ids = EXCLUDED.revoked_by_ids,
-                            latest_active_id = EXCLUDED.latest_active_id,
-                            linkper = EXCLUDED.linkper
-                    """, doc_id, judul, nomor, pdf_path, total_pages, priority_tier, is_berlaku,
-                        mencabut_str, revoked_by_str, latest_act_id, linkper_str)
+            if batch_completed:
+                await conn.executemany("""
+                    UPDATE nightly_training_checkpoints
+                    SET judul = $2,
+                        nomor_dokumen = $3,
+                        file_path = $4,
+                        total_pages = CASE WHEN total_pages = 0 THEN $5 ELSE total_pages END,
+                        priority_tier = $6,
+                        is_berlaku = $7,
+                        mencabut_ids = $8,
+                        revoked_by_ids = $9,
+                        latest_active_id = $10,
+                        linkper = $11
+                    WHERE dokumen_id = $1
+                """, batch_completed)
+
+            if batch_pending:
+                await conn.executemany("""
+                    INSERT INTO nightly_training_checkpoints (
+                        dokumen_id, judul, nomor_dokumen, file_path, total_pages,
+                        priority_tier, is_berlaku, mencabut_ids, revoked_by_ids,
+                        latest_active_id, linkper, status
+                    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'PENDING')
+                    ON CONFLICT (dokumen_id) DO UPDATE 
+                    SET judul = EXCLUDED.judul,
+                        nomor_dokumen = EXCLUDED.nomor_dokumen,
+                        file_path = EXCLUDED.file_path,
+                        total_pages = CASE WHEN nightly_training_checkpoints.total_pages = 0 THEN EXCLUDED.total_pages ELSE nightly_training_checkpoints.total_pages END,
+                        priority_tier = EXCLUDED.priority_tier,
+                        is_berlaku = EXCLUDED.is_berlaku,
+                        mencabut_ids = EXCLUDED.mencabut_ids,
+                        revoked_by_ids = EXCLUDED.revoked_by_ids,
+                        latest_active_id = EXCLUDED.latest_active_id,
+                        linkper = EXCLUDED.linkper
+                """, batch_pending)
 
         summary = {
             "total_mysql_records": len(raw_berita),

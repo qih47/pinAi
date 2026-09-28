@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """
-CAKRA AI — Call 2 Core Knowledge & CoT Reasoning QLoRA Pipeline
+CAKRA AI — Responder Core Knowledge & CoT Reasoning QLoRA Pipeline
 ===============================================================
 Melatih model utama `cakra-core` (31B/32B/14B) dengan QLoRA 4-bit,
 penalaran Chain-of-Thought (<think>), dan domain PT Pindad.
 
 Usage:
-    python backend/scripts/finetune/train_call2_core.py \
+    python backend/scripts/finetune/train_responder_core.py \
         --model_name "unsloth/gemma-2-27b-it-bnb-4bit" \
-        --dataset "data/finetune/call2_train_2000.jsonl" \
+        --dataset "data/finetune/responder_train_2000.jsonl" \
         --output_dir "models/adapters/cakra-core-lora" \
         --epochs 3
 """
@@ -178,9 +178,9 @@ def train(args):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Fine-tune Cakra Core (Call 2)")
+    parser = argparse.ArgumentParser(description="Fine-tune Cakra Core (Responder)")
     parser.add_argument("--model_name", type=str, default="unsloth/gemma-2-27b-it-bnb-4bit", help="Base Model")
-    parser.add_argument("--dataset", type=str, default="data/finetune/call2_train_2000.jsonl", help="Dataset")
+    parser.add_argument("--dataset", type=str, default="data/finetune/responder_train_2000.jsonl", help="Dataset")
     parser.add_argument("--output_dir", type=str, default="models/adapters/cakra-core-lora", help="Output dir")
     parser.add_argument("--epochs", type=int, default=3, help="Epochs")
     parser.add_argument("--batch_size", type=int, default=2, help="Batch size")

@@ -788,7 +788,7 @@ async def stream_ollama_chat(
                             queue_ms_log = queue_wait_time * 1000
                             engine_label = "vLLM" if is_vllm else "Ollama"
                             logger.info(
-                                f"⚡ [TIMING_BENCHMARK] [CALL2_TTFT] First Token Received! "
+                                f"⚡ [TIMING_BENCHMARK] [RESPONDER_TTFT] First Token Received! "
                                 f"{engine_label} Prefill TTFT: {ttft_ms:.1f}ms ({ttft_ms/1000:.2f}s) | "
                                 f"GPU Queue Wait: {queue_ms_log:.1f}ms | "
                                 f"Input Payload: ~{total_chars//4:,} tokens"

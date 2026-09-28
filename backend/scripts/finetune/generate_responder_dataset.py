@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """
-CAKRA AI — Call 2 Core Chain-of-Thought (CoT) & Visual Dataset Generator
+CAKRA AI — Responder Core Chain-of-Thought (CoT) & Visual Dataset Generator
 =======================================================================
 Menghasilkan dataset berbobot tinggi dengan penalaran eksplisit `<think>...</think>`,
 penguasaan regulasi PT Pindad, dan sintesis komponen UI visual (`datagrid`, `infographic`, `chart`, `smartmail`).
 
 Usage:
-    python backend/scripts/finetune/generate_call2_dataset.py --output data/finetune/call2_train_2000.jsonl --samples 2000
+    python backend/scripts/finetune/generate_responder_dataset.py --output data/finetune/responder_train_2000.jsonl --samples 2000
 """
 
 import os

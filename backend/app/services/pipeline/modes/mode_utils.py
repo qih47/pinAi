@@ -668,7 +668,7 @@ def resolve_history_messages(
     return trimmed
 
 
-def select_call2_module(routing: Dict[str, Any], has_rag_context: bool = False) -> str:
+def select_responder_module(routing: Dict[str, Any], has_rag_context: bool = False) -> str:
     # 🎯 Jika sudah ditemukan rujukan dokumen konkret (RAG / Peraturan / Lampiran),
     # utamakan menjawab langsung dengan RAG agar tidak menjebak pengguna dalam loop pertanyaan berulang!
     if has_rag_context:
@@ -694,7 +694,8 @@ def select_call2_module(routing: Dict[str, Any], has_rag_context: bool = False) 
         return "chitchat"
     return "general_expert"           # sudah benar
 
-def build_call2_system_prompt(
+
+def build_responder_system_prompt(
     module_name: str,
     employee_name: str,
     precheck: Dict[str, Any],
@@ -948,6 +949,7 @@ def build_call2_system_prompt(
                 prompt += f"\n\n🚨 BATASAN FORMAT KHUSUS: {fmt_cst}. Patuhi secara mutlak!\n"
 
     return prompt
+
 
 
 def get_module_config(module_name: str, precheck: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
@@ -1247,12 +1249,12 @@ def format_session_title(title_input: str, user_message: str = "", max_words: in
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# UNIVERSAL BIDIRECTIONAL CONTEXT SYNCHRONIZATION: CALL 1/PRESET ⇄ CALL 2
+# UNIVERSAL BIDIRECTIONAL CONTEXT SYNCHRONIZATION: DISPATCHER ⇄ RESPONDER
 # ═══════════════════════════════════════════════════════════════════════════════
 
-def extract_call2_turn_context(content: str) -> Dict[str, Any]:
+def extract_responder_turn_context(content: str) -> Dict[str, Any]:
     """
-    Menganalisis dan mengekstrak profil tindakan Call 2 (Generator/Persona) dari konten respons asisten.
+    Menganalisis dan mengekstrak profil tindakan Responder (Generator/Persona) dari konten respons asisten.
     Mendukung seluruh spektrum:
       1. WIZARD_DITANYAKAN   - Menyajikan kuesioner interaktif ```wizard
       2. VISUAL_DIBUAT       - Menghasilkan ```chart (pie/bar/line/dll), ```mermaid, ```datagrid, ```map, ```gantt
@@ -1325,7 +1327,7 @@ def extract_call2_turn_context(content: str) -> Dict[str, Any]:
         }
         q_text = wiz_questions[0] if wiz_questions else "Silakan pilih salah satu opsi"
         opt_text = ", ".join(f'"{o}"' for o in wiz_options[:6])
-        action_summaries.append(f'[CALL2_ACTION: WIZARD_DITANYAKAN]: Judul="{wiz_title}" | Pertanyaan="{q_text}" | Opsi=[{opt_text}]')
+        action_summaries.append(f'[RESPONDER_ACTION: WIZARD_DITANYAKAN]: Judul="{wiz_title}" | Pertanyaan="{q_text}" | Opsi=[{opt_text}]')
 
     # 2. 📊 Deteksi VISUAL (Chart, Diagram Mermaid, Datagrid, Map, Gantt, Infographic)
     # 2a. Chart.js (Grafik)
@@ -1340,7 +1342,7 @@ def extract_call2_turn_context(content: str) -> Dict[str, Any]:
         title_re = re.search(r'"title"\s*:\s*\{[^}]*"text"\s*:\s*"([^"]+)"', chart_str)
         chart_title = title_re.group(1) if title_re else "Grafik Data"
         details["visual"] = {"type": "chart", "sub_type": chart_type, "title": chart_title}
-        action_summaries.append(f'[CALL2_ACTION: VISUAL_DIBUAT]: Jenis="chart ({chart_type})" | Judul="{chart_title}"')
+        action_summaries.append(f'[RESPONDER_ACTION: VISUAL_DIBUAT]: Jenis="chart ({chart_type})" | Judul="{chart_title}"')
 
     # 2b. Mermaid (Diagram)
     mermaid_match = re.search(r'```mermaid\s*([\s\S]*?)```', content, flags=re.IGNORECASE)
@@ -1354,19 +1356,19 @@ def extract_call2_turn_context(content: str) -> Dict[str, Any]:
                 m_type = kw
                 break
         details["visual"] = {"type": "mermaid", "sub_type": m_type}
-        action_summaries.append(f'[CALL2_ACTION: VISUAL_DIBUAT]: Jenis="mermaid ({m_type})"')
+        action_summaries.append(f'[RESPONDER_ACTION: VISUAL_DIBUAT]: Jenis="mermaid ({m_type})"')
 
     # 2c. Datagrid (Tabel Interaktif)
     if re.search(r'```(?:datagrid|table)\s*([\s\S]*?)```', content, flags=re.IGNORECASE):
         action_type = "VISUAL_DIBUAT"
         details["visual"] = {"type": "datagrid", "sub_type": "tabel"}
-        action_summaries.append('[CALL2_ACTION: VISUAL_DIBUAT]: Jenis="datagrid (tabel data)"')
+        action_summaries.append('[RESPONDER_ACTION: VISUAL_DIBUAT]: Jenis="datagrid (tabel data)"')
 
     # 2d. Map (Peta Lokasi)
     if re.search(r'```(?:map|osm)\s*([\s\S]*?)```', content, flags=re.IGNORECASE):
         action_type = "VISUAL_DIBUAT"
         details["visual"] = {"type": "map", "sub_type": "peta"}
-        action_summaries.append('[CALL2_ACTION: VISUAL_DIBUAT]: Jenis="map (peta lokasi)"')
+        action_summaries.append('[RESPONDER_ACTION: VISUAL_DIBUAT]: Jenis="map (peta lokasi)"')
 
     # 3. 💻 Deteksi KODE & GENERATE FILE
     create_file_match = re.search(r'<create_file\s+filename="([^"]+)"', content)
@@ -1374,14 +1376,14 @@ def extract_call2_turn_context(content: str) -> Dict[str, Any]:
         action_type = "KODE_FILE_DIBUAT"
         filename = create_file_match.group(1)
         details["coding"] = {"file": filename}
-        action_summaries.append(f'[CALL2_ACTION: KODE_FILE_DIBUAT]: File="{filename}"')
+        action_summaries.append(f'[RESPONDER_ACTION: KODE_FILE_DIBUAT]: File="{filename}"')
     else:
         code_match = re.search(r'```(python|javascript|typescript|js|ts|jsx|tsx|html|css|sql|bash|sh|json|golang|go|rust|cpp|c|java)\b\s*([\s\S]*?)```', content, flags=re.IGNORECASE)
         if code_match and not wizard_match and not chart_match:
             action_type = "KODE_FILE_DIBUAT"
             lang = code_match.group(1).lower()
             details["coding"] = {"language": lang}
-            action_summaries.append(f'[CALL2_ACTION: KODE_FILE_DIBUAT]: Bahasa="{lang}"')
+            action_summaries.append(f'[RESPONDER_ACTION: KODE_FILE_DIBUAT]: Bahasa="{lang}"')
 
     # 4. 📚 Deteksi REGULASI / DOKUMEN INTERNAL (RAG)
     sources_match = re.search(r'<sources_json>([\s\S]*?)</sources_json>', content)
@@ -1401,22 +1403,22 @@ def extract_call2_turn_context(content: str) -> Dict[str, Any]:
             pass
         title_str = ", ".join(doc_titles[:3]) if doc_titles else "Regulasi Internal PT Pindad"
         details["rag"] = {"documents": doc_titles}
-        action_summaries.append(f'[CALL2_ACTION: REGULASI_DIJELASKAN]: Dokumen="{title_str}"')
+        action_summaries.append(f'[RESPONDER_ACTION: REGULASI_DIJELASKAN]: Dokumen="{title_str}"')
     elif any(kw in content.lower() for kw in ["perjanjian kerja bersama", "pkb 2024", "sop pt pindad", "surat keputusan direksi", "skep/"]):
         if action_type not in ["WIZARD_DITANYAKAN", "VISUAL_DIBUAT", "KODE_FILE_DIBUAT"]:
             action_type = "REGULASI_DIJELASKAN"
-            action_summaries.append('[CALL2_ACTION: REGULASI_DIJELASKAN]: Regulasi & Kebijakan Internal')
+            action_summaries.append('[RESPONDER_ACTION: REGULASI_DIJELASKAN]: Regulasi & Kebijakan Internal')
 
     # 5. 🌐 Deteksi HASIL PENCARIAN WEB
     if re.search(r'```(?:websearch|urlfetch)\s*([\s\S]*?)```', content, flags=re.IGNORECASE) or "hasil penelusuran web" in content.lower():
         if action_type not in ["WIZARD_DITANYAKAN", "VISUAL_DIBUAT", "KODE_FILE_DIBUAT"]:
             action_type = "WEB_DIRANGKUM"
-            action_summaries.append('[CALL2_ACTION: WEB_DIRANGKUM]: Rangkuman Informasi Web Terkini')
+            action_summaries.append('[RESPONDER_ACTION: WEB_DIRANGKUM]: Rangkuman Informasi Web Terkini')
 
     # 6. 💬 Basa-basi / Chitchat Fallback
     if not action_summaries:
         action_type = "CHITCHAT_DIJAWAB"
-        action_summaries.append('[CALL2_ACTION: CHITCHAT_DIJAWAB]: Sapaan & Tanggapan Percakapan')
+        action_summaries.append('[RESPONDER_ACTION: CHITCHAT_DIJAWAB]: Sapaan & Tanggapan Percakapan')
 
     # Ekstrak teks bersih penjelasan Call 2 (tanpa kode, wizard, thought, atau JSON)
     clean_text = content
@@ -1451,12 +1453,12 @@ def extract_call2_turn_context(content: str) -> Dict[str, Any]:
     }
 
 
-def build_call2_history_context(chat_history: List[Any], user_message: str = "") -> Tuple[str, Dict[str, Any]]:
+def build_responder_history_context(chat_history: List[Any], user_message: str = "") -> Tuple[str, Dict[str, Any]]:
     """
-    Menyusun riwayat percakapan multi-turn yang disinkronkan secara dua arah antara Call 1/Preset dan Call 2.
+    Menyusun riwayat percakapan multi-turn yang disinkronkan secara dua arah antara Dispatcher/Preset dan Responder.
     Mengembalikan:
-      - context_history_str: String riwayat beranotasi lengkap untuk prompt Call 1 & Preset.
-      - last_call2_state: Metadata status tindakan Call 2 pada turn terakhir sebelum pesan user saat ini.
+      - context_history_str: String riwayat beranotasi lengkap untuk prompt Dispatcher & Preset.
+      - last_responder_state: Metadata status tindakan Responder pada turn terakhir sebelum pesan user saat ini.
     """
     if not chat_history:
         return "", {}
@@ -1484,7 +1486,7 @@ def build_call2_history_context(chat_history: List[Any], user_message: str = "")
 
         role_lower = role.lower()
         if role_lower == "assistant":
-            ctx = extract_call2_turn_context(content)
+            ctx = extract_responder_turn_context(content)
             last_assistant_context = ctx
             parts = []
             if ctx["action_summary"]:
@@ -1499,20 +1501,20 @@ def build_call2_history_context(chat_history: List[Any], user_message: str = "")
 
     context_history_str = "\n".join(history_lines) if history_lines else ""
 
-    # Ekstrak state Call 2 terakhir untuk diinjeksikan ke precheck
-    last_call2_state: Dict[str, Any] = {}
+    # Ekstrak state Responder terakhir untuk diinjeksikan ke precheck
+    last_responder_state: Dict[str, Any] = {}
     if last_assistant_context:
         action_type = last_assistant_context["action_type"]
         details = last_assistant_context["details"]
-        last_call2_state["last_call2_action"] = action_type
-        last_call2_state["last_call2_summary"] = last_assistant_context["action_summary"]
+        last_responder_state["last_responder_action"] = action_type
+        last_responder_state["last_responder_summary"] = last_assistant_context["action_summary"]
 
         # 1. Wizard state & check user answer
         if action_type == "WIZARD_DITANYAKAN" and "wizard" in details:
             wiz = details["wizard"]
-            last_call2_state["is_replying_to_wizard"] = True
-            last_call2_state["last_wizard"] = wiz
-            last_call2_state["last_wizard_options"] = wiz.get("options", [])
+            last_responder_state["is_replying_to_wizard"] = True
+            last_responder_state["last_wizard"] = wiz
+            last_responder_state["last_wizard_options"] = wiz.get("options", [])
             
             # Cek apakah user_message mencocoki opsi atau merupakan afirmasi
             if user_message:
@@ -1527,36 +1529,36 @@ def build_call2_history_context(chat_history: List[Any], user_message: str = "")
                 affirmative_kw = ["ya", "iya", "oke", "ok", "lanjut", "lanjutkan", "pilih", "opsi", "nomor", "setuju", "siap", "gas", "yang pertama", "yang kedua"]
                 is_affirmative = any(kw in u_clean for kw in affirmative_kw) or (matched_opt is not None)
                 if is_affirmative:
-                    last_call2_state["is_wizard_confirmation"] = True
+                    last_responder_state["is_wizard_confirmation"] = True
                     if matched_opt:
-                        last_call2_state["matched_wizard_option"] = matched_opt
+                        last_responder_state["matched_wizard_option"] = matched_opt
 
         # 2. Visual state
         elif action_type == "VISUAL_DIBUAT" and "visual" in details:
-            last_call2_state["has_prior_visual"] = True
-            last_call2_state["last_visual"] = details["visual"]
-            last_call2_state["last_visual_type"] = details["visual"].get("type")
-            last_call2_state["last_visual_subtype"] = details["visual"].get("sub_type")
+            last_responder_state["has_prior_visual"] = True
+            last_responder_state["last_visual"] = details["visual"]
+            last_responder_state["last_visual_type"] = details["visual"].get("type")
+            last_responder_state["last_visual_subtype"] = details["visual"].get("sub_type")
 
         # 3. Coding state
         elif action_type == "KODE_FILE_DIBUAT" and "coding" in details:
-            last_call2_state["has_prior_coding"] = True
-            last_call2_state["last_code"] = details["coding"]
-            last_call2_state["last_code_language"] = details["coding"].get("language")
+            last_responder_state["has_prior_coding"] = True
+            last_responder_state["last_code"] = details["coding"]
+            last_responder_state["last_code_language"] = details["coding"].get("language")
 
         # 4. RAG state
         elif action_type == "REGULASI_DIJELASKAN" and "rag" in details:
-            last_call2_state["has_prior_rag"] = True
-            last_call2_state["last_rag"] = details["rag"]
-            last_call2_state["last_rag_docs"] = details["rag"].get("documents", [])
+            last_responder_state["has_prior_rag"] = True
+            last_responder_state["last_rag"] = details["rag"]
+            last_responder_state["last_rag_docs"] = details["rag"].get("documents", [])
 
         # 5. Chitchat state
         elif action_type == "CHITCHAT_DIJAWAB":
-            last_call2_state["has_prior_chitchat"] = True
+            last_responder_state["has_prior_chitchat"] = True
 
         # 6. Deteksi jawaban / respon atas pertanyaan / ajakan asisten di turn sebelumnya
         if details.get("has_question"):
-            last_call2_state["last_assistant_asked_question"] = True
+            last_responder_state["last_assistant_asked_question"] = True
             if user_message:
                 u_clean = user_message.strip().lower()
                 words = u_clean.split()
@@ -1566,7 +1568,7 @@ def build_call2_history_context(chat_history: List[Any], user_message: str = "")
                 ])
                 is_standalone_question = any(u_clean.startswith(qw) for qw in ["siapa ", "berapa ", "kapan ", "dimana ", "apakah "]) and not any(anaph in u_clean for anaph in ["itu", "dia", "tadi", "tersebut", "nya"])
                 if len(words) <= 35 and not is_standalone_cmd and not is_standalone_question:
-                    last_call2_state["is_replying_to_assistant_question"] = True
+                    last_responder_state["is_replying_to_assistant_question"] = True
 
-    return context_history_str, last_call2_state
+    return context_history_str, last_responder_state
 
