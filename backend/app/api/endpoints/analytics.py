@@ -1,9 +1,11 @@
-from fastapi import APIRouter, HTTPException, Body, UploadFile, File
+from fastapi import APIRouter, HTTPException, Body, UploadFile, File, Depends
 from pydantic import BaseModel
 from fastapi.responses import StreamingResponse
 from typing import Optional, Dict, Any, List
 from datetime import datetime
 from backend.app.utils.security_firewall import validate_attachment_security
+from backend.app.api.dependencies.auth import get_current_user_npp
+
 import logging
 import json
 import os
@@ -157,20 +159,26 @@ async def knowledge_stats():
     return {"status": "success", "total_chunks": total_chunks}
 
 @router.get("/security/logs")
-async def security_logs():
-    """Mengambil log percobaan hacking/keamanan terbaru"""
+async def security_logs(current_user_npp: Optional[str] = Depends(get_current_user_npp)):
+    """Mengambil log percobaan hacking/keamanan terbaru (hanya untuk pengguna terotentikasi)"""
+    if not current_user_npp:
+        raise HTTPException(status_code=401, detail="Autentikasi diperlukan untuk mengakses log keamanan.")
     logs = await get_recent_security_logs(limit=50)
     return {"status": "success", "logs": logs}
 
 @router.get("/users/{npp}/sessions")
-async def user_sessions(npp: str):
-    """GOD MODE: Mengambil daftar sesi chat seorang user"""
+async def user_sessions(npp: str, current_user_npp: Optional[str] = Depends(get_current_user_npp)):
+    """GOD MODE: Mengambil daftar sesi chat seorang user (hanya untuk pengguna terotentikasi)"""
+    if not current_user_npp:
+        raise HTTPException(status_code=401, detail="Autentikasi diperlukan untuk mengakses riwayat sesi user.")
     sessions = await get_user_sessions(npp)
     return {"status": "success", "sessions": sessions}
 
 @router.get("/sessions/{session_uuid}")
-async def session_history(session_uuid: str):
-    """GOD MODE: Mengambil isi percakapan dari sebuah sesi beserta attachments"""
+async def session_history(session_uuid: str, current_user_npp: Optional[str] = Depends(get_current_user_npp)):
+    """GOD MODE: Mengambil isi percakapan dari sebuah sesi beserta attachments (hanya untuk pengguna terotentikasi)"""
+    if not current_user_npp:
+        raise HTTPException(status_code=401, detail="Autentikasi diperlukan untuk mengakses transkrip percakapan.")
     history = await get_session_chat_history(session_uuid)
     attachments = await get_session_attachments(session_uuid)
     return {"status": "success", "history": history, "attachments": attachments}
@@ -182,12 +190,15 @@ async def chat_explorer(
     filter_type: str = "all",
     sort_by: str = "last_active",
     limit: int = 50,
-    offset: int = 0
+    offset: int = 0,
+    current_user_npp: Optional[str] = Depends(get_current_user_npp)
 ):
     """
     Chat Explorer: Daftar semua pengguna CAKRA (registered + guest) beserta statistik chat.
     Digunakan oleh admin dashboard untuk monitoring aktivitas user secara menyeluruh.
     """
+    if not current_user_npp:
+        raise HTTPException(status_code=401, detail="Autentikasi diperlukan untuk mengakses Chat Explorer.")
     result = await get_all_users_with_activity(
         search=search,
         filter_type=filter_type,
@@ -196,6 +207,7 @@ async def chat_explorer(
         offset=offset
     )
     return {"status": "success", **result}
+
 
 @router.get("/quality")
 async def quality_metrics():

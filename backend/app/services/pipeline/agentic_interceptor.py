@@ -30,59 +30,17 @@ _RE_SOURCES_CLOSE = re.compile(r"<\s*/\s*sources_json\s*>", re.IGNORECASE)
 
 async def execute_in_line_web_search(query: str) -> tuple[Dict[str, Any], str]:
     """
-    Menjalankan pencarian web live + scraping paralel untuk in-line tool call.
+    Menjalankan pencarian web live + scraping paralel untuk in-line tool call via Unified Pipeline.
     Mengembalikan (widget_payload, llm_context_text).
     """
-    clean_query = sanitize_web_query(query.strip()) or query.strip()
-    logger.info(f"[AGENTIC_TOOL] Executing in-line web search for query: '{clean_query}' (raw: '{query}')")
-    
-    # 1. Search via SearXNG (5-8 hasil)
-    raw_results = await perform_web_search(clean_query, num_results=6)
-    
-    if not raw_results:
-        widget_payload = {
-            "query": clean_query,
-            "results": []
-        }
-        return widget_payload, f"Tidak ditemukan hasil pencarian web yang valid untuk query: '{clean_query}'."
+    from backend.app.services.web_tools.web_search import execute_web_search_pipeline
 
-    # 2. Rerank jika memungkinkan
-    search_results = raw_results
-    try:
-        from backend.app.services.rag.reranker_service import reranker_service
-        corpus_texts = [f"{r.get('title', '')} {r.get('content', '')}".strip() for r in raw_results]
-        scores = await reranker_service.compute_scores(clean_query, corpus_texts)
-        ranked = sorted(zip(scores, raw_results), key=lambda x: x[0], reverse=True)
-        search_results = [r for _, r in ranked[:4]]
-    except Exception as e:
-        logger.warning(f"[AGENTIC_TOOL] Rerank fallback: {e}")
-        search_results = raw_results[:4]
-
-    # 3. Format payload widget untuk Frontend
+    result = await execute_web_search_pipeline(queries=query, num_raw_results=12, scrape_top_k=2)
     widget_payload = {
-        "query": clean_query,
-        "results": search_results
+        "query": result.display_query,
+        "results": result.results,
     }
-
-    # 4. Format context teks untuk LLM
-    web_context = format_search_results_for_llm(search_results)
-    
-    # 5. Quick scrape 2 top URLs jika memungkinkan untuk konteks mendalam
-    top_urls = [r["url"] for r in search_results[:2] if r.get("url")]
-    if top_urls:
-        async def _scrape_one(u: str) -> str:
-            try:
-                c = await fetch_webpage_content(u)
-                return c[:3000] if c else ""
-            except Exception:
-                return ""
-        
-        scraped_contents = await asyncio.gather(*[_scrape_one(u) for u in top_urls])
-        extra_text = "\n\n".join([f"--- KONTEN SITUS ({top_urls[i]}) ---\n{scraped_contents[i]}" for i in range(len(top_urls)) if scraped_contents[i]])
-        if extra_text:
-            web_context += f"\n\n=== DETAIL KONTEN WEB TERBARU ===\n{extra_text}"
-
-    return widget_payload, web_context
+    return widget_payload, result.llm_context
 
 
 FILE_PERATURAN_DIR = getattr(settings, "FILE_PERATURAN_DIR", "/home/qisthi/pinAi/file_peraturan")

@@ -5,7 +5,10 @@ import asyncio
 
 from backend.app.core.config import settings
 from backend.app.core.llm_client import stream_ollama_chat
-from backend.app.services.web_tools.web_search import perform_web_search, format_search_results_for_llm, sanitize_web_query
+from backend.app.services.web_tools.web_search import (
+    execute_web_search_pipeline_stream,
+    sanitize_web_query,
+)
 from backend.app.services.pipeline.sse_validation import format_sse, SSEEventType
 from backend.app.services.pipeline.prompts.core_prompts import build_web_search_prompt
 
@@ -74,171 +77,36 @@ async def handle_web_search(
                 pass
         logger.info(f"[Web Search] Injecting {len(pre_fetched_url_entries)} pre-fetched URL(s) into widget: {detected_urls}")
 
-    # 2. ⚡ Lakukan pencarian web paralel untuk SEMUA target queries
-    search_tasks = [perform_web_search(q, num_results=12) for q in clean_target_queries]
-    search_results_lists = await asyncio.gather(*search_tasks)
-
-    # Gabung dan deduplikasi URL
-    seen_urls = set()
-    raw_search_results = []
-    for r_list in search_results_lists:
-        for r in r_list:
-            u = r.get("url")
-            if u and u not in seen_urls:
-                seen_urls.add(u)
-                raw_search_results.append(r)
-    
-    # 2.05 🔄 Fallback otomatis jika pencarian utama menghasilkan 0 hasil (anti-kosongan)
-    if not raw_search_results:
-        from backend.app.services.web_tools.web_search import simplify_search_query
-        fallback_queries = []
-        for q in clean_target_queries:
-            sq = simplify_search_query(q)
-            if sq and sq.lower() != q.lower():
-                fallback_queries.append(sq)
-        if fallback_queries:
-            logger.info(f"[Web Search] 🔄 Retrying search with simplified fallback queries: {fallback_queries}")
-            fb_tasks = [perform_web_search(q, num_results=10) for q in fallback_queries]
-            fb_results_lists = await asyncio.gather(*fb_tasks)
-            for r_list in fb_results_lists:
-                for r in r_list:
-                    u = r.get("url")
-                    if u and u not in seen_urls:
-                        seen_urls.add(u)
-                        raw_search_results.append(r)
-
-    # 2.1 Rerank hasil search berdasarkan relevansi query gabungan
-    search_results = raw_search_results
-    if search_results:
-        try:
-            from backend.app.services.rag.reranker_service import reranker_service
-            corpus_texts = [
-                f"{r.get('title', '')} {r.get('content', '')}".strip()
-                for r in search_results
-            ]
-            rerank_query = " ".join(clean_target_queries)
-            scores = await reranker_service.compute_scores(rerank_query, corpus_texts)
-            
-            # Urutkan search_results berdasarkan skor reranker
-            ranked = sorted(
-                zip(scores, search_results),
-                key=lambda x: x[0],
-                reverse=True
-            )
-            
-            # Dynamic Filter: Ambil hanya yang relevan (skor >= 0.40), batasi dinamis antara 2 sampai 10 hasil
-            relevant_results = [r for s, r in ranked if s >= 0.40]
-            if len(relevant_results) < 2:
-                search_results = [r for _, r in ranked[:2]] # Fallback minimal 2 terbaik
-            else:
-                max_res = 10 if len(clean_target_queries) > 1 else 7
-                search_results = relevant_results[:max_res]
-                
-            logger.info(f"[Web Search] Dynamically filtered {len(search_results)} relevant search results (from {len(ranked)} raw). Top: '{search_results[0]['title']}'")
-        except Exception as e:
-            logger.warning(f"[Web Search] Reranker gagal (fallback top 5): {e}")
-            search_results = search_results[:5]
-
-    # 3. Gabungkan: URL yg sudah di-read masuk sebagai result PERTAMA di widget
-    combined_results = pre_fetched_url_entries + search_results
-    
-    # 4. Kirim Markdown blok custom untuk dirender widget web search di Frontend
-    search_payload = {
-        "query": display_query,
-        "results": combined_results  # Dinamis sesuai jumlah hasil relevan
-    }
-    widget_markdown = f"```websearch\n{json.dumps(search_payload)}\n```\n\n"
-    yield format_sse(chunk=widget_markdown, event_type=SSEEventType.CHUNK)
-    
-    # 5. Format hasil pencarian untuk dimasukkan ke konteks LLM
-    web_context = format_search_results_for_llm(search_results)
-    
-    # 5.1. Tambahkan konten URL yang sudah di-fetch sebelumnya ke konteks LLM
-    if pre_fetched_content and "[KONTEN WEB DARI URL DI CHAT]" in pre_fetched_content:
-        # Ekstrak hanya bagian konten web (bukan knowledge dari file lain)
-        url_section = pre_fetched_content.split("[KONTEN WEB DARI URL DI CHAT]")[-1].strip()
-        if url_section:
-            web_context += f"\n\n=== KONTEN LANGSUNG DARI URL YANG DISEBUTKAN USER ===\n{url_section[:20000]}"
-            logger.info(f"[Web Search] Injected pre-fetched URL content ({len(url_section)} chars) into LLM context")
-    
-    # 5.2. ⚡ PARALLEL Deep scraping: semua top URL di-crawl bersamaan
-    top_urls = [r["url"] for r in search_results[:3] if r.get("engine") != "url_reader"]
-    if top_urls:
-        yield format_sse(status=f"📖 Membaca {len(top_urls)} tautan", status_key="READING_URLS", event_type=SSEEventType.STATUS)
-        
-        from backend.app.services.web_tools.url_reader import fetch_webpage_content
-        
-        async def _scrape_one(url: str) -> str:
-            try:
-                content = await asyncio.wait_for(fetch_webpage_content(url), timeout=4.0)
-                return content or ""
-            except Exception as e:
-                logger.warning(f"[Web Search] Deep scrape failed or timed out for {url}: {e}")
-                return ""
-        
-        # Semua URL di-crawl secara paralel
-        scrape_results = await asyncio.gather(*[_scrape_one(url) for url in top_urls])
-        
-        # CHUNKING & RERANKING
-        from backend.app.services.rag.reranker_service import reranker_service
-        
-        def chunk_text(text: str, source: str, chunk_size: int = 1500, overlap: int = 200) -> List[Dict[str, str]]:
-            chunks = []
-            start = 0
-            while start < len(text):
-                end = start + chunk_size
-                chunks.append({
-                    "text": text[start:end],
-                    "source": source
-                })
-                start += chunk_size - overlap
-            return chunks
-
-        all_chunks = []
-        for url, content in zip(top_urls, scrape_results):
-            if content.strip():
-                all_chunks.extend(chunk_text(content.strip(), url))
-                
-        if all_chunks:
+    # 2. ⚡ Eksekusi Web Search Pipeline terpusat (Single Source of Truth)
+    web_search_result = None
+    async for event in execute_web_search_pipeline_stream(
+        queries=clean_target_queries,
+        user_message=query,
+        pre_fetched_urls=pre_fetched_url_entries,
+        pre_fetched_content=pre_fetched_content,
+        num_raw_results=12,
+        scrape_top_k=3,
+    ):
+        if event.event_type == "SEARCHING":
+            yield format_sse(status="🌐 Mencari di web", status_key="WEB_SEARCH_INIT", event_type=SSEEventType.STATUS)
+        elif event.event_type == "RERANKING":
+            yield format_sse(status="Menyaring rujukan web", status_key="TOOL_WEBSEARCH_RERANKING", event_type=SSEEventType.STATUS)
+        elif event.event_type == "RANKED":
+            search_payload = {
+                "query": event.data.get("display_query", display_query),
+                "results": event.data.get("search_results", [])
+            }
+            widget_markdown = f"```websearch\n{json.dumps(search_payload)}\n```\n\n"
+            yield format_sse(chunk=widget_markdown, event_type=SSEEventType.CHUNK)
+        elif event.event_type == "SCRAPING":
+            top_urls = event.data.get("top_urls", [])
+            yield format_sse(status=f"📖 Membaca {len(top_urls)} tautan", status_key="READING_URLS", event_type=SSEEventType.STATUS)
+        elif event.event_type == "FILTERING_FACTS":
             yield format_sse(status="🎯 Menyaring fakta penting", status_key="FILTERING_FACTS", event_type=SSEEventType.STATUS)
-            
-            chunk_texts = [c["text"] for c in all_chunks]
-            scores = await reranker_service.compute_scores(display_query, chunk_texts)
-            
-            scored_chunks = []
-            for i, score in enumerate(scores):
-                scored_chunks.append({
-                    "text": chunk_texts[i],
-                    "source": all_chunks[i]["source"],
-                    "score": score
-                })
-                
-            # Ambil Top potongan terbaik berbasis skor relevansi presisi (Threshold >= 0.55, dinamis 4 - 7 chunk)
-            scored_chunks.sort(key=lambda x: x["score"], reverse=True)
-            
-            # Filter chunk relevan & hindari duplikasi teks
-            seen_texts = set()
-            unique_scored = []
-            for c in scored_chunks:
-                snippet = c["text"][:100].strip()
-                if snippet not in seen_texts:
-                    seen_texts.add(snippet)
-                    unique_scored.append(c)
+        elif event.event_type == "RESULT":
+            web_search_result = event.data
 
-            relevant_chunks = [c for c in unique_scored if c["score"] >= 0.55]
-            if len(relevant_chunks) < 3:
-                top_chunks = unique_scored[:4]  # Minimal 4 terbaik jika skor ketat
-            else:
-                top_chunks = relevant_chunks[:7]  # Maksimal 7 chunk presisi tinggi
-            
-            combined_deep = "\n\n---\n\n".join(
-                f"[Sumber: {c['source']}]\n{c['text']}"
-                for c in top_chunks
-            )
-            
-            web_context += "\n\n=== KONTEN MENDALAM DARI TAUTAN TERATAS (FILTERED & RERANKED) ===\n"
-            web_context += combined_deep
-            logger.info(f"[Web Search] Reranking complete. Dynamically selected {len(top_chunks)} high-precision chunks from {len(all_chunks)} total.")
+    web_context = web_search_result.llm_context if web_search_result else "Tidak ada hasil pencarian."
 
     
     # 4. Bangun system prompt

@@ -283,8 +283,12 @@ _SAFE_TEXT_PAYLOAD_FIELDS = frozenset({
     "lineage", "email_content", "email_subject", "instruction",
     # Collab Space & Document Writer payload fields
     "message_text", "document_content", "html_content", "topic", "prompt",
-    "rag_prompt", "query", "queries"
+    "rag_prompt", "query", "queries",
+    # Interactive chat & user query payload fields (safe for SQL/code discussions)
+    "message", "user_message", "user_input", "input_text", "question",
+    "query_text", "search_query", "body"
 })
+
 
 def _scan_dict_recursive(data: Any, path: str = "root", skip_injection: bool = False, prompt_injection_only: bool = False) -> None:
     """Recursively scan all string values in nested dicts/lists."""
@@ -506,6 +510,17 @@ async def validate_attachment_security(file: UploadFile) -> None:
 # FASTAPI DEPENDENCY — Central Security Firewall
 # ==============================================================================
 
+def _extract_client_ip(request: Request) -> str:
+    """Extract real client IP with X-Forwarded-For and X-Real-IP reverse proxy support."""
+    forwarded_for = request.headers.get("x-forwarded-for")
+    if forwarded_for:
+        return forwarded_for.split(",")[0].strip()
+    real_ip = request.headers.get("x-real-ip")
+    if real_ip:
+        return real_ip.strip()
+    return request.client.host if request.client else "unknown"
+
+
 async def security_firewall_dependency(request: Request) -> None:
     """
     FastAPI Depends() entry point.
@@ -517,10 +532,11 @@ async def security_firewall_dependency(request: Request) -> None:
       3. Query parameter injection scan
       4. JSON body: size cap, depth, injection scan
     """
-    client_ip = request.client.host if request.client else "unknown"
+    client_ip = _extract_client_ip(request)
 
     # 1. Global rate limit
     if not check_rate_limit(client_ip, "global"):
+
         raise HTTPException(
             status_code=429,
             detail="Terlalu banyak request. Silakan tunggu sebentar."

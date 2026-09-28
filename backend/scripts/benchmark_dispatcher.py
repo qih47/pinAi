@@ -29,7 +29,7 @@ import argparse
 import asyncio
 from typing import Dict, Any, List
 
-from backend.app.services.pipeline.call1_router import execute_call1_routing
+from backend.app.services.pipeline.dispatcher_router import dispatch_intent_route, execute_call1_routing
 from backend.app.services.pipeline.modes.mode_utils import detect_precheck
 
 # 18 Ground Truth Benchmark Test Cases

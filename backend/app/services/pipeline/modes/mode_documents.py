@@ -246,9 +246,9 @@ class ModeDocuments:
                 logger.info(f"[MODE_DOCUMENTS] [TIER 1] Fetching candidate documents for query_judul: {query_judul_list} | search_tags: {search_tags}")
                 candidate_docs = await get_candidate_documents_metadata(user_message, query_judul_list, rag_queries=rag_queries, search_tags=search_tags) or []
 
-            # ⚡ CALL 1.1 CRAG VERIFIER (2-Turn Quality Control Gatekeeper)
+            # ⚡ CONTEXT VERIFIER (CRAG) (2-Turn Quality Control Gatekeeper)
             # Wajib mengevaluasi kandidat dokumen, baik yang bersumber dari Memori Sesi (Brain) maupun Database!
-            from backend.app.services.pipeline.call1_crag_verifier import verify_retrieved_documents_crag, ENABLE_CALL1_1_CRAG
+            from backend.app.services.pipeline.context_verifier import verify_retrieval_context, verify_retrieved_documents_crag, ENABLE_CALL1_1_CRAG
             search_tags = routing_data.get("search_tags", [])
 
             crag_primary_id = None

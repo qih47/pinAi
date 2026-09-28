@@ -333,8 +333,10 @@ async def stream_ollama_chat(
     Mengalirkan string chunk mentah langsung dari Ollama menuju Layer 2 Executor.
     Gemma 4 thinking dialirkan via field `thought` per chunk.
     """
-    admission_ctrl = getattr(request.app.state, "admission_controller", None) if (request and hasattr(request, "app")) else None
-    gpu_semaphore = getattr(request.app.state, "gpu_limit", None) if (request and hasattr(request, "app")) else None
+    admission_ctrl = getattr(request.app.state, "admission_controller", None) if (request and hasattr(request, "app") and hasattr(request.app, "state")) else None
+    gpu_semaphore = None
+    if request and hasattr(request, "app") and hasattr(request.app, "state"):
+        gpu_semaphore = getattr(request.app.state, "gpu_limit", None) or getattr(request.app.state, "gpu_semaphore", None)
     if gpu_semaphore is None:
         gpu_semaphore = get_gpu_semaphore()
     is_vllm = getattr(settings, "LLM_ENGINE", "ollama") == "vllm"
@@ -599,7 +601,7 @@ async def stream_ollama_chat(
 
         c2_lines = [
             top2,
-            *_make_rows2("📥 [CALL 2 INPUT & PREFILL PAYLOAD DASHBOARD]"),
+            *_make_rows2("📥 [SYNTHESIZER / RESPONDER INPUT DASHBOARD]"),
             mid2,
             *_make_rows2(f"🤖 Model Target     : {model_name}"),
             *_make_rows2(f"👤 Sapaan Pegawai   : {emp_sapaan_full}"),
@@ -853,7 +855,7 @@ async def stream_ollama_chat(
                             logger.info(
                                 f"\n"
                                 f"┌───────────────────────────────────────────────────────────────────────────────┐\n"
-                                f"│ 🏁 [CALL 2 INFERENCE COMPLETE & TTFT PERFORMANCE ANALYSIS]                    │\n"
+                                f"│ 🏁 [SYNTHESIZER INFERENCE COMPLETE & TTFT PERFORMANCE ANALYSIS]               │\n"
                                 f"├───────────────────────────────────────────────────────────────────────────────┤\n"
                                 f"│ ⏱️  TTFT (First Token)  : {ttft_ms/1000:.2f}s ({ttft_ms:.1f} ms)                                         │\n"
                                 f"│ 🚀 Prefill Speed       : {prompt_eval_count:,} input tokens in {prefill_sec:.2f}s ({prefill_tps:.1f} tok/s)           │\n"
@@ -918,6 +920,10 @@ async def stream_ollama_chat(
         except Exception as e:
             logger.error(f"[LLM_CLIENT] Critical error: {str(e)}")
             yield json.dumps({"error": f"Internal LLM Client Error: {str(e)}"}) + "\n"
+
+
+# Model-agnostic alias for chat streaming
+stream_llm_chat = stream_ollama_chat
 
 
 async def generate_json_response(
@@ -1113,7 +1119,7 @@ async def generate_json_response(
         raise
 
 
-async def call_ollama_generate_raw(
+async def call_llm_generate_raw(
     model_name: str,
     raw_prompt: str,
     temperature: float = 1.0,
@@ -1123,17 +1129,23 @@ async def call_ollama_generate_raw(
     request: Optional[Request] = None
 ) -> AsyncGenerator[str, None]:
     """
-    Call Ollama /api/generate endpoint with raw mode.
-    Proxy to ollama_raw_client.py implementation.
+    Call raw LLM generation endpoint with raw prompt passthrough.
     """
-    from backend.app.services.pipeline.ollama_raw_client import call_ollama_generate_raw as _call
+    from backend.app.services.pipeline.llm_raw_client import call_llm_generate_raw as _call
     async for chunk in _call(
         model_name, raw_prompt, temperature, num_predict, num_ctx, stop_sequences, request
     ):
         yield chunk
 
 
-async def stream_ollama_generate_raw(*args, **kwargs):
-    """Async streaming generator alias for backward compatibility."""
-    async for chunk in call_ollama_generate_raw(*args, **kwargs):
+# Backward compatibility aliases
+call_ollama_generate_raw = call_llm_generate_raw
+
+
+async def stream_llm_generate_raw(*args, **kwargs):
+    """Async streaming generator alias."""
+    async for chunk in call_llm_generate_raw(*args, **kwargs):
         yield chunk
+
+
+stream_ollama_generate_raw = stream_llm_generate_raw

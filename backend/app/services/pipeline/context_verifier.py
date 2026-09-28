@@ -227,3 +227,8 @@ async def verify_retrieved_documents_crag(
             "suggested_tags": [],
             "timing_ms": duration_ms,
         }
+
+
+# Agnostic architectural alias
+verify_retrieval_context = verify_retrieved_documents_crag
+

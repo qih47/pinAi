@@ -387,11 +387,13 @@ class UserManagementService:
 
         async with get_db() as conn:
             # 1. Cek role admin pemanggil
-            caller_role = "ADMIN"
-            if current_admin_npp:
-                caller = await conn.fetchrow("SELECT role FROM users WHERE npp = $1", current_admin_npp.strip())
-                if caller and caller["role"]:
-                    caller_role = caller["role"].upper()
+            if not current_admin_npp:
+                raise ValueError("Akses ditolak: Identitas admin pemanggil wajib disertakan.")
+
+            caller = await conn.fetchrow("SELECT role FROM users WHERE npp = $1", current_admin_npp.strip())
+            caller_role = (caller["role"] or "").upper() if caller else ""
+            if caller_role not in ("ADMIN", "SUPERADMIN"):
+                raise ValueError("Akses ditolak: Hanya Admin atau Superadmin yang memiliki wewenang mengubah peran pengguna.")
 
             user = await conn.fetchrow("SELECT npp, fullname, role FROM users WHERE npp = $1", clean_npp)
             if not user:

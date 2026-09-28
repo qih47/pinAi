@@ -133,6 +133,11 @@ def build_call1_routing_prompt(
     )
 
 
+# ── Standarisasi Arsitektur Kognitif (Agnostik) ──────────────────────────────
+DISPATCHER_ROUTING_PROMPT_TEMPLATE = CALL1_ROUTING_PROMPT_TEMPLATE
+build_dispatcher_prompt = build_call1_routing_prompt
+
+
 CALL1_PRESET_PROMPT_TEMPLATE = """Kamu adalah asisten analisis cepat jalur preset CAKRA AI PT Pindad.
 
 MODE PRESET AKTIF: {{ forced_mode }}
@@ -238,6 +243,10 @@ CALL1_PRESET_TITLE_PROMPT_TEMPLATE = CALL1_PRESET_PROMPT_TEMPLATE
 def build_call1_preset_title_prompt(user_message: str) -> str:
     """Deprecated: gunakan build_call1_preset_prompt() untuk jalur preset."""
     return build_call1_preset_prompt(user_message, forced_mode="auto", is_first_chat=True)
+
+
+PRESET_DISPATCHER_PROMPT_TEMPLATE = CALL1_PRESET_PROMPT_TEMPLATE
+build_preset_dispatcher_prompt = build_call1_preset_prompt
 
 
 

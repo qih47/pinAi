@@ -74,7 +74,7 @@ def get_http_client() -> httpx.AsyncClient:
     if _http_client is None or _http_client.is_closed:
         _http_client = httpx.AsyncClient(
             timeout=httpx.Timeout(180.0, connect=10.0),
-            limits=httpx.Limits(max_connections=100, max_keepalive_connections=20),
+            limits=httpx.Limits(max_connections=250, max_keepalive_connections=80),
             follow_redirects=True,
         )
     return _http_client

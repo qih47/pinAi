@@ -9,6 +9,9 @@ siap dihubungkan ke remote MCP Server di masa depan via adapter.
 import os
 import re
 import sys
+import ast
+import math
+import statistics
 import json
 import asyncio
 import logging
@@ -36,32 +39,59 @@ class ToolResult:
 # 1. TOOL: WEB SEARCH & LIVE SCRAPING
 # ═══════════════════════════════════════════════════════════════════════════════
 
-async def execute_web_search_tool_stream(query: str, reason: str = "", user_message: str = "") -> AsyncGenerator[Union[Tuple[str, str], ToolResult], None]:
-    """Eksekusi pencarian web SearXNG + Reranking + Scraping 2 tautan teratas dengan status progresif."""
+async def execute_web_search_tool_stream(query: str, reason: str = "", user_message: str = "") -> AsyncGenerator[Union[Tuple[str, str], Tuple[str, Any], ToolResult], None]:
+    """Eksekusi pencarian web SearXNG + BGE Reranking + Deep Scraping via Unified Pipeline dengan status progresif."""
     from backend.app.services.web_tools.web_search import (
-        perform_web_search,
-        format_search_results_for_llm,
+        execute_web_search_pipeline_stream,
         sanitize_web_query,
     )
-    from backend.app.services.web_tools.url_reader import fetch_webpage_content
 
     clean_query = sanitize_web_query(query.strip(), user_message=user_message) or query.strip()
     intent_desc = reason.strip() if reason.strip() else f"Menelusuri informasi web: '{clean_query}'"
-    logger.info(f"[TOOL_DISPATCHER] 🌐 Executing web_search for query: '{clean_query}'")
-
-    yield ("Mencari di mesin pencari", "TOOL_WEBSEARCH_SEARCHING")
+    logger.info(f"[TOOL_DISPATCHER] 🌐 Executing web_search for query: '{clean_query}' (user_message: '{user_message}')")
 
     try:
-        raw_results = await perform_web_search(clean_query, num_results=6)
-        if not raw_results:
-            from backend.app.services.web_tools.web_search import simplify_search_query
-            simplified_q = simplify_search_query(clean_query)
-            if simplified_q and simplified_q != clean_query:
-                logger.info(f"[TOOL_DISPATCHER] 🔄 Retrying web search with simplified query: '{simplified_q}'")
-                yield ("Menajamkan pencarian web", "TOOL_WEBSEARCH_SIMPLIFYING")
-                raw_results = await perform_web_search(simplified_q, num_results=6)
+        final_result = None
+        async for event in execute_web_search_pipeline_stream(
+            queries=clean_query,
+            user_message=user_message,
+            num_raw_results=12,
+            scrape_top_k=2,
+        ):
+            if event.event_type == "SEARCHING":
+                yield ("Mencari di mesin pencari", "TOOL_WEBSEARCH_SEARCHING")
+            elif event.event_type == "RERANKING":
+                yield ("Menyaring rujukan web", "TOOL_WEBSEARCH_RERANKING")
+            elif event.event_type == "RANKED":
+                # ── REALTIME PREVIEW EMISSION ──
+                # Langsung emit preview hasil pencarian (URL & judul) agar widget langsung muncul di UI secara realtime!
+                yield ("TOOL_PREVIEW", {
+                    "tool": "websearch",
+                    "intent": intent_desc,
+                    "query": clean_query,
+                    "results": event.data.get("search_results", []),
+                    "stage": "searching",
+                })
+            elif event.event_type == "SCRAPING":
+                yield ("Membaca isi tautan web", "TOOL_WEBSEARCH_SCRAPING")
+            elif event.event_type == "RESULT":
+                final_result = event.data
 
-        if not raw_results:
+        if final_result and final_result.results:
+            yield ToolResult(
+                tool_name="websearch",
+                status="success",
+                intent=intent_desc,
+                display_data={
+                    "tool": "websearch",
+                    "intent": intent_desc,
+                    "query": clean_query,
+                    "results": final_result.results,
+                    "stage": "done",
+                },
+                llm_context=final_result.llm_context,
+            )
+        else:
             yield ToolResult(
                 tool_name="websearch",
                 status="success",
@@ -73,70 +103,8 @@ async def execute_web_search_tool_stream(query: str, reason: str = "", user_mess
                     "results": [],
                     "stage": "done",
                 },
-                llm_context=f"Tidak ditemukan hasil pencarian web yang valid untuk query: '{clean_query}'.",
+                llm_context=final_result.llm_context if final_result else f"Tidak ditemukan hasil pencarian web yang valid untuk query: '{clean_query}'.",
             )
-            return
-
-        # Reranking jika tersedia
-        yield ("Menyaring rujukan web", "TOOL_WEBSEARCH_RERANKING")
-        search_results = raw_results
-        try:
-            from backend.app.services.rag.reranker_service import reranker_service
-            corpus_texts = [f"{r.get('title', '')} {r.get('content', '')}".strip() for r in raw_results]
-            scores = await reranker_service.compute_scores(clean_query, corpus_texts)
-            ranked = sorted(zip(scores, raw_results), key=lambda x: x[0], reverse=True)
-            search_results = [r for _, r in ranked[:4]]
-        except Exception as e:
-            logger.warning(f"[TOOL_DISPATCHER] Rerank fallback for websearch: {e}")
-            search_results = raw_results[:4]
-
-        # ── REALTIME PREVIEW EMISSION ──
-        # Langsung emit preview hasil pencarian (URL & judul) agar widget langsung muncul di UI secara realtime!
-        yield ("TOOL_PREVIEW", {
-            "tool": "websearch",
-            "intent": intent_desc,
-            "query": clean_query,
-            "results": search_results,
-            "stage": "searching",
-        })
-
-        # Format teks konteks awal untuk LLM
-        web_context = format_search_results_for_llm(search_results)
-
-        # Quick scrape 2 URL teratas untuk detail mendalam
-        top_urls = [r["url"] for r in search_results[:2] if r.get("url")]
-        if top_urls:
-            yield ("Membaca isi tautan web", "TOOL_WEBSEARCH_SCRAPING")
-            async def _scrape_one(u: str) -> str:
-                try:
-                    c = await fetch_webpage_content(u)
-                    return c[:3000] if c else ""
-                except Exception:
-                    return ""
-
-            scraped_contents = await asyncio.gather(*[_scrape_one(u) for u in top_urls])
-            extra_text = "\n\n".join(
-                [f"--- KONTEN SITUS ({top_urls[i]}) ---\n{scraped_contents[i]}"
-                 for i in range(len(top_urls)) if scraped_contents[i]]
-            )
-            if extra_text:
-                web_context += f"\n\n=== DETAIL KONTEN WEB TERBARU ===\n{extra_text}"
-
-        safe_web_context = (web_context[:7500] + "\n(dipotong)") if len(web_context) > 7500 else web_context
-
-        yield ToolResult(
-            tool_name="websearch",
-            status="success",
-            intent=intent_desc,
-            display_data={
-                "tool": "websearch",
-                "intent": intent_desc,
-                "query": clean_query,
-                "results": search_results,
-                "stage": "done",
-            },
-            llm_context=safe_web_context,
-        )
 
     except Exception as e:
         logger.error(f"[TOOL_DISPATCHER] Error in web_search_tool: {e}", exc_info=True)
@@ -144,8 +112,14 @@ async def execute_web_search_tool_stream(query: str, reason: str = "", user_mess
             tool_name="websearch",
             status="error",
             intent=intent_desc,
-            display_data={"tool": "websearch", "intent": intent_desc, "query": clean_query, "results": [], "stage": "error"},
-            llm_context=f"Kendala teknis saat menelusuri web: {str(e)}",
+            display_data={
+                "tool": "websearch",
+                "intent": intent_desc,
+                "query": clean_query,
+                "results": [],
+                "stage": "done",
+            },
+            llm_context=f"Terjadi kendala saat melakukan penelusuran web: {str(e)}",
             error_message=str(e),
         )
 
@@ -197,7 +171,7 @@ async def execute_doc_search_tool_stream(
     """
     from backend.app.core.paths import FILE_PERATURAN_DIR
     from backend.app.services.peraturan_service import get_candidate_documents_metadata
-    from backend.app.services.pipeline.call1_crag_verifier import verify_retrieved_documents_crag, ENABLE_CALL1_1_CRAG
+    from backend.app.services.pipeline.context_verifier import verify_retrieval_context, verify_retrieved_documents_crag, ENABLE_CALL1_1_CRAG
     from backend.app.services.rag.reranker_service import reranker_service
     from backend.app.services.pipeline.document_intelligence import (
         extract_and_ocr_document_async,
@@ -787,47 +761,121 @@ async def execute_doc_search_tool(
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# 3. TOOL: PYTHON CALCULATOR (ISOLATED SANDBOX)
+# 3. TOOL: PYTHON CALCULATOR (ISOLATED AST MATH SANDBOX)
 # ═══════════════════════════════════════════════════════════════════════════════
 
-_FORBIDDEN_PYTHON_TOKENS = {
-    "import os", "import sys", "import subprocess", "import socket", "import shutil",
-    "import pty", "import requests", "import urllib", "__import__", "eval(", "exec(",
-    "open(", "compile(", "globals()", "locals()", "builtins", "rmtree", "system("
-}
+SAFE_MATH_CALLABLES = frozenset({
+    "abs", "round", "min", "max", "sum", "pow", "print", "len",
+    "sqrt", "sin", "cos", "tan", "log", "log10", "exp", "ceil", "floor",
+    "factorial", "mean", "median", "stdev", "radians", "degrees", "hypot"
+})
+
+class SafeMathASTValidator(ast.NodeVisitor):
+    ALLOWED_NODES = (
+        ast.Module, ast.Expr, ast.Assign, ast.AugAssign,
+        ast.Name, ast.Load, ast.Store, ast.Constant,
+        ast.BinOp, ast.UnaryOp, ast.Add, ast.Sub, ast.Mult,
+        ast.Div, ast.FloorDiv, ast.Mod, ast.Pow, ast.UAdd, ast.USub,
+        ast.Call, ast.Attribute, ast.List, ast.Tuple, ast.keyword,
+        ast.IfExp,
+    )
+    ALLOWED_ATTRIBUTES = frozenset({
+        "sqrt", "sin", "cos", "tan", "log", "log10", "exp", "ceil", "floor",
+        "pi", "e", "mean", "median", "stdev", "factorial", "comb", "perm",
+        "radians", "degrees", "hypot", "fabs"
+    })
+
+    def generic_visit(self, node):
+        if not isinstance(node, self.ALLOWED_NODES):
+            raise ValueError(f"Sintaks '{type(node).__name__}' dilarang oleh Security Firewall demi keselamatan sistem.")
+        super().generic_visit(node)
+
+    def visit_Attribute(self, node):
+        if node.attr.startswith("_") or node.attr not in self.ALLOWED_ATTRIBUTES:
+            raise ValueError(f"Akses atribut '{node.attr}' diblokir oleh Security Firewall.")
+        self.generic_visit(node)
+
+    def visit_Call(self, node):
+        if isinstance(node.func, ast.Name):
+            if node.func.id not in SAFE_MATH_CALLABLES:
+                raise ValueError(f"Pemanggilan fungsi '{node.func.id}()' diblokir oleh Security Firewall.")
+        elif isinstance(node.func, ast.Attribute):
+            if node.func.attr not in self.ALLOWED_ATTRIBUTES:
+                raise ValueError(f"Pemanggilan fungsi math '{node.func.attr}()' diblokir oleh Security Firewall.")
+        else:
+            raise ValueError("Pemanggilan dinamis tidak diizinkan.")
+        self.generic_visit(node)
+
 
 def execute_python_calc_sync(code: str) -> Tuple[bool, str]:
-    """Menjalankan kode kalkulator di subprocess terisolasi dengan timeout 3 detik."""
-    # 1. Validasi keamanan sintaks
-    code_lower = code.lower()
-    for forbidden in _FORBIDDEN_PYTHON_TOKENS:
-        if forbidden in code_lower:
-            return False, f"Akses ke modul berbahaya '{forbidden}' diblokir oleh Security Firewall demi keselamatan sistem."
-
-    # 2. Siapkan wrapper kode dengan batas memori dan output terarah
-    runner_script = (
-        "import math, statistics\n"
-        "try:\n"
-        + "\n".join("    " + line for line in code.splitlines())
-        + "\nexcept Exception as e:\n"
-        "    print(f'Error Eksekusi: {e}')\n"
-    )
+    """Menjalankan kode kalkulator di AST Sandbox murni yang terisolasi dan anti-RCE."""
+    clean_code = code.strip()
+    if not clean_code:
+        return False, "Kode ekspresi matematika kosong."
 
     try:
-        proc = subprocess.run(
-            [sys.executable, "-c", runner_script],
-            capture_output=True,
-            text=True,
-            timeout=3.5,
-        )
-        output = proc.stdout.strip()
-        if not output and proc.stderr.strip():
-            output = proc.stderr.strip()
-        return True, output if output else "Eksekusi berhasil tanpa output cetak (print)."
-    except subprocess.TimeoutExpired:
-        return False, "Eksekusi kode melebihi batas waktu (timeout 3 detik)."
+        parsed = ast.parse(clean_code)
+    except SyntaxError as se:
+        return False, f"Sintaks error: {se}"
+
+    # 1. Validasi struktur pohon AST
+    try:
+        SafeMathASTValidator().visit(parsed)
+    except ValueError as ve:
+        logger.warning(f"[PYTHON_CALC] Percobaan operasi terlarang dicegat: {ve}")
+        return False, str(ve)
+
+    # 2. Siapkan namespace terisolasi tanpa __builtins__
+    captured_prints: List[str] = []
+
+    def _safe_print(*args, **kwargs):
+        captured_prints.append(" ".join(str(a) for a in args))
+
+    safe_globals = {
+        "__builtins__": {},
+        "abs": abs,
+        "round": round,
+        "min": min,
+        "max": max,
+        "sum": sum,
+        "pow": pow,
+        "len": len,
+        "print": _safe_print,
+        "math": math,
+        "statistics": statistics,
+        "sqrt": math.sqrt,
+        "sin": math.sin,
+        "cos": math.cos,
+        "tan": math.tan,
+        "log": math.log,
+        "log10": math.log10,
+        "exp": math.exp,
+        "ceil": math.ceil,
+        "floor": math.floor,
+        "pi": math.pi,
+        "e": math.e,
+        "mean": statistics.mean,
+        "median": statistics.median,
+    }
+
+    local_scope: Dict[str, Any] = {}
+    last_eval_val = None
+
+    try:
+        for stmt in parsed.body:
+            if isinstance(stmt, ast.Expr):
+                last_eval_val = eval(compile(ast.Expression(stmt.value), "<calc>", "eval"), safe_globals, local_scope)
+            else:
+                exec(compile(ast.Module(body=[stmt], type_ignores=[]), "<calc>", "exec"), safe_globals, local_scope)
+
+        if captured_prints:
+            return True, "\n".join(captured_prints)
+        elif last_eval_val is not None:
+            return True, str(last_eval_val)
+        return True, "Eksekusi berhasil tanpa output."
     except Exception as e:
-        return False, f"Gagal mengeksekusi kalkulasi: {str(e)}"
+        return False, f"Error kalkulasi: {str(e)}"
+
 
 
 async def execute_python_calc_tool_stream(code: str, reason: str = "") -> AsyncGenerator[Union[Tuple[str, str], ToolResult], None]:

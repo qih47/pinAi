@@ -3,7 +3,7 @@ import httpx
 import asyncio
 import time
 import re
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Union, AsyncGenerator
 
 logger = logging.getLogger("cakra.web_tools.search")
 
@@ -190,3 +190,282 @@ def format_search_results_for_llm(results: List[Dict[str, Any]]) -> str:
         
     context += "PANDUAN SITASI: Setiap menyebutkan fakta dari sumber di atas, WAJIB sertakan format markdown link `[Nama Sumber](URL)` yang sesuai agar pengguna dapat mengkliknya.\n"
     return context
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 🌐 UNIFIED WEB SEARCH PIPELINE (SINGLE SOURCE OF TRUTH)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+from dataclasses import dataclass, field
+from typing import AsyncGenerator
+
+@dataclass
+class WebSearchResult:
+    """Hasil akhir komprehensif dari eksekusi Web Search Pipeline."""
+    display_query: str
+    results: List[Dict[str, Any]]
+    llm_context: str
+    top_urls: List[str] = field(default_factory=list)
+    raw_count: int = 0
+
+
+@dataclass
+class WebSearchPipelineEvent:
+    """Event progresif untuk streaming status dan preview UI."""
+    event_type: str  # "SEARCHING" | "RERANKING" | "RANKED" | "SCRAPING" | "FILTERING_FACTS" | "RESULT"
+    data: Any = None
+
+
+def _chunk_scraped_text(text: str, source: str, chunk_size: int = 1500, overlap: int = 200) -> List[Dict[str, str]]:
+    """Membagi teks panjang hasil web scraping menjadi potongan terukur untuk BGE reranker."""
+    chunks = []
+    start = 0
+    while start < len(text):
+        end = start + chunk_size
+        chunks.append({
+            "text": text[start:end],
+            "source": source
+        })
+        start += chunk_size - overlap
+    return chunks
+
+
+async def execute_web_search_pipeline_stream(
+    queries: Union[str, List[str]],
+    user_message: str = "",
+    pre_fetched_urls: Optional[List[Dict[str, Any]]] = None,
+    pre_fetched_content: str = "",
+    num_raw_results: int = 12,
+    scrape_top_k: int = 2,
+) -> AsyncGenerator[WebSearchPipelineEvent, None]:
+    """
+    Eksekusi terpusat (Single Source of Truth) untuk penelusuran web di CAKRA AI:
+    1. Multi-query sanitization & dynamic temporal normalization.
+    2. SearXNG multi-target retrieval dengan deduplikasi tautan.
+    3. Fallback simplifikasi query otomatis jika hasil kosong.
+    4. BGE Cross-Encoder Reranking dengan Dynamic Thresholding (dinamis 3 - 10 hasil).
+    5. Parallel deep scraping untuk URL teratas + chunk-level fact reranking.
+    6. Pemancaran event progresif untuk update UI realtime.
+    """
+    from backend.app.services.web_tools.url_reader import fetch_webpage_content
+    from backend.app.services.rag.reranker_service import reranker_service
+
+    # 1. Normalisasi dan sanitasi daftar query
+    raw_query_list = [queries] if isinstance(queries, str) else list(queries or [])
+    clean_target_queries: List[str] = []
+    seen_q = set()
+
+    for q in raw_query_list:
+        if not isinstance(q, str) or not q.strip():
+            continue
+        cleaned = sanitize_web_query(q.strip(), user_message=user_message) or q.strip()
+        if cleaned.lower() not in seen_q:
+            seen_q.add(cleaned.lower())
+            clean_target_queries.append(cleaned)
+
+    if not clean_target_queries:
+        fallback_q = sanitize_web_query(user_message.strip(), user_message=user_message) if user_message.strip() else ""
+        if fallback_q:
+            clean_target_queries.append(fallback_q)
+
+    display_query = " & ".join(clean_target_queries) if clean_target_queries else (user_message.strip() or "Penelusuran Web")
+
+    # Event 1: Memulai pencarian
+    yield WebSearchPipelineEvent("SEARCHING", {
+        "query": display_query,
+        "queries": clean_target_queries
+    })
+
+    if not clean_target_queries:
+        yield WebSearchPipelineEvent("RESULT", WebSearchResult(
+            display_query=display_query,
+            results=[],
+            llm_context="Tidak ada kata kunci pencarian yang valid."
+        ))
+        return
+
+    # 2. Penelusuran SearXNG paralel untuk semua query
+    search_tasks = [perform_web_search(q, num_results=num_raw_results) for q in clean_target_queries]
+    results_lists = await asyncio.gather(*search_tasks)
+
+    seen_urls = set()
+    raw_search_results: List[Dict[str, Any]] = []
+    for r_list in results_lists:
+        for r in r_list:
+            u = r.get("url")
+            if u and u not in seen_urls:
+                seen_urls.add(u)
+                raw_search_results.append(r)
+
+    # 2.1 Fallback otomatis jika hasil kosong
+    if not raw_search_results:
+        fallback_queries = []
+        for q in clean_target_queries:
+            sq = simplify_search_query(q)
+            if sq and sq.lower() != q.lower() and sq.lower() not in seen_q:
+                fallback_queries.append(sq)
+        if fallback_queries:
+            logger.info(f"[Web Search Pipeline] 🔄 Retrying search with simplified queries: {fallback_queries}")
+            fb_tasks = [perform_web_search(q, num_results=num_raw_results) for q in fallback_queries]
+            fb_results_lists = await asyncio.gather(*fb_tasks)
+            for r_list in fb_results_lists:
+                for r in r_list:
+                    u = r.get("url")
+                    if u and u not in seen_urls:
+                        seen_urls.add(u)
+                        raw_search_results.append(r)
+
+    if not raw_search_results:
+        logger.warning(f"[Web Search Pipeline] Zero search results for: '{display_query}'")
+        yield WebSearchPipelineEvent("RESULT", WebSearchResult(
+            display_query=display_query,
+            results=list(pre_fetched_urls or []),
+            llm_context=f"Tidak ditemukan hasil pencarian web yang valid untuk query: '{display_query}'.",
+            raw_count=0
+        ))
+        return
+
+    # Event 2: Reranking dimulai
+    yield WebSearchPipelineEvent("RERANKING", {"raw_count": len(raw_search_results)})
+
+    # 3. BGE Cross-Encoder Reranking
+    search_results = raw_search_results
+    try:
+        corpus_texts = [
+            f"{r.get('title', '')} {r.get('content', '')}".strip()
+            for r in raw_search_results
+        ]
+        rerank_query = " ".join(clean_target_queries)
+        scores = await reranker_service.compute_scores(rerank_query, corpus_texts)
+
+        ranked = sorted(zip(scores, raw_search_results), key=lambda x: x[0], reverse=True)
+
+        # Dynamic Relevance Filter (Ambil relevan score >= 0.38, rentang dinamis 3 - 10)
+        relevant_results = [r for s, r in ranked if s >= 0.38]
+        if len(relevant_results) < 3:
+            search_results = [r for _, r in ranked[:3]]
+        else:
+            max_res = 10 if len(clean_target_queries) > 1 else 8
+            search_results = relevant_results[:max_res]
+
+        logger.info(
+            f"[Web Search Pipeline] 🎯 Dynamically filtered {len(search_results)} relevant results "
+            f"(from {len(ranked)} raw). Top: '{search_results[0].get('title', '')[:50]}'"
+        )
+    except Exception as e:
+        logger.warning(f"[Web Search Pipeline] Reranker error fallback (top 6): {e}")
+        search_results = raw_search_results[:6]
+
+    # Gabungkan dengan pre_fetched_urls jika ada
+    combined_results = list(pre_fetched_urls or []) + search_results
+
+    # Event 3: Ranked results siap (dapat langsung dipreview di UI)
+    yield WebSearchPipelineEvent("RANKED", {
+        "search_results": combined_results,
+        "display_query": display_query
+    })
+
+    # 4. Format konteks awal LLM
+    web_context = format_search_results_for_llm(search_results)
+
+    # 4.1 Injeksi pre_fetched_content jika ada
+    if pre_fetched_content and "[KONTEN WEB DARI URL DI CHAT]" in pre_fetched_content:
+        url_section = pre_fetched_content.split("[KONTEN WEB DARI URL DI CHAT]")[-1].strip()
+        if url_section:
+            web_context += f"\n\n=== KONTEN LANGSUNG DARI URL YANG DISEBUTKAN USER ===\n{url_section[:20000]}"
+
+    # 5. Deep scraping URL teratas secara paralel
+    top_urls = [r["url"] for r in search_results[:scrape_top_k] if r.get("engine") != "url_reader" and r.get("url")]
+    if top_urls:
+        yield WebSearchPipelineEvent("SCRAPING", {"top_urls": top_urls})
+
+        async def _scrape_one(u: str) -> str:
+            try:
+                c = await asyncio.wait_for(fetch_webpage_content(u), timeout=4.0)
+                return c or ""
+            except Exception as e:
+                logger.warning(f"[Web Search Pipeline] Scrape timeout/failed for {u}: {e}")
+                return ""
+
+        scrape_results = await asyncio.gather(*[_scrape_one(u) for u in top_urls])
+
+        all_chunks = []
+        for u, content in zip(top_urls, scrape_results):
+            if content and content.strip():
+                all_chunks.extend(_chunk_scraped_text(content.strip(), u))
+
+        if all_chunks:
+            yield WebSearchPipelineEvent("FILTERING_FACTS", {"chunk_count": len(all_chunks)})
+
+            try:
+                chunk_texts = [c["text"] for c in all_chunks]
+                c_scores = await reranker_service.compute_scores(display_query, chunk_texts)
+
+                scored_chunks = []
+                for i, s in enumerate(c_scores):
+                    scored_chunks.append({
+                        "text": chunk_texts[i],
+                        "source": all_chunks[i]["source"],
+                        "score": s
+                    })
+
+                scored_chunks.sort(key=lambda x: x["score"], reverse=True)
+
+                seen_texts = set()
+                unique_scored = []
+                for c in scored_chunks:
+                    snip = c["text"][:100].strip()
+                    if snip not in seen_texts:
+                        seen_texts.add(snip)
+                        unique_scored.append(c)
+
+                rel_chunks = [c for c in unique_scored if c["score"] >= 0.55]
+                top_chunks = rel_chunks[:7] if len(rel_chunks) >= 3 else unique_scored[:4]
+
+                combined_deep = "\n\n---\n\n".join(
+                    f"[Sumber: {c['source']}]\n{c['text']}" for c in top_chunks
+                )
+                web_context += f"\n\n=== DETAIL KONTEN WEB TERBARU (FILTERED & RERANKED) ===\n{combined_deep}"
+                logger.info(f"[Web Search Pipeline] Deep rerank selected {len(top_chunks)} chunks from {len(all_chunks)}.")
+            except Exception as e:
+                logger.warning(f"[Web Search Pipeline] Fact rerank fallback: {e}")
+
+    # Batasi context budget agar aman
+    safe_web_context = (web_context[:10000] + "\n(konten web dipotong sesuai batas context)") if len(web_context) > 10000 else web_context
+
+    yield WebSearchPipelineEvent("RESULT", WebSearchResult(
+        display_query=display_query,
+        results=combined_results,
+        llm_context=safe_web_context,
+        top_urls=top_urls,
+        raw_count=len(raw_search_results)
+    ))
+
+
+async def execute_web_search_pipeline(
+    queries: Union[str, List[str]],
+    user_message: str = "",
+    pre_fetched_urls: Optional[List[Dict[str, Any]]] = None,
+    pre_fetched_content: str = "",
+    num_raw_results: int = 12,
+    scrape_top_k: int = 2,
+) -> WebSearchResult:
+    """Wrapper non-streaming untuk eksekusi langsung Web Search Pipeline."""
+    final_result: Optional[WebSearchResult] = None
+    async for event in execute_web_search_pipeline_stream(
+        queries=queries,
+        user_message=user_message,
+        pre_fetched_urls=pre_fetched_urls,
+        pre_fetched_content=pre_fetched_content,
+        num_raw_results=num_raw_results,
+        scrape_top_k=scrape_top_k,
+    ):
+        if event.event_type == "RESULT" and isinstance(event.data, WebSearchResult):
+            final_result = event.data
+
+    return final_result or WebSearchResult(
+        display_query=str(queries),
+        results=[],
+        llm_context="Pencarian web tidak mengembalikan hasil."
+    )
+

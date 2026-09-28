@@ -28,7 +28,7 @@ if [ "$TARGET" == "all" ] || [ "$TARGET" == "call1" ]; then
     echo "▶️ [STEP 1/2] Menyiapkan Dataset Call 1 Router e4b (Unlimited)..."
     if [ ! -s "$ROUTER_DATASET" ]; then
         echo "   Dataset $ROUTER_DATASET kosong atau belum ada, mengekstrak dari ragdb..."
-        ./rag_env/bin/python backend/scripts/finetune/generate_call1_dataset.py \
+        ./rag_env/bin/python backend/scripts/finetune/generate_dispatcher_dataset.py \
             --output "$ROUTER_DATASET" \
             --from-db
     fi
@@ -37,18 +37,18 @@ if [ "$TARGET" == "all" ] || [ "$TARGET" == "call1" ]; then
 
     echo ""
     echo "▶️ [STEP 2/2] Memulai Training QLoRA cakra-router (e4b)..."
-    ./rag_env/bin/python backend/scripts/finetune/train_call1_router.py \
+    ./rag_env/bin/python backend/scripts/finetune/train_dispatcher_router.py \
         --dataset "$ROUTER_DATASET" \
         --output_dir models/adapters/cakra-router-lora \
         --epochs 3
 fi
 
-if [ "$TARGET" == "all" ] || [ "$TARGET" == "call2" ]; then
+if [ "$TARGET" == "all" ] || [ "$TARGET" == "call2" ] || [ "$TARGET" == "responder" ]; then
     echo ""
     echo "▶️ [STEP 1/2] Menyiapkan Dataset CoT Call 2 Core (Unlimited)..."
     if [ ! -s "$CORE_DATASET" ]; then
         echo "   Dataset $CORE_DATASET kosong atau belum ada, mengekstrak dari ragdb..."
-        ./rag_env/bin/python backend/scripts/finetune/generate_call2_dataset.py \
+        ./rag_env/bin/python backend/scripts/finetune/generate_responder_dataset.py \
             --output "$CORE_DATASET" \
             --from-db
     fi
@@ -57,7 +57,7 @@ if [ "$TARGET" == "all" ] || [ "$TARGET" == "call2" ]; then
 
     echo ""
     echo "▶️ [STEP 2/2] Memulai Training QLoRA cakra-core..."
-    ./rag_env/bin/python backend/scripts/finetune/train_call2_core.py \
+    ./rag_env/bin/python backend/scripts/finetune/train_responder_core.py \
         --dataset "$CORE_DATASET" \
         --output_dir models/adapters/cakra-core-lora \
         --epochs 3

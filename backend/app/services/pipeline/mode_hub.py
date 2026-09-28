@@ -21,7 +21,7 @@ from backend.app.services.pipeline.modes.mode_email import ModeEmail
 from backend.app.services.pipeline.modes.mode_collab import ModeCollab
 
 from backend.app.services.pipeline.modes.mode_utils import detect_precheck, format_session_title
-from backend.app.services.pipeline.call1_router import execute_call1_routing
+from backend.app.services.pipeline.dispatcher_router import dispatch_intent_route, execute_call1_routing
 from backend.app.services.pipeline.sse_validation import format_sse, SSEEventType
 
 logger = logging.getLogger("CAKRA_MODE_HUB")
@@ -211,8 +211,8 @@ class ModeHub:
             forced_mode_clean = forced_mode.lower().strip()
 
             # 🎯 JALUR PRESET ROUTING: Panggil e4b untuk deteksi ambiguitas, multi-turn queries, + generate title
-            from backend.app.services.pipeline.call1_router import generate_call1_preset_routing
-            preset_routing = await generate_call1_preset_routing(
+            from backend.app.services.pipeline.dispatcher_router import dispatch_preset_route, generate_call1_preset_routing
+            preset_routing = await dispatch_preset_route(
                 user_message=user_message,
                 forced_mode=forced_mode_clean,
                 is_first_chat=is_first_chat,
@@ -283,8 +283,8 @@ class ModeHub:
                 precheck["is_web_search"] = True
                 precheck["need_rag"] = False
 
-                from backend.app.services.pipeline.call1_router import generate_call1_web_queries
-                clean_queries = await generate_call1_web_queries(user_message, request)
+                from backend.app.services.pipeline.dispatcher_router import generate_dispatcher_web_queries, generate_call1_web_queries
+                clean_queries = await generate_dispatcher_web_queries(user_message, request)
                 precheck["queries"] = clean_queries if clean_queries else [user_message]
 
                 async for chunk in handle_web_search(
@@ -825,7 +825,7 @@ class ModeHub:
                 logger.warning(f"[MODE_HUB] Fetching failed or yielded empty content for {approved_fetch_urls}. Suppressing urlfetch widget and allowing fallback.")
 
         logger.info(
-            f"[MODE_HUB] Call 1 complete | need_rag={routing_data.get('need_rag')} | "
+            f"[MODE_HUB] Dispatcher / Planner complete | need_rag={routing_data.get('need_rag')} | "
             f"is_coding={routing_data.get('is_coding')} | queries={routing_data.get('queries')}"
         )
 

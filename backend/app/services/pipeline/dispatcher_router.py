@@ -1783,3 +1783,9 @@ async def generate_call1_web_queries(user_message: str, request: Optional[Reques
 
     return [clean_fallback] if clean_fallback else [user_message.strip()]
 
+
+# ── Standarisasi Arsitektur Kognitif (Agnostik) ──────────────────────────────
+dispatch_intent_route = execute_call1_routing
+dispatch_preset_route = generate_call1_preset_routing
+generate_dispatcher_web_queries = generate_call1_web_queries
+
