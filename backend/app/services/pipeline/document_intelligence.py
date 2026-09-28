@@ -215,7 +215,11 @@ async def extract_and_ocr_document_async(
     Mengekstrak teks dokumen PDF dan merender gambar setiap halaman (dual L1/L2 cache).
     Setiap halaman menghasilkan teks (mapping pencarian) dan gambar (injeksi ke Call 2).
     """
-    key_to_use = cache_key or file_path
+    # Guard: Cegah session_uuid murni digunakan sebagai cache_key dokumen fisik
+    if cache_key and re.match(r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$', str(cache_key).strip()):
+        key_to_use = file_path
+    else:
+        key_to_use = cache_key or file_path
     cached = get_document_cache(key_to_use)
     if cached and (not render_images or cached.get("images")):
         logger.info(f"[DOC_INTEL] 🚀 Cache Hit for document: {file_path} ({len(cached.get('images', []))} images)")

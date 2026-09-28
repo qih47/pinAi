@@ -204,6 +204,11 @@ async def _sequential_pipeline_generator(
     full_thinking_text = ""
     preloaded_rag_sources = None
     generated_artifacts = []
+    router_prompt_tokens = 0
+    router_completion_tokens = 0
+    gen_prompt_tokens = 0
+    gen_completion_tokens = 0
+    is_truncated = False
     start_time = datetime.now()
 
     try:
@@ -276,12 +281,6 @@ async def _sequential_pipeline_generator(
         )
 
 
-        router_prompt_tokens = 0
-        router_completion_tokens = 0
-        gen_prompt_tokens = 0
-        gen_completion_tokens = 0
-        is_truncated = False
-
         async for sse in agentic_engine:
             raw = sse.strip()
             if not raw:
@@ -348,7 +347,7 @@ async def _sequential_pipeline_generator(
     # ── Save assistant response & finalize ────────────────────────────────────
 
     async def _save_to_db():
-        nonlocal full_response_text, gen_prompt_tokens, gen_completion_tokens, router_prompt_tokens, router_completion_tokens
+        nonlocal full_response_text, gen_prompt_tokens, gen_completion_tokens, router_prompt_tokens, router_completion_tokens, is_truncated
         try:
             if payload.session_uuid:
                 # --- INTERCEPT EMPTY RESPONSE ONLY ---
@@ -408,6 +407,15 @@ async def _sequential_pipeline_generator(
                     ))
                 except Exception as t_err:
                     logger.warning(f"[TOKEN_AUDIT] Gagal submit record_request_tokens task: {t_err}")
+
+                # 🛡️ Heuristik Cerdas Truncation: jika respons panjang dan terpotong gantung di tengah kata/formatting
+                if not is_truncated and len(full_response_text) >= 800:
+                    raw_resp = full_response_text.strip()
+                    bold_open = (raw_resp.count('**') % 2 != 0)
+                    ends_hanging = raw_resp[-1].isalnum() if raw_resp else False
+                    if bold_open or (ends_hanging and gen_completion_tokens >= 800):
+                        is_truncated = True
+                        logger.info(f"[PIPELINE] 🛡️ Heuristic truncation detected! bold_open={bold_open}, ends_hanging={ends_hanging}, tokens={gen_completion_tokens}")
 
                 message_metadata = {"tokens": token_meta}
                 if is_truncated:

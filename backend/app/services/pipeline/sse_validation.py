@@ -50,6 +50,9 @@ class SSEValidator:
     @staticmethod
     def validate_chunk(data: Dict[str, Any]) -> bool:
         chunk = data.get("chunk")
+        # Jika event membawa sinyal is_truncated atau token metrics, validasi lolos meskipun chunk string kosong
+        if data.get("is_truncated") or (data.get("eval_count") or 0) > 0:
+            return True
         if chunk is None or not isinstance(chunk, str):
             return False
         return True
@@ -88,6 +91,9 @@ class SSEValidator:
             or data.get("sources") is not None
             or data.get("done") is True
             or data.get("status") is not None
+            or data.get("is_truncated") is True
+            or (data.get("eval_count") or 0) > 0
+            or (data.get("prompt_eval_count") or 0) > 0
         )
         if not has_content:
             logger.debug("[SSE_VALIDATION] Empty event, all fields null")
@@ -124,7 +130,7 @@ def format_sse(
     Untuk internal pipeline_data, gunakan format_sse_pipeline_data().
     """
     event = {
-        "chunk": chunk if chunk else None,
+        "chunk": chunk if (chunk or is_truncated) else None,
         "thinking": thinking if thinking else None,
         "status": status if status else None,
         "status_key": status_key if status_key else None,

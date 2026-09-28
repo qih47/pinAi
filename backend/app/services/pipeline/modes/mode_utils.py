@@ -506,22 +506,47 @@ def compact_history_messages(messages: List[Dict[str, Any]], max_assistant_chars
     if not messages:
         return messages
 
+    # Deteksi apakah pesan pengguna terakhir adalah permintaan kelanjutan (Lanjutkan / Sambung)
+    last_user_is_continuation = False
+    if len(messages) >= 2 and messages[-1].get("role") == "user":
+        last_u_txt = (messages[-1].get("content") or "").lower().strip()
+        last_user_is_continuation = any(
+            last_u_txt.startswith(w) or f" {w} " in f" {last_u_txt} " or last_u_txt == w
+            for w in ["lanjut", "lanjutkan", "continue", "sambung", "teruskan"]
+        )
+
     compacted = []
-    for msg in messages:
+    for idx, msg in enumerate(messages):
         role = msg.get("role")
         content = msg.get("content", "")
         
         # User message: JANGAN PERNAH DIPOTONG (intent pengguna mutlak)
-        if role != "assistant" or not content or len(content) <= max_assistant_chars:
+        if role != "assistant" or not content:
             compacted.append(msg)
             continue
 
-        # Assistant message panjang: potong secara cerdas
         wizard_part = ""
         if "[WIZARD]" in content and "[/WIZARD]" in content:
             w_start = content.find("[WIZARD]")
             w_end = content.find("[/WIZARD]") + len("[/WIZARD]")
             wizard_part = "\n" + content[w_start:w_end]
+
+        # 🛡️ CONTINUATION-AWARE TAIL PRESERVATION:
+        # Jika giliran ini adalah permintaan "Lanjutkan", pertahankan EKOR (akhir) pesan asisten
+        # agar model Call 2 melihat persis di mana kalimat/kata terakhir terputus!
+        if last_user_is_continuation and idx == len(messages) - 2:
+            if len(content) > 1600:
+                head_part = content[:400].strip()
+                tail_part = content[-1200:].strip()
+                compacted_content = f"{head_part}\n\n[... ringkasan tengah dilewati ...]\n\n{tail_part}{wizard_part}"
+            else:
+                compacted_content = content + wizard_part
+            compacted.append({**msg, "content": compacted_content})
+            continue
+
+        if len(content) <= max_assistant_chars:
+            compacted.append(msg)
+            continue
 
         paragraphs = [p.strip() for p in content.split("\n\n") if p.strip()]
         lean_text = ""
@@ -591,13 +616,43 @@ def resolve_history_messages(
         else:
             raw_messages.append({"role": "user", "content": user_message})
 
-    # Percabangan Aman (Non-Destructive Safe Branching)
-    if not needs_history or len(raw_messages) <= 1:
+    # Percabangan Aman (Non-Destructive Safe Branching) dengan Sovereign Call 2 Guardrail
+    effective_needs_history = bool(needs_history)
+    if not effective_needs_history and len(raw_messages) > 1:
+        u_lower = (user_message or "").lower().strip()
+        u_words = u_lower.split()
+        
+        # 1. Rujukan Anaphora & Kata Tunjuk
+        anaphora_markers = {
+            "tadi", "itu", "tersebut", "barusan", "kemarin", "sebelumnya", 
+            "dia", "mereka"
+        }
+        has_anaphora = any(m in u_words for m in anaphora_markers) or any(w.endswith("nya") for w in u_words if len(w) > 4)
+        
+        # 2. Kata Hubung / Awalan Kelanjutan
+        continuation_prefixes = (
+            "terus", "lanjut", "lanjutkan", "lalu", "kemudian", "selanjutnya",
+            "kalo gitu", "kalau gitu", "artinya", "maksudnya", "maksud lo", "maksud kamu", "maksud gue", "maksud saya",
+            "gimana", "bagaimana", "kenapa", "mengapa", "kok bisa", "kok gitu"
+        )
+        has_continuation = any(u_lower.startswith(pref) for pref in continuation_prefixes) or any(m in u_words for m in ["terus", "lanjut", "lanjutkan", "opsi", "pilihan"])
+        
+        # 3. Respon / Reaksi Percakapan Sangat Singkat (<= 2 kata, misal 'oke', 'bukan', 'iya')
+        is_short_reaction = len(u_words) <= 2
+        
+        if has_anaphora or has_continuation or is_short_reaction:
+            effective_needs_history = True
+            logger.info(
+                f"[HISTORY_RESOLVER] 🛡️ Sovereign Call 2 Guardrail: Overriding needs_history=False -> True "
+                f"(anaphora={has_anaphora}, cont={has_continuation}, short={is_short_reaction}) for '{user_message[:60]}'"
+            )
+
+    if not effective_needs_history or len(raw_messages) <= 1:
         # JALUR B1: Standalone query — pangkas riwayat lampau!
         trimmed = [raw_messages[-1]]
         bypassed_turns = len(raw_messages) - 1
         logger.info(
-            f"[HISTORY_RESOLVER] ⚡ Standalone query (needs_history=False). "
+            f"[HISTORY_RESOLVER] ⚡ Standalone query (effective_needs_history=False). "
             f"Bypassed {bypassed_turns} past turn(s) -> Sending 1 lean user turn to Call 2."
         )
     else:

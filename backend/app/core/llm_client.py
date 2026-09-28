@@ -281,8 +281,8 @@ def get_shared_client() -> httpx.AsyncClient:
 
 _gpu_semaphore: Optional[asyncio.Semaphore] = None
 
-def get_gpu_semaphore(max_slots: int = 8) -> asyncio.Semaphore:
-    """Mengembalikan singleton asyncio.Semaphore untuk proteksi antrean GPU/Ollama (8 slot paralel)."""
+def get_gpu_semaphore(max_slots: int = 16) -> asyncio.Semaphore:
+    """Mengembalikan singleton asyncio.Semaphore untuk proteksi antrean GPU (16 slot paralel di era vLLM)."""
     global _gpu_semaphore
     if _gpu_semaphore is None:
         _gpu_semaphore = asyncio.Semaphore(max_slots)
@@ -333,6 +333,7 @@ async def stream_ollama_chat(
     Mengalirkan string chunk mentah langsung dari Ollama menuju Layer 2 Executor.
     Gemma 4 thinking dialirkan via field `thought` per chunk.
     """
+    admission_ctrl = getattr(request.app.state, "admission_controller", None) if (request and hasattr(request, "app")) else None
     gpu_semaphore = getattr(request.app.state, "gpu_limit", None) if (request and hasattr(request, "app")) else None
     if gpu_semaphore is None:
         gpu_semaphore = get_gpu_semaphore()
@@ -524,7 +525,16 @@ async def stream_ollama_chat(
         clean_query_log = clean_query_log[:87] + "..."
 
     queue_start_time = datetime.now()
-    async with gpu_semaphore:
+    est_total_tokens = int(total_chars / 3.0) + (image_count * 550)
+    try:
+        from backend.app.services.system.dynamic_admission import RequestTier
+        req_tier = RequestTier.HEAVY_BATCH if (est_total_tokens > 4000 or image_count > 4) else RequestTier.INTERACTIVE
+    except Exception:
+        req_tier = "heavy_batch" if (est_total_tokens > 4000 or image_count > 4) else "interactive"
+
+    slot_mgr = admission_ctrl.slot(tier=req_tier, estimated_tokens=est_total_tokens) if admission_ctrl else gpu_semaphore
+
+    async with slot_mgr:
         queue_wait_time = (datetime.now() - queue_start_time).total_seconds()
         queue_ms = queue_wait_time * 1000
 
@@ -649,9 +659,30 @@ async def stream_ollama_chat(
 
         if is_vllm:
             target_vllm_model = "/home/qisthi/models/gemma-4-31B-it-AWQ" if model_name in ["gemma4:31b", "gemma-4-31B-it-AWQ"] else model_name
+            # Transform Ollama-style 'images' list into OpenAI-compatible multimodal content structure
+            vllm_messages = []
+            for m in messages:
+                m_copy = dict(m)
+                imgs = m_copy.pop("images", None)
+                if imgs and isinstance(imgs, list):
+                    content = m_copy.get("content", "")
+                    content_parts = []
+                    for img_b64 in imgs:
+                        clean_b64 = img_b64.split(",")[-1] if "," in img_b64 else img_b64
+                        content_parts.append({
+                            "type": "image_url",
+                            "image_url": {"url": f"data:image/png;base64,{clean_b64}"}
+                        })
+                    if isinstance(content, str):
+                        content_parts.append({"type": "text", "text": content})
+                    elif isinstance(content, list):
+                        content_parts.extend(content)
+                    m_copy["content"] = content_parts
+                vllm_messages.append(m_copy)
+
             payload = {
                 "model": target_vllm_model,
-                "messages": messages,
+                "messages": vllm_messages,
                 "stream": True,
                 "temperature": temperature,
                 "top_p": ollama_options.get("top_p", 0.95),
@@ -659,15 +690,15 @@ async def stream_ollama_chat(
             }
             if is_thinking:
                 payload["chat_template_kwargs"] = {"enable_thinking": True, "thinking": True}
-            # vLLM validates: input_tokens + max_tokens <= max_model_len (16384).
+            # vLLM validates: input_tokens + max_tokens <= max_model_len (32768).
             # In Ollama, num_predict=8192 is an unconstrained upper bound.
             # In vLLM, hardcoding max_tokens=8192 causes HTTP 400 if input_tokens > 8192.
             # Therefore: omit max_tokens when num_predict >= 8192 so vLLM dynamically uses
             # all available remaining context (identical to Ollama). Only clamp and send
             # max_tokens if explicitly constrained by token_budget or caller (< 8192).
             if token_budget or (num_predict and num_predict < 8192):
-                est_input_tokens = int(total_chars / 3.0) + 200
-                max_ctx = getattr(settings, "NUM_CTX_CORE", 16384)
+                est_input_tokens = int(total_chars / 3.0) + (image_count * 550) + 200
+                max_ctx = getattr(settings, "NUM_CTX_CORE", 32768)
                 safe_max_tokens = max(128, min(num_predict, max_ctx - est_input_tokens - 64))
                 payload["max_tokens"] = safe_max_tokens
         else:

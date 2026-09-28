@@ -174,16 +174,23 @@ const PlusActionMenu = forwardRef(function PlusActionMenu({
         flexDirection: "column",
         overflow: "hidden",
         zIndex: 60,
-        animation: "fadeInUp 0.16s cubic-bezier(0.16, 1, 0.3, 1)"
+        animation: "fadeInUp 0.16s cubic-bezier(0.16, 1, 0.3, 1)",
+        maxHeight: "min(350px, calc(100vh - 160px))"
       }}
     >
-      {/* ── LIST MENU ITEMS (MEMANJANG SATU BARIS, SEUKURAN INPUT) ── */}
+      {/* ── LIST MENU ITEMS (MEMANJANG SATU BARIS, SEUKURAN INPUT, SCROLLABLE ELEGAN) ── */}
       <div
+        className="custom-scrollbar"
         style={{
-          padding: "8px",
+          padding: "8px 6px 8px 8px",
           display: "flex",
           flexDirection: "column",
-          gap: "2px"
+          gap: "2px",
+          maxHeight: "265px",
+          overflowY: "auto",
+          overscrollBehavior: "contain",
+          flex: 1,
+          minHeight: 0
         }}
       >
         {filteredItems.map((item) => {
@@ -290,7 +297,8 @@ const PlusActionMenu = forwardRef(function PlusActionMenu({
           display: "flex",
           alignItems: "center",
           gap: "10px",
-          background: darkMode ? "rgba(255, 255, 255, 0.02)" : "rgba(0, 0, 0, 0.02)"
+          background: darkMode ? "rgba(255, 255, 255, 0.02)" : "rgba(0, 0, 0, 0.02)",
+          flexShrink: 0
         }}
       >
         <Search size={15} color={darkMode ? "#6b7280" : "#9ca3af"} style={{ flexShrink: 0 }} />

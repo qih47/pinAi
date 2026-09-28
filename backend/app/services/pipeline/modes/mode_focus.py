@@ -107,7 +107,7 @@ class ModeFocus:
 
             if text_map is None:
                 yield format_sse(status="📄 Memuat dokumen", status_key="DOC_LOADING", event_type=SSEEventType.STATUS)
-                cache_key = session_uuid or file_path
+                cache_key = file_path
                 text_map, all_base64_images, total_pages = await extract_and_ocr_document_async(file_path, cache_key=cache_key, render_images=True)
 
                 if brain:

@@ -278,6 +278,8 @@ async def agentic_stream_wrapper(
     current_rag_sources = list(rag_sources) if rag_sources is not None else None
     sources_emitted = False
     loop_count = 0
+    was_truncated = False
+    user_message = str(kwargs.get("user_message") or (messages[-1]["content"] if messages and messages[-1].get("role") == "user" else ""))
 
     while loop_count <= max_tool_loops:
         stream_gen = stream_ollama_chat(
@@ -311,6 +313,8 @@ async def agentic_stream_wrapper(
                     eval_duration = chunk_data.get("eval_duration", 0)
                     prompt_eval_count = chunk_data.get("prompt_eval_count", 0)
                     is_truncated = bool(chunk_data.get("is_truncated", False) or chunk_data.get("done_reason") == "length")
+                    if is_truncated:
+                        was_truncated = True
                 except (json.JSONDecodeError, AttributeError):
                     chunk_text = chunk_line if isinstance(chunk_line, str) else ""
                     native_thought = ""
@@ -502,7 +506,8 @@ async def agentic_stream_wrapper(
                             raw_payload_str,
                             session_uuid=session_uuid,
                             current_user_npp=current_user_npp,
-                            request=request
+                            request=request,
+                            user_message=user_message,
                         ):
                             if isinstance(item, tuple):
                                 status_msg, status_k = item
@@ -583,8 +588,8 @@ async def agentic_stream_wrapper(
 
                         yield format_sse(status="Menyusun jawaban", status_key="DRAFTING_RESPONSE", event_type=SSEEventType.STATUS)
 
-                        # Batas kuota konteks LLM aman (~8.750 - 9.000 token, di bawah 10k token)
-                        safe_context = tool_result.llm_context[:35000] if len(tool_result.llm_context) > 35000 else tool_result.llm_context
+                        # Batas kuota konteks LLM aman (~11.000 - 11.500 token dalam 32K context)
+                        safe_context = tool_result.llm_context[:45000] if len(tool_result.llm_context) > 45000 else tool_result.llm_context
                         if tool_result.tool_name == "docsearch":
                             continuation_instruction = (
                                 f"\n\n[SISTEM: HASIL EKSEKUSI ALAT 'DOCSEARCH']:\n"
@@ -632,9 +637,11 @@ async def agentic_stream_wrapper(
                 if not sources_emitted and buffer.strip().startswith("<") and "<sources_json>".startswith(buffer.strip().lower()):
                     buffer = ""
                 if buffer:
-                    yield format_sse(buffer, "", False, event_type=SSEEventType.CHUNK)
+                    yield format_sse(buffer, "", False, event_type=SSEEventType.CHUNK, is_truncated=was_truncated)
                     accumulated_full_text += buffer
                     buffer = ""
+            elif not tool_executed and was_truncated:
+                yield format_sse("", "", False, event_type=SSEEventType.CHUNK, is_truncated=True)
 
         except Exception as e:
             logger.error(f"[AGENTIC_TOOL] Error in agentic stream loop: {e}", exc_info=True)

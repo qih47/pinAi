@@ -730,8 +730,8 @@ async def execute_doc_search_tool_stream(
                 "_from_session_brain": is_brain_doc,
             })
 
-        # Batas kapasitas konteks LLM aman (~8.750 - 9.000 token, di bawah 10k token)
-        safe_rag_context = (rag_context[:35000] + "\n(dipotong demi efisiensi context)") if len(rag_context) > 35000 else (rag_context or f"Tidak ditemukan rincian klausul untuk topik: '{clean_query}'.")
+        # Batas kapasitas konteks LLM aman (~11.000 - 11.500 token dalam 32K context)
+        safe_rag_context = (rag_context[:45000] + "\n(dipotong demi efisiensi context)") if len(rag_context) > 45000 else (rag_context or f"Tidak ditemukan rincian klausul untuk topik: '{clean_query}'.")
 
         yield ToolResult(
             tool_name="docsearch",
@@ -963,7 +963,7 @@ async def execute_url_fetch_tool_stream(urls: Any, reason: str = "", user_query:
     yield ("Mengekstrak isi halaman", "TOOL_URLFETCH_PARSING")
 
     activity_text = intent_desc or "Menelaah referensi tautan web"
-    safe_url_context = (url_contexts[:7500] + "\n(dipotong demi efisiensi)") if len(url_contexts) > 7500 else url_contexts
+    safe_url_context = (url_contexts[:25000] + "\n(dipotong demi efisiensi)") if len(url_contexts) > 25000 else url_contexts
     has_content = bool(url_contexts and url_contexts.strip())
 
     yield ToolResult(
@@ -1074,6 +1074,7 @@ async def dispatch_agentic_tool_stream(
     session_uuid: Optional[str] = None,
     current_user_npp: Optional[str] = None,
     request: Optional[Any] = None,
+    user_message: str = "",
 ) -> AsyncGenerator[Union[Tuple[str, Any], ToolResult], None]:
     """
     Pusat parsing dan delegasi panggilan tool bertahap (progressive status streaming).
@@ -1122,7 +1123,7 @@ async def dispatch_agentic_tool_stream(
 
     elif tool_clean in ("urlfetch", "url_fetch", "read_url", "fetch_url"):
         urls_val = parsed_json.get("urls") or parsed_json.get("url") or query_val
-        async for item in execute_url_fetch_tool_stream(urls_val, reason=reason_val):
+        async for item in execute_url_fetch_tool_stream(urls_val, reason=reason_val, user_query=user_message):
             yield item
 
     elif tool_clean in ("map_search", "map", "geocode", "geocoding"):

@@ -106,7 +106,9 @@ case "${1:-all}" in
     vllm)
         pkill -9 -f "vllm.entrypoints" 2>/dev/null || true
         fuser -k -9 8005/tcp 2>/dev/null || true
-        bash "$ROOT/run_vllm_service.sh"
+        nohup bash "$ROOT/run_vllm_service.sh" > "$LOG_DIR/vllm.log" 2>&1 &
+        echo $! > "$LOG_DIR/vllm.pid"
+        echo "  🚀 vLLM launched in background (PID $!)"
         ;;
     frontend)
         fuser -k -9 5173/tcp 2>/dev/null || true

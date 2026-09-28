@@ -48,6 +48,7 @@ from backend.app.services.rag.reranker_service import _load_reranker
 from backend.app.core.hardware import check_gpu_status
 from backend.app.core.paths import DOCUMENTS_DIR, UPLOAD_DIR, ACCOUNTS_DIR, FILE_PERATURAN_DIR
 from backend.app.services.system.background_tasks import start_background_scheduler, stop_background_scheduler
+from backend.app.services.system.dynamic_admission import tdaac_controller
 from backend.app.utils.request_logging import RequestIDLoggingMiddleware, setup_request_id_logging
 from backend.app.utils.token_expiry import setup_token_expiry_migration
 from backend.app.utils.vector_index import setup_hnsw_index, optimize_vector_search
@@ -186,6 +187,7 @@ async def lifespan(app: FastAPI):
 
         asyncio.create_task(background_warmup())
 
+        await tdaac_controller.start()
         await start_background_scheduler(app)
         logger.info("✅ [CHAT_SERVICE] All systems nominal. Service ready on port 8001.")
     except Exception as e:
@@ -196,6 +198,7 @@ async def lifespan(app: FastAPI):
 
     logger.info("�� [CHAT_SERVICE] Shutting down...")
     app.state.shutdown_requested = True
+    await tdaac_controller.stop()
     await stop_background_scheduler()
     await close_db_pool()
     try:
@@ -220,7 +223,8 @@ app = FastAPI(
 )
 
 app.add_middleware(RequestIDLoggingMiddleware)
-app.state.gpu_limit = get_gpu_semaphore(4)
+app.state.admission_controller = tdaac_controller
+app.state.gpu_limit = get_gpu_semaphore(16)
 
 origins = [
     "http://localhost:8000",

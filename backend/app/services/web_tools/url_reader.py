@@ -367,9 +367,34 @@ async def fetch_webpage_with_discovery(
         
     main_markdown = _clean_html_to_markdown(raw_html)
     
-    # Jika bukan root domain atau query kosong, kembalikan halaman ini saja
+    candidate_links = _extract_internal_candidate_links(raw_html, url)
+
+    # Susun ringkasan daftar tautan internal yang tersedia di halaman ini agar LLM melihat struktur situs
+    links_section = ""
+    if candidate_links:
+        meaningful_links = []
+        seen_urls = set()
+        for l in candidate_links:
+            p_l = l["path"].lower()
+            t_l = l["text"].strip()
+            if any(ign in p_l for ign in ["/set-language", "/privacy", "/terms", "/login", "/sitemap", "javascript:"]):
+                continue
+            if t_l and len(t_l) >= 2 and l["url"] not in seen_urls:
+                seen_urls.add(l["url"])
+                meaningful_links.append(l)
+            if len(meaningful_links) >= 25:
+                break
+        
+        if meaningful_links:
+            links_section = "\n\n--- DAFTAR TAUTAN / MENU TERSEDIA PADA SITUS INI (BISA DITELUSURI LEBIH DALAM VIA URLFETCH) ---\n"
+            links_section += "\n".join(f"• {l['text']}: {l['url']}" for l in meaningful_links)
+            links_section += "\n-----------------------------------------------------------------------------------------\n"
+
+    main_markdown_with_links = main_markdown + links_section
+
+    # Jika bukan root domain atau query kosong, kembalikan halaman ini beserta daftar tautannya
     if not is_root or not user_query.strip():
-        return main_markdown, [primary_node]
+        return main_markdown_with_links, [primary_node]
         
     # Ekstrak kata kunci topik dari user_query (buang stopword umum)
     user_words = [w.lower() for w in re.sub(r'[^a-zA-Z0-9\s-]', ' ', user_query).split() if len(w) >= 2]
@@ -377,19 +402,32 @@ async def fetch_webpage_with_discovery(
         "cari", "carikan", "cek", "spesifikasi", "spek", "fitur", "detail", "rincian",
         "pindad", "com", "co", "id", "dan", "yang", "ini", "itu", "link", "web", "website",
         "situs", "tautan", "halaman", "tentang", "baca", "apa", "ada", "di", "ke", "dari",
-        "pada", "untuk", "info", "informasi", "tolong", "coba", "gimana", "bagaimana"
+        "pada", "untuk", "info", "informasi", "tolong", "coba", "gimana", "bagaimana", "susunan"
     }
-    topic_keywords = [w for w in user_words if w not in stopwords]
-    if not topic_keywords:
-        return main_markdown, [primary_node]
+    raw_topic_keywords = [w for w in user_words if w not in stopwords]
+    if not raw_topic_keywords:
+        return main_markdown_with_links, [primary_node]
+
+    # Dynamic Indonesian de-suffixing / stemming (misal: "direksinya" -> "direksi", "senjatanya" -> "senjata")
+    topic_keywords = set()
+    for kw in raw_topic_keywords:
+        topic_keywords.add(kw)
+        stemmed = re.sub(r'(?:nya|kan|kah|lah|pun|i)$', '', kw)
+        if len(stemmed) >= 3:
+            topic_keywords.add(stemmed)
         
-    logger.info(f"[URL Reader] 🔍 Sub-link discovery active for '{url}' with topic keywords: {topic_keywords}")
+    logger.info(f"[URL Reader] 🔍 Dynamic sub-link discovery active for '{url}' with keywords: {list(topic_keywords)}")
     
-    CATEGORY_KEYWORDS = ["weapon", "senjata", "product", "produk", "vehicle", "kendaraan", "munition", "munisi", "berita", "news", "press-release", "artikel"]
+    CATEGORY_KEYWORDS = [
+        "weapon", "senjata", "product", "produk", "vehicle", "kendaraan", "munition", "munisi",
+        "berita", "news", "press-release", "artikel", "media", "publikasi",
+        "direksi", "dewan", "komisaris", "manajemen", "management", "profil", "profile",
+        "about", "tentang", "struktur", "organisasi", "pejabat", "board", "leadership",
+        "layanan", "service", "bisnis", "inovasi", "laporan", "arsip"
+    ]
     
-    candidate_links = _extract_internal_candidate_links(raw_html, url)
     if not candidate_links:
-        return main_markdown, [primary_node]
+        return main_markdown_with_links, [primary_node]
         
     def _score(link: Dict[str, str]) -> int:
         p_low = link["path"].lower()
@@ -459,8 +497,9 @@ async def fetch_webpage_with_discovery(
                 f"==== ISI SUB-HALAMAN SPESIFIK: {sub_url} ({clean_title}) ====\n\n"
                 f"{sub_content}\n\n"
                 f"===========================================================\n"
+                f"{links_section}"
             )
             logger.info(f"[URL Reader] ✅ Successfully discovered & injected sub-page {sub_url} ({len(sub_content)} chars)")
             return combined_content, discovered_nodes
 
-    return main_markdown, discovered_nodes
+    return main_markdown_with_links, discovered_nodes

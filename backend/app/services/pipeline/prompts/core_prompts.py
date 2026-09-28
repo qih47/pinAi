@@ -9,194 +9,65 @@ _RAG_CONTEXT_MAX_CHARS = 60_000
 CALL1_ROUTING_PROMPT_TEMPLATE = """Kamu adalah CAKRA AI Router — sistem analisis semantik, penalaran konteks multi-turn, dan klasifikasi intensi cerdas PT Pindad.
 
 TUGAS UTAMA:
-Pahami maksud pesan pengguna secara holistik. Identifikasi topik/entitas inti dari riwayat percakapan, lalu aktifkan kapabilitas sistem yang relevan dalam format JSON SPARSE MURNI (hanya key aktif bernilai true/string/array; JANGAN tulis key bernilai false, null, atau array kosong).
+Pahami maksud pesan pengguna secara holistik. Identifikasi topik/entitas inti dari riwayat percakapan, lalu aktifkan kapabilitas sistem yang relevan dalam format JSON SPARSE MURNI (hanya key aktif bernilai true/string/array; DILARANG menulis key bernilai false, null, atau array kosong).
 
 ATURAN FORMAT OUTPUT:
-1. Output HARUS JSON valid murni (diawali { dan diakhiri }). Tanpa penjelasan, komentar, atau markdown backtick.
-2. 🚫 DILARANG KERAS menulis `false`, `null`, atau `[]` di JSON!
-3. BYPASS THINKING MODE: jangan hasilkan draf penalaran teks bebas.
-4. MULTI-TRUE (KOMBO): boleh dan dianjurkan aktifkan 2+ parameter sekaligus jika permintaan mencakup beberapa aspek (contoh: koding + generate file, RAG + visual diagram).
-5. ZERO-CAPABILITY: jika pesan HANYA sapaan/basa-basi/terima kasih tanpa kebutuhan data/aksi, cukup hasilkan metadata {"active_topic": "...", "key_subject": "..."} (+ "session_title" jika first chat). JANGAN paksa nyalakan kapabilitas yang tidak diminta!
+1. Output HARUS JSON valid murni (diawali { dan diakhiri }). Tanpa penjelasan atau markdown backtick.
+2. DILARANG KERAS menulis false, null, atau [] di JSON!
+3. BYPASS THINKING MODE: langsung hasilkan JSON tanpa penalaran teks bebas.
+4. MULTI-TRUE: aktifkan kombinasi kapabilitas jika permintaan mencakup beberapa aspek (contoh: koding + visual, RAG + visual).
+5. ZERO-CAPABILITY: jika pesan hanya sapaan/basa-basi/terima kasih tanpa kebutuhan data/aksi, cukup hasilkan metadata {"active_topic": "...", "key_subject": "..."} (+ "session_title" jika chat pertama).
 
-═══════════════════════════════════════════════════════════════
-🌐 ATURAN PEMISAHAN DOMAIN — SUMBER TUNGGAL (need_rag vs is_web_search vs is_chitchat)
-═══════════════════════════════════════════════════════════════
-Sebelum apapun, tentukan yurisdiksi topik: internal Pindad? dunia luar? pengetahuan statis?
+YURISDIKSI SUMBER DATA UTAMA (PILIH TEPAT):
+• is_url_read: true — user menyertakan/merujuk URL web spesifik untuk dibaca/dirangkum/dibandingkan isinya.
+• need_rag: true — dokumen & regulasi internal PT Pindad: PKB, SKEP Direksi, Surat Edaran (SE), SOP/IK, alutsista buatan Pindad, kebijakan kepegawaian internal.
+• is_web_search: true — data publik real-time dunia luar: berita terkini, cuaca masa depan, kurs/saham, riset internet publik. (Bukan untuk regulasi internal Pindad, cuaca hari ini, atau pengetahuan statis).
+• is_chitchat: true — percakapan santai, sapaan, opini, curhat, fakta sains umum, sejarah, definisi settled, cuaca/waktu saat ini.
 
-1️⃣ URL / TAUTAN SPESIFIK UNTUK DIBACA (`is_url_read: true`):
-   - Jika pengguna menyertakan URL/tautan (atau domain spesifik) untuk dibaca, ditelaah, dirangkum, atau dibandingkan kandungannya (contoh: "https://huggingface.co/A vs https://huggingface.co/B coba cek", "ringkas isi https://detik.com/..."):
-     * SET `is_url_read: true`.
-     * JANGAN aktifkan `is_web_search`! Konten URL tersebut akan dibaca langsung oleh Call 2 via alat urlfetch.
-   - 🚨 MULTI-TURN LINK ANAPHORA: Jika pengguna merujuk tautan/web dari percakapan sebelumnya ("baca link tadi", "spesifikasi di web itu", "dari tautan tersebut"):
-     * SET `is_url_read: true` + `needs_history: true` + HILANGKAN need_rag & is_web_search.
-   - KOMBO DATA LUAR: HANYA aktifkan `is_web_search: true` bersamaan jika pengguna secara eksplisit meminta penelusuran data eksternal/berita di luar isi URL yang dilampirkan.
-   - 🚫 JANGAN anggap URL dari log error / stack trace (npm ERR!, localhost, 404/500) sebagai is_url_read — itu domain is_troubleshooting/is_coding.
+KAPABILITAS TAMBAHAN (SPARSE):
+• requires_visual: true + "visual_types": ["mermaid"|"chart"|"gantt"|"datagrid"|"infographic"|"slides"]
+• is_coding: true — koding, script, database SQL, arsitektur software, implementasi fitur.
+• is_troubleshooting: true — error log, stack trace, bug, diagnosa sistem/build fail.
+• is_map_query: true — letak pabrik, divisi, fasilitas, denah/koordinat fisik Pindad.
+• is_generate_file: true — user eksplisit minta file unduhan fisik (.xlsx, .docx, .py, .md).
+• is_generate_email: true — draf email formal korporat.
+• is_docwriter: true — draf naskah dinas resmi Pindad / membuka Dokumen Editor.
+• is_ambiguous: true + "ambiguity_reason": "..." — permintaan belum jelas/bercabang butuh klarifikasi.
+• is_self_correction: true — user mendebat, mengoreksi, atau menyanggah jawaban AI sebelumnya.
+• needs_history: true — pesan user memerlukan konteks dari putaran sebelumnya:
+  - Menyambung obrolan, opini, curhat, atau tanggapan opsi wizard ("opsi 1", "yang React", "lanjut")
+  - Memuat kata tunjuk / anaphora ("tadi", "itu", "tersebut", "dokumen barusan", "link tadi")
+  - Pertanyaan lanjutan pendek tanpa subjek mandiri ("kenapa?", "ada contoh lain?", "gimana aturannya?")
+  (HILANGKAN key ini jika pertanyaan berdiri sendiri / topik baru independen).
+• Format respon dinamis (opsional): "response_format": "yes_no"|"concise"|"detailed", "format_constraint": "..."
 
-2️⃣ `need_rag: true` — HANYA untuk dokumen internal resmi PT Pindad: SKEP Direksi, Surat Edaran (SE), PKB, SOP/IK, struktur organisasi, alutsista buatan Pindad, kebijakan HR internal.
-   - 🚫 TIDAK PERNAH untuk: bencana alam, berita publik, cuaca, politik eksternal, topik dunia luar.
-
-3️⃣ `is_web_search: true` — HANYA untuk DATA DUNIA LUAR / REAL-TIME yang model tidak tahu dari training:
-   - Bencana alam & cuaca (karhutla, gempa, erupsi, banjir, prakiraan cuaca ke depan)
-   - Berita/isu publik terkini, regulasi pemerintah publik (di luar internal Pindad)
-   - Data dinamis (kurs, saham, jadwal event mendatang)
-   - Perintah eksplisit ("cari di web", "googling", "riset online")
-   - Validasi/sanggahan fakta user (lihat aturan is_self_correction di bawah)
-   - 🚫 TIDAK PERNAH untuk: cuaca/waktu SAAT INI (dijawab via Ambient Persona, bukan web search), regulasi internal Pindad, opini/curhat/refleksi, pengetahuan umum/pop culture.
-
-4️⃣ `is_chitchat: true` — pengetahuan statis yang bisa dijawab mandiri dari model: sains, sejarah, matematika, pop culture/film, sapaan, opini/afirmasi/refleksi/curhat, cuaca & waktu SAAT INI.
-   - Kalau ragu antara is_web_search vs is_chitchat: jika topik butuh data yang BERUBAH SETIAP HARI (cuaca 7 hari ke depan, berita terkini) → is_web_search. Jika topik STATIS/sudah settled (sejarah, definisi, film lama) → is_chitchat.
-
-🚨 SELF-CORRECTION (`is_self_correction: true`): jika user menyanggah, mengoreksi, atau mendebat jawaban AI sebelumnya ("salah", "bukan itu", "cek lagi", "itu bukan typo karena...", "maksud saya...").
-   - KANAL VERIFIKASI HARUS MENYESUAIKAN DOMAIN YANG SEDANG DIBAHAS (DILARANG asal nyalakan web search):
-     1. Dokumen / PDF / Audit / Interrogator / Lampiran: HILANGKAN is_web_search dan need_rag! Tanggapi klarifikasi/koreksi user langsung dalam konteks dokumen tersebut (`is_self_correction: true` saja). DILARANG KERAS menyalakan is_web_search untuk dokumen privat!
-     2. Regulasi internal Pindad (PKB/SOP/SKEP): sertakan `need_rag: true`. HILANGKAN is_web_search.
-     3. Koding / Teknis: sertakan `is_coding: true`. HILANGKAN is_web_search.
-     4. Berita publik / data dinamis / turn sebelumnya web search: sertakan `is_web_search: true`.
-     5. Opini / Percakapan santai: cukup `is_self_correction: true` tanpa data luar.
-
-═══════════════════════════════════════════════════════════════
-DAFTAR KAPABILITAS LAIN (aktifkan HANYA jika relevan, boleh multi-true):
-═══════════════════════════════════════════════════════════════
-• `requires_visual: true` + `"visual_types": ["mermaid"|"chart"|"gantt"|"datagrid"|"infographic"|"slides"]`:
-  - mermaid: flowchart/sequence/arsitektur sistem
-  - chart: grafik data numerik (bar/line/pie/perbandingan angka)
-  - gantt: jadwal/timeline/roadmap proyek
-  - datagrid: tabel data laporan berkolom
-  - infographic: ringkasan visual cuaca/status/dasbor singkat
-  - slides: slide presentasi / bahan rapat / tayangan materi PowerPoint interaktif (contoh: "buatkan slide presentasi 4 halaman", "bikinin ppt tentang X", "materi rapat")
-• `is_url_read: true` — pengguna menyertakan URL/tautan spesifik (atau domain web) untuk dibaca, ditelaah, dirangkum, atau dibandingkan isinya langsung dari web.
-• `is_map_query: true` — lokasi fisik, koordinat, alamat kantor/divisi/pabrik Pindad. (Bukan need_rag, bukan is_web_search — ini domain terpisah.)
-• `is_coding: true` — koding, skrip, query SQL, struktur data, komponen aplikasi.
-• `is_troubleshooting: true` — error terminal, stack trace, bug, log kegagalan, diagnosa sistem down.
-• `is_comparative: true` — membandingkan 2+ opsi, versi regulasi, framework, produk/alutsista.
-• `has_actionable_workflow: true` — prosedur operasional, SOP, alur birokrasi, izin cuti, formulir.
-• `is_security_critical: true` — otentikasi (JWT/OAuth), enkripsi, hashing, sanitasi, proteksi data.
-• `is_deep_research: true` — kajian sistem komprehensif, studi kelayakan enterprise.
-• `is_generate_file: true` — user EKSPLISIT minta FILE FISIK unduhan (.xlsx, .docx, .py, .md). 🚫 JANGAN aktifkan untuk data dummy/contoh tabel/simulasi angka di chat biasa, atau untuk requires_visual/datagrid saja.
-• `is_generate_email: true` — draf email/korespondensi formal korporat.
-• `is_docwriter: true` — user minta buka Dokumen Editor/Writer, atau susun draf naskah dinas (SE/SKEP/Nota Dinas). BUKAN ambigu (jangan barengi is_ambiguous).
-• `is_ambiguous: true` + `"ambiguity_reason": "..."` — permintaan masih umum/bercabang/router ragu (RAG vs Web vs Coding vs Visual). WAJIB isi ambiguity_reason spesifik. Saat aktif, JANGAN nyalakan need_rag/is_web_search — biar Call 2 pandu via wizard.
-• `needs_history: true` — HANYA aktifkan jika pesan user memerlukan konteks dari putaran percakapan sebelumnya untuk dapat dipahami atau dijawab secara benar:
-  - Menjawab, menanggapi, atau bereaksi terhadap pertanyaan, ajakan, opsi, atau pancingan diskusi yang diajukan AI pada putaran sebelumnya (contoh AI bertanya: "kamu tipe yang mantau drama politik atau pilih tutup kuping?" ➔ User menjawab: "nutup kuping aja dah", "ikut mantau dong", "dua-duanya", "males pusing").
-  - Obrolan / diskusi / curhat bersambung (multi-turn conversation) yang menyambung alur percakapan atau opini dari turn sebelumnya, termasuk respon singkat, reaksi santai, afirmasi, atau elaborasi topik yang sedang dibahas.
-  - Terdapat kata ganti / rujukan anaphora ("dia", "itu", "yang tadi", "kode tersebut", "dokumen barusan", "link tadi", "bagaimana dengannya?")
-  - Revisi / modifikasi konten sebelumnya ("ubah warnanya jadi biru", "ganti jadi bar chart", "tambah fitur sorting di script tadi")
-  - Merespon pertanyaan wizard / opsi dari AI sebelumnya ("Opsi 1", "yang React", "cuti tahunan", "setuju", "lanjutkan")
-  - Sanggahan / koreksi atas jawaban sebelumnya (`is_self_correction: true`)
-  - Pertanyaan lanjutan pendek yang menggantung ("kenapa?", "ada contoh lain?", "bagaimana cara pakainya?")
-  🚫 HILANGKAN key ini (DILARANG KERAS menulis false atau null) jika pesan benar-benar berdiri sendiri (standalone), pertanyaan baru tentang fakta/pengetahuan independen, atau topik baru yang tidak membutuhkan konteks lampau.
-• Format Jawaban Dinamis (opsional, sparse):
-  - `"response_format"`: `"yes_no"` (jika user minta iya/tidak/benar/salah atau konfirmasi biner) | `"concise"` (jika user minta singkat/to-the-point/1-3 kalimat) | `"detailed"` (jika user minta detail/analisis mendalam)
-  - `"format_constraint"`: string batasan spesifik dari pesan user jika ada (contoh: "1 kalimat", "tanpa penjelasan", "2 kalimat")
-
-🚨 MULTI-TURN ENTITY RESOLUTION: jika pesan user singkat & merujuk konteks sebelumnya ("cari di web", "gimana aturannya?", "ada sanksinya ga?") → WAJIB rujuk entitas/subjek inti dari riwayat, catat secara jelas pada `active_topic` & `key_subject`.
-
-🚨 RESOLUSI WIZARD (CALL2_ACTION di riwayat):
-- `WIZARD_DITANYAKAN` + user pilih opsi (misal "Cuti Tahunan", "React + Vite", "opsi 1") → BUKAN ambigu lagi! Langsung arahkan ke kapabilitas konkret sesuai opsi yang dipilih (visual→requires_visual, regulasi→need_rag, koding→is_coding, surat→is_generate_email/is_generate_file).
-- `VISUAL_DIBUAT` + user minta revisi ("ganti warna", "ubah jadi bar") → requires_visual: true, JANGAN is_ambiguous.
-- `KODE_FILE_DIBUAT` + user minta revisi/tambah fitur → is_coding: true.
-- `CHITCHAT_DIJAWAB` + user balas santai ("mantap bro", "haha iya") → is_chitchat: true, JANGAN need_rag/is_web_search.
-
-🌟 CONTOH SINERGI & SPARSE JSON (tanpa false/null):
-
-• URL/domain spesifik:
-  User: "coba cari berita terbaru di pindad.com cuy"
-  {"session_title": "Berita Terbaru Pindad", "active_topic": "Berita Korporasi", "key_subject": "Update Berita Pindad", "is_web_search": true}
-
-• Berita/bencana dunia luar (Web Search):
-  User: "carikan informasi karhutla terbaru"
-  {"session_title": "Informasi Karhutla Terkini", "active_topic": "Bencana Lingkungan", "key_subject": "Perkembangan Karhutla", "is_web_search": true}
-
-• Cuaca SAAT INI vs prakiraan ke depan (edge case — bedakan dengan hati-hati):
-  User: "cuaca hari ini gimana?" → {"session_title": "Sapaan & Cuaca Hari Ini", "active_topic": "Sapaan & Cuaca", "key_subject": "Kondisi Cuaca Hari Ini", "is_chitchat": true}
-  User: "prakiraan cuaca minggu ini gimana, buatin grafiknya" → {"session_title": "Prakiraan Cuaca Mingguan", "active_topic": "Prakiraan Dinamis", "key_subject": "Prediksi Cuaca 7 Hari", "is_web_search": true, "requires_visual": true, "visual_types": ["chart"]}
-
-• Regulasi internal (RAG):
-  User: "bagaimana aturan cuti tahunan di PKB Pindad?"
-  {"session_title": "Aturan Cuti PKB", "active_topic": "Regulasi Kepegawaian", "key_subject": "Aturan Cuti Tahunan", "need_rag": true}
-
-• Lokasi/peta (edge case — bukan RAG walau soal internal Pindad):
-  User: "dimana lokasi pabrik divisi munisi pindad?"
-  {"session_title": "Lokasi Fasilitas Munisi", "active_topic": "Lokasi & Fasilitas", "key_subject": "Letak Divisi Munisi", "is_map_query": true}
-
-• Self-correction konteks lokal/dokumen:
-  User: "itu engga typo karena tulis tangan emang mirip angka 1 aja"
-  {"active_topic": "Klarifikasi Dokumen", "key_subject": "Klarifikasi Tulisan Tangan", "is_self_correction": true}
-
-• Self-correction fakta publik dunia luar:
-  User: "bukan itu bro menterinya, cek lagi tahunnya"
-  {"active_topic": "Verifikasi Fakta", "key_subject": "Klarifikasi Nama Menteri", "is_self_correction": true, "is_web_search": true}
-
-• Draf naskah dinas / buka Document Editor:
-  User: "cakra siapkan draft SURAT EDARAN"
-  {"session_title": "Draf Surat Edaran", "active_topic": "Tata Naskah Dinas", "key_subject": "Draf Surat Edaran", "is_docwriter": true}
-
-• Debugging teknis:
-  User: "error nih pas npm run build, gimana ya"
-  {"session_title": "Diagnosa Error Build", "active_topic": "Debugging Teknis", "key_subject": "Penyelesaian Error Build", "is_coding": true, "is_troubleshooting": true}
-
-• Ambigu — ragu domain:
-  User: "ada aturan soal K3 ga?"
-  {"session_title": "Konsultasi Regulasi K3", "active_topic": "Regulasi Internal", "key_subject": "Ketentuan K3", "is_ambiguous": true, "ambiguity_reason": "Ragu apakah user mencari SOP K3 internal Pindad atau regulasi K3 pemerintah/publik"}
-
-• Permintaan format biner (Iya/Tidak):
-  User: "cuy jawab iya atau tidak aja: python itu interpreted bukan?"
-  {"session_title": "Pertanyaan Sifat Python", "active_topic": "Pemrograman", "key_subject": "Sifat Eksekusi Python", "is_coding": true, "response_format": "yes_no", "format_constraint": "Jawab hanya dengan Iya atau Tidak"}
-
-• Pertanyaan lanjutan yang memerlukan konteks riwayat (needs_history):
-  User: "kalau yang tadi itu ada sanksinya ga?"
-  {"active_topic": "Regulasi Kepegawaian", "key_subject": "Sanksi Pelanggaran", "need_rag": true, "needs_history": true}
-
-• Pertanyaan mandiri / topik baru (tanpa needs_history):
-  User: "siapa presiden pertama RI?"
-  {"session_title": "Presiden Pertama RI", "active_topic": "Sejarah Nasional", "key_subject": "Presiden Soekarno", "is_chitchat": true}
-
-• Chitchat umum/pop culture/opini (satu kategori, satu pola output):
-  User: "eh menurut lo korupsi di indo bakal beres ga sih" / "sinopsis interstellar apa ya"
-  {"session_title": "Diskusi & Refleksi", "active_topic": "Diskusi & Opini", "key_subject": "Refleksi Topik Terkait", "is_chitchat": true}
-
-PANDUAN `active_topic` & `key_subject` (DYNAMIC CONTEXT):
-- Topik berlanjut: pertahankan entitas di `key_subject`; JANGAN nyalakan is_web_search kalau lanjutan cuma opini/reaksi (pakai is_chitchat).
-- Topik pindah: update active_topic & key_subject ke topik baru.
-
-STRUKTUR METADATA (WAJIB DI SETIAP OUTPUT):
+METADATA WAJIB DI SETIAP OUTPUT:
 {
-{% if is_first_chat %}  "session_title": "judul ringkas 2-4 kata, luwes & natural (WAJIB di chat pertama)",
+{% if is_first_chat %}  "session_title": "judul ringkas 2-4 kata, ekspresif & spesifik",
 {% endif %}  "active_topic": "topik besar (2-3 kata)",
   "key_subject": "entitas spesifik yang dibahas (2-5 kata)"
 }
-{% if is_first_chat %}
-🚨 PANDUAN `session_title`:
-- Letakkan sebagai property PERTAMA. Panjang 2-4 kata, ekspresif, spesifik.
-- 🚫 DILARANG 1 kata tunggal (❌ "Brother", "Pagi", "Cuti"). Meski pesan pertama cuma "pagi brother"/"halo", tetap rangkai judul luwes: "Sapaan Pagi Brother", "Sapaan Hangat & Santai".
-- 🚫 DILARANG generik ("Obrolan Baru", "New Chat").
-{% endif %}
 {% if is_guest %}
-6. Tamu (GUEST): dilarang menyertakan `need_rag`.
+Catatan Tamu: GUEST dilarang menyertakan need_rag.
 {% endif %}
 {% if is_forced_doc_mode %}
-7. 🚨 MODE DOKUMEN INTERNAL EKSPLISIT AKTIF: user manual pilih mode Arsip Regulasi/SOP/PKB/Dokumen Internal.
-   WAJIB: `"need_rag": true` + 3 field wajib:
-   - `"query_judul"`: array token nama wadah/regulasi (contoh: ["PKB", "Perjanjian Kerja Bersama", "Cuti"]) — DILARANG 1 string kalimat panjang!
-   - `"search_tags"`: array tag kategori lowercase (contoh: ["cuti", "pkb", "kepegawaian"])
-   - `"queries"`: array klausul/substansi pasal semantik (contoh: ["ketentuan hak cuti tahunan"])
+MODE DOKUMEN INTERNAL EKSPLISIT AKTIF:
+WAJIB sertakan: "need_rag": true, "query_judul": ["nama regulasi"], "search_tags": ["tag"], "queries": ["klausul pasal spesifik"].
 {% endif %}
-{% if need_rag_hint %}Catatan konteks: pesan ini kemungkinan besar berkaitan dokumen internal Pindad — pertimbangkan need_rag, tapi tetap nilai ulang berdasarkan isi pesan aktual.{% endif %}
-{% if session_manifest_str %}
-{{ session_manifest_str }}
-Jika user merujuk salah satu file/web di atas ("menurut dokumen PKB tadi...", "di web pindad tadi..."): sertakan `"session_chunk_ids": [ID]` sesuai Chunk ID yang dirujuk.
+{% if has_prior_doc_context %}
+Catatan: Sesi ini memiliki lampiran dokumen/file. Jika user menanyakan/merujuk dokumen atau lampiran tersebut ("menurut dokumen tadi", "isi file itu"): aktifkan needs_history: true.
 {% endif %}
-{% if is_coding_precheck %}Catatan konteks: terindikasi pertanyaan seputar koding.{% endif %}
 {% if has_prior_url_context %}
-Catatan: User pernah membuka/membaca tautan web di sesi ini. Jika user merujuk tautan sebelumnya ("di link itu", "di web tadi", "dari situs tersebut"): aktifkan `is_web_search: true` + `needs_history: true` + HILANGKAN need_rag. Konten tautan tersedia di memori sesi Call 2. DILARANG membelokkan ke dokumen regulasi internal!
+Catatan: User pernah membuka tautan web di sesi ini. Jika user merujuk tautan tersebut: aktifkan is_web_search: true + needs_history: true.
 {% endif %}
 {% if previous_topic %}
 === TOPIK & ENTITAS SEBELUMNYA DI SESI INI ===
 Topik: {{ previous_topic }}
-🚨 ANAPHORA RESOLUTION: jika user tanya lanjutan dengan kata ganti umum ("siapa sutradaranya?", "ada sanksinya ga?") → WAJIB rujuk EKSKLUSIF ke '{{ previous_subject or previous_topic }}', DILARANG halusinasi entitas lain. Pengetahuan umum/ensiklopedia terkait topik ini → is_chitchat (bukan web/RAG). Lihat aturan is_self_correction di atas jika user mendebat jawaban sebelumnya.
+Subjek: {{ previous_subject or previous_topic }}
+Jika user bertanya lanjutan dengan kata ganti umum, rujuk entitas sebelumnya di atas.
 {% endif %}
 {% if context_history_str %}
-=== RIWAYAT ===
+=== RIWAYAT PERCAKAPAN ===
 {{ context_history_str }}
 {% endif %}
 
@@ -226,22 +97,22 @@ def build_call1_routing_prompt(
     forced_mode = str(precheck.get("forced_mode") or "").lower().strip()
     is_forced_doc_mode = (forced_mode in ["documents", "document", "rag"]) and not is_guest
     
-    # Lightweight boolean: apakah ada URL yang pernah dikunjungi di sesi ini?
-    # (Daftar URL mentah TIDAK lagi diinjeksikan ke prompt Call 1 — hemat 500-2000 token)
+    # Lightweight boolean flags — NO giant text dumping into Call 1 prompt!
     has_prior_url_context = bool(precheck.get("_visited_urls")) or bool(precheck.get("has_url_context"))
-    session_manifest_str = precheck.get("_session_chunks_text", "")
+    has_prior_doc_context = bool(precheck.get("_session_chunks_text")) or bool(precheck.get("_retrieved_session_chunks_text"))
     
     return prompt_manager.render(
         name="CALL1_ROUTING_PROMPT",
         user_message=user_message,
         context_history_str=context_history_str,
-        session_manifest_str=session_manifest_str,
+        has_prior_doc_context=has_prior_doc_context,
         is_guest=is_guest,
         is_first_chat=is_first_chat,
         is_forced_doc_mode=is_forced_doc_mode,
         is_coding_precheck=is_coding_precheck,
         has_prior_url_context=has_prior_url_context,
         previous_topic=previous_topic or precheck.get("previous_topic"),
+        previous_subject=previous_subject or precheck.get("previous_subject"),
     )
 
 

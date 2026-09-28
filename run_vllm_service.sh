@@ -29,8 +29,8 @@ echo "🚀 Starting CAKRA AI vLLM Engine (Hybrid Call 2 Persona)"
 echo "   Model Path   : $MODEL_PATH"
 echo "   Listening on : http://$HOST:$PORT"
 echo "   Quantization : AWQ (4-bit GEMM)"
-echo "   Context Len  : 16,384 tokens"
-echo "   GPU VRAM Util: 0.65 (~31.9 GB on RTX A40)"
+echo "   Context Len  : 32,768 tokens"
+echo "   GPU VRAM Util: 0.72 (~34.5 GB on RTX A40 | ~10.8 GB Free Buffer)"
 echo "=================================================================="
 
 exec "$VLLM_PYTHON" -m vllm.entrypoints.openai.api_server \
@@ -38,8 +38,9 @@ exec "$VLLM_PYTHON" -m vllm.entrypoints.openai.api_server \
     --quantization awq \
     --port "$PORT" \
     --host "$HOST" \
-    --gpu-memory-utilization 0.65 \
-    --max-model-len 16384 \
+    --gpu-memory-utilization 0.72 \
+    --max-model-len 32768 \
+    --limit-mm-per-prompt '{"image": 20}' \
     --trust-remote-code \
     --enable-prefix-caching \
     --served-model-name "$MODEL_PATH" "gemma4:31b"

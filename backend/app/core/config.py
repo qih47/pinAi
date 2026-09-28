@@ -44,7 +44,7 @@ class Settings(BaseSettings):
     MODEL_ROUTER: str = "/home/qisthi/models/gemma-4-31B-it-AWQ"        # Gemma4 Unified Engine (Call 1 & 1.1 JSON Routing via vLLM)
     MODEL_EMBEDDING: str = "mxbai-embed-large:latest"  # Embedding untuk RAG (Ollama)
 
-    NUM_CTX_CORE: int = 16384                # Standardisasi context window untuk Core Model (Cegah VRAM reload)
+    NUM_CTX_CORE: int = 32768                # Standardisasi context window untuk Core Model (32K Context)
     NUM_CTX_ROUTER: int = 4096               # Standardisasi context window untuk Router Model
 
     SIMILARITY_THRESHOLD: float = 0.75

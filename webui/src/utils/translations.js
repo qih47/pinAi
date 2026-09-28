@@ -998,6 +998,10 @@ export const translations = {
       THINKING_PROGRESS: "Sedang berpikir",
       PREPARING_RESPONSE: "✨ Merespons",
       SCANNING_ATTACHMENT: "👁️ Memindai file lampiran",
+      PROCESSING_ATTACHMENT_PAGES: "📑 Memproses {count} halaman (Hal. {start}–{end} dari {total} hal)",
+      ANALYZING_MULTIMODAL_LAYOUT: "👁️ Menganalisis visual multimodal & tata letak dokumen",
+      EXTRACTING_SUBSTANCE: "🧠 Mengekstraksi substansi penting & poin dokumen",
+      DRAFTING_SYNTHESIS: "✍️ Menyusun analisis & rangkuman jawaban",
       ANALYZING_DOC_PAGES: "🔍 Menganalisis {pages} halaman dokumen rujukan",
       SUMMARIZING_PAGES: "📑 Merangkum seluruh {pages} halaman dokumen",
       ANALYZING_CLAUSES_PAGES: "🔍 Menganalisis klausul terkait pada {pages} halaman",
@@ -2008,6 +2012,10 @@ export const translations = {
       THINKING_PROGRESS: "Thinking",
       PREPARING_RESPONSE: "✨ Responding",
       SCANNING_ATTACHMENT: "👁️ Scanning attachment files",
+      PROCESSING_ATTACHMENT_PAGES: "📑 Processing {count} pages (Page {start}–{end} of {total} pages)",
+      ANALYZING_MULTIMODAL_LAYOUT: "👁️ Analyzing multimodal visual & document layout",
+      EXTRACTING_SUBSTANCE: "🧠 Extracting key substance & document points",
+      DRAFTING_SYNTHESIS: "✍️ Drafting analysis & summary response",
       ANALYZING_DOC_PAGES: "🔍 Analyzing {pages} reference document pages",
       SUMMARIZING_PAGES: "📑 Summarizing all {pages} document pages",
       ANALYZING_CLAUSES_PAGES: "🔍 Analyzing related clauses across {pages} pages",
@@ -2226,6 +2234,10 @@ export function resolveStatusMessage(statusInput, language = 'id', explicitKey =
     if (cleanR.includes('menyusun jawaban') || cleanR.includes('merumuskan jawaban') || cleanR.includes('menyusun draf jawaban')) return stripDots(sseDict.DRAFTING_RESPONSE || '✍️ Drafting response');
     if (cleanR.includes('arsitektur file')) return stripDots(sseDict.DESIGNING_FILE_ARCHITECTURE || '💻 Designing file architecture');
     if (cleanR.includes('memindai file lampiran') || cleanR.includes('memindai dokumen lampiran')) return stripDots(sseDict.SCANNING_ATTACHMENT || '👁️ Scanning attachment files');
+    if (cleanR.includes('memproses') && cleanR.includes('halaman')) return stripDots(sseDict.PROCESSING_ATTACHMENT_PAGES || '📑 Processing attachment pages');
+    if (cleanR.includes('visual multimodal') || cleanR.includes('tata letak dokumen')) return stripDots(sseDict.ANALYZING_MULTIMODAL_LAYOUT || '👁️ Analyzing multimodal visual & document layout');
+    if (cleanR.includes('mengekstraksi substansi') || cleanR.includes('poin dokumen')) return stripDots(sseDict.EXTRACTING_SUBSTANCE || '🧠 Extracting key substance & document points');
+    if (cleanR.includes('menyusun analisis') || cleanR.includes('rangkuman jawaban')) return stripDots(sseDict.DRAFTING_SYNTHESIS || '✍️ Drafting analysis & summary response');
     if (cleanR.includes('mencari secara global')) return stripDots(sseDict.SEARCHING_GLOBAL || '🔄 Searching globally');
     if (cleanR.includes('uji kepatuhan')) return stripDots(sseDict.OPENING_COMPLIANCE_TEST || '🎯 Opening compliance test');
     if (cleanR.includes('dokumen sasaran') || cleanR.includes('analisis red team')) return stripDots(sseDict.OPENING_REDTEAM_DOC || '🕵️ Dissecting target document');

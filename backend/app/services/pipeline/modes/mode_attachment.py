@@ -169,6 +169,8 @@ class ModeAttachment:
         audit_is_last = True
         audit_next_start = None
         audit_next_end = None
+        summary_start_page = 1
+        summary_end_page = 1
 
         if pdf_file_path and os.path.exists(pdf_file_path):
             doc_id_key = str(os.path.basename(pdf_file_path))
@@ -186,7 +188,7 @@ class ModeAttachment:
 
             if text_map is None:
                 yield format_sse(status="📄 Memuat dokumen", status_key="DOC_LOADING", event_type=SSEEventType.STATUS)
-                cache_key = session_uuid or pdf_file_path
+                cache_key = pdf_file_path
                 text_map, all_base64_images, total_pages = await extract_and_ocr_document_async(pdf_file_path, cache_key=cache_key)
 
                 if brain:
@@ -200,36 +202,43 @@ class ModeAttachment:
 
             # ── Deteksi Intent: Audit / Proofreader vs Ringkasan vs Targeted QA ───
             explicit_pages = extract_explicit_pages_from_query(user_message, total_pages)
-            is_continuation = is_continuation_intent(user_message) and (
-                active_audit is not None or "audit" in user_message.lower() or "koreksi" in user_message.lower()
-            )
+            is_cont = is_continuation_intent(user_message)
+            active_mode = (active_audit.get("mode") if active_audit else "") or ""
 
-            # Jika user meminta audit lanjutan (contoh: tombol widget "Lanjut audit Halaman 16-18")
-            # atau audit dengan rentang halaman eksplisit (contoh: "Audit halaman 1-5"):
-            # Ini adalah MODE AUDIT penuh, bukan Targeted QA biasa.
-            is_audit_with_explicit_range = (
-                is_audit_intent(user_message) and (
-                    is_continuation or "lanjut" in user_message.lower() or len(explicit_pages) > 1 or active_audit is not None
-                )
-            )
-
-            if is_continuation or is_audit_with_explicit_range:
-                is_audit = True
-            elif explicit_pages and len(explicit_pages) == 1:
-                # User menanyakan 1 halaman spesifik secara eksplisit (contoh: "Halaman 4: apa ada typo?", "Tanya Halaman 4")
-                # Alihkan ke Targeted QA agar cepat dan fokus hanya pada 1 halaman tersebut
+            # Pemisahan mutlak: Jika ada sesi aktif di Session Brain dan user mengetik 'lanjut'
+            if is_cont and active_mode == "summary":
+                is_summary = True
                 is_audit = False
+                is_continuation = True
+            elif is_cont and (active_mode == "audit" or "audit" in user_message.lower() or "koreksi" in user_message.lower()):
+                is_audit = True
+                is_summary = False
+                is_continuation = True
+            elif is_summary_intent(user_message) and not explicit_pages:
+                is_summary = True
+                is_audit = False
+                is_continuation = False
+            elif explicit_pages and len(explicit_pages) == 1:
+                # 1 halaman spesifik secara eksplisit -> Targeted QA
+                is_audit = False
+                is_summary = False
+                is_continuation = False
+            elif is_audit_intent(user_message) or (is_cont and active_audit is not None):
+                is_audit = True
+                is_summary = False
+                is_continuation = is_cont
             else:
-                is_audit = is_audit_intent(user_message)
+                is_audit = False
+                is_summary = False
+                is_continuation = False
 
-            is_summary = is_summary_intent(user_message) and not is_audit and not explicit_pages
-
-            logger.info(f"[MODE_ATTACHMENT] PDF detected ({total_pages} pages). Intent: {'AUDIT_PROOFREAD' if is_audit else ('SUMMARY' if is_summary else 'TARGETED_QA')}")
+            logger.info(f"[MODE_ATTACHMENT] PDF detected ({total_pages} pages). Intent: {'AUDIT_PROOFREAD' if is_audit else ('SUMMARY' if is_summary else 'TARGETED_QA')} | Active Mode: {active_mode or 'None'} | Continuation: {is_continuation}")
 
             if is_audit:
-                # ── Mode Chunked Audit & Proofreader (Multi-Turn Batching) ──
+                # ── Mode Chunked Audit & Proofreader (Dynamic Vision Batching up to 20 Pages) ──
                 is_audit_mode = True
-                BATCH_SIZE = 5
+                MAX_AUDIT_BATCH = 20
+                BATCH_SIZE = min(MAX_AUDIT_BATCH, total_pages)
 
                 if explicit_pages and (is_continuation or is_audit_with_explicit_range):
                     # Gunakan rentang halaman yang tertera di pesan (contoh: "Lanjut audit Halaman 16-18")
@@ -252,8 +261,9 @@ class ModeAttachment:
                 audit_next_start = (end_idx + 1) if not audit_is_last else None
                 audit_next_end = min(end_idx + BATCH_SIZE, total_pages) if not audit_is_last else None
 
+                batch_type_desc = "Semua" if (start_idx == 0 and audit_is_last) else f"Halaman {audit_start_page}–{audit_end_page}"
                 yield format_sse(
-                    status=f"📑 Mengaudit Dokumen: Halaman {audit_start_page}–{audit_end_page} dari {total_pages} Halaman",
+                    status=f"📑 Mengaudit Dokumen: {batch_type_desc} dari {total_pages} Halaman (Full Vision)",
                     status_key="AUDITING_PAGES",
                     event_type=SSEEventType.STATUS
                 )
@@ -265,7 +275,7 @@ class ModeAttachment:
                         p_num = item.get("page_num", p) + 1
                         p_text = item.get("text", "").strip()
                         doc_builder.append(f"=== TEKS DOKUMEN HALAMAN {p_num} ===\n{p_text}")
-                    final_extracted_text = "\n\n".join(doc_builder)
+                final_extracted_text = "\n\n".join(doc_builder)
 
                 if all_base64_images and len(all_base64_images) > start_idx:
                     final_base64_images = all_base64_images[start_idx:end_idx]
@@ -283,32 +293,84 @@ class ModeAttachment:
                             "current_end": audit_end_page,
                             "current_batch_label": f"{audit_start_page}-{audit_end_page}",
                             "total_pages": total_pages,
-                            "batch_size": BATCH_SIZE
+                            "batch_size": BATCH_SIZE,
+                            "mode": "audit"
                         }))
 
             elif is_summary:
-                # Mode Rangkuman Dokumen Utuh
-                yield format_sse(status=f"📑 Merangkum seluruh {total_pages} halaman dokumen", status_key="SUMMARIZING_PAGES", event_type=SSEEventType.STATUS)
+                # ── Mode Rangkuman Dokumen Utuh (Safe Branching: Full Multimodal Vision) ──
+                MAX_SUMMARY_VISION_BATCH = 20
 
-                if total_pages <= 40:
-                    # Single-Pass Full Context
+                if total_pages <= MAX_SUMMARY_VISION_BATCH:
+                    # Sub-kasus B1: Single-Pass Full Multimodal Vision (<= 20 Halaman)
+                    yield format_sse(
+                        status=f"📑 Merangkum seluruh {total_pages} halaman dokumen (Full Multimodal Vision)",
+                        status_key="SUMMARIZING_PAGES",
+                        event_type=SSEEventType.STATUS
+                    )
+
                     doc_builder = []
                     for item in text_map:
                         p_idx = item.get("page_num", 0)
                         p_text = item.get("text", "").strip()
                         doc_builder.append(f"--- TEKS HALAMAN {p_idx+1} ---\n{p_text}")
                     final_extracted_text = "\n\n".join(doc_builder)
-                    final_base64_images = []
+                    final_base64_images = all_base64_images[:total_pages] if all_base64_images else []
+                    summary_start_page = 1
+                    summary_end_page = total_pages
+                    summary_is_last = True
+                    summary_next_start = None
+                    summary_next_end = None
                 else:
-                    # Map-Reduce / Skeleton mode untuk dokumen raksasa (> 40 halaman)
+                    # Sub-kasus B2: Multi-Turn Dynamic Vision Batching (> 20 Halaman)
+                    if is_continuation and active_audit and active_audit.get("mode") == "summary":
+                        start_idx = active_audit.get("current_end", 0)
+                        end_idx = min(start_idx + MAX_SUMMARY_VISION_BATCH, total_pages)
+                    else:
+                        start_idx = 0
+                        end_idx = min(MAX_SUMMARY_VISION_BATCH, total_pages)
+
+                    if start_idx >= total_pages:
+                        start_idx = 0
+                        end_idx = min(MAX_SUMMARY_VISION_BATCH, total_pages)
+
+                    summary_start_page = start_idx + 1
+                    summary_end_page = end_idx
+                    summary_is_last = (end_idx >= total_pages)
+                    summary_next_start = (end_idx + 1) if not summary_is_last else None
+                    summary_next_end = min(end_idx + MAX_SUMMARY_VISION_BATCH, total_pages) if not summary_is_last else None
+
+                    yield format_sse(
+                        status=f"📑 Merangkum Halaman {summary_start_page}–{summary_end_page} dari {total_pages} Halaman (Multimodal Vision)",
+                        status_key="SUMMARIZING_PAGES",
+                        event_type=SSEEventType.STATUS
+                    )
+
                     doc_builder = []
-                    for item in text_map[:60]:
-                        p_idx = item.get("page_num", 0)
-                        p_text = item.get("text", "").strip()
-                        lines = p_text.splitlines()[:15]
-                        doc_builder.append(f"--- OUTLINE HALAMAN {p_idx+1} ---\n" + "\n".join(lines))
+                    for p in range(start_idx, end_idx):
+                        if p < len(text_map):
+                            item = text_map[p]
+                            p_num = item.get("page_num", p) + 1
+                            p_text = item.get("text", "").strip()
+                            doc_builder.append(f"--- TEKS HALAMAN {p_num} ---\n{p_text}")
                     final_extracted_text = "\n\n".join(doc_builder)
-                    final_base64_images = []
+                    final_base64_images = all_base64_images[start_idx:end_idx] if all_base64_images else []
+
+                    if brain:
+                        if summary_is_last:
+                            brain.clear_active_audit()
+                        else:
+                            asyncio.create_task(brain.save_active_audit({
+                                "doc_id": doc_id_key,
+                                "pdf_file_path": pdf_file_path or "",
+                                "file_name": os.path.basename(pdf_file_path or "dokumen.pdf"),
+                                "current_start": summary_start_page,
+                                "current_end": summary_end_page,
+                                "current_batch_label": f"{summary_start_page}-{summary_end_page}",
+                                "total_pages": total_pages,
+                                "batch_size": MAX_SUMMARY_VISION_BATCH,
+                                "mode": "summary"
+                            }))
             else:
                 # Mode Targeted QA (Two-Stage Context-Aware Retrieval)
                 yield format_sse(status=f"🔍 Menganalisis klausul terkait pada {total_pages} halaman", status_key="ANALYZING_CLAUSES_PAGES", event_type=SSEEventType.STATUS)
@@ -359,6 +421,42 @@ class ModeAttachment:
                 f"[KONTEN DOKUMEN BATCH HALAMAN {audit_start_page}–{audit_end_page} (Total {total_pages} Halaman)]:\n"
                 f"{final_extracted_text}"
             )
+        elif is_summary:
+            pdf_name = os.path.basename(pdf_file_path) if pdf_file_path else "dokumen.pdf"
+            if total_pages <= 20:
+                augmented_user_message = (
+                    f"Rangkumlah dokumen '{pdf_name}' (Total {total_pages} Halaman) secara komprehensif, eksekutif, dan mendalam.\n\n"
+                    f"PENTING: Seluruh {total_pages} halaman dokumen telah dilampirkan langsung dalam format visual resolusi tinggi (image). "
+                    f"Bacalah visual gambar dokumen asli untuk menyerap teks, bagan, tabel, stempel, dan tanda tangan dengan akurat tanpa kesalahan OCR.\n"
+                    f"Awali responsmu dengan gaya aktif dan ramah menyapa pegawai: 'Baik {employee_name}, mari kita rangkum dokumen '{pdf_name}' ({total_pages} Halaman)...'\n\n"
+                    f"Pertanyaan / Instruksi Pengguna: {user_message}\n\n"
+                    f"[PANDUAN KONTINUITAS TEKS DOKUMEN]:\n"
+                    f"{final_extracted_text}"
+                )
+            else:
+                summary_label = f"Halaman {summary_start_page}–{summary_end_page}"
+                last_notice = (
+                    "\n\nIni adalah bagian terakhir dokumen! Setelah memaparkan intisari bagian ini, "
+                    "kamu WAJIB menyajikan 'Kesimpulan & Sintesis Eksekutif Menyeluruh' dari seluruh dokumen (Halaman 1 s/d "
+                    f"{total_pages}) yang merangkum substansi pokok, poin-poin krusial, dan implikasi penting secara utuh!"
+                    if summary_is_last else
+                    f"\n\nCatatan: Dokumen memiliki total {total_pages} halaman. "
+                    f"Di akhir jawabanmu, beri ajakan ramah dan jelas kepada pengguna untuk melanjutkan (contoh: ketik 'Lanjut' untuk merangkum Halaman {summary_next_start}–{summary_next_end})."
+                )
+                opener_guidance = (
+                    f"Awali responsmu dengan menyatakan: 'Melanjutkan rangkuman dokumen '{pdf_name}' untuk bagian {summary_label} dari total {total_pages} halaman...'"
+                    if is_continuation else
+                    f"Awali responsmu dengan menyatakan: 'Baik {employee_name}, mari kita rangkum dokumen '{pdf_name}' (Total {total_pages} Halaman). Karena dokumen ini cukup panjang, saya menganalisis visual resolusi tinggi untuk {summary_label} terlebih dahulu...'"
+                )
+                augmented_user_message = (
+                    f"Tugas: Buat rangkuman substansial dokumen '{pdf_name}' untuk bagian {summary_label} dari total {total_pages} Halaman.{last_notice}\n\n"
+                    f"GAYA BAHASA: {opener_guidance}\n"
+                    f"PENTING: Visual gambar halaman {summary_label} telah dilampirkan langsung dalam format visual resolusi tinggi (image). "
+                    f"Bacalah visual gambar dokumen asli secara teliti (tabel, stempel, klausul penting).\n\n"
+                    f"Pertanyaan / Instruksi Pengguna: {user_message}\n\n"
+                    f"[PANDUAN KONTINUITAS TEKS HALAMAN {summary_label}]:\n"
+                    f"{final_extracted_text}"
+                )
         elif final_extracted_text:
             pdf_name = os.path.basename(pdf_file_path) if pdf_file_path else "dokumen.pdf"
             augmented_user_message = (
@@ -370,9 +468,9 @@ class ModeAttachment:
 
         elif text_contents:
             text_block = "\n\n".join(text_contents)
-            # Smart context budgeting to comfortably fit within 16k context window (max ~42k chars text)
-            if len(text_block) > 42000:
-                text_block = text_block[:42000] + "\n\n...[Teks lampiran panjang diringkas ke batas optimal 16K context]..."
+            # Smart context budgeting to comfortably fit within 32k context window (max ~55k chars text)
+            if len(text_block) > 55000:
+                text_block = text_block[:55000] + "\n\n...[Teks lampiran panjang diringkas ke batas optimal 32K context]..."
             augmented_user_message = (
                 f"{user_message}\n\n"
                 f"[KONTEN FILE TERLAMPIR]\n{text_block}"
@@ -398,7 +496,10 @@ class ModeAttachment:
         # Masukkan gambar visual (baik dari PDF pages maupun direct images)
         all_imgs = final_base64_images + direct_images_b64
         if all_imgs:
-            user_payload["images"] = all_imgs[:4]
+            # Safe branching: mode audit atau summary diperbolehkan hingga 20 gambar visual (sesuai limit-mm-per-prompt=20)
+            # Mode Targeted QA dibatasi hingga 8 gambar untuk efisiensi
+            max_img_allow = 20 if (is_audit_mode or is_summary) else 8
+            user_payload["images"] = all_imgs[:max_img_allow]
 
         # Gantikan atau tambahkan pesan user terakhir
         replaced = False
@@ -410,41 +511,117 @@ class ModeAttachment:
         if not replaced:
             stream_messages.append(user_payload)
 
-        # ── 4. Fixed 16K Token Budget (Zero VRAM Eviction / Zero Reload) ───────────
-        # Mengunci num_ctx di 16384 persis sama dengan seluruh mode lainnya
-        num_ctx = 16384
-        logger.info(f"[MODE_ATTACHMENT] Fixed 16K context size locked: {num_ctx}")
+        # ── 4. Fixed 32K Token Budget (Zero VRAM Eviction / Zero Reload) ───────────
+        # Mengunci num_ctx di 32768 persis sama dengan seluruh mode lainnya
+        num_ctx = getattr(settings, "NUM_CTX_CORE", 32768)
+        logger.info(f"[MODE_ATTACHMENT] Fixed 32K context size locked: {num_ctx}")
         target_model = getattr(settings, "MODEL_PERSONA", "gemma4:31b")
-
-        # Real-time status SSE sebelum TTFT Call 2
-        yield format_sse(status="✍️ Menyusun analisis lampiran...", status_key="DRAFTING_RESPONSE", event_type=SSEEventType.STATUS)
 
         t_pre_elapsed = (time.time() - t_pre_start) * 1000
         logger.info(f"[TIMING_BENCHMARK] [PRE_CALL2_ATTACHMENT] Done in {t_pre_elapsed:.2f}ms | Starting Call 2 stream")
 
-        buffer = ""
-        started_streaming = False
-        try:
-            async for chunk_line in stream_ollama_chat(
-                model_name=target_model,
-                messages=stream_messages,
-                request=request,
-                temperature=0.7,
-                num_ctx=num_ctx,
-                num_predict=8192,
-                is_thinking=is_thinking,
-                stream_speed=0.01,
-                employee_name=employee_name
-            ):
-                if not started_streaming:
-                    started_streaming = True
-                    yield format_sse(status="", event_type=SSEEventType.STATUS)
+        # ── Dynamic Progress Status Carousel Selama Menunggu TTFT LLM Prefill ──
+        status_steps = []
+        if is_summary and total_pages > 0:
+            batch_count = summary_end_page - summary_start_page + 1
+            status_steps = [
+                (1.1, f"📑 Memproses {batch_count} halaman (Hal. {summary_start_page}–{summary_end_page} dari {total_pages} hal)", "PROCESSING_ATTACHMENT_PAGES"),
+                (1.3, "👁️ Menganalisis visual multimodal & tata letak dokumen", "ANALYZING_MULTIMODAL_LAYOUT"),
+                (1.3, "🧠 Mengekstraksi substansi penting & poin dokumen", "EXTRACTING_SUBSTANCE"),
+                (1.5, "✍️ Menyusun analisis & rangkuman jawaban", "DRAFTING_SYNTHESIS")
+            ]
+        elif is_audit_mode and total_pages > 0:
+            batch_count = audit_end_page - audit_start_page + 1
+            status_steps = [
+                (1.1, f"📑 Mengaudit {batch_count} halaman (Hal. {audit_start_page}–{audit_end_page} dari {total_pages} hal)", "AUDITING_PAGES"),
+                (1.3, "👁️ Memindai klausul & tata letak dokumen", "SCANNING_REDTEAM_CLAUSES"),
+                (1.3, "⚖️ Menguji kepatuhan skenario & mitigasi risiko", "ANALYZING_COMPLIANCE_SCENARIO"),
+                (1.5, "✍️ Menyusun catatan audit & rekomendasi", "DRAFTING_RESPONSE")
+            ]
+        elif selected_pages:
+            status_steps = [
+                (1.1, f"🔍 Menganalisis klausul pada {len(selected_pages)} halaman terpilih", "ANALYZING_CLAUSES_PAGES"),
+                (1.3, "👁️ Membaca konteks multimodal & referensi", "ANALYZING_MULTIMODAL_LAYOUT"),
+                (1.5, "✍️ Menyusun jawaban komprehensif", "DRAFTING_RESPONSE")
+            ]
+        else:
+            img_c = len(all_imgs) if all_imgs else 1
+            status_steps = [
+                (1.1, f"👁️ Memproses {img_c} berkas visual lampiran", "SCANNING_ATTACHMENT"),
+                (1.3, "🧠 Menganalisis konteks visual & teks dokumen", "ANALYZING_MULTIMODAL_LAYOUT"),
+                (1.5, "✍️ Menyusun jawaban", "DRAFTING_RESPONSE")
+            ]
 
-                buffer += chunk_line
-                yield chunk_line
+        # Antrean async untuk mengirim status progresif secara real-time tanpa memblokir stream
+        status_queue = asyncio.Queue()
+        stop_ticker = asyncio.Event()
+
+        async def ticker_worker():
+            try:
+                for delay, status_text, status_key in status_steps:
+                    if stop_ticker.is_set():
+                        break
+                    await status_queue.put(("status", format_sse(status=status_text, status_key=status_key, event_type=SSEEventType.STATUS)))
+                    try:
+                        await asyncio.wait_for(stop_ticker.wait(), timeout=delay)
+                        break
+                    except asyncio.TimeoutError:
+                        continue
+            except asyncio.CancelledError:
+                pass
+            except Exception as e_tick:
+                logger.debug(f"[MODE_ATTACHMENT] Ticker worker exception: {e_tick}")
+
+        async def stream_worker():
+            try:
+                async for chunk_line in stream_ollama_chat(
+                    model_name=target_model,
+                    messages=stream_messages,
+                    request=request,
+                    temperature=0.7,
+                    num_ctx=num_ctx,
+                    num_predict=8192,
+                    is_thinking=is_thinking,
+                    stream_speed=0.01,
+                    employee_name=employee_name
+                ):
+                    if not stop_ticker.is_set():
+                        stop_ticker.set()
+                        # Bersihkan status begitu token streaming pertama tiba
+                        await status_queue.put(("clear_status", format_sse(status="", event_type=SSEEventType.STATUS)))
+                    await status_queue.put(("chunk", chunk_line))
+            except Exception as err:
+                await status_queue.put(("error", err))
+            finally:
+                if not stop_ticker.is_set():
+                    stop_ticker.set()
+                await status_queue.put(("eof", None))
+
+        ticker_task = asyncio.create_task(ticker_worker())
+        stream_task = asyncio.create_task(stream_worker())
+
+        buffer = ""
+        try:
+            while True:
+                item_type, data = await status_queue.get()
+                if item_type == "eof":
+                    break
+                elif item_type == "error":
+                    raise data
+                elif item_type == "chunk":
+                    buffer += data
+                    yield data
+                elif item_type in ("status", "clear_status"):
+                    yield data
         except Exception as e:
             logger.error(f"[MODE_ATTACHMENT] Execution error: {str(e)}", exc_info=True)
             yield format_sse(
                 chunk=f"\n\n[SYSTEM ERROR]: Terjadi kesalahan saat memproses lampiran: {str(e)}",
                 event_type=SSEEventType.ERROR
             )
+        finally:
+            stop_ticker.set()
+            if not ticker_task.done():
+                ticker_task.cancel()
+            if not stream_task.done():
+                stream_task.cancel()

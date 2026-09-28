@@ -121,7 +121,13 @@ async def extract_document(
     Returns:
         ExtractedDocument
     """
-    key = cache_key or file_path
+    # Guard: Cegah session_uuid murni digunakan sebagai cache_key dokumen fisik
+    import re
+    if cache_key and re.match(r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$', str(cache_key).strip()):
+        logger.warning(f"[EXTRACTOR] 🛡️ Ignored raw session_uuid as document cache key; using physical file_path instead: {os.path.basename(file_path)}")
+        key = file_path
+    else:
+        key = cache_key or file_path
 
     if use_cache:
         # L1 check
