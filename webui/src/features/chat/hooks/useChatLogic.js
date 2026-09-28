@@ -4,6 +4,7 @@ import { useChatStore, API_BASE, getUploadUrl } from "../../../stores/chatStore"
 import { useChatAuthStore } from "../../../stores/authStore";
 import { uploadDocuments } from "../../../services/endpoints";
 import useToast from "../../../hooks/useToast";
+import useStorageStore from "../../../stores/useStorageStore";
 import { styles, lightColors, darkColors } from "../chatPage.styles";
 import { translations } from "../../../utils/translations";
 
@@ -1044,6 +1045,13 @@ export function useChatLogic({ isGuest,
         setIsUploadingFile(false);
         setInputShake(true); // Aktifkan animasi getar untuk memberi isyarat ke user
         setTimeout(() => setInputShake(false), 500);
+
+        const errorDetail = err.response?.data?.detail;
+        if (errorDetail?.error_code === "STORAGE_QUOTA_EXCEEDED" || err.response?.data?.error_code === "STORAGE_QUOTA_EXCEEDED") {
+          useStorageStore.getState().openQuotaModal();
+        } else {
+          toast.error(errorDetail || err.message || "Gagal mengunggah berkas");
+        }
         return; // Hentikan pipeline agar chat tidak terkirim pincang tanpa file
       } finally {
         setIsUploadingFile(false);

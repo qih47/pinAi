@@ -81,6 +81,7 @@ def _sanitize_web_query(query: str, user_message: str = "") -> str:
     Pembersihan teknis murni untuk web search query hasil penalaran LLM Router:
     Menghapus tanda kutip pembungkus string, karakter baris baru/tab, dan spasi berlebih
     tanpa memotong kata kunci semantik esensial (seperti 'berita', 'terbaru', 'informasi', 'kabar').
+    Sekaligus menyelaraskan jangkar tahun aktual secara dinamis (universal).
     """
     if not query:
         return ""
@@ -88,6 +89,13 @@ def _sanitize_web_query(query: str, user_message: str = "") -> str:
     cleaned = re.sub(r'^["\']+|["\']+$', '', cleaned).strip()
     cleaned = re.sub(r'[\r\n\t]+', ' ', cleaned)
     cleaned = re.sub(r'\s+', ' ', cleaned).strip()
+    
+    try:
+        from backend.app.services.web_tools.web_search import normalize_temporal_web_query
+        cleaned = normalize_temporal_web_query(cleaned, user_message=user_message)
+    except Exception as e:
+        logger.debug(f"[Router Query] Temporal normalize skipped: {e}")
+        
     return cleaned or query.strip()
 
 
@@ -1738,9 +1746,12 @@ async def generate_call1_web_queries(user_message: str, request: Optional[Reques
     model = getattr(settings, "MODEL_ROUTER", "/home/qisthi/models/gemma-4-31B-it-AWQ")
     router_ctx = getattr(settings, "NUM_CTX_ROUTER", 4096)
 
+    now = datetime.now()
     prompt = (
         "Kamu adalah Cakra Search Query Optimizer.\n"
+        f"JANGKAR TEMPORAL: Tahun berjalan saat ini adalah {now.year} (Hari ini: {now.strftime('%d-%m-%Y')}).\n"
         "Tugas: Ubah pesan pengguna yang santai, penuh keluhan, emosional, atau bahasa gaul menjadi 1-2 kata kunci pencarian web/Google yang bersih, objektif, dan efektif mencari berita/fakta terpercaya.\n"
+        f"ATURAN TAHUN: Jika pesan menanyakan hal terkini/terbaru/viral, gunakan tahun {now.year} (atau rentang {now.year-1}-{now.year}) atau kata kunci bersih tanpa tahun. DILARANG KERAS menyematkan tahun lampau ({now.year-2} ke bawah) ke dalam query kecuali diminta eksplisit oleh user.\n"
         f'Pesan user: "{user_message.strip()}"\n'
         "Format output WAJIB JSON murni tanpa markdown:\n"
         '{"queries": ["kata kunci 1", "kata kunci 2"]}'
@@ -1762,7 +1773,7 @@ async def generate_call1_web_queries(user_message: str, request: Optional[Reques
         duration_ms = (datetime.now() - t0).total_seconds() * 1000
         queries = res_json.get("queries") if isinstance(res_json, dict) else None
         if isinstance(queries, list) and queries:
-            clean_queries = [sanitize_web_query(str(q)) for q in queries if str(q).strip()]
+            clean_queries = [sanitize_web_query(str(q), user_message=user_message) for q in queries if str(q).strip()]
             clean_queries = [q for q in clean_queries if q]
             if clean_queries:
                 logger.info(f"⚡ [CALL1_WEB_QUERIES] Generated {clean_queries} in {duration_ms:.1f}ms (from: '{user_message}')")

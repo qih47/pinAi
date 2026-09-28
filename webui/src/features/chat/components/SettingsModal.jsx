@@ -4,7 +4,8 @@ import { useChatStore, API_BASE } from "../../../stores/chatStore";
 import { getApiBase } from "../../../services/endpoints";
 import apiClient from "../../../services/apiClient";
 import { useChatAuthStore } from "../../../stores/authStore";
-import { Mail, Cloud, Lock, LogOut, CheckCircle2, User, KeyRound, ArrowRight } from "lucide-react";
+import { Mail, Cloud, Lock, LogOut, CheckCircle2, User, KeyRound, ArrowRight, HardDrive } from "lucide-react";
+import StorageTab from "./SettingsModal/StorageTab";
 
 export default function SettingsModal({
   isOpen,
@@ -16,9 +17,16 @@ export default function SettingsModal({
   setLanguage,
   setDarkMode,
   userData,
-  triggerLogout
+  triggerLogout,
+  initialTab = "general"
 }) {
-  const [activeTab, setActiveTab] = useState("general");
+  const [activeTab, setActiveTab] = useState(initialTab || "general");
+
+  useEffect(() => {
+    if (isOpen && initialTab) {
+      setActiveTab(initialTab);
+    }
+  }, [isOpen, initialTab]);
   const store = useChatStore();
   const checkSession = useChatAuthStore((state) => state.checkSession);
   const t = translations[language]?.settings || translations.id.settings;
@@ -286,6 +294,11 @@ export default function SettingsModal({
           <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
           <circle cx="12" cy="7" r="4"></circle>
         </svg>
+      )
+    },
+    {
+      id: "storage", label: t.storage || "Penyimpanan & Data", icon: (
+        <HardDrive size={18} />
       )
     },
     {
@@ -1085,6 +1098,8 @@ export default function SettingsModal({
             )}
           </div>
         );
+      case "storage":
+        return <StorageTab darkMode={darkMode} language={language} />;
       default:
         return null;
     }

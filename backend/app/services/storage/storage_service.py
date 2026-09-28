@@ -108,10 +108,10 @@ class StorageService:
                     SELECT 
                         COUNT(DISTINCT cs.id) as session_count,
                         COUNT(cm.id) as message_count,
-                        COALESCE(SUM(pg_column_size(cm.content)), 0) + 
-                        COALESCE(SUM(pg_column_size(cs.title)), 0) as chat_size_bytes
+                        COALESCE(SUM(pg_column_size(cm.message_text)), 0) + 
+                        COALESCE(SUM(pg_column_size(cs.judul)), 0) as chat_size_bytes
                     FROM chat_sessions cs
-                    LEFT JOIN chat_messages cm ON cs.session_uuid = cm.session_uuid
+                    LEFT JOIN chat_messages cm ON cs.id = cm.session_id
                     WHERE cs.npp = $1 AND cs.is_deleted = FALSE
                 """, clean_npp)
 
@@ -124,7 +124,7 @@ class StorageService:
                     SELECT 
                         COUNT(DISTINCT cr.id) as created_rooms_count,
                         COALESCE(SUM(pg_column_size(cr.document_content)), 0) +
-                        COALESCE(SUM(pg_column_size(cm.content)), 0) as collab_size_bytes
+                        COALESCE(SUM(pg_column_size(cm.message_text)), 0) as collab_size_bytes
                     FROM collab_rooms cr
                     LEFT JOIN collab_messages cm ON cr.id = cm.room_id
                     WHERE cr.created_by = $1

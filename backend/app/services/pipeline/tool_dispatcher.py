@@ -36,7 +36,7 @@ class ToolResult:
 # 1. TOOL: WEB SEARCH & LIVE SCRAPING
 # ═══════════════════════════════════════════════════════════════════════════════
 
-async def execute_web_search_tool_stream(query: str, reason: str = "") -> AsyncGenerator[Union[Tuple[str, str], ToolResult], None]:
+async def execute_web_search_tool_stream(query: str, reason: str = "", user_message: str = "") -> AsyncGenerator[Union[Tuple[str, str], ToolResult], None]:
     """Eksekusi pencarian web SearXNG + Reranking + Scraping 2 tautan teratas dengan status progresif."""
     from backend.app.services.web_tools.web_search import (
         perform_web_search,
@@ -45,7 +45,7 @@ async def execute_web_search_tool_stream(query: str, reason: str = "") -> AsyncG
     )
     from backend.app.services.web_tools.url_reader import fetch_webpage_content
 
-    clean_query = sanitize_web_query(query.strip()) or query.strip()
+    clean_query = sanitize_web_query(query.strip(), user_message=user_message) or query.strip()
     intent_desc = reason.strip() if reason.strip() else f"Menelusuri informasi web: '{clean_query}'"
     logger.info(f"[TOOL_DISPATCHER] 🌐 Executing web_search for query: '{clean_query}'")
 
@@ -1102,7 +1102,7 @@ async def dispatch_agentic_tool_stream(
     reason_val = parsed_json.get("reason") or parsed_json.get("intent") or ""
 
     if tool_clean in ("websearch", "web_search"):
-        async for item in execute_web_search_tool_stream(query_val, reason=reason_val):
+        async for item in execute_web_search_tool_stream(query_val, reason=reason_val, user_message=user_message):
             yield item
 
     elif tool_clean in ("docsearch", "doc_search", "rag_search", "rag"):

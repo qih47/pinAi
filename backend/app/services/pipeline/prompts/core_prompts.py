@@ -71,6 +71,13 @@ Jika user bertanya lanjutan dengan kata ganti umum, rujuk entitas sebelumnya di 
 {{ context_history_str }}
 {% endif %}
 
+=== JANGKAR TAHUN & WAKTU SAAT INI ===
+• TAHUN BERJALAN SAAT INI: {{ current_year }} ({{ current_date_str }})
+• ATURAN TEMPORAL & QUERY GENERATION:
+  - Tahun berjalan aktual saat ini adalah {{ current_year }}.
+  - DILARANG MENGGUNAKAN tahun lampau (seperti {{ current_year - 2 }}) sebagai acuan waktu "sekarang" atau "terbaru", kecuali user secara eksplisit meminta tahun lampau tersebut di pesannya.
+  - Untuk topik tren terkini, isu yang sedang viral, atau perkembangan terbaru: gunakan tahun {{ current_year }} (atau rentang {{ current_year - 1 }}-{{ current_year }}), atau gunakan kata kunci pencarian bersih tanpa embel-embel tahun lampau.
+
 === PESAN USER ===
 {{ user_message }}
 
@@ -101,6 +108,14 @@ def build_call1_routing_prompt(
     has_prior_url_context = bool(precheck.get("_visited_urls")) or bool(precheck.get("has_url_context"))
     has_prior_doc_context = bool(precheck.get("_session_chunks_text")) or bool(precheck.get("_retrieved_session_chunks_text"))
     
+    from datetime import datetime
+    from backend.app.services.ambient.weather_service import _HARI_INDONESIA, _BULAN_INDONESIA
+    now = datetime.now()
+    current_year = now.year
+    hari_ini = _HARI_INDONESIA[now.weekday()]
+    bulan_ini = _BULAN_INDONESIA[now.month]
+    current_date_str = f"{hari_ini}, {now.day} {bulan_ini} {now.year}"
+
     return prompt_manager.render(
         name="CALL1_ROUTING_PROMPT",
         user_message=user_message,
@@ -113,6 +128,8 @@ def build_call1_routing_prompt(
         has_prior_url_context=has_prior_url_context,
         previous_topic=previous_topic or precheck.get("previous_topic"),
         previous_subject=previous_subject or precheck.get("previous_subject"),
+        current_year=current_year,
+        current_date_str=current_date_str,
     )
 
 
@@ -286,6 +303,12 @@ PANDUAN PEMANGGILAN ALAT MANDIRI:
 
 3. DATA DUNIA LUAR & FAKTA TERKINI (```websearch):
    • Panggil jika: percakapan membutuhkan berita publik terkini, informasi dunia luar, kurs/data dinamis, atau riset online umum (yang BUKAN berasal dari URL yang sudah diberikan di pesan).
+   • 🌐 PRINSIP JANGKAR WAKTU DINAMIS (UNIVERSAL TEMPORAL GROUNDING):
+     - Rujuk tahun berjalan aktual pada blok [FAKTA REALTIME LINGKUNGAN PENGGUNA] sebagai patokan waktu 'saat ini'.
+     - DILARANG KERAS mengasumsikan cutoff training data lama (tahun-tahun lampau) sebagai kondisi sekarang.
+     - Jika topik apapun menanyakan kondisi yang 'terbaru', 'terkini', 'sedang tren', atau 'viral':
+       1. Prioritaskan kata kunci alami tanpa penyebutan angka tahun, AGAR mesin pencari menangkap indeks berita dan ulasan paling mutakhir secara organik.
+       2. Jika penyebutan tahun dibutuhkan untuk presisi indeks waktu, WAJIB menggunakan tahun berjalan aktual saat ini atau rentang satu tahun ke belakang (Tahun Lalu - Tahun Ini). DILARANG KERAS mundur ke dua tahun lalu atau lebih lama, kecuali pengguna secara eksplisit meminta tahun historis tersebut.
    • Format:
    ```websearch
    {"query": "kata kunci pencarian", "intent": "alasan penelusuran web"}

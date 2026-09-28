@@ -10,8 +10,10 @@ import asyncio
 
 from backend.app.core.database import get_db
 from backend.app.api.endpoints.auth import verify_session
+from backend.app.api.dependencies.auth import get_current_user_npp
 from backend.app.core.database import get_hris_db
 from backend.app.utils.security_firewall import validate_attachment_security
+from backend.app.services.storage.storage_service import StorageService
 
 router = APIRouter()
 logger = logging.getLogger("CAKRA_USER")
@@ -497,3 +499,100 @@ async def complete_onboarding(req: OnboardingRequest):
             "communication_style": curr_settings.get("communication_style", "formal_saya_anda"),
         }
     }
+
+
+# ── Storage Management Endpoints ──────────────────────────────────────────────
+
+@router.get("/storage/stats")
+async def get_storage_stats(
+    npp: Optional[str] = Depends(get_current_user_npp),
+    force_refresh: bool = Query(False),
+):
+    """Mendapatkan statistik kapasitas dan rincian penggunaan storage user (5.0 GB Quota)."""
+    if not npp:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    try:
+        stats = await StorageService.get_user_storage_stats(npp, force_refresh=force_refresh)
+        return {"status": "success", "data": stats}
+    except Exception as e:
+        logger.error(f"Error getting storage stats for NPP {npp}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/storage/purge-attachments")
+async def purge_attachments(
+    npp: Optional[str] = Depends(get_current_user_npp),
+):
+    """
+    Membersihkan semua file lampiran dan dokumen fisik di direktori sesi.
+    Riwayat pesan chat di database tetap utuh dan tersimpan.
+    """
+    if not npp:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    try:
+        res = await StorageService.purge_attachments_and_cache(npp)
+        return {"status": "success", "data": res}
+    except Exception as e:
+        logger.error(f"Error purging attachments for NPP {npp}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/storage/purge-artifacts")
+async def purge_artifacts(
+    npp: Optional[str] = Depends(get_current_user_npp),
+):
+    """Membersihkan file draf dokumen dan artefak AI."""
+    if not npp:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    try:
+        res = await StorageService.purge_artifacts(npp)
+        return {"status": "success", "data": res}
+    except Exception as e:
+        logger.error(f"Error purging artifacts for NPP {npp}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/storage/clear-chats")
+async def clear_chats(
+    npp: Optional[str] = Depends(get_current_user_npp),
+):
+    """Menghapus semua riwayat percakapan pribadi."""
+    if not npp:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    try:
+        res = await StorageService.clear_private_chats(npp)
+        return {"status": "success", "data": res}
+    except Exception as e:
+        logger.error(f"Error clearing chats for NPP {npp}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/storage/clear-collabs")
+async def clear_collabs(
+    npp: Optional[str] = Depends(get_current_user_npp),
+):
+    """Menghapus ruang kolaborasi yang dibuat oleh user."""
+    if not npp:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    try:
+        res = await StorageService.clear_collab_data(npp)
+        return {"status": "success", "data": res}
+    except Exception as e:
+        logger.error(f"Error clearing collabs for NPP {npp}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/storage/wipe-all")
+async def wipe_all(
+    npp: Optional[str] = Depends(get_current_user_npp),
+):
+    """Pembersihan menyeluruh (Percakapan, Lampiran, Artefak, dan Collab)."""
+    if not npp:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    try:
+        res = await StorageService.wipe_all_user_data(npp)
+        return {"status": "success", "data": res}
+    except Exception as e:
+        logger.error(f"Error wiping all data for NPP {npp}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+

@@ -7,12 +7,14 @@ import ScrollBottomButton from "./ChatInputArea/ScrollBottomButton";
 import IsolatedDocBanner from "./ChatInputArea/IsolatedDocBanner";
 import AttachmentPreview from "./ChatInputArea/AttachmentPreview";
 import useNextcloudStore from "../../../stores/nextcloudStore";
-import { Paperclip, Cloud, Globe, FileText, Code2, Target, X, BarChart3, Workflow, FilePlus, Mail } from "lucide-react";
+import { Paperclip, Cloud, Globe, FileText, Code2, Target, X, BarChart3, Workflow, FilePlus, Mail, AlertTriangle, HardDrive } from "lucide-react";
 import VoiceButton from "./ChatInputArea/VoiceButton";
 import PlusActionMenu from "./ChatInputArea/PlusActionMenu";
 import { translations } from "../../../utils/translations";
 import InteractiveWizardWidget from "./InteractiveWizardWidget";
 import HintSuggestions from "./HintSuggestions";
+import StorageQuotaModal from "./StorageQuotaModal";
+import useStorageStore from "../../../stores/useStorageStore";
 
 export default function ChatInputArea({
   theme,
@@ -65,6 +67,22 @@ export default function ChatInputArea({
   const activeIsolatedDocId = useChatStore(state => state.activeIsolatedDocId);
   const targetedPdfContext = useChatStore(state => state.targetedPdfContext);
   const clearTargetedPdfContext = useChatStore(state => state.clearTargetedPdfContext);
+
+  const storageStats = useStorageStore((state) => state.storageStats);
+  const fetchStorageStats = useStorageStore((state) => state.fetchStorageStats);
+  const dismissedWarningBanner = useStorageStore((state) => state.dismissedWarningBanner);
+  const dismissBanner = useStorageStore((state) => state.dismissBanner);
+  const isStorageQuotaModalOpen = useStorageStore((state) => state.isStorageQuotaModalOpen);
+  const closeQuotaModal = useStorageStore((state) => state.closeQuotaModal);
+  const openSettingsModal = useStorageStore((state) => state.openSettingsModal);
+
+  useEffect(() => {
+    fetchStorageStats();
+  }, [fetchStorageStats]);
+
+  const showFloatingStorageWarning = Boolean(
+    storageStats && storageStats.used_percentage >= 90 && !dismissedWarningBanner
+  );
 
   // Auto-expand hints whenever activeModeTag changes
   useEffect(() => {
@@ -353,6 +371,79 @@ export default function ChatInputArea({
             />
           </div>
         )}
+
+        {/* ⚠️ FLOATING SUBTLE STORAGE WARNING BANNER (>= 90%) */}
+        {showFloatingStorageWarning && (
+          <div
+            style={{
+              marginBottom: "8px",
+              padding: "7px 14px",
+              borderRadius: "14px",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              background: darkMode ? "rgba(239, 68, 68, 0.15)" : "rgba(254, 242, 242, 0.95)",
+              border: `1px solid ${darkMode ? "rgba(239, 68, 68, 0.35)" : "rgba(252, 165, 165, 0.6)"}`,
+              backdropFilter: "blur(12px)",
+              color: darkMode ? "#fca5a5" : "#b91c1c",
+              fontSize: "12px",
+              boxShadow: "0 2px 10px rgba(0,0,0,0.06)",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              <AlertTriangle size={15} className="animate-pulse" style={{ flexShrink: 0 }} />
+              <span>
+                {(translations[language]?.chat?.storageWarningBanner || "Penyimpanan Cakra AI Anda telah mencapai {pct}%.")
+                  .replace("{pct}", storageStats?.used_percentage)
+                  .replace("{used}", ((storageStats?.used_bytes || 0) / (1024 * 1024 * 1024)).toFixed(1) + " GB")
+                  .replace("{total}", ((storageStats?.quota_bytes || 5368709120) / (1024 * 1024 * 1024)).toFixed(1) + " GB")}
+              </span>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: "10px", flexShrink: 0 }}>
+              <button
+                type="button"
+                onClick={() => openSettingsModal("storage")}
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  color: "inherit",
+                  fontWeight: "bold",
+                  textDecoration: "underline",
+                  cursor: "pointer",
+                  fontSize: "11px"
+                }}
+              >
+                {translations[language]?.chat?.storageWarningManage || "Kelola"}
+              </button>
+              <button
+                type="button"
+                onClick={dismissBanner}
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  color: "inherit",
+                  opacity: 0.7,
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  padding: "2px"
+                }}
+                title={translations[language]?.chat?.storageWarningDismiss || "Tutup"}
+              >
+                <X size={14} />
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* 🚨 MODAL KUOTA STORAGE EXCEEDED */}
+        <StorageQuotaModal
+          isOpen={isStorageQuotaModalOpen}
+          onClose={closeQuotaModal}
+          onOpenSettings={() => openSettingsModal("storage")}
+          darkMode={darkMode}
+          language={language}
+        />
 
         <form
           onSubmit={handleSubmit}

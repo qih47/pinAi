@@ -30,9 +30,9 @@ async def handle_web_search(
     # Ambil semua query dari Call 1 (mendukung multi-query paralel untuk komparasi / multi-topik)
     queries_from_call1 = precheck.get("queries", [])
     if isinstance(queries_from_call1, list) and queries_from_call1:
-        target_queries = [sanitize_web_query(q.strip()) for q in queries_from_call1 if isinstance(q, str) and q.strip()]
+        target_queries = [sanitize_web_query(q.strip(), user_message=query) for q in queries_from_call1 if isinstance(q, str) and q.strip()]
     else:
-        target_queries = [sanitize_web_query(query.strip())] if query.strip() else []
+        target_queries = [sanitize_web_query(query.strip(), user_message=query)] if query.strip() else []
 
     target_queries = [q for q in target_queries if q]
     if not target_queries:

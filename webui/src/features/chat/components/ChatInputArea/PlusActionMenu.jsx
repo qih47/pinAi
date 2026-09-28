@@ -1,9 +1,18 @@
 import React, { useState, useMemo, useRef, useEffect, forwardRef } from "react";
 import {
   Paperclip, Cloud, Globe, FileText, Code2, Target,
-  BarChart3, Workflow, FilePlus, Mail, Search, X
+  BarChart3, Workflow, FilePlus, Mail, Search, X, HardDrive
 } from "lucide-react";
 import { translations } from "../../../../utils/translations";
+import useStorageStore from "../../../../stores/useStorageStore";
+
+function formatBytes(bytes) {
+  if (!bytes || bytes === 0) return "0 B";
+  const k = 1024;
+  const sizes = ["B", "KB", "MB", "GB", "TB"];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + " " + sizes[i];
+}
 
 const PlusActionMenu = forwardRef(function PlusActionMenu({
   isOpen,
@@ -23,16 +32,20 @@ const PlusActionMenu = forwardRef(function PlusActionMenu({
   const t = translations[language]?.chatInput || translations.id.chatInput;
   const tHints = translations[language]?.chat?.hints || translations.id.chat.hints;
 
+  const storageStats = useStorageStore((state) => state.storageStats);
+  const fetchStorageStats = useStorageStore((state) => state.fetchStorageStats);
+
   // Auto focus search when menu opens
   useEffect(() => {
     if (isOpen) {
       setSearchQuery("");
+      fetchStorageStats();
       const timer = setTimeout(() => {
         searchInputRef.current?.focus();
       }, 50);
       return () => clearTimeout(timer);
     }
-  }, [isOpen]);
+  }, [isOpen, fetchStorageStats]);
 
   const menuItems = useMemo(() => {
     const items = [
@@ -193,6 +206,43 @@ const PlusActionMenu = forwardRef(function PlusActionMenu({
           minHeight: 0
         }}
       >
+        {/* 🚨 MINI STORAGE METER PILL (Aktif jika terpakai >= 80%) */}
+        {storageStats && storageStats.used_percentage >= 80 && (
+          <div
+            onClick={() => {
+              onClose();
+              useStorageStore.getState().openSettingsModal('storage');
+            }}
+            style={{
+              margin: "4px 8px 8px 8px",
+              padding: "7px 12px",
+              borderRadius: "10px",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              cursor: "pointer",
+              background: storageStats.used_percentage >= 90 ? "rgba(239, 68, 68, 0.12)" : "rgba(245, 158, 11, 0.12)",
+              border: `1px solid ${storageStats.used_percentage >= 90 ? "rgba(239, 68, 68, 0.3)" : "rgba(245, 158, 11, 0.3)"}`,
+              color: storageStats.used_percentage >= 90 ? "#f87171" : "#fbbf24",
+              fontSize: "11px",
+              fontWeight: 600,
+              transition: "opacity 0.15s ease"
+            }}
+            title={language === "en" ? "Click to manage storage in Settings" : "Klik untuk kelola penyimpanan di Pengaturan"}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+              <HardDrive size={13} />
+              <span>
+                {language === "en" ? "Storage: " : "Penyimpanan: "}
+                {formatBytes(storageStats.used_bytes)} / {formatBytes(storageStats.quota_bytes)} ({storageStats.used_percentage}%)
+              </span>
+            </div>
+            <span style={{ textDecoration: "underline", fontSize: "10px", fontWeight: "bold" }}>
+              {language === "en" ? "Manage" : "Kelola"}
+            </span>
+          </div>
+        )}
+
         {filteredItems.map((item) => {
           const IconComponent = item.icon;
 

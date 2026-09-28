@@ -79,6 +79,24 @@ async def upload_chat_attachments(
                     detail=f"Validasi file '{file.filename}' gagal: {validation_msg}",
                 )
 
+            # ── 3.5 Storage Quota Check (5.0 GB limit) ───────────────────────
+            if current_user_npp and current_user_npp != "GUEST":
+                from backend.app.services.storage.storage_service import StorageService
+                is_quota_ok = await StorageService.check_upload_quota(current_user_npp, len(file_bytes))
+                if not is_quota_ok:
+                    stats = await StorageService.get_user_storage_stats(current_user_npp)
+                    logger.warning(f"🚨 [UPLOAD] Quota limit exceeded for user {current_user_npp}")
+                    raise HTTPException(
+                        status_code=400,
+                        detail={
+                            "error_code": "STORAGE_QUOTA_EXCEEDED",
+                            "message": "Kapasitas penyimpanan Cakra AI Anda (5.0 GB) hampir penuh. Harap bersihkan lampiran lama untuk melanjutkan.",
+                            "used_bytes": stats["used_bytes"],
+                            "quota_bytes": stats["quota_bytes"],
+                            "used_percentage": stats["used_percentage"]
+                        }
+                    )
+
             # ── 4. Write to disk ──────────────────────────────────────────────
             unique_filename = f"{int(time.time())}_{file.filename}"
             from backend.app.core.paths import get_account_session_dir
@@ -87,6 +105,10 @@ async def upload_chat_attachments(
 
             with open(absolute_write_path, "wb") as buffer:
                 buffer.write(file_bytes)
+
+            if current_user_npp and current_user_npp != "GUEST":
+                from backend.app.services.storage.storage_service import StorageService
+                StorageService.invalidate_user_cache(current_user_npp)
 
             file_size = os.path.getsize(absolute_write_path)
             logger.info(f"✅ [UPLOAD] File '{file.filename}' ({file_size} bytes) tersimpan ke disk")

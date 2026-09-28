@@ -231,11 +231,16 @@ def get_ambient_context_summary(
     return (
         f"🌐 [FAKTA REALTIME LINGKUNGAN & CUACA PENGGUNA (MUTLAK & AKURAT)]:\n"
         f"• Waktu & Tanggal Saat Ini : {tanggal_str} (Status: {op_status})\n"
+        f"• Tahun Berjalan Aktual   : {now.year} (Hari ini adalah tahun {now.year}, BUKAN {now.year - 2} atau {now.year - 1})\n"
         f"• Lokasi Terdeteksi         : {location_name}\n"
         f"• Cuaca & Suhu Real-Time    : {temp}°C, {cond} (Kelembapan: {hum}%, Angin: {wind} km/jam)\n"
         f"• Profil Korporasi          : PT Pindad (Persero) — DEFEND ID\n\n"
-        f"[ATURAN MUTLAK WAKTU & CUACA]:\n"
-        f"Jika pengguna menanyakan jam, waktu, hari, tanggal, atau kondisi cuaca/suhu saat ini, "
+        f"[ATURAN MUTLAK WAKTU & JANGKAR TAHUN]:\n"
+        f"1. Tahun saat ini secara mutlak adalah {now.year}. JANGAN PERNAH mengasumsikan tahun lampau ({now.year - 2} atau {now.year - 1}) sebagai waktu 'sekarang'!\n"
+        f"2. Jika pengguna menanyakan jam, waktu, hari, tanggal, atau kondisi cuaca/suhu saat ini, "
         f"kamu WAJIB menjawab secara lugas menggunakan data fakta di atas ({tanggal_str}, Suhu: {temp}°C, {cond}). "
-        f"DILARANG KERAS mengarang jam atau temperatur lain!"
+        f"DILARANG KERAS mengarang jam atau temperatur lain!\n"
+        f"3. Jika melakukan pencarian web untuk hal-hal yang 'terbaru', 'terkini', atau 'sedang viral saat ini', "
+        f"gunakan tahun berjalan aktual ({now.year} atau rentang {now.year - 1}-{now.year}), atau gunakan kata kunci alami tanpa embel-embel tahun lampau. DILARANG KERAS menyematkan tahun {now.year - 2} ke bawah!"
     )
+

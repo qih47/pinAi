@@ -37,8 +37,49 @@ def _set_cache(query: str, results: List[Dict[str, Any]]) -> None:
         del _search_cache[oldest_key]
     _search_cache[key] = (time.time(), results)
 
-def sanitize_web_query(query: str) -> str:
-    """Membersihkan sanitasi teknis murni (tanda kutip luar, spasi berlebih, baris baru) tanpa memotong kata semantik."""
+def normalize_temporal_web_query(query: str, user_message: str = "") -> str:
+    """
+    Menyelaraskan jangkar tahun pada query pencarian web dengan tahun aktual (saat ini).
+    Mencegah halusinasi model LLM yang menyematkan tahun-tahun lampau training data
+    (seperti 2023, 2024, atau rentang 2024-2025) pada pencarian hal 'terbaru' / 'viral',
+    KECUALI jika pengguna secara eksplisit menyebutkan tahun tersebut di pesan aslinya.
+    """
+    if not query:
+        return ""
+    
+    from datetime import datetime
+    now_year = datetime.now().year  # 2026
+    
+    # Ambil tahun yang secara sadar diminta user
+    user_years = set(re.findall(r"\b(19\d{2}|20\d{2})\b", user_message or ""))
+    
+    q = query
+    
+    # 1. Deteksi pola rentang tahun lampau beruntun seperti "2024 2025", "2024-2025", atau "2024/2025"
+    range_pattern = r"\b(20\d{2})\s*[-/ ]\s*(20\d{2})\b"
+    for m in re.finditer(range_pattern, q):
+        y1, y2 = int(m.group(1)), int(m.group(2))
+        full_match = m.group(0)
+        # Jika kedua tahun adalah tahun lampau (< now_year), dan user tidak memintanya secara eksplisit
+        if y2 < now_year and (m.group(1) not in user_years and m.group(2) not in user_years):
+            # Sesuaikan rentang tahun ke tahun aktual (misal: 2025 2026)
+            new_range = f"{now_year - 1} {now_year}"
+            q = q.replace(full_match, new_range)
+            logger.info(f"[Web Search] 🕒 Normalized outdated year range '{full_match}' -> '{new_range}'")
+            
+    # 2. Deteksi single year lampau (misal 2023, 2024) yang muncul jika user tidak memintanya
+    for y_str in re.findall(r"\b(20\d{2})\b", q):
+        y_int = int(y_str)
+        if y_int < (now_year - 1) and y_str not in user_years:
+            q = re.sub(rf"\b{y_str}\b", str(now_year), q)
+            logger.info(f"[Web Search] 🕒 Normalized outdated single year '{y_str}' -> '{now_year}'")
+
+    q = re.sub(r"\s+", " ", q).strip()
+    return q
+
+
+def sanitize_web_query(query: str, user_message: str = "") -> str:
+    """Membersihkan sanitasi teknis murni dan menyelaraskan jangkar tahun aktual."""
     if not query:
         return ""
     q = query.strip()
@@ -48,6 +89,8 @@ def sanitize_web_query(query: str) -> str:
     q = re.sub(r'[\r\n\t]+', ' ', q)
     # Bersihkan multiple spaces
     q = re.sub(r'\s+', ' ', q).strip()
+    # Normalisasi tahun lampau halusinasi
+    q = normalize_temporal_web_query(q, user_message=user_message)
     return q or query.strip()
 
 

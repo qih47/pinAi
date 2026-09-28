@@ -7,6 +7,7 @@ import SessionList from "./Sidebar/SessionList";
 import SidebarFooter from "./Sidebar/SidebarFooter";
 import SearchModal from "./modals/SearchModal";
 import SettingsModal from "./SettingsModal";
+import useStorageStore from "../../../stores/useStorageStore";
 import { translations } from "@/utils/translations";
 
 const Sidebar = ({
@@ -48,6 +49,10 @@ const Sidebar = ({
   const [isSearchModalOpen, setIsSearchModalOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [isSidebarScrolled, setIsSidebarScrolled] = useState(false);
+
+  const isStorageSettingsOpen = useStorageStore((state) => state.isSettingsModalOpen);
+  const storageSettingsTab = useStorageStore((state) => state.settingsTab);
+  const closeStorageSettings = useStorageStore((state) => state.closeSettingsModal);
 
   const pinChat = useChatStore((state) => state.pinChat);
   const renameChat = useChatStore((state) => state.renameChat);
@@ -422,8 +427,11 @@ const Sidebar = ({
       />
 
       <SettingsModal 
-        isOpen={isSettingsModalOpen}
-        onClose={() => setIsSettingsModalOpen(false)}
+        isOpen={isSettingsModalOpen || isStorageSettingsOpen}
+        onClose={() => {
+          setIsSettingsModalOpen(false);
+          closeStorageSettings();
+        }}
         darkMode={darkMode}
         theme={theme}
         themeSetting={themeSetting}
@@ -432,6 +440,7 @@ const Sidebar = ({
         setDarkMode={setDarkMode}
         userData={userData}
         triggerLogout={triggerLogout}
+        initialTab={isStorageSettingsOpen ? storageSettingsTab : "general"}
       />
     </>
   );
