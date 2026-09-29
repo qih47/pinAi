@@ -77,11 +77,13 @@ export default function ChatInputArea({
   const openSettingsModal = useStorageStore((state) => state.openSettingsModal);
 
   useEffect(() => {
-    fetchStorageStats();
-  }, [fetchStorageStats]);
+    if (!isGuest && currentIsLoggedIn) {
+      fetchStorageStats();
+    }
+  }, [fetchStorageStats, isGuest, currentIsLoggedIn]);
 
   const showFloatingStorageWarning = Boolean(
-    storageStats && storageStats.used_percentage >= 90 && !dismissedWarningBanner
+    !isGuest && currentIsLoggedIn && storageStats && storageStats.used_percentage >= 90 && !dismissedWarningBanner
   );
 
   // Auto-expand hints whenever activeModeTag changes

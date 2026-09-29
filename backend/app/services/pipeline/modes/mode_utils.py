@@ -1158,7 +1158,12 @@ def format_session_title(title_input: str, user_message: str = "", max_words: in
             return "Sapaan Akrab Cuy"
         return "Sapaan Ramah & Santai"
     elif any(w in combined_greet_text for w in ["semangat", "kerja"]):
-        return "Semangat Pagi Kerja"
+        try:
+            from backend.app.services.ambient.weather_service import get_current_time_period
+            period = get_current_time_period()
+        except Exception:
+            period = "Pagi"
+        return f"Semangat {period} Kerja"
     elif any(w in combined_greet_text for w in ["terima kasih", "makasih", "thanks", "tq", "nuhun"]):
         return "Apresiasi & Ucapan Terima Kasih"
 

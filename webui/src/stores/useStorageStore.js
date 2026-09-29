@@ -24,8 +24,13 @@ export const useStorageStore = create((set, get) => ({
   openSettingsModal: (tab = "storage") => set({ isSettingsModalOpen: true, settingsTab: tab }),
   closeSettingsModal: () => set({ isSettingsModalOpen: false }),
 
-  // Fetch Storage Stats
+  // Fetch Storage Stats (Hanya aktif untuk user terautentikasi, Guest tidak memiliki batas kuota akun)
   fetchStorageStats: async (forceRefresh = false) => {
+    const token = localStorage.getItem('cakra_token');
+    if (!token) {
+      set({ storageStats: null, isLoading: false, error: null });
+      return null;
+    }
     set({ isLoading: true, error: null });
     try {
       const response = await apiClient.get(`/user/storage/stats${forceRefresh ? '?force_refresh=true' : ''}`);
@@ -34,6 +39,10 @@ export const useStorageStore = create((set, get) => ({
         return response.data.data;
       }
     } catch (err) {
+      if (err.response?.status === 401) {
+        set({ storageStats: null, isLoading: false });
+        return null;
+      }
       console.error("Gagal mengambil data kuota storage:", err);
       set({ error: err.message || 'Gagal memuat status penyimpanan', isLoading: false });
     }
@@ -42,6 +51,8 @@ export const useStorageStore = create((set, get) => ({
 
   // 1. Purge Attachments & Images (Free space instantly without deleting text chat)
   purgeAttachments: async () => {
+    const token = localStorage.getItem('cakra_token');
+    if (!token) return null;
     set({ isPurging: true, error: null });
     try {
       const response = await apiClient.post('/user/storage/purge-attachments');
@@ -60,6 +71,8 @@ export const useStorageStore = create((set, get) => ({
 
   // 2. Purge AI Artifacts & Drafts
   purgeArtifacts: async () => {
+    const token = localStorage.getItem('cakra_token');
+    if (!token) return null;
     set({ isPurging: true, error: null });
     try {
       const response = await apiClient.post('/user/storage/purge-artifacts');
@@ -78,6 +91,8 @@ export const useStorageStore = create((set, get) => ({
 
   // 3. Clear All Private Chats
   clearPrivateChats: async () => {
+    const token = localStorage.getItem('cakra_token');
+    if (!token) return null;
     set({ isPurging: true, error: null });
     try {
       const response = await apiClient.post('/user/storage/clear-chats');
@@ -85,6 +100,8 @@ export const useStorageStore = create((set, get) => ({
         const stats = response.data.data?.current_stats;
         if (stats) set({ storageStats: stats });
         set({ isPurging: false });
+        // Tembakkan event agar sidebar & chat history ter-refresh seketika
+        window.dispatchEvent(new CustomEvent("cakra-refresh-chat-history"));
         return response.data.data;
       }
     } catch (err) {
@@ -96,6 +113,8 @@ export const useStorageStore = create((set, get) => ({
 
   // 4. Clear Collab Rooms
   clearCollabs: async () => {
+    const token = localStorage.getItem('cakra_token');
+    if (!token) return null;
     set({ isPurging: true, error: null });
     try {
       const response = await apiClient.post('/user/storage/clear-collabs');
@@ -114,6 +133,8 @@ export const useStorageStore = create((set, get) => ({
 
   // 5. Total Wipe Out Data
   wipeAllUserData: async () => {
+    const token = localStorage.getItem('cakra_token');
+    if (!token) return null;
     set({ isPurging: true, error: null });
     try {
       const response = await apiClient.post('/user/storage/wipe-all');
@@ -121,6 +142,8 @@ export const useStorageStore = create((set, get) => ({
         const stats = response.data.data?.current_stats;
         if (stats) set({ storageStats: stats });
         set({ isPurging: false, isStorageQuotaModalOpen: false });
+        // Tembakkan event agar riwayat chat bersih seketika
+        window.dispatchEvent(new CustomEvent("cakra-refresh-chat-history"));
         return response.data.data;
       }
     } catch (err) {

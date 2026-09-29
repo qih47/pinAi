@@ -147,8 +147,11 @@ export default function ChatPage({ isGuest,
   const tGlobal = translations[language] || translations.id;
 
   React.useEffect(() => {
-    if (corporateMode && corporateMode !== 'collab') {
-      setShowRightSidebar(false);
+    if (corporateMode) {
+      setIsAllChatsOpen(false);
+      if (corporateMode !== 'collab') {
+        setShowRightSidebar(false);
+      }
     }
   }, [corporateMode, setShowRightSidebar]);
 
@@ -309,7 +312,12 @@ export default function ChatPage({ isGuest,
           setChatHistory={setChatHistory}
           cakraLogo={cakraLogo}
           navigate={navigate}
-          onOpenAllChats={() => setIsAllChatsOpen(true)}
+          onOpenAllChats={() => {
+            if (corporateMode) {
+              navigate('/chat/new');
+            }
+            setIsAllChatsOpen(true);
+          }}
         />
       )}
 
@@ -649,9 +657,9 @@ export default function ChatPage({ isGuest,
               style={{
                 position: "absolute",
                 inset: 0,
-                opacity: showWelcome && !corporateMode ? 0 : 1,
+                opacity: (showWelcome && !corporateMode && !isAllChatsOpen) ? 0 : 1,
                 transition: "opacity 0.2s ease",
-                pointerEvents: showWelcome && !corporateMode ? "none" : "auto",
+                pointerEvents: (showWelcome && !corporateMode && !isAllChatsOpen) ? "none" : "auto",
                 display: "flex",
                 flexDirection: "column",
               }}
@@ -687,7 +695,7 @@ export default function ChatPage({ isGuest,
                   />
                 )}
 
-                {isAllChatsOpen && (
+                {!corporateMode && isAllChatsOpen && (
                   <AllChatsView
                     chatHistory={chatHistory}
                     setChatHistory={setChatHistory}

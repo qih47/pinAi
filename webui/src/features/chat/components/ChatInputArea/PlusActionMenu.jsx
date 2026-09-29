@@ -39,13 +39,15 @@ const PlusActionMenu = forwardRef(function PlusActionMenu({
   useEffect(() => {
     if (isOpen) {
       setSearchQuery("");
-      fetchStorageStats();
+      if (!isGuest && currentIsLoggedIn) {
+        fetchStorageStats();
+      }
       const timer = setTimeout(() => {
         searchInputRef.current?.focus();
       }, 50);
       return () => clearTimeout(timer);
     }
-  }, [isOpen, fetchStorageStats]);
+  }, [isOpen, fetchStorageStats, isGuest, currentIsLoggedIn]);
 
   const menuItems = useMemo(() => {
     const items = [

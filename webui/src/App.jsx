@@ -180,6 +180,10 @@ function AppContent() {
 
         <Route element={<Layout />}>
           <Route
+            path="/chat"
+            element={<Navigate to="/chat/new" replace />}
+          />
+          <Route
             path="/chat/guest"
             element={<SessionRouteWrapper isGuest={true} />}
           />

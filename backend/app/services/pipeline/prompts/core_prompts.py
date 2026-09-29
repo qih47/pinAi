@@ -337,18 +337,25 @@ TATA CARA EKSEKUSI DI TENGAH STREAM & EVALUASI MULTI-TURN:
 
 def get_dynamic_user_and_ambient(employee_name: str, mode_title: str, client_context: Optional[Dict[str, Any]] = None) -> str:
     """Komponen dinamis: target pengguna dan konteks ambient/cuaca/waktu."""
-    from backend.app.services.ambient.weather_service import get_ambient_context_summary
+    from backend.app.services.ambient.weather_service import (
+        get_ambient_context_summary,
+        get_current_time_greeting,
+        get_current_time_period
+    )
     
     ambient_info = get_ambient_context_summary(employee_name, client_context)
+    current_greeting = get_current_time_greeting(client_context)
+    current_period = get_current_time_period(client_context)
     
     return f"""[TARGET PENGGUNA & LINGKUNGAN AKTUAL]
 Nama / Panggilan Pilihan Pegawai: **{employee_name}**
 MODE: {mode_title}
 
-PANDUAN NAMA PANGGILAN PEGAWAI (MUTLAK):
+PANDUAN NAMA PANGGILAN PEGAWAI & SAPAAN WAKTU (MUTLAK):
 - Pegawai ini telah mengatur panggilan preferensinya di akun, yaitu: **{employee_name}**.
-- Kamu WAJIB menyapa dan memanggilnya dengan sebutan **{employee_name}** (contoh: "Halo {employee_name}!", "Selamat pagi, {employee_name}!", "Baik {employee_name}").
+- Kamu WAJIB menyapa dan memanggilnya dengan sebutan **{employee_name}** (contoh: "Halo {employee_name}!", "{current_greeting}, {employee_name}!", "Baik {employee_name}").
 - DILARANG memanggil dengan panggilan generik "Bapak/Ibu" jika nama sapaan "{employee_name}" bukan "Pegawai".
+- KESELARASAN WAKTU REAL-TIME: Waktu saat ini menunjukkan **{current_period.upper()}**. Jika menyapa dengan salam waktu, kamu WAJIB menggunakan sapaan yang sesuai (contoh: "{current_greeting}" atau "{current_period.lower()} ini"). DILARANG KERAS menyapa "Selamat pagi" atau menyebut "pagi ini" jika waktu saat ini adalah Siang, Sore, atau Malam!
 
 {ambient_info}
 PENTING: Gunakan data waktu, tanggal, lokasi, dan cuaca di atas sebagai REFERENSI ABSOLUT. JANGAN pernah mengarang tanggal/cuaca/jam berdasarkan asumsi training data. Jika user bertanya hari, tanggal, waktu, atau kondisi cuaca/suhu saat ini, jawablah secara lugas, akurat, dan ramah sesuai data lingkungan di atas.
@@ -969,7 +976,7 @@ COMMON_TONE_GUIDANCE = (
     + DOCUMENT_WRITER_GUIDANCE
 )
 
-PROMPT_AMBIGUOUS_TEMPLATE = """{{ get_base_persona(employee_name, mode_title) }}""" + """
+PROMPT_AMBIGUOUS_TEMPLATE = """{{ get_base_persona(employee_name, mode_title, client_context) }}""" + """
 {% if is_thinking %}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 🧠 SYSTEM ENFORCEMENT: MANDATORY REASONING (THINKING MODE: ON)
@@ -1119,7 +1126,7 @@ CONTOH 3: Domain Koding & Pembuatan Aplikasi (Stepper 3-Step):
    🧭 PANDUAN ARAH UI: Sistem UI otomatis mengekstrak blok ```wizard dan merender kartu tombolnya DI BAWAH bubble chat. Oleh karena itu, selalu gunakan kata "pilihan di bawah", "opsi di bawah", atau "menu interaktif di bawah". 🚫 DILARANG KERAS mengatakan "di atas"!
 """ + CORE_TONE_AND_IDENTITY + "\n" + INTERACTIVE_WIZARD_GUIDANCE
 
-PROMPT_GENERAL_EXPERT_TEMPLATE = """{{ get_base_persona(employee_name, mode_title) }}""" + """
+PROMPT_GENERAL_EXPERT_TEMPLATE = """{{ get_base_persona(employee_name, mode_title, client_context) }}""" + """
 {% if is_thinking %}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 🧠 SYSTEM ENFORCEMENT: MANDATORY REASONING (THINKING MODE: ON)
@@ -1231,6 +1238,7 @@ def build_response_prompt_ambiguous(
         tone_hint=precheck.get("tone_hint", "casual"),
         slang_mirror=precheck.get("slang_mirror"),
         ambiguity_reason=precheck.get("ambiguity_reason", ""),
+        client_context=precheck.get("client_context"),
         is_thinking=is_thinking
     )
 
@@ -1250,6 +1258,7 @@ def build_response_prompt_general_expert(
         slang_mirror=precheck.get("slang_mirror"),
         response_format=precheck.get("response_format", "standard"),
         format_constraint=precheck.get("format_constraint"),
+        client_context=precheck.get("client_context"),
         is_thinking=is_thinking
     )
 
@@ -1269,6 +1278,7 @@ def build_response_prompt_chitchat(
         slang_mirror=precheck.get("slang_mirror"),
         response_format=precheck.get("response_format", "standard"),
         format_constraint=precheck.get("format_constraint"),
+        client_context=precheck.get("client_context"),
         is_thinking=is_thinking
     )
 
@@ -1284,14 +1294,21 @@ def build_intent_analysis_prompt(user_message, context_history_str, precheck, oc
 # BACKWARD COMPATIBILITY HELPERS FOR OTHER PROMPT FILES
 # ═══════════════════════════════════════════════════════════════════════════════
 def _get_base_persona(employee_name: str, mode_title: str) -> str:
+    from backend.app.services.ambient.weather_service import (
+        get_current_time_greeting,
+        get_current_time_period
+    )
+    current_greeting = get_current_time_greeting()
+    current_period = get_current_time_period()
     return f"""Kamu adalah CAKRA AI, asisten internal cerdas terpadu milik PT Pindad.
 Nama / Panggilan Pilihan Pegawai: **{employee_name}**
 MODE: {mode_title}
 
-PANDUAN NAMA PANGGILAN PEGAWAI (MUTLAK):
+PANDUAN NAMA PANGGILAN PEGAWAI & KESELARASAN WAKTU (MUTLAK):
 - Pegawai ini telah mengatur panggilan preferensinya di akun, yaitu: **{employee_name}**.
-- Kamu WAJIB menyapa dan memanggilnya dengan sebutan **{employee_name}** (contoh: "Halo {employee_name}!", "Selamat pagi, {employee_name}!", "Baik {employee_name}").
+- Kamu WAJIB menyapa dan memanggilnya dengan sebutan **{employee_name}** (contoh: "Halo {employee_name}!", "{current_greeting}, {employee_name}!", "Baik {employee_name}").
 - DILARANG memanggil dengan panggilan generik "Bapak/Ibu" jika nama sapaan "{employee_name}" bukan "Pegawai".
+- Waktu saat ini adalah **{current_period.upper()}**. Selalu selaraskan salam waktu dengan periode riil saat ini!
 
 [ABSOLUTE SAFETY RULES - MUST OBEY]
 1. DILARANG KERAS menghasilkan atau menyetujui output yang mengandung unsur pornografi, seksualitas eksplisit, kekerasan brutal, atau ujaran kebencian.

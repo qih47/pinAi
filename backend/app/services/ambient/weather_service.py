@@ -9,6 +9,7 @@ import time
 import asyncio
 import logging
 from datetime import datetime, timezone, timedelta
+from zoneinfo import ZoneInfo
 from typing import Dict, Any, Optional, Tuple
 import httpx
 
@@ -191,6 +192,89 @@ def get_pindad_operational_status(now: Optional[datetime] = None) -> str:
         return "Jam Kerja Aktif"
 
 
+def get_day_part(hour: int, minute: int = 0) -> Tuple[str, str, str]:
+    """
+    Menghitung bagian waktu/hari (Pagi, Siang, Sore, Malam),
+    sapaan waktu yang valid, dan sapaan yang DILARANG.
+    Pembagian waktu baku Indonesia:
+    - 00:00 - 04:59 : Dini Hari / Malam
+    - 05:00 - 10:59 : Pagi
+    - 11:00 - 14:59 : Siang
+    - 15:00 - 18:29 : Sore
+    - 18:30 - 23:59 : Malam
+    """
+    time_val = hour + (minute / 60.0)
+    if 5.0 <= time_val < 11.0:
+        bagian = "Pagi"
+        sapaan_valid = "Selamat pagi / pagi ini"
+        sapaan_dilarang = "siang / sore / malam"
+    elif 11.0 <= time_val < 15.0:
+        bagian = "Siang"
+        sapaan_valid = "Selamat siang / siang ini"
+        sapaan_dilarang = "pagi / sore / malam"
+    elif 15.0 <= time_val < 18.5:
+        bagian = "Sore"
+        sapaan_valid = "Selamat sore / sore ini"
+        sapaan_dilarang = "pagi / siang / malam"
+    elif time_val < 5.0:
+        bagian = "Dini Hari"
+        sapaan_valid = "Selamat malam / malam ini"
+        sapaan_dilarang = "pagi / siang / sore"
+    else:
+        bagian = "Malam"
+        sapaan_valid = "Selamat malam / malam ini"
+        sapaan_dilarang = "pagi / siang / sore"
+    return bagian, sapaan_valid, sapaan_dilarang
+
+
+def resolve_current_datetime(client_context: Optional[Dict[str, Any]] = None) -> Tuple[datetime, str]:
+    """Mendapatkan datetime terkalibrasi timezone (WIB/WITA/WIT atau client timezone)."""
+    client_context = client_context or {}
+    tz = ZoneInfo("Asia/Jakarta")
+    tz_name = "WIB"
+    
+    if client_context.get("timezone"):
+        tz_raw = str(client_context["timezone"]).strip()
+        try:
+            tz = ZoneInfo(tz_raw)
+            tz_lower = tz_raw.lower()
+            if "makassar" in tz_lower or "denpasar" in tz_lower or "wita" in tz_lower:
+                tz_name = "WITA"
+            elif "jayapura" in tz_lower or "wit" in tz_lower:
+                tz_name = "WIT"
+            elif "jakarta" in tz_lower or "wib" in tz_lower:
+                tz_name = "WIB"
+            else:
+                tz_name = tz_raw
+        except Exception:
+            tz = ZoneInfo("Asia/Jakarta")
+            tz_name = "WIB"
+            
+    now = datetime.now(tz)
+    return now, tz_name
+
+
+def get_current_time_period(client_context: Optional[Dict[str, Any]] = None) -> str:
+    """Mengembalikan bagian hari (Pagi / Siang / Sore / Malam)."""
+    now, _ = resolve_current_datetime(client_context)
+    bagian, _, _ = get_day_part(now.hour, now.minute)
+    return bagian
+
+
+def get_current_time_greeting(client_context: Optional[Dict[str, Any]] = None) -> str:
+    """Mengembalikan sapaan waktu bahasa Indonesia (Selamat Pagi / Selamat Siang / Selamat Sore / Selamat Malam)."""
+    now, _ = resolve_current_datetime(client_context)
+    bagian, _, _ = get_day_part(now.hour, now.minute)
+    if "Pagi" in bagian:
+        return "Selamat pagi"
+    elif "Siang" in bagian:
+        return "Selamat siang"
+    elif "Sore" in bagian:
+        return "Selamat sore"
+    else:
+        return "Selamat malam"
+
+
 def get_ambient_context_summary(
     employee_name: str = "Pegawai",
     client_context: Optional[Dict[str, Any]] = None
@@ -204,19 +288,12 @@ def get_ambient_context_summary(
     city_hint = client_context.get("city") or client_context.get("city_hint")
     location_name = _resolve_location_name(lat, lon, city_hint)
     
-    # 2. Waktu & Tanggal (WIB / WITA / WIT atau Browser Timezone)
-    now = datetime.now()
+    # 2. Waktu & Tanggal Terkalibrasi (WIB / WITA / WIT)
+    now, tz_name = resolve_current_datetime(client_context)
     hari = _HARI_INDONESIA[now.weekday()]
     bulan = _BULAN_INDONESIA[now.month]
+    bagian_hari, sapaan_valid, sapaan_dilarang = get_day_part(now.hour, now.minute)
     
-    tz_name = "WIB"
-    if client_context.get("timezone"):
-        tz_raw = str(client_context["timezone"]).lower()
-        if "makassar" in tz_raw or "denpasar" in tz_raw or "wita" in tz_raw:
-            tz_name = "WITA"
-        elif "jayapura" in tz_raw or "wit" in tz_raw:
-            tz_name = "WIT"
-            
     tanggal_str = f"{hari}, {now.day} {bulan} {now.year}, pukul {now.strftime('%H:%M')} {tz_name}"
     
     # 3. Cuaca
@@ -229,18 +306,23 @@ def get_ambient_context_summary(
     op_status = get_pindad_operational_status(now)
     
     return (
-        f"🌐 [FAKTA REALTIME LINGKUNGAN & CUACA PENGGUNA (MUTLAK & AKURAT)]:\n"
+        f"🌐 [FAKTA REALTIME LINGKUNGAN & WAKTU PENGGUNA (MUTLAK & AKURAT)]:\n"
         f"• Waktu & Tanggal Saat Ini : {tanggal_str} (Status: {op_status})\n"
+        f"• Bagian Waktu / Periode  : {bagian_hari.upper()} (Pukul {now.strftime('%H:%M')} {tz_name})\n"
+        f"• Sapaan Waktu yang Valid : \"{sapaan_valid}\"\n"
         f"• Tahun Berjalan Aktual   : {now.year} (Hari ini adalah tahun {now.year}, BUKAN {now.year - 2} atau {now.year - 1})\n"
         f"• Lokasi Terdeteksi         : {location_name}\n"
         f"• Cuaca & Suhu Real-Time    : {temp}°C, {cond} (Kelembapan: {hum}%, Angin: {wind} km/jam)\n"
         f"• Profil Korporasi          : PT Pindad (Persero) — DEFEND ID\n\n"
-        f"[ATURAN MUTLAK WAKTU & JANGKAR TAHUN]:\n"
-        f"1. Tahun saat ini secara mutlak adalah {now.year}. JANGAN PERNAH mengasumsikan tahun lampau ({now.year - 2} atau {now.year - 1}) sebagai waktu 'sekarang'!\n"
-        f"2. Jika pengguna menanyakan jam, waktu, hari, tanggal, atau kondisi cuaca/suhu saat ini, "
+        f"[ATURAN MUTLAK WAKTU & KESELARASAN SAPAAN]:\n"
+        f"1. BAGIAN HARI SAAT INI SECARA NYATA ADALAH: **{bagian_hari.upper()}** (Pukul {now.strftime('%H:%M')} {tz_name}).\n"
+        f"   - Jika ingin menyapa atau menyebut konteks waktu (misal sebelum memanggil alat websearch atau membuka dialog), gunakan sapaan yang sesuai seperti: **\"{sapaan_valid}\"**.\n"
+        f"   - 🚫 DILARANG KERAS berhalusinasi menyapa atau menyebut konteks waktu yang keliru seperti \"{sapaan_dilarang}\". Selalu selaraskan sapaan dan penyebutan waktu dengan waktu riil {bagian_hari.upper()} (gunakan \"{sapaan_valid}\")!\n"
+        f"2. Tahun saat ini secara mutlak adalah {now.year}. JANGAN PERNAH mengasumsikan tahun lampau ({now.year - 2} atau {now.year - 1}) sebagai waktu 'sekarang'!\n"
+        f"3. Jika pengguna menanyakan jam, waktu, hari, tanggal, atau kondisi cuaca/suhu saat ini, "
         f"kamu WAJIB menjawab secara lugas menggunakan data fakta di atas ({tanggal_str}, Suhu: {temp}°C, {cond}). "
         f"DILARANG KERAS mengarang jam atau temperatur lain!\n"
-        f"3. Jika melakukan pencarian web untuk hal-hal yang 'terbaru', 'terkini', atau 'sedang viral saat ini', "
+        f"4. Jika melakukan pencarian web untuk hal-hal yang 'terbaru', 'terkini', atau 'sedang viral saat ini', "
         f"gunakan tahun berjalan aktual ({now.year} atau rentang {now.year - 1}-{now.year}), atau gunakan kata kunci alami tanpa embel-embel tahun lampau. DILARANG KERAS menyematkan tahun {now.year - 2} ke bawah!"
     )
 

@@ -684,7 +684,7 @@ export default function EmailTriageTab({ theme, darkMode, userData, language, is
       }
     } catch (err) {
       console.error("Gagal generate compose AI", err);
-      setComposeStatusMsg({ type: 'error', text: t.aiDraftFail || 'Gagal membuat draf dengan AI. Silakan coba lagi.' });
+      setComposeStatusMsg({ type: 'error', text: t.aiDraftFail || 'Gagal membuat draf dengan Cakra. Silakan coba lagi.' });
     } finally {
       setIsGeneratingCompose(false);
     }
@@ -1833,7 +1833,7 @@ export default function EmailTriageTab({ theme, darkMode, userData, language, is
         )}
       </div>
 
-      {/* Modal Composer Modern (Tulis Pesan Baru / Edit Draf dengan AI Assistant, Lampiran, & Toolbar Formatting) */}
+      {/* Modal Composer Modern (Tulis Pesan Baru / Edit Draf dengan Cakra Assistant, Lampiran, & Toolbar Formatting) */}
       {isComposeOpen && (
         <div style={{
           position: 'fixed',
@@ -2086,7 +2086,7 @@ export default function EmailTriageTab({ theme, darkMode, userData, language, is
                     }}
                   >
                     <Sparkles size={13} className={isGeneratingCompose ? "spin" : ""} />
-                    <span>{isGeneratingCompose ? (t.generatingDraft || 'Membuat Draf...') : (t.aiComposeBtn || 'Buat dengan AI')}</span>
+                    <span>{isGeneratingCompose ? (t.generatingDraft || 'Membuat Draf...') : (t.aiComposeBtn || 'Buat dengan Cakra')}</span>
                   </button>
                 </div>
               </div>
