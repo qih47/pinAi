@@ -31,6 +31,17 @@ const UrlFetchTimelineWidget = ({ data, isStreaming, hasStartedResponding, darkM
         ? (t.fetchLinksHeaderDone || "Hasil penelusuran informasi dari tautan")
         : (statusText || t.fetchLinksHeader || "Mengunduh konten tautan");
 
+    const glossyShimmerStyle = {
+        background: 'linear-gradient(90deg, #94a3b8 0%, #e2e8f0 50%, #94a3b8 100%)',
+        backgroundSize: '200% 100%',
+        WebkitBackgroundClip: 'text',
+        WebkitTextFillColor: 'transparent',
+        backgroundClip: 'text',
+        animation: 'shimmerFlow 1.2s linear infinite',
+        display: 'inline-block',
+        whiteSpace: 'nowrap'
+    };
+
     return (
         <div className="my-4 w-full max-w-3xl font-sans">
             {/* Top Level Accordion Header */}
@@ -39,10 +50,14 @@ const UrlFetchTimelineWidget = ({ data, isStreaming, hasStartedResponding, darkM
                 className="flex items-center gap-2 mb-3 cursor-pointer select-none group w-fit"
             >
                 <span className="text-[14px] font-medium text-[#9e9e9e] transition-colors line-clamp-1 group-hover:text-[#c4c4c4] flex items-center gap-2">
-                    {isStreaming && !hasStartedResponding && (
-                        <span className="inline-block w-2 h-2 rounded-full bg-cyan-500 animate-ping" />
+                    {isStreaming && !hasStartedResponding ? (
+                        <>
+                            <span className="inline-block w-2 h-2 rounded-full bg-cyan-500 animate-ping flex-shrink-0" />
+                            <span style={glossyShimmerStyle}>{headerText}</span>
+                        </>
+                    ) : (
+                        <span>{headerText}</span>
                     )}
-                    <span>{headerText}</span>
                 </span>
                 <span className="text-[#888888] flex items-center justify-center">
                     {isOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}

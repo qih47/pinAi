@@ -44,6 +44,21 @@
     }
 }
 
+@keyframes cakraBounce {
+    0%, 100% {
+        transform: translateY(0) scale(1);
+    }
+    30% {
+        transform: translateY(-5px) scale(1.08);
+    }
+    50% {
+        transform: translateY(0) scale(0.96);
+    }
+    75% {
+        transform: translateY(-2px) scale(1.03);
+    }
+}
+
 /* ========================================================================== */
 /* 🌊 GEMINI-STYLE SMOOTH STREAMING ANIMATION                                 */
 /* ========================================================================== */

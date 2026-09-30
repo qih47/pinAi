@@ -939,10 +939,10 @@ export const translations = {
       preparingSlides: "Menyiapkan Slide Presentasi..."
     },
     documentDiff: {
-      finishedComparison: "Selesai 1 komparasi dokumen",
+      finishedComparison: "Selesai komparasi {count} dokumen",
       fileSystem: "File System",
       diffInspector: "Inspeksi Perbedaan Dokumen",
-      presented: "Menyajikan 1 komparasi",
+      presented: "Menyajikan komparasi {count} dokumen",
       done: "Selesai",
       copied: "Tersalin!",
       copyDiff: "Salin Diff",
@@ -2021,10 +2021,10 @@ export const translations = {
       preparingSlides: "Preparing Slide Presentation..."
     },
     documentDiff: {
-      finishedComparison: "Finished 1 document comparison",
+      finishedComparison: "Finished comparison of {count} documents",
       fileSystem: "File System",
       diffInspector: "Document Diff Inspector",
-      presented: "Presented 1 comparison",
+      presented: "Presented comparison of {count} documents",
       done: "Done",
       copied: "Copied!",
       copyDiff: "Copy Diff",

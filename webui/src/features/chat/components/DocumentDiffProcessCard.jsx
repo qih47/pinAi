@@ -89,6 +89,10 @@ export default function DocumentDiffProcessCard({
     return diffData;
   }, [diffData]);
 
+  const docCount = data.stats?.total_docs || (Array.isArray(data.stats?.docs) ? data.stats.docs.length : (data.stats?.doc2 ? 2 : 2));
+  const finishedComparisonText = (t.finishedComparison || "Selesai komparasi {count} dokumen").replace('{count}', docCount);
+  const presentedText = (t.presented || "Menyajikan komparasi {count} dokumen").replace('{count}', docCount);
+
   const filename = data.filename || "Komparasi_Klausul_Dokumen.diff";
   const diffContent = data.diff_text || data.diff || "";
 
@@ -145,6 +149,17 @@ export default function DocumentDiffProcessCard({
     });
   };
 
+  const glossyShimmerStyle = {
+    background: 'linear-gradient(90deg, #94a3b8 0%, #e2e8f0 50%, #94a3b8 100%)',
+    backgroundSize: '200% 100%',
+    WebkitBackgroundClip: 'text',
+    WebkitTextFillColor: 'transparent',
+    backgroundClip: 'text',
+    animation: 'shimmerFlow 1.2s linear infinite',
+    display: 'inline-block',
+    whiteSpace: 'nowrap'
+  };
+
   return (
     <div style={{
       display: 'block',
@@ -169,7 +184,9 @@ export default function DocumentDiffProcessCard({
           marginBottom: '8px'
         }}
       >
-        <span>{t.finishedComparison || "Finished 1 comparison(s)"}</span>
+        <span style={isStreaming && !hasStartedResponding ? glossyShimmerStyle : undefined}>
+          {finishedComparisonText}
+        </span>
         <div style={{
           transform: isMainExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
           transition: 'transform 0.2s ease',
@@ -317,7 +334,7 @@ export default function DocumentDiffProcessCard({
               marginTop: '4px'
             }}>
               <FileText size={13} color={mutedText} />
-              <span>{t.presented || "Presented 1 comparison"}</span>
+              <span>{presentedText}</span>
             </div>
 
             {/* Done Line */}

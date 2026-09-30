@@ -729,7 +729,7 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
             <div style={styles.assistantMessageWrapper}>
                 <div style={{ ...styles.assistantHeader, display: 'flex', alignItems: 'center' }}>
                     <div
-                        style={{ ...styles.avatarWrap, position: 'relative' }}
+                        style={{ ...styles.avatarWrap, position: 'relative', cursor: 'pointer' }}
                         onMouseEnter={() => setIsAvatarHovered(true)}
                         onMouseLeave={() => setIsAvatarHovered(false)}
                     >
@@ -742,8 +742,11 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
                                 borderRadius: 8,
                                 objectFit: 'cover',
                                 background: 'transparent',
-                                animation: isActive ? 'cakraSpin 0.7s linear infinite' : 'none',
+                                animation: isActive 
+                                    ? 'cakraSpin 0.7s linear infinite' 
+                                    : (isAvatarHovered ? 'cakraBounce 0.6s ease-in-out infinite' : 'none'),
                                 transform: isActive ? undefined : 'rotate(0deg)',
+                                transition: 'transform 0.15s ease-out',
                             }}
                         />
                         {isActive && (
@@ -781,7 +784,11 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
                             </span>
                         </span>
                     ) : (
-                        <div style={{ marginLeft: 8, display: 'flex', alignItems: 'center', height: '24px', overflow: 'hidden' }}>
+                        <div 
+                            style={{ marginLeft: 8, display: 'flex', alignItems: 'center', height: '24px', overflow: 'hidden', cursor: 'pointer' }}
+                            onMouseEnter={() => setIsAvatarHovered(true)}
+                            onMouseLeave={() => setIsAvatarHovered(false)}
+                        >
                             {isAvatarHovered ? (
                                 <div style={{
                                     display: 'inline-block',

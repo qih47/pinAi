@@ -121,6 +121,17 @@ const AgenticProcessCard = ({
 
     const displayQuery = data.command || data.query || data.intent || (isTerminal ? (t.terminalDefault || "Eksekusi perintah terminal Ubuntu") : isCalc ? (t.calcDefault || "Kalkulasi matematis via Python Sandbox") : (t.docSearchDefault || "Pencarian regulasi internal"));
 
+    const glossyShimmerStyle = {
+        background: 'linear-gradient(90deg, #94a3b8 0%, #e2e8f0 50%, #94a3b8 100%)',
+        backgroundSize: '200% 100%',
+        WebkitBackgroundClip: 'text',
+        WebkitTextFillColor: 'transparent',
+        backgroundClip: 'text',
+        animation: 'shimmerFlow 1.2s linear infinite',
+        display: 'inline-block',
+        whiteSpace: 'nowrap'
+    };
+
     return (
         <div className="my-4 w-full max-w-3xl font-sans">
             {/* Top Level Accordion Header */}
@@ -133,20 +144,20 @@ const AgenticProcessCard = ({
                 }`}>
                     {isExecuting ? (
                         <>
-                            <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
-                            <span>{getHeaderLabel()}</span>
+                            <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 animate-ping flex-shrink-0" />
+                            <span style={glossyShimmerStyle}>{getHeaderLabel()}</span>
                         </>
                     ) : isAnalyzing ? (
                         <>
-                            <span className={`inline-block w-2 h-2 rounded-full animate-pulse ${darkMode ? 'bg-indigo-400' : 'bg-indigo-600'}`} />
-                            <span className={darkMode ? 'text-indigo-300' : 'text-indigo-600'}>{getHeaderLabel()}</span>
+                            <span className={`inline-block w-2 h-2 rounded-full animate-pulse flex-shrink-0 ${darkMode ? 'bg-indigo-400' : 'bg-indigo-600'}`} />
+                            <span style={glossyShimmerStyle}>{getHeaderLabel()}</span>
                         </>
                     ) : isComplete ? (
                         <span className="flex items-center gap-2">
                             {getHeaderLabel()}
                         </span>
                     ) : (
-                        getHeaderLabel()
+                        <span style={statusText ? glossyShimmerStyle : undefined}>{getHeaderLabel()}</span>
                     )}
                 </span>
                 <span className={`flex items-center justify-center transition-colors ${
@@ -419,11 +430,14 @@ const AgenticProcessCard = ({
                                         <Clock className={`w-[14px] h-[14px] ${darkMode ? 'text-[#888888]' : 'text-slate-400'}`} />
                                     )}
                                 </div>
-                                <span className={`text-[13.5px] ${
-                                    isAnalyzing
-                                        ? (darkMode ? 'text-indigo-300 font-medium' : 'text-indigo-600 font-medium')
-                                        : (darkMode ? 'text-[#888888]' : 'text-slate-500')
-                                }`}>
+                                <span 
+                                    className={`text-[13.5px] ${
+                                        isAnalyzing
+                                            ? (darkMode ? 'text-indigo-300 font-medium' : 'text-indigo-600 font-medium')
+                                            : (darkMode ? 'text-[#888888]' : 'text-slate-500')
+                                    }`}
+                                    style={isAnalyzing ? glossyShimmerStyle : undefined}
+                                >
                                     {isCalc ? (t.analyzingCalcResults || "Menganalisis hasil kalkulasi...") : (t.analyzingDocResults || "Menganalisis hasil penelusuran...")}
                                 </span>
                             </div>

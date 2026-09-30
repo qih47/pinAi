@@ -331,6 +331,8 @@ class ModeAttachment:
                     "stats": {
                         "doc1": doc_1["title"],
                         "doc2": doc_2["title"],
+                        "total_docs": len(extracted_docs),
+                        "docs": [d["title"] for d in extracted_docs],
                         "total_diff_lines": len(raw_diff.splitlines())
                     }
                 }

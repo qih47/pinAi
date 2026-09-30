@@ -53,6 +53,17 @@ const WebSearchWidget = ({ searchData, isStreaming, hasStartedResponding, darkMo
 
     let displayQuery = originalQuery || (t.searchingWebReferences || "Penelusuran Web");
 
+    const glossyShimmerStyle = {
+        background: 'linear-gradient(90deg, #94a3b8 0%, #e2e8f0 50%, #94a3b8 100%)',
+        backgroundSize: '200% 100%',
+        WebkitBackgroundClip: 'text',
+        WebkitTextFillColor: 'transparent',
+        backgroundClip: 'text',
+        animation: 'shimmerFlow 1.2s linear infinite',
+        display: 'inline-block',
+        whiteSpace: 'nowrap'
+    };
+
     return (
         <div className="my-4 w-full max-w-3xl font-sans">
             {/* Top Level Accordion Header */}
@@ -64,18 +75,18 @@ const WebSearchWidget = ({ searchData, isStreaming, hasStartedResponding, darkMo
                     }`}>
                     {isLoading ? (
                         <>
-                            <span className="inline-block w-2 h-2 rounded-full bg-indigo-500 animate-ping" />
-                            <span>{statusText || (t.searchingInfo || "Mencari di mesin pencari")}</span>
+                            <span className="inline-block w-2 h-2 rounded-full bg-indigo-500 animate-ping flex-shrink-0" />
+                            <span style={glossyShimmerStyle}>{statusText || (t.searchingInfo || "Mencari di mesin pencari")}</span>
                         </>
                     ) : isAnalyzing ? (
                         <>
-                            <span className={`inline-block w-2 h-2 rounded-full animate-pulse ${darkMode ? 'bg-indigo-400' : 'bg-indigo-600'}`} />
-                            <span className={darkMode ? 'text-indigo-300' : 'text-indigo-600'}>{statusText || (t.readingWebLinks || "Membaca isi tautan web")}</span>
+                            <span className={`inline-block w-2 h-2 rounded-full animate-pulse flex-shrink-0 ${darkMode ? 'bg-indigo-400' : 'bg-indigo-600'}`} />
+                            <span style={glossyShimmerStyle}>{statusText || (t.readingWebLinks || "Membaca isi tautan web")}</span>
                         </>
                     ) : isSearchComplete ? (
                         t.searchResults || "Hasil penelusuran informasi dari web"
                     ) : (
-                        statusText || t.searchingInfo || "Mencari di mesin pencari"
+                        <span style={statusText ? glossyShimmerStyle : undefined}>{statusText || t.searchingInfo || "Mencari di mesin pencari"}</span>
                     )}
                 </span>
                 <span className={`flex items-center justify-center transition-colors ${darkMode ? 'text-[#888888] group-hover:text-[#c4c4c4]' : 'text-slate-400 group-hover:text-slate-600'}`}>
