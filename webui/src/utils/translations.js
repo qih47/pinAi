@@ -1075,7 +1075,25 @@ export const translations = {
       ANALYZING_CLAUSES_PAGES: "🔍 Menganalisis klausul terkait pada {pages} halaman",
       FOUND_CLAUSE_PAGE: "📌 Ditemukan Klausul pada Halaman {pages}!",
       AUDITING_PAGES: "📑 Mengaudit Dokumen: Halaman {start}–{end} dari {total} Halaman",
-      ACCESS_DENIED: "🔒 Akses Dokumen Terbatas"
+      ACCESS_DENIED: "🔒 Akses Dokumen Terbatas",
+      DECK_FETCHING: "🗂️ Mengambil data Nextcloud Deck",
+      DECK_PROCESSING: "📋 Menyusun ringkasan tugas & proyek"
+    },
+    deck: {
+      title: "Pincloud Deck (Proyek & Tugas)",
+      board: "Board",
+      all: "Semua",
+      active: "Sedang Berjalan",
+      done: "Selesai",
+      openInDeck: "Buka di Pincloud Deck",
+      assignedToMe: "Tugas Di-assign ke Saya",
+      noTasksFound: "Tidak ada tugas ditemukan",
+      team: "Tim",
+      dueDate: "Tenggat",
+      status: "Status",
+      column: "Kolom",
+      totalTasks: "Total Tugas",
+      searchPlaceholder: "Cari tugas atau tim..."
     }
   },
 
@@ -2157,7 +2175,25 @@ export const translations = {
       ANALYZING_CLAUSES_PAGES: "🔍 Analyzing related clauses across {pages} pages",
       FOUND_CLAUSE_PAGE: "📌 Clause Found on Page {pages}!",
       AUDITING_PAGES: "📑 Auditing Document: Pages {start}–{end} of {total} Pages",
-      ACCESS_DENIED: "🔒 Document Access Restricted"
+      ACCESS_DENIED: "🔒 Document Access Restricted",
+      DECK_FETCHING: "🗂️ Fetching Nextcloud Deck data",
+      DECK_PROCESSING: "📋 Summarizing tasks & projects"
+    },
+    deck: {
+      title: "Pincloud Deck (Projects & Tasks)",
+      board: "Board",
+      all: "All",
+      active: "In Progress",
+      done: "Done",
+      openInDeck: "Open in Pincloud Deck",
+      assignedToMe: "Tasks Assigned to Me",
+      noTasksFound: "No tasks found",
+      team: "Team",
+      dueDate: "Due Date",
+      status: "Status",
+      column: "Column",
+      totalTasks: "Total Tasks",
+      searchPlaceholder: "Search tasks or team..."
     }
   }
 };

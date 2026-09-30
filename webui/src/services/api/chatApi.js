@@ -78,7 +78,7 @@ export async function fetchChatSuggestions(mode = 'documents', query = '', limit
  * @param {Object} options - Configuration options (timeoutMs, etc)
  */
 export async function streamChat(
-  { sessionUuid, messages, chatMode, thinking, isolatedDocId, attachmentPaths, npp, editIndex, signal, activeTopic, keySubject, forcedMode, bypassRouter, language, regeneratedFromId, parentId, isRegenerate, targetIndex, parentIndex, docTitle, hintSource, contextIsolation },
+  { sessionUuid, messages, chatMode, thinking, isolatedDocId, attachmentPaths, npp, editIndex, editMessageId, assistantMessageId, signal, activeTopic, keySubject, forcedMode, bypassRouter, language, regeneratedFromId, parentId, isRegenerate, targetIndex, parentIndex, docTitle, hintSource, contextIsolation },
   { onThinking, onStatus, onSources, onChunk, onFileStatus, onDone, onError, onTopicUpdate },
   options = {}
 ) {
@@ -156,6 +156,8 @@ export async function streamChat(
         context_isolation: contextIsolation || undefined,
         attachment_paths: attachmentPaths,
         edit_index: editIndex,
+        edit_message_id: editMessageId || undefined,
+        assistant_message_id: assistantMessageId || undefined,
         is_regenerate: Boolean(isRegenerate || regeneratedFromId),
         target_index: targetIndex !== undefined && targetIndex !== null ? targetIndex : undefined,
         parent_index: parentIndex !== undefined && parentIndex !== null ? parentIndex : undefined,

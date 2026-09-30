@@ -101,11 +101,14 @@ class ModeAttachment:
         routing_data: Optional[Dict[str, Any]] = None,
         request: Optional[Request] = None,
         employee_name: str = "Pegawai",
+        full_name: Optional[str] = None,
         current_user_npp: Optional[str] = None,
         session_uuid: Optional[str] = None
     ) -> AsyncGenerator[str, None]:
         t_pre_start = time.time()
         logger.info("[MODE_ATTACHMENT] Starting execution")
+        if not full_name and routing_data:
+            full_name = routing_data.get("full_name")
         
         yield format_sse(status="👁️ Memindai file lampiran", status_key="SCANNING_ATTACHMENT", event_type=SSEEventType.STATUS)
 
@@ -603,7 +606,12 @@ class ModeAttachment:
                 is_thinking=is_thinking
             )
         else:
-            system_prompt = build_attachment_system_prompt(employee_name=employee_name)
+            system_prompt = build_attachment_system_prompt(
+                employee_name=employee_name,
+                precheck=routing_data,
+                full_name=full_name,
+                current_user_npp=current_user_npp
+            )
 
         if is_thinking:
             system_prompt = "<|think|\>\n" + system_prompt

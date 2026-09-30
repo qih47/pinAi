@@ -40,3 +40,10 @@ export {
 export {
   extendSession
 } from './api/authApi';
+
+export {
+  fetchMyDeckTasks,
+  fetchDeckBoards,
+  fetchBoardStacks
+} from './api/deckApi';
+

@@ -19,6 +19,7 @@ from backend.app.services.pipeline.modes.mode_compliance import ModeCompliance
 from backend.app.services.pipeline.modes.mode_redteam import ModeRedTeam
 from backend.app.services.pipeline.modes.mode_email import ModeEmail
 from backend.app.services.pipeline.modes.mode_collab import ModeCollab
+from backend.app.services.pipeline.modes.mode_deck import ModeDeck
 
 from backend.app.services.pipeline.modes.mode_utils import detect_precheck, format_session_title
 from backend.app.services.pipeline.dispatcher_router import dispatch_intent_route
@@ -44,7 +45,8 @@ class ModeHub:
             "compliance": ModeCompliance(),
             "redteam": ModeRedTeam(),
             "email": ModeEmail(),
-            "collab": ModeCollab()
+            "collab": ModeCollab(),
+            "deck": ModeDeck(),
         }
 
     async def execute(
@@ -57,6 +59,7 @@ class ModeHub:
         context_isolation: Optional[Dict[str, Any]] = None,
         request: Optional[Request] = None,
         employee_name: str = "Pegawai",
+        full_name: Optional[str] = None,
         current_user_npp: Optional[str] = None,
         session_uuid: Optional[str] = None,
         has_new_document: bool = False,
@@ -158,6 +161,9 @@ class ModeHub:
         precheck["_session_uuid"] = session_uuid
         precheck["_visited_urls"] = visited_urls
         precheck["_chunks_with_meta"] = chunks_with_meta if 'chunks_with_meta' in locals() and isinstance(chunks_with_meta, list) else []
+        precheck["full_name"] = full_name
+        precheck["current_user_npp"] = current_user_npp
+        precheck["employee_name"] = employee_name
 
         # ── Ekstrak Context History untuk Multi-Turn Reasoning (Universal Dispatcher/Preset ⇄ Responder Sync) ──
         from backend.app.services.pipeline.modes.mode_utils import build_responder_history_context
@@ -449,6 +455,26 @@ class ModeHub:
                     yield chunk
                 return
 
+            # 6b. Nextcloud Deck Bypass
+            elif forced_mode_clean in ["deck", "pincloud_deck", "nextcloud_deck"]:
+                yield format_sse(status="🗂️ Mengambil data Nextcloud Deck...", status_key="DECK_FETCHING", event_type=SSEEventType.STATUS)
+                handler = self.mode_handlers["deck"]
+                async for chunk in handler.execute(
+                    user_message=user_message,
+                    chat_history=chat_history,
+                    is_thinking=is_thinking,
+                    attachments=attachments,
+                    context_isolation=context_isolation,
+                    routing_data=precheck,
+                    request=request,
+                    employee_name=employee_name,
+                    full_name=full_name,
+                    current_user_npp=current_user_npp,
+                    session_uuid=session_uuid
+                ):
+                    yield chunk
+                return
+
             # 7. Focus Mode Bypass
             elif forced_mode_clean in ["focus", "compliance"]:
                 target_mode = forced_mode_clean if forced_mode_clean in self.mode_handlers else "focus"
@@ -663,6 +689,7 @@ class ModeHub:
                 routing_data=precheck,
                 request=request,
                 employee_name=employee_name,
+                full_name=full_name,
                 current_user_npp=current_user_npp,
                 session_uuid=session_uuid
             ):
@@ -1208,6 +1235,9 @@ class ModeHub:
         elif routing_data.get("is_generate_email") and not is_guest and not routing_data.get("is_ambiguous"):
             logger.info("[MODE_HUB] is_generate_email=True detected & not ambiguous → routing to EMAIL mode")
             mode = "email"
+        elif (routing_data.get("is_deck_query") or precheck.get("is_deck_query")) and not is_guest:
+            logger.info("[MODE_HUB] is_deck_query=True detected → routing to DECK mode")
+            mode = "deck"
         elif (routing_data.get("is_docwriter") or precheck.get("is_docwriter")) and not is_guest:
             logger.info("[MODE_HUB] is_docwriter=True detected → routing to FLASH mode for Document Writer")
             mode = "flash"
@@ -1235,18 +1265,22 @@ class ModeHub:
         handler = self.mode_handlers[mode]
         
         # We delegate the actual generator execution to the handler
-        async for chunk in handler.execute(
-            user_message=user_message,
-            chat_history=chat_history,
-            is_thinking=is_thinking,
-            attachments=attachments,
-            context_isolation=context_isolation,
-            routing_data=precheck,
-            request=request,
-            employee_name=employee_name,
-            current_user_npp=current_user_npp,
-            session_uuid=session_uuid
-        ):
+        exec_kwargs = {
+            "user_message": user_message,
+            "chat_history": chat_history,
+            "is_thinking": is_thinking,
+            "attachments": attachments,
+            "context_isolation": context_isolation,
+            "routing_data": precheck,
+            "request": request,
+            "employee_name": employee_name,
+            "current_user_npp": current_user_npp,
+            "session_uuid": session_uuid,
+        }
+        if mode == "deck":
+            exec_kwargs["full_name"] = full_name
+
+        async for chunk in handler.execute(**exec_kwargs):
             yield chunk
 
 mode_hub = ModeHub()

@@ -141,6 +141,27 @@ class MessageRepository:
                 logger.error(f"[CHAT_HISTORY_ERROR] Failed to update chat message: {str(e)}")
                 return False
 
+    async def update_chat_message_by_id(
+        self, message_id: int, role: str, text: str, thought: Optional[str] = None, sources: Optional[list] = None, metadata: Optional[dict] = None
+    ) -> bool:
+        """Melakukan In-Place update langsung berdasarkan ID fisik pesan (kebal terhadap pergeseran offset varian)."""
+        async with get_db() as conn:
+            try:
+                sources_json = json.dumps(sources) if sources is not None else None
+                metadata_json = json.dumps(metadata) if metadata is not None else None
+                
+                update_query = """
+                    UPDATE chat_messages 
+                    SET message_text = $1, thought = $2, role = $3, sources = $5, metadata = $6
+                    WHERE id = $4
+                """
+                res = await conn.execute(update_query, text, thought, role, message_id, sources_json, metadata_json)
+                logger.info(f"[CHAT_HISTORY] Updated message directly by physical ID: {message_id} -> {res}")
+                return True
+            except Exception as e:
+                logger.error(f"[CHAT_HISTORY_ERROR] Failed to update chat message by ID {message_id}: {str(e)}")
+                return False
+
     
     async def trim_session_messages(self, session_uuid: str, keep_count: int) -> bool:
         """Menghapus pesan-pesan setelah urutan tertentu (keep_count) saat user melakukan Edit/Regenerate, termasuk file artifact-nya."""

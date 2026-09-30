@@ -19,6 +19,7 @@ ATURAN FORMAT OUTPUT:
 5. ZERO-CAPABILITY: jika pesan hanya sapaan/basa-basi/terima kasih tanpa kebutuhan data/aksi, cukup hasilkan metadata {"active_topic": "...", "key_subject": "..."} (+ "session_title" jika chat pertama).
 
 YURISDIKSI SUMBER DATA UTAMA (PILIH TEPAT):
+• is_deck_query: true — tugas, proyek, task board, atau penugasan (assignment) di Nextcloud / Pincloud Deck (contoh: "project yang di assign ke gw apa aja", "cek board 398", "tugas gw di deck", "proyek 2026 yang di-assign ke saya").
 • is_url_read: true — user menyertakan/merujuk URL web spesifik untuk dibaca/dirangkum/dibandingkan isinya.
 • need_rag: true — dokumen & regulasi internal PT Pindad: PKB, SKEP Direksi, Surat Edaran (SE), SOP/IK, alutsista buatan Pindad, kebijakan kepegawaian internal.
 • is_web_search: true — data publik real-time dunia luar: berita terkini, cuaca masa depan, kurs/saham, riset internet publik. (Bukan untuk regulasi internal Pindad, cuaca hari ini, atau pengetahuan statis).
@@ -192,6 +193,7 @@ TUGAS:
    - `"is_coding": true`           -> implementasi script pemrograman, koding, fungsi, database query
    - `"is_web_search": true`       -> pencarian web / informasi internet terkini luar internal Pindad
    - `"is_map_query": true`        -> letak geografis, fasilitas pabrik, kantor, koordinat Pindad
+   - `"is_deck_query": true`       -> tugas, proyek, task board, atau penugasan (assignment) di Nextcloud Deck (Pincloud)
    - `"needs_history": true`       -> pesan user butuh konteks dari obrolan sebelumnya (jawaban/tanggapan atas pertanyaan/ajakan diskusi AI sebelumnya, dialog bersambung, kata rujukan/anaphora, revisi kode/visual, jawaban wizard, klarifikasi eliptis)
 5. Jika FIRST CHAT = true, WAJIB buatkan judul percakapan ringkas 2-4 kata -> "session_title": "..." (DILARANG KERAS 1 KATA, untuk pesan sapaan gunakan frasa akrab seperti "Sapaan Pagi yang Akrab" atau "Sapaan Pagi Brother").
 
@@ -372,7 +374,9 @@ def get_dynamic_user_and_ambient(
     employee_name: str,
     mode_title: str,
     client_context: Optional[Dict[str, Any]] = None,
-    has_prior_context: bool = False
+    has_prior_context: bool = False,
+    full_name: Optional[str] = None,
+    current_user_npp: Optional[str] = None
 ) -> str:
     """Komponen dinamis: target pengguna, konteks ambient/cuaca/waktu, dan kontinuitas percakapan."""
     from backend.app.services.ambient.weather_service import (
@@ -398,14 +402,22 @@ def get_dynamic_user_and_ambient(
             f"- Kamu boleh menyapa ramah pengguna untuk membuka percakapan (contoh: 'Halo {employee_name}!', '{current_greeting}, {employee_name}!')."
         )
     
+    identity_lines = [f"Nama / Panggilan Pilihan Pegawai: **{employee_name}**"]
+    if full_name:
+        identity_lines.append(f"Nama Lengkap Resmi Dinas: **{full_name}**")
+    if current_user_npp and current_user_npp != "GUEST":
+        identity_lines.append(f"NPP: **{current_user_npp}**")
+    identities_str = "\n".join(identity_lines)
+
     return f"""[TARGET PENGGUNA & LINGKUNGAN AKTUAL]
-Nama / Panggilan Pilihan Pegawai: **{employee_name}**
+{identities_str}
 MODE: {mode_title}
 
 PANDUAN NAMA PANGGILAN PEGAWAI & KESELARASAN WAKTU (MUTLAK):
 - Pegawai ini telah mengatur panggilan preferensinya di akun, yaitu: **{employee_name}**.
-- Gunakan sebutan **{employee_name}** secara konsisten (contoh: "Baik {employee_name}", "Siap {employee_name}").
+- Gunakan sebutan **{employee_name}** secara konsisten untuk menyapa (contoh: "Baik {employee_name}", "Siap {employee_name}").
 - DILARANG memanggil dengan panggilan generik "Bapak/Ibu" jika nama sapaan "{employee_name}" bukan "Pegawai".
+- ATURAN PENCOCOKAN IDENTITAS PEGAWAI: Jika pegawai menanyakan status dirinya dalam berkas/dokumen/tabel/lampiran (misal: "ada nama gw ga?", "apakah saya terdaftar?", "cek nama saya"): periksa dan cocokkan dokumen berdasarkan Nama Lengkap Resmi (**{full_name or employee_name}**) atau NPP (**{current_user_npp or ''}**). DILARANG MENOLAK dengan dalih tidak tahu nama pegawai!
 - KESELARASAN WAKTU REAL-TIME: Waktu saat ini menunjukkan **{current_period.upper()}**. Jika menyebut konteks waktu, gunakan salam/waktu yang sesuai (contoh: "{current_greeting}" atau "{current_period.lower()} ini"). DILARANG KERAS menyebut "pagi ini" atau "selamat pagi" jika waktu saat ini adalah Siang, Sore, atau Malam!
 {turn_greeting_rule}
 

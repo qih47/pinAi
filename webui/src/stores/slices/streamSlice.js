@@ -190,7 +190,7 @@ export const createStreamSlice = (set, get) => ({
         }
     },
 
-    editAndRegenerate: async (index, newContent, toast = null) => {
+    editAndRegenerate: async (index, newContent, toast = null, messageId = null) => {
         const sessionUuid = get().sessionUuid;
         if (!newContent.trim() || get().activeStreams?.[sessionUuid]?.isStreaming) return;
 
@@ -201,6 +201,8 @@ export const createStreamSlice = (set, get) => ({
         // Cek mode asli dan thinking asli dari pesan yang diedit atau respons setelahnya
         const editedMsg = currentMessages[index];
         const prevAssistantMsg = currentMessages[index + 1];
+        const targetMessageId = messageId || editedMsg?.id || null;
+        const targetAssistantMessageId = prevAssistantMsg?.id || null;
 
         const currentIsolatedDocId = get().activeIsolatedDocId;
         const currentChatMode = get().chatMode || 'auto';
@@ -322,6 +324,8 @@ export const createStreamSlice = (set, get) => ({
             forcedMode: msgStreamOptions.forced_mode || msgStreamOptions.forcedMode || (savedIsolatedDocId ? 'documents' : effectiveChatMode),
             bypass_router: msgStreamOptions.bypass_router !== undefined ? msgStreamOptions.bypass_router : Boolean(savedIsolatedDocId),
             bypassRouter: msgStreamOptions.bypassRouter !== undefined ? msgStreamOptions.bypassRouter : Boolean(savedIsolatedDocId),
+            editMessageId: targetMessageId,
+            assistantMessageId: targetAssistantMessageId,
         };
 
         await performStream(

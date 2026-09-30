@@ -53,7 +53,7 @@ const UserBubble = memo(function UserBubble({
 
     const newContent = editValue;
     setIsEditing(false);
-    editAndRegenerate(idx, newContent);
+    editAndRegenerate(idx, newContent, null, msg.id);
   };
 
   const handleCancelEdit = () => {
@@ -380,7 +380,7 @@ const UserBubble = memo(function UserBubble({
                 if (targetAssistantIdx !== -1 && regenerateAssistant) {
                   regenerateAssistant(targetAssistantIdx);
                 } else if (editAndRegenerate) {
-                  editAndRegenerate(idx, msg.content);
+                  editAndRegenerate(idx, msg.content, null, msg.id);
                 }
               }}
               title={tGlobal.chat.retryResponse || 'Ulangi Respons'}

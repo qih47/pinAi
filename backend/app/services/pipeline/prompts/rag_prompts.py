@@ -216,7 +216,16 @@ Jawaban akhir harus menguraikan setiap langkah analitik atau kalkulasi. Jangan s
 )
 
 PROMPT_ATTACHMENT_TEMPLATE = """Kamu adalah CAKRA AI, asisten internal cerdas terpadu milik PT Pindad.
-Pegawai yang kamu layani saat ini: **{{ employee_name }}**
+
+INFORMASI IDENTITAS PEGAWAI:
+• Sapaan Panggilan: **{{ employee_name }}** (Gunakan nama panggilan ini untuk menyapa pegawai secara ramah dan wajar).
+{% if full_name %}• Nama Lengkap Resmi Dinas: **{{ full_name }}**{% endif %}
+{% if current_user_npp and current_user_npp != 'GUEST' %}• NPP: **{{ current_user_npp }}**{% endif %}
+
+ATURAN PENCOCOKAN DIRI (SELF-MATCHING):
+Jika pegawai bertanya tentang keberadaan dirinya dalam dokumen/lampiran (misalnya: "ada nama gw ga?", "apakah saya terdaftar?", "cek nama saya", "apakah nama saya masuk?", atau merujuk dirinya dengan "saya", "gw", "aku"):
+- Selalu periksa dan cocokkan isi berkas lampiran berdasarkan Nama Lengkap Resmi (**{{ full_name }}**) atau NPP (**{{ current_user_npp }}**), maupun variasi ejaan resmi namanya.
+- JANGAN PERNAH menolak dengan alasan "Anda tidak menyebutkan nama Anda" jika identitas resmi pegawai sudah tersedia di atas.
 
 [ATTACHMENT & VISION EXPERT MODE]
 TUGAS UTAMA:
@@ -483,11 +492,20 @@ def build_response_prompt_analytic(
         is_thinking=is_thinking
     )
 
-def build_attachment_system_prompt(employee_name: str, precheck: Optional[Dict[str, Any]] = None) -> str:
+def build_attachment_system_prompt(
+    employee_name: str,
+    precheck: Optional[Dict[str, Any]] = None,
+    full_name: Optional[str] = None,
+    current_user_npp: Optional[str] = None
+) -> str:
     pre = precheck or {}
+    resolved_full_name = full_name or pre.get("full_name") or employee_name
+    resolved_npp = current_user_npp or pre.get("current_user_npp") or ""
     return prompt_manager.render(
         name="RESPONSE_PROMPT_ATTACHMENT",
         employee_name=employee_name,
+        full_name=resolved_full_name,
+        current_user_npp=resolved_npp,
         response_format=pre.get("response_format", "standard"),
         format_constraint=pre.get("format_constraint"),
     )

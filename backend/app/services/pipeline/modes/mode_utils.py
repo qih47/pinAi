@@ -78,6 +78,16 @@ def detect_precheck(
     _EMAIL_KEYWORDS = ["kirim email", "buat email", "draft email", "balas email", "email ke", "draf email"]
     is_generate_email = any(kw in msg_lower for kw in _EMAIL_KEYWORDS)
     
+    _DECK_KEYWORDS = [
+        "deck", "pincloud deck", "nextcloud deck", "board deck", "board 398", 
+        "project yang di assign", "proyek yang di assign", "project yang di-assign", "proyek yang di-assign",
+        "tugas yang di assign", "tugas yang di-assign", "task yang di assign", "task yang di-assign",
+        "tugas di deck", "project di deck", "proyek di deck", "board proyek", "kartu deck"
+    ]
+    has_deck_assign = any(a in msg_lower for a in ["di assign", "di-assign", "assign ke", "ditugaskan", "tugas gw", "tugas saya", "proyek gw", "proyek saya", "project gw", "project saya"])
+    has_deck_board = any(b in msg_lower for b in ["deck", "board 398", "proyek 2026", "proyek 2025", "pincloud"])
+    is_deck_query = any(kw in msg_lower for kw in _DECK_KEYWORDS) or (has_deck_assign and (has_deck_board or "project" in msg_lower or "proyek" in msg_lower or "task" in msg_lower))
+
     _DOCWRITER_KEYWORDS = [
         "buka editor", "buka dokumen editor", "buka editornya", "buka dokumen writer",
         "dokumen writer", "dokumen editor", "document writer", "document editor",
@@ -221,6 +231,9 @@ def detect_precheck(
     elif is_map_query and not is_explicit_doc_mode:
         need_rag_hint = False
         is_chitchat = False
+    elif is_deck_query and not is_explicit_doc_mode:
+        need_rag_hint = False
+        is_chitchat = False
     elif has_attachment or is_doc_query:
         need_rag_hint = True
         is_chitchat = False
@@ -281,6 +294,7 @@ def detect_precheck(
         "is_generate_email": is_generate_email,
         "is_docwriter": is_docwriter,
         "is_map_query": is_map_query,
+        "is_deck_query": is_deck_query,
         "response_format": response_format,
         "format_constraint": format_constraint,
         "_user_message": user_message

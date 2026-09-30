@@ -360,7 +360,9 @@ async def dispatch_intent_route(
 
         # ── KOTAK 1: [CALL 1 ROUTING & DECISION DASHBOARD] ────────────────────
         active_mode = "GENERAL / CHITCHAT"
-        if precheck.get("_detected_urls"):
+        if routing.get("is_deck_query"):
+            active_mode = "NEXTCLOUD DECK (PINCLOUD)"
+        elif precheck.get("_detected_urls"):
             active_mode = f"URL READER ({', '.join(precheck.get('_detected_urls', []))})"
         elif routing.get("is_chitchat") or routing.get("is_greeting"):
             active_mode = "CHITCHAT / OBROLAN SANTAI"
@@ -392,6 +394,8 @@ async def dispatch_intent_route(
         visual_str = f"✅ {', '.join(vt)}" if (routing.get("requires_visual") and vt) else "❌ None"
 
         active_features = []
+        if routing.get("is_deck_query"):
+            active_features.append("Nextcloud Deck")
         if routing.get("is_url_read"):
             active_features.append("URL Reader")
         if routing.get("is_ambiguous"):
@@ -584,6 +588,7 @@ def _validate_and_normalize_routing(
         "session_title": None,
         "is_chitchat": False,
         "is_map_query": False,
+        "is_deck_query": False,
         "fetch_urls": [],
         "session_chunk_ids": [],
         "target_brain_assets": [],
@@ -599,6 +604,10 @@ def _validate_and_normalize_routing(
     routing["key_subject"] = str(routing_json.get("key_subject") or precheck.get("previous_subject") or "").strip()
     routing["is_ambiguous"] = bool(routing_json.get("is_ambiguous", False))
     routing["ambiguity_reason"] = str(routing_json.get("ambiguity_reason") or "").strip()
+    routing["is_deck_query"] = bool(routing_json.get("is_deck_query", False)) or bool(precheck.get("is_deck_query", False))
+    if routing["is_deck_query"]:
+        routing["need_rag"] = False
+        routing["is_chitchat"] = False
     routing["is_generate_file"] = bool(routing_json.get("is_generate_file", False))
     routing["is_generate_email"] = bool(routing_json.get("is_generate_email", False))
     routing["is_docwriter"] = bool(routing_json.get("is_docwriter", False)) or bool(precheck.get("is_docwriter", False))

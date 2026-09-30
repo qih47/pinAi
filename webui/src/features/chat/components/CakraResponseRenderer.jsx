@@ -27,6 +27,7 @@ const LazySlideDeckViewer = lazy(() => import('./SlideDeckViewer'));
 const LazyDocAuditContinueWidget = lazy(() => import('./DocAuditContinueWidget'));
 const LazyAgenticProcessCard = lazy(() => import('./AgenticProcessCard'));
 const LazyDocumentDiffProcessCard = lazy(() => import('./DocumentDiffProcessCard'));
+const LazyDeckTasksWidget = lazy(() => import('./DeckTasksWidget'));
 
 const remarkPluginsList = [remarkGfm, remarkMath];
 const rehypePluginsList = [rehypeKatex];
@@ -826,6 +827,14 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
                 return (
                     <Suspense fallback={<div className="animate-pulse p-8 border border-dashed rounded-xl text-sm text-center font-medium my-4">Memuat editor email...</div>}>
                         <LazySmartMailWidget initialData={cleanCode} darkMode={darkMode} theme={theme} language={language} />
+                    </Suspense>
+                );
+            }
+
+            if (!inline && match && (match[1] === 'deck_tasks' || match[1] === 'deck' || match[1] === 'pincloud_deck')) {
+                return (
+                    <Suspense fallback={<div className="animate-pulse p-4 border border-dashed rounded-xl text-sm text-center font-medium my-2">Memuat Kartu Deck Pincloud...</div>}>
+                        <LazyDeckTasksWidget data={cleanCode} darkMode={darkMode} />
                     </Suspense>
                 );
             }

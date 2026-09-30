@@ -368,7 +368,11 @@ async def stream_ollama_chat(
 
     # Extract employee name & slang mirroring
     import re
-    emp_match = re.search(r'Nama\s*/\s*Panggilan Pilihan Pegawai:\s*\*\*([^\*]+)\*\*', system_content) or re.search(r'Pegawai yang kamu layani:\s*\*\*([^\*]+)\*\*', system_content)
+    emp_match = (
+        re.search(r'Nama\s*/\s*Panggilan Pilihan Pegawai:\s*\*\*([^\*]+)\*\*', system_content)
+        or re.search(r'Sapaan Panggilan:\s*\*\*([^\*]+)\*\*', system_content)
+        or re.search(r'Pegawai yang kamu layani.*?:\s*\*\*([^\*]+)\*\*', system_content)
+    )
     emp_name_log = emp_match.group(1).strip() if emp_match else "Pegawai"
     slang_match = re.search(r"pengguna secara spontan menyapa.*?['\"]([^'\"]+)['\"]", system_content, re.IGNORECASE)
     emp_sapaan_full = f"{emp_name_log} (Slang Akrab: \"{slang_match.group(1)}\")" if slang_match else emp_name_log

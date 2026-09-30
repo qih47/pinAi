@@ -140,7 +140,15 @@ async def _sequential_pipeline_generator(
     if payload.session_uuid and not is_regenerate_event:
         user_text = f"{original_user_message}"
         
-        if payload.edit_index is not None:
+        if getattr(payload, 'edit_message_id', None) is not None:
+            logger.info(f"[PIPELINE] In-place updating user message by ID: {payload.edit_message_id}")
+            await chat_history_service.update_chat_message_by_id(
+                message_id=payload.edit_message_id,
+                role="user",
+                text=user_text,
+                thought=f"Gemma Agentic [Mode: {chat_mode} - Edited]",
+            )
+        elif payload.edit_index is not None:
             await chat_history_service.update_chat_message(
                 session_id=payload.session_uuid,
                 edit_index=payload.edit_index,
@@ -167,6 +175,7 @@ async def _sequential_pipeline_generator(
 
     # ── Resolve employee name & Guest Override ────────────────────────────────
     employee_name = "Pegawai"
+    full_name = ""
     if current_user_npp == "GUEST":
         # HARD GUARD FOR GUEST
         chat_mode = "guest"
@@ -186,16 +195,17 @@ async def _sequential_pipeline_generator(
                 db_fetch_func=fetch_employee_from_db,
             )
             if emp_data:
+                full_name = (emp_data.get("fullname") or "").strip()
                 if emp_data.get("preferred_name"):
                     employee_name = emp_data["preferred_name"]
                 else:
-                    full_name = emp_data.get("fullname") or ""
-                    name_parts = full_name.strip().split()
+                    name_parts = full_name.split()
                     employee_name = name_parts[0].title() if name_parts else "Pegawai"
         except Exception:
             employee_name = "Pegawai"
+            full_name = ""
 
-    logger.info(f"[PIPELINE] Employee resolved: {employee_name}")
+    logger.info(f"[PIPELINE] Employee resolved: {employee_name} | Full Name: '{full_name}' | NPP: {current_user_npp}")
 
     # ── Gemma Agentic Engine (single model, handles everything) ───────────────
     logger.info("[AGENTIC] Gemma Agentic Engine starting...")
@@ -270,6 +280,7 @@ async def _sequential_pipeline_generator(
             attachments=formatted_attachments,
             context_isolation=full_context_isolation,
             employee_name=employee_name,
+            full_name=full_name,
             current_user_npp=current_user_npp,
             session_uuid=payload.session_uuid,
             has_new_document=bool(extracted_file_texts),
@@ -480,6 +491,16 @@ async def _sequential_pipeline_generator(
                         metadata=message_metadata,
                         parent_id=actual_parent_id,
                         regenerated_from_id=actual_regen_from_id
+                    )
+                elif getattr(payload, 'assistant_message_id', None) is not None:
+                    logger.info(f"[PIPELINE] In-place updating assistant message by physical ID: {payload.assistant_message_id}")
+                    await chat_history_service.update_chat_message_by_id(
+                        message_id=payload.assistant_message_id,
+                        role="assistant",
+                        text=clean_db_text,
+                        thought=ast_thought,
+                        sources=preloaded_rag_sources,
+                        metadata=message_metadata
                     )
                 elif payload.edit_index is not None:
                     await chat_history_service.update_chat_message(
