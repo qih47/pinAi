@@ -72,6 +72,18 @@ def is_continuation_intent(query: str) -> bool:
         return True
     return any(kw in q for kw in continuation_keywords)
 
+def is_deep_diff_intent(query: str) -> bool:
+    q = (query or "").lower().strip()
+    deep_keywords = [
+        "menyeluruh", "detail", "rinci", "rincian", "per pasal", "per klausul", 
+        "klausul", "baris demi baris", "line by line", "audit", "inspeksi", "diff",
+        "perbedaan kata", "redline", "red line", "bandingkan menyeluruh", 
+        "bandingkan detail", "secara mendalam", "secara rinci", "secara detail",
+        "komparasi mendalam", "komparasi menyeluruh", "periksa perbedaan",
+        "sandingkan pasal", "penyandingan pasal", "sandingkan dokumen"
+    ]
+    return any(kw in q for kw in deep_keywords)
+
 class ModeAttachment:
     """
     Mode Attachment: Memproses file yang diunggah pengguna (PDF, Gambar, Teks/Kode).
@@ -252,25 +264,107 @@ class ModeAttachment:
                         chunk_metadata=profile
                     ))
 
-            yield format_sse(status="⚖️ Mengkomparasi kedua dokumen", status_key="COMPUTING_DIFF", event_type=SSEEventType.STATUS)
-
             doc_1 = extracted_docs[0]
             doc_2 = extracted_docs[1]
-            cross_delta = asset_diff_engine.compute_cross_asset_diff(
-                asset_a={"title": doc_1["title"], "content": doc_1["text"], "type": "document"},
-                asset_b={"title": doc_2["title"], "content": doc_2["text"], "type": "document"}
-            )
+            is_deep = is_deep_diff_intent(user_message)
 
             doc_blocks = []
             for idx, d in enumerate(extracted_docs, 1):
                 d_text = d["text"][:22000] + ("\n...[teks diringkas untuk efisiensi context]..." if len(d["text"]) > 22000 else "")
                 doc_blocks.append(f"=== [DOKUMEN {idx}: '{d['title']}' ({d['total_pages']} Halaman)] ===\n{d_text}")
 
-            multi_pdf_context = (
-                f"{cross_delta.summary_text}\n\n"
-                f"Pertanyaan / Instruksi Diskusi Pengguna:\n{user_message}\n\n"
-                f"{chr(10).join(doc_blocks)}"
-            )
+            if is_deep:
+                # ── Kondisi 2: Deep Diff Inspector (Sub-cabang Khusus Mandiri) ──
+                yield format_sse(status="⚖️ Menjalankan inspeksi komparasi naskah", status_key="COMPUTING_DIFF", event_type=SSEEventType.STATUS)
+                yield format_sse(status="🔍 Menganalisis perbedaan klausul & baris", status_key="AUDITING_CLAUSES", event_type=SSEEventType.STATUS)
+
+                from backend.app.core.paths import get_account_session_dir
+                scratch_dir = get_account_session_dir(current_user_npp or "guest", session_uuid or "default", "scratch")
+                os.makedirs(scratch_dir, exist_ok=True)
+
+                ts = int(time.time() * 1000)
+                f1_path = os.path.join(scratch_dir, f"doc1_{ts}.txt")
+                f2_path = os.path.join(scratch_dir, f"doc2_{ts}.txt")
+                raw_diff = ""
+
+                try:
+                    with open(f1_path, "w", encoding="utf-8") as f1, open(f2_path, "w", encoding="utf-8") as f2:
+                        f1.write(doc_1["text"])
+                        f2.write(doc_2["text"])
+
+                    proc = await asyncio.create_subprocess_exec(
+                        "diff", "-u", "-w", f1_path, f2_path,
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE,
+                        cwd=str(scratch_dir)
+                    )
+                    stdout_b, _ = await proc.communicate()
+                    raw_diff = stdout_b.decode("utf-8", errors="replace").strip()
+                except Exception as e_diff:
+                    logger.warning(f"[MODE_ATTACHMENT] Native diff fallback to difflib: {e_diff}")
+                    import difflib
+                    raw_diff = "\n".join(difflib.unified_diff(
+                        doc_1["text"].splitlines(),
+                        doc_2["text"].splitlines(),
+                        fromfile=doc_1["title"],
+                        tofile=doc_2["title"],
+                        lineterm=""
+                    ))
+                finally:
+                    for p in (f1_path, f2_path):
+                        if os.path.exists(p):
+                            try:
+                                os.remove(p)
+                            except Exception:
+                                pass
+
+                # Perbaiki header diff agar menggunakan nama dokumen bersih
+                if raw_diff:
+                    raw_diff = raw_diff.replace(f1_path, doc_1["title"]).replace(f2_path, doc_2["title"])
+                else:
+                    raw_diff = "--- Tidak ditemukan perbedaan teks signifikan antara kedua naskah dokumen ---"
+
+                diff_filename = f"Komparasi_{os.path.splitext(doc_1['title'])[0]}_vs_{os.path.splitext(doc_2['title'])[0]}.diff"
+                diff_payload = {
+                    "filename": diff_filename,
+                    "diff_text": raw_diff[:35000] if len(raw_diff) > 35000 else raw_diff,
+                    "stats": {
+                        "doc1": doc_1["title"],
+                        "doc2": doc_2["title"],
+                        "total_diff_lines": len(raw_diff.splitlines())
+                    }
+                }
+                diff_widget = f"\n\n```document_diff\n{json.dumps(diff_payload, ensure_ascii=False)}\n```\n\n"
+                yield format_sse(chunk=diff_widget, event_type=SSEEventType.CHUNK)
+
+                multi_pdf_context = (
+                    f"HASIL INSPEKSI PERBEDAAN TEKS SECARA MENYELURUH (UNIFIED DIFF):\n"
+                    f"{raw_diff[:15000]}\n\n"
+                    f"Pertanyaan / Instruksi Pengguna:\n{user_message}\n\n"
+                    f"INSTRUKSI RESPON ANALISIS KOMPARASI:\n"
+                    f"1. Awali dengan ikhtisar perbedaan substansial antara Dokumen 1 ('{doc_1['title']}') dan Dokumen 2 ('{doc_2['title']}').\n"
+                    f"2. Sajikan tabel komparasi detail perubahan pasal/klausul (Kolom: Nomor/Pasal/Klausul, Naskah Dokumen 1, Naskah Dokumen 2, Analisis Perubahan & Implikasi).\n"
+                    f"3. Berikan sintesis eksekutif apakah revisi menguntungkan atau mengandung risiko kepatuhan/operasional.\n\n"
+                    f"{chr(10).join(doc_blocks)}"
+                )
+            else:
+                # ── Kondisi 1: Fast-Path Comparison (Direct Markdown Table, Tanpa Blok Diff) ──
+                yield format_sse(status="⚖️ Mengkomparasi kedua dokumen", status_key="COMPUTING_DIFF", event_type=SSEEventType.STATUS)
+
+                cross_delta = asset_diff_engine.compute_cross_asset_diff(
+                    asset_a={"title": doc_1["title"], "content": doc_1["text"], "type": "document"},
+                    asset_b={"title": doc_2["title"], "content": doc_2["text"], "type": "document"}
+                )
+
+                multi_pdf_context = (
+                    f"{cross_delta.summary_text}\n\n"
+                    f"Pertanyaan / Instruksi Pengguna:\n{user_message}\n\n"
+                    f"INSTRUKSI RESPON KOMPARASI:\n"
+                    f"1. Rangkum perbedaan pokok antara Dokumen 1 ('{doc_1['title']}') dan Dokumen 2 ('{doc_2['title']}') secara jelas dan lugas.\n"
+                    f"2. Sajikan tabel perbandingan pokok (Topik/Aspek, Dokumen 1, Dokumen 2, Catatan Utama).\n"
+                    f"3. Tarik kesimpulan ringkas untuk membantu pengambilan keputusan.\n\n"
+                    f"{chr(10).join(doc_blocks)}"
+                )
 
             for d in extracted_docs:
                 for b64 in d["images"]:

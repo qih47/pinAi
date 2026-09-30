@@ -938,6 +938,16 @@ export const translations = {
       goToSlide: "Pindah ke Slide {number}",
       preparingSlides: "Menyiapkan Slide Presentasi..."
     },
+    documentDiff: {
+      finishedComparison: "Selesai 1 komparasi dokumen",
+      fileSystem: "File System",
+      diffInspector: "Inspeksi Perbedaan Dokumen",
+      presented: "Menyajikan 1 komparasi",
+      done: "Selesai",
+      copied: "Tersalin!",
+      copyDiff: "Salin Diff",
+      noChanges: "Tidak ada perbedaan teks yang ditemukan."
+    },
     documentPill: {
       title: "Dokumen Rujukan PT Pindad",
       sessionDocs: "Dokumen di Sesi Ini",
@@ -1048,6 +1058,7 @@ export const translations = {
       BRAIN_SAVE: "💾 Menyimpan ke memori",
       DOC_LOADING: "📄 Memuat dokumen",
       COMPUTING_DIFF: "⚖️ Mengkomparasi kedua dokumen",
+      AUDITING_CLAUSES: "🔍 Menganalisis perbedaan klausul & baris",
       DOC_READING_SELECTED: "📄 Membaca pasal terpilih",
       DOC_OCR_RUNNING: "🔬 Dokumen scan, OCR dijalankan",
       DOC_READING_TEXT: "📖 Membaca teks dokumen",
@@ -2009,6 +2020,16 @@ export const translations = {
       goToSlide: "Go to Slide {number}",
       preparingSlides: "Preparing Slide Presentation..."
     },
+    documentDiff: {
+      finishedComparison: "Finished 1 document comparison",
+      fileSystem: "File System",
+      diffInspector: "Document Diff Inspector",
+      presented: "Presented 1 comparison",
+      done: "Done",
+      copied: "Copied!",
+      copyDiff: "Copy Diff",
+      noChanges: "No text differences found."
+    },
     documentPill: {
       title: "PT Pindad Reference Documents",
       sessionDocs: "Session Documents",
@@ -2119,6 +2140,7 @@ export const translations = {
       BRAIN_SAVE: "💾 Saving to memory",
       DOC_LOADING: "📄 Loading document",
       COMPUTING_DIFF: "⚖️ Comparing both documents",
+      AUDITING_CLAUSES: "🔍 Analyzing clause & line differences",
       DOC_READING_SELECTED: "📄 Reading selected clauses",
       DOC_OCR_RUNNING: "🔬 Scanned document, running OCR",
       DOC_READING_TEXT: "📖 Reading document text",

@@ -592,6 +592,7 @@ def _validate_and_normalize_routing(
         "needs_history": False,
     }
 
+    user_msg_lower = (user_message or "").lower()
     routing = {**default_routing, **routing_json}
     routing["_user_message"] = user_message
     routing["active_topic"] = str(routing_json.get("active_topic") or precheck.get("previous_topic") or "Obrolan Umum").strip()
@@ -610,7 +611,6 @@ def _validate_and_normalize_routing(
         routing["is_generate_file"] = False
     routing["is_troubleshooting"] = bool(routing_json.get("is_troubleshooting", False))
     routing["is_comparative"] = bool(routing_json.get("is_comparative", False))
-    user_msg_lower = (user_message or "").lower()
     if any(k in user_msg_lower for k in ["bandingkan", "cocokkan", "sinkronkan", "crosscheck", "cross check", "cek silang", "apa bedanya", "perbedaan"]):
         routing["is_comparative"] = True
         routing["needs_history"] = True

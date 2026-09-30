@@ -26,6 +26,7 @@ const LazyDocWriterWidget = lazy(() => import('./DocWriterChatWidget'));
 const LazySlideDeckViewer = lazy(() => import('./SlideDeckViewer'));
 const LazyDocAuditContinueWidget = lazy(() => import('./DocAuditContinueWidget'));
 const LazyAgenticProcessCard = lazy(() => import('./AgenticProcessCard'));
+const LazyDocumentDiffProcessCard = lazy(() => import('./DocumentDiffProcessCard'));
 
 const remarkPluginsList = [remarkGfm, remarkMath];
 const rehypePluginsList = [rehypeKatex];
@@ -314,6 +315,7 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
         if (upper.includes('CALC')) return 'python_calc';
         if (upper.includes('MAP')) return 'map_search';
         if (upper.includes('CLI') || upper.includes('TERMINAL')) return 'terminal_runner';
+        if (upper.includes('DIFF') || upper.includes('COMPUTING_DIFF')) return 'document_diff';
         return null;
     })();
 
@@ -332,7 +334,7 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
 
         // 🛡️ Bersihkan HANYA partial/unclosed tool block (yang belum memiliki penutup ```) saat streaming agar tidak merender blok JSON mentah
         if (isStreaming) {
-            final = final.replace(/```(?:websearch|docsearch|urlfetch|python_calc|map_search|terminal_runner)(?:(?!```)[\s\S])*$/i, '').trim();
+            final = final.replace(/```(?:websearch|docsearch|urlfetch|python_calc|map_search|terminal_runner|document_diff|documentdiff|doc_diff)(?:(?!```)[\s\S])*$/i, '').trim();
         }
 
         // Samarkan kata 'mermaid' menjadi 'Cakra AI Diagram' agar user tidak bingung,
@@ -852,6 +854,32 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
                 );
             }
 
+            if (!inline && match && (match[1] === 'document_diff' || match[1] === 'documentdiff' || match[1] === 'doc_diff')) {
+                const { rawContent, darkMode, language, isStreaming } = latestProps.current;
+                let hasStartedResponding = false;
+                const toolBlockTag = `\`\`\`${match[1]}`;
+                if (rawContent && rawContent.includes(toolBlockTag)) {
+                    const wsIdx = rawContent.indexOf(toolBlockTag);
+                    const afterOpen = rawContent.substring(wsIdx + toolBlockTag.length);
+                    const closeFenceIdx = afterOpen.indexOf('```');
+                    if (closeFenceIdx !== -1) {
+                        const afterClose = afterOpen.substring(closeFenceIdx + 3).trim();
+                        hasStartedResponding = afterClose.length > 0;
+                    }
+                }
+                return (
+                    <Suspense fallback={<div className="animate-pulse p-3 border rounded-xl text-xs font-medium my-2">Memuat komparasi dokumen...</div>}>
+                        <LazyDocumentDiffProcessCard 
+                            diffData={cleanCode} 
+                            darkMode={darkMode} 
+                            language={language} 
+                            isStreaming={isStreaming} 
+                            hasStartedResponding={hasStartedResponding}
+                        />
+                    </Suspense>
+                );
+            }
+
             if (!inline && match && (
                 match[1] === 'doc-audit-continue' || 
                 match[1] === 'docauditcontinue' || 
@@ -1109,6 +1137,16 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
                                             darkMode={darkMode}
                                             language={language}
                                             statusText={statusMessage}
+                                        />
+                                    </Suspense>
+                                )}
+                                {effectiveActiveTool === 'document_diff' && (
+                                    <Suspense fallback={null}>
+                                        <LazyDocumentDiffProcessCard
+                                            diffData={null}
+                                            isStreaming={true}
+                                            darkMode={darkMode}
+                                            language={language}
                                         />
                                     </Suspense>
                                 )}
