@@ -181,6 +181,7 @@ export async function performStream(set, get, messagesToSend, assistantMessage, 
                             else if (upperKey.includes('DOCSEARCH') || upperKey.includes('DOC_SEARCH')) activeTool = 'docsearch';
                             else if (upperKey.includes('CALC')) activeTool = 'python_calc';
                             else if (upperKey.includes('MAP')) activeTool = 'map_search';
+                            else if (upperKey.includes('CLI') || upperKey.includes('TERMINAL')) activeTool = 'terminal_runner';
                             else if (upperKey === 'DRAFTING_RESPONSE' || upperKey === 'FINISHED') activeTool = null;
                         }
 
@@ -311,6 +312,18 @@ export async function performStream(set, get, messagesToSend, assistantMessage, 
                                             ...existingGens[fgIdx],
                                             batchIndex: currentBatchIndex
                                         };
+                                    } else {
+                                        // 🔥 OPTIMISTIC INITIALIZATION:
+                                        // Begitu open tag terdeteksi, langsung buatkan entri awal agar FileProcessLog
+                                        // langsung render status live (tidak blank/null) sejak detik pertama!
+                                        existingGens.push({
+                                            filename,
+                                            stage: (match[1] || '').toLowerCase() === 'edit_file' ? 'editing' : 'creating',
+                                            tag_type: (match[1] || 'create_file').toLowerCase(),
+                                            liveCode: '',
+                                            file_path: null,
+                                            batchIndex: currentBatchIndex
+                                        });
                                     }
                                 }
 
@@ -324,11 +337,37 @@ export async function performStream(set, get, messagesToSend, assistantMessage, 
                                 const nextOpen = nextOpenRegex.exec(cleanReply);
 
                                 if (nextClose && (!nextOpen || nextClose.index < nextOpen.index)) {
+                                    const codeContent = cleanReply.substring(contentStart, nextClose.index);
+                                    const fgIdx = existingGens.findIndex(fg => fg.filename === filename);
+                                    if (fgIdx !== -1) {
+                                        existingGens[fgIdx] = {
+                                            ...existingGens[fgIdx],
+                                            stage: 'done',
+                                            liveCode: codeContent
+                                        };
+                                    }
                                     lastIdx = closeTagRegex.lastIndex;
                                 } else if (nextOpen && (!nextClose || nextOpen.index < nextClose.index)) {
+                                    const codeContent = cleanReply.substring(contentStart, nextOpen.index);
+                                    const fgIdx = existingGens.findIndex(fg => fg.filename === filename);
+                                    if (fgIdx !== -1) {
+                                        existingGens[fgIdx] = {
+                                            ...existingGens[fgIdx],
+                                            stage: 'done',
+                                            liveCode: codeContent
+                                        };
+                                    }
                                     lastIdx = nextOpen.index;
                                     openTagRegex.lastIndex = lastIdx;
                                 } else {
+                                    const codeContent = cleanReply.substring(contentStart);
+                                    const fgIdx = existingGens.findIndex(fg => fg.filename === filename);
+                                    if (fgIdx !== -1) {
+                                        existingGens[fgIdx] = {
+                                            ...existingGens[fgIdx],
+                                            liveCode: codeContent
+                                        };
+                                    }
                                     lastIdx = cleanReply.length;
                                 }
                             }
@@ -464,7 +503,22 @@ export async function performStream(set, get, messagesToSend, assistantMessage, 
                         }
                     },
                     onDone: (data) => {
-                        assistantMessage = { ...assistantMessage, isStreaming: false, isThinking: false, activeTool: null };
+                        let finalFileGens = assistantMessage.fileGenerations;
+                        if (finalFileGens && finalFileGens.length > 0) {
+                            finalFileGens = finalFileGens.map(fg => {
+                                if (fg.stage === 'creating' || fg.stage === 'editing' || fg.stage === 'streaming') {
+                                    return { ...fg, stage: 'done' };
+                                }
+                                return fg;
+                            });
+                        }
+                        assistantMessage = {
+                            ...assistantMessage,
+                            isStreaming: false,
+                            isThinking: false,
+                            activeTool: null,
+                            fileGenerations: finalFileGens
+                        };
 
                         // 📚 MERGE DOKUMEN RUJUKAN dari hint di akhir stream jika belum terdaftar
                         if (streamOptions?.hint_source) {
@@ -664,7 +718,13 @@ export function parseMessageFileTags(msg) {
         }
 
         const codeContent = content.substring(contentStart, contentEnd);
-        parsedFileGens.push({ filename, stage: 'done', liveCode: codeContent, batchIndex: currentBatchIndex });
+        parsedFileGens.push({
+            filename,
+            stage: 'done',
+            liveCode: codeContent,
+            batchIndex: currentBatchIndex,
+            tag_type: (match[1] || 'create_file').toLowerCase()
+        });
     }
     textDisplay += content.substring(lastIdx);
 

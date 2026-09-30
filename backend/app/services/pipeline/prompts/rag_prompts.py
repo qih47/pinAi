@@ -170,7 +170,7 @@ ATURAN INTEGRITAS DOKUMEN SUMBER:
 """
     + "\n"
     + DYNAMIC_TONE_AND_PRONOUN
-    + "\n{{ get_dynamic_user_and_ambient(employee_name, mode_title) }}\n"
+    + "\n{{ get_dynamic_user_and_ambient(employee_name, mode_title, has_prior_context=has_prior_context) }}\n"
     + """
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 📚 SUMBER DOKUMEN (GUNAKAN INI SEBAGAI REFERENSI MUTLAK)
@@ -212,7 +212,7 @@ Jawaban akhir harus menguraikan setiap langkah analitik atau kalkulasi. Jangan s
 """
     + "\n"
     + DYNAMIC_TONE_AND_PRONOUN
-    + "\n{{ get_dynamic_user_and_ambient(employee_name, mode_title) }}\n"
+    + "\n{{ get_dynamic_user_and_ambient(employee_name, mode_title, has_prior_context=has_prior_context) }}\n"
 )
 
 PROMPT_ATTACHMENT_TEMPLATE = """Kamu adalah CAKRA AI, asisten internal cerdas terpadu milik PT Pindad.
@@ -268,10 +268,10 @@ Seluruh proses bedah fakta dan rencana respons di dalam jalur penalaran internal
 """
     + "\n"
     + DYNAMIC_TONE_AND_PRONOUN
-    + "\n{{ get_dynamic_user_and_ambient(employee_name, mode_title) }}\n"
+    + "\n{{ get_dynamic_user_and_ambient(employee_name, mode_title, has_prior_context=has_prior_context) }}\n"
 )
 
-PROMPT_FOCUS_TEMPLATE = """{{ get_base_persona(employee_name, mode_title) }}""" + """
+PROMPT_FOCUS_TEMPLATE = """{{ get_base_persona(employee_name, mode_title, has_prior_context=has_prior_context) }}""" + """
 Anda sedang berada dalam Mode Fokus untuk menanyai dan menganalisis SATU dokumen spesifik secara mendalam.
 
 IDENTITAS RESMI DOKUMEN RUJUKAN:
@@ -437,6 +437,7 @@ def build_response_prompt_rag(
         rag_context=rag_context[:_RAG_CONTEXT_MAX_CHARS] if rag_context else "",
         is_multi_document=False,
         is_ambiguous=bool(precheck.get("is_ambiguous", False)),
+        has_prior_context=bool(precheck.get("has_prior_context", False)),
     )
 
 def build_response_prompt_multi_document(
@@ -460,6 +461,7 @@ def build_response_prompt_multi_document(
         rag_context=rag_context[:_RAG_CONTEXT_MAX_CHARS] if rag_context else "",
         is_multi_document=True,
         is_ambiguous=bool(precheck.get("is_ambiguous", False)),
+        has_prior_context=bool(precheck.get("has_prior_context", False)),
     )
 
 def build_response_prompt_analytic(
@@ -477,6 +479,7 @@ def build_response_prompt_analytic(
         tone_hint=precheck.get("tone_hint", "casual"),
         response_format=precheck.get("response_format", "standard"),
         format_constraint=precheck.get("format_constraint"),
+        has_prior_context=bool(precheck.get("has_prior_context", False)),
         is_thinking=is_thinking
     )
 
@@ -502,6 +505,7 @@ def build_response_prompt_self_correction(
         user_default_pronoun=precheck.get("user_default_pronoun"),
         slang_mirror=precheck.get("slang_mirror"),
         tone_hint=precheck.get("tone_hint", "casual"),
+        has_prior_context=bool(precheck.get("has_prior_context", False)),
         is_thinking=is_thinking
     )
 
@@ -534,7 +538,8 @@ def build_response_prompt_focus(
         is_scanned=is_scanned,
         doc_nomor=doc_nomor or "",
         doc_jenis=doc_jenis or "Regulasi",
-        doc_tanggal=doc_tanggal or ""
+        doc_tanggal=doc_tanggal or "",
+        has_prior_context=bool(precheck.get("has_prior_context", False)),
     )
 
 def build_response_prompt_insight(judul: str, clean_text: str) -> str:

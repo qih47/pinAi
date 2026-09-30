@@ -156,10 +156,152 @@ const MarkdownTable = ({ children, darkMode, theme, searchQuery, language = 'id'
     );
 };
 
-const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkMode, theme, searchQuery = '', statusMessage, statusKey, activeTool, middleContent, language = 'id', messageIndex = null, isLastMessage = false }) => {
+// =========================================================================
+// 📋 PERSISTENT TASK LIST ITEM (PERSISTENT CHECKLIST INTERACTION)
+// =========================================================================
+const extractRawText = (node) => {
+    if (!node) return '';
+    if (typeof node === 'string' || typeof node === 'number') return String(node);
+    if (Array.isArray(node)) return node.map(extractRawText).join('');
+    if (React.isValidElement(node)) {
+        if (node.type === 'input' || node.props?.type === 'checkbox') return '';
+        return extractRawText(node.props?.children);
+    }
+    return '';
+};
+
+const getTaskHash = (str) => {
+    let hash = 2166136261;
+    for (let i = 0; i < str.length; i++) {
+        hash ^= str.charCodeAt(i);
+        hash = Math.imul(hash, 16777619);
+    }
+    return (hash >>> 0).toString(36);
+};
+
+const PersistentTaskListItem = ({
+    children,
+    className,
+    darkMode,
+    searchQuery,
+    sessionUuid,
+    messageId,
+    ...props
+}) => {
+    const childArray = React.Children.toArray(children);
+    const checkboxIndex = childArray.findIndex(child => 
+        React.isValidElement(child) && (
+            child.type === 'input' || 
+            child.props?.type === 'checkbox' ||
+            child.props?.className?.includes('text-indigo-600')
+        )
+    );
+
+    const checkbox = checkboxIndex !== -1 ? childArray[checkboxIndex] : null;
+    const textContent = checkboxIndex !== -1 
+        ? childArray.filter((_, idx) => idx !== checkboxIndex) 
+        : childArray;
+
+    const initialMarkdownChecked = Boolean(
+        checkbox?.props?.checked ?? checkbox?.props?.defaultChecked ?? false
+    );
+
+    const rawText = extractRawText(textContent).trim();
+    const itemHash = getTaskHash(rawText);
+    const storageKey = `cakra_task_${sessionUuid || 'global'}_${messageId ? `${messageId}_` : ''}${itemHash}`;
+
+    const [isChecked, setIsChecked] = React.useState(() => {
+        try {
+            const saved = localStorage.getItem(storageKey);
+            if (saved !== null) {
+                return saved === 'true';
+            }
+        } catch (e) {
+            console.warn('Gagal membaca status checklist dari localStorage:', e);
+        }
+        return initialMarkdownChecked;
+    });
+
+    React.useEffect(() => {
+        try {
+            const saved = localStorage.getItem(storageKey);
+            if (saved !== null) {
+                setIsChecked(saved === 'true');
+            }
+        } catch (e) {
+            // ignore
+        }
+    }, [storageKey]);
+
+    const handleToggle = (e) => {
+        if (e && e.stopPropagation) {
+            e.stopPropagation();
+        }
+        setIsChecked(prev => {
+            const nextVal = !prev;
+            try {
+                localStorage.setItem(storageKey, String(nextVal));
+            } catch (err) {
+                console.warn('Gagal menyimpan status checklist ke localStorage:', err);
+            }
+            return nextVal;
+        });
+    };
+
+    const handleTextClick = (e) => {
+        if (e.target && e.target.closest('a')) {
+            return;
+        }
+        handleToggle(e);
+    };
+
+    return (
+        <li 
+            className="flex items-start gap-2.5 mb-2.5 w-full group select-none transition-all duration-200" 
+            style={{ 
+                listStyleType: 'none', 
+                paddingLeft: 0,
+                marginLeft: 0,
+                wordBreak: 'break-word',
+                overflowWrap: 'anywhere',
+                opacity: isChecked ? 0.6 : 1,
+            }} 
+            {...props}
+        >
+            <div className="mt-1 flex-shrink-0 flex items-center justify-center">
+                <input
+                    type="checkbox"
+                    checked={isChecked}
+                    onChange={handleToggle}
+                    className="w-[18px] h-[18px] text-indigo-600 bg-white border-gray-300 rounded cursor-pointer align-middle focus:ring-indigo-500 transition-all dark:bg-gray-800 dark:border-gray-600 shadow-sm m-0"
+                    style={{ cursor: 'pointer' }}
+                />
+            </div>
+            <div 
+                onClick={handleTextClick}
+                className="flex-1 min-w-0 cursor-pointer transition-colors duration-150" 
+                style={{ 
+                    fontSize: '15px', 
+                    lineHeight: '1.75', 
+                    color: isChecked 
+                        ? (darkMode ? '#94a3b8' : '#64748b') 
+                        : (darkMode ? '#f1f5f9' : '#334155'),
+                    wordBreak: 'break-word',
+                    overflowWrap: 'anywhere',
+                    textDecoration: isChecked ? 'line-through' : 'none'
+                }}
+            >
+                {recursiveHighlight(textContent, searchQuery)}
+            </div>
+        </li>
+    );
+};
+
+const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkMode, theme, searchQuery = '', statusMessage, statusKey, activeTool, middleContent, language = 'id', messageIndex = null, isLastMessage = false, messageId = null }) => {
     const tGlobal = translations[language] || translations.id;
-    const latestProps = React.useRef({ darkMode, theme, searchQuery, isStreaming, language, rawContent, messageIndex, isLastMessage, statusMessage, statusKey, activeTool });
-    latestProps.current = { darkMode, theme, searchQuery, isStreaming, language, rawContent, messageIndex, isLastMessage, statusMessage, statusKey, activeTool };
+    const sessionUuid = useChatStore(state => state.sessionUuid);
+    const latestProps = React.useRef({ darkMode, theme, searchQuery, isStreaming, language, rawContent, messageIndex, isLastMessage, statusMessage, statusKey, activeTool, messageId, sessionUuid });
+    latestProps.current = { darkMode, theme, searchQuery, isStreaming, language, rawContent, messageIndex, isLastMessage, statusMessage, statusKey, activeTool, messageId, sessionUuid };
     const thinkStartTag = "<think>";
     const thinkEndTag = "</think>";
 
@@ -171,6 +313,7 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
         if (upper.includes('DOCSEARCH') || upper.includes('DOC_SEARCH')) return 'docsearch';
         if (upper.includes('CALC')) return 'python_calc';
         if (upper.includes('MAP')) return 'map_search';
+        if (upper.includes('CLI') || upper.includes('TERMINAL')) return 'terminal_runner';
         return null;
     })();
 
@@ -189,7 +332,7 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
 
         // 🛡️ Bersihkan HANYA partial/unclosed tool block (yang belum memiliki penutup ```) saat streaming agar tidak merender blok JSON mentah
         if (isStreaming) {
-            final = final.replace(/```(?:websearch|docsearch|urlfetch|python_calc|map_search)(?:(?!```)[\s\S])*$/i, '').trim();
+            final = final.replace(/```(?:websearch|docsearch|urlfetch|python_calc|map_search|terminal_runner)(?:(?!```)[\s\S])*$/i, '').trim();
         }
 
         // Samarkan kata 'mermaid' menjadi 'Cakra AI Diagram' agar user tidak bingung,
@@ -359,54 +502,20 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
             );
         },
         li({ children, className, ...props }) {
-            const { darkMode, theme, searchQuery, isStreaming, language } = latestProps.current;
+            const { darkMode, theme, searchQuery, isStreaming, language, sessionUuid, messageId } = latestProps.current;
             // Deteksi jika ini adalah task list item (checklist) dari remark-gfm
             if (className?.includes('task-list-item')) {
-                const childArray = React.Children.toArray(children);
-                // Pisahkan elemen checkbox dari isi teks
-                const checkboxIndex = childArray.findIndex(child => 
-                    React.isValidElement(child) && (
-                        child.type === 'input' || 
-                        child.props?.type === 'checkbox' ||
-                        child.props?.className?.includes('text-indigo-600')
-                    )
-                );
-
-                const checkbox = checkboxIndex !== -1 ? childArray[checkboxIndex] : null;
-                const textContent = checkboxIndex !== -1 
-                    ? childArray.filter((_, idx) => idx !== checkboxIndex) 
-                    : childArray;
-
                 return (
-                    <li 
-                        className="flex items-start gap-2.5 mb-2.5 w-full group" 
-                        style={{ 
-                            listStyleType: 'none', 
-                            paddingLeft: 0,
-                            marginLeft: 0,
-                            wordBreak: 'break-word',
-                            overflowWrap: 'anywhere'
-                        }} 
+                    <PersistentTaskListItem
+                        className={className}
+                        darkMode={darkMode}
+                        searchQuery={searchQuery}
+                        sessionUuid={sessionUuid}
+                        messageId={messageId}
                         {...props}
                     >
-                        {checkbox && (
-                            <div className="mt-1 flex-shrink-0 flex items-center justify-center">
-                                {checkbox}
-                            </div>
-                        )}
-                        <div 
-                            className="flex-1 min-w-0" 
-                            style={{ 
-                                fontSize: '15px', 
-                                lineHeight: '1.75', 
-                                color: darkMode ? '#f1f5f9' : '#334155',
-                                wordBreak: 'break-word',
-                                overflowWrap: 'anywhere'
-                            }}
-                        >
-                            {recursiveHighlight(textContent, searchQuery)}
-                        </div>
-                    </li>
+                        {children}
+                    </PersistentTaskListItem>
                 );
             }
             return (
@@ -427,27 +536,15 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
             );
         },
         input({ type, checked, disabled, ...props }) {
-            const { darkMode, theme, searchQuery, isStreaming, language } = latestProps.current;
             if (type === 'checkbox') {
                 return (
                     <input
                         type="checkbox"
-                        defaultChecked={checked}
+                        checked={checked}
+                        disabled={disabled}
                         className="w-[18px] h-[18px] text-indigo-600 bg-white border-gray-300 rounded cursor-pointer align-middle focus:ring-indigo-500 transition-all dark:bg-gray-800 dark:border-gray-600 shadow-sm m-0"
                         style={{ cursor: 'pointer' }}
-                        onChange={(e) => {
-                            const el = e.target;
-                            const parentLi = el.closest('li');
-                            if (parentLi) {
-                                if (el.checked) {
-                                    parentLi.style.opacity = "0.6";
-                                    parentLi.style.textDecoration = "line-through";
-                                } else {
-                                    parentLi.style.opacity = "1";
-                                    parentLi.style.textDecoration = "none";
-                                }
-                            }
-                        }}
+                        {...props}
                     />
                 );
             }
@@ -638,7 +735,7 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
                 );
             }
 
-            if (!inline && match && (match[1] === 'docsearch' || match[1] === 'python_calc')) {
+            if (!inline && match && (match[1] === 'docsearch' || match[1] === 'python_calc' || match[1] === 'terminal_runner')) {
                 let toolData = null;
                 try {
                     toolData = JSON.parse(cleanCode);
@@ -949,9 +1046,9 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
                 const isToolExecuting = Boolean(
                     effectiveActiveTool ||
                     (statusKey && (statusKey.startsWith('TOOL_') || statusKey.startsWith('AGENTIC_TOOL_'))) ||
-                    (rawContent && /```(?:websearch|docsearch|urlfetch|python_calc|map_search)/i.test(rawContent) && (() => {
+                    (rawContent && /```(?:websearch|docsearch|urlfetch|python_calc|map_search|terminal_runner)/i.test(rawContent) && (() => {
                         // Cek apakah ada teks kelanjutan yang sedang aktif streaming setelah blok tool terakhir
-                        const lastToolMatch = [...rawContent.matchAll(/```(?:websearch|docsearch|urlfetch|python_calc|map_search)[\s\S]*?```/gi)].pop();
+                        const lastToolMatch = [...rawContent.matchAll(/```(?:websearch|docsearch|urlfetch|python_calc|map_search|terminal_runner)[\s\S]*?```/gi)].pop();
                         if (lastToolMatch) {
                             const textAfter = rawContent.substring(lastToolMatch.index + lastToolMatch[0].length).trim();
                             return textAfter.length === 0; // Jika belum ada teks kelanjutan, berarti tool masih/baru selesai dieksekusi
@@ -1002,7 +1099,7 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
                                         />
                                     </Suspense>
                                 )}
-                                {(effectiveActiveTool === 'docsearch' || effectiveActiveTool === 'python_calc' || effectiveActiveTool === 'map_search') && (
+                                {(effectiveActiveTool === 'docsearch' || effectiveActiveTool === 'python_calc' || effectiveActiveTool === 'map_search' || effectiveActiveTool === 'terminal_runner') && (
                                     <Suspense fallback={null}>
                                         <LazyAgenticProcessCard
                                             toolData={null}

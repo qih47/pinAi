@@ -815,6 +815,7 @@ export const translations = {
       fileSystem: "Sistem Berkas",
       presentedFiles: "Menyajikan {count} file",
       done: "Selesai",
+      preparing: "Menyiapkan dan menulis berkas...",
       initializing: "// Sedang menginisialisasi...",
       completed: "// Selesai."
     },
@@ -859,6 +860,12 @@ export const translations = {
       calcRunning: "Menjalankan komputasi ({elapsed}s)",
       calcAnalyzing: "Menganalisis hasil komputasi",
       calcDefault: "Kalkulasi matematis via Python Sandbox",
+      terminalComplete: "Hasil eksekusi terminal Ubuntu",
+      terminalFailed: "Eksekusi terminal (terkendala)",
+      terminalRunning: "Mengeksekusi terminal ({elapsed}s)",
+      terminalAnalyzing: "Menganalisis output terminal",
+      terminalDefault: "Eksekusi perintah terminal Ubuntu",
+      ubuntuTerminal: "Ubuntu Terminal",
       analyzingCalcResults: "Menganalisis hasil kalkulasi...",
       analyzingDocResults: "Menganalisis hasil penelusuran...",
       done: "Selesai",
@@ -1021,6 +1028,7 @@ export const translations = {
       TOOL_URLFETCH_DOWNLOADING: "Mengunduh konten tautan",
       TOOL_URLFETCH_PARSING: "Mengekstrak isi halaman",
       TOOL_CALC_RUNNING: "Menjalankan komputasi",
+      TOOL_CLI_RUNNING: "⚡ Mengeksekusi terminal",
       TOOL_MAP_SEARCHING: "Menelusuri koordinat peta",
       TOOL_GENERIC_RUNNING: "Menjalankan alat",
       // ── PRESET & VISUAL STATUS KEYS ──
@@ -1039,6 +1047,7 @@ export const translations = {
       BRAIN_HIT: "🧠 Dari memori sesi",
       BRAIN_SAVE: "💾 Menyimpan ke memori",
       DOC_LOADING: "📄 Memuat dokumen",
+      COMPUTING_DIFF: "⚖️ Mengkomparasi kedua dokumen",
       DOC_READING_SELECTED: "📄 Membaca pasal terpilih",
       DOC_OCR_RUNNING: "🔬 Dokumen scan, OCR dijalankan",
       DOC_READING_TEXT: "📖 Membaca teks dokumen",
@@ -1877,6 +1886,7 @@ export const translations = {
       fileSystem: "File System",
       presentedFiles: "Presented {count} files",
       done: "Done",
+      preparing: "Preparing and writing file...",
       initializing: "// Initializing...",
       completed: "// Completed."
     },
@@ -1921,6 +1931,12 @@ export const translations = {
       calcRunning: "Executing computation ({elapsed}s)",
       calcAnalyzing: "Analyzing computation results",
       calcDefault: "Mathematical calculation via Python Sandbox",
+      terminalComplete: "Ubuntu terminal execution results",
+      terminalFailed: "Terminal execution (failed)",
+      terminalRunning: "Executing terminal ({elapsed}s)",
+      terminalAnalyzing: "Analyzing terminal output",
+      terminalDefault: "Ubuntu terminal command execution",
+      ubuntuTerminal: "Ubuntu Terminal",
       analyzingCalcResults: "Analyzing calculation results...",
       analyzingDocResults: "Analyzing search results...",
       done: "Done",
@@ -2083,6 +2099,7 @@ export const translations = {
       TOOL_URLFETCH_DOWNLOADING: "Downloading link content",
       TOOL_URLFETCH_PARSING: "Extracting page content",
       TOOL_CALC_RUNNING: "Running computation",
+      TOOL_CLI_RUNNING: "⚡ Executing terminal",
       TOOL_MAP_SEARCHING: "Searching map coordinates",
       TOOL_GENERIC_RUNNING: "Executing tool",
       // ── PRESET & VISUAL STATUS KEYS ──
@@ -2101,6 +2118,7 @@ export const translations = {
       BRAIN_HIT: "🧠 From session memory",
       BRAIN_SAVE: "💾 Saving to memory",
       DOC_LOADING: "📄 Loading document",
+      COMPUTING_DIFF: "⚖️ Comparing both documents",
       DOC_READING_SELECTED: "📄 Reading selected clauses",
       DOC_OCR_RUNNING: "🔬 Scanned document, running OCR",
       DOC_READING_TEXT: "📖 Reading document text",
@@ -2361,6 +2379,7 @@ export function resolveStatusMessage(statusInput, language = 'id', explicitKey =
     if (cleanR.includes('mengunduh konten tautan') || cleanR.includes('konten tautan')) return stripDots(sseDict.TOOL_URLFETCH_DOWNLOADING || 'Downloading link content');
     if (cleanR.includes('mengekstrak isi halaman') || cleanR.includes('isi halaman')) return stripDots(sseDict.TOOL_URLFETCH_PARSING || 'Extracting page content');
     if (cleanR.includes('menjalankan komputasi') || cleanR.includes('komputasi')) return stripDots(sseDict.TOOL_CALC_RUNNING || 'Running computation');
+    if (cleanR.includes('mengeksekusi terminal') || cleanR.includes('terminal')) return stripDots(sseDict.TOOL_CLI_RUNNING || 'Executing terminal');
     if (cleanR.includes('koordinat peta') || cleanR.includes('menelusuri koordinat peta')) return stripDots(sseDict.TOOL_MAP_SEARCHING || 'Searching map coordinates');
     if (cleanR.includes('berpikir') || cleanR.includes('menganalisis konteks')) return stripDots(sseDict.THINKING_PROGRESS || 'Thinking');
   }

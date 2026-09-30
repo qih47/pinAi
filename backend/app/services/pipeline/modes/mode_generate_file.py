@@ -305,6 +305,7 @@ class ModeGenerateFile:
 
         # Prepare RAG / existing files text
         existing_artifacts_content = ""
+        is_regenerate = bool(routing_data.get("is_regenerate", False))
         try:
             from backend.app.core.paths import get_account_session_dir, ACCOUNTS_DIR
             from pathlib import Path
@@ -315,7 +316,19 @@ class ModeGenerateFile:
                     key=lambda x: x.stat().st_mtime,
                     reverse=True
                 )[:5]
+
+                # 🛡️ ISOLASI STATE REGENERATE:
+                # Jika event adalah REGENERATE, pastikan artefak yang baru saja dibuat
+                # oleh varian yang di-regenerate tidak mencemari prompt varian baru sebagai <existing_file>.
+                history_corpus = ""
+                if is_regenerate and chat_history:
+                    history_corpus = " ".join([getattr(m, "content", "") or "" for m in chat_history]).lower()
+
                 for art_file in artifact_files:
+                    if is_regenerate and history_corpus and art_file.name.lower() not in history_corpus:
+                        logger.info(f"[MODE_GENERATE_FILE] 🛡️ Mengabaikan artefak dari varian yang di-regenerate: {art_file.name}")
+                        continue
+
                     try:
                         content = art_file.read_text(encoding="utf-8")
                         existing_artifacts_content += f"\n<existing_file filename=\"{art_file.name}\">\n{content}\n</existing_file>\n"
@@ -338,6 +351,15 @@ class ModeGenerateFile:
                         logger.warning(f"[MODE_GENERATE_FILE] Gagal membaca attachment {att.get('file_path')}: {e}")
         except Exception as e:
             logger.warning(f"[MODE_GENERATE_FILE] Gagal membaca existing artifacts/attachments: {e}")
+
+        # Injeksi konteks Session Brain / Spreadsheet / Dokumen yang aktif di sesi ini
+        session_chunks_text = (
+            routing_data.get("_retrieved_session_chunks_text")
+            or routing_data.get("_session_chunks_text")
+            or ""
+        )
+        if session_chunks_text:
+            existing_artifacts_content += f"\n<session_brain_context>\n{session_chunks_text}\n</session_brain_context>\n"
 
         from backend.app.services.pipeline.system_prompts import build_generate_file_dispatcher_prompt
         system_prompt = build_generate_file_dispatcher_prompt(

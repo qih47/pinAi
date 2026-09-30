@@ -99,6 +99,7 @@ class ModeAttachment:
 
         # ── 1. Ekstraksi Path File Lampiran ─────────────────────────────────────
         pdf_file_path = None
+        pdf_file_paths = []
         text_contents = []
         direct_images_b64 = []
 
@@ -129,6 +130,7 @@ class ModeAttachment:
                             abs_path = cand2
 
                 if abs_path and (mime == "application/pdf" or abs_path.lower().endswith(".pdf")):
+                    pdf_file_paths.append(abs_path)
                     pdf_file_path = abs_path
                 elif abs_path and any(abs_path.lower().endswith(ext) for ext in [".jpg", ".jpeg", ".png", ".webp", ".bmp"]):
                     try:
@@ -155,6 +157,8 @@ class ModeAttachment:
             cand = active_audit.get("pdf_file_path")
             if cand and os.path.exists(cand):
                 pdf_file_path = cand
+                if cand not in pdf_file_paths:
+                    pdf_file_paths.append(cand)
 
         # ── 2. Penanganan Khusus Lampiran PDF dengan Document Intelligence ───────
         final_extracted_text = ""
@@ -171,8 +175,108 @@ class ModeAttachment:
         audit_next_end = None
         summary_start_page = 1
         summary_end_page = 1
+        multi_pdf_context = None
 
-        if pdf_file_path and os.path.exists(pdf_file_path):
+        # ── Jalur Khusus: Multi-PDF Komparasi & Diskusi Lintas Berkas (>= 2 PDF) ───
+        if len(pdf_file_paths) >= 2:
+            yield format_sse(status=f"📑 Membaca {len(pdf_file_paths)} berkas PDF", status_key="DOC_LOADING", event_type=SSEEventType.STATUS)
+            from backend.app.services.chat.chat_history_service import chat_history_service
+            from backend.app.services.ambient.brain_organizer import brain_asset_organizer
+            from backend.app.services.ambient.asset_diff_engine import asset_diff_engine
+
+            extracted_docs = []
+            for p_path in pdf_file_paths:
+                p_name = os.path.basename(p_path)
+                t_map = None
+                imgs = []
+                p_total = 0
+                if brain:
+                    cached_brain = brain.get_document(p_name)
+                    if cached_brain and "text_map" in cached_brain:
+                        t_map = cached_brain["text_map"]
+                        imgs = cached_brain.get("images", [])
+                        p_total = cached_brain.get("total_pages", len(t_map))
+                
+                if t_map is None:
+                    t_map, imgs, p_total = await extract_and_ocr_document_async(p_path, cache_key=p_path)
+                    if brain:
+                        await brain.save_document(p_name, {
+                            "title": p_name,
+                            "text_map": t_map,
+                            "images": imgs,
+                            "total_pages": p_total
+                        })
+
+                full_text_parts = []
+                if isinstance(t_map, list):
+                    for idx, item in enumerate(t_map):
+                        if isinstance(item, dict):
+                            p_num = item.get("page_num", idx + 1)
+                            p_txt = item.get("text", "")
+                        else:
+                            p_num = idx + 1
+                            p_txt = str(item)
+                        full_text_parts.append(f"--- Hal. {p_num} ---\n{p_txt}")
+                elif isinstance(t_map, dict):
+                    for pg, val in sorted(t_map.items(), key=lambda x: int(x[0]) if str(x[0]).isdigit() else str(x[0])):
+                        p_txt = val.get("text", str(val)) if isinstance(val, dict) else str(val)
+                        full_text_parts.append(f"--- Hal. {pg} ---\n{p_txt}")
+                elif isinstance(t_map, str):
+                    full_text_parts.append(t_map)
+
+                full_text = "\n\n".join(full_text_parts)
+                extracted_docs.append({
+                    "title": p_name,
+                    "path": p_path,
+                    "text": full_text,
+                    "total_pages": p_total,
+                    "images": imgs[:2] if imgs else []
+                })
+
+                # Daftarkan ke ai_document_chunks untuk multi-turn discussion di sesi ini
+                if session_uuid and current_user_npp:
+                    profile = brain_asset_organizer.profile_asset(
+                        content=full_text,
+                        metadata={
+                            "source": "pdf_attachment",
+                            "title": p_name,
+                            "type": "document",
+                            "total_pages": p_total
+                        }
+                    )
+                    asyncio.create_task(chat_history_service.save_document_chunk(
+                        session_uuid=session_uuid,
+                        npp=current_user_npp,
+                        content=full_text[:30000],
+                        file_id=None,
+                        chunk_metadata=profile
+                    ))
+
+            yield format_sse(status="⚖️ Mengkomparasi kedua dokumen", status_key="COMPUTING_DIFF", event_type=SSEEventType.STATUS)
+
+            doc_1 = extracted_docs[0]
+            doc_2 = extracted_docs[1]
+            cross_delta = asset_diff_engine.compute_cross_asset_diff(
+                asset_a={"title": doc_1["title"], "content": doc_1["text"], "type": "document"},
+                asset_b={"title": doc_2["title"], "content": doc_2["text"], "type": "document"}
+            )
+
+            doc_blocks = []
+            for idx, d in enumerate(extracted_docs, 1):
+                d_text = d["text"][:22000] + ("\n...[teks diringkas untuk efisiensi context]..." if len(d["text"]) > 22000 else "")
+                doc_blocks.append(f"=== [DOKUMEN {idx}: '{d['title']}' ({d['total_pages']} Halaman)] ===\n{d_text}")
+
+            multi_pdf_context = (
+                f"{cross_delta.summary_text}\n\n"
+                f"Pertanyaan / Instruksi Diskusi Pengguna:\n{user_message}\n\n"
+                f"{chr(10).join(doc_blocks)}"
+            )
+
+            for d in extracted_docs:
+                for b64 in d["images"]:
+                    direct_images_b64.append(b64)
+
+        elif pdf_file_path and os.path.exists(pdf_file_path):
             doc_id_key = str(os.path.basename(pdf_file_path))
             text_map = None
             all_base64_images = None
@@ -414,7 +518,9 @@ class ModeAttachment:
 
         # Gabungkan teks yang diekstrak ke dalam pesan user
         augmented_user_message = user_message
-        if is_audit_mode:
+        if multi_pdf_context:
+            augmented_user_message = multi_pdf_context
+        elif is_audit_mode:
             pdf_name = os.path.basename(pdf_file_path) if pdf_file_path else "dokumen.pdf"
             augmented_user_message = (
                 f"Lakukan audit ejaan, typo, tata bahasa, dan struktur format untuk Halaman {audit_start_page} s/d {audit_end_page} dari dokumen '{pdf_name}'.\n\n"
@@ -474,6 +580,19 @@ class ModeAttachment:
             augmented_user_message = (
                 f"{user_message}\n\n"
                 f"[KONTEN FILE TERLAMPIR]\n{text_block}"
+            )
+
+        elif len(direct_images_b64) >= 2 and not final_extracted_text:
+            # Jalur khusus: Komparasi Visual Dua Gambar (Multimodal Visual Diffing)
+            augmented_user_message = (
+                f"{user_message}\n\n"
+                f"[PANDUAN KOMPARASI MULTIMODAL DUA GAMBAR]:\n"
+                f"Pengguna melampirkan {len(direct_images_b64)} gambar visual untuk dianalisis dan dikomparasikan.\n"
+                f"Gambar 1 adalah kondisi awal/baseline, dan Gambar 2 adalah kondisi revisi/terbaru.\n"
+                f"Analisis perbedaan visual secara seksama:\n"
+                f"1. Objek, elemen UI, atau komponen apa yang baru ditambahkan di Gambar 2?\n"
+                f"2. Objek apa yang diubah warnanya, posisinya, ukurannya, atau dihapus?\n"
+                f"3. Berikan rangkuman komparasi visual tersebut secara sistematis, faktual, dan jelas."
             )
 
         # Jika pengguna mengunggah dokumen baru (bukan lanjutan audit/multi-turn pada dokumen yang sama),

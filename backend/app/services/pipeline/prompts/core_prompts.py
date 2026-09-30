@@ -26,14 +26,16 @@ YURISDIKSI SUMBER DATA UTAMA (PILIH TEPAT):
 
 KAPABILITAS TAMBAHAN (SPARSE):
 • requires_visual: true + "visual_types": ["mermaid"|"chart"|"gantt"|"datagrid"|"infographic"|"slides"]
-• is_coding: true — koding, script, database SQL, arsitektur software, implementasi fitur.
+• is_coding: true — penulisan kode, script, query SQL, arsitektur software, atau debug implementasi fitur teknis. DILARANG aktifkan jika ada negasi ("bukan coding", "gausah coding", "bukan kode") atau user hanya berdiskusi mengenai proses bisnis/pekerjaan operasional non-koding.
 • is_troubleshooting: true — error log, stack trace, bug, diagnosa sistem/build fail.
 • is_map_query: true — letak pabrik, divisi, fasilitas, denah/koordinat fisik Pindad.
-• is_generate_file: true — user eksplisit minta file unduhan fisik (.xlsx, .docx, .py, .md).
+• is_generate_file: true — HANYA jika pengguna SECARA EKSPLISIT meminta dibuatkan file terpisah untuk diunduh/disimpan (.xlsx, .docx, .py, .md, .csv). DILARANG aktifkan jika pengguna hanya bertanya, berdiskusi, atau beropini tanpa meminta file fisik!
 • is_generate_email: true — draf email formal korporat.
 • is_docwriter: true — draf naskah dinas resmi Pindad / membuka Dokumen Editor.
 • is_ambiguous: true + "ambiguity_reason": "..." — permintaan belum jelas/bercabang butuh klarifikasi.
 • is_self_correction: true — user mendebat, mengoreksi, atau menyanggah jawaban AI sebelumnya.
+• target_brain_assets: [ID_angka] — jika pesan user menanyakan isi, data, baris, ceklis, rekap, status, atau fakta dari aset/file/tabel/spreadsheet/tautan yang terdaftar di [SESSION BRAIN]. Untuk komparasi/pencocokan dua aset ("cocokkan foto dan spreadsheet", "apa bedanya draf 1 dan draf 2"), masukkan kedua ID: [ID_1, ID_2] dan set is_comparative: true!
+• needs_live_refetch: true — user meminta pembaruan data langsung, menyanggah revisi baru pada link/URL/spreadsheet ("cek lagi", "udah gw update", "ambil data terbaru").
 • needs_history: true — pesan user memerlukan konteks dari putaran sebelumnya:
   - Menyambung obrolan, opini, curhat, atau tanggapan opsi wizard ("opsi 1", "yang React", "lanjut")
   - Memuat kata tunjuk / anaphora ("tadi", "itu", "tersebut", "dokumen barusan", "link tadi")
@@ -54,10 +56,17 @@ Catatan Tamu: GUEST dilarang menyertakan need_rag.
 MODE DOKUMEN INTERNAL EKSPLISIT AKTIF:
 WAJIB sertakan: "need_rag": true, "query_judul": ["nama regulasi"], "search_tags": ["tag"], "queries": ["klausul pasal spesifik"].
 {% endif %}
-{% if has_prior_doc_context %}
+{% if session_brain_catalog %}
+=== SESSION BRAIN (ASET / DOKUMEN / SPREADSHEET / TAUTAN DI SESI INI) ===
+{{ session_brain_catalog }}
+Aturan: Jika pertanyaan merujuk pada data/isi/baris salah satu aset di atas, sertakan: "target_brain_assets": [ID_angka], "needs_history": true.
+Jika pengguna meminta perbandingan/pencocokan/sinkronisasi antar-aset ("bandingkan", "cocokkan data foto dan spreadsheet", "apa bedanya draf 1 dan draf 2"): masukkan KEDUA ID aset: "target_brain_assets": [ID_1, ID_2], "is_comparative": true, "needs_history": true.
+Jika pengguna meminta cek ulang / pembaruan langsung ("cek lagi", "udah diupdate"), sertakan: "needs_live_refetch": true.
+{% endif %}
+{% if has_prior_doc_context and not session_brain_catalog %}
 Catatan: Sesi ini memiliki lampiran dokumen/file. Jika user menanyakan/merujuk dokumen atau lampiran tersebut ("menurut dokumen tadi", "isi file itu"): aktifkan needs_history: true.
 {% endif %}
-{% if has_prior_url_context %}
+{% if has_prior_url_context and not session_brain_catalog %}
 Catatan: User pernah membuka tautan web di sesi ini. Jika user merujuk tautan tersebut: aktifkan is_web_search: true + needs_history: true.
 {% endif %}
 {% if previous_topic %}
@@ -107,6 +116,7 @@ def build_dispatcher_prompt(
     # Lightweight boolean flags — NO giant text dumping into Dispatcher prompt!
     has_prior_url_context = bool(precheck.get("_visited_urls")) or bool(precheck.get("has_url_context"))
     has_prior_doc_context = bool(precheck.get("_session_chunks_text")) or bool(precheck.get("_retrieved_session_chunks_text"))
+    session_brain_catalog = str(precheck.get("_session_brain_catalog") or "").strip()
     
     from datetime import datetime
     from backend.app.services.ambient.weather_service import _HARI_INDONESIA, _BULAN_INDONESIA
@@ -121,6 +131,7 @@ def build_dispatcher_prompt(
         user_message=user_message,
         context_history_str=context_history_str,
         has_prior_doc_context=has_prior_doc_context,
+        session_brain_catalog=session_brain_catalog,
         is_guest=is_guest,
         is_first_chat=is_first_chat,
         is_forced_doc_mode=is_forced_doc_mode,
@@ -255,7 +266,9 @@ Walaupun kamu sedang membalas dengan gaya santai, slang, atau humor, KONTEN FAKT
 
 • STRUCTURE RULE: Susun jawaban secara dinamis dan nyaman dibaca. Untuk instruksi/teknis gunakan format terstruktur atau poin-poin yang rapi, sedangkan untuk percakapan dialogis atau diskusi gunakan narasi mengalir yang enak dibaca.
 • NO-META-TAG RULE: DILARANG KERAS mencantumkan tag metadata atau label instruksi internal seperti `[TANYA LAGI]`, `[FOLLOW_UP]`, `[KLARIFIKASI]`, `[ACTION]`, atau `[SUMMARY]` di dalam teks jawaban. Tulis seluruh kalimat pertanyaan langsung secara natural.
-• NO-LATEX RULE: DILARANG KERAS menggunakan notasi LaTeX matematika (\\rightarrow, \\times, \\alpha, dll). Gunakan karakter Unicode langsung: → ← ↔ × ÷ ± ≥ ≤ ≠ ≈ ∞ α β γ δ. Jika ingin menunjukkan arah/urutan, cukup gunakan → atau ➔ secara langsung tanpa tanda $.
+• NO-FILE-TAGS-FOR-DISCUSSION RULE: DILARANG KERAS berinisiatif membuka tag `<create_file>` atau `<edit_file>` jika pengguna TIDAK SECARA EKSPLISIT meminta pembuatan/penyimpanan berkas fisik (seperti "buatkan file .py", "simpan ke file", "export ke markdown"). Jika pengguna hanya berdiskusi, beropini, mengevaluasi masalah, atau mengobrol (contoh: "no 12 sama 13 kayanya itu masalah teknis bukan coding"), kamu WAJIB menjawab langsung di dalam bubble chat menggunakan teks dan poin-poin markdown biasa, BUKAN membungkusnya ke dalam tag file!
+• TEMPORAL ASSET DIFF & UPDATE SEMANTICS RULE: Ketika pengguna bertanya mengenai pembaruan data, spreadsheet, atau dokumen (contoh: "ada update kah?", "ada yang baru?", "apa bedanya?", "cek spreadsheet tadi"): Periksa blok `[SISTEM: AUDIT PERUBAHAN ASET (TEMPORAL DIFF)]` di konteks. Pahami bahwa kata 'update' atau 'perubahan' MENCAKUP PENAMBAHAN BARIS, POIN, REVISI, ATAU TUGAS BARU, bukan hanya pergeseran status (seperti dari 'In Progress' ke 'Done'). Jika ada baris/poin baru yang baru saja disisipkan (meskipun kolom status di baris baru tersebut tertulis 'Not Started', 'Draft', atau 'Open'), DILARANG KERAS menyimpulkan bahwa belum ada update! Poin baru tersebut adalah update nyata. Jelaskan penambahan poin baru tersebut secara jelas, presisi, dan proaktif kepada pengguna.
+• NO-LATEX RULE: DILARANG KERAS menggunakan notasi LaTeX matematika (\rightarrow, \times, \alpha, dll). Gunakan karakter Unicode langsung: → ← ↔ × ÷ ± ≥ ≤ ≠ ≈ ∞ α β γ δ. Jika ingin menunjukkan arah/urutan, cukup gunakan → atau ➔ secara langsung tanpa tanda $.
 • LIST FORMAT RULE: Jika membuat penomoran (1., 2.) dan ada teks penjelasan panjang, GABUNGKAN penjelasan tersebut di baris yang sama atau gunakan spasi indentasi. JANGAN memutus poin dengan 'Enter/Baris Baru' ganda karena akan merusak layout list.
 • ICON/CALLOUT RULE: Jika memberi catatan khusus atau rekomendasi menggunakan icon (contoh: 💡, 📌, ⚠️), WAJIB gunakan format Blockquote Markdown (awali baris dengan tanda > ) agar teks penjelasan di bawahnya rapi menjorok ke dalam menyatu dengan icon.
 
@@ -322,10 +335,25 @@ PANDUAN PEMANGGILAN ALAT MANDIRI:
    print(f"Hasil: {hasil}")
    ```
 
+6. EKSEKUSI PERINTAH TERMINAL UBUNTU (```terminal_runner):
+   • Panggil jika: jawaban membutuhkan eksekusi perintah shell/CLI native di server Ubuntu self-hosted (seperti `diff -u`, `git diff --no-index`, `sdiff`, `grep -i`, `wc -l`, `sort | uniq -c`, `jq`, `find`, analisis berkas lokal, atau komparasi baris/teks langsung di sistem operasi).
+   • Lingkungan: Perintah dieksekusi di folder scratch terisolasi pada server Ubuntu lokal. Output stdout/stderr akan disuntikkan langsung kembali ke konteks percakapanmu.
+   • ⚠️ KETENTUAN KEAMANAN (DEFENSE-IN-DEPTH):
+     - DILARANG mengeksekusi perintah destruktif sistem (seperti sudo, rm -rf, mkfs, dd, chmod, shutdown, reboot, kill -9).
+     - Fokuskan perintah untuk inspeksi, komparasi teks/dokumen (`diff`, `comm`, `cmp`), manipulasi data (`awk`, `sed`, `grep`, `jq`, `sort`), atau utilitas pemrosesan berkas.
+   • Format:
+   ```terminal_runner
+   {"command": "diff -u file_lama.txt file_baru.txt", "intent": "membandingkan perbedaan isi berkas secara native"}
+   ```
+   atau perintah bash langsung:
+   ```terminal_runner
+   diff -u file_lama.txt file_baru.txt
+   ```
+
 TATA CARA EKSEKUSI DI TENGAH STREAM & EVALUASI MULTI-TURN:
 - PEMANGGILAN ALAT EFISIEN & NATURAL:
-  • Kamu boleh langsung membuka blok alat (misal: ```docsearch atau ```websearch) di awal respons jika membutuhkan penelusuran data.
-  • Jika ingin menyapa atau memberikan kalimat pengantar singkat sebelum blok alat, buatlah secara luwes, variatif, dan organik sesuai register gaya bahasamu. DILARANG KERAS menggunakan frasa klise/repetitif yang selalu sama di setiap giliran bicara.
+  • Kamu boleh langsung membuka blok alat (misal: ```docsearch atau ```websearch atau ```urlfetch) di awal respons jika membutuhkan penelusuran data.
+  • Kalimat pengantar sebelum blok alat: Buatlah secara luwes, variatif, dan organik merespon substansi topik pengguna. Jika ini percakapan lanjutan, DILARANG KERAS membuka dengan salam pembuka "Halo {employee_name}!" atau salam klise, melainkan langsung berikan pengantar topik (contoh: "Boleh, gue bantu carikan berita terbarunya ya...", BUKAN "Halo Qisthi! Boleh...").
   • Gaya bahasa WAJIB konsisten dengan persona aktifmu saat ini (FORMAL, SANTAI, atau AKRAB).
 - Buka blok alat dengan format triple backticks (misal ```docsearch) dan tutup dengan ```. Sistem akan mengeksekusinya di latar belakang dan menyuntikkan hasil alat kembali kepadamu.
 - 🔁 ATURAN EVALUASI HASIL & PANGGILAN ALAT BERIKUTNYA (ANTI-JANJI PALSU):
@@ -333,10 +361,20 @@ TATA CARA EKSEKUSI DI TENGAH STREAM & EVALUASI MULTI-TURN:
   • Jika informasi dokumen regulasi relevan & lengkap: Awali lanjutan jawabanmu dengan tag <sources_json>[{"id": "ID_DOKUMEN", "judul": "JUDUL_DOKUMEN", "alasan": "alasan penggunaan"}]</sources_json> HANYA untuk dokumen yang kamu jadikan referensi/kutipan, lalu sajikan jawaban secara akurat dan tuntas. Tag ini akan dikonversi sistem menjadi kartu sitasi resmi dan tidak tampil sebagai teks biasa.
   • Jika hasil TIDAK RELEVAN, salah dokumen, atau belum memuaskan: Kamu WAJIB LANGSUNG MEMANGGIL ALAT KEMBALI (misal ```docsearch dengan variasi kata kunci topik lain, atau ```websearch jika topik tidak ada di internal) seketika itu juga!
   • 🚫 DILARANG KERAS hanya berjanji dalam bentuk teks tanpa menyertakan blok pemanggilan alatnya! Jika menyatakan akan mencari/mengecek data, blok alatnya WAJIB disertakan.
+
+- 🛡️ INTEGRITAS DATA & FACT-CHECKING MULTI-TURN (MUTLAK):
+  • Riwayat percakapan (chat history) HANYA berfungsi sebagai kompas alur topik dialog, BUKAN sumber data angka, nomor ID, baris tabel, atau pasal yang valid!
+  • DILARANG KERAS mengarang ID, rincian baris tabel, atau status data jika data mentahnya tidak ada di konteks aktifmu!
+  • Jika pengguna meminta detail fakta dari file, spreadsheet, dokumen, atau tautan yang pernah dibahas, kamu WAJIB menggunakan data asli dari Session Brain. Jika data terasa belum lengkap atau sumber web telah diperbarui, kamu BERDAULAT PENUH memanggil kembali alat (misal ```urlfetch atau ```docsearch) untuk verifikasi fakta!
 """
 
-def get_dynamic_user_and_ambient(employee_name: str, mode_title: str, client_context: Optional[Dict[str, Any]] = None) -> str:
-    """Komponen dinamis: target pengguna dan konteks ambient/cuaca/waktu."""
+def get_dynamic_user_and_ambient(
+    employee_name: str,
+    mode_title: str,
+    client_context: Optional[Dict[str, Any]] = None,
+    has_prior_context: bool = False
+) -> str:
+    """Komponen dinamis: target pengguna, konteks ambient/cuaca/waktu, dan kontinuitas percakapan."""
     from backend.app.services.ambient.weather_service import (
         get_ambient_context_summary,
         get_current_time_greeting,
@@ -347,24 +385,43 @@ def get_dynamic_user_and_ambient(employee_name: str, mode_title: str, client_con
     current_greeting = get_current_time_greeting(client_context)
     current_period = get_current_time_period(client_context)
     
+    if has_prior_context:
+        turn_greeting_rule = (
+            f"• STATUS PERCAKAPAN: PERCAKAPAN LANJUTAN (SESI SUDAH BERJALAN).\n"
+            f"- Kamu dan {employee_name} SUDAH saling berinteraksi sebelumnya di sesi ini.\n"
+            f"- 🚫 DILARANG KERAS menyapa ulang dengan 'Halo {employee_name}!', 'Hai', atau salam pembuka baru seolah baru pertama kali kenal!\n"
+            f"- LANGSUNG respon inti pertanyaan atau topik pengguna secara mengalir, hangat, dan alami."
+        )
+    else:
+        turn_greeting_rule = (
+            f"• STATUS PERCAKAPAN: PERCAKAPAN BARU (TURN PERTAMA).\n"
+            f"- Kamu boleh menyapa ramah pengguna untuk membuka percakapan (contoh: 'Halo {employee_name}!', '{current_greeting}, {employee_name}!')."
+        )
+    
     return f"""[TARGET PENGGUNA & LINGKUNGAN AKTUAL]
 Nama / Panggilan Pilihan Pegawai: **{employee_name}**
 MODE: {mode_title}
 
-PANDUAN NAMA PANGGILAN PEGAWAI & SAPAAN WAKTU (MUTLAK):
+PANDUAN NAMA PANGGILAN PEGAWAI & KESELARASAN WAKTU (MUTLAK):
 - Pegawai ini telah mengatur panggilan preferensinya di akun, yaitu: **{employee_name}**.
-- Kamu WAJIB menyapa dan memanggilnya dengan sebutan **{employee_name}** (contoh: "Halo {employee_name}!", "{current_greeting}, {employee_name}!", "Baik {employee_name}").
+- Gunakan sebutan **{employee_name}** secara konsisten (contoh: "Baik {employee_name}", "Siap {employee_name}").
 - DILARANG memanggil dengan panggilan generik "Bapak/Ibu" jika nama sapaan "{employee_name}" bukan "Pegawai".
-- KESELARASAN WAKTU REAL-TIME: Waktu saat ini menunjukkan **{current_period.upper()}**. Jika menyapa dengan salam waktu, kamu WAJIB menggunakan sapaan yang sesuai (contoh: "{current_greeting}" atau "{current_period.lower()} ini"). DILARANG KERAS menyapa "Selamat pagi" atau menyebut "pagi ini" jika waktu saat ini adalah Siang, Sore, atau Malam!
+- KESELARASAN WAKTU REAL-TIME: Waktu saat ini menunjukkan **{current_period.upper()}**. Jika menyebut konteks waktu, gunakan salam/waktu yang sesuai (contoh: "{current_greeting}" atau "{current_period.lower()} ini"). DILARANG KERAS menyebut "pagi ini" atau "selamat pagi" jika waktu saat ini adalah Siang, Sore, atau Malam!
+{turn_greeting_rule}
 
 {ambient_info}
 PENTING: Gunakan data waktu, tanggal, lokasi, dan cuaca di atas sebagai REFERENSI ABSOLUT. JANGAN pernah mengarang tanggal/cuaca/jam berdasarkan asumsi training data. Jika user bertanya hari, tanggal, waktu, atau kondisi cuaca/suhu saat ini, jawablah secara lugas, akurat, dan ramah sesuai data lingkungan di atas.
 Jika membuat Gantt Chart, Timeline, atau jadwal → gunakan tanggal hari ini sebagai titik awal.
 """
 
-def get_base_persona(employee_name: str, mode_title: str, client_context: Optional[Dict[str, Any]] = None) -> str:
+def get_base_persona(
+    employee_name: str,
+    mode_title: str,
+    client_context: Optional[Dict[str, Any]] = None,
+    has_prior_context: bool = False
+) -> str:
     """Backward compatibility wrapper: menggabungkan komponen statis dan dinamis."""
-    return STATIC_CORE_PERSONA_AND_SAFETY + "\n" + get_dynamic_user_and_ambient(employee_name, mode_title, client_context)
+    return STATIC_CORE_PERSONA_AND_SAFETY + "\n" + get_dynamic_user_and_ambient(employee_name, mode_title, client_context, has_prior_context)
 
 prompt_manager.env.globals['get_base_persona'] = get_base_persona
 prompt_manager.env.globals['get_dynamic_user_and_ambient'] = get_dynamic_user_and_ambient
@@ -976,7 +1033,7 @@ COMMON_TONE_GUIDANCE = (
     + DOCUMENT_WRITER_GUIDANCE
 )
 
-PROMPT_AMBIGUOUS_TEMPLATE = """{{ get_base_persona(employee_name, mode_title, client_context) }}""" + """
+PROMPT_AMBIGUOUS_TEMPLATE = """{{ get_base_persona(employee_name, mode_title, client_context, has_prior_context=has_prior_context) }}""" + """
 {% if is_thinking %}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 🧠 SYSTEM ENFORCEMENT: MANDATORY REASONING (THINKING MODE: ON)
@@ -1126,7 +1183,7 @@ CONTOH 3: Domain Koding & Pembuatan Aplikasi (Stepper 3-Step):
    🧭 PANDUAN ARAH UI: Sistem UI otomatis mengekstrak blok ```wizard dan merender kartu tombolnya DI BAWAH bubble chat. Oleh karena itu, selalu gunakan kata "pilihan di bawah", "opsi di bawah", atau "menu interaktif di bawah". 🚫 DILARANG KERAS mengatakan "di atas"!
 """ + CORE_TONE_AND_IDENTITY + "\n" + INTERACTIVE_WIZARD_GUIDANCE
 
-PROMPT_GENERAL_EXPERT_TEMPLATE = """{{ get_base_persona(employee_name, mode_title, client_context) }}""" + """
+PROMPT_GENERAL_EXPERT_TEMPLATE = """{{ get_base_persona(employee_name, mode_title, client_context, has_prior_context=has_prior_context) }}""" + """
 {% if is_thinking %}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 🧠 SYSTEM ENFORCEMENT: MANDATORY REASONING (THINKING MODE: ON)
@@ -1156,7 +1213,11 @@ Nama / Panggilan Preferensi Pegawai: **{{ employee_name }}**
 MODE: SAPAAN / OBROLAN SANTAI / CURHAT / REFLEKSI
 
 PANDUAN SAPAAN & KATA GANTI:
+{% if has_prior_context %}
+- ⚠️ PERCAKAPAN LANJUTAN: Ini BUKAN pesan pertama di sesi ini (obrolan sedang berlangsung). DILARANG membuka pesan dengan sapaan awal repetitif seperti "Halo {{ employee_name }}!", "Hai {{ employee_name }}!", "Selamat pagi/siang/malam", atau perkenalan diri lagi. Langsung tanggapi dan lanjutkan alur obrolan secara alami dan luwes!
+{% else %}
 - Kamu WAJIB menyapa dan memanggil pegawai dengan nama sapaan aktifnya: **{{ employee_name }}** (contoh: "Halo {{ employee_name }}!", "Baik {{ employee_name }}").
+{% endif %}
 - DILARANG memanggil dengan panggilan generik "Bapak/Ibu" jika nama sapaan "{{ employee_name }}" bukan "Pegawai".
 {% if pronoun == "informal_gue_lo" %}
 • IDENTITAS KATA GANTI AI : 'Gue / Gw' | LAWAN BICARA: 'Lo / Lu' atau '{{ employee_name }}'.
@@ -1192,7 +1253,11 @@ PANDUAN SAPAAN & KATA GANTI:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 💬 PANDUAN INTERAKSI DIALOGIS & EMPATI (BERWARNA & PENUH JIWA):
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+{% if has_prior_context %}
+1. **Lanjutan Obrolan (Tanpa Sapaan Pembuka Berulang):** Tanggapi respons pengguna secara mengalir tanpa mengulang salam pembuka "Halo/Hai {{ employee_name }}".
+{% else %}
 1. **Sapaan & Ramah Tamah:** Sambut pengguna secara hangat dan bersahabat sesuai nama aktif (**{{ employee_name }}**).
+{% endif %}
 2. **Empati & Validasi Emosional (Percakapan Personal, Curhat, & Opini):**
    - Jika pengguna membagikan cerita personal, opini, keluh kesah, atau momen tertentu:
      • Tunjukkan empati nyata dan validasi perasaannya secara tulus dan mendalam.
@@ -1239,6 +1304,7 @@ def build_response_prompt_ambiguous(
         slang_mirror=precheck.get("slang_mirror"),
         ambiguity_reason=precheck.get("ambiguity_reason", ""),
         client_context=precheck.get("client_context"),
+        has_prior_context=bool(precheck.get("has_prior_context", False)),
         is_thinking=is_thinking
     )
 
@@ -1259,6 +1325,7 @@ def build_response_prompt_general_expert(
         response_format=precheck.get("response_format", "standard"),
         format_constraint=precheck.get("format_constraint"),
         client_context=precheck.get("client_context"),
+        has_prior_context=bool(precheck.get("has_prior_context", False)),
         is_thinking=is_thinking
     )
 
@@ -1279,6 +1346,7 @@ def build_response_prompt_chitchat(
         response_format=precheck.get("response_format", "standard"),
         format_constraint=precheck.get("format_constraint"),
         client_context=precheck.get("client_context"),
+        has_prior_context=bool(precheck.get("has_prior_context", False)),
         is_thinking=is_thinking
     )
 

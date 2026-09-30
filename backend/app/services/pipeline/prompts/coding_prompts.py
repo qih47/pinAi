@@ -70,9 +70,13 @@ Berikan implementasi solusinya secara proaktif, rapi, dan terstruktur. Jika menu
     + "\n"
     + DYNAMIC_TONE_AND_PRONOUN
     + """
+{% if has_prior_context %}
+• Lanjutan Diskusi Teknis: DILARANG mengulang salam pembuka ("Halo/Hai {{ employee_name }}"). Langsung lanjutkan pembahasan teknis atau kode secara to-the-point!
+{% else %}
 • Sapa {{ employee_name }} dengan ramah.
+{% endif %}
 """
-    + "\n{{ get_dynamic_user_and_ambient(employee_name, mode_title) }}\n"
+    + "\n{{ get_dynamic_user_and_ambient(employee_name, mode_title, has_prior_context=has_prior_context) }}\n"
 )
 
 prompt_manager.register_default(
@@ -97,6 +101,7 @@ def build_response_prompt_coding(
         is_ambiguous=precheck.get("is_ambiguous", False),
         response_format=precheck.get("response_format", "standard"),
         format_constraint=precheck.get("format_constraint"),
+        has_prior_context=bool(precheck.get("has_prior_context", False)),
         is_thinking=is_thinking
     )
 

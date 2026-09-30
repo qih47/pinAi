@@ -65,11 +65,12 @@ class ModeHub:
         client_context: Optional[Dict[str, Any]] = None,
         forced_mode: Optional[str] = None,
         bypass_router: bool = False,
+        is_regenerate: bool = False,
     ) -> AsyncGenerator[str, None]:
         """
         Main entry point for stream.py to route the request to the correct mode handler.
         """
-        logger.info(f"[MODE_HUB] Starting execution for chat_mode: {chat_mode.upper()}")
+        logger.info(f"[MODE_HUB] Starting execution for chat_mode: {chat_mode.upper()} | is_regenerate={is_regenerate}")
         effective_req_mode = (forced_mode or "").lower().strip()
         
         # ── Step 1: Pre-check rule-based ──────────────────────────────────────────
@@ -89,6 +90,7 @@ class ModeHub:
         precheck["_user_message"] = user_message
         precheck["user_default_pronoun"] = user_default_pronoun
         precheck["client_context"] = client_context
+        precheck["is_regenerate"] = is_regenerate
 
         is_guest = (current_user_npp == "GUEST")
         precheck["is_guest"] = is_guest
@@ -121,6 +123,13 @@ class ModeHub:
                     if meta.get("source") == "url_read":
                         visited_urls.extend(meta.get("urls", []))
 
+                # Organisasikan Session Brain Assets Catalog untuk Call 1 Router
+                from backend.app.services.ambient.brain_organizer import brain_asset_organizer
+                session_brain_catalog = brain_asset_organizer.format_catalog_for_router(chunks_with_meta)
+                if session_brain_catalog:
+                    precheck["_session_brain_catalog"] = session_brain_catalog
+                    logger.info(f"[MODE_HUB] 🧠 Organized {len(chunks_with_meta)} session brain asset(s) for Call 1 Router catalog.")
+
             # Ekstrak juga URL dari riwayat pesan chat langsung (agar instan tanpa lag async DB)
             if chat_history:
                 try:
@@ -139,13 +148,16 @@ class ModeHub:
                 visited_urls = list(set(visited_urls))  # deduplicate
                 logger.info(f"[MODE_HUB] Loaded {len(visited_urls)} previously visited URL(s) from session memory & chat history: {visited_urls}")
 
-        is_first_chat = (len(chat_history) <= 1)
+        past_msgs = chat_history[:-1] if (chat_history and getattr(chat_history[-1], 'role', '') == 'user' and getattr(chat_history[-1], 'content', '') == user_message) else (chat_history[:-1] if len(chat_history) > 1 else [])
+        has_prior_turns = len(past_msgs) > 0 or (len(chat_history) > 1)
+        is_first_chat = not has_prior_turns
         needs_title_update = is_first_chat or is_title_generic
         precheck["needs_title_update"] = needs_title_update
-        precheck["has_prior_context"] = not is_first_chat
+        precheck["has_prior_context"] = has_prior_turns
         precheck["_session_chunks_text"] = session_chunks_text
         precheck["_session_uuid"] = session_uuid
         precheck["_visited_urls"] = visited_urls
+        precheck["_chunks_with_meta"] = chunks_with_meta if 'chunks_with_meta' in locals() and isinstance(chunks_with_meta, list) else []
 
         # ── Ekstrak Context History untuk Multi-Turn Reasoning (Universal Dispatcher/Preset ⇄ Responder Sync) ──
         from backend.app.services.pipeline.modes.mode_utils import build_responder_history_context
@@ -736,11 +748,14 @@ class ModeHub:
         url_contexts = ""
         from backend.app.services.web_tools.url_reader import extract_url_display_info, fetch_webpage_content, fetch_webpage_with_discovery
         
-        # URL fetching kini dipicu oleh deteksi regex deterministik (bukan Call 1)
-        # Hanya fetch URL baru yang belum ada di session memory
+        # URL fetching kini dipicu oleh deteksi regex deterministik atau needs_live_refetch
         detected_fetch_urls = precheck.get("_detected_urls", [])
         already_in_memory = set(precheck.get("_visited_urls", []))
-        approved_fetch_urls = [u for u in detected_fetch_urls if u not in already_in_memory]
+        if routing_data.get("needs_live_refetch"):
+            approved_fetch_urls = detected_fetch_urls or precheck.get("_visited_urls", [])[-1:]
+            logger.info(f"[MODE_HUB] 🔄 needs_live_refetch=True: Bypassing memory cache to re-fetch: {approved_fetch_urls}")
+        else:
+            approved_fetch_urls = [u for u in detected_fetch_urls if u not in already_in_memory]
 
         # HANYA jalankan blocking fetch di mode_hub jika user EKSPLISIT memilih pill tag tertentu
         # Pada mode default/auto (Master Agentic Flow), urlfetch didelegasikan sepenuhnya ke Call 2 in-stream
@@ -791,7 +806,33 @@ class ModeHub:
                 # Kirim TEPAT 1 blok markdown ```urlfetch HANYA jika konten URL berhasil diunduh
                 yield format_sse(chunk=f"```urlfetch\n{json.dumps(final_fetch_payload)}\n```\n\n", event_type=SSEEventType.CHUNK)
                 yield format_sse(status="📖 Mengekstrak konten web", event_type=SSEEventType.STATUS)
-                precheck["_session_chunks_text"] = precheck.get("_session_chunks_text", "") + f"\n\n[KONTEN WEB DARI URL DI CHAT]\n{url_contexts}"
+
+                # Universal Asset Diffing: Cek apakah URL/dokumen ini sudah ada di memori sesi sebelumnya
+                diff_summary = ""
+                has_diff = False
+                target_title = (collected_nodes[0].get("title") if collected_nodes and collected_nodes[0].get("title") else None) or (approved_fetch_urls[0] if approved_fetch_urls else "Tautan Web")
+
+                from backend.app.services.ambient.brain_organizer import brain_asset_organizer
+                from backend.app.services.ambient.asset_diff_engine import asset_diff_engine
+                matching_prev = brain_asset_organizer.find_matching_chunk_in_list(
+                    chunks=precheck.get("_chunks_with_meta", []),
+                    urls=approved_fetch_urls,
+                    title=target_title
+                )
+                if matching_prev and matching_prev.get("content"):
+                    delta = asset_diff_engine.compute_diff(
+                        old_text=matching_prev["content"],
+                        new_text=url_contexts,
+                        asset_title=target_title
+                    )
+                    diff_summary = delta.summary_text
+                    has_diff = delta.has_changes
+                    logger.info(f"[MODE_HUB] 🔄 Pre-fetch Asset Diff computed for '{target_title}': has_changes={delta.has_changes}")
+
+                if diff_summary:
+                    precheck["_session_chunks_text"] = precheck.get("_session_chunks_text", "") + f"\n\n{diff_summary}\n\n[KONTEN TERKINI DARI TAUTAN WEB DI CHAT]\n{url_contexts}"
+                else:
+                    precheck["_session_chunks_text"] = precheck.get("_session_chunks_text", "") + f"\n\n[KONTEN WEB DARI URL DI CHAT]\n{url_contexts}"
                 precheck["has_url_context"] = True
 
                 # Murni URL reader untuk URL yang di-fetch: matikan web_search dan need_rag
@@ -804,22 +845,23 @@ class ModeHub:
                 # Simpan ke session memory document chunks agar multi-turn aware
                 if session_uuid and current_user_npp:
                     from backend.app.services.chat.chat_history_service import chat_history_service
-                    clean_web_sample = " ".join(url_contexts.replace("==== ISI WEB:", "").split())[:180]
-                    target_title = approved_fetch_urls[0] if approved_fetch_urls else "Tautan Web"
-                    web_summary = f"Konten web {target_title}: {clean_web_sample}..."
+                    asset_meta = brain_asset_organizer.profile_asset(
+                        content=url_contexts,
+                        metadata={
+                            "source": "url_read",
+                            "title": target_title,
+                            "urls": approved_fetch_urls,
+                            "fetched_at": datetime.now().isoformat(),
+                            "has_changes": has_diff,
+                            "diff_summary": diff_summary
+                        }
+                    )
                     asyncio.create_task(chat_history_service.save_document_chunk(
                         session_uuid=session_uuid,
                         npp=current_user_npp,
                         content=url_contexts[:30000],
                         file_id=None,
-                        chunk_metadata={
-                            "type": "web",
-                            "source": "url_read",
-                            "title": target_title,
-                            "urls": approved_fetch_urls,
-                            "summary": web_summary,
-                            "fetched_at": datetime.now().isoformat()
-                        }
+                        chunk_metadata=asset_meta
                     ))
             else:
                 logger.warning(f"[MODE_HUB] Fetching failed or yielded empty content for {approved_fetch_urls}. Suppressing urlfetch widget and allowing fallback.")
@@ -829,23 +871,53 @@ class ModeHub:
             f"is_coding={routing_data.get('is_coding')} | queries={routing_data.get('queries')}"
         )
 
-        # ── On-Demand Retrieval dari Dokumen Sesi Sebelumnya ───────────────────
-        session_chunk_ids = routing_data.get("session_chunk_ids", [])
-        if session_chunk_ids and isinstance(session_chunk_ids, list):
+        # ── On-Demand Targeted Retrieval dari Session Brain Assets ───────────────────
+        target_brain_assets = routing_data.get("target_brain_assets") or routing_data.get("session_chunk_ids", [])
+        from backend.app.services.ambient.brain_organizer import brain_asset_organizer
+        from backend.app.services.ambient.asset_diff_engine import asset_diff_engine
+        
+        # Resolusi aset menggunakan safe branching:
+        # JALUR A1: ID ditarget oleh Router
+        # JALUR B1: Fallback cerdas jika hanya ada 1 aset dan user meminta data/ceklis/rekap tabel
+        targeted_chunks = brain_asset_organizer.resolve_targeted_assets(
+            chunks_with_meta=precheck.get("_chunks_with_meta", []),
+            target_ids=target_brain_assets,
+            user_message=user_message
+        )
+
+        # JALUR C1: Komparasi Lintas Format / Multi-Aset (Cross-Modal Diffing)
+        cross_delta_summary = None
+        comparison_pair = brain_asset_organizer.resolve_cross_comparison_assets(
+            chunks_with_meta=precheck.get("_chunks_with_meta", []),
+            target_ids=target_brain_assets,
+            user_message=user_message
+        )
+        if comparison_pair:
+            asset_a, asset_b = comparison_pair
+            existing_ids = {c.get("id") for c in targeted_chunks}
+            if asset_a.get("id") not in existing_ids:
+                targeted_chunks.append(asset_a)
+            if asset_b.get("id") not in existing_ids:
+                targeted_chunks.append(asset_b)
+
             try:
-                from backend.app.services.chat.chat_history_service import chat_history_service
-                valid_ids = [int(cid) for cid in session_chunk_ids if str(cid).isdigit()]
-                if valid_ids:
-                    retrieved_chunks = await chat_history_service.get_document_chunks_by_ids(valid_ids)
-                    if retrieved_chunks:
-                        logger.info(f"[MODE_HUB] On-Demand retrieved {len(retrieved_chunks)} session document chunk(s) for IDs: {valid_ids}")
-                        retrieved_text = "\n\n[KONTEN DOKUMEN SESI YANG DIPANGGIL KEMBALI]\n" + "\n---\n".join(
-                            f"--- DOKUMEN #{c['id']} ({c.get('metadata', {}).get('title', 'Dokumen')}) ---\n{c['content']}"
-                            for c in retrieved_chunks
-                        )
-                        precheck["_retrieved_session_chunks_text"] = retrieved_text
-            except Exception as e:
-                logger.error(f"[MODE_HUB] Failed on-demand chunk retrieval: {e}")
+                cross_delta = asset_diff_engine.compute_cross_asset_diff(asset_a, asset_b)
+                cross_delta_summary = cross_delta.summary_text
+                routing_data["is_comparative"] = True
+                logger.info(f"[MODE_HUB] ⚖️ Cross-Asset Diff computed: changes={cross_delta.has_changes}, type={cross_delta.change_type}")
+            except Exception as e_cross:
+                logger.warning(f"[MODE_HUB] Gagal menghitung cross-asset diff: {e_cross}")
+
+        if targeted_chunks:
+            retrieved_text = brain_asset_organizer.format_asset_content_for_call2(
+                targeted_chunks=targeted_chunks,
+                cross_delta_summary=cross_delta_summary
+            )
+            precheck["_retrieved_session_chunks_text"] = retrieved_text
+            routing_data["_retrieved_session_chunks_text"] = retrieved_text
+            precheck["needs_history"] = True
+            routing_data["needs_history"] = True
+            logger.info(f"[MODE_HUB] 🧠 Targeted asset retrieval loaded {len(targeted_chunks)} asset(s) into Call 2 context.")
         
         # ── Update Session Title (Gemma 4 Native / Fallback) (Non-blocking background) ────────
         if routing_data.get("session_title") and session_uuid:
@@ -1128,10 +1200,10 @@ class ModeHub:
         # Ensure mode exists, fallback to auto
         mode = chat_mode if chat_mode in self.mode_handlers else "auto"
 
-        # ── Priority 1: is_generate_file / is_coding intent (Interceptor-Analyst Pipeline) ──────
-        # Hanya masuk ke generate_file jika BUKAN ambigu (artinya spesifikasi sudah jelas/lengkap)
-        if (routing_data.get("is_generate_file") or routing_data.get("is_coding")) and not is_guest and not routing_data.get("is_ambiguous"):
-            logger.info("[MODE_HUB] Coding intent detected & not ambiguous → routing to GENERATE_FILE mode")
+        # ── Priority 1: is_generate_file intent (Interceptor-Analyst Pipeline) ──────
+        # Masuk ke generate_file HANYA jika ada permintaan pembuatan file eksplisit dan bukan ambigu
+        if routing_data.get("is_generate_file") and not is_guest and not routing_data.get("is_ambiguous"):
+            logger.info("[MODE_HUB] Explicit is_generate_file detected & not ambiguous → routing to GENERATE_FILE mode")
             mode = "generate_file"
         elif routing_data.get("is_generate_email") and not is_guest and not routing_data.get("is_ambiguous"):
             logger.info("[MODE_HUB] is_generate_email=True detected & not ambiguous → routing to EMAIL mode")

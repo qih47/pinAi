@@ -46,6 +46,7 @@ const AgenticProcessCard = ({
     const resolvedTool = (data.tool || toolType || 'python_calc').toLowerCase();
     const isCalc = resolvedTool.includes('calc');
     const isDoc = resolvedTool.includes('doc');
+    const isTerminal = resolvedTool.includes('terminal') || resolvedTool.includes('cli');
 
     const [isOpen, setIsOpen] = useState(() => Boolean(isStreaming && !hasStartedResponding));
     const [elapsedSec, setElapsedSec] = useState(0);
@@ -54,7 +55,7 @@ const AgenticProcessCard = ({
     const t = translations[language]?.agentic || translations.id.agentic || {};
 
     // Ekstraksi kode dan output yang tahan banting (anti kotak kosong)
-    const codeContent = data.code || data.script || (typeof data.raw === 'string' ? data.raw : (typeof toolData === 'string' ? toolData : ''));
+    const codeContent = data.command || data.cmd || data.code || data.script || (typeof data.raw === 'string' ? data.raw : (typeof toolData === 'string' ? toolData : ''));
     const outputContent = data.output || data.result || '';
     const errorContent = data.error || (data.status === 'error' ? (data.output || 'Eksekusi gagal') : null);
 
@@ -94,11 +95,17 @@ const AgenticProcessCard = ({
     // Header label
     const getHeaderLabel = () => {
         if (isComplete) {
+            if (isTerminal) return isError ? (t.terminalFailed || "Eksekusi terminal (terkendala)") : (t.terminalComplete || "Hasil eksekusi terminal Ubuntu");
             if (isCalc) return isError ? (t.calcFailed || "Kalkulasi matematis (terkendala)") : (t.calcComplete || "Hasil kalkulasi matematis presisi");
             if (isDoc) return t.docSearchComplete || "Hasil penelusuran regulasi internal";
             return t.genericComplete || "Hasil proses alat otonom";
         }
         if (statusText) return statusText;
+        if (isTerminal) {
+            if (isExecuting) return (t.terminalRunning || "Mengeksekusi terminal ({elapsed}s)").replace('{elapsed}', elapsedSec);
+            if (isAnalyzing) return t.terminalAnalyzing || "Menganalisis output terminal";
+            return t.terminalDefault || "Eksekusi perintah terminal Ubuntu";
+        }
         if (isCalc) {
             if (isExecuting) return (t.calcRunning || "Menjalankan komputasi ({elapsed}s)").replace('{elapsed}', elapsedSec);
             if (isAnalyzing) return t.calcAnalyzing || "Menganalisis hasil komputasi";
@@ -112,7 +119,7 @@ const AgenticProcessCard = ({
         return t.genericRunning || "Proses alat otonom";
     };
 
-    const displayQuery = data.query || data.intent || (isCalc ? (t.calcDefault || "Kalkulasi matematis via Python Sandbox") : (t.docSearchDefault || "Pencarian regulasi internal"));
+    const displayQuery = data.command || data.query || data.intent || (isTerminal ? (t.terminalDefault || "Eksekusi perintah terminal Ubuntu") : isCalc ? (t.calcDefault || "Kalkulasi matematis via Python Sandbox") : (t.docSearchDefault || "Pencarian regulasi internal"));
 
     return (
         <div className="my-4 w-full max-w-3xl font-sans">
@@ -167,8 +174,8 @@ const AgenticProcessCard = ({
                             <div className={`py-1 px-1 rounded-full z-10 relative flex items-center justify-center ${
                                 darkMode ? 'bg-[#1e1e1e]' : 'bg-white border border-slate-200 shadow-sm'
                             }`}>
-                                {isCalc ? (
-                                    <Terminal className={`w-[14px] h-[14px] flex-shrink-0 ${darkMode ? 'text-emerald-400' : 'text-emerald-600'}`} />
+                                {(isCalc || isTerminal) ? (
+                                    <Terminal className={`w-[14px] h-[14px] flex-shrink-0 ${isTerminal ? (darkMode ? 'text-cyan-400' : 'text-cyan-600') : (darkMode ? 'text-emerald-400' : 'text-emerald-600')}`} />
                                 ) : (
                                     <BookOpen className={`w-[14px] h-[14px] flex-shrink-0 ${darkMode ? 'text-amber-400' : 'text-amber-600'}`} />
                                 )}
@@ -186,18 +193,20 @@ const AgenticProcessCard = ({
                             <span className={`text-[12px] whitespace-nowrap ${
                                 darkMode ? 'text-[#666666]' : 'text-slate-400'
                             }`}>
-                                {isCalc 
-                                    ? (t.sandboxExecution || "sandbox execution") 
-                                    : (isExecuting && (!data.documents || data.documents.length === 0))
-                                        ? (t.searchingReferences || "Mencari referensi...")
-                                        : `${data.documents?.length || 0} ${t.referencesCount || (language === 'en' ? 'references' : 'referensi')}`}
+                                {isTerminal
+                                    ? "ubuntu bash cli"
+                                    : isCalc 
+                                        ? (t.sandboxExecution || "sandbox execution") 
+                                        : (isExecuting && (!data.documents || data.documents.length === 0))
+                                            ? (t.searchingReferences || "Mencari referensi...")
+                                            : `${data.documents?.length || 0} ${t.referencesCount || (language === 'en' ? 'references' : 'referensi')}`}
                             </span>
                         </div>
 
                         {/* Inner Terminal / Content Box */}
                         <div className="ml-[26px]">
-                            {/* A. TERMINAL CONSOLE (Untuk Python Calc - Gaya Gambar 2) */}
-                            {isCalc && (
+                            {/* A. TERMINAL CONSOLE (Untuk Python Calc & Ubuntu Terminal) */}
+                            {(isCalc || isTerminal) && (
                                 <div className={`rounded-xl border overflow-hidden transition-colors ${
                                     darkMode
                                         ? 'border-[#2a2a2a] bg-[#0c0d0e] shadow-[0_4px_20px_rgba(0,0,0,0.3)]'
@@ -207,7 +216,9 @@ const AgenticProcessCard = ({
                                     <div className="flex items-center justify-between px-3 py-1.5 border-b border-white/5 bg-[#141517]">
                                         <div className="flex items-center gap-2">
                                             <Terminal className="w-3.5 h-3.5 text-gray-400" />
-                                            <span className="text-[11.5px] font-mono font-medium text-gray-300">Terminal</span>
+                                            <span className="text-[11.5px] font-mono font-medium text-gray-300">
+                                                {isTerminal ? (t.ubuntuTerminal || "Ubuntu Terminal") : "Terminal"}
+                                            </span>
                                         </div>
                                         <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded border ${
                                             isError 
@@ -225,15 +236,19 @@ const AgenticProcessCard = ({
                                         {codeContent && (
                                             <div className="space-y-1">
                                                 <div className="text-gray-500 text-[11px] select-none flex items-center gap-1.5">
-                                                    <span className="text-emerald-500">&gt;</span>
-                                                    <span>cat &lt;&lt; 'EOF' | python3</span>
+                                                    <span className={isTerminal ? "text-cyan-400" : "text-emerald-500"}>&gt;</span>
+                                                    <span>{isTerminal ? `$ ${codeContent}` : `cat << 'EOF' | python3`}</span>
                                                 </div>
-                                                <pre className="text-gray-300 whitespace-pre-wrap pl-3 border-l-2 border-emerald-500/40 font-mono text-[12px] leading-relaxed overflow-x-auto">
-                                                    {codeContent}
-                                                </pre>
-                                                <div className="text-gray-500 text-[11px] select-none">
-                                                    EOF
-                                                </div>
+                                                {!isTerminal && (
+                                                    <>
+                                                        <pre className="text-gray-300 whitespace-pre-wrap pl-3 border-l-2 border-emerald-500/40 font-mono text-[12px] leading-relaxed overflow-x-auto">
+                                                            {codeContent}
+                                                        </pre>
+                                                        <div className="text-gray-500 text-[11px] select-none">
+                                                            EOF
+                                                        </div>
+                                                    </>
+                                                )}
                                             </div>
                                         )}
 

@@ -1113,7 +1113,203 @@ async def execute_map_search_tool(location: str, reason: str = "") -> ToolResult
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# 6. MASTER DISPATCHER (MCP-READY HUB)
+# 6. TOOL: UBUNTU TERMINAL RUNNER (NATIVE CLI & DIFF/QUERY EXECUTION)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+BLOCKED_CLI_PATTERNS = [
+    r"\bsudo\b",
+    r"\bsu\b",
+    r"\brm\s+-(?:r|f|rf|fr)\b",
+    r"\bmkfs\b",
+    r"\bdd\s+if=",
+    r"\bchmod\b",
+    r"\bchown\b",
+    r"\bkill\s+-9\b",
+    r"\bshutdown\b",
+    r"\breboot\b",
+    r"\bpoweroff\b",
+    r"\binit\s+[0-6]\b",
+    r":\(\)\s*\{\s*:\s*\|\s*:\s*&\s*\}\s*;",  # fork bomb
+    r">\s*/dev/(?:sda|sdb|sd[a-z]|nvme[0-9]|null|zero)",
+    r"\bcurl\s+.*\|\s*(?:bash|sh)\b",
+    r"\bwget\s+.*\|\s*(?:bash|sh)\b",
+    r"\bnc\s+-e\b",
+    r"\bnetcat\s+-e\b",
+]
+
+def is_command_safe_from_blocked_patterns(cmd: str) -> Tuple[bool, Optional[str]]:
+    """Memeriksa apakah command shell melanggar pola blacklist pertahanan berlapis."""
+    for pattern in BLOCKED_CLI_PATTERNS:
+        if re.search(pattern, cmd, re.IGNORECASE):
+            return False, f"Pola perintah berisiko tinggi terdeteksi ('{pattern}')."
+    return True, None
+
+async def execute_terminal_runner_tool_stream(
+    command: str,
+    reason: str = "",
+    session_uuid: Optional[str] = None,
+    current_user_npp: Optional[str] = None,
+    timeout_sec: float = 12.0,
+    max_output_chars: int = 50000,
+) -> AsyncGenerator[Union[Tuple[str, Any], ToolResult], None]:
+    """
+    Eksekusi perintah terminal Ubuntu lokal native secara aman (sandboxed di scratch dir akun/sesi).
+    Memancarkan status progresif SSE dan mengembalikan stdout/stderr untuk disuntikkan ke Call 2.
+    """
+    from backend.app.core.paths import get_account_session_dir
+
+    clean_cmd = (command or "").strip()
+    clean_cmd = re.sub(r"^```(?:bash|sh|zsh)?\s*", "", clean_cmd)
+    clean_cmd = re.sub(r"\s*```$", "", clean_cmd).strip()
+
+    intent_desc = reason.strip() if reason.strip() else f"Menjalankan perintah terminal: '{clean_cmd[:60]}'"
+    logger.info(f"[TOOL_DISPATCHER] 💻 Executing terminal_runner: '{clean_cmd}' (session: {session_uuid})")
+
+    # Preview awal ke UI agar widget terminal langsung aktif
+    yield ("TOOL_PREVIEW", {
+        "tool": "terminal_runner",
+        "intent": intent_desc,
+        "command": clean_cmd,
+        "stage": "running",
+    })
+    yield ("Mengeksekusi terminal", "TOOL_CLI_RUNNING")
+
+    if not clean_cmd:
+        yield ToolResult(
+            tool_name="terminal_runner",
+            status="error",
+            intent=intent_desc,
+            display_data={
+                "tool": "terminal_runner",
+                "intent": intent_desc,
+                "command": clean_cmd,
+                "output": "",
+                "error": "Perintah terminal kosong.",
+                "stage": "error",
+            },
+            llm_context="--- HASIL EKSEKUSI TERMINAL UBUNTU ---\nError: Perintah terminal kosong.",
+            error_message="Perintah terminal kosong.",
+        )
+        return
+
+    # Layer 2 Firewall Check
+    is_safe, blocked_reason = is_command_safe_from_blocked_patterns(clean_cmd)
+    if not is_safe:
+        logger.warning(f"[TOOL_DISPATCHER] 🚨 Terminal command blocked by Security Firewall: {clean_cmd} -> {blocked_reason}")
+        yield ToolResult(
+            tool_name="terminal_runner",
+            status="error",
+            intent=intent_desc,
+            display_data={
+                "tool": "terminal_runner",
+                "intent": intent_desc,
+                "command": clean_cmd,
+                "output": "",
+                "error": f"Perintah diblokir oleh Security Firewall: {blocked_reason}",
+                "stage": "error",
+            },
+            llm_context=f"--- HASIL EKSEKUSI TERMINAL UBUNTU ---\nStatus: DIBLOKIR SECURITY FIREWALL\nAlasan: {blocked_reason}",
+            error_message=f"Command blocked by Security Firewall: {blocked_reason}",
+        )
+        return
+
+    # Siapkan direktori kerja scratch terisolasi untuk sesi ini
+    scratch_dir = get_account_session_dir(current_user_npp or "guest", session_uuid or "default", "scratch")
+
+    try:
+        process = await asyncio.create_subprocess_shell(
+            clean_cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            cwd=str(scratch_dir),
+        )
+
+        try:
+            stdout_bytes, stderr_bytes = await asyncio.wait_for(
+                process.communicate(),
+                timeout=timeout_sec,
+            )
+            stdout_str = stdout_bytes.decode("utf-8", errors="replace").strip()
+            stderr_str = stderr_bytes.decode("utf-8", errors="replace").strip()
+            exit_code = process.returncode
+        except asyncio.TimeoutError:
+            try:
+                process.kill()
+            except Exception:
+                pass
+            stdout_str = ""
+            stderr_str = f"Perintah melebihi batas waktu eksekusi ({timeout_sec} detik)."
+            exit_code = -1
+
+        combined_output = stdout_str
+        if stderr_str:
+            if combined_output:
+                combined_output += f"\n[STDERR]:\n{stderr_str}"
+            else:
+                combined_output = f"[STDERR]:\n{stderr_str}"
+
+        if len(combined_output) > max_output_chars:
+            combined_output = combined_output[:max_output_chars] + f"\n... [Dipotong: Output melebihi {max_output_chars} karakter]"
+
+        status = "success" if exit_code == 0 else "error"
+        logger.info(f"[TOOL_DISPATCHER] 💻 Terminal command completed (exit code {exit_code}, out len: {len(combined_output)})")
+
+        yield ToolResult(
+            tool_name="terminal_runner",
+            status=status,
+            intent=intent_desc,
+            display_data={
+                "tool": "terminal_runner",
+                "intent": intent_desc,
+                "command": clean_cmd,
+                "output": combined_output,
+                "exit_code": exit_code,
+                "error": stderr_str if exit_code != 0 else None,
+                "stage": "done" if exit_code == 0 else "error",
+            },
+            llm_context=f"--- HASIL EKSEKUSI TERMINAL UBUNTU ---\nPerintah: {clean_cmd}\nExit Code: {exit_code}\nOutput:\n{combined_output or '(Tidak ada output/eksekusi berhasil tanpa stdout)'}",
+            error_message=stderr_str if exit_code != 0 else None,
+        )
+
+    except Exception as e:
+        logger.error(f"[TOOL_DISPATCHER] Error executing terminal runner: {e}", exc_info=True)
+        yield ToolResult(
+            tool_name="terminal_runner",
+            status="error",
+            intent=intent_desc,
+            display_data={
+                "tool": "terminal_runner",
+                "intent": intent_desc,
+                "command": clean_cmd,
+                "output": "",
+                "error": str(e),
+                "stage": "error",
+            },
+            llm_context=f"--- HASIL EKSEKUSI TERMINAL UBUNTU ---\nError: Gagal mengeksekusi perintah terminal: {str(e)}",
+            error_message=str(e),
+        )
+
+async def execute_terminal_runner_tool(
+    command: str,
+    reason: str = "",
+    session_uuid: Optional[str] = None,
+    current_user_npp: Optional[str] = None,
+) -> ToolResult:
+    """Wrapper sinkronisasi tool terminal_runner untuk backward-compatibility."""
+    last_res = None
+    async for item in execute_terminal_runner_tool_stream(
+        command,
+        reason=reason,
+        session_uuid=session_uuid,
+        current_user_npp=current_user_npp,
+    ):
+        if isinstance(item, ToolResult):
+            last_res = item
+    return last_res or ToolResult("terminal_runner", "error", reason, {}, "Gagal mengeksekusi terminal_runner")
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 7. MASTER DISPATCHER (MCP-READY HUB)
 # ═══════════════════════════════════════════════════════════════════════════════
 
 async def dispatch_agentic_tool_stream(
@@ -1139,7 +1335,7 @@ async def dispatch_agentic_tool_stream(
         try:
             parsed_json = json.loads(raw_str)
         except Exception:
-            q_match = re.search(r'["\'](?:query|location|url|urls|q)["\']\s*:\s*(?:\[([^\]]+)\]|["\']([^"\']+)["\'])', raw_str)
+            q_match = re.search(r'["\'](?:query|location|url|urls|q|command|cmd)["\']\s*:\s*(?:\[([^\]]+)\]|["\']([^"\']+)["\'])', raw_str)
             if q_match:
                 parsed_json["query"] = q_match.group(1) or q_match.group(2)
             r_match = re.search(r'["\'](?:reason|intent)["\']\s*:\s*["\']([^"\']+)["\']', raw_str)
@@ -1182,6 +1378,16 @@ async def dispatch_agentic_tool_stream(
     elif tool_clean in ("python_calc", "python", "calc", "calculator"):
         code_val = parsed_json.get("code") or raw_str
         async for item in execute_python_calc_tool_stream(code_val, reason=reason_val):
+            yield item
+
+    elif tool_clean in ("terminal_runner", "terminal", "cli_runner", "cli", "bash", "shell"):
+        cmd_val = parsed_json.get("command") or parsed_json.get("cmd") or parsed_json.get("code") or raw_str
+        async for item in execute_terminal_runner_tool_stream(
+            cmd_val,
+            reason=reason_val,
+            session_uuid=session_uuid,
+            current_user_npp=current_user_npp,
+        ):
             yield item
 
     else:

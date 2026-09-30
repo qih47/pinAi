@@ -1,4 +1,6 @@
 import re
+import csv
+import io
 import asyncio
 import logging
 from typing import List, Optional, Dict, Any, AsyncGenerator, Tuple
@@ -206,14 +208,80 @@ async def _fetch_crawl4ai(url: str) -> Optional[str]:
         return None
 
 
+def parse_google_sheets_url(url: str) -> Optional[Tuple[str, str]]:
+    """Mengekstrak sheet_id dan gid dari URL Google Sheets."""
+    m = re.search(r'docs\.google\.com/spreadsheets/d/([a-zA-Z0-9-_]+)', url, re.IGNORECASE)
+    if not m:
+        return None
+    sheet_id = m.group(1)
+    gid_match = re.search(r'[?&#]gid=(\d+)', url, re.IGNORECASE)
+    gid = gid_match.group(1) if gid_match else "0"
+    return sheet_id, gid
+
+
+def format_csv_to_markdown_table(csv_content: str, max_rows: int = 150) -> str:
+    """Mengubah data CSV Google Sheets menjadi Markdown Table yang rapi dan terstruktur."""
+    reader = csv.reader(io.StringIO(csv_content))
+    rows = [r for r in reader if any(cell.strip() for cell in r)]
+    if not rows:
+        return ""
+    
+    header = [re.sub(r'[\r\n]+', ' ', c).replace('|', '/').strip() for c in rows[0]]
+    num_cols = len(header)
+    md_lines = [
+        "| " + " | ".join(header) + " |",
+        "| " + " | ".join(["---"] * num_cols) + " |"
+    ]
+    for r in rows[1:max_rows]:
+        clean_row = [re.sub(r'[\r\n]+', ' ', c).replace('|', '/').strip() for c in r]
+        if len(clean_row) < num_cols:
+            clean_row.extend([""] * (num_cols - len(clean_row)))
+        elif len(clean_row) > num_cols:
+            clean_row = clean_row[:num_cols]
+        md_lines.append("| " + " | ".join(clean_row) + " |")
+        
+    return "\n".join(md_lines)
+
+
+async def _fetch_google_sheets_csv(url: str) -> Optional[str]:
+    """
+    Tier 0 Specialized: Langsung ambil data Google Sheets dalam format CSV (~150-250ms).
+    Menghindari distorsi virtual DOM, canvas rendering, atau error browser pada headless Chromium.
+    """
+    parsed = parse_google_sheets_url(url)
+    if not parsed:
+        return None
+    sheet_id, gid = parsed
+    export_url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=csv&gid={gid}"
+    logger.info(f"[URL Reader] 📊 Mengunduh Google Sheets via native CSV export: {export_url}")
+    try:
+        async with httpx.AsyncClient(timeout=8.0, follow_redirects=True, headers=_HTTP_HEADERS) as client:
+            resp = await client.get(export_url)
+            if resp.status_code == 200 and resp.text:
+                table_md = format_csv_to_markdown_table(resp.text)
+                if table_md:
+                    logger.info(f"[URL Reader] ⚡ Native Google Sheets CSV success for '{url}' ({len(table_md)} chars)")
+                    return f"# Google Spreadsheet (Sheet GID: {gid})\n\n{table_md}"
+    except Exception as e:
+        logger.warning(f"[URL Reader] Gagal fast-path CSV Google Sheets '{url}': {e}")
+    return None
+
+
 async def fetch_webpage_content(url: str) -> Optional[str]:
     """
     Tiered Web Scraper:
+    0. Specialized: Native Google Sheets CSV export (~150-250ms)
     1. Coba Fast-Path HTTP (~200ms)
     2. Fallback ke Headless Chromium jika halaman butuh JS rendering
     """
     logger.info(f"[URL Reader] Fetching content for: {url}")
     
+    # Tier 0: Google Sheets Specialized Fast-Path
+    if "docs.google.com/spreadsheets" in url.lower():
+        gsheet_content = await _fetch_google_sheets_csv(url)
+        if gsheet_content:
+            return gsheet_content
+
     # Tier 1: Fast-Path HTTP
     fast_content = await _fetch_fast_http(url)
     if fast_content:
@@ -232,7 +300,9 @@ def extract_url_display_info(url: str) -> Dict[str, str]:
         domain = parsed.netloc.replace("www.", "")
         path_parts = [p for p in parsed.path.strip("/").split("/") if p]
         
-        if path_parts:
+        if "docs.google.com/spreadsheets" in url.lower():
+            title = "Google Spreadsheet"
+        elif path_parts:
             raw_title = path_parts[-1]
             raw_title = re.sub(r'\.(html|php|asp|htm)$', '', raw_title)
             title = raw_title.replace("-", " ").replace("_", " ")
@@ -351,6 +421,12 @@ async def fetch_webpage_with_discovery(
     parsed = urlparse(url)
     is_root = (parsed.path.strip("/") == "" and not parsed.query)
     
+    # Tier 0: Google Sheets Specialized Fast-Path
+    if "docs.google.com/spreadsheets" in url.lower():
+        gsheet_content = await _fetch_google_sheets_csv(url)
+        if gsheet_content:
+            return gsheet_content, [primary_node]
+
     # Ambil konten halaman awal (Tier 1 fast HTTP dengan timeout aman 8s)
     raw_html = ""
     try:

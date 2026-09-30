@@ -19,6 +19,14 @@ from backend.app.core.llm_client import generate_json_response
 
 logger = logging.getLogger("CAKRA_ROUTER")
 
+# 🛡️ Negasi Coding / File: jika user menyatakan "bukan coding", "bukan kode", dll.
+CODING_NEGATIONS = [
+    "bukan coding", "bukan koding", "bukan kode", "bukan urusan coding",
+    "bukan masalah coding", "bukan ngoding", "gausah coding", "ga usah coding",
+    "tidak coding", "jangan coding", "jangan ngoding", "non coding", "non-coding",
+    "masalah teknis bukan coding", "isu teknis bukan coding"
+]
+
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # SMART SIGNAL STRIPPING
@@ -578,6 +586,8 @@ def _validate_and_normalize_routing(
         "is_map_query": False,
         "fetch_urls": [],
         "session_chunk_ids": [],
+        "target_brain_assets": [],
+        "needs_live_refetch": False,
         "wizard": None,
         "needs_history": False,
     }
@@ -595,13 +605,33 @@ def _validate_and_normalize_routing(
     if precheck.get("_detected_urls") and not routing_json.get("need_rag") and not routing_json.get("is_web_search"):
         routing["is_url_read"] = True
     routing["is_coding"] = bool(routing_json.get("is_coding", False))
+    if any(neg in user_msg_lower for neg in CODING_NEGATIONS):
+        routing["is_coding"] = False
+        routing["is_generate_file"] = False
     routing["is_troubleshooting"] = bool(routing_json.get("is_troubleshooting", False))
     routing["is_comparative"] = bool(routing_json.get("is_comparative", False))
+    user_msg_lower = (user_message or "").lower()
+    if any(k in user_msg_lower for k in ["bandingkan", "cocokkan", "sinkronkan", "crosscheck", "cross check", "cek silang", "apa bedanya", "perbedaan"]):
+        routing["is_comparative"] = True
+        routing["needs_history"] = True
+
     routing["has_actionable_workflow"] = bool(routing_json.get("has_actionable_workflow", False))
     routing["is_deep_research"] = bool(routing_json.get("is_deep_research", False))
     routing["is_security_critical"] = bool(routing_json.get("is_security_critical", False))
     routing["is_chitchat"] = bool(routing_json.get("is_chitchat", False))
-    routing["needs_history"] = bool(routing_json.get("needs_history") is True)
+    target_assets = routing_json.get("target_brain_assets") or routing_json.get("session_chunk_ids") or []
+    if isinstance(target_assets, list):
+        parsed_ids = [int(a) for a in target_assets if str(a).isdigit()]
+        routing["target_brain_assets"] = parsed_ids
+        routing["session_chunk_ids"] = parsed_ids
+    else:
+        routing["target_brain_assets"] = []
+        routing["session_chunk_ids"] = []
+    routing["needs_live_refetch"] = bool(routing_json.get("needs_live_refetch", False))
+
+    routing["needs_history"] = bool(routing_json.get("needs_history") is True) or routing["is_comparative"]
+    if routing["target_brain_assets"]:
+        routing["needs_history"] = True
     has_prior_context = bool(precheck.get("has_prior_context")) or bool(precheck.get("has_prior_chitchat")) or bool(precheck.get("has_prior_coding")) or bool(precheck.get("has_prior_rag")) or bool(precheck.get("has_prior_visual"))
     if is_first_chat and not has_prior_context:
         routing["needs_history"] = False
@@ -718,13 +748,17 @@ def _validate_and_normalize_routing(
         routing["query_judul"] = []
         logger.info("[DISPATCHER_ROUTER] 🌍 is_map_query detected -> overriding need_rag=False")
     
-    raw_chunk_ids = routing_json.get("session_chunk_ids", [])
+    raw_chunk_ids = routing_json.get("target_brain_assets") or routing_json.get("session_chunk_ids") or routing.get("target_brain_assets") or []
     if isinstance(raw_chunk_ids, list):
-        routing["session_chunk_ids"] = [int(x) for x in raw_chunk_ids if str(x).isdigit()]
+        parsed = [int(x) for x in raw_chunk_ids if str(x).isdigit()]
+        routing["session_chunk_ids"] = parsed
+        routing["target_brain_assets"] = parsed
     elif isinstance(raw_chunk_ids, (int, str)) and str(raw_chunk_ids).isdigit():
         routing["session_chunk_ids"] = [int(raw_chunk_ids)]
+        routing["target_brain_assets"] = [int(raw_chunk_ids)]
     else:
         routing["session_chunk_ids"] = []
+        routing["target_brain_assets"] = []
     
     from backend.app.services.pipeline.intent_dictionary import (
         is_explicit_web_search_required,
@@ -1256,13 +1290,13 @@ def _validate_and_normalize_routing(
         elif any(k in user_text for k in visual_keywords) or precheck.get("requires_visual"):
             routing["requires_visual"] = True
             logger.info("[DISPATCHER_ROUTER] 🛡️ Guard: Auto-activated requires_visual (visual/chart intent detected)")
-        elif any(k in user_text for k in file_keywords):
+        elif any(k in user_text for k in file_keywords) and not any(neg in user_msg_lower for neg in CODING_NEGATIONS):
             routing["is_generate_file"] = True
             logger.info("[DISPATCHER_ROUTER] 🛡️ Guard: Auto-activated is_generate_file (file intent detected)")
         elif any(k in user_text for k in email_keywords):
             routing["is_generate_email"] = True
             logger.info("[DISPATCHER_ROUTER] 🛡️ Guard: Auto-activated is_generate_email (email intent detected)")
-        elif any(k in user_text for k in coding_keywords) or precheck.get("is_coding"):
+        elif (any(k in user_text for k in coding_keywords) or precheck.get("is_coding")) and not any(neg in user_msg_lower for neg in CODING_NEGATIONS):
             routing["is_coding"] = True
             logger.info("[DISPATCHER_ROUTER] 🛡️ Guard: Auto-activated is_coding (coding intent detected)")
         elif any(k in user_text for k in rag_keywords) or precheck.get("is_doc_query") or precheck.get("need_rag_hint"):
@@ -1277,6 +1311,12 @@ def _validate_and_normalize_routing(
             if not routing.get("queries"):
                 routing["queries"] = [routing.get("key_subject") or user_message]
             logger.info(f"[DISPATCHER_ROUTER] 🛡️ Guard: Auto-activated is_web_search | queries={routing['queries']}")
+
+    # 🛡️ Hard-enforce Negasi Coding / File: pastikan tidak ada kebocoran flag coding/file jika user menyangkal
+    if any(neg in user_msg_lower for neg in CODING_NEGATIONS):
+        routing["is_coding"] = False
+        routing["is_generate_file"] = False
+
     # 🔒 GUEST HARD-WALL SECURITY GUARD:
     # Tamu DILARANG KERAS mengakses dokumen/arsip internal PT Pindad dan Document Studio dalam kondisi apapun!
     # TAPI tamu TETAP BISA melakukan web search publik!
@@ -1570,8 +1610,17 @@ async def dispatch_preset_route(
         if res_json.get("active_topic") and isinstance(res_json["active_topic"], str):
             result["active_topic"] = res_json["active_topic"].strip()
 
+        # Target brain assets & live refetch
+        if res_json.get("target_brain_assets"):
+            tb = res_json["target_brain_assets"]
+            if isinstance(tb, list):
+                result["target_brain_assets"] = [int(x) for x in tb if str(x).isdigit()]
+                result["session_chunk_ids"] = result["target_brain_assets"]
+        if res_json.get("needs_live_refetch") is True:
+            result["needs_live_refetch"] = True
+
         # Multi-turn history requirement
-        if res_json.get("needs_history") is True:
+        if res_json.get("needs_history") is True or result.get("target_brain_assets"):
             result["needs_history"] = True
         elif is_first_chat:
             result["needs_history"] = False

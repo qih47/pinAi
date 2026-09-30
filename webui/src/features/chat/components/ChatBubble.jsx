@@ -831,6 +831,7 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
                                             messageIndex={idx}
                                             isLastMessage={isLastMessage}
                                             language={language}
+                                            messageId={messageId}
                                         />
                                         {fileGens.length > 0 && (
                                             <FileProcessLog
@@ -862,6 +863,7 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
                                     messageIndex={idx}
                                     isLastMessage={isLastMessage}
                                     language={language}
+                                    messageId={messageId}
                                 />
                             );
 
@@ -899,6 +901,7 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
                                             messageIndex={idx}
                                             isLastMessage={isLastMessage}
                                             language={language}
+                                            messageId={messageId}
                                         />
                                     );
                                 }
@@ -908,7 +911,7 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
                         })()}
 
                         {/* 🔥 POSISI BERHASIL DIPINDAHKAN DI AKHIR STREAM (DI BAWAH RENDERING TEKS JAWABAN) */}
-                        {!isThisMessageStreaming && msg.fileGenerations && msg.fileGenerations.length > 0 && msg.fileGenerations.every(g => g.stage === 'done' || g.stage === 'error') && (
+                        {!isThisMessageStreaming && msg.fileGenerations && msg.fileGenerations.length > 0 && (
                             <div style={{ marginTop: '12px', marginBottom: '8px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
                                 {msg.fileGenerations.map((fg, fgIdx) => (
                                     <FileGenerationCard

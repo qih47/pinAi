@@ -4,7 +4,12 @@ from typing import List, Dict, Any, Optional, Tuple
 
 logger = logging.getLogger("CAKRA_MODE_UTILS")
 
-_CODING_KEYWORDS = ["import ", "export ", "const ", "async ", "await ", "function", "def ", "return ", "class ", "select ", "docker", "sql ", "query", "react", "python", "javascript", "coding", "koding", "usecontext", "usememo", "typescript", "golang", "kotlin", "flutter", "dart", "frontend", "backend", "jsx", "html", "css", "tailwind"]
+_CODING_KEYWORDS = ["import ", "export ", "const ", "async ", "await ", "function ", "def ", "return ", "class ", "select ", "docker ", "sql ", "query ", "react", "python", "javascript", "usecontext", "usememo", "typescript", "golang", "kotlin", "flutter", "dart", "jsx", "html", "css", "tailwind", "```"]
+_CODING_NEGATIONS = [
+    "bukan coding", "bukan koding", "bukan kode", "bukan urusan coding",
+    "bukan masalah coding", "bukan ngoding", "gausah coding", "ga usah coding",
+    "tidak coding", "jangan coding", "jangan ngoding", "non coding", "non-coding"
+]
 _GREETING_KEYWORDS = ["hai", "halo", "hello", "hi ", "apa kabar", "selamat pagi", "selamat siang", "selamat sore", "selamat malam", "assalamualaikum", "pagi", "siang", "malam", "thanks", "thank you", "terima kasih", "makasih", "ok", "oke", "siap", "tq", "nuhun", "suwun", "mantap", "sip"]
 # CATATAN: 'ik' (Instruksi Kerja) sengaja TIDAK dimasukkan sebagai substring mentah agar tidak
 # false-positive pada kata seperti 'vulkanik', 'organik', 'teknik'. Cek via word-boundary di detect_precheck.
@@ -36,7 +41,8 @@ def detect_precheck(
 ) -> Dict[str, Any]:
     msg_lower = user_message.lower()
 
-    is_coding = any(kw in msg_lower for kw in _CODING_KEYWORDS)
+    has_coding_negation = any(neg in msg_lower for neg in _CODING_NEGATIONS)
+    is_coding = False if has_coding_negation else any(kw in msg_lower for kw in _CODING_KEYWORDS)
     is_greeting = any(kw in msg_lower for kw in _GREETING_KEYWORDS)
     
     # Deteksi domain publik yang dipadukan dengan kata pencarian berita/info (misal: pindad.com, kompas.com)

@@ -88,7 +88,7 @@ export default function FileProcessLog({ fileGenerations, darkMode, batchIndex =
     ? fileGenerations.filter(fg => (fg.batchIndex || 0) === batchIndex)
     : [];
 
-  const isInProgressAny = batchGens.some(fg => fg.stage === 'streaming' || fg.stage === 'creating');
+  const isInProgressAny = batchGens.some(fg => fg.stage === 'streaming' || fg.stage === 'creating' || fg.stage === 'editing');
 
   // Active elapsed time counting (Called unconditionally at top level)
   useEffect(() => {
@@ -103,15 +103,36 @@ export default function FileProcessLog({ fileGenerations, darkMode, batchIndex =
     };
   }, [isInProgressAny]);
 
-  if (!fileGenerations || fileGenerations.length === 0 || batchGens.length === 0) return null;
+  if (!fileGenerations || fileGenerations.length === 0 || batchGens.length === 0) {
+    if (isStreaming) {
+      return (
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px',
+          padding: '10px 14px',
+          borderRadius: '8px',
+          background: darkMode ? 'rgba(39, 39, 42, 0.4)' : 'rgba(244, 244, 245, 0.6)',
+          border: `1px solid ${darkMode ? '#3f3f46' : '#e4e4e7'}`,
+          marginBottom: '16px',
+          color: darkMode ? '#a1a1aa' : '#71717a',
+          fontSize: '13px'
+        }}>
+          <PulseLoader />
+          <span>{t.preparing || "Menyiapkan dan menulis berkas..."}</span>
+        </div>
+      );
+    }
+    return null;
+  }
 
   const textColor = darkMode ? '#e4e4e7' : '#18181b';
   const mutedText = darkMode ? '#a1a1aa' : '#71717a';
   const borderColor = darkMode ? '#3f3f46' : '#d4d4d8';
 
-  const doneCount = batchGens.filter(fg => fg.stage === 'done').length;
-  const inProgressCount = batchGens.filter(fg => fg.stage === 'streaming' || fg.stage === 'creating');
+  const inProgressCount = batchGens.filter(fg => isStreaming && (fg.stage === 'streaming' || fg.stage === 'creating' || fg.stage === 'editing'));
   const inProgressLength = inProgressCount.length;
+  const doneCount = batchGens.filter(fg => fg.stage === 'done' || (!isStreaming && (fg.stage === 'creating' || fg.stage === 'editing'))).length;
   const errorCount = batchGens.filter(fg => fg.stage === 'error').length;
   const total = batchGens.length;
 
@@ -119,7 +140,7 @@ export default function FileProcessLog({ fileGenerations, darkMode, batchIndex =
   if (inProgressLength > 0) {
     const textTpl = t.working || "Mengerjakan {count} file";
     headerText = `${textTpl.replace('{count}', inProgressLength)} (${elapsedSeconds}s)...`;
-  } else if (doneCount === total) {
+  } else if (doneCount === total || !isStreaming) {
     const textTpl = t.finished || "Selesai {count} file";
     headerText = textTpl.replace('{count}', total);
   } else {
@@ -178,7 +199,7 @@ export default function FileProcessLog({ fileGenerations, darkMode, batchIndex =
         <div style={{ paddingLeft: '4px' }}>
           {batchGens.map((fg, idx) => {
             const isError = fg.stage === 'error';
-            const isInProgress = fg.stage === 'streaming' || fg.stage === 'creating';
+            const isInProgress = isStreaming && (fg.stage === 'streaming' || fg.stage === 'creating' || fg.stage === 'editing');
             const isStepExpanded = expandedSteps[idx] || false;
 
             let statusIcon;
@@ -189,7 +210,7 @@ export default function FileProcessLog({ fileGenerations, darkMode, batchIndex =
             const isAllDone = batchGens.every(g => g.stage === 'done' || g.stage === 'error');
 
             const stepLabel = isInProgress
-              ? (fg.tag_type === 'edit_file'
+              ? (fg.tag_type === 'edit_file' || fg.stage === 'editing'
                   ? (t.editingFile || "Mengedit {filename}...").replace('{filename}', fg.filename)
                   : (t.creatingFile || "Membuat {filename}...").replace('{filename}', fg.filename))
               : (isError
@@ -364,7 +385,7 @@ export default function FileProcessLog({ fileGenerations, darkMode, batchIndex =
           })}
 
           {/* FINAL DONE ROW */}
-          {isFinalBatch && (allFilesCompleted || !isStreaming) && batchGens.length > 0 && fileGenerations.every(g => g.stage === 'done' || g.stage === 'error') && (
+          {isFinalBatch && (allFilesCompleted || !isStreaming) && batchGens.length > 0 && (
             <>
               {/* Presented Files Step */}
               <div style={{

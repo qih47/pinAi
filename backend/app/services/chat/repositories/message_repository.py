@@ -1,3 +1,4 @@
+import re
 import uuid
 import json
 import logging
@@ -472,6 +473,101 @@ class MessageRepository:
             except Exception as e:
                 logger.error(f"[CHAT_HISTORY_ERROR] Failed to get session chunks with meta: {str(e)}")
                 return []
+
+    @staticmethod
+    def _strip_version_suffix(name: str) -> str:
+        """
+        Menghilangkan penanda versi/revisi/temporal dari nama file agar
+        file revisi (misal: 'laporan_v2.xlsx') dapat dicocokkan dengan file versi sebelumnya ('laporan_v1.xlsx').
+        """
+        if not name:
+            return ""
+        clean = name.strip().lower()
+        if "." in clean:
+            stem, ext = clean.rsplit(".", 1)
+            ext = f".{ext}"
+        else:
+            stem = clean
+            ext = ""
+
+        patterns = [
+            r'[\s_(-]+(?:revisi|rev|v)?\s*\d+(?:\.\d+)?[\s_)-]*$',
+            r'[\s_(-]+(?:revisi|rev|version)[\s_)-]*$',
+            r'[\s_(-]+(?:lama|baru|old|new|draft|final)[\s_)-]*$',
+        ]
+        for pat in patterns:
+            stem = re.sub(pat, '', stem, flags=re.IGNORECASE).strip()
+
+        stem = stem.rstrip("_- .()")
+        return stem + ext
+
+    async def find_latest_matching_chunk(
+        self,
+        session_uuid: str,
+        urls: Optional[List[str]] = None,
+        title: Optional[str] = None,
+        file_id: Optional[int] = None
+    ) -> Optional[dict]:
+        """
+        Mencari chunk paling baru yang cocok dengan URL, judul, atau file_id di sesi ini.
+        Mendukung deteksi perubahan bertahap/versi file (misal 'draf_v1' vs 'draf_v2').
+        Digunakan oleh Universal Asset Diff Engine untuk mendeteksi perubahan versi.
+        """
+        chunks = await self.get_session_document_chunks_with_meta(session_uuid)
+        if not chunks:
+            return None
+
+        # Balik urutan agar yang dicek pertama adalah yang paling baru (DESC)
+        rev_chunks = list(reversed(chunks))
+
+        clean_urls = set()
+        if urls:
+            for u in urls:
+                u_str = str(u).strip().rstrip("/")
+                if u_str:
+                    clean_urls.add(u_str)
+                    clean_urls.add(re.sub(r"^https?://", "", u_str))
+
+        for c in rev_chunks:
+            # 1. Cek file_id jika disediakan
+            if file_id is not None and c.get("file_id") == file_id:
+                return c
+
+            meta = c.get("metadata", {})
+            c_urls = meta.get("urls", [])
+            if "url" in meta:
+                c_urls.append(meta["url"])
+
+            # 2. Cek kecocokan URLs
+            for cu in c_urls:
+                cu_str = str(cu).strip().rstrip("/")
+                if not cu_str:
+                    continue
+                cu_no_proto = re.sub(r"^https?://", "", cu_str)
+                if cu_str in clean_urls or cu_no_proto in clean_urls:
+                    return c
+
+        # 3. Cek kecocokan title (Pass 3A: exact match, Pass 3B: version normalized match)
+        if title:
+            clean_title = title.strip().lower()
+            norm_title = self._strip_version_suffix(clean_title)
+
+            # Pass 3A: Persis sama
+            for c in rev_chunks:
+                meta = c.get("metadata", {})
+                t = (meta.get("title") or "").strip().lower()
+                if t and t == clean_title:
+                    return c
+
+            # Pass 3B: Versi berantai / revisi (misal file_v2.xlsx -> file_v1.xlsx)
+            if norm_title:
+                for c in rev_chunks:
+                    meta = c.get("metadata", {})
+                    t = (meta.get("title") or "").strip().lower()
+                    if t and self._strip_version_suffix(t) == norm_title:
+                        return c
+
+        return None
 
     async def get_session_knowledge_manifest(self, session_uuid: str) -> str:
         """

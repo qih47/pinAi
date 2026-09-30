@@ -278,6 +278,7 @@ async def _sequential_pipeline_generator(
             client_context=getattr(payload, 'client_context', None),
             forced_mode=active_forced_mode,
             bypass_router=active_bypass_router,
+            is_regenerate=is_regenerate_event,
         )
 
 

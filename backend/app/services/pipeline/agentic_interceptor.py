@@ -21,7 +21,7 @@ from backend.app.services.pipeline.tool_dispatcher import dispatch_agentic_tool,
 
 logger = logging.getLogger("CAKRA_AGENTIC_INTERCEPTOR")
 
-_RE_TOOL_OPEN = re.compile(r"```(websearch|docsearch|python_calc|web_search|doc_search|calc|urlfetch|url_fetch|read_url|fetch_url|map_search|map|geocode)", re.IGNORECASE)
+_RE_TOOL_OPEN = re.compile(r"```(websearch|docsearch|python_calc|web_search|doc_search|calc|urlfetch|url_fetch|read_url|fetch_url|map_search|map|geocode|terminal_runner|terminal|cli_runner|cli|bash|shell)", re.IGNORECASE)
 _RE_TRIPLE_BACKTICKS = re.compile(r"```")
 _RE_SOURCES_OPEN = re.compile(r"<\s*sources_json\s*>", re.IGNORECASE)
 _RE_SOURCES_CLOSE = re.compile(r"<\s*/\s*sources_json\s*>", re.IGNORECASE)
@@ -398,6 +398,8 @@ async def agentic_stream_wrapper(
                                 _norm_tag = "python_calc"
                             elif _norm_tag in ("map", "geocode", "map_search"):
                                 _norm_tag = "map_search"
+                            elif _norm_tag in ("terminal", "cli", "cli_runner", "bash", "shell", "terminal_runner"):
+                                _norm_tag = "terminal_runner"
 
                             tool_initial_statuses = {
                                 "websearch": ("Mencari di mesin pencari", "TOOL_WEBSEARCH_SEARCHING"),
@@ -405,6 +407,7 @@ async def agentic_stream_wrapper(
                                 "urlfetch": ("Mengunduh konten tautan", "TOOL_URLFETCH_DOWNLOADING"),
                                 "python_calc": ("Menjalankan komputasi", "TOOL_CALC_RUNNING"),
                                 "map_search": ("Menelusuri koordinat peta", "TOOL_MAP_SEARCHING"),
+                                "terminal_runner": ("Mengeksekusi terminal", "TOOL_CLI_RUNNING"),
                             }
                             init_status = tool_initial_statuses.get(_norm_tag, (f"Menyiapkan alat {_norm_tag}", f"TOOL_{_norm_tag.upper()}_PREPARING"))
                             yield format_sse(status=init_status[0], status_key=init_status[1], event_type=SSEEventType.STATUS)
@@ -514,26 +517,51 @@ async def agentic_stream_wrapper(
                                     })
 
                         # Jika tool urlfetch sukses dan ada session_uuid, simpan ke session memory agar multi-turn aware
+                        diff_summary_for_llm = ""
                         if tool_result.tool_name == "urlfetch" and session_uuid and tool_result.status == "success":
                             try:
                                 from backend.app.services.chat.chat_history_service import chat_history_service
-                                clean_sample = " ".join(tool_result.llm_context.replace("=== KONTEN DARI TAUTAN WEB ===", "").split())[:180]
+                                from backend.app.services.ambient.brain_organizer import brain_asset_organizer
+                                from backend.app.services.ambient.asset_diff_engine import asset_diff_engine
+
                                 u_nodes = tool_result.display_data.get("nodes", [])
                                 u_list = [n.get("url") for n in u_nodes if n.get("url")]
-                                tgt_title = u_list[0] if u_list else "Tautan Web"
+                                tgt_title = (u_nodes[0].get("title") if u_nodes and u_nodes[0].get("title") else None) or (u_list[0] if u_list else "Tautan Web")
+                                
+                                # Cek apakah aset/URL ini sudah pernah dibaca sebelumnya di sesi ini
+                                prev_chunk = await chat_history_service.find_latest_matching_chunk(
+                                    session_uuid=session_uuid,
+                                    urls=u_list,
+                                    title=tgt_title
+                                )
+                                has_diff = False
+                                if prev_chunk and prev_chunk.get("content"):
+                                    delta = asset_diff_engine.compute_diff(
+                                        old_text=prev_chunk["content"],
+                                        new_text=tool_result.llm_context,
+                                        asset_title=tgt_title
+                                    )
+                                    diff_summary_for_llm = delta.summary_text
+                                    has_diff = delta.has_changes
+                                    logger.info(f"[AGENTIC_INTERCEPTOR] 🔄 Asset Diff computed for '{tgt_title}': has_changes={delta.has_changes}, type={delta.change_type}")
+
+                                asset_meta = brain_asset_organizer.profile_asset(
+                                    content=tool_result.llm_context,
+                                    metadata={
+                                        "source": "url_read",
+                                        "title": tgt_title,
+                                        "urls": u_list,
+                                        "fetched_at": datetime.now().isoformat(),
+                                        "has_changes": has_diff,
+                                        "diff_summary": diff_summary_for_llm
+                                    }
+                                )
                                 asyncio.create_task(chat_history_service.save_document_chunk(
                                     session_uuid=session_uuid,
                                     npp=current_user_npp or "Pegawai",
                                     content=tool_result.llm_context[:30000],
                                     file_id=None,
-                                    chunk_metadata={
-                                        "type": "web",
-                                        "source": "url_read",
-                                        "title": tgt_title,
-                                        "urls": u_list,
-                                        "summary": f"Konten web {tgt_title}: {clean_sample}...",
-                                        "fetched_at": datetime.now().isoformat()
-                                    }
+                                    chunk_metadata=asset_meta
                                 ))
                             except Exception as e_mem:
                                 logger.warning(f"[AGENTIC_INTERCEPTOR] Gagal menyimpan chunk urlfetch ke memori sesi: {e_mem}")
@@ -561,9 +589,12 @@ async def agentic_stream_wrapper(
                                 f"Tetap konsisten menjaga gaya bahasa aktifmu. JANGAN mengulangi sapaan awal."
                             )
                         else:
+                            context_body = safe_context
+                            if diff_summary_for_llm:
+                                context_body = f"{diff_summary_for_llm}\n\n[KONTEN LENGKAP TERKINI DARI TAUTAN WEB]:\n{safe_context}"
                             continuation_instruction = (
                                 f"\n\n[SISTEM: HASIL EKSEKUSI ALAT '{tool_result.tool_name.upper()}']:\n"
-                                f"{safe_context}\n\n"
+                                f"{context_body}\n\n"
                                 f"[INSTRUKSI LANJUTAN]:\n"
                                 f"Kamu telah menerima hasil eksekusi alat di atas. Evaluasi apakah dokumen/data di atas RELEVAN dan MEMUAT informasi yang dibutuhkan pengguna:\n"
                                 f"- JIKA INFORMASI SUDAH LENGKAP & RELEVAN: Lanjutkan jawabanmu secara tuntas, akurat, dan terstruktur menyambung respons sebelumnya. Patuhi gaya bahasa & kata ganti aktifmu.\n"

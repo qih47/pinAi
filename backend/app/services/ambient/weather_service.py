@@ -192,7 +192,7 @@ def get_pindad_operational_status(now: Optional[datetime] = None) -> str:
         return "Jam Kerja Aktif"
 
 
-def get_day_part(hour: int, minute: int = 0) -> Tuple[str, str, str]:
+def get_day_part(hour: Any = None, minute: int = 0) -> Tuple[str, str, str]:
     """
     Menghitung bagian waktu/hari (Pagi, Siang, Sore, Malam),
     sapaan waktu yang valid, dan sapaan yang DILARANG.
@@ -203,7 +203,26 @@ def get_day_part(hour: int, minute: int = 0) -> Tuple[str, str, str]:
     - 15:00 - 18:29 : Sore
     - 18:30 - 23:59 : Malam
     """
-    time_val = hour + (minute / 60.0)
+    if isinstance(hour, datetime):
+        h = hour.hour
+        m = hour.minute
+    elif isinstance(hour, (tuple, list)):
+        first = hour[0]
+        if isinstance(first, datetime):
+            h = first.hour
+            m = first.minute
+        else:
+            h = int(first)
+            m = int(hour[1]) if len(hour) > 1 else 0
+    elif hour is None:
+        dt, _ = resolve_current_datetime()
+        h = dt.hour
+        m = dt.minute
+    else:
+        h = int(hour)
+        m = int(minute)
+
+    time_val = h + (m / 60.0)
     if 5.0 <= time_val < 11.0:
         bagian = "Pagi"
         sapaan_valid = "Selamat pagi / pagi ini"
