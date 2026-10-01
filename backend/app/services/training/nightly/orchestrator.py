@@ -320,6 +320,7 @@ class NightlyTrainingOrchestrator:
         reader = BookPageReader(file_path, dokumen_id, initial_buffer=pending_buffer)
         total_pages = reader.get_total_pages()
         self.current_total_pages = total_pages
+        self.current_page = last_page
 
         if total_pages == 0:
             self.latest_log = f"Dokumen {dokumen_id}: Total halaman 0"
@@ -327,12 +328,28 @@ class NightlyTrainingOrchestrator:
             reader.close()
             return False
 
-        logger.info(f"📖 [ORCHESTRATOR] Membaca Dokumen {dokumen_id}: '{judul}' ({total_pages} Halaman). Melanjutkan dari Halaman {last_page + 1} (Bentangan 2 Halaman)...")
-
         start_page = last_page + 1
         end_page = total_pages
         if page_limit:
             end_page = min(total_pages, start_page + page_limit - 1)
+
+        # Jika seluruh halaman dokumen sudah tuntas diproses sebelumnya, tandai COMPLETED di database
+        if start_page > end_page:
+            logger.info(f"✅ [DOC_ALREADY_FINISHED] Dokumen {dokumen_id} ({judul}): Seluruh {total_pages} halaman sudah selesai. Menandai COMPLETED.")
+            async with get_ragdb_conn() as conn:
+                await conn.execute("""
+                    UPDATE nightly_training_checkpoints
+                    SET status = 'COMPLETED',
+                        last_completed_page = total_pages,
+                        last_synced_at = NOW()
+                    WHERE dokumen_id = $1
+                """, dokumen_id)
+            reader.close()
+            self.current_page = total_pages
+            self.latest_log = f"Dokumen {dokumen_id} selesai diproses 100%"
+            return True
+
+        logger.info(f"📖 [ORCHESTRATOR] Membaca Dokumen {dokumen_id}: '{judul}' ({total_pages} Halaman). Melanjutkan dari Halaman {start_page} (Bentangan 2 Halaman)...")
 
         # Loop per bentangan 2 halaman (step = 2)
         for page_left in range(start_page, end_page + 1, 2):

@@ -113,14 +113,15 @@ class CheckpointManager:
                 "DELETE FROM knowledge_graph_nodes WHERE dokumen_id = $1 AND page_number = $2",
                 dokumen_id, failed_page_num
             )
-            # Update status checkpoint menjadi PAUSED
+            # Update status checkpoint menjadi PAUSED dan kembalikan last_completed_page ke last_good_page
             await conn.execute("""
                 UPDATE nightly_training_checkpoints
                 SET status = 'PAUSED',
+                    last_completed_page = $2,
                     last_synced_at = NOW(),
-                    error_message = 'Rolled back dirty page ' || $2::text
+                    error_message = 'Rolled back dirty page ' || $3::text
                 WHERE dokumen_id = $1
-            """, dokumen_id, failed_page_num)
+            """, dokumen_id, last_good_page, failed_page_num)
 
         return True
 
@@ -144,10 +145,11 @@ class CheckpointManager:
             await conn.execute("""
                 UPDATE nightly_training_checkpoints
                 SET status = 'PAUSED',
+                    last_completed_page = $2,
                     last_synced_at = NOW(),
-                    error_message = 'Rolled back dirty spread ' || $2::text
+                    error_message = 'Rolled back dirty spread ' || $3::text
                 WHERE dokumen_id = $1
-            """, dokumen_id, str(failed_pages))
+            """, dokumen_id, last_good_page, str(failed_pages))
         return True
 
     @staticmethod
