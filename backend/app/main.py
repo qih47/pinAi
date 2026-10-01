@@ -27,7 +27,7 @@ from backend.app.core.logging_setup import setup_root_logger
 from backend.app.api.router import api_router
 from backend.app.core.llm_client import warm_up_model
 from backend.app.core.hardware import check_gpu_status
-from backend.app.core.paths import DOCUMENTS_DIR, UPLOAD_DIR, ACCOUNTS_DIR, FILE_PERATURAN_DIR
+from backend.app.core.paths import DOCUMENTS_DIR, UPLOAD_DIR, ACCOUNTS_DIR, FILE_PERATURAN_DIR, DOC_PAGES_DIR
 from backend.app.services.system.background_tasks import start_background_scheduler, stop_background_scheduler
 from backend.app.utils.request_logging import RequestIDLoggingMiddleware, setup_request_id_logging
 from backend.app.utils.token_expiry import setup_token_expiry_migration
@@ -71,7 +71,7 @@ async def _warmup_and_pin_models():
         try:
             async with httpx.AsyncClient(timeout=httpx.Timeout(60.0, connect=5.0)) as client:
                 vllm_chat_url = f"{settings.VLLM_BASE_URL.rstrip('/')}/chat/completions"
-                target_vllm_persona = "/home/qisthi/models/gemma-4-31B-it-AWQ"
+                target_vllm_persona = getattr(settings, "MODEL_BASE", "/home/qisthi/models/gemma-4-31B-it-AWQ")
                 payload = {
                     "model": target_vllm_persona,
                     "messages": [{"role": "user", "content": "hi"}],
@@ -80,9 +80,23 @@ async def _warmup_and_pin_models():
                 }
                 resp = await client.post(vllm_chat_url, json=payload)
                 if resp.status_code == 200:
-                    logger.info("✅ [WARMUP] vLLM Unified Engine (31B AWQ) is active & warm for Call 1 & Call 2.")
+                    logger.info("✅ [WARMUP] vLLM Unified Engine (31B AWQ) is active & warm for Call 2 Persona.")
                 else:
                     logger.warning(f"⚠️ [WARMUP] vLLM warmup returned {resp.status_code}: {resp.text}")
+
+                router_model = getattr(settings, "MODEL_ROUTER", target_vllm_persona)
+                if router_model != target_vllm_persona:
+                    r_payload = {
+                        "model": router_model,
+                        "messages": [{"role": "user", "content": "hi"}],
+                        "max_tokens": 1,
+                        "temperature": 0.0,
+                    }
+                    r_resp = await client.post(vllm_chat_url, json=r_payload)
+                    if r_resp.status_code == 200:
+                        logger.info(f"✅ [WARMUP] vLLM LoRA Router ({router_model}) is active & warm for Call 1.")
+                    else:
+                        logger.warning(f"⚠️ [WARMUP] vLLM LoRA Router ({router_model}) returned {r_resp.status_code}: {r_resp.text}")
         except Exception as e:
             logger.warning(f"⚠️ [WARMUP] vLLM warmup encountered: {e}")
     else:
@@ -282,6 +296,18 @@ async def serve_file_peraturan(file_path: str, request: Request):
     abs_path = os.path.join(FILE_PERATURAN_DIR, file_path)
     if not os.path.exists(abs_path):
         raise HTTPException(status_code=404, detail="File tidak ditemukan")
+    return FileResponse(abs_path)
+
+
+@app.get("/doc_pages/{file_path:path}", tags=["Static Files"])
+async def serve_doc_pages(file_path: str, request: Request):
+    # Proteksi path traversal
+    normalized_path = os.path.normpath(file_path)
+    if normalized_path.startswith("..") or "/../" in normalized_path:
+        raise HTTPException(status_code=400, detail="Path tidak valid")
+    abs_path = os.path.join(DOC_PAGES_DIR, normalized_path)
+    if not os.path.exists(abs_path):
+        raise HTTPException(status_code=404, detail="Halaman dokumen tidak ditemukan")
     return FileResponse(abs_path)
 # ==============================================================================
 

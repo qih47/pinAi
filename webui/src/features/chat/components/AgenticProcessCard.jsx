@@ -8,7 +8,10 @@ import {
     Clock, 
     FileText, 
     AlertCircle,
-    ExternalLink 
+    ExternalLink,
+    Image as ImageIcon,
+    GitCompare,
+    CheckSquare
 } from 'lucide-react';
 import { useChatStore } from '../../../stores/chatStore';
 import { getUploadUrl } from '../../../services/endpoints';
@@ -45,8 +48,11 @@ const AgenticProcessCard = ({
 
     const resolvedTool = (data.tool || toolType || 'python_calc').toLowerCase();
     const isCalc = resolvedTool.includes('calc');
-    const isDoc = resolvedTool.includes('doc');
+    const isDoc = (resolvedTool.includes('docsearch') || resolvedTool === 'doc' || resolvedTool.includes('rag')) && !resolvedTool.includes('media') && !resolvedTool.includes('diff');
     const isTerminal = resolvedTool.includes('terminal') || resolvedTool.includes('cli');
+    const isMedia = resolvedTool.includes('media') || resolvedTool.includes('flowchart') || resolvedTool.includes('visual');
+    const isDiff = resolvedTool.includes('diff');
+    const isDeck = resolvedTool.includes('deck');
 
     const [isOpen, setIsOpen] = useState(() => Boolean(isStreaming && !hasStartedResponding));
     const [elapsedSec, setElapsedSec] = useState(0);
@@ -59,9 +65,10 @@ const AgenticProcessCard = ({
     const outputContent = data.output || data.result || '';
     const errorContent = data.error || (data.status === 'error' ? (data.output || 'Eksekusi gagal') : null);
 
-    const isExecuting = isStreaming && !outputContent && !data.documents && !data.results;
-    const isAnalyzing = isStreaming && (outputContent || data.documents) && !hasStartedResponding;
-    const isComplete = hasStartedResponding || (!isStreaming && (outputContent || data.documents || data.stage === 'done'));
+    const hasData = Boolean(outputContent || data.documents || data.items || data.doc_1 || data.active_cards || data.total_assigned !== undefined);
+    const isExecuting = isStreaming && !hasData;
+    const isAnalyzing = isStreaming && hasData && !hasStartedResponding;
+    const isComplete = hasStartedResponding || (!isStreaming && (hasData || data.stage === 'done'));
     const isError = Boolean(errorContent || data.status === 'error' || data.stage === 'error');
 
     // Timer durasi eksekusi saat streaming
@@ -97,6 +104,9 @@ const AgenticProcessCard = ({
         if (isComplete) {
             if (isTerminal) return isError ? (t.terminalFailed || "Eksekusi terminal (terkendala)") : (t.terminalComplete || "Hasil eksekusi terminal Ubuntu");
             if (isCalc) return isError ? (t.calcFailed || "Kalkulasi matematis (terkendala)") : (t.calcComplete || "Hasil kalkulasi matematis presisi");
+            if (isMedia) return isError ? (t.docMediaFailed || "Pengambilan visual dokumen (terkendala)") : (t.docMediaComplete || "Bagan alur & visual dokumen");
+            if (isDiff) return isError ? (t.docDiffFailed || "Komparasi regulasi (terkendala)") : (t.docDiffComplete || "Hasil komparasi pasal & regulasi");
+            if (isDeck) return isError ? (t.deckFailed || "Pengelolaan tugas Deck (terkendala)") : (t.deckComplete || "Hasil pengelolaan tugas Nextcloud Deck");
             if (isDoc) return t.docSearchComplete || "Hasil penelusuran regulasi internal";
             return t.genericComplete || "Hasil proses alat otonom";
         }
@@ -111,6 +121,21 @@ const AgenticProcessCard = ({
             if (isAnalyzing) return t.calcAnalyzing || "Menganalisis hasil komputasi";
             return t.calcDefault || "Kalkulasi matematis via Python Sandbox";
         }
+        if (isMedia) {
+            if (isExecuting) return (t.docMediaRunning || "Mengambil bagan alur & visual ({elapsed}s)").replace('{elapsed}', elapsedSec);
+            if (isAnalyzing) return t.docMediaAnalyzing || "Menganalisis bagan alur & visual dokumen";
+            return t.docMediaDefault || "Pengambilan visual & bagan alur dokumen";
+        }
+        if (isDiff) {
+            if (isExecuting) return (t.docDiffRunning || "Membandingkan regulasi ({elapsed}s)").replace('{elapsed}', elapsedSec);
+            if (isAnalyzing) return t.docDiffAnalyzing || "Menganalisis perbedaan pasal & klausul";
+            return t.docDiffDefault || "Komparasi regulasi & klausul dokumen";
+        }
+        if (isDeck) {
+            if (isExecuting) return (t.deckRunning || "Mengakses Nextcloud Deck ({elapsed}s)").replace('{elapsed}', elapsedSec);
+            if (isAnalyzing) return t.deckAnalyzing || "Menyinkronkan status tugas Deck";
+            return t.deckDefault || "Sinkronisasi tugas Nextcloud Deck";
+        }
         if (isDoc) {
             if (isExecuting) return (t.docSearching || "Menelusuri regulasi internal ({elapsed}s)").replace('{elapsed}', elapsedSec);
             if (isAnalyzing) return t.docAnalyzing || "Menganalisis dokumen peraturan";
@@ -119,7 +144,14 @@ const AgenticProcessCard = ({
         return t.genericRunning || "Proses alat otonom";
     };
 
-    const displayQuery = data.command || data.query || data.intent || (isTerminal ? (t.terminalDefault || "Eksekusi perintah terminal Ubuntu") : isCalc ? (t.calcDefault || "Kalkulasi matematis via Python Sandbox") : (t.docSearchDefault || "Pencarian regulasi internal"));
+    const displayQuery = data.command || data.query || data.intent || (
+        isTerminal ? (t.terminalDefault || "Eksekusi perintah terminal Ubuntu") :
+        isCalc ? (t.calcDefault || "Kalkulasi matematis via Python Sandbox") :
+        isMedia ? (t.docMediaDefault || "Pengambilan visual & bagan alur dokumen") :
+        isDiff ? (t.docDiffDefault || "Komparasi regulasi & klausul dokumen") :
+        isDeck ? (t.deckDefault || "Sinkronisasi tugas Nextcloud Deck") :
+        (t.docSearchDefault || "Pencarian regulasi internal")
+    );
 
     const glossyShimmerStyle = {
         background: 'linear-gradient(90deg, #94a3b8 0%, #e2e8f0 50%, #94a3b8 100%)',
@@ -185,7 +217,13 @@ const AgenticProcessCard = ({
                             <div className={`py-1 px-1 rounded-full z-10 relative flex items-center justify-center ${
                                 darkMode ? 'bg-[#1e1e1e]' : 'bg-white border border-slate-200 shadow-sm'
                             }`}>
-                                {(isCalc || isTerminal) ? (
+                                {isMedia ? (
+                                    <ImageIcon className={`w-[14px] h-[14px] flex-shrink-0 ${darkMode ? 'text-pink-400' : 'text-pink-600'}`} />
+                                ) : isDiff ? (
+                                    <GitCompare className={`w-[14px] h-[14px] flex-shrink-0 ${darkMode ? 'text-cyan-400' : 'text-cyan-600'}`} />
+                                ) : isDeck ? (
+                                    <CheckSquare className={`w-[14px] h-[14px] flex-shrink-0 ${darkMode ? 'text-blue-400' : 'text-blue-600'}`} />
+                                ) : (isCalc || isTerminal) ? (
                                     <Terminal className={`w-[14px] h-[14px] flex-shrink-0 ${isTerminal ? (darkMode ? 'text-cyan-400' : 'text-cyan-600') : (darkMode ? 'text-emerald-400' : 'text-emerald-600')}`} />
                                 ) : (
                                     <BookOpen className={`w-[14px] h-[14px] flex-shrink-0 ${darkMode ? 'text-amber-400' : 'text-amber-600'}`} />
@@ -207,10 +245,16 @@ const AgenticProcessCard = ({
                                 {isTerminal
                                     ? "ubuntu bash cli"
                                     : isCalc 
-                                        ? (t.sandboxExecution || "sandbox execution") 
-                                        : (isExecuting && (!data.documents || data.documents.length === 0))
-                                            ? (t.searchingReferences || "Mencari referensi...")
-                                            : `${data.documents?.length || 0} ${t.referencesCount || (language === 'en' ? 'references' : 'referensi')}`}
+                                        ? (t.sandboxExecution || "sandbox execution")
+                                        : isMedia
+                                            ? `${data.items?.length || 0} visual`
+                                            : isDiff
+                                                ? (data.has_changes ? "perbedaan terdeteksi" : "regulasi identik")
+                                                : isDeck
+                                                    ? `${data.total_assigned || 0} tugas`
+                                                    : (isExecuting && (!data.documents || data.documents.length === 0))
+                                                        ? (t.searchingReferences || "Mencari referensi...")
+                                                        : `${data.documents?.length || 0} ${t.referencesCount || (language === 'en' ? 'references' : 'referensi')}`}
                             </span>
                         </div>
 
@@ -414,11 +458,130 @@ const AgenticProcessCard = ({
                                     </div>
                                 </div>
                             )}
+
+                            {/* C. DOC_MEDIA (Visual Workflow, Mermaid, Snapshot PNGs) */}
+                            {isMedia && (
+                                <div className={`rounded-xl border overflow-hidden transition-colors ${
+                                    darkMode ? 'border-[#2a2a2a] bg-[#1c1c1c] shadow-[0_4px_20px_rgba(0,0,0,0.3)]' : 'border-slate-200 bg-white shadow-[0_4px_20px_rgba(0,0,0,0.06)]'
+                                }`}>
+                                    <div className="flex flex-col max-h-[300px] overflow-y-auto p-2 custom-scrollbar space-y-2">
+                                        {data.items && data.items.length > 0 ? (
+                                            data.items.map((item, idx) => (
+                                                <div 
+                                                    key={idx}
+                                                    className={`p-2.5 rounded-lg border transition-all ${
+                                                        darkMode ? 'border-white/5 bg-[#141414]' : 'border-slate-100 bg-slate-50'
+                                                    }`}
+                                                >
+                                                    <div className="flex items-start justify-between gap-2">
+                                                        <div className="flex items-center gap-2">
+                                                            <span className={`px-1.5 py-0.5 rounded text-[9.5px] font-bold uppercase tracking-wider ${
+                                                                item.type === 'FLOWCHART' ? (darkMode ? 'bg-pink-500/20 text-pink-300' : 'bg-pink-100 text-pink-700') :
+                                                                item.type === 'TABLE' ? (darkMode ? 'bg-blue-500/20 text-blue-300' : 'bg-blue-100 text-blue-700') :
+                                                                (darkMode ? 'bg-emerald-500/20 text-emerald-300' : 'bg-emerald-100 text-emerald-700')
+                                                            }`}>
+                                                                {item.type}
+                                                            </span>
+                                                            <span className={`text-[12px] font-medium line-clamp-1 ${darkMode ? 'text-white' : 'text-slate-800'}`}>
+                                                                {item.title}
+                                                            </span>
+                                                        </div>
+                                                        <span className={`text-[11px] font-mono ${darkMode ? 'text-gray-400' : 'text-slate-500'}`}>
+                                                            Hal {item.page}
+                                                        </span>
+                                                    </div>
+
+                                                    {item.image_url && (
+                                                        <div className="mt-2 relative rounded overflow-hidden border border-white/10 group cursor-pointer max-w-sm" onClick={() => window.open(item.image_url, '_blank')}>
+                                                            <img 
+                                                                src={item.image_url} 
+                                                                alt={item.title}
+                                                                className="w-full h-24 object-cover object-top filter brightness-95 group-hover:brightness-105 transition-all"
+                                                                loading="lazy"
+                                                            />
+                                                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-[11px] font-medium gap-1.5">
+                                                                <ExternalLink className="w-3.5 h-3.5" />
+                                                                Lihat Halaman Penuh
+                                                            </div>
+                                                        </div>
+                                                    )}
+
+                                                    {item.mermaid && (
+                                                        <div className={`mt-2 p-1.5 rounded font-mono text-[10.5px] ${darkMode ? 'bg-black/40 text-pink-300' : 'bg-pink-50 text-pink-800'}`}>
+                                                            ✓ Diagram Mermaid terdeteksi ({item.mermaid.split('\n').length} baris kode alur)
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            ))
+                                        ) : (
+                                            <div className={`p-3 text-[12px] ${darkMode ? 'text-gray-400' : 'text-slate-600'}`}>
+                                                {isExecuting ? "Mengambil data visual dokumen..." : "Tidak ditemukan aset visual khusus."}
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* D. DOC_DIFF (Universal Regulation Diff Box) */}
+                            {isDiff && (
+                                <div className={`p-3 rounded-xl border overflow-hidden transition-colors ${
+                                    darkMode ? 'border-[#2a2a2a] bg-[#1c1c1c] shadow-[0_4px_20px_rgba(0,0,0,0.3)]' : 'border-slate-200 bg-white shadow-[0_4px_20px_rgba(0,0,0,0.06)]'
+                                }`}>
+                                    <div className="flex items-center justify-between pb-2 border-b border-white/5 text-[12px]">
+                                        <div className="flex items-center gap-2">
+                                            <GitCompare className="w-4 h-4 text-cyan-400" />
+                                            <span className="font-semibold">{data.doc_1?.title || `Dokumen #${data.doc_1?.id}`} ↔ {data.doc_2?.title || `Dokumen #${data.doc_2?.id}`}</span>
+                                        </div>
+                                        <div className="flex items-center gap-1.5 text-[10.5px]">
+                                            <span className="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400">+{data.added_count || 0} baru</span>
+                                            <span className="px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400">~{data.modified_count || 0} diubah</span>
+                                            <span className="px-1.5 py-0.5 rounded bg-rose-500/20 text-rose-400">-{data.removed_count || 0} dihapus</span>
+                                        </div>
+                                    </div>
+                                    <div className="mt-2 text-[12px] text-gray-400 font-mono whitespace-pre-wrap max-h-[180px] overflow-y-auto">
+                                        {data.summary || (data.has_changes ? "Perbedaan terdeteksi pada klausul regulasi." : "Kedua dokumen memiliki substansi regulasi yang identik.")}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* E. DECK_TASK (Nextcloud Pincloud Deck Box) */}
+                            {isDeck && (
+                                <div className={`p-3 rounded-xl border overflow-hidden transition-colors ${
+                                    darkMode ? 'border-[#2a2a2a] bg-[#1c1c1c] shadow-[0_4px_20px_rgba(0,0,0,0.3)]' : 'border-slate-200 bg-white shadow-[0_4px_20px_rgba(0,0,0,0.06)]'
+                                }`}>
+                                    <div className="flex items-center justify-between pb-2 border-b border-white/5 text-[12px]">
+                                        <div className="flex items-center gap-2">
+                                            <CheckSquare className="w-4 h-4 text-blue-400" />
+                                            <span className="font-semibold">Nextcloud Pincloud Deck</span>
+                                        </div>
+                                        <span className="text-[11px] text-gray-400 font-mono">
+                                            {data.total_assigned || 0} Tugas Ditugaskan
+                                        </span>
+                                    </div>
+                                    <div className="mt-2 space-y-1.5 max-h-[200px] overflow-y-auto">
+                                        {data.active_cards && data.active_cards.length > 0 ? (
+                                            data.active_cards.map((c, idx) => (
+                                                <div key={idx} className={`p-2 rounded border flex items-center justify-between text-[11.5px] ${darkMode ? 'border-white/5 bg-[#141414]' : 'border-slate-100 bg-slate-50'}`}>
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="w-2 h-2 rounded-full bg-blue-500 flex-shrink-0" />
+                                                        <span className="font-medium text-white line-clamp-1">{c.title}</span>
+                                                    </div>
+                                                    <span className="text-[10px] text-gray-400 px-1.5 py-0.5 rounded bg-white/5 font-mono">
+                                                        {c.stack_title || 'To Do'}
+                                                    </span>
+                                                </div>
+                                            ))
+                                        ) : (
+                                            <div className="text-[12px] text-gray-400 p-2">Tidak ada tugas aktif di Nextcloud Deck saat ini.</div>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     </div>
 
                     {/* Step 2: Analyzing / Done */}
-                    {(outputContent || data.documents || isComplete) && (
+                    {(outputContent || data.documents || data.items || data.doc_1 || data.active_cards || isComplete) && (
                         <div className="flex flex-col gap-3 mt-1 ml-[1px]">
                             <div className="flex items-center gap-3">
                                 <div className={`py-0.5 rounded-full z-10 relative flex items-center justify-center w-[18px] ${
@@ -438,7 +601,15 @@ const AgenticProcessCard = ({
                                     }`}
                                     style={isAnalyzing ? glossyShimmerStyle : undefined}
                                 >
-                                    {isCalc ? (t.analyzingCalcResults || "Menganalisis hasil kalkulasi...") : (t.analyzingDocResults || "Menganalisis hasil penelusuran...")}
+                                    {isMedia
+                                        ? (t.docMediaAnalyzing || "Menganalisis bagan alur & visual dokumen...")
+                                        : isDiff
+                                            ? (t.docDiffAnalyzing || "Menganalisis perbedaan pasal & klausul...")
+                                            : isDeck
+                                                ? (t.deckAnalyzing || "Menyinkronkan status tugas Deck...")
+                                                : isCalc
+                                                    ? (t.analyzingCalcResults || "Menganalisis hasil kalkulasi...")
+                                                    : (t.analyzingDocResults || "Menganalisis hasil penelusuran...")}
                                 </span>
                             </div>
 

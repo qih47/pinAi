@@ -20,6 +20,7 @@ LOGS_DIR = get_abs_path("logs")
 ACCOUNTS_DIR = get_abs_path("accounts")
 FILE_PERATURAN_DIR = get_abs_path("file_peraturan")
 DOCWRITER_TEMPLATES_DIR = get_abs_path("backend/assets/templates/docwriter")
+DOC_PAGES_DIR = get_abs_path("backend/storage/doc_pages")
 
 def get_docwriter_dir(npp: str, session_id: str = "", room_id: str = "", master_npp: str = "") -> Path:
     """

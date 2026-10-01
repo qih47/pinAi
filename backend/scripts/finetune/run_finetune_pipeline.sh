@@ -36,11 +36,13 @@ if [ "$TARGET" == "all" ] || [ "$TARGET" == "dispatcher" ] || [ "$TARGET" == "ro
     echo "   Total Baris Data Latih Router e4b: $TOTAL_ROUTER baris"
 
     echo ""
-    echo "▶️ [STEP 2/2] Memulai Training QLoRA cakra-router (e4b)..."
-    ./rag_env/bin/python backend/scripts/finetune/train_dispatcher_router.py \
+    echo "▶️ [STEP 2/2] Memulai Training QLoRA cakra-router (Gemma 4 31B)..."
+    /home/qisthi/vllm_env/bin/python backend/scripts/finetune/train_dispatcher_router.py \
         --dataset "$ROUTER_DATASET" \
         --output_dir models/adapters/cakra-router-lora \
-        --epochs 3
+        --epochs 1 \
+        --batch_size 24 \
+        --grad_accum 1
 fi
 
 if [ "$TARGET" == "all" ] || [ "$TARGET" == "responder" ] || [ "$TARGET" == "core" ]; then

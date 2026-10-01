@@ -664,7 +664,16 @@ async def stream_ollama_chat(
         }
 
         if is_vllm:
-            target_vllm_model = "/home/qisthi/models/gemma-4-31B-it-AWQ" if model_name in ["gemma4:31b", "gemma-4-31B-it-AWQ"] else model_name
+            base_model = getattr(settings, "MODEL_BASE", "/home/qisthi/models/gemma-4-31B-it-AWQ")
+            if model_name in ["gemma4:31b", "gemma-4-31B-it-AWQ", "base", "base_model", base_model]:
+                target_vllm_model = base_model
+            elif model_name == "cakra-core":
+                core_adapter_path = "/home/qisthi/pinAi/models/adapters/cakra-core-lora/adapter_config.json"
+                target_vllm_model = "cakra-core" if os.path.exists(core_adapter_path) else base_model
+            elif model_name == "cakra-router":
+                target_vllm_model = "cakra-router"
+            else:
+                target_vllm_model = model_name
             # Transform Ollama-style 'images' list into OpenAI-compatible multimodal content structure
             vllm_messages = []
             for m in messages:
@@ -970,7 +979,8 @@ async def generate_json_response(
 
     if is_vllm:
         vllm_url = f"{settings.VLLM_BASE_URL.rstrip('/')}/chat/completions"
-        target_vllm_model = "/home/qisthi/models/gemma-4-31B-it-AWQ" if model_name in ["gemma4:31b", "gemma-4-31B-it-AWQ", "gemma4:e4b"] or "/home/qisthi/models/" in model_name else model_name
+        base_awq_model = getattr(settings, "MODEL_BASE", "/home/qisthi/models/gemma-4-31B-it-AWQ")
+        target_vllm_model = base_awq_model if model_name in ["gemma4:31b", "gemma-4-31B-it-AWQ", "gemma4:e4b", "base", "base_model"] or "/home/qisthi/models/" in model_name else model_name
 
         payload = {
             "model": target_vllm_model,
@@ -993,6 +1003,18 @@ async def generate_json_response(
                 if q_wait_ms > 50:
                     logger_local.info(f"⏳ [TIMING_BENCHMARK] [JSON_GEN_VLLM] GPU Semaphore antre {q_wait_ms:.1f}ms")
                 response = await client.post(vllm_url, json=payload, timeout=httpx.Timeout(timeout, connect=10.0))
+
+            if response.status_code != 200:
+                error_text = response.text
+                base_awq_model = getattr(settings, "MODEL_BASE", "/home/qisthi/models/gemma-4-31B-it-AWQ")
+                if target_vllm_model != base_awq_model and response.status_code in [400, 404]:
+                    logger_local.warning(
+                        f"[JSON_GEN_VLLM] LoRA adapter '{target_vllm_model}' returned {response.status_code}. "
+                        f"Safely falling back to Base AWQ model '{base_awq_model}'..."
+                    )
+                    payload["model"] = base_awq_model
+                    async with gpu_semaphore:
+                        response = await client.post(vllm_url, json=payload, timeout=httpx.Timeout(timeout, connect=10.0))
 
             if response.status_code != 200:
                 error_text = response.text

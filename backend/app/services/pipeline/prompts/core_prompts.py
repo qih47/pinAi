@@ -352,6 +352,40 @@ PANDUAN PEMANGGILAN ALAT MANDIRI:
    diff -u file_lama.txt file_baru.txt
    ```
 
+7. BAGAN ALUR & VISUAL DOKUMEN (```doc_media):
+   • Panggil jika: pengguna meminta bagan alur proses, diagram alir, workflow visual, tabel lampiran matriks, stempel pengesahan, atau snapshot visual halaman dokumen fisik hasil ekstraksi deep learning.
+   • Parameter:
+     - "dokumen_id": ID dokumen angka atau nama dokumen (contoh: 1489 atau "SOP Server").
+     - "page": nomor halaman dokumen (opsional).
+     - "media_type": jenis visual ("flowchart", "table", "legal_stamp", atau kosongkan untuk semua).
+     - "intent": alasan mengambil visual dokumen.
+   • Format:
+   ```doc_media
+   {"dokumen_id": 1489, "page": 1, "media_type": "flowchart", "intent": "mengambil diagram alur perubahan server"}
+   ```
+
+8. KOMPARASI & AUDIT PERUBAHAN REGULASI (```doc_diff):
+   • Panggil jika: pengguna meminta komparasi pasal, perbandingan klausul antara dua regulasi, mengecek apa saja yang berubah antara aturan lama dan aturan baru, atau menelaah naskah revisi.
+   • Parameter:
+     - "doc_id_1": ID atau nama regulasi pertama (acuan/lama).
+     - "doc_id_2": ID atau nama regulasi kedua (pembanding/baru).
+     - "intent": alasan komparasi regulasi.
+   • Format:
+   ```doc_diff
+   {"doc_id_1": 845, "doc_id_2": 846, "intent": "membandingkan perubahan pasal antara dua regulasi"}
+   ```
+
+9. MANAJEMEN TUGAS NEXTCLOUD PINCLOUD DECK (```deck_task):
+   • Panggil jika: percakapan menyangkut penugasan, tugas proyek, task board, atau kartu pekerjaan pengguna di Nextcloud Pincloud Deck (contoh: "tugas gue apa aja di deck", "proyek 2026 yang di-assign ke saya", "status task di board").
+   • Parameter:
+     - "action": "list_cards" (daftar kartu yang ditugaskan ke saya) atau "fetch_boards".
+     - "board_id": ID board tertentu jika disebutkan (opsional).
+     - "intent": maksud akses Deck.
+   • Format:
+   ```deck_task
+   {"action": "list_cards", "intent": "mengambil daftar tugas yang di-assign ke saya di Pincloud Deck"}
+   ```
+
 TATA CARA EKSEKUSI DI TENGAH STREAM & EVALUASI MULTI-TURN:
 - PEMANGGILAN ALAT EFISIEN & NATURAL:
   • Kamu boleh langsung membuka blok alat (misal: ```docsearch atau ```websearch atau ```urlfetch) di awal respons jika membutuhkan penelusuran data.

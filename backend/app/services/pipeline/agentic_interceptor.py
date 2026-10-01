@@ -21,7 +21,7 @@ from backend.app.services.pipeline.tool_dispatcher import dispatch_agentic_tool,
 
 logger = logging.getLogger("CAKRA_AGENTIC_INTERCEPTOR")
 
-_RE_TOOL_OPEN = re.compile(r"```(websearch|docsearch|python_calc|web_search|doc_search|calc|urlfetch|url_fetch|read_url|fetch_url|map_search|map|geocode|terminal_runner|terminal|cli_runner|cli|bash|shell)", re.IGNORECASE)
+_RE_TOOL_OPEN = re.compile(r"```(websearch|docsearch|python_calc|web_search|doc_search|calc|urlfetch|url_fetch|read_url|fetch_url|map_search|map|geocode|terminal_runner|terminal|cli_runner|cli|bash|shell|doc_media|docmedia|visual_media|flowchart|doc_diff|docdiff|diff_regulations|regulasi_diff|deck_task|deck|pincloud_deck)", re.IGNORECASE)
 _RE_TRIPLE_BACKTICKS = re.compile(r"```")
 _RE_SOURCES_OPEN = re.compile(r"<\s*sources_json\s*>", re.IGNORECASE)
 _RE_SOURCES_CLOSE = re.compile(r"<\s*/\s*sources_json\s*>", re.IGNORECASE)
@@ -400,6 +400,12 @@ async def agentic_stream_wrapper(
                                 _norm_tag = "map_search"
                             elif _norm_tag in ("terminal", "cli", "cli_runner", "bash", "shell", "terminal_runner"):
                                 _norm_tag = "terminal_runner"
+                            elif _norm_tag in ("doc_media", "docmedia", "visual_media", "flowchart"):
+                                _norm_tag = "doc_media"
+                            elif _norm_tag in ("doc_diff", "docdiff", "diff_regulations", "regulasi_diff"):
+                                _norm_tag = "doc_diff"
+                            elif _norm_tag in ("deck_task", "deck", "pincloud_deck"):
+                                _norm_tag = "deck_task"
 
                             tool_initial_statuses = {
                                 "websearch": ("Mencari di mesin pencari", "TOOL_WEBSEARCH_SEARCHING"),
@@ -408,6 +414,9 @@ async def agentic_stream_wrapper(
                                 "python_calc": ("Menjalankan komputasi", "TOOL_CALC_RUNNING"),
                                 "map_search": ("Menelusuri koordinat peta", "TOOL_MAP_SEARCHING"),
                                 "terminal_runner": ("Mengeksekusi terminal", "TOOL_CLI_RUNNING"),
+                                "doc_media": ("Mengambil bagan alur & visual dokumen", "TOOL_DOCMEDIA_FETCHING"),
+                                "doc_diff": ("Membandingkan pasal regulasi", "TOOL_DOCDIFF_ANALYZING"),
+                                "deck_task": ("Mengelola tugas di Nextcloud Deck", "TOOL_DECK_EXECUTING"),
                             }
                             init_status = tool_initial_statuses.get(_norm_tag, (f"Menyiapkan alat {_norm_tag}", f"TOOL_{_norm_tag.upper()}_PREPARING"))
                             yield format_sse(status=init_status[0], status_key=init_status[1], event_type=SSEEventType.STATUS)

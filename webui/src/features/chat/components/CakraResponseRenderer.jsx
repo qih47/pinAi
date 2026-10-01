@@ -738,7 +738,7 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
                 );
             }
 
-            if (!inline && match && (match[1] === 'docsearch' || match[1] === 'python_calc' || match[1] === 'terminal_runner')) {
+            if (!inline && match && (match[1] === 'docsearch' || match[1] === 'python_calc' || match[1] === 'terminal_runner' || match[1] === 'doc_media' || match[1] === 'doc_diff' || match[1] === 'deck_task')) {
                 let toolData = null;
                 try {
                     toolData = JSON.parse(cleanCode);

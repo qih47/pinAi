@@ -866,6 +866,21 @@ export const translations = {
       terminalAnalyzing: "Menganalisis output terminal",
       terminalDefault: "Eksekusi perintah terminal Ubuntu",
       ubuntuTerminal: "Ubuntu Terminal",
+      docMediaComplete: "Bagan alur & visual dokumen",
+      docMediaFailed: "Pengambilan visual dokumen (terkendala)",
+      docMediaRunning: "Mengambil bagan alur & visual ({elapsed}s)",
+      docMediaAnalyzing: "Menganalisis bagan alur & visual dokumen",
+      docMediaDefault: "Pengambilan visual & bagan alur dokumen",
+      docDiffComplete: "Hasil komparasi pasal & regulasi",
+      docDiffFailed: "Komparasi regulasi (terkendala)",
+      docDiffRunning: "Membandingkan regulasi ({elapsed}s)",
+      docDiffAnalyzing: "Menganalisis perbedaan pasal & klausul",
+      docDiffDefault: "Komparasi regulasi & klausul dokumen",
+      deckComplete: "Hasil pengelolaan tugas Nextcloud Deck",
+      deckFailed: "Pengelolaan tugas Deck (terkendala)",
+      deckRunning: "Mengakses Nextcloud Deck ({elapsed}s)",
+      deckAnalyzing: "Menyinkronkan status tugas Deck",
+      deckDefault: "Sinkronisasi tugas Nextcloud Deck",
       analyzingCalcResults: "Menganalisis hasil kalkulasi...",
       analyzingDocResults: "Menganalisis hasil penelusuran...",
       done: "Selesai",
@@ -1040,6 +1055,9 @@ export const translations = {
       TOOL_CALC_RUNNING: "Menjalankan komputasi",
       TOOL_CLI_RUNNING: "⚡ Mengeksekusi terminal",
       TOOL_MAP_SEARCHING: "Menelusuri koordinat peta",
+      TOOL_DOCMEDIA_FETCHING: "Mengambil bagan alur & visual dokumen",
+      TOOL_DOCDIFF_ANALYZING: "Membandingkan pasal regulasi",
+      TOOL_DECK_EXECUTING: "Mengelola tugas di Nextcloud Deck",
       TOOL_GENERIC_RUNNING: "Menjalankan alat",
       // ── PRESET & VISUAL STATUS KEYS ──
       WEB_INIT: "🌐 Menjelajah web",
@@ -1966,6 +1984,21 @@ export const translations = {
       terminalAnalyzing: "Analyzing terminal output",
       terminalDefault: "Ubuntu terminal command execution",
       ubuntuTerminal: "Ubuntu Terminal",
+      docMediaComplete: "Document flowcharts & visual media",
+      docMediaFailed: "Document media retrieval (failed)",
+      docMediaRunning: "Retrieving flowcharts & visual media ({elapsed}s)",
+      docMediaAnalyzing: "Analyzing document flowcharts & visuals",
+      docMediaDefault: "Document visual media & flowchart retrieval",
+      docDiffComplete: "Regulatory clause diff results",
+      docDiffFailed: "Regulatory diff (failed)",
+      docDiffRunning: "Comparing regulations ({elapsed}s)",
+      docDiffAnalyzing: "Analyzing article & clause changes",
+      docDiffDefault: "Regulatory & clause document comparison",
+      deckComplete: "Nextcloud Deck tasks results",
+      deckFailed: "Deck task management (failed)",
+      deckRunning: "Accessing Nextcloud Deck ({elapsed}s)",
+      deckAnalyzing: "Synchronizing Deck task status",
+      deckDefault: "Nextcloud Deck task synchronization",
       analyzingCalcResults: "Analyzing calculation results...",
       analyzingDocResults: "Analyzing search results...",
       done: "Done",
@@ -2140,6 +2173,9 @@ export const translations = {
       TOOL_CALC_RUNNING: "Running computation",
       TOOL_CLI_RUNNING: "⚡ Executing terminal",
       TOOL_MAP_SEARCHING: "Searching map coordinates",
+      TOOL_DOCMEDIA_FETCHING: "Retrieving document flowcharts & visuals",
+      TOOL_DOCDIFF_ANALYZING: "Comparing regulatory clauses & articles",
+      TOOL_DECK_EXECUTING: "Managing Nextcloud Deck tasks",
       TOOL_GENERIC_RUNNING: "Executing tool",
       // ── PRESET & VISUAL STATUS KEYS ──
       WEB_INIT: "🌐 Browsing web",
@@ -2439,6 +2475,9 @@ export function resolveStatusMessage(statusInput, language = 'id', explicitKey =
     if (cleanR.includes('menjalankan komputasi') || cleanR.includes('komputasi')) return stripDots(sseDict.TOOL_CALC_RUNNING || 'Running computation');
     if (cleanR.includes('mengeksekusi terminal') || cleanR.includes('terminal')) return stripDots(sseDict.TOOL_CLI_RUNNING || 'Executing terminal');
     if (cleanR.includes('koordinat peta') || cleanR.includes('menelusuri koordinat peta')) return stripDots(sseDict.TOOL_MAP_SEARCHING || 'Searching map coordinates');
+    if (cleanR.includes('bagan alur') || cleanR.includes('visual dokumen')) return stripDots(sseDict.TOOL_DOCMEDIA_FETCHING || 'Retrieving document flowcharts & visuals');
+    if (cleanR.includes('membandingkan pasal') || cleanR.includes('komparasi regulasi') || cleanR.includes('pasal regulasi')) return stripDots(sseDict.TOOL_DOCDIFF_ANALYZING || 'Comparing regulatory clauses & articles');
+    if (cleanR.includes('nextcloud deck') || cleanR.includes('tugas di nextcloud') || cleanR.includes('mengelola tugas')) return stripDots(sseDict.TOOL_DECK_EXECUTING || 'Managing Nextcloud Deck tasks');
     if (cleanR.includes('berpikir') || cleanR.includes('menganalisis konteks')) return stripDots(sseDict.THINKING_PROGRESS || 'Thinking');
   }
 

@@ -40,9 +40,10 @@ class Settings(BaseSettings):
     ZIMBRA_EMAIL: Optional[str] = None
     ZIMBRA_PASSWORD: Optional[str] = None
 
-    MODEL_PERSONA: str = "/home/qisthi/models/gemma-4-31B-it-AWQ"       # Gemma4 Agentic Engine (Chat, Reasoning & Multimodal Vision)
-    MODEL_ROUTER: str = "/home/qisthi/models/gemma-4-31B-it-AWQ"        # Gemma4 Unified Engine (Call 1 & 1.1 JSON Routing via vLLM)
-    MODEL_EMBEDDING: str = "mxbai-embed-large:latest"  # Embedding untuk RAG (Ollama)
+    MODEL_BASE: str = "/home/qisthi/models/gemma-4-31B-it-AWQ"          # Base Physical Weights for vLLM (Gemma 4 31B AWQ)
+    MODEL_ROUTER: str = "cakra-router"                                  # Target Adapter Call 1 (JSON Intent & Routing)
+    MODEL_PERSONA: str = "/home/qisthi/models/gemma-4-31B-it-AWQ"       # Target Call 2 (cakra-core LoRA, or Base AWQ)
+    MODEL_EMBEDDING: str = "mxbai-embed-large:latest"                   # Embedding untuk RAG (Ollama)
 
     NUM_CTX_CORE: int = 32768                # Standardisasi context window untuk Core Model (32K Context)
     NUM_CTX_ROUTER: int = 4096               # Standardisasi context window untuk Router Model
@@ -95,9 +96,10 @@ else:
     print("❌ [DEBUG_ENV] Physical status: File .env NOT found! Running completely on built-in fallback values.", flush=True)
 
 print("------------------------------------------------------------------", flush=True)
-print("📊 [ACTIVE RUNTIME OLLAMA MODELS]:", flush=True)
-print(f"   • GEMMA4 PERSONA (Call 2): {settings.MODEL_PERSONA}", flush=True)
-print(f"   • ROUTER (Call 1)        : {getattr(settings, 'MODEL_ROUTER', settings.MODEL_PERSONA)}", flush=True)
+print("📊 [ACTIVE RUNTIME LLM ARCHITECTURE - MODULAR MULTI-LORA]:", flush=True)
+print(f"   • BASE MODEL ENGINE      : {getattr(settings, 'MODEL_BASE', '/home/qisthi/models/gemma-4-31B-it-AWQ')}", flush=True)
+print(f"   • CALL 1 ROUTER ADAPTER  : {settings.MODEL_ROUTER}", flush=True)
+print(f"   • CALL 2 CORE / PERSONA  : {settings.MODEL_PERSONA}", flush=True)
 print(f"   • EMBEDDING              : {settings.MODEL_EMBEDDING}", flush=True)
 print("------------------------------------------------------------------", flush=True)
 print(f"🔌 [CONFIG] Database User: {settings.DB_USER} | Target Database: {settings.DB_DATABASE}", flush=True)

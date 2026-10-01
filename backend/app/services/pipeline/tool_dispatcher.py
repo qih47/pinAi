@@ -1309,7 +1309,498 @@ async def execute_terminal_runner_tool(
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# 7. MASTER DISPATCHER (MCP-READY HUB)
+# 7. TOOL: DOC MEDIA & VISUAL EXTRACTION (Worker 4 Mermaid, Tables, Stamps & Snapshots)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+async def execute_doc_media_tool_stream(
+    dokumen_id: Optional[Union[int, str]] = None,
+    media_type: str = "",
+    page: Optional[Union[int, str]] = None,
+    query: str = "",
+    reason: str = "",
+    user_message: str = "",
+) -> AsyncGenerator[Union[Tuple[str, str], Tuple[str, Any], ToolResult], None]:
+    """
+    Mengambil bagan alur (flowchart/Mermaid), tabel lampiran, stempel pengesahan,
+    dan snapshot gambar halaman (PNG 150 DPI) dari hasil ekstraksi Worker 4.
+    """
+    from backend.app.core.database import get_db, get_peraturan_db
+    from backend.app.core.paths import DOC_PAGES_DIR
+
+    intent_desc = reason.strip() if reason.strip() else f"Mengambil bagan alur & visual dokumen #{dokumen_id or query}"
+    logger.info(f"[TOOL_DISPATCHER] 🎨 Executing doc_media: doc_id={dokumen_id}, media_type='{media_type}', page={page}, query='{query}'")
+
+    yield ("Mengambil bagan alur & visual dokumen", "TOOL_DOCMEDIA_FETCHING")
+
+    resolved_doc_id: Optional[int] = None
+    doc_title: str = ""
+
+    # Resolusi ID jika angka
+    if dokumen_id is not None:
+        try:
+            resolved_doc_id = int(str(dokumen_id).strip())
+        except (ValueError, TypeError):
+            pass
+
+    # Jika ID belum ada tetapi query ada, lookup dokumen dari MySQL
+    if resolved_doc_id is None and (query or user_message):
+        search_term = query.strip() or user_message.strip()
+        try:
+            async with get_peraturan_db() as conn_my:
+                async with conn_my.cursor() as cur:
+                    await cur.execute(
+                        "SELECT id_berita, judul, noper FROM berita WHERE judul LIKE %s OR noper LIKE %s ORDER BY id_berita DESC LIMIT 1",
+                        (f"%{search_term}%", f"%{search_term}%")
+                    )
+                    row = await cur.fetchone()
+                    if row:
+                        resolved_doc_id = int(row[0])
+                        doc_title = row[1] or ""
+        except Exception as e_lk:
+            logger.warning(f"[TOOL_DISPATCHER] Lookup dokumen_id dari judul gagal: {e_lk}")
+
+    target_page: Optional[int] = None
+    if page is not None:
+        try:
+            target_page = int(str(page).strip())
+        except (ValueError, TypeError):
+            pass
+
+    items = []
+    try:
+        async with get_db() as conn:
+            if resolved_doc_id is not None:
+                if target_page is not None:
+                    rows = await conn.fetch("""
+                        SELECT id, dokumen_id, section_type, section_title, section_order, content
+                        FROM dokumen_section
+                        WHERE dokumen_id = $1 AND section_type = 'VISUAL_WORKFLOW' AND section_order = $2
+                        ORDER BY section_order ASC, id ASC
+                        LIMIT 6
+                    """, resolved_doc_id, target_page)
+                else:
+                    rows = await conn.fetch("""
+                        SELECT id, dokumen_id, section_type, section_title, section_order, content
+                        FROM dokumen_section
+                        WHERE dokumen_id = $1 AND section_type = 'VISUAL_WORKFLOW'
+                        ORDER BY section_order ASC, id ASC
+                        LIMIT 8
+                    """, resolved_doc_id)
+            elif query:
+                rows = await conn.fetch("""
+                    SELECT id, dokumen_id, section_type, section_title, section_order, content
+                    FROM dokumen_section
+                    WHERE section_type = 'VISUAL_WORKFLOW' AND (content ILIKE $1 OR section_title ILIKE $1)
+                    ORDER BY id DESC
+                    LIMIT 6
+                """, f"%{query}%")
+            else:
+                rows = []
+
+            for r in rows:
+                sec_id = r["id"]
+                d_id = r["dokumen_id"]
+                sec_title = r["section_title"] or "Visual Workflow"
+                p_order = r["section_order"] or 1
+                raw_content = r["content"] or ""
+
+                # Cek jenis visual dari konten atau judul
+                v_type = "FLOWCHART"
+                if "[TABLE]" in raw_content or "Tabel:" in raw_content:
+                    v_type = "TABLE"
+                elif "[LEGAL_STAMP]" in raw_content or "Stempel" in sec_title or "Pengesahan" in sec_title:
+                    v_type = "LEGAL_STAMP"
+
+                # Filter media_type jika diminta spesifik
+                if media_type:
+                    clean_mt = media_type.lower()
+                    if clean_mt in ("flowchart", "mermaid", "diagram") and v_type != "FLOWCHART":
+                        continue
+                    if clean_mt in ("table", "tabel") and v_type != "TABLE":
+                        continue
+                    if clean_mt in ("stamp", "stempel", "pengesahan") and v_type != "LEGAL_STAMP":
+                        continue
+
+                # Cek file PNG snapshot fisik di disk
+                page_png_path = os.path.join(DOC_PAGES_DIR, str(d_id), f"page_{p_order:03d}.png")
+                has_image = os.path.exists(page_png_path)
+                image_url = f"/doc_pages/{d_id}/page_{p_order:03d}.png" if has_image else None
+
+                # Ekstraksi blok Mermaid
+                mermaid_code = None
+                m_match = re.search(r"```mermaid\s*([\s\S]*?)\s*```", raw_content)
+                if m_match:
+                    mermaid_code = m_match.group(1).strip()
+
+                items.append({
+                    "id": sec_id,
+                    "dokumen_id": d_id,
+                    "title": sec_title,
+                    "type": v_type,
+                    "page": p_order,
+                    "image_url": image_url,
+                    "mermaid": mermaid_code,
+                    "content": raw_content[:2000],
+                })
+
+        # Fallback jika tidak ada baris section tetapi file PNG fisik snapshot ada di storage/doc_pages
+        if not items and resolved_doc_id is not None:
+            doc_folder = os.path.join(DOC_PAGES_DIR, str(resolved_doc_id))
+            if os.path.exists(doc_folder):
+                png_files = sorted(os.listdir(doc_folder))
+                matched_pngs = []
+                for pf in png_files:
+                    if pf.endswith(".png"):
+                        m_p = re.search(r"page_(\d+)\.png", pf)
+                        p_num = int(m_p.group(1)) if m_p else 1
+                        if target_page is None or p_num == target_page:
+                            matched_pngs.append((p_num, pf))
+
+                for p_num, pf in matched_pngs[:4]:
+                    items.append({
+                        "id": None,
+                        "dokumen_id": resolved_doc_id,
+                        "title": f"Halaman {p_num}",
+                        "type": "PAGE_SNAPSHOT",
+                        "page": p_num,
+                        "image_url": f"/doc_pages/{resolved_doc_id}/{pf}",
+                        "mermaid": None,
+                        "content": f"Snapshot visual halaman {p_num} dokumen #{resolved_doc_id}.",
+                    })
+
+        # Realtime preview emission
+        if items:
+            yield ("TOOL_PREVIEW", {
+                "tool": "doc_media",
+                "dokumen_id": resolved_doc_id,
+                "title": doc_title,
+                "items": items,
+                "stage": "preview",
+            })
+
+        # Format konteks LLM
+        if items:
+            context_parts = [
+                f"--- HASIL PENGAMBILAN MEDIA & BAGAN DOKUMEN ---",
+                f"Dokumen ID: {resolved_doc_id or query}",
+                f"Jumlah Aset Visual: {len(items)}\n",
+            ]
+            for idx, it in enumerate(items, 1):
+                context_parts.append(f"### [Aset {idx}: {it['title']} (Halaman {it['page']})]")
+                if it.get("image_url"):
+                    context_parts.append(f"Image Snapshot URL: {it['image_url']}")
+                if it.get("mermaid"):
+                    context_parts.append(f"```mermaid\n{it['mermaid']}\n```")
+                context_parts.append(f"Detail Ekstraksi:\n{it['content']}\n")
+
+            llm_ctx = "\n".join(context_parts)
+            yield ToolResult(
+                tool_name="doc_media",
+                status="success",
+                intent=intent_desc,
+                display_data={
+                    "tool": "doc_media",
+                    "dokumen_id": resolved_doc_id,
+                    "title": doc_title,
+                    "items": items,
+                    "stage": "done",
+                },
+                llm_context=llm_ctx,
+            )
+        else:
+            yield ToolResult(
+                tool_name="doc_media",
+                status="success",
+                intent=intent_desc,
+                display_data={
+                    "tool": "doc_media",
+                    "dokumen_id": resolved_doc_id,
+                    "title": doc_title,
+                    "items": [],
+                    "stage": "done",
+                },
+                llm_context=f"Tidak ditemukan bagan alur, tabel lampiran, atau visual khusus untuk dokumen #{resolved_doc_id or query}.",
+            )
+
+    except Exception as e:
+        logger.error(f"[TOOL_DISPATCHER] Error in doc_media: {e}", exc_info=True)
+        yield ToolResult(
+            tool_name="doc_media",
+            status="error",
+            intent=intent_desc,
+            display_data={
+                "tool": "doc_media",
+                "dokumen_id": resolved_doc_id,
+                "items": [],
+                "stage": "error",
+            },
+            llm_context=f"Kendala saat mengambil aset visual dokumen: {str(e)}",
+            error_message=str(e),
+        )
+
+
+async def execute_doc_media_tool(
+    dokumen_id: Optional[Union[int, str]] = None,
+    media_type: str = "",
+    page: Optional[Union[int, str]] = None,
+    query: str = "",
+    reason: str = "",
+) -> ToolResult:
+    """Wrapper sinkronisasi tool doc_media untuk backward-compatibility."""
+    last_res = None
+    async for item in execute_doc_media_tool_stream(dokumen_id=dokumen_id, media_type=media_type, page=page, query=query, reason=reason):
+        if isinstance(item, ToolResult):
+            last_res = item
+    return last_res or ToolResult("doc_media", "error", reason, {}, "Gagal mengeksekusi doc_media")
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 8. TOOL: DOC DIFF & COMPARATIVE REGULATION
+# ═══════════════════════════════════════════════════════════════════════════════
+
+async def execute_doc_diff_tool_stream(
+    doc_id_1: Any,
+    doc_id_2: Any,
+    reason: str = "",
+    user_message: str = "",
+    session_uuid: Optional[str] = None,
+    current_user_npp: Optional[str] = None,
+) -> AsyncGenerator[Union[Tuple[str, str], ToolResult], None]:
+    """
+    Membandingkan dua regulasi atau naskah dokumen (versi lama vs baru / dua kebijakan)
+    menggunakan UniversalAssetDiffEngine untuk menghasilkan audit perubahan pasal & klausul presisi.
+    """
+    from backend.app.core.database import get_db, get_peraturan_db
+    from backend.app.services.ambient.asset_diff_engine import asset_diff_engine
+
+    intent_desc = reason.strip() if reason.strip() else f"Membandingkan dokumen #{doc_id_1} dan #{doc_id_2}"
+    logger.info(f"[TOOL_DISPATCHER] ⚖️ Executing doc_diff: doc1={doc_id_1}, doc2={doc_id_2}")
+
+    yield ("Membandingkan pasal regulasi", "TOOL_DOCDIFF_ANALYZING")
+
+    async def _fetch_doc_text(d_id: Any) -> Tuple[str, str]:
+        """Mengambil teks dokumen dari dokumen_chunk atau database MySQL."""
+        raw_id_str = str(d_id).strip()
+        num_id = int(raw_id_str) if raw_id_str.isdigit() else None
+        title = f"Dokumen {d_id}"
+
+        # 1. Cek MySQL untuk judul
+        if num_id:
+            try:
+                async with get_peraturan_db() as conn_my:
+                    async with conn_my.cursor() as cur:
+                        await cur.execute("SELECT judul, noper FROM berita WHERE id_berita = %s", (num_id,))
+                        r = await cur.fetchone()
+                        if r:
+                            title = f"{r[0]} ({r[1]})" if r[1] else r[0]
+            except Exception:
+                pass
+
+        # 2. Cek Postgres dokumen_chunk untuk seluruh teks
+        chunks = []
+        try:
+            async with get_db() as conn:
+                if num_id:
+                    rows = await conn.fetch(
+                        "SELECT content FROM dokumen_chunk WHERE dokumen_id = $1 ORDER BY chunk_id ASC",
+                        num_id
+                    )
+                    chunks = [r["content"] for r in rows if r["content"]]
+        except Exception as e_c:
+            logger.warning(f"[TOOL_DISPATCHER] Gagal fetch chunk for doc {d_id}: {e_c}")
+
+        if chunks:
+            return title, "\n\n".join(chunks)
+
+        # 3. Fallback: Cek dokumen_section
+        try:
+            async with get_db() as conn:
+                if num_id:
+                    rows = await conn.fetch(
+                        "SELECT content FROM dokumen_section WHERE dokumen_id = $1 ORDER BY section_order ASC, id ASC",
+                        num_id
+                    )
+                    sec_texts = [r["content"] for r in rows if r["content"]]
+                    if sec_texts:
+                        return title, "\n\n".join(sec_texts)
+        except Exception:
+            pass
+
+        return title, f"Dokumen #{d_id}: Konten teks fisik tidak tersedia di repositori chunk."
+
+    try:
+        title1, text1 = await _fetch_doc_text(doc_id_1)
+        title2, text2 = await _fetch_doc_text(doc_id_2)
+
+        delta = asset_diff_engine.compute_diff(
+            old_text=text1,
+            new_text=text2,
+            asset_title=f"{title1} vs {title2}"
+        )
+
+        display_data = {
+            "tool": "doc_diff",
+            "intent": intent_desc,
+            "doc_1": {"id": doc_id_1, "title": title1},
+            "doc_2": {"id": doc_id_2, "title": title2},
+            "has_changes": delta.has_changes,
+            "change_type": delta.change_type,
+            "added_count": len(delta.added_items),
+            "modified_count": len(delta.modified_items),
+            "removed_count": len(delta.removed_items),
+            "summary": delta.summary_text,
+            "stage": "done",
+        }
+
+        llm_context = (
+            f"--- HASIL KOMPARASI & AUDIT REGULASI (DIFF) ---\n"
+            f"Dokumen 1 (Acuan/Lama): {title1} (ID: {doc_id_1})\n"
+            f"Dokumen 2 (Pembanding/Baru): {title2} (ID: {doc_id_2})\n"
+            f"Perubahan Terdeteksi: {'YA' if delta.has_changes else 'TIDAK'}\n\n"
+            f"{delta.summary_text}\n"
+        )
+
+        yield ToolResult(
+            tool_name="doc_diff",
+            status="success",
+            intent=intent_desc,
+            display_data=display_data,
+            llm_context=llm_context,
+        )
+
+    except Exception as e:
+        logger.error(f"[TOOL_DISPATCHER] Error in doc_diff: {e}", exc_info=True)
+        yield ToolResult(
+            tool_name="doc_diff",
+            status="error",
+            intent=intent_desc,
+            display_data={
+                "tool": "doc_diff",
+                "doc_1": {"id": doc_id_1},
+                "doc_2": {"id": doc_id_2},
+                "stage": "error",
+            },
+            llm_context=f"Kendala saat membandingkan regulasi: {str(e)}",
+            error_message=str(e),
+        )
+
+
+async def execute_doc_diff_tool(doc_id_1: Any, doc_id_2: Any, reason: str = "") -> ToolResult:
+    """Wrapper sinkronisasi tool doc_diff untuk backward-compatibility."""
+    last_res = None
+    async for item in execute_doc_diff_tool_stream(doc_id_1=doc_id_1, doc_id_2=doc_id_2, reason=reason):
+        if isinstance(item, ToolResult):
+            last_res = item
+    return last_res or ToolResult("doc_diff", "error", reason, {}, "Gagal mengeksekusi doc_diff")
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 9. TOOL: DECK TASK (Nextcloud Pincloud Deck Integration)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+async def execute_deck_task_tool_stream(
+    action: str = "list_cards",
+    payload: Optional[Dict[str, Any]] = None,
+    board_id: Optional[int] = None,
+    reason: str = "",
+    current_user_npp: Optional[str] = None,
+) -> AsyncGenerator[Union[Tuple[str, str], ToolResult], None]:
+    """
+    Mengelola dan mengambil tugas, task board, dan kartu penugasan di Nextcloud Pincloud Deck.
+    """
+    from backend.app.services.integrations.deck_service import DeckService
+
+    clean_action = (action or "list_cards").strip().lower()
+    intent_desc = reason.strip() if reason.strip() else f"Mengakses task board Nextcloud Deck ({clean_action})"
+    logger.info(f"[TOOL_DISPATCHER] 🗂️ Executing deck_task: action='{clean_action}', npp={current_user_npp}")
+
+    yield ("Mengelola tugas di Nextcloud Deck", "TOOL_DECK_EXECUTING")
+
+    try:
+        target_npp = current_user_npp or ""
+        deck_res = await DeckService.get_user_assigned_cards(
+            npp=target_npp,
+            board_id=board_id,
+            include_all_boards_if_none=True,
+        )
+
+        status_code = deck_res.get("status", "success")
+        active_cards = deck_res.get("active_cards", [])
+        done_cards = deck_res.get("done_cards", [])
+        total_assigned = deck_res.get("total_assigned", 0)
+
+        # Rangkuman untuk LLM
+        lines = [
+            f"--- DATA TUGAS & PENUGASAN NEXTCLOUD PINCLOUD DECK ---",
+            f"Status Koneksi: {deck_res.get('message', 'Sukses')}",
+            f"Total Tugas Ditugaskan: {total_assigned}",
+            f"Tugas Aktif (In Progress / To Do): {len(active_cards)}",
+            f"Tugas Selesai (Done): {len(done_cards)}\n",
+        ]
+        if active_cards:
+            lines.append("Daftar Tugas Aktif:")
+            for ac in active_cards[:10]:
+                lines.append(f"- [{ac.get('board_title', 'Board')}] {ac.get('title')} (Kolom: {ac.get('stack_title')}) - Due: {ac.get('duedate') or 'Tidak ada deadline'}")
+        if done_cards:
+            lines.append("\nDaftar Tugas Selesai:")
+            for dc in done_cards[:5]:
+                lines.append(f"- [{dc.get('board_title', 'Board')}] {dc.get('title')} (Kolom: {dc.get('stack_title')})")
+
+        llm_context = "\n".join(lines)
+
+        display_data = {
+            "tool": "deck_task",
+            "action": clean_action,
+            "intent": intent_desc,
+            "status": status_code,
+            "total_assigned": total_assigned,
+            "active_cards": active_cards,
+            "done_cards": done_cards,
+            "boards": deck_res.get("boards", []),
+            "stage": "done",
+        }
+
+        yield ToolResult(
+            tool_name="deck_task",
+            status=status_code,
+            intent=intent_desc,
+            display_data=display_data,
+            llm_context=llm_context,
+        )
+
+    except Exception as e:
+        logger.error(f"[TOOL_DISPATCHER] Error in deck_task: {e}", exc_info=True)
+        yield ToolResult(
+            tool_name="deck_task",
+            status="error",
+            intent=intent_desc,
+            display_data={
+                "tool": "deck_task",
+                "action": clean_action,
+                "stage": "error",
+            },
+            llm_context=f"Kendala saat mengakses Nextcloud Deck: {str(e)}",
+            error_message=str(e),
+        )
+
+
+async def execute_deck_task_tool(
+    action: str = "list_cards",
+    payload: Optional[Dict[str, Any]] = None,
+    board_id: Optional[int] = None,
+    reason: str = "",
+    current_user_npp: Optional[str] = None,
+) -> ToolResult:
+    """Wrapper sinkronisasi tool deck_task untuk backward-compatibility."""
+    last_res = None
+    async for item in execute_deck_task_tool_stream(action=action, payload=payload, board_id=board_id, reason=reason, current_user_npp=current_user_npp):
+        if isinstance(item, ToolResult):
+            last_res = item
+    return last_res or ToolResult("deck_task", "error", reason, {}, "Gagal mengeksekusi deck_task")
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 10. MASTER DISPATCHER (MCP-READY HUB)
 # ═══════════════════════════════════════════════════════════════════════════════
 
 async def dispatch_agentic_tool_stream(
@@ -1386,6 +1877,51 @@ async def dispatch_agentic_tool_stream(
             cmd_val,
             reason=reason_val,
             session_uuid=session_uuid,
+            current_user_npp=current_user_npp,
+        ):
+            yield item
+
+    elif tool_clean in ("doc_media", "docmedia", "get_document_media", "visual_media", "flowchart", "media"):
+        doc_id_val = parsed_json.get("dokumen_id") or parsed_json.get("doc_id") or parsed_json.get("id")
+        m_type_val = parsed_json.get("media_type") or parsed_json.get("type") or ""
+        page_val = parsed_json.get("page") or parsed_json.get("halaman")
+        async for item in execute_doc_media_tool_stream(
+            dokumen_id=doc_id_val,
+            media_type=m_type_val,
+            page=page_val,
+            query=query_val,
+            reason=reason_val,
+            user_message=user_message,
+        ):
+            yield item
+
+    elif tool_clean in ("doc_diff", "docdiff", "diff_regulations", "regulasi_diff", "asset_diff"):
+        doc1_val = parsed_json.get("doc_id_1") or parsed_json.get("doc1") or parsed_json.get("old_doc_id") or parsed_json.get("id_1")
+        doc2_val = parsed_json.get("doc_id_2") or parsed_json.get("doc2") or parsed_json.get("new_doc_id") or parsed_json.get("id_2")
+        if not doc1_val or not doc2_val:
+            found_ids = re.findall(r"\b\d{3,5}\b", str(query_val) + " " + str(raw_str))
+            if len(found_ids) >= 2:
+                doc1_val = doc1_val or found_ids[0]
+                doc2_val = doc2_val or found_ids[1]
+
+        async for item in execute_doc_diff_tool_stream(
+            doc_id_1=doc1_val,
+            doc_id_2=doc2_val,
+            reason=reason_val,
+            user_message=user_message,
+            session_uuid=session_uuid,
+            current_user_npp=current_user_npp,
+        ):
+            yield item
+
+    elif tool_clean in ("deck_task", "deck", "nextcloud_deck", "pincloud_deck"):
+        action_val = parsed_json.get("action") or "list_cards"
+        b_id_val = parsed_json.get("board_id")
+        async for item in execute_deck_task_tool_stream(
+            action=action_val,
+            payload=parsed_json,
+            board_id=b_id_val,
+            reason=reason_val,
             current_user_npp=current_user_npp,
         ):
             yield item

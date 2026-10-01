@@ -2,16 +2,19 @@
 """
 CAKRA AI — Dispatcher Router QLoRA / SFT Training Pipeline
 ======================================================
-Melatih model router deterministik `cakra-router` menggunakan QLoRA (4-bit).
-Kompatibel dengan Unsloth & Hugging Face TRL SFTTrainer.
+Melatih model router deterministik `cakra-router` menggunakan QLoRA (4-bit)
+pada arsitektur Gemma 4 (31B).
+Kompatibel dengan TRL SFTTrainer, PEFT, dan Hugging Face Transformers 5.x.
 
 Usage:
-    python backend/scripts/finetune/train_dispatcher_router.py \
-        --model_name "unsloth/gemma-2-9b-it-bnb-4bit" \
-        --dataset "data/finetune/dispatcher_train_3000.jsonl" \
+    /home/qisthi/vllm_env/bin/python backend/scripts/finetune/train_dispatcher_router.py \
+        --model_name "unsloth/gemma-4-31B-it-unsloth-bnb-4bit" \
+        --tokenizer_name "/home/qisthi/models/gemma-4-31B-it-AWQ" \
+        --dataset "data/finetune/nightly_dispatcher_router.jsonl" \
         --output_dir "models/adapters/cakra-router-lora" \
-        --epochs 3 \
-        --batch_size 4
+        --epochs 1 \
+        --batch_size 2 \
+        --grad_accum 8
 """
 
 import os
@@ -41,25 +44,17 @@ def load_and_format_dataset(jsonl_path: str, tokenizer) -> Dataset:
     formatted_texts = []
     for item in raw_items:
         convs = item.get("conversations", [])
-        messages = []
+        text = "<bos>"
         for c in convs:
             role = c.get("from")
-            content = c.get("value")
+            content = c.get("value", "")
             if role == "human":
-                messages.append({"role": "user", "content": content})
+                role_tag = "user"
             elif role == "gpt":
-                messages.append({"role": "assistant", "content": content})
-            elif role == "system":
-                messages.append({"role": "system", "content": content})
-
-        # Apply chat template
-        try:
-            text = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=False)
-        except Exception:
-            # Fallback format jika chat template default tokenizer bermasalah
-            text = ""
-            for m in messages:
-                text += f"<|im_start|>{m['role']}\n{m['content']}<|im_end|>\n"
+                role_tag = "model"
+            else:
+                role_tag = "system"
+            text += f"<|turn>{role_tag}\n{content}<turn|>\n"
 
         formatted_texts.append({"text": text})
 
@@ -72,87 +67,70 @@ def load_and_format_dataset(jsonl_path: str, tokenizer) -> Dataset:
 
 def train(args):
     print("=" * 60)
-    print("🚀 MEMULAI PROSES FINE-TUNING CAKRA ROUTER (CALL 1)")
+    print("🚀 MEMULAI PROSES FINE-TUNING CAKRA ROUTER (CALL 1) - GEMMA 4 31B")
     print("=" * 60)
     print(f"🖥️  GPU Tersedia   : {torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'CPU (Not Recommended)'}")
     print(f"📦 Base Model     : {args.model_name}")
+    print(f"🔤 Tokenizer      : {args.tokenizer_name}")
     print(f"📄 Dataset Path   : {args.dataset}")
     print(f"🎯 Output Adapter : {args.output_dir}")
     print(f"🔄 Epochs         : {args.epochs}")
     print(f"⚡ Batch Size     : {args.batch_size} (Grad Accum: {args.grad_accum})")
+    print(f"📐 Effective Batch: {args.batch_size * args.grad_accum}")
     print("=" * 60)
 
-    # 1. Coba Menggunakan Unsloth (Jalur Paling Cepat & Hemat VRAM)
-    use_unsloth = False
-    try:
-        from unsloth import FastLanguageModel
-        use_unsloth = True
-        print("⚡ Menggunakan Unsloth FastLanguageModel Engine (2x Faster Training)")
-        
-        model, tokenizer = FastLanguageModel.from_pretrained(
-            model_name=args.model_name,
-            max_seq_length=args.max_seq_length,
-            dtype=None,  # Auto detect float16 / bfloat16
-            load_in_4bit=True,
-        )
+    # 1. Setup Tokenizer & Model
+    from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
+    from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
 
-        model = FastLanguageModel.get_peft_model(
-            model,
-            r=args.lora_r,
-            target_modules=["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"],
-            lora_alpha=args.lora_alpha,
-            lora_dropout=0,  # Unsloth supports 0 for maximum speed
-            bias="none",
-            use_gradient_checkpointing="unsloth",
-            random_state=3407,
-        )
+    print("⏳ Memuat tokenizer...")
+    tokenizer = AutoTokenizer.from_pretrained(args.tokenizer_name, trust_remote_code=True)
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
 
-    except ImportError:
-        print("ℹ️ Unsloth tidak terpasang. Menggunakan Hugging Face Transformers + PEFT standar...")
-        from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
-        from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
+    print(f"⏳ Memuat Base Model BNB 4-bit ({args.model_name})...")
+    bnb_config = BitsAndBytesConfig(
+        load_in_4bit=True,
+        bnb_4bit_quant_type="nf4",
+        bnb_4bit_compute_dtype=torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16,
+        bnb_4bit_use_double_quant=True,
+    )
 
-        bnb_config = BitsAndBytesConfig(
-            load_in_4bit=True,
-            bnb_4bit_quant_type="nf4",
-            bnb_4bit_compute_dtype=torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16,
-            bnb_4bit_use_double_quant=True,
-        )
+    model = AutoModelForCausalLM.from_pretrained(
+        args.model_name,
+        quantization_config=bnb_config,
+        device_map="auto",
+        trust_remote_code=True,
+        torch_dtype=torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16,
+    )
+    model = prepare_model_for_kbit_training(model)
+    model.gradient_checkpointing_enable()
 
-        tokenizer = AutoTokenizer.from_pretrained(args.model_name, trust_remote_code=True)
-        if tokenizer.pad_token is None:
-            tokenizer.pad_token = tokenizer.eos_token
-
-        model = AutoModelForCausalLM.from_pretrained(
-            args.model_name,
-            quantization_config=bnb_config,
-            device_map="auto",
-            trust_remote_code=True,
-        )
-        model = prepare_model_for_kbit_training(model)
-
-        peft_config = LoraConfig(
-            r=args.lora_r,
-            lora_alpha=args.lora_alpha,
-            target_modules=["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"],
-            lora_dropout=0.05,
-            bias="none",
-            task_type="CAUSAL_LM",
-        )
-        model = get_peft_model(model, peft_config)
+    print(f"🔧 Mengonfigurasi LoRA Adapter (Rank={args.lora_r}, Alpha={args.lora_alpha})...")
+    peft_config = LoraConfig(
+        r=args.lora_r,
+        lora_alpha=args.lora_alpha,
+        target_modules=r".*language_model.*\.(q_proj|k_proj|v_proj|o_proj|gate_proj|up_proj|down_proj)",
+        lora_dropout=0.05,
+        bias="none",
+        task_type="CAUSAL_LM",
+    )
+    model = get_peft_model(model, peft_config)
+    model.print_trainable_parameters()
 
     # 2. Format & Tokenize Dataset
     dataset = load_and_format_dataset(args.dataset, tokenizer)
 
     # 3. Setup Trainer (TRL SFTTrainer)
-    from trl import SFTTrainer
-    from transformers import TrainingArguments
+    from trl import SFTTrainer, SFTConfig
 
-    training_args = TrainingArguments(
+    training_args = SFTConfig(
         output_dir=args.output_dir,
+        dataset_text_field="text",
+        max_length=args.max_seq_length,
         per_device_train_batch_size=args.batch_size,
         gradient_accumulation_steps=args.grad_accum,
-        warmup_steps=10,
+        warmup_steps=20,
         num_train_epochs=args.epochs,
         learning_rate=args.learning_rate,
         fp16=not torch.cuda.is_bf16_supported(),
@@ -163,17 +141,15 @@ def train(args):
         lr_scheduler_type="cosine",
         seed=3407,
         report_to="none",
-        save_strategy="epoch",
+        save_strategy="steps",
+        save_steps=500,
+        save_total_limit=2,
     )
 
     trainer = SFTTrainer(
         model=model,
-        tokenizer=tokenizer,
+        processing_class=tokenizer,
         train_dataset=dataset,
-        dataset_text_field="text",
-        max_seq_length=args.max_seq_length,
-        dataset_num_proc=2,
-        packing=False,
         args=training_args,
     )
 
@@ -200,24 +176,21 @@ def train(args):
     print("\n  Tambahkan argumen berikut pada run_vllm_service.sh:")
     print(f"    --enable-lora --lora-modules cakra-router={os.path.abspath(args.output_dir)}")
     print("=" * 60)
-    if use_unsloth:
-        print("\n  (Opsional jika ingin convert ke GGUF/Ollama):")
-        print(f"  model.save_pretrained_gguf('{args.output_dir}_gguf', tokenizer, quantization_method='q8_0')")
-        print(f"  ollama create cakra-router -f Modelfile.cakra-router")
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Fine-tune Cakra Router via QLoRA")
-    parser.add_argument("--model_name", type=str, default="unsloth/gemma-2-9b-it-bnb-4bit", help="Hugging Face / Unsloth Base Model")
-    parser.add_argument("--dataset", type=str, default="data/finetune/dispatcher_train_3000.jsonl", help="Training JSONL dataset")
+    parser = argparse.ArgumentParser(description="Fine-tune Cakra Router via QLoRA for Gemma 4 31B")
+    parser.add_argument("--model_name", type=str, default="unsloth/gemma-4-31B-it-unsloth-bnb-4bit", help="Hugging Face BNB 4-bit Base Model")
+    parser.add_argument("--tokenizer_name", type=str, default="/home/qisthi/models/gemma-4-31B-it-AWQ", help="Path to Tokenizer")
+    parser.add_argument("--dataset", type=str, default="data/finetune/nightly_dispatcher_router.jsonl", help="Training JSONL dataset")
     parser.add_argument("--output_dir", type=str, default="models/adapters/cakra-router-lora", help="Output directory for LoRA adapter")
-    parser.add_argument("--epochs", type=int, default=3, help="Training Epochs")
-    parser.add_argument("--batch_size", type=int, default=4, help="Batch Size per device")
-    parser.add_argument("--grad_accum", type=int, default=4, help="Gradient Accumulation Steps")
+    parser.add_argument("--epochs", type=int, default=1, help="Training Epochs")
+    parser.add_argument("--batch_size", type=int, default=24, help="Batch Size per device")
+    parser.add_argument("--grad_accum", type=int, default=1, help="Gradient Accumulation Steps")
     parser.add_argument("--learning_rate", type=float, default=2e-4, help="Learning Rate")
-    parser.add_argument("--max_seq_length", type=int, default=2048, help="Max Token Sequence Length")
-    parser.add_argument("--lora_r", type=int, default=16, help="LoRA Rank r")
-    parser.add_argument("--lora_alpha", type=int, default=32, help="LoRA Alpha")
+    parser.add_argument("--max_seq_length", type=int, default=1024, help="Max Token Sequence Length")
+    parser.add_argument("--lora_r", type=int, default=8, help="LoRA Rank r")
+    parser.add_argument("--lora_alpha", type=int, default=16, help="LoRA Alpha")
     args = parser.parse_args()
 
     train(args)
