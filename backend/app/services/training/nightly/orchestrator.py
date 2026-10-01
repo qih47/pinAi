@@ -45,6 +45,8 @@ class NightlyTrainingOrchestrator:
         self.coordinator = WorkerCoordinator(model_name=model_name)
         self.is_running = False
         self.stop_requested = False
+        self.is_manual_run: bool = False
+        self.manual_started_at: Optional[datetime] = None
 
         # Live State Tracking untuk Dashboard UI
         self.current_doc_id: Optional[int] = None
@@ -119,6 +121,7 @@ class NightlyTrainingOrchestrator:
 
         return {
             "is_running": self.is_running,
+            "is_manual_run": self.is_manual_run,
             "stop_requested": self.stop_requested,
             "started_at": self.started_at,
             "current_doc": {
@@ -141,15 +144,18 @@ class NightlyTrainingOrchestrator:
     def is_within_training_window(self, force_run: bool = False, current_dt: Optional[datetime] = None) -> bool:
         """
         Mengecek apakah saat ini berada dalam rentang waktu training:
-        1. Hari Kerja (Senin - Kamis malam s.d. Jumat pagi):
+        1. Manual Run: Jika di-start secara manual oleh user (force_run=True / self.is_manual_run=True),
+           training diizinkan berjalan terus menerus hingga di-stop manual atau mencapai batas
+           hard stop 08:00 WIB keesokan harinya.
+        2. Hari Kerja (Senin - Kamis malam s.d. Jumat pagi):
            - 18:00 sore s/d 07:30 pagi (toleransi batch s.d. 08:00 WIB).
-        2. Weekend Marathon (Jumat sore s/d Senin pagi):
+        3. Weekend Marathon (Jumat sore s/d Senin pagi):
            - Dimulai Jumat pukul 17:00 (5 sore) WIB (selepas jam kantor).
            - Sepanjang Sabtu (24 jam non-stop tanpa batas jam).
            - Sepanjang Minggu (24 jam non-stop tanpa batas jam).
            - Berakhir Senin pukul 07:30 WIB (hard stop 08:00 WIB untuk persiapan jam kerja).
         """
-        if force_run:
+        if force_run or self.is_manual_run:
             return True
 
         if current_dt is None:
@@ -186,29 +192,38 @@ class NightlyTrainingOrchestrator:
 
     def is_approaching_hard_stop(self, current_dt: Optional[datetime] = None) -> bool:
         """
-        Mengecek apakah sudah lewat 07:50 atau sudah >= 08:00 WIB pada hari kerja.
-        Catatan: Pada hari Sabtu & Minggu (Weekend Marathon), hard stop dinonaktifkan
-        sepenuhnya karena training berjalan 24 jam non-stop tanpa batasan jam.
-        Hard stop hanya berlaku pada hari kerja (Senin pagi s/d Jumat sore sebelum jam 17:00).
+        Mengecek apakah saat ini memasuki batas mutlak (Hard Stop) jam kerja pagi:
+        - Jam cutoff pagi: 07:50 s/d 08:15 WIB pada hari kerja (Senin - Jumat).
+        - Weekend (Sabtu & Minggu): Hard stop dinonaktifkan sepenuhnya (Marathon 24 jam non-stop).
+        - Manual Run: Jika di-start manual oleh user, training akan berjalan terus
+          sepanjang siang, sore, malam, dan baru berhenti saat mencapai cutoff
+          07:50 - 08:15 WIB keesokan harinya (kecuali baru saja di-start manual < 30 menit).
         """
         if current_dt is None:
             current_dt = datetime.now()
 
-        weekday = current_dt.weekday()
+        weekday = current_dt.weekday()  # 0=Senin, 1=Selasa, 2=Rabu, 3=Kamis, 4=Jumat, 5=Sabtu, 6=Minggu
         # Nonaktifkan hard stop di hari Sabtu dan Minggu (Weekend Marathon 24 jam)
         if weekday in (5, 6):
             return False
 
         current_time = current_dt.time()
-        cutoff_margin = dtime(7, 50)
-        # Pada hari Jumat: jam marathon weekend dimulai pukul 17:00
-        # Pada hari kerja lainnya: jam training malam dimulai pukul 18:00
-        daytime_end = dtime(17, 0) if weekday == 4 else self.start_time
+        hard_stop_start = dtime(7, 50)
+        hard_stop_end = dtime(8, 15)
 
-        # Jika sudah >= 07:50 WIB dan masih dalam jam kerja siang (sebelum training malam dimulai):
-        if cutoff_margin <= current_time < daytime_end:
-            return True
-        return False
+        # Cek apakah jam saat ini berada tepat di jendela transisi pagi (07:50 - 08:15 WIB)
+        in_morning_cutoff_window = (hard_stop_start <= current_time <= hard_stop_end)
+        if not in_morning_cutoff_window:
+            return False
+
+        # Jika sedang manual run dan user baru saja menekan tombol start (< 30 menit yang lalu),
+        # jangan langsung dimatikan demi menghormati aksi eksplisit user
+        if self.is_manual_run and self.manual_started_at:
+            elapsed_sec = (current_dt - self.manual_started_at).total_seconds()
+            if elapsed_sec < 1800:  # toleransi < 30 menit dari manual start
+                return False
+
+        return True
 
     async def sync_ragdb_documents_to_checkpoints(self) -> int:
         """
@@ -535,6 +550,8 @@ class NightlyTrainingOrchestrator:
         """
         self.is_running = True
         self.stop_requested = False
+        self.is_manual_run = bool(force_run)
+        self.manual_started_at = datetime.now() if force_run else None
         self.started_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         self.latest_log = "Sinkronisasi antrean dokumen dari ragdb..."
 
@@ -624,6 +641,8 @@ class NightlyTrainingOrchestrator:
         finally:
             await self.coordinator.close()
             self.is_running = False
+            self.is_manual_run = False
+            self.manual_started_at = None
 
 
 # ── GLOBAL SINGLETON ENGINE UNTUK DASHBOARD UI ──────────────────────────────────
@@ -690,6 +709,7 @@ async def get_nightly_dashboard_status() -> Dict[str, Any]:
     if _last_dash_status_cache is not None and (now - _last_dash_status_time < 3.0):
         cached = dict(_last_dash_status_cache)
         cached["is_running"] = orchestrator.is_running
+        cached["is_manual_run"] = orchestrator.is_manual_run
         cached["stop_requested"] = orchestrator.stop_requested
         cached["started_at"] = orchestrator.started_at
         cached["latest_log"] = orchestrator.latest_log
@@ -743,6 +763,7 @@ async def get_nightly_dashboard_status() -> Dict[str, Any]:
 
     result = {
         "is_running": orchestrator.is_running,
+        "is_manual_run": orchestrator.is_manual_run,
         "stop_requested": orchestrator.stop_requested,
         "started_at": orchestrator.started_at,
         "current_doc": {
