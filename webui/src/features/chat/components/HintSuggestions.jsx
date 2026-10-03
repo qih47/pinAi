@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { Globe, FileText, Code2, Target, ArrowUpRight, BarChart3, Workflow, FilePlus, Mail, ChevronDown, ChevronUp, HelpCircle, ArrowLeft } from "lucide-react";
+import { Globe, FileText, Code2, Target, ArrowUpRight, BarChart3, Workflow, FilePlus, Mail, ChevronDown, ChevronUp, HelpCircle, ArrowLeft, ListTodo } from "lucide-react";
 import { fetchChatSuggestions } from "../../../services/endpoints";
 import { translations } from "../../../utils/translations";
 import { useChatStore } from "../../../stores/chatStore";
@@ -48,7 +48,7 @@ export default function HintSuggestions({
 
   // Daftar seluruh aksi mode Cakra AI dengan Multi-Bahasa
   // Baris 1: Code, Search the web, Document search, Focus & Audit
-  // Baris 2: Chart & Data, Diagram & Flow, Create File, Draft Surat
+  // Baris 2: Chart & Data, Diagram & Flow, Create File, Draft Surat, Tugas Proyek
   const allActions = [
     // ── BARIS 1 (Primary 4 Actions) ──
     {
@@ -71,7 +71,7 @@ export default function HintSuggestions({
       label: tHints.focus,
       icon: Target,
     },
-    // ── BARIS 2 (Secondary 4 Actions / Expandable) ──
+    // ── BARIS 2 (Secondary 5 Actions / Expandable) ──
     {
       id: "chart",
       label: tHints.chart,
@@ -91,6 +91,11 @@ export default function HintSuggestions({
       id: "smart_mail",
       label: tHints.smartMail,
       icon: Mail,
+    },
+    {
+      id: "deck",
+      label: tHints.deck,
+      icon: ListTodo,
     }
   ];
 

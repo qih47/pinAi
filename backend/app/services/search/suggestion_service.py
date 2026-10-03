@@ -98,6 +98,14 @@ DEFAULT_SMART_MAIL_SUGGESTIONS = [
     {"title": "Email pengantar laporan berkala perkembangan proyek litbang", "category": "Email", "source": "mail"},
 ]
 
+DEFAULT_DECK_SUGGESTIONS = [
+    {"title": "Tampilkan daftar tugas yang ditugaskan ke saya di Pincloud Deck", "category": "Tugas Saya", "source": "deck"},
+    {"title": "Cek status papan proyek dan deadline pekerjaan aktif", "category": "Monitoring", "source": "deck"},
+    {"title": "Daftar kartu tugas yang sedang berjalan (In Progress)", "category": "Progress", "source": "deck"},
+    {"title": "Rangkuman tugas proyek prioritas tim minggu ini", "category": "Prioritas", "source": "deck"},
+    {"title": "Tampilkan kartu tugas yang sudah selesai diarsipkan", "category": "Arsip", "source": "deck"},
+]
+
 
 class SuggestionService:
     """
@@ -138,6 +146,9 @@ class SuggestionService:
 
         elif mode_lower in ["smart_mail", "mail", "email", "surat"]:
             return self._filter_static(DEFAULT_SMART_MAIL_SUGGESTIONS, clean_q, "Buatkan surat", "mail", limit)
+
+        elif mode_lower in ["deck", "task", "tasks", "proyek", "kanban"]:
+            return self._filter_static(DEFAULT_DECK_SUGGESTIONS, clean_q, "Lihat tugas", "deck", limit)
 
         # Mode Documents / Focus -> Jika guest, jangan beri dokumen internal (PKB/SOP/SKEP)
         if is_guest:

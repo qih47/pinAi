@@ -10,7 +10,8 @@ import {
   Sparkles,
   FileText,
   Search,
-  CheckCircle2
+  CheckCircle2,
+  ListTodo
 } from "lucide-react";
 import cakraLogo from "../../../../assets/cakra.png";
 import { useChatAuthStore } from "../../../../stores/authStore";
@@ -78,32 +79,39 @@ export default function QuickTipsModal({ darkMode, language = "id", isOpen: exte
   const slides = {
     id: [
       {
-        title: "Eksplorasi Katalog Dokumen & Regulasi",
+        title: "Eksplorasi Katalog Regulasi & Dokumen",
         badge: "Sidebar Kiri → Dokumen",
         icon: <BookOpen className="w-8 h-8 text-blue-500" />,
-        desc: "Klik menu Dokumen di Sidebar sebelah kiri untuk menelusuri seluruh arsip regulasi, SKEP Direksi, Surat Edaran, dan SOP internal PT Pindad secara terstruktur.",
-        highlight: "Tersedia fitur pencarian cepat untuk menemukan nomor dokumen dan regulasi yang Anda butuhkan."
+        desc: "Gunakan menu Dokumen pada bilah samping kiri untuk menelusuri arsip regulasi, Surat Keputusan Direksi (SKEP), Surat Edaran, dan SOP internal PT Pindad secara terstruktur.",
+        highlight: "Mendukung pencarian cepat berdasarkan nomor peraturan, tahun terbit, dan kata kunci subjek."
       },
       {
-        title: "Tanya Regulasi di Chat (Mode Dokumen)",
-        badge: "Kotak Chat → Pilih Mode Dokumen",
+        title: "Konsultasi Regulasi & Kebijakan Perusahaan",
+        badge: "Ruang Chat → Tanya Langsung",
         icon: <FileText className="w-8 h-8 text-emerald-500" />,
-        desc: "Saat ingin menanyakan isi regulasi, ketentuan operasional, atau kebijakan perusahaan, pilih Mode Dokumen di bawah kotak pesan sebelum mengirim pertanyaan.",
-        highlight: "Cakra AI akan otomatis menjawab berdasarkan isi regulasi resmi dan menyertakan sitasi sumber dokumennya."
+        desc: "Ketik pertanyaan regulasi atau kebijakan kerja secara langsung di kolom obrolan. Sistem otomatis mengenali pertanyaan regulasi, melakukan penelusuran basis data hukum, dan menyertakan rujukan pasal resmi.",
+        highlight: "Tersedia penampil halaman pindaian asli dokumen untuk memverifikasi keabsahan pasal yang dikutip."
       },
       {
-        title: "Lampirkan Dokumen & Analisis Cerdas",
-        badge: "Tombol '+' → Upload File",
+        title: "Integrasi Tugas & Proyek Pincloud Deck",
+        badge: "Ruang Chat → Tanyakan Tugas",
+        icon: <ListTodo className="w-8 h-8 text-sky-500" />,
+        desc: "Tanyakan daftar tugas aktif Anda (contoh: \"Tampilkan tugas yang ditugaskan ke saya\" atau \"Cek progres proyek\"). Sistem akan memunculkan papan kartu Kanban interaktif yang terhubung langsung dengan Pincloud Deck.",
+        highlight: "Mendukung filter status tugas (Semua/Aktif/Selesai), pencarian cepat nama tugas, dan tautan langsung ke papan proyek."
+      },
+      {
+        title: "Lampirkan Dokumen & Analisis Berkas",
+        badge: "Tombol '+' → Unggah Berkas",
         icon: <Paperclip className="w-8 h-8 text-indigo-500" />,
-        desc: "Anda dapat melampirkan file dokumen (PDF, Word, Excel) maupun gambar ke dalam percakapan untuk diringkas, diekstrak datanya, atau dianalisis langsung oleh AI.",
-        highlight: "Mendukung drag-and-drop file langsung ke area chat."
+        desc: "Lampirkan berkas dokumen (PDF, Word, Excel) atau gambar ke dalam percakapan untuk diringkas, diekstraksi datanya, atau diisolasi sebagai fokus analisis rujukan.",
+        highlight: "Mendukung fitur drag-and-drop berkas langsung ke area input obrolan."
       },
       {
-        title: `Asisten Pribadi Anda, ${preferredName}`,
-        badge: "Menu Pengaturan → Gaya Bahasa",
+        title: `Personalisasi Akun, ${preferredName}`,
+        badge: "Pengaturan → Gaya Komunikasi",
         icon: <UserCheck className="w-8 h-8 text-purple-500" />,
-        desc: `Cakra AI telah dipersonalisasi untuk memanggil Anda sebagai "${preferredName}". Anda dapat menyesuaikan gaya komunikasi (Formal, Santai, Akrab, atau Adaptif) kapan saja melalui menu Pengaturan.`,
-        highlight: "Cakra AI siap mendampingi dan meningkatkan produktivitas harian Anda di PT Pindad!"
+        desc: `Profil Anda telah terkonfigurasi dengan sapaan "${preferredName}". Anda dapat menyesuaikan gaya komunikasi (Formal, Santai, Akrab, atau Adaptif) dan preferensi visual melalui menu Pengaturan.`,
+        highlight: "Mendukung konfigurasi multibahasa (Indonesia / English) dan tema tampilan (Terang / Gelap)."
       }
     ],
     en: [
@@ -111,29 +119,36 @@ export default function QuickTipsModal({ darkMode, language = "id", isOpen: exte
         title: "Explore Document & Regulation Catalog",
         badge: "Left Sidebar → Documents",
         icon: <BookOpen className="w-8 h-8 text-blue-500" />,
-        desc: "Click on Documents in the left sidebar to explore the full repository of corporate regulations, decrees, policies, and standard operating procedures.",
-        highlight: "Includes quick search to locate official regulations and document numbers instantly."
+        desc: "Use the Documents menu on the left sidebar to navigate corporate decrees (SKEP), circular letters, and internal standard operating procedures.",
+        highlight: "Supports rapid search by regulation number, publication year, and subject keyword."
       },
       {
-        title: "Ask Regulations in Chat (Document Mode)",
-        badge: "Chat Area → Select Document Mode",
+        title: "Corporate Regulation Consultation",
+        badge: "Chat Area → Ask Directly",
         icon: <FileText className="w-8 h-8 text-emerald-500" />,
-        desc: "When asking about internal regulations, operating policies, or corporate governance, select Document Mode below the message box.",
-        highlight: "Cakra AI automatically answers using official regulatory sources and provides exact document citations."
+        desc: "Ask questions regarding company regulations or operational policies directly in the chat box. The system automatically classifies regulatory intent, queries the legal vector database, and cites official articles.",
+        highlight: "Includes original document page viewing to verify cited regulation clauses directly."
       },
       {
-        title: "Attach Files & Smart Document Analysis",
+        title: "Pincloud Deck Task & Project Integration",
+        badge: "Chat Area → Inquire Tasks",
+        icon: <ListTodo className="w-8 h-8 text-sky-500" />,
+        desc: "Inquire about your assigned tasks (e.g. \"Show tasks assigned to me\" or \"Check project progress\"). The system renders an interactive Kanban board synchronized with Pincloud Deck.",
+        highlight: "Supports status filtering (All/Active/Done), task keyword search, and direct links to project boards."
+      },
+      {
+        title: "Attach Files & Document Analysis",
         badge: "'+' Button → Upload Files",
         icon: <Paperclip className="w-8 h-8 text-indigo-500" />,
-        desc: "Attach document files (PDF, Word, Excel) or images directly into the conversation to summarize, extract data, and generate analytical insights on demand.",
-        highlight: "Supports drag-and-drop file uploading directly into the chat canvas."
+        desc: "Attach documents (PDF, Word, Excel) or images to summarize, extract tabular data, or isolate as specific reference context.",
+        highlight: "Supports drag-and-drop file uploading directly into the chat area."
       },
       {
-        title: `Personalized Assistant for You, ${preferredName}`,
-        badge: "Settings Menu → Tone & Name",
+        title: `Account Personalization, ${preferredName}`,
+        badge: "Settings → Communication Tone",
         icon: <UserCheck className="w-8 h-8 text-purple-500" />,
-        desc: `Cakra AI is configured to address you as "${preferredName}". You can adjust your preferred communication style (Formal, Casual, Friendly, or Adaptive) anytime in Settings.`,
-        highlight: "Ready to support your daily corporate workflow and productivity at PT Pindad!"
+        desc: `Your profile is configured to address you as "${preferredName}". You can adjust communication tone (Formal, Casual, Friendly, or Adaptive) and visual preferences in Settings.`,
+        highlight: "Supports multilingual configuration (Indonesian / English) and themes (Light / Dark)."
       }
     ]
   }[language === "en" ? "en" : "id"];
