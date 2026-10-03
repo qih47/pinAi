@@ -156,12 +156,22 @@ class ModeDocuments:
                                 target_keywords.add(word)
 
                     if target_keywords:
-                        is_brain_relevant = any(kw in brain_combined_text for kw in target_keywords)
-                        if not is_brain_relevant:
-                            logger.info(
-                                f"[MODE_DOCUMENTS] 🔄 Brain docs mismatch: Brain has '{brain_combined_text[:80]}' "
-                                f"but user targets '{target_keywords}'. Falling back to Global RAG."
-                            )
+                        is_anaphora_followup = bool(
+                            routing_data.get("requires_visual")
+                            or routing_data.get("has_prior_rag")
+                            or routing_data.get("active_regulation_title")
+                            or any(w in user_message.lower() for w in ["lampiran", "pasal", "ayat", "bagan", "tunjukin", "lihat", "halaman", "format", "formulir"])
+                        )
+                        if is_anaphora_followup and session_brain_docs:
+                            is_brain_relevant = True
+                            logger.info(f"[MODE_DOCUMENTS] 🧠 Preserving session brain document for anaphora follow-up: {brain_combined_text[:60]}")
+                        else:
+                            is_brain_relevant = any(kw in brain_combined_text for kw in target_keywords)
+                            if not is_brain_relevant:
+                                logger.info(
+                                    f"[MODE_DOCUMENTS] 🔄 Brain docs mismatch: Brain has '{brain_combined_text[:80]}' "
+                                    f"but user targets '{target_keywords}'. Falling back to Global RAG."
+                                )
 
             candidate_docs = []
 
@@ -275,8 +285,14 @@ class ModeDocuments:
 
                     # Simpan cadangan kandidat awal jika retry DB tidak membuahkan hasil
                     initial_candidates = list(candidate_docs)
+                    is_doc_anaphora = bool(
+                        routing_data.get("requires_visual")
+                        or routing_data.get("has_prior_rag")
+                        or routing_data.get("active_regulation_title")
+                        or any(w in user_message.lower() for w in ["lampiran", "pasal", "ayat", "bagan", "tunjukin", "lihat", "halaman", "format", "formulir"])
+                    )
                     from_brain = any(doc.get("_from_session_brain") for doc in candidate_docs)
-                    if from_brain:
+                    if from_brain and not is_doc_anaphora:
                         logger.info("[MODE_DOCUMENTS] 🗑️ Rejecting stale Brain candidates for this query, switching to fresh Database search.")
                         candidate_docs = []
 
@@ -312,6 +328,11 @@ class ModeDocuments:
                         crag_reference_ids = crag_eval_t2.get("reference_doc_ids", [])
                     else:
                         logger.info("[MODE_DOCUMENTS] ℹ️ Re-search did not return new docs, retaining initial candidates as best-effort.")
+                        candidate_docs = initial_candidates
+
+                    # 🛡️ Anaphora Safety Anchor: Pastikan dokumen induk dari memori sesi tidak lenyap
+                    if is_doc_anaphora and not candidate_docs and initial_candidates:
+                        logger.info("[MODE_DOCUMENTS] 🛡️ Anaphora safety anchor: Force-retaining active document candidates.")
                         candidate_docs = initial_candidates
 
 
@@ -831,7 +852,52 @@ class ModeDocuments:
             if combined_documents:
                 combined_documents += "\n\n"
             combined_documents += rag_context[:rag_budget]
-            
+
+        # 🖼️ INJEKSI ASET VISUAL HALAMAN DOKUMEN (doc_media):
+        is_visual_doc_request = bool(
+            routing_data.get("requires_visual")
+            or "doc_media" in (routing_data.get("visual_types") or [])
+            or any(w in user_message.lower() for w in ["lampiran", "bagan", "gambar", "tunjukin", "lihat", "halaman", "format", "formulir"])
+        )
+        if is_visual_doc_request and (rag_sources or candidate_docs):
+            from backend.app.core.paths import DOC_PAGES_DIR
+            target_docs = list(rag_sources or candidate_docs or [])
+            p_doc = target_docs[0]
+            p_doc_id = p_doc.get("id") or p_doc.get("dokumen_id")
+            p_doc_title = p_doc.get("title") or p_doc.get("judul") or "Dokumen"
+            if p_doc_id:
+                doc_folder = os.path.join(DOC_PAGES_DIR, str(p_doc_id))
+                if os.path.exists(doc_folder):
+                    png_files = sorted([f for f in os.listdir(doc_folder) if f.endswith(".png")])
+                    if png_files:
+                        p_match = re.search(r'halaman\s*(\d+)', user_message, re.IGNORECASE)
+                        req_page = int(p_match.group(1)) if p_match else 1
+                        if req_page > len(png_files):
+                            req_page = 1
+
+                        visual_doc_instruction = (
+                            f"\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                            f"📸 ASET VISUAL HALAMAN FISIK TERSEDIA (ID #{p_doc_id} - {p_doc_title})\n"
+                            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                            f"Pengguna meminta melihat fisik lampiran/halaman dokumen. Snapshot PNG halaman dokumen telah diverifikasi di server:\n"
+                            f"- Total Halaman: {len(png_files)}\n"
+                            f"- URL Halaman {req_page}: /doc_pages/{p_doc_id}/{png_files[req_page-1]}\n\n"
+                            f"WAJIB: Kamu WAJIB menyajikan blok Generative UI doc_media persis seperti format berikut agar gambar halaman fisik muncul tajam di layar pengguna:\n"
+                            f"```doc_media\n"
+                            f'{{"dokumen_id": {p_doc_id}, "title": "{p_doc_title}", "image_url": "/doc_pages/{p_doc_id}/{png_files[req_page-1]}", "page": {req_page}, "total_pages": {len(png_files)}}}\n'
+                            f"```\n"
+                            f"Lalu sampaikan penjelasan singkat mengenai isi fisik dokumen/lampiran tersebut secara lugas."
+                        )
+                        if combined_documents:
+                            combined_documents += visual_doc_instruction
+                        else:
+                            combined_documents = visual_doc_instruction
+                        logger.info(f"[MODE_DOCUMENTS] 🖼️ Visual doc assets injected: doc={p_doc_id}, page={req_page}, total={len(png_files)}")
+
+        # Jika rag_sources kosong tapi candidate_docs ada, tetapkan rag_sources dari candidate_docs agar Source Citation tidak hilang
+        if not rag_sources and candidate_docs:
+            rag_sources = list(candidate_docs)
+
         safe_rag_context = combined_documents if combined_documents else None
 
 

@@ -32,7 +32,9 @@ from backend.app.services.analytics_service import (
     get_query_clusters,
     get_all_users_with_activity,
     get_daily_token_usage,
-    get_request_token_logs
+    get_request_token_logs,
+    get_aggregated_latencies,
+    get_context_memory_stats
 )
 from backend.app.services.security_service import get_recent_security_logs
 from backend.app.services.hardware_service import get_hardware_telemetry
@@ -118,9 +120,54 @@ async def get_ollama_models():
 
 @router.get("/ollama/ps")
 async def get_ollama_ps():
-    """Mengambil daftar model yang sedang berjalan (loaded in VRAM) dari Ollama"""
+    """Mengambil daftar model yang sedang berjalan (loaded in VRAM) dari Ollama & vLLM"""
     models = await get_ollama_running_models()
     return {"status": "success", "running_models": models}
+
+@router.post("/pipeline/event")
+async def post_pipeline_event(payload: Dict[str, Any] = Body(...)):
+    """Menerima event pipeline dari Chat WebUI atau microservice lain dan menyiarkannya ke Canvas"""
+    from backend.app.services.analytics_service import pipeline_broadcaster
+    await pipeline_broadcaster.broadcast(payload)
+    return {"status": "success", "subscribers": len(pipeline_broadcaster._subscribers)}
+
+@router.get("/pipeline/live-stream")
+async def pipeline_live_stream():
+    """SSE stream untuk realtime pipeline canvas visualizer lintas tab/origin"""
+    from backend.app.services.analytics_service import pipeline_broadcaster
+    q = pipeline_broadcaster.subscribe()
+
+    async def event_generator():
+        try:
+            # Kirim init handshake
+            yield f"data: {json.dumps({'type': 'CONNECTED', 'timestamp': int(datetime.utcnow().timestamp() * 1000)})}\n\n"
+            while True:
+                try:
+                    data = await asyncio.wait_for(q.get(), timeout=15.0)
+                    yield f"data: {json.dumps(data)}\n\n"
+                except asyncio.TimeoutError:
+                    # Ping keep-alive
+                    yield ": keep-alive\n\n"
+        except asyncio.CancelledError:
+            pass
+        finally:
+            pipeline_broadcaster.unsubscribe(q)
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        }
+    )
+
+@router.get("/latencies")
+async def request_latencies(period: str = "today"):
+    """Mengambil riwayat agregasi latensi riil dari database (today, 7d, all)"""
+    result = await get_aggregated_latencies(period=period)
+    return {"status": "success", "data": result}
 
 @router.get("/users/leaderboard")
 async def get_leaderboard():
@@ -366,6 +413,12 @@ async def update_system_settings(request: SettingsUpdateRequest):
         logger.error(f"Failed to update settings: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@router.get("/context-memory")
+async def context_memory_metrics():
+    """Mengambil metrik alokasi context window riil dari database atau baseline aktif."""
+    data = await get_context_memory_stats()
+    return data
+
 @router.get("/settings")
 async def get_system_settings():
     """Mengambil konfigurasi sistem untuk tab Settings di Dashboard"""
@@ -373,13 +426,18 @@ async def get_system_settings():
     return {
         "status": "success",
         "data": {
+            "LLM_ENGINE": getattr(settings, "LLM_ENGINE", "vllm"),
+            "VLLM_BASE_URL": getattr(settings, "VLLM_BASE_URL", "http://localhost:8005/v1"),
             "OLLAMA_BASE_URL": settings.OLLAMA_BASE_URL,
             "DB_HOST": settings.DB_HOST,
             "DB_DATABASE": settings.DB_DATABASE,
+            "MODEL_BASE": getattr(settings, "MODEL_BASE", "/home/qisthi/models/gemma-4-31B-it-AWQ"),
             "MODEL_PERSONA": settings.MODEL_PERSONA,
-            "MODEL_ROUTER": getattr(settings, "MODEL_ROUTER", "gemma4:e4b"),
+            "MODEL_ROUTER": getattr(settings, "MODEL_ROUTER", "cakra-router"),
             "MODEL_VISION": getattr(settings, "MODEL_VISION", "minicpm-v:latest"),
             "MODEL_EMBEDDING": settings.MODEL_EMBEDDING,
+            "MODEL_RERANKER": "BAAI/bge-reranker-v2-m3 (PyTorch CUDA)",
+            "MODEL_TTS": "F5-TTS (PyTorch CUDA)",
             "NUM_CTX_CORE": getattr(settings, "NUM_CTX_CORE", 16384),
             "NUM_CTX_ROUTER": getattr(settings, "NUM_CTX_ROUTER", 4096),
             "SIMILARITY_THRESHOLD": settings.SIMILARITY_THRESHOLD,
@@ -390,6 +448,7 @@ async def get_system_settings():
             "SYSTEM_VERSION": "3.5.0 (Cakra Modular Architecture)"
         }
     }
+
 
 @router.post("/operations/{action}")
 async def execute_operation(action: str, body: Optional[OperationRequest] = None):

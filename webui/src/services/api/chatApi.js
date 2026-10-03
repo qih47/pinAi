@@ -79,7 +79,7 @@ export async function fetchChatSuggestions(mode = 'documents', query = '', limit
  */
 export async function streamChat(
   { sessionUuid, messages, chatMode, thinking, isolatedDocId, attachmentPaths, npp, editIndex, editMessageId, assistantMessageId, signal, activeTopic, keySubject, forcedMode, bypassRouter, language, regeneratedFromId, parentId, isRegenerate, targetIndex, parentIndex, docTitle, hintSource, contextIsolation },
-  { onThinking, onStatus, onSources, onChunk, onFileStatus, onDone, onError, onTopicUpdate },
+  { onThinking, onStatus, onSources, onChunk, onFileStatus, onDone, onError, onTopicUpdate, onPipelineRouting },
   options = {}
 ) {
   const { timeoutMs = 5 * 60 * 1000 } = options;  // 5 minute default timeout
@@ -291,6 +291,11 @@ export async function streamChat(
           // Handle topic & key subject update from Call 1 Router
           if (parsedData.event_type === 'topic_update' && parsedData.topic && onTopicUpdate) {
             onTopicUpdate(parsedData.topic, parsedData.key_subject);
+          }
+
+          // Handle real pipeline routing decision from Call 1 Router
+          if (parsedData.event_type === 'pipeline_routing' && onPipelineRouting) {
+            onPipelineRouting(parsedData);
           }
 
           // Handle file generation lifecycle (Interceptor-Analyst Pipeline)

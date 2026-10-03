@@ -630,6 +630,12 @@ async def agentic_stream_wrapper(
                 except Exception as e:
                     logger.warning(f"[AGENTIC_INTERCEPTOR] Incomplete sources_buffer parse at stream end: {e}")
 
+            # 🛡️ PERSISTENT FALLBACK: Jika Call 2 tidak memancarkan tag <sources>, pertahankan rujukan dokumen aktif sesi
+            if not sources_emitted and current_rag_sources:
+                sources_emitted = True
+                logger.info(f"[AGENTIC_INTERCEPTOR] 📚 Emitting {len(current_rag_sources)} persistent fallback sources at stream end")
+                yield format_sse("", "", False, sources=current_rag_sources, event_type=SSEEventType.SOURCES)
+
             if not tool_executed and buffer:
                 # Bersihkan jika buffer menyisakan potongan tag <sources_json>
                 if not sources_emitted and buffer.strip().startswith("<") and "<sources_json>".startswith(buffer.strip().lower()):

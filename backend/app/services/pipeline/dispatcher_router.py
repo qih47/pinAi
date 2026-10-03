@@ -886,6 +886,12 @@ def _validate_and_normalize_routing(
         precheck.get("has_prior_chitchat") 
         or (context_history_str and "[RESPONDER_ACTION: CHITCHAT_DIJAWAB]" in context_history_str)
     )
+    has_prior_rag = bool(
+        precheck.get("has_prior_rag")
+        or (context_history_str and "[RESPONDER_ACTION: REGULASI_DIJELASKAN]" in context_history_str)
+    )
+    active_reg_title = str(precheck.get("active_regulation_title") or "").strip()
+    active_reg_id = precheck.get("active_regulation_id")
 
     # 1. 🧙 Penanganan Konfirmasi Wizard:
     if is_replying_to_wizard:
@@ -955,18 +961,48 @@ def _validate_and_normalize_routing(
             routing["is_ambiguous"] = False
             logger.info("[DISPATCHER_ROUTER] 💬 Continuous Casual / Chitchat flow detected -> is_chitchat=True")
 
-    # 5. 📚 Penanganan Kelanjutan Dokumen / Regulasi Multi-turn:
+    # 5. 📚 Penanganan Kelanjutan Dokumen / Regulasi Multi-turn (Termasuk Lampiran, Bagan, Bab, Pasal):
     # Jika percakapan sebelumnya membahas dokumen/PKB/regulasi dan pesan lanjutan menanyakan rincian
-    has_prior_doc_context = bool(context_history_str and any(kw in context_history_str.lower() for kw in ["pkb", "pasal", "peraturan", "sop", "skep", "surat keputusan", "ketentuan", "kebijakan"]))
-    if has_prior_doc_context and not routing["need_rag"] and not routing.get("is_coding") and not is_simple_greeting:
-        follow_up_doc_kw = ["bagaimana dengan", "bagaimana kalau", "lalu", "kalau", "kompensasi", "lembur", "lapangan", "sanksi", "syarat", "ketentuan", "aturan", "berapa", "karyawan", "pegawai", "hak"]
-        if any(w in user_msg_lower for w in follow_up_doc_kw):
+    has_prior_doc_context = bool(
+        has_prior_rag
+        or (context_history_str and any(kw in context_history_str.lower() for kw in ["pkb", "pasal", "peraturan", "sop", "skep", "surat keputusan", "ketentuan", "kebijakan", "dokumen"]))
+    )
+    if has_prior_doc_context and not routing.get("is_coding") and not is_simple_greeting and not is_explicit_web:
+        doc_anaphora_kw = [
+            "lampiran", "pasal", "ayat", "bagan", "bab", "gambar", "tabel", "skema", "alur", "formulir", "format",
+            "bagaimana dengan", "bagaimana kalau", "lalu", "kalau", "kompensasi", "lembur", "lapangan", "sanksi",
+            "syarat", "ketentuan", "aturan", "berapa", "karyawan", "pegawai", "hak", "tunjangan", "halaman",
+            "tunjukin", "tampilkan", "lihat", "buka", "perlihatkan", "detail", "isi dari", "apa bunyi", "bunyinya"
+        ]
+        if any(w in user_msg_lower for w in doc_anaphora_kw) or routing.get("need_rag"):
             routing["need_rag"] = True
             routing["is_chitchat"] = False
             routing["is_web_search"] = False
-            if not routing.get("queries"):
+            routing["needs_history"] = True
+            
+            # Jika user meminta melihat visual / gambar / lampiran dari dokumen regulasi
+            if any(w in user_msg_lower for w in ["lampiran", "bagan", "gambar", "alur", "skema", "diagram", "tunjukin", "lihat", "tampilkan", "format", "formulir", "dokumen"]):
+                routing["requires_visual"] = True
+                if "doc_media" not in routing.get("visual_types", []):
+                    if not routing.get("visual_types"):
+                        routing["visual_types"] = ["doc_media"]
+                    else:
+                        routing["visual_types"].append("doc_media")
+
+            # Preservasi query_judul dari regulasi aktif jika belum ada
+            if active_reg_title and not routing.get("query_judul"):
+                routing["query_judul"] = [active_reg_title]
+                
+            # Sintesis query spesifik jika query kosong atau terlalu pendek
+            if active_reg_title and (not routing.get("queries") or len(routing["queries"][0].split()) <= 2):
+                routing["queries"] = [f"{user_message} {active_reg_title}".strip()]
+            elif not routing.get("queries"):
                 routing["queries"] = [user_message]
-            logger.info(f"[DISPATCHER_ROUTER] 📚 Continuous Document Context detected from history -> need_rag=True, queries={routing['queries']}")
+                
+            logger.info(
+                f"[DISPATCHER_ROUTER] 📚 Continuous Document Context resolved: active_reg='{active_reg_title}' | "
+                f"need_rag=True | requires_visual={routing.get('requires_visual')} | visual_types={routing.get('visual_types')} | queries={routing['queries']}"
+            )
 
     # ── ATURAN STRICT MODE DOKUMEN (USER EXPLICIT INTENT OVERRIDE) ───────────
     # Jika user secara manual mengunci Mode Dokumen (forced_mode), pastikan need_rag aktif HANYA jika bukan web search atau koding
@@ -1658,6 +1694,12 @@ async def dispatch_preset_route(
             precheck.get("has_prior_chitchat") 
             or ("[RESPONDER_ACTION: CHITCHAT_DIJAWAB]" in context_history_str)
         )
+        has_prior_rag = (
+            precheck.get("has_prior_rag")
+            or ("[RESPONDER_ACTION: REGULASI_DIJELASKAN]" in context_history_str)
+        )
+        active_reg_title = str(precheck.get("active_regulation_title") or "").strip()
+        active_reg_id = precheck.get("active_regulation_id")
         has_prior_context = bool(context_history_str and context_history_str.strip())
         is_detailed_confirmation = any(user_message.strip().lower().startswith(kw) for kw in ["gunakan ", "pilih ", "fokus pada ", "rujuk ", "opsi ", "chart ", "buatkan ", "bikin "]) or len(user_message.strip()) > 40
 
@@ -1700,6 +1742,25 @@ async def dispatch_preset_route(
             result["requires_visual"] = True
             if not result.get("visual_types"):
                 result["visual_types"] = [precheck.get("last_visual_type") or "chart"]
+
+        # Kelanjutan RAG & Lampiran regulasi multi-turn jika Call 2 sebelumnya telah membahas regulasi
+        if has_prior_rag and not result.get("is_coding") and not is_guest_user:
+            doc_anaph_p = ["lampiran", "pasal", "ayat", "bagan", "bab", "gambar", "tabel", "skema", "alur", "format", "formulir", "tunjukin", "lihat", "tampilkan", "buka"]
+            if any(w in user_lower_check for w in doc_anaph_p):
+                result["need_rag"] = True
+                result["is_ambiguous"] = False
+                if any(w in user_lower_check for w in ["lampiran", "bagan", "gambar", "alur", "skema", "tunjukin", "lihat", "tampilkan"]):
+                    result["requires_visual"] = True
+                    vt_curr = result.get("visual_types", [])
+                    if isinstance(vt_curr, list) and "doc_media" not in vt_curr:
+                        vt_curr.append("doc_media")
+                    elif isinstance(vt_curr, str):
+                        vt_curr = [vt_curr, "doc_media"]
+                    result["visual_types"] = vt_curr
+                if active_reg_title and not result.get("query_judul"):
+                    result["query_judul"] = [active_reg_title]
+                if active_reg_title and not result.get("queries"):
+                    result["queries"] = [f"{user_message} {active_reg_title}".strip()]
 
         # Visual flag & sub-types
         raw_vt = res_json.get("visual_types") or res_json.get("visual_type") or []

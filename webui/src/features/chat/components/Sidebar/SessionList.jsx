@@ -343,14 +343,14 @@ export default function SessionList({
               e.preventDefault();
               setActiveMenuId?.(null);
               const token = localStorage.getItem('cakra_token');
-              const base = import.meta.env.VITE_ANALYTICS_URL || `${window.location.protocol}//${window.location.hostname}:5174/analytics`;
+              const base = import.meta.env.VITE_ANALYTICS_URL || '/analytics';
               try {
                 const url = new URL(base, window.location.origin);
                 if (token) url.searchParams.set('token', token);
                 if (userData?.npp) url.searchParams.set('npp', userData.npp);
                 window.location.href = url.toString();
               } catch (err) {
-                window.location.href = base;
+                window.location.href = '/analytics';
               }
             }}
             className={`flex items-center transition-all group overflow-hidden text-[14px] ${location.pathname === '/analytics'

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   Brain,
   FileText,
@@ -29,6 +29,7 @@ import {
   Eye,
   BookOpen,
   ChevronRight,
+  ChevronLeft,
   Pause,
   RefreshCw,
   AlertCircle,
@@ -37,23 +38,45 @@ import {
   CornerDownRight,
   ZoomIn,
   ZoomOut,
-  X
+  X,
+  Upload,
+  Shield,
+  Globe
 } from 'lucide-react';
 import apiClient from '../../../services/apiClient';
 
-const DeepLearningTab = () => {
-  const [activeSubTab, setActiveSubTab] = useState('pipelines'); // 'pipelines' | 'synthetic' | 'jobs'
+const PAGE_SIZE = 40;
+
+const DeepLearningTab = ({ initialSubTab = 'pipelines', onSubTabChange }) => {
+  const [activeSubTab, setActiveSubTab] = useState(initialSubTab); // 'pipelines' | 'synthetic' | 'jobs' | 'lora'
+
+  useEffect(() => {
+    if (initialSubTab && initialSubTab !== activeSubTab) {
+      setActiveSubTab(initialSubTab);
+    }
+  }, [initialSubTab]);
   const [sourceDocs, setSourceDocs] = useState([]);
   const [syntheticDocs, setSyntheticDocs] = useState([]);
   const [jobs, setJobs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const [pipelinePage, setPipelinePage] = useState(1);
+  const [syntheticPage, setSyntheticPage] = useState(1);
 
   // Nightly 6-Worker Training State
   const [nightlyStatus, setNightlyStatus] = useState(null);
   const [isNightlyStarting, setIsNightlyStarting] = useState(false);
   const [isNightlyStopping, setIsNightlyStopping] = useState(false);
   const [isSyncingCatalog, setIsSyncingCatalog] = useState(false);
+
+  // Self-Service PDF Upload Modal State (Internal vs External Isolation)
+  const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
+  const [uploadFile, setUploadFile] = useState(null);
+  const [uploadTitle, setUploadTitle] = useState('');
+  const [uploadDescription, setUploadDescription] = useState('');
+  const [uploadTier, setUploadTier] = useState('INTERNAL'); // 'INTERNAL' | 'EXTERNAL'
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
 
   // Live Job Monitor & Two-Page Spread State
   const [liveMonitor, setLiveMonitor] = useState(null);
@@ -76,11 +99,14 @@ const DeepLearningTab = () => {
   const [trainingMethod, setTrainingMethod] = useState('STANDARD');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isBatchSubmitting, setIsBatchSubmitting] = useState(false);
+  const [loraTelemetry, setLoraTelemetry] = useState(null);
 
+  // Initial load on mount only (decoupled from tab switching)
   useEffect(() => {
     fetchData();
     fetchNightlyStatus();
     fetchLiveMonitor();
+    fetchLoraTelemetry();
 
     const interval = setInterval(async () => {
       // Guard against request piling/storming
@@ -90,12 +116,19 @@ const DeepLearningTab = () => {
         if (activeSubTabRef.current === 'jobs') {
           await Promise.all([
             fetchLiveMonitor(),
+            fetchNightlyStatus(),
+            fetchLoraTelemetry()
+          ]);
+        } else if (activeSubTabRef.current === 'lora') {
+          await Promise.all([
+            fetchLoraTelemetry(),
             fetchNightlyStatus()
           ]);
         } else {
           await Promise.all([
             fetchJobs(),
-            fetchNightlyStatus()
+            fetchNightlyStatus(),
+            fetchLoraTelemetry()
           ]);
         }
       } catch (err) {
@@ -106,7 +139,7 @@ const DeepLearningTab = () => {
     }, 3500);
 
     return () => clearInterval(interval);
-  }, [activeSubTab]);
+  }, []); // Run on mount only! Tab switching will be instantaneous.
 
   useEffect(() => {
     if (autoScrollTerminal && monitorTab === 'terminal' && terminalEndRef.current) {
@@ -119,6 +152,17 @@ const DeepLearningTab = () => {
       const res = await apiClient.get('/training/nightly/live-monitor', { timeout: 7000 });
       if (res.data?.data) {
         setLiveMonitor(res.data.data);
+      }
+    } catch (e) {
+      // non-blocking
+    }
+  };
+
+  const fetchLoraTelemetry = async () => {
+    try {
+      const res = await apiClient.get('/training/lora/telemetry', { timeout: 5000 });
+      if (res.data?.data) {
+        setLoraTelemetry(res.data.data);
       }
     } catch (e) {
       // non-blocking
@@ -232,8 +276,78 @@ const DeepLearningTab = () => {
     }
   };
 
-  const fetchData = async () => {
-    setLoading(true);
+  const handleTabChange = (newTab) => {
+    setActiveSubTab(newTab);
+    if (onSubTabChange) {
+      onSubTabChange(newTab);
+    }
+    // Lazy-load document sets only if switching to pipelines or synthetic and they are not in memory
+    if (newTab === 'pipelines' && sourceDocs.length === 0) {
+      fetchSourceDocs();
+    } else if (newTab === 'synthetic' && syntheticDocs.length === 0) {
+      fetchSyntheticDocs();
+    }
+  };
+
+  const handleUploadSubmit = async (e) => {
+    e.preventDefault();
+    if (!uploadFile) {
+      alert("Pilih berkas PDF terlebih dahulu!");
+      return;
+    }
+    if (!uploadTitle.trim()) {
+      alert("Judul dokumen tidak boleh kosong!");
+      return;
+    }
+
+    setIsUploading(true);
+    setUploadProgress(15);
+    try {
+      const formData = new FormData();
+      formData.append('file', uploadFile);
+      formData.append('title', uploadTitle.trim());
+      if (uploadDescription) formData.append('description', uploadDescription.trim());
+      formData.append('access_tier', uploadTier);
+
+      setUploadProgress(40);
+      await apiClient.post('/documents/ingest', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+        onUploadProgress: (progressEvent) => {
+          if (progressEvent.total) {
+            const pct = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+            setUploadProgress(Math.min(95, Math.max(40, pct)));
+          }
+        }
+      });
+
+      setUploadProgress(100);
+      alert(`✅ Dokumen "${uploadTitle}" berhasil diunggah!\n• Kategori Akses: ${uploadTier}\n• Status: Antrean Embedding Dimulai.`);
+      setIsUploadModalOpen(false);
+      setUploadFile(null);
+      setUploadTitle('');
+      setUploadDescription('');
+      setUploadTier('INTERNAL');
+      await fetchNightlyStatus();
+      await fetchSourceDocs();
+    } catch (err) {
+      const msg = err.response?.data?.detail || err.message;
+      alert("❌ Gagal upload dokumen: " + (typeof msg === 'object' ? JSON.stringify(msg) : msg));
+    } finally {
+      setIsUploading(false);
+      setUploadProgress(0);
+    }
+  };
+
+  const handleSearchChange = (val) => {
+    setSearchQuery(val);
+    setPipelinePage(1);
+    setSyntheticPage(1);
+  };
+
+  const fetchData = async (force = false) => {
+    if (!force && sourceDocs.length === 0 && syntheticDocs.length === 0) {
+      setLoading(true);
+    }
     await Promise.all([fetchSourceDocs(), fetchSyntheticDocs(), fetchJobs()]);
     setLoading(false);
   };
@@ -328,17 +442,38 @@ const DeepLearningTab = () => {
     { id: 'VISION_RAG', icon: <FileImage />, title: "Vision RAG", desc: "ColPali image-based vectorization" }
   ];
 
-  const filteredPipelineDocs = sourceDocs.filter(d =>
-    !searchQuery || d.judul?.toLowerCase().includes(searchQuery.toLowerCase()) || d.noper?.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredPipelineDocs = useMemo(() => {
+    if (!searchQuery) return sourceDocs;
+    const q = searchQuery.toLowerCase();
+    return sourceDocs.filter(d =>
+      d.judul?.toLowerCase().includes(q) || d.noper?.toLowerCase().includes(q)
+    );
+  }, [sourceDocs, searchQuery]);
 
-  const filteredSyntheticDocs = syntheticDocs.filter(d =>
-    !searchQuery || d.judul?.toLowerCase().includes(searchQuery.toLowerCase()) || d.noper?.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredSyntheticDocs = useMemo(() => {
+    if (!searchQuery) return syntheticDocs;
+    const q = searchQuery.toLowerCase();
+    return syntheticDocs.filter(d =>
+      d.judul?.toLowerCase().includes(q) || d.noper?.toLowerCase().includes(q)
+    );
+  }, [syntheticDocs, searchQuery]);
 
-  const embeddedCount = sourceDocs.filter(d => d.is_embedded).length;
-  const syntheticEmbeddedCount = syntheticDocs.filter(d => d.is_synthetic_embedded).length;
-  const activeJobsCount = jobs.filter(j => j.status === 'RUNNING').length;
+  const paginatedPipelineDocs = useMemo(() => {
+    const start = (pipelinePage - 1) * PAGE_SIZE;
+    return filteredPipelineDocs.slice(start, start + PAGE_SIZE);
+  }, [filteredPipelineDocs, pipelinePage]);
+
+  const paginatedSyntheticDocs = useMemo(() => {
+    const start = (syntheticPage - 1) * PAGE_SIZE;
+    return filteredSyntheticDocs.slice(start, start + PAGE_SIZE);
+  }, [filteredSyntheticDocs, syntheticPage]);
+
+  const totalPipelinePages = Math.ceil(filteredPipelineDocs.length / PAGE_SIZE) || 1;
+  const totalSyntheticPages = Math.ceil(filteredSyntheticDocs.length / PAGE_SIZE) || 1;
+
+  const embeddedCount = useMemo(() => sourceDocs.filter(d => d.is_embedded).length, [sourceDocs]);
+  const syntheticEmbeddedCount = useMemo(() => syntheticDocs.filter(d => d.is_synthetic_embedded).length, [syntheticDocs]);
+  const activeJobsCount = useMemo(() => jobs.filter(j => j.status === 'RUNNING').length, [jobs]);
 
   return (
     <div className="flex flex-col gap-6 text-slate-200 animate-in fade-in duration-500">
@@ -362,13 +497,16 @@ const DeepLearningTab = () => {
 
           {/* Quick Metrics */}
           <div className="flex items-center gap-3">
-            <div className="bg-slate-900/80 border border-slate-800 rounded-xl px-4 py-2 flex flex-col items-center min-w-[110px]">
+            <div className="bg-slate-900/80 border border-slate-800 rounded-xl px-4 py-2 flex flex-col items-center min-w-[110px]" title="Total record metadata peraturan dari database sumber MySQL">
               <span className="text-[10px] uppercase text-gray-500 font-bold tracking-wider">Total Docs</span>
               <span className="text-lg font-bold text-white">{sourceDocs.length}</span>
             </div>
-            <div className="bg-slate-900/80 border border-slate-800 rounded-xl px-4 py-2 flex flex-col items-center min-w-[110px]">
+            <div className="bg-slate-900/80 border border-slate-800 rounded-xl px-4 py-2 flex flex-col items-center min-w-[125px]" title={`${embeddedCount} dari ${sourceDocs.filter(d => d.file_name).length || 2247} berkas PDF fisik telah tuntas 100% di-embed`}>
               <span className="text-[10px] uppercase text-emerald-500 font-bold tracking-wider">Embedded</span>
-              <span className="text-lg font-bold text-emerald-400">{embeddedCount}</span>
+              <span className="text-lg font-bold text-emerald-400">
+                {embeddedCount}
+                <span className="text-xs font-normal text-slate-400 ml-1">/ {sourceDocs.filter(d => d.file_name).length || 2247}</span>
+              </span>
             </div>
             <div className="bg-slate-900/80 border border-slate-800 rounded-xl px-4 py-2 flex flex-col items-center min-w-[110px]">
               <span className="text-[10px] uppercase text-purple-500 font-bold tracking-wider">Synthetic QA</span>
@@ -384,7 +522,7 @@ const DeepLearningTab = () => {
         {/* Sub-tab Navigation */}
         <div className="flex items-center gap-2 border-b border-gray-800 mt-6 pt-2">
           <button
-            onClick={() => setActiveSubTab('pipelines')}
+            onClick={() => handleTabChange('pipelines')}
             className={`flex items-center gap-2 px-4 py-2.5 text-sm font-semibold rounded-t-lg transition-all ${activeSubTab === 'pipelines'
               ? 'text-cyan-400 border-b-2 border-cyan-400 bg-cyan-900/20'
               : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800/40'
@@ -393,7 +531,7 @@ const DeepLearningTab = () => {
             <Layers size={16} /> Ingestion & Model Pipelines
           </button>
           <button
-            onClick={() => setActiveSubTab('synthetic')}
+            onClick={() => handleTabChange('synthetic')}
             className={`flex items-center gap-2 px-4 py-2.5 text-sm font-semibold rounded-t-lg transition-all ${activeSubTab === 'synthetic'
               ? 'text-purple-400 border-b-2 border-purple-400 bg-purple-900/20'
               : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800/40'
@@ -402,7 +540,7 @@ const DeepLearningTab = () => {
             <Sparkles size={16} /> Synthetic Q&A Generation
           </button>
           <button
-            onClick={() => setActiveSubTab('jobs')}
+            onClick={() => handleTabChange('jobs')}
             className={`flex items-center gap-2 px-4 py-2.5 text-sm font-semibold rounded-t-lg transition-all ${activeSubTab === 'jobs'
               ? 'text-emerald-400 border-b-2 border-emerald-400 bg-emerald-900/20'
               : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800/40'
@@ -410,232 +548,463 @@ const DeepLearningTab = () => {
           >
             <Activity size={16} /> Live Job Monitor ({jobs.length})
           </button>
-        </div>
-      </div>
-
-      {/* ── NIGHTLY 6-WORKER AUTOMATED TRAINING & FINE-TUNING PANEL ── */}
-      <div className="bg-gradient-to-r from-indigo-950/40 via-purple-950/30 to-slate-900/60 border border-indigo-500/30 rounded-2xl p-5 relative overflow-hidden backdrop-blur-sm shadow-xl">
-        <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
-
-          {/* Left: Title, Badges & Schedule Info */}
-          <div className="flex items-start gap-3.5">
-            <div className={`p-3 rounded-xl border ${nightlyStatus?.is_running ? 'bg-indigo-500/20 border-indigo-400 text-indigo-300 animate-pulse' : 'bg-slate-800/80 border-slate-700 text-indigo-400'}`}>
-              <Moon className="w-6 h-6" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2.5 flex-wrap">
-                <h2 className="text-base font-bold text-white flex items-center gap-2">
-                  Nightly 6-Worker Training & Fine-Tuning
-                </h2>
-                {nightlyStatus?.is_running ? (
-                  <span className="flex items-center gap-1.5 text-xs font-semibold px-2.5 py-0.5 rounded-full bg-blue-500/20 border border-blue-500/40 text-blue-300 animate-pulse">
-                    <Activity className="w-3.5 h-3.5" />
-                    RUNNING: Dokumen #{nightlyStatus.current_doc?.id} (Hal {nightlyStatus.current_doc?.current_page || 1}/{nightlyStatus.current_doc?.total_pages || 1})
-                  </span>
-                ) : (
-                  <span className="flex items-center gap-1.5 text-xs font-semibold px-2.5 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400">
-                    <CheckCircle2 className="w-3.5 h-3.5" />
-                    STANDBY (Jadwal: Harian 18:00 WIB • Weekend Non-Stop)
-                  </span>
-                )}
-                <span className="text-xs px-2 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700/60 flex items-center gap-1">
-                  <Database className="w-3 h-3 text-cyan-400" /> ragdb only
-                </span>
-                <span className="text-xs px-2 py-0.5 rounded bg-purple-900/40 text-purple-300 border border-purple-500/40 flex items-center gap-1 font-medium">
-                  <Sparkles className="w-3 h-3 text-purple-400" /> Vision-First (2-Page Spread)
-                </span>
-              </div>
-              <p className="text-xs text-slate-400 mt-1 flex items-center gap-2 flex-wrap">
-                <span>⏰ Jadwal: <strong className="text-slate-200">Hari Kerja 18:00 - 07:30 WIB</strong> • <strong className="text-amber-300 font-semibold">Weekend Non-Stop (Jumat 18:00 s.d. Senin 08:00 WIB)</strong></span>
-                <span>•</span>
-                <span>🤖 Model: <strong className="text-purple-300">gemma4:31b</strong> + mxbai-embed-large</span>
-                <span>•</span>
-                <span className="text-indigo-300">Otomatis via Crontab (Harian & Weekend Non-Stop)</span>
-              </p>
-            </div>
-          </div>
-
-          {/* Right: Action Buttons */}
-          <div className="flex items-center gap-2 w-full lg:w-auto justify-end flex-wrap">
-            {nightlyStatus?.is_running ? (
-              <button
-                onClick={handleStopNightly}
-                disabled={isNightlyStopping || nightlyStatus?.stop_requested}
-                className={`flex items-center gap-2 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-lg transition-all ${isNightlyStopping || nightlyStatus?.stop_requested
-                  ? "bg-amber-600/90 hover:bg-amber-600 cursor-wait shadow-amber-900/30"
-                  : "bg-rose-600 hover:bg-rose-500 cursor-pointer shadow-rose-900/30"
-                  }`}
-                title={nightlyStatus?.stop_requested ? "Sedang menuntaskan halaman aktif dan menyimpan checkpoint..." : "Hentikan training malam"}
-              >
-                {isNightlyStopping || nightlyStatus?.stop_requested ? (
-                  <>
-                    <Activity className="w-4 h-4 animate-spin text-amber-200" />
-                    <span>Menyimpan Checkpoint Halaman...</span>
-                  </>
-                ) : (
-                  <>
-                    <Square className="w-4 h-4 fill-white" />
-                    <span>Hentikan & Checkpoint</span>
-                  </>
-                )}
-              </button>
-            ) : (
-              <div className="flex items-center gap-2 flex-wrap">
-                <button
-                  onClick={handleSyncCatalog}
-                  disabled={isSyncingCatalog}
-                  className="flex items-center gap-1.5 bg-slate-800/90 hover:bg-slate-700/90 border border-cyan-500/40 text-cyan-300 hover:text-white text-xs font-semibold px-3 py-2.5 rounded-xl transition-all cursor-pointer shadow-md"
-                  title="Sinkronkan katalog berita MySQL ke antrean ragdb (Aman, 100% Read-Only)"
-                >
-                  {isSyncingCatalog ? <Activity className="w-3.5 h-3.5 animate-spin text-cyan-400" /> : <RotateCcw className="w-3.5 h-3.5 text-cyan-400" />}
-                  Sinkron Katalog
-                </button>
-                <button
-                  onClick={() => handleTestQuickNightly(null)}
-                  disabled={isNightlyStarting}
-                  className="flex items-center gap-1.5 bg-slate-800/90 hover:bg-slate-700/90 border border-indigo-500/40 text-indigo-300 hover:text-white text-xs font-semibold px-3.5 py-2.5 rounded-xl transition-all cursor-pointer shadow-md"
-                  title="Uji coba cepat 1 dokumen pertama sebanyak 2 halaman saja"
-                >
-                  <Zap className="w-3.5 h-3.5 text-amber-400" />
-                  Test 1 File (Bentangan 2 Hal)
-                </button>
-                <button
-                  onClick={() => setActiveSubTab('jobs')}
-                  className="flex items-center gap-1.5 bg-gradient-to-r from-emerald-600/80 to-teal-600/80 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-semibold px-3.5 py-2.5 rounded-xl transition-all cursor-pointer shadow-md"
-                  title="Buka Cockpit Monitoring Interaktif Bentangan 2 Halaman dan Terminal Multi-Worker"
-                >
-                  <Eye className="w-3.5 h-3.5 text-emerald-200" />
-                  Buka Live Cockpit (2 Hal & Terminal)
-                </button>
-                <button
-                  onClick={handleStartNightly}
-                  disabled={isNightlyStarting}
-                  className="flex items-center gap-2 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 disabled:opacity-50 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-lg shadow-indigo-900/30 transition-all cursor-pointer hover:scale-[1.02] active:scale-[0.98]"
-                >
-                  {isNightlyStarting ? <Activity className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4 fill-white" />}
-                  Mulai Full Antrean
-                </button>
-                <button
-                  onClick={handleResetNightly}
-                  disabled={isResetting || nightlyStatus?.is_running}
-                  className="flex items-center gap-1.5 bg-rose-950/60 hover:bg-rose-900/80 border border-rose-500/40 text-rose-300 hover:text-white text-xs font-semibold px-3 py-2.5 rounded-xl transition-all cursor-pointer shadow-md disabled:opacity-40"
-                  title="Reset seluruh progres training dan checkpoint ke titik 0 (Dokumen 1, Halaman 1)"
-                >
-                  <RotateCcw className={`w-3.5 h-3.5 ${isResetting ? 'animate-spin' : ''}`} />
-                  Reset ke 0
-                </button>
-              </div>
+          <button
+            onClick={() => handleTabChange('lora')}
+            className={`flex items-center gap-2 px-4 py-2.5 text-sm font-semibold rounded-t-lg transition-all ${activeSubTab === 'lora'
+              ? 'text-amber-400 border-b-2 border-amber-400 bg-amber-900/20 shadow-md'
+              : 'text-gray-400 hover:text-amber-300 hover:bg-gray-800/40'
+              }`}
+          >
+            <Zap size={16} className={loraTelemetry?.is_running ? 'text-amber-400 animate-pulse' : 'text-amber-500'} />
+            <span className="font-bold">🔥 QLoRA Fine-Tuning</span>
+            {loraTelemetry?.is_running && (
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 font-mono font-bold animate-pulse">
+                {loraTelemetry.percentage?.toFixed(0)}%
+              </span>
             )}
-          </div>
+          </button>
         </div>
-
-        {/* 2-Tier Lineage Progress Indicators */}
-        {nightlyStatus?.tiered_stats && (
-          <div className="mt-3.5 pt-3 border-t border-indigo-900/40 grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-            <div className="bg-slate-900/90 border border-emerald-500/30 rounded-xl p-3 flex items-center justify-between">
-              <div>
-                <div className="flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                  <span className="text-xs font-bold text-emerald-300">Tier 1: Regulasi Berlaku (Prioritas #1)</span>
-                </div>
-                <p className="text-[11px] text-slate-400 mt-0.5">
-                  Diproses pertama hingga tuntas 100%
-                </p>
-              </div>
-              <div className="text-right">
-                <span className="text-sm font-bold text-white">
-                  {nightlyStatus.tiered_stats.tier1?.completed || 0} / {nightlyStatus.tiered_stats.tier1?.total || 1392}
-                </span>
-                <span className="text-[10px] text-emerald-400 block font-medium">
-                  {(((nightlyStatus.tiered_stats.tier1?.completed || 0) / (nightlyStatus.tiered_stats.tier1?.total || 1)) * 100).toFixed(1)}% tuntas
-                </span>
-              </div>
-            </div>
-
-            <div className="bg-slate-900/90 border border-amber-500/30 rounded-xl p-3 flex items-center justify-between">
-              <div>
-                <div className="flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-amber-400" />
-                  <span className="text-xs font-bold text-amber-300">Tier 2: Regulasi Dicabut (Prioritas #2)</span>
-                </div>
-                <p className="text-[11px] text-slate-400 mt-0.5">
-                  Diproses setelah seluruh Tier 1 selesai
-                </p>
-              </div>
-              <div className="text-right">
-                <span className="text-sm font-bold text-white">
-                  {nightlyStatus.tiered_stats.tier2?.completed || 0} / {nightlyStatus.tiered_stats.tier2?.total || 842}
-                </span>
-                <span className="text-[10px] text-amber-400 block font-medium">
-                  {(((nightlyStatus.tiered_stats.tier2?.completed || 0) / (nightlyStatus.tiered_stats.tier2?.total || 1)) * 100).toFixed(1)}% tuntas
-                </span>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* 6-Worker Status Strip */}
-        <div className="mt-4 pt-3 border-t border-indigo-900/40 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 text-xs">
-          <div className="bg-slate-900/80 border border-slate-800 rounded-lg p-2 flex flex-col">
-            <span className="text-[10px] text-slate-400 font-medium">Worker 1: Text RAG</span>
-            <span className="font-bold text-cyan-400 flex items-center gap-1 mt-0.5">
-              <span className={`w-1.5 h-1.5 rounded-full ${nightlyStatus?.workers?.w1_text === 'RUNNING' ? 'bg-cyan-400 animate-ping' : 'bg-slate-500'}`} />
-              {nightlyStatus?.workers?.w1_text || 'STANDBY'}
-            </span>
-          </div>
-
-          <div className="bg-slate-900/80 border border-slate-800 rounded-lg p-2 flex flex-col">
-            <span className="text-[10px] text-slate-400 font-medium">Worker 2: Q&A (Unlimited)</span>
-            <span className="font-bold text-purple-400 flex items-center gap-1 mt-0.5">
-              <span className={`w-1.5 h-1.5 rounded-full ${nightlyStatus?.workers?.w2_qa === 'RUNNING' ? 'bg-purple-400 animate-ping' : 'bg-slate-500'}`} />
-              {nightlyStatus?.workers?.w2_qa || 'STANDBY'}
-            </span>
-          </div>
-
-          <div className="bg-slate-900/80 border border-slate-800 rounded-lg p-2 flex flex-col">
-            <span className="text-[10px] text-slate-400 font-medium">Worker 3: Graph RAG</span>
-            <span className="font-bold text-emerald-400 flex items-center gap-1 mt-0.5">
-              <span className={`w-1.5 h-1.5 rounded-full ${nightlyStatus?.workers?.w3_graph === 'RUNNING' ? 'bg-emerald-400 animate-ping' : 'bg-slate-500'}`} />
-              {nightlyStatus?.workers?.w3_graph || 'STANDBY'}
-            </span>
-          </div>
-
-          <div className="bg-slate-900/80 border border-slate-800 rounded-lg p-2 flex flex-col">
-            <span className="text-[10px] text-slate-400 font-medium">Worker 4: Vision RAG</span>
-            <span className="font-bold text-amber-400 flex items-center gap-1 mt-0.5">
-              <span className={`w-1.5 h-1.5 rounded-full ${nightlyStatus?.workers?.w4_vision === 'RUNNING' ? 'bg-amber-400 animate-ping' : 'bg-slate-500'}`} />
-              {nightlyStatus?.workers?.w4_vision || 'STANDBY'}
-            </span>
-          </div>
-
-          <div className="bg-slate-900/80 border border-slate-800 rounded-lg p-2 flex flex-col">
-            <span className="text-[10px] text-slate-400 font-medium">Worker 5: LoRA Adapter</span>
-            <span className="font-bold text-pink-400 flex items-center gap-1 mt-0.5">
-              <span className={`w-1.5 h-1.5 rounded-full ${nightlyStatus?.workers?.w5_lora === 'RUNNING' ? 'bg-pink-400 animate-ping' : 'bg-slate-500'}`} />
-              {nightlyStatus?.workers?.w5_lora || 'STANDBY'}
-            </span>
-          </div>
-
-          <div className="bg-slate-900/80 border border-slate-800 rounded-lg p-2 flex flex-col">
-            <span className="text-[10px] text-slate-400 font-medium">Worker 6: Multi-Skill</span>
-            <span className="font-bold text-rose-400 flex items-center gap-1 mt-0.5">
-              <span className={`w-1.5 h-1.5 rounded-full ${nightlyStatus?.workers?.w6_agentic === 'RUNNING' ? 'bg-rose-400 animate-ping' : 'bg-slate-500'}`} />
-              {nightlyStatus?.workers?.w6_agentic || 'STANDBY'}
-            </span>
-          </div>
-        </div>
-
-        {/* Live Ticker Log */}
-        {nightlyStatus?.latest_log && (
-          <div className="mt-3 px-3 py-1.5 bg-slate-950/70 border border-slate-800/80 rounded-lg text-[11px] text-slate-300 font-mono flex items-center justify-between">
-            <span className="truncate">📡 {nightlyStatus.latest_log}</span>
-            <span className="text-[10px] text-slate-500 shrink-0 ml-2">ragdb checkpoint synced</span>
-          </div>
-        )}
       </div>
+
+      {/* ── LIVE QLORA FINE-TUNING TELEMETRY BANNER (GEMMA 4 31B) ── */}
+      {loraTelemetry?.is_running && activeSubTab !== 'lora' && (
+        <div 
+          onClick={() => handleTabChange('lora')}
+          className="group bg-gradient-to-r from-amber-950/40 via-purple-950/50 to-slate-900/80 border border-amber-500/40 hover:border-amber-400 rounded-2xl p-5 relative overflow-hidden backdrop-blur-md shadow-2xl animate-in fade-in slide-in-from-top-2 duration-300 cursor-pointer transition-all"
+        >
+          <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
+            <div className="flex items-start gap-3.5">
+              <div className="p-3 rounded-xl bg-amber-500/20 border border-amber-400 text-amber-300 animate-pulse shrink-0">
+                <Zap className="w-6 h-6" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2.5 flex-wrap">
+                  <h2 className="text-base font-bold text-white flex items-center gap-2">
+                    🔥 Live QLoRA Training: Gemma 4 31B
+                  </h2>
+                  <span className="flex items-center gap-1.5 text-xs font-semibold px-2.5 py-0.5 rounded-full bg-amber-500/20 border border-amber-500/40 text-amber-300 animate-pulse">
+                    <Activity className="w-3.5 h-3.5" />
+                    TRAINING ACTIVE ({loraTelemetry.target})
+                  </span>
+                  <span className="text-xs px-2.5 py-0.5 rounded-full bg-indigo-900/50 text-indigo-300 border border-indigo-500/40 font-mono">
+                    Step {loraTelemetry.current_step?.toLocaleString() || 0} / {loraTelemetry.total_steps?.toLocaleString() || 2098}
+                  </span>
+                  <span className="text-xs px-2.5 py-0.5 rounded-full bg-emerald-900/40 text-emerald-300 border border-emerald-500/40 font-bold">
+                    {(loraTelemetry.percentage || 0).toFixed(1)}%
+                  </span>
+                </div>
+                <p className="text-xs text-slate-400 mt-1 flex items-center gap-2 flex-wrap">
+                  <span>⚡ Kecepatan: <strong className="text-white font-mono">{loraTelemetry.speed || '14.5s/it'}</strong></span>
+                  <span>•</span>
+                  <span>⏳ Sisa Waktu (ETA): <strong className="text-amber-300 font-mono">{loraTelemetry.eta || 'Calculating...'}</strong></span>
+                  <span>•</span>
+                  <span>⏱️ Berjalan: <strong className="text-slate-200 font-mono">{loraTelemetry.elapsed || '0m'}</strong></span>
+                  <span>•</span>
+                  <span>🖥️ GPU VRAM: <strong className="text-cyan-300 font-mono">{loraTelemetry.gpu_memory}</strong></span>
+                  <span>•</span>
+                  <span>📦 Batch Size: <strong className="text-purple-300 font-mono">{loraTelemetry.batch_size || 24}</strong></span>
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <button 
+                onClick={(e) => { e.stopPropagation(); handleTabChange('lora'); }}
+                className="px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-bold text-xs flex items-center gap-1.5 transition-all shadow-md group-hover:scale-105"
+              >
+                Buka Cockpit QLoRA 👉
+              </button>
+            </div>
+          </div>
+
+          {/* Progress Bar with Gradient Glow */}
+          <div className="mt-4 pt-3 border-t border-slate-800/80">
+            <div className="flex items-center justify-between text-xs text-slate-400 mb-1.5 font-medium">
+              <span>Progres 1 Epoch ({loraTelemetry.current_step?.toLocaleString() || 0} / {loraTelemetry.total_steps?.toLocaleString() || 2098} Steps)</span>
+              <span className="text-amber-300 font-bold font-mono">{(loraTelemetry.percentage || 0).toFixed(1)}% Selesai</span>
+            </div>
+            <div className="w-full h-3 bg-slate-950/90 rounded-full overflow-hidden border border-slate-800 p-0.5">
+              <div
+                className="h-full bg-gradient-to-r from-amber-500 via-purple-500 to-indigo-500 rounded-full transition-all duration-500 shadow-lg shadow-amber-500/20"
+                style={{ width: `${Math.max(1, loraTelemetry.percentage || 0)}%` }}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── NIGHTLY 6-WORKER AUTOMATED TRAINING & FINE-TUNING PANEL (Ingestion & Live Job Monitor) ── */}
+      {(activeSubTab === 'pipelines' || activeSubTab === 'jobs') && (
+        <div className="bg-gradient-to-r from-indigo-950/40 via-purple-950/30 to-slate-900/60 border border-indigo-500/30 rounded-2xl p-5 relative overflow-hidden backdrop-blur-sm shadow-xl">
+          <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
+
+            {/* Left: Title, Badges & Schedule Info */}
+            <div className="flex items-start gap-3.5">
+              <div className={`p-3 rounded-xl border ${nightlyStatus?.is_running ? 'bg-indigo-500/20 border-indigo-400 text-indigo-300 animate-pulse' : 'bg-slate-800/80 border-slate-700 text-indigo-400'}`}>
+                <Moon className="w-6 h-6" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2.5 flex-wrap">
+                  <h2 className="text-base font-bold text-white flex items-center gap-2">
+                    Nightly 6-Worker Training & Fine-Tuning
+                  </h2>
+                  {nightlyStatus?.is_running ? (
+                    <span className="flex items-center gap-1.5 text-xs font-semibold px-2.5 py-0.5 rounded-full bg-blue-500/20 border border-blue-500/40 text-blue-300 animate-pulse">
+                      <Activity className="w-3.5 h-3.5" />
+                      RUNNING: Dokumen #{nightlyStatus.current_doc?.id} (Hal {nightlyStatus.current_doc?.current_page || 1}/{nightlyStatus.current_doc?.total_pages || 1})
+                    </span>
+                  ) : (
+                    <span className="flex items-center gap-1.5 text-xs font-semibold px-2.5 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400">
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      STANDBY (Jadwal: Harian 18:00 WIB • Weekend Non-Stop)
+                    </span>
+                  )}
+                  <span className="text-xs px-2 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700/60 flex items-center gap-1">
+                    <Database className="w-3 h-3 text-cyan-400" /> ragdb only
+                  </span>
+                  <span className="text-xs px-2 py-0.5 rounded bg-purple-900/40 text-purple-300 border border-purple-500/40 flex items-center gap-1 font-medium">
+                    <Sparkles className="w-3 h-3 text-purple-400" /> Vision-First (2-Page Spread)
+                  </span>
+                </div>
+                <p className="text-xs text-slate-400 mt-1 flex items-center gap-2 flex-wrap">
+                  <span>⏰ Jadwal: <strong className="text-slate-200">Hari Kerja 18:00 - 07:30 WIB</strong> • <strong className="text-amber-300 font-semibold">Weekend Non-Stop (Jumat 18:00 s.d. Senin 08:00 WIB)</strong></span>
+                  <span>•</span>
+                  <span>🤖 Model: <strong className="text-purple-300">gemma4:31b</strong> + mxbai-embed-large</span>
+                  <span>•</span>
+                  <span className="text-indigo-300">Otomatis via Crontab (Harian & Weekend Non-Stop)</span>
+                </p>
+              </div>
+            </div>
+
+            {/* Right: Action Buttons */}
+            <div className="flex items-center gap-2 w-full lg:w-auto justify-end flex-wrap">
+              {nightlyStatus?.is_running ? (
+                <button
+                  onClick={handleStopNightly}
+                  disabled={isNightlyStopping || nightlyStatus?.stop_requested}
+                  className={`flex items-center gap-2 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-lg transition-all ${isNightlyStopping || nightlyStatus?.stop_requested
+                    ? "bg-amber-600/90 hover:bg-amber-600 cursor-wait shadow-amber-900/30"
+                    : "bg-rose-600 hover:bg-rose-500 cursor-pointer shadow-rose-900/30"
+                    }`}
+                  title={nightlyStatus?.stop_requested ? "Sedang menuntaskan halaman aktif dan menyimpan checkpoint..." : "Hentikan training malam"}
+                >
+                  {isNightlyStopping || nightlyStatus?.stop_requested ? (
+                    <>
+                      <Activity className="w-4 h-4 animate-spin text-amber-200" />
+                      <span>Menyimpan Checkpoint Halaman...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Square className="w-4 h-4 fill-white" />
+                      <span>Hentikan & Checkpoint</span>
+                    </>
+                  )}
+                </button>
+              ) : (
+                <div className="flex items-center gap-2 flex-wrap">
+                  <button
+                    onClick={() => setIsUploadModalOpen(true)}
+                    className="flex items-center gap-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-bold px-3.5 py-2.5 rounded-xl shadow-lg shadow-emerald-950/40 transition-all cursor-pointer hover:scale-[1.02] active:scale-[0.98]"
+                    title="Upload file PDF mandiri dengan isolasi kategori INTERNAL atau EXTERNAL"
+                  >
+                    <Upload size={14} />
+                    Upload PDF Mandiri
+                  </button>
+                  <button
+                    onClick={handleSyncCatalog}
+                    disabled={isSyncingCatalog}
+                    className="flex items-center gap-1.5 bg-slate-800/90 hover:bg-slate-700/90 border border-cyan-500/40 text-cyan-300 hover:text-white text-xs font-semibold px-3.5 py-2.5 rounded-xl transition-all cursor-pointer shadow-md"
+                    title="Sinkronkan katalog berita MySQL ke antrean ragdb (Aman, 100% Read-Only)"
+                  >
+                    {isSyncingCatalog ? <Activity className="w-3.5 h-3.5 animate-spin text-cyan-400" /> : <RotateCcw className="w-3.5 h-3.5 text-cyan-400" />}
+                    Sinkron Katalog
+                  </button>
+                  <button
+                    onClick={handleStartNightly}
+                    disabled={isNightlyStarting}
+                    className="flex items-center gap-2 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 disabled:opacity-50 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-lg shadow-indigo-900/30 transition-all cursor-pointer hover:scale-[1.02] active:scale-[0.98]"
+                  >
+                    {isNightlyStarting ? <Activity className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4 fill-white" />}
+                    Mulai Full Antrean
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* 2-Tier Lineage Progress Indicators */}
+          {nightlyStatus?.tiered_stats && (
+            <div className="mt-3.5 pt-3 border-t border-indigo-900/40 grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              <div className="bg-slate-900/90 border border-emerald-500/30 rounded-xl p-3 flex items-center justify-between">
+                <div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                    <span className="text-xs font-bold text-emerald-300">Tier 1: Regulasi Berlaku (Prioritas #1)</span>
+                  </div>
+                  <p className="text-[11px] text-slate-400 mt-0.5">
+                    Diproses pertama hingga tuntas 100%
+                  </p>
+                </div>
+                <div className="text-right">
+                  <span className="text-sm font-bold text-white">
+                    {nightlyStatus.tiered_stats.tier1?.completed || 0} / {nightlyStatus.tiered_stats.tier1?.total || 1392}
+                  </span>
+                  <span className="text-[10px] text-emerald-400 block font-medium">
+                    {(((nightlyStatus.tiered_stats.tier1?.completed || 0) / (nightlyStatus.tiered_stats.tier1?.total || 1)) * 100).toFixed(1)}% tuntas
+                  </span>
+                </div>
+              </div>
+
+              <div className="bg-slate-900/90 border border-amber-500/30 rounded-xl p-3 flex items-center justify-between">
+                <div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-amber-400" />
+                    <span className="text-xs font-bold text-amber-300">Tier 2: Regulasi Dicabut (Prioritas #2)</span>
+                  </div>
+                  <p className="text-[11px] text-slate-400 mt-0.5">
+                    Diproses setelah seluruh Tier 1 selesai
+                  </p>
+                </div>
+                <div className="text-right">
+                  <span className="text-sm font-bold text-white">
+                    {nightlyStatus.tiered_stats.tier2?.completed || 0} / {nightlyStatus.tiered_stats.tier2?.total || 842}
+                  </span>
+                  <span className="text-[10px] text-amber-400 block font-medium">
+                    {(((nightlyStatus.tiered_stats.tier2?.completed || 0) / (nightlyStatus.tiered_stats.tier2?.total || 1)) * 100).toFixed(1)}% tuntas
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* 6-Worker Status Strip */}
+          <div className="mt-4 pt-3 border-t border-indigo-900/40 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 text-xs">
+            <div className="bg-slate-900/80 border border-slate-800 rounded-lg p-2 flex flex-col">
+              <span className="text-[10px] text-slate-400 font-medium">Worker 1: Text RAG</span>
+              <span className="font-bold text-cyan-400 flex items-center gap-1 mt-0.5">
+                <span className={`w-1.5 h-1.5 rounded-full ${nightlyStatus?.workers?.w1_text === 'RUNNING' ? 'bg-cyan-400 animate-ping' : 'bg-slate-500'}`} />
+                {nightlyStatus?.workers?.w1_text || 'STANDBY'}
+              </span>
+            </div>
+
+            <div className="bg-slate-900/80 border border-slate-800 rounded-lg p-2 flex flex-col">
+              <span className="text-[10px] text-slate-400 font-medium">Worker 2: Q&A (Unlimited)</span>
+              <span className="font-bold text-purple-400 flex items-center gap-1 mt-0.5">
+                <span className={`w-1.5 h-1.5 rounded-full ${nightlyStatus?.workers?.w2_qa === 'RUNNING' ? 'bg-purple-400 animate-ping' : 'bg-slate-500'}`} />
+                {nightlyStatus?.workers?.w2_qa || 'STANDBY'}
+              </span>
+            </div>
+
+            <div className="bg-slate-900/80 border border-slate-800 rounded-lg p-2 flex flex-col">
+              <span className="text-[10px] text-slate-400 font-medium">Worker 3: Graph RAG</span>
+              <span className="font-bold text-emerald-400 flex items-center gap-1 mt-0.5">
+                <span className={`w-1.5 h-1.5 rounded-full ${nightlyStatus?.workers?.w3_graph === 'RUNNING' ? 'bg-emerald-400 animate-ping' : 'bg-slate-500'}`} />
+                {nightlyStatus?.workers?.w3_graph || 'STANDBY'}
+              </span>
+            </div>
+
+            <div className="bg-slate-900/80 border border-slate-800 rounded-lg p-2 flex flex-col">
+              <span className="text-[10px] text-slate-400 font-medium">Worker 4: Vision RAG</span>
+              <span className="font-bold text-amber-400 flex items-center gap-1 mt-0.5">
+                <span className={`w-1.5 h-1.5 rounded-full ${nightlyStatus?.workers?.w4_vision === 'RUNNING' ? 'bg-amber-400 animate-ping' : 'bg-slate-500'}`} />
+                {nightlyStatus?.workers?.w4_vision || 'STANDBY'}
+              </span>
+            </div>
+
+            <div className="bg-slate-900/80 border border-slate-800 rounded-lg p-2 flex flex-col">
+              <span className="text-[10px] text-slate-400 font-medium">Worker 5: LoRA Adapter</span>
+              <span className="font-bold text-pink-400 flex items-center gap-1 mt-0.5">
+                <span className={`w-1.5 h-1.5 rounded-full ${nightlyStatus?.workers?.w5_lora === 'RUNNING' ? 'bg-pink-400 animate-ping' : 'bg-slate-500'}`} />
+                {nightlyStatus?.workers?.w5_lora || 'STANDBY'}
+              </span>
+            </div>
+
+            <div className="bg-slate-900/80 border border-slate-800 rounded-lg p-2 flex flex-col">
+              <span className="text-[10px] text-slate-400 font-medium">Worker 6: Multi-Skill</span>
+              <span className="font-bold text-rose-400 flex items-center gap-1 mt-0.5">
+                <span className={`w-1.5 h-1.5 rounded-full ${nightlyStatus?.workers?.w6_agentic === 'RUNNING' ? 'bg-rose-400 animate-ping' : 'bg-slate-500'}`} />
+                {nightlyStatus?.workers?.w6_agentic || 'STANDBY'}
+              </span>
+            </div>
+          </div>
+
+          {/* Live Ticker Log */}
+          {nightlyStatus?.latest_log && (
+            <div className="mt-3 px-3 py-1.5 bg-slate-950/70 border border-slate-800/80 rounded-lg text-[11px] text-slate-300 font-mono flex items-center justify-between">
+              <span className="truncate">📡 {nightlyStatus.latest_log}</span>
+              <span className="text-[10px] text-slate-500 shrink-0 ml-2">ragdb checkpoint synced</span>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Main Content Area */}
-      {activeSubTab === 'jobs' ? (
+      {activeSubTab === 'lora' ? (
+        /* ── DEDICATED QLORA FINE-TUNING COCKPIT ── */
+        <div className="space-y-6">
+          <div className="bg-slate-900/90 border border-amber-500/40 rounded-2xl p-6 backdrop-blur-md shadow-2xl">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-gray-800 pb-5">
+              <div>
+                <h3 className="text-lg font-bold text-white flex items-center gap-2.5">
+                  <Zap className="text-amber-400" />
+                  <span>QLoRA Fine-Tuning Cockpit (Gemma 4 31B)</span>
+                  {loraTelemetry?.is_running && (
+                    <span className="text-xs px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-bold flex items-center gap-1.5 animate-pulse">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                      AKTIF BERJALAN
+                    </span>
+                  )}
+                </h3>
+                <p className="text-xs text-slate-400 mt-1">
+                  Melatih LoRA Adapter <code className="text-amber-300 font-mono">cakra-router</code> (Call 1) & <code className="text-purple-300 font-mono">cakra-core</code> (Call 2) di atas model dasar 31B AWQ via NVIDIA A40 (48GB).
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={fetchLoraTelemetry}
+                  className="flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold px-3 py-2 rounded-xl transition-all cursor-pointer border border-slate-700"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>Refresh Telemetri</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Metrics Grid */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3.5 mt-5">
+              <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-3 flex flex-col">
+                <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Step Progress</span>
+                <span className="text-base font-extrabold text-white mt-0.5 font-mono">
+                  {loraTelemetry?.current_step?.toLocaleString() || 0} / {loraTelemetry?.total_steps?.toLocaleString() || 2098}
+                </span>
+                <span className="text-[10px] text-amber-400 font-semibold mt-0.5">
+                  {(loraTelemetry?.percentage || 0).toFixed(1)}% Selesai
+                </span>
+              </div>
+
+              <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-3 flex flex-col">
+                <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Kecepatan Step</span>
+                <span className="text-base font-extrabold text-cyan-300 mt-0.5 font-mono">
+                  {loraTelemetry?.speed || '14.5s/it'}
+                </span>
+                <span className="text-[10px] text-slate-400 font-medium mt-0.5">
+                  ~1.65 sampel / detik
+                </span>
+              </div>
+
+              <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-3 flex flex-col">
+                <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Estimasi Sisa (ETA)</span>
+                <span className="text-base font-extrabold text-amber-300 mt-0.5 font-mono">
+                  {loraTelemetry?.eta || '00:00:00'}
+                </span>
+                <span className="text-[10px] text-slate-400 font-medium mt-0.5">
+                  Elapsed: {loraTelemetry?.elapsed || '0m'}
+                </span>
+              </div>
+
+              <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-3 flex flex-col">
+                <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">VRAM Terpakai</span>
+                <span className="text-base font-extrabold text-purple-300 mt-0.5 font-mono">
+                  {loraTelemetry?.gpu_memory || 'N/A'}
+                </span>
+                <span className="text-[10px] text-emerald-400 font-medium mt-0.5">
+                  NVIDIA A40-48Q
+                </span>
+              </div>
+
+              <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-3 flex flex-col">
+                <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">GPU Core Load</span>
+                <span className="text-base font-extrabold text-emerald-300 mt-0.5 font-mono">
+                  {loraTelemetry?.gpu_utilization || 'N/A'}
+                </span>
+                <span className="text-[10px] text-slate-400 font-medium mt-0.5">
+                  Tensor Core Active
+                </span>
+              </div>
+
+              <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-3 flex flex-col">
+                <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Batch Size</span>
+                <span className="text-base font-extrabold text-indigo-300 mt-0.5 font-mono">
+                  {loraTelemetry?.batch_size || 24}
+                </span>
+                <span className="text-[10px] text-indigo-400 font-medium mt-0.5">
+                  Grad Accum: 1 (Zero Delay)
+                </span>
+              </div>
+            </div>
+
+            {/* Live Visual Progress Bar */}
+            <div className="mt-5 p-4 bg-slate-950/70 border border-slate-800 rounded-xl">
+              <div className="flex items-center justify-between text-xs mb-2">
+                <span className="text-slate-300 font-medium flex items-center gap-2">
+                  <Activity className="w-3.5 h-3.5 text-amber-400 animate-spin" />
+                  Epoch 1/1: Dispatcher Router Dataset (50,345 Sampel)
+                </span>
+                <span className="text-amber-300 font-bold font-mono">
+                  {(loraTelemetry?.percentage || 0).toFixed(1)}% ({loraTelemetry?.current_step || 0}/{loraTelemetry?.total_steps || 2098} Steps)
+                </span>
+              </div>
+              <div className="w-full h-3.5 bg-slate-900 rounded-full overflow-hidden border border-slate-800 p-0.5">
+                <div
+                  className="h-full bg-gradient-to-r from-amber-500 via-purple-500 to-indigo-500 rounded-full transition-all duration-500 shadow-md shadow-amber-500/30"
+                  style={{ width: `${Math.max(1, loraTelemetry?.percentage || 0)}%` }}
+                />
+              </div>
+            </div>
+
+            {/* Checkpoint Status & Command Helper */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-5">
+              <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-4">
+                <h4 className="text-xs font-bold text-slate-200 uppercase tracking-wider mb-2 flex items-center gap-2">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Checkpoint Status (Auto-Save tiap 500 step)</span>
+                </h4>
+                {loraTelemetry?.checkpoints?.length > 0 ? (
+                  <div className="space-y-1.5">
+                    {loraTelemetry.checkpoints.map(cp => (
+                      <div key={cp} className="flex items-center justify-between px-3 py-1.5 bg-emerald-950/30 border border-emerald-500/30 rounded-lg text-xs font-mono text-emerald-300">
+                        <span>{cp}</span>
+                        <span className="text-[10px] text-emerald-400 font-sans">Siap Uji di vLLM</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs text-slate-500 italic">
+                    Belum ada checkpoint tersimpan. Checkpoint pertama akan otomatis dibuat pada Step 500.
+                  </p>
+                )}
+              </div>
+
+              <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-4">
+                <h4 className="text-xs font-bold text-slate-200 uppercase tracking-wider mb-2 flex items-center gap-2">
+                  <Terminal className="w-3.5 h-3.5 text-cyan-400" />
+                  <span>Terminal Quick Command</span>
+                </h4>
+                <div className="space-y-2">
+                  <div className="p-2 bg-slate-900 border border-slate-800 rounded-lg text-[11px] font-mono text-slate-300 flex items-center justify-between">
+                    <span className="truncate">tail -f logs/training/train_cakra_router.log</span>
+                    <button
+                      onClick={() => copyToClipboard('tail -f logs/training/train_cakra_router.log', 'tail_cmd')}
+                      className="ml-2 text-slate-400 hover:text-white shrink-0"
+                    >
+                      {copiedKey === 'tail_cmd' ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
+                    </button>
+                  </div>
+                  <div className="p-2 bg-slate-900 border border-slate-800 rounded-lg text-[11px] font-mono text-slate-300 flex items-center justify-between">
+                    <span className="truncate">/home/qisthi/vllm_env/bin/python backend/scripts/finetune/eval_router_lora.py</span>
+                    <button
+                      onClick={() => copyToClipboard('/home/qisthi/vllm_env/bin/python backend/scripts/finetune/eval_router_lora.py', 'eval_cmd')}
+                      className="ml-2 text-slate-400 hover:text-white shrink-0"
+                    >
+                      {copiedKey === 'eval_cmd' ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : activeSubTab === 'jobs' ? (
         /* ── INTERACTIVE TWO-PAGE SPREAD & MULTI-WORKER LIVE COCKPIT ── */
         <div className="space-y-6">
           {/* Laser Scanner Keyframes */}
@@ -681,14 +1050,6 @@ const DeepLearningTab = () => {
             </div>
 
             <div className="flex items-center gap-2 shrink-0">
-              <button
-                onClick={() => handleTestQuickNightly(null)}
-                disabled={isNightlyStarting || liveMonitor?.is_running}
-                className="text-xs bg-indigo-600/80 hover:bg-indigo-500 text-white px-3 py-2 rounded-lg font-semibold transition-all flex items-center gap-1.5 disabled:opacity-50"
-              >
-                <Zap className="w-3.5 h-3.5 text-amber-300" />
-                Test 1 File (2 Hal)
-              </button>
               <button
                 onClick={fetchLiveMonitor}
                 className="p-2 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-300 transition-colors"
@@ -1001,7 +1362,7 @@ const DeepLearningTab = () => {
                       <div className="h-full flex flex-col items-center justify-center text-gray-600 text-xs font-sans">
                         <Terminal className="w-8 h-8 mb-2 opacity-30 text-cyan-500" />
                         <p>Terminal siap. Menunggu aktivitas dari 5-worker orchestrator...</p>
-                        <span className="text-[10px] text-gray-600 mt-1">Klik "Test 1 File" atau "Mulai Pelatihan" untuk memicu alur kerja.</span>
+                        <span className="text-[10px] text-gray-600 mt-1">Klik "Mulai Full Antrean" untuk memicu alur kerja otomatis.</span>
                       </div>
                     ) : (
                       liveMonitor.terminal_stream
@@ -1473,7 +1834,7 @@ const DeepLearningTab = () => {
                   type="text"
                   placeholder="Cari dokumen atau nomor regulasi..."
                   value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onChange={(e) => handleSearchChange(e.target.value)}
                   className="bg-transparent border-none outline-none text-xs text-gray-200 w-full placeholder-gray-500"
                 />
               </div>
@@ -1490,7 +1851,7 @@ const DeepLearningTab = () => {
                   </button>
                 )}
                 <button
-                  onClick={fetchData}
+                  onClick={() => fetchData(true)}
                   className="p-2 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-300 transition-colors"
                   title="Refresh Data"
                 >
@@ -1513,7 +1874,7 @@ const DeepLearningTab = () => {
                   </div>
                 ) : (
                   <div className="space-y-3">
-                    {filteredPipelineDocs.map(doc => (
+                    {paginatedPipelineDocs.map(doc => (
                       <div key={doc.id} className="flex items-center justify-between p-4 bg-slate-950/80 border border-gray-800 rounded-xl hover:border-gray-700 transition-colors">
                         <div className="flex items-start gap-3 min-w-0 pr-4">
                           <FileText className="w-5 h-5 text-gray-500 mt-0.5 shrink-0" />
@@ -1532,6 +1893,13 @@ const DeepLearningTab = () => {
                             <span className="flex items-center gap-1.5 px-3 py-1 bg-emerald-500/10 text-emerald-400 rounded-full text-xs font-semibold border border-emerald-500/20">
                               <CheckCircle2 className="w-3.5 h-3.5" /> Embedded
                             </span>
+                          ) : !doc.file_name ? (
+                            <span 
+                              className="flex items-center gap-1.5 px-3 py-1 bg-amber-500/10 text-amber-300 rounded-full text-xs font-semibold border border-amber-500/30"
+                              title="Dokumen ini tidak memiliki file lampiran PDF di database MySQL sumber (gambar kosong)"
+                            >
+                              <AlertCircle className="w-3.5 h-3.5 text-amber-400" /> Tanpa File PDF
+                            </span>
                           ) : (
                             <span className="flex items-center gap-1.5 px-3 py-1 bg-slate-800 text-slate-400 rounded-full text-xs font-semibold border border-slate-700">
                               <XCircle className="w-3.5 h-3.5" /> Pending
@@ -1540,11 +1908,12 @@ const DeepLearningTab = () => {
 
                           <button
                             onClick={() => { setSelectedDoc(doc); setShowModal(true); }}
-                            disabled={doc.is_embedded}
-                            className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-semibold transition-all ${doc.is_embedded
+                            disabled={doc.is_embedded || !doc.file_name}
+                            className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-semibold transition-all ${doc.is_embedded || !doc.file_name
                               ? 'bg-slate-800 text-slate-600 cursor-not-allowed'
                               : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white shadow-lg shadow-blue-500/20'
                               }`}
+                            title={!doc.file_name ? "Tidak ada file PDF sumber di database untuk dilatih" : doc.is_embedded ? "Dokumen sudah selesai di-embed" : "Mulai pelatihan mandiri"}
                           >
                             <Play className="w-3 h-3" /> Train
                           </button>
@@ -1561,7 +1930,7 @@ const DeepLearningTab = () => {
                   </div>
                 ) : (
                   <div className="space-y-3">
-                    {filteredSyntheticDocs.map(doc => (
+                    {paginatedSyntheticDocs.map(doc => (
                       <div key={doc.id} className="flex items-center justify-between p-4 bg-slate-950/80 border border-gray-800 rounded-xl hover:border-gray-700 transition-colors">
                         <div className="flex items-start gap-3 min-w-0 pr-4">
                           <Sparkles className="w-5 h-5 text-purple-400 mt-0.5 shrink-0" />
@@ -1603,6 +1972,51 @@ const DeepLearningTab = () => {
                 )
               )}
             </div>
+
+            {/* Pagination Controls */}
+            {((activeSubTab === 'pipelines' && filteredPipelineDocs.length > PAGE_SIZE) || 
+              (activeSubTab === 'synthetic' && filteredSyntheticDocs.length > PAGE_SIZE)) && (
+              <div className="px-4 py-2.5 border-t border-gray-800/80 bg-slate-950/90 flex items-center justify-between text-xs text-gray-400">
+                <div>
+                  Menampilkan <span className="font-semibold text-gray-200">
+                    {activeSubTab === 'pipelines' 
+                      ? `${(pipelinePage - 1) * PAGE_SIZE + 1} - ${Math.min(pipelinePage * PAGE_SIZE, filteredPipelineDocs.length)}`
+                      : `${(syntheticPage - 1) * PAGE_SIZE + 1} - ${Math.min(syntheticPage * PAGE_SIZE, filteredSyntheticDocs.length)}`
+                    }
+                  </span> dari <span className="font-semibold text-gray-200">
+                    {activeSubTab === 'pipelines' ? filteredPipelineDocs.length : filteredSyntheticDocs.length}
+                  </span> dokumen
+                </div>
+
+                <div className="flex items-center gap-1.5">
+                  <button
+                    disabled={activeSubTab === 'pipelines' ? pipelinePage <= 1 : syntheticPage <= 1}
+                    onClick={() => {
+                      if (activeSubTab === 'pipelines') setPipelinePage(p => Math.max(1, p - 1));
+                      else setSyntheticPage(p => Math.max(1, p - 1));
+                    }}
+                    className="p-1 rounded bg-gray-900 border border-gray-800 hover:bg-gray-800 disabled:opacity-30 disabled:cursor-not-allowed text-gray-300 transition-colors"
+                    title="Halaman Sebelumnya"
+                  >
+                    <ChevronLeft size={14} />
+                  </button>
+                  <span className="font-mono text-gray-400 px-2 text-[11px]">
+                    {activeSubTab === 'pipelines' ? `${pipelinePage} / ${totalPipelinePages}` : `${syntheticPage} / ${totalSyntheticPages}`}
+                  </span>
+                  <button
+                    disabled={activeSubTab === 'pipelines' ? pipelinePage >= totalPipelinePages : syntheticPage >= totalSyntheticPages}
+                    onClick={() => {
+                      if (activeSubTab === 'pipelines') setPipelinePage(p => Math.min(totalPipelinePages, p + 1));
+                      else setSyntheticPage(p => Math.min(totalSyntheticPages, p + 1));
+                    }}
+                    className="p-1 rounded bg-gray-900 border border-gray-800 hover:bg-gray-800 disabled:opacity-30 disabled:cursor-not-allowed text-gray-300 transition-colors"
+                    title="Halaman Selanjutnya"
+                  >
+                    <ChevronRight size={14} />
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Right Column: Live Job Monitor */}
@@ -1753,6 +2167,153 @@ const DeepLearningTab = () => {
                 Mulai Pelatihan
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── SELF-SERVICE PDF UPLOAD MODAL (INTERNAL vs EXTERNAL TIER) ── */}
+      {isUploadModalOpen && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-md z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-[#0B0F19] border border-cyan-500/40 rounded-2xl w-full max-w-lg p-6 shadow-2xl relative animate-in zoom-in-95 duration-200">
+            <button
+              onClick={() => !isUploading && setIsUploadModalOpen(false)}
+              className="absolute top-4 right-4 p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-gray-800 transition-colors"
+            >
+              <X size={18} />
+            </button>
+
+            <div className="flex items-center gap-3 mb-5">
+              <div className="p-2.5 rounded-xl bg-gradient-to-br from-emerald-500/20 to-teal-500/20 border border-emerald-500/40 text-emerald-400">
+                <Upload size={22} />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-white tracking-wide">Upload Dokumen Mandiri (Self-Service)</h3>
+                <p className="text-xs text-gray-400">Unggah berkas PDF dan tentukan isolasi hak akses (Internal vs External/Guest).</p>
+              </div>
+            </div>
+
+            <form onSubmit={handleUploadSubmit} className="space-y-4">
+              <div>
+                <label className="block text-xs font-mono text-gray-300 mb-1.5 uppercase font-semibold">
+                  1. Pilih File PDF:
+                </label>
+                <input
+                  type="file"
+                  accept="application/pdf"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      setUploadFile(file);
+                      if (!uploadTitle) {
+                        setUploadTitle(file.name.replace(/\.[^/.]+$/, ""));
+                      }
+                    }
+                  }}
+                  className="w-full text-xs text-gray-300 file:mr-3 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-cyan-500/20 file:text-cyan-300 hover:file:bg-cyan-500/30 file:cursor-pointer border border-gray-800 rounded-xl p-2 bg-[#05070A]"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-mono text-gray-300 mb-1.5 uppercase font-semibold">
+                  2. Judul Dokumen:
+                </label>
+                <input
+                  type="text"
+                  value={uploadTitle}
+                  onChange={(e) => setUploadTitle(e.target.value)}
+                  placeholder="Contoh: Katalog Publik Pindad 2026 atau SOP Pabrik Munisi"
+                  className="w-full bg-[#05070A] border border-gray-800 focus:border-cyan-500 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-gray-600 outline-none transition-colors"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-mono text-gray-300 mb-1.5 uppercase font-semibold">
+                  3. Deskripsi Singkat (Opsional):
+                </label>
+                <input
+                  type="text"
+                  value={uploadDescription}
+                  onChange={(e) => setUploadDescription(e.target.value)}
+                  placeholder="Deskripsi ringkas isi dokumen..."
+                  className="w-full bg-[#05070A] border border-gray-800 focus:border-cyan-500 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-gray-600 outline-none transition-colors"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-mono text-gray-300 mb-1.5 uppercase font-semibold">
+                  4. Kategori Isolasi Hak Akses (Access Tier):
+                </label>
+                <div className="grid grid-cols-2 gap-3">
+                  <div
+                    onClick={() => setUploadTier('INTERNAL')}
+                    className={`p-3 rounded-xl border cursor-pointer transition-all ${
+                      uploadTier === 'INTERNAL'
+                        ? 'bg-amber-950/40 border-amber-500 text-amber-300 shadow-[0_0_15px_rgba(245,158,11,0.25)]'
+                        : 'bg-gray-900/40 border-gray-800 text-gray-400 hover:border-gray-700'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 font-bold text-xs mb-1">
+                      <Shield size={14} className={uploadTier === 'INTERNAL' ? 'text-amber-400' : 'text-gray-500'} />
+                      <span>INTERNAL (Pindad)</span>
+                    </div>
+                    <p className="text-[10px] text-gray-400 leading-tight">
+                      Hanya untuk staf & user terautentikasi. 100% tertutup dari Guest Mode.
+                    </p>
+                  </div>
+
+                  <div
+                    onClick={() => setUploadTier('EXTERNAL')}
+                    className={`p-3 rounded-xl border cursor-pointer transition-all ${
+                      uploadTier === 'EXTERNAL'
+                        ? 'bg-emerald-950/40 border-emerald-500 text-emerald-300 shadow-[0_0_15px_rgba(16,185,129,0.25)]'
+                        : 'bg-gray-900/40 border-gray-800 text-gray-400 hover:border-gray-700'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 font-bold text-xs mb-1">
+                      <Globe size={14} className={uploadTier === 'EXTERNAL' ? 'text-emerald-400' : 'text-gray-500'} />
+                      <span>EXTERNAL (Guest)</span>
+                    </div>
+                    <p className="text-[10px] text-gray-400 leading-tight">
+                      Publik/Guest diizinkan mengakses RAG dokumen ini (Katalog, Pedoman).
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {isUploading && (
+                <div className="space-y-1.5">
+                  <div className="flex justify-between text-[11px] font-mono text-gray-400">
+                    <span>Proses Upload & Validasi Keamanan...</span>
+                    <span className="text-cyan-400 font-bold">{uploadProgress}%</span>
+                  </div>
+                  <div className="w-full h-2 bg-gray-900 rounded-full overflow-hidden border border-gray-800">
+                    <div
+                      className="h-full bg-gradient-to-r from-cyan-500 to-emerald-500 transition-all duration-300"
+                      style={{ width: `${uploadProgress}%` }}
+                    />
+                  </div>
+                </div>
+              )}
+
+              <div className="flex justify-end gap-2 pt-3 border-t border-gray-800">
+                <button
+                  type="button"
+                  disabled={isUploading}
+                  onClick={() => setIsUploadModalOpen(false)}
+                  className="px-4 py-2 rounded-xl text-xs font-semibold text-gray-400 hover:text-white bg-gray-800/80 hover:bg-gray-700 transition-colors"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  disabled={isUploading || !uploadFile}
+                  className="px-5 py-2 rounded-xl text-xs font-bold text-white bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 disabled:opacity-50 transition-all shadow-lg shadow-emerald-950 flex items-center gap-2 cursor-pointer"
+                >
+                  {isUploading ? <Activity className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                  <span>Unggah & Ekstrak RAG</span>
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

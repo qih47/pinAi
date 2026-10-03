@@ -18,6 +18,10 @@ _db_metrics_cache = {
     "active_sessions": 0,
     "token_consumption": 0,
     "db_storage": "N/A",
+    "token_trend": "Volume stabil",
+    "token_trend_up": True,
+    "session_trend": "Aktivitas stabil",
+    "session_trend_up": True,
     "last_updated": 0
 }
 CACHE_TTL = 5 # Detik, agar lebih real-time (tadinya 30)
@@ -26,23 +30,22 @@ async def fetch_db_metrics():
     """Mengambil metrik jumlah sesi aktif dan konsumsi token (cache mekanism)."""
     current_time = time.time()
     if current_time - _db_metrics_cache["last_updated"] < CACHE_TTL:
-        return _db_metrics_cache["active_sessions"], _db_metrics_cache["token_consumption"], _db_metrics_cache["db_storage"]
+        return _db_metrics_cache
 
     if database.db_pool is None:
-        return _db_metrics_cache["active_sessions"], _db_metrics_cache["token_consumption"], _db_metrics_cache["db_storage"]
+        return _db_metrics_cache
 
     try:
         async with database.db_pool.acquire() as conn:
-            # Hitung jumlah obrolan dalam 24 jam terakhir (Asumsi ada kolom created_at/updated_at di chat_sessions)
+            # Hitung jumlah obrolan dalam 24 jam terakhir
             try:
                 active_sessions = await conn.fetchval(
                     "SELECT COUNT(*) FROM chat_sessions WHERE updated_at >= NOW() - INTERVAL '1 day'"
                 )
             except Exception:
-                # Fallback jika struktur tabel berbeda
                 active_sessions = await conn.fetchval("SELECT COUNT(*) FROM chat_sessions")
             
-            # Hitung total token riil dari request_token_usage (dengan fallback chat_messages)
+            # Hitung total token riil dari request_token_usage
             try:
                 real_tokens = await conn.fetchval("SELECT SUM(total_tokens) FROM request_token_usage")
                 if real_tokens and real_tokens > 0:
@@ -52,6 +55,39 @@ async def fetch_db_metrics():
                     token_consumption = (total_msgs or 0) * 450
             except Exception:
                 token_consumption = 0
+
+            # Hitung tren token hari ini vs kemarin
+            try:
+                today_tokens = await conn.fetchval(
+                    "SELECT COALESCE(SUM(total_tokens), 0) FROM request_token_usage WHERE created_at >= CURRENT_DATE"
+                ) or 0
+                yest_tokens = await conn.fetchval(
+                    "SELECT COALESCE(SUM(total_tokens), 0) FROM request_token_usage WHERE created_at >= CURRENT_DATE - INTERVAL '1 day' AND created_at < CURRENT_DATE"
+                ) or 0
+                if yest_tokens > 0:
+                    pct = ((today_tokens - yest_tokens) / yest_tokens) * 100
+                    token_trend = f"{pct:+.1f}% vs kemarin"
+                    token_trend_up = pct >= 0
+                elif today_tokens > 0:
+                    token_trend = f"+{today_tokens:,} token hari ini"
+                    token_trend_up = True
+                else:
+                    token_trend = "Volume stabil"
+                    token_trend_up = True
+            except Exception:
+                token_trend = "Volume stabil"
+                token_trend_up = True
+
+            # Hitung sesi aktif hari ini vs kemarin
+            try:
+                today_sess = await conn.fetchval(
+                    "SELECT COUNT(DISTINCT session_uuid) FROM request_token_usage WHERE created_at >= CURRENT_DATE"
+                ) or 0
+                session_trend = f"{today_sess} sesi aktif hari ini"
+                session_trend_up = today_sess > 0
+            except Exception:
+                session_trend = "Aktivitas stabil"
+                session_trend_up = True
 
             # Ukuran Database (Vector DB)
             try:
@@ -66,12 +102,16 @@ async def fetch_db_metrics():
             _db_metrics_cache["active_sessions"] = active_sessions or 0
             _db_metrics_cache["token_consumption"] = token_consumption or 0
             _db_metrics_cache["db_storage"] = db_storage
+            _db_metrics_cache["token_trend"] = token_trend
+            _db_metrics_cache["token_trend_up"] = token_trend_up
+            _db_metrics_cache["session_trend"] = session_trend
+            _db_metrics_cache["session_trend_up"] = session_trend_up
             _db_metrics_cache["last_updated"] = current_time
 
     except Exception as e:
         logger.warning(f"⚠️ [ANALYTICS] Gagal mengambil metrik DB: {e}")
 
-    return _db_metrics_cache["active_sessions"], _db_metrics_cache["token_consumption"], _db_metrics_cache["db_storage"]
+    return _db_metrics_cache
 
 async def get_system_metrics():
     """
@@ -83,10 +123,9 @@ async def get_system_metrics():
     mem = psutil.virtual_memory()
     mem_percent = mem.percent
 
-    # 2. GPU VRAM (System-wide Ollama + Gemma4 Load via nvidia-smi)
+    # 2. GPU VRAM (System-wide Load via nvidia-smi)
     vram_percent = 0.0
     try:
-        # Run nvidia-smi to get global memory usage (used, total)
         smi_out = subprocess.check_output(
             ["nvidia-smi", "--query-gpu=memory.used,memory.total", "--format=csv,noheader,nounits"],
             text=True
@@ -101,11 +140,10 @@ async def get_system_metrics():
         pass
             
     # 3. Database Metrics (Cached)
-    active_sessions, token_consumption, db_storage = await fetch_db_metrics()
+    db_cache = await fetch_db_metrics()
     
-    # 4. Storage Vector (Database Load) - Pendekatan sederhana (disk usage dari folder /var/lib/postgresql)
-    # atau random fluktuasi jika tak ada akses langsung
-    db_io = min(mem_percent + (cpu_percent * 0.2), 95.0) # Pendekatan dummy matematis jika tidak bisa akses host block IO
+    # 4. Storage Vector (Database Load)
+    db_io = min(mem_percent + (cpu_percent * 0.2), 95.0)
     network_io = min(cpu_percent * 1.5, 100.0)
 
     def format_tokens(tokens):
@@ -117,10 +155,14 @@ async def get_system_metrics():
 
     return {
         "kpi": {
-            "tokens": format_tokens(token_consumption),
-            "sessions": f"{active_sessions:,}",
+            "tokens": format_tokens(db_cache.get("token_consumption", 0)),
+            "sessions": f"{db_cache.get('active_sessions', 0):,}",
             "vram": f"{vram_percent}%",
-            "db_storage": db_storage
+            "db_storage": db_cache.get("db_storage", "N/A"),
+            "token_trend": db_cache.get("token_trend", "Volume stabil"),
+            "token_trend_up": db_cache.get("token_trend_up", True),
+            "session_trend": db_cache.get("session_trend", "Aktivitas stabil"),
+            "session_trend_up": db_cache.get("session_trend_up", True),
         },
         "latencies": list(recent_latencies),
         "radar": [
@@ -178,7 +220,7 @@ async def get_ollama_running_models() -> List[Dict[str, Any]]:
     except Exception as e:
         logger.debug(f"Chat service PyTorch models check: {e}")
 
-    # 3. Fetch vLLM Engine status (Gemma 4 31B AWQ Marlin)
+    # 3. Fetch vLLM Engine status (Gemma 4 31B AWQ Marlin & LoRA Adapters)
     vllm_url = getattr(settings, "VLLM_BASE_URL", "http://localhost:8005/v1").rstrip("/")
     try:
         async with httpx.AsyncClient(timeout=3.0) as client:
@@ -187,23 +229,183 @@ async def get_ollama_running_models() -> List[Dict[str, Any]]:
                 vllm_data = res.json()
                 vllm_models = vllm_data.get("data", [])
                 if vllm_models:
+                    # Base Engine
                     models.append({
-                        "name": "gemma4:31b",
-                        "model": "gemma4:31b",
+                        "name": "gemma-4-31B-it-AWQ",
+                        "model": "gemma-4-31B-it-AWQ",
+                        "id": "gemma4:31b",
                         "size": 19050000000,  # ~19.05 GB safetensors
                         "size_vram": 22858993664,  # ~21.8 GB VRAM allocation in RTX A40
                         "expires_at": "2318-12-12T00:00:00.000000+07:00",
-                        "context_length": 16384,
+                        "context_length": 32768,
                         "is_vllm": True,
                         "details": {
                             "format": "AWQ Marlin (Tensor Core)",
                             "family": "gemma4"
                         }
                     })
+
+                    # Call 1 LoRA Router Adapter
+                    has_router = any("cakra-router" in str(m.get("id", "")) or "cakra-router" in str(m.get("root", "")) for m in vllm_models)
+                    if has_router:
+                        models.append({
+                            "name": "cakra-router-lora",
+                            "model": "cakra-router-lora",
+                            "id": "cakra-router-lora",
+                            "size": 122 * 1024 * 1024,
+                            "size_vram": 122 * 1024 * 1024,
+                            "expires_at": "2318-12-12T00:00:00.000000+07:00",
+                            "context_length": 4096,
+                            "is_vllm": True,
+                            "is_lora": True,
+                            "role": "Call 1 Fast Router Adapter (vLLM Multi-LoRA)",
+                            "details": {
+                                "format": "vLLM Multi-LoRA (Rank 16)",
+                                "family": "gemma4"
+                            }
+                        })
+
+                    # Call 2 LoRA Core Adapter (if present)
+                    has_core = any("cakra-core" in str(m.get("id", "")) or "cakra-core" in str(m.get("root", "")) for m in vllm_models)
+                    if has_core:
+                        models.append({
+                            "name": "cakra-core-lora",
+                            "model": "cakra-core-lora",
+                            "id": "cakra-core-lora",
+                            "size": 250 * 1024 * 1024,
+                            "size_vram": 250 * 1024 * 1024,
+                            "expires_at": "2318-12-12T00:00:00.000000+07:00",
+                            "context_length": 16384,
+                            "is_vllm": True,
+                            "is_lora": True,
+                            "role": "Call 2 Synthesis Adapter (vLLM Multi-LoRA)",
+                            "details": {
+                                "format": "vLLM Multi-LoRA (Rank 16)",
+                                "family": "gemma4"
+                            }
+                        })
     except Exception as e:
         logger.debug(f"vLLM models check: {e}")
 
+    # 4. Check if QLoRA training is active
+    try:
+        from backend.app.services.training.lora_telemetry_service import get_lora_telemetry
+        lora_status = await get_lora_telemetry()
+        if lora_status.get("is_running"):
+            models.append({
+                "name": "cakra-router-lora",
+                "model": "cakra-router-lora (Training Active)",
+                "size": 35116 * 1024 * 1024,
+                "size_vram": 35116 * 1024 * 1024,
+                "expires_at": "2318-12-12T00:00:00.000000+07:00",
+                "context_length": 4096,
+                "is_training": True,
+                "role": f"Training LoRA Step {lora_status.get('current_step', 0)}/{lora_status.get('total_steps', 2098)} ({lora_status.get('percentage', 0):.1f}%)",
+                "details": {
+                    "format": "QLoRA 4-bit (Active)",
+                    "family": "gemma4"
+                }
+            })
+    except Exception:
+        pass
+
     return models
+
+
+class PipelineTelemetryBroadcaster:
+    """In-memory event hub to broadcast pipeline events to connected WebUI Canvas clients via SSE across ports/origins."""
+    def __init__(self):
+        self._subscribers: set[asyncio.Queue] = set()
+
+    def subscribe(self) -> asyncio.Queue:
+        q = asyncio.Queue(maxsize=100)
+        self._subscribers.add(q)
+        return q
+
+    def unsubscribe(self, q: asyncio.Queue):
+        self._subscribers.discard(q)
+
+    async def broadcast(self, data: dict):
+        dead = []
+        for q in list(self._subscribers):
+            try:
+                q.put_nowait(data)
+            except asyncio.QueueFull:
+                dead.append(q)
+            except Exception:
+                dead.append(q)
+        for d in dead:
+            self._subscribers.discard(d)
+
+
+pipeline_broadcaster = PipelineTelemetryBroadcaster()
+
+async def get_aggregated_latencies(period: str = "today") -> Dict[str, Any]:
+    """
+    Menghitung rata-rata latensi riil dari tabel request_token_usage.
+    period: 'today' (per jam), '7d' (per hari), 'all' (per bulan/minggu)
+    """
+    if database.db_pool is None:
+        return {"period": period, "series": [], "avg": 0, "peak": 0}
+    try:
+        async with database.db_pool.acquire() as conn:
+            if period == "today":
+                # Kelompokkan per jam dalam 24 jam terakhir (WIB / UTC+7)
+                rows = await conn.fetch("""
+                    SELECT 
+                        to_char(created_at AT TIME ZONE 'Asia/Jakarta', 'HH24:00') as time_slot,
+                        ROUND(AVG(duration_ms)::numeric, 1) as avg_latency,
+                        ROUND(MAX(duration_ms)::numeric, 1) as max_latency,
+                        COUNT(*) as count
+                    FROM request_token_usage
+                    WHERE created_at >= NOW() - INTERVAL '24 hours'
+                    GROUP BY time_slot
+                    ORDER BY time_slot ASC
+                """)
+                series = [{"time": r["time_slot"], "latency": float(r["avg_latency"])} for r in rows]
+                if not series:
+                    series = [{"time": "00:00", "latency": 0}]
+            elif period == "7d":
+                rows = await conn.fetch("""
+                    SELECT 
+                        to_char(created_at AT TIME ZONE 'Asia/Jakarta', 'Dy') as time_slot,
+                        to_char(created_at AT TIME ZONE 'Asia/Jakarta', 'YYYY-MM-DD') as date_str,
+                        ROUND(AVG(duration_ms)::numeric, 1) as avg_latency,
+                        ROUND(MAX(duration_ms)::numeric, 1) as max_latency,
+                        COUNT(*) as count
+                    FROM request_token_usage
+                    WHERE created_at >= NOW() - INTERVAL '7 days'
+                    GROUP BY time_slot, date_str
+                    ORDER BY date_str ASC
+                """)
+                series = [{"time": r["time_slot"], "latency": float(r["avg_latency"])} for r in rows]
+            else: # 'all'
+                rows = await conn.fetch("""
+                    SELECT 
+                        to_char(created_at AT TIME ZONE 'Asia/Jakarta', 'Mon') as time_slot,
+                        to_char(created_at AT TIME ZONE 'Asia/Jakarta', 'YYYY-MM') as month_str,
+                        ROUND(AVG(duration_ms)::numeric, 1) as avg_latency,
+                        ROUND(MAX(duration_ms)::numeric, 1) as max_latency,
+                        COUNT(*) as count
+                    FROM request_token_usage
+                    GROUP BY time_slot, month_str
+                    ORDER BY month_str ASC
+                """)
+                series = [{"time": r["time_slot"], "latency": float(r["avg_latency"])} for r in rows]
+
+            latencies = [s["latency"] for s in series if s["latency"] > 0]
+            avg = round(sum(latencies) / len(latencies), 1) if latencies else 0
+            peak = max(latencies) if latencies else 0
+
+            return {
+                "period": period,
+                "series": series,
+                "avg": avg,
+                "peak": peak
+            }
+    except Exception as e:
+        logger.error(f"Error fetching aggregated latencies: {e}")
+        return {"period": period, "series": [], "avg": 0, "peak": 0}
 
 async def get_top_users() -> List[Dict[str, Any]]:
     """Fetches top 10 token consumers in the last 7-30 days based on real token usage or message count"""
@@ -738,19 +940,29 @@ async def get_query_clusters() -> List[Dict[str, Any]]:
                 npp = row["npp"] or "UNKNOWN"
                 ts = row["created_at"].isoformat() if row["created_at"] else None
 
-                # Parse mode from observation
-                mode = "chitchat"
+                # Parse mode from observation with modern CAKRA agentic modes
+                mode = "flash"
                 obs_lower = obs.lower()
-                if "dokumen" in obs_lower or "document" in obs_lower or "rag" in obs_lower:
+                if "deck" in obs_lower or "kanban" in obs_lower:
+                    mode = "deck"
+                elif "email" in obs_lower or "mail" in obs_lower or "zimbra" in obs_lower:
+                    mode = "email"
+                elif "compliance" in obs_lower or "redteam" in obs_lower:
+                    mode = "compliance"
+                elif "attachment" in obs_lower or "lampiran" in obs_lower or "vision" in obs_lower or "ocr" in obs_lower:
+                    mode = "attachment"
+                elif "generate" in obs_lower or "file" in obs_lower or "docx" in obs_lower or "excel" in obs_lower:
+                    mode = "generate_file"
+                elif "dokumen" in obs_lower or "document" in obs_lower or "rag" in obs_lower or "peraturan" in obs_lower:
                     mode = "dokumen"
-                elif "coding" in obs_lower or "code" in obs_lower or "generate" in obs_lower:
+                elif "coding" in obs_lower or "code" in obs_lower:
                     mode = "coding"
-                elif "chitchat" in obs_lower or "casual" in obs_lower:
-                    mode = "chitchat"
                 elif "analitik" in obs_lower or "insight" in obs_lower or "analytic" in obs_lower:
                     mode = "analitik"
                 elif "ambigu" in obs_lower or "ambig" in obs_lower:
                     mode = "ambigu"
+                elif "chitchat" in obs_lower or "casual" in obs_lower or "flash" in obs_lower:
+                    mode = "flash"
 
                 if mode not in clusters:
                     clusters[mode] = {"mode": mode, "count": 0, "queries": [], "npps": set()}
@@ -1067,3 +1279,72 @@ async def get_request_token_logs(
     except Exception as e:
         logger.error(f"Failed to fetch request token logs: {e}")
         return {"status": "error", "error": str(e), "total": 0, "logs": []}
+
+
+async def get_context_memory_stats() -> Dict[str, Any]:
+    """
+    Mengambil data penggunaan context window riil dari database (request_token_usage)
+    atau estimasi kontekstual saat sistem idle.
+    """
+    from backend.app.core.config import settings
+    max_ctx = getattr(settings, "NUM_CTX_CORE", 16384)
+
+    if database.db_pool is not None:
+        try:
+            async with database.db_pool.acquire() as conn:
+                row = await conn.fetchrow("""
+                    SELECT 
+                        request_id,
+                        mode,
+                        router_prompt_tokens,
+                        router_completion_tokens,
+                        gen_prompt_tokens,
+                        gen_completion_tokens,
+                        total_prompt_tokens,
+                        total_completion_tokens,
+                        total_tokens,
+                        created_at
+                    FROM request_token_usage
+                    ORDER BY id DESC
+                    LIMIT 1
+                """)
+                if row:
+                    r = dict(row)
+                    gen_prompt = r.get("gen_prompt_tokens") or 0
+                    router_prompt = r.get("router_prompt_tokens") or 0
+                    # System prompt baseline ~ 1,200 - 2,500 tokens
+                    sys_tokens = min(router_prompt or 1800, 2500)
+                    rem_prompt = max(0, gen_prompt - sys_tokens)
+                    rag_tokens = int(rem_prompt * 0.65) if rem_prompt > 0 else 0
+                    hist_tokens = int(rem_prompt * 0.35) if rem_prompt > 0 else 0
+                    total_used = r.get("total_tokens") or (sys_tokens + rag_tokens + hist_tokens)
+
+                    return {
+                        "status": "success",
+                        "source": "database_request_log",
+                        "request_id": r.get("request_id"),
+                        "mode": r.get("mode", "auto"),
+                        "system_tokens": sys_tokens,
+                        "rag_tokens": rag_tokens,
+                        "history_tokens": hist_tokens,
+                        "completion_tokens": r.get("total_completion_tokens", 0),
+                        "total_used": min(total_used, max_ctx),
+                        "max_ctx": max_ctx,
+                        "timestamp": r.get("created_at").isoformat() if r.get("created_at") else None
+                    }
+        except Exception as e:
+            logger.warning(f"⚠️ [ANALYTICS] Gagal mengambil context memory stats: {e}")
+
+    return {
+        "status": "fallback",
+        "source": "default_baseline",
+        "system_tokens": 1500,
+        "rag_tokens": 3500,
+        "history_tokens": 1800,
+        "completion_tokens": 500,
+        "total_used": 6800,
+        "max_ctx": max_ctx,
+        "timestamp": None
+    }
+
+

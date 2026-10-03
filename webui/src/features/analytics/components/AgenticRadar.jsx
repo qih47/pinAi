@@ -3,11 +3,11 @@ import { BrainCircuit, Zap } from 'lucide-react';
 import apiClient from '../../../services/apiClient';
 
 const AXES = [
-  { key: 'dokumen',  label: 'DOKUMEN',  color: '#3b82f6', angle: -90 },
-  { key: 'coding',   label: 'CODING',   color: '#10b981', angle: -18 },
-  { key: 'chitchat', label: 'CHITCHAT', color: '#a855f7', angle:  54 },
-  { key: 'analitik', label: 'ANALITIK', color: '#f97316', angle: 126 },
-  { key: 'ambigu',   label: 'AMBIGU',   color: '#eab308', angle: 198 },
+  { key: 'dokumen',       label: 'DOKUMEN',    color: '#3b82f6', angle: -90 },
+  { key: 'coding',        label: 'CODING',     color: '#10b981', angle: -18 },
+  { key: 'flash',         label: 'FLASH',      color: '#a855f7', angle:  54 },
+  { key: 'generate_file', label: 'GEN-FILE',   color: '#f97316', angle: 126 },
+  { key: 'compliance',    label: 'COMPLIANCE', color: '#eab308', angle: 198 },
 ];
 
 const toRad = (deg) => (deg * Math.PI) / 180;
@@ -87,7 +87,7 @@ const RadarSVG = ({ scores, cx = 120, cy = 120, maxR = 90 }) => {
             </text>
             <text x={labelPos.x} y={labelPos.y + 8} textAnchor="middle"
                   fill={ax.color} fontSize="8" fontWeight="black" fillOpacity="0.9">
-              {val}
+              {val}%
             </text>
           </g>
         );
@@ -100,35 +100,38 @@ const RadarSVG = ({ scores, cx = 120, cy = 120, maxR = 90 }) => {
 };
 
 export const AgenticRadar = () => {
-  const [scores, setScores] = useState({ dokumen: 5, coding: 5, chitchat: 40, analitik: 5, ambigu: 5 });
-  const [dominantMode, setDominantMode] = useState('CHITCHAT');
-  const [dominantColor, setDominantColor] = useState('#a855f7');
+  const [scores, setScores] = useState({ dokumen: 35, coding: 20, flash: 25, generate_file: 10, compliance: 10 });
+  const [dominantMode, setDominantMode] = useState('DOKUMEN');
+  const [dominantColor, setDominantColor] = useState('#3b82f6');
   const [lastUpdate, setLastUpdate] = useState(null);
 
   const fetchRadarData = async () => {
     try {
-      const res = await apiClient.get('/analytics/pipeline');
-      if (res.data.status === 'success' && res.data.steps) {
-        const routerStep = [...res.data.steps].find(s => s.tool_called === 'ROUTER_ENGINE');
-        if (routerStep?.observation) {
-          const obsJson = JSON.parse(routerStep.observation);
-          if (obsJson.radar) {
-            const r = obsJson.radar;
-            const newScores = {
-              dokumen:  r.dokumen  || 5,
-              coding:   r.coding   || 5,
-              chitchat: r.chitchat || 5,
-              analitik: r.analitik || 5,
-              ambigu:   r.ambigu   || 5,
-            };
-            setScores(newScores);
-            const dom = AXES.reduce((best, ax) =>
-              newScores[ax.key] > newScores[best.key] ? ax : best, AXES[0]);
-            setDominantMode(dom.label);
-            setDominantColor(dom.color);
-            setLastUpdate(new Date());
-          }
-        }
+      const res = await apiClient.get('/analytics/knowledge/clusters');
+      if (res.data?.status === 'success' && Array.isArray(res.data.clusters)) {
+        const clusters = res.data.clusters;
+        const totalCount = clusters.reduce((acc, c) => acc + (c.count || 0), 0) || 1;
+
+        const rawDoc = clusters.find(c => c.mode === 'dokumen')?.count || 0;
+        const rawCode = clusters.find(c => c.mode === 'coding')?.count || 0;
+        const rawFlash = clusters.find(c => c.mode === 'flash' || c.mode === 'chitchat')?.count || 0;
+        const rawGen = clusters.find(c => c.mode === 'generate_file' || c.mode === 'analitik')?.count || 0;
+        const rawComp = clusters.find(c => c.mode === 'compliance' || c.mode === 'deck' || c.mode === 'email')?.count || 0;
+
+        const newScores = {
+          dokumen: Math.max(5, Math.min(100, Math.round((rawDoc / totalCount) * 100))),
+          coding: Math.max(5, Math.min(100, Math.round((rawCode / totalCount) * 100))),
+          flash: Math.max(5, Math.min(100, Math.round((rawFlash / totalCount) * 100))),
+          generate_file: Math.max(5, Math.min(100, Math.round((rawGen / totalCount) * 100))),
+          compliance: Math.max(5, Math.min(100, Math.round((rawComp / totalCount) * 100))),
+        };
+
+        setScores(newScores);
+        const dom = AXES.reduce((best, ax) =>
+          newScores[ax.key] > newScores[best.key] ? ax : best, AXES[0]);
+        setDominantMode(dom.label);
+        setDominantColor(dom.color);
+        setLastUpdate(new Date());
       }
     } catch (e) {
       console.error('Failed to fetch radar data', e);
@@ -137,7 +140,7 @@ export const AgenticRadar = () => {
 
   useEffect(() => {
     fetchRadarData();
-    const interval = setInterval(fetchRadarData, 3000);
+    const interval = setInterval(fetchRadarData, 10000); // 10s optimized interval
     return () => clearInterval(interval);
   }, []);
 

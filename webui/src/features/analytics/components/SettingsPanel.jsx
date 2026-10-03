@@ -148,43 +148,47 @@ export const SettingsPanel = () => {
       {/* Tab Panels */}
       {config && activeTab === 'engines' && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 animate-in fade-in duration-300">
-          <ConfigSection title="Core Model Engines" icon={<Server className="text-indigo-400" size={18}/>}>
+          <ConfigSection title="Modular Multi-LoRA Architecture" icon={<Server className="text-indigo-400" size={18}/>}>
             <ConfigDropdown 
-              label="Persona & Chat Engine" 
-              description="Model utama penjawab percakapan"
-              value={config.MODEL_PERSONA} 
-              options={ollamaModels.length ? ollamaModels : ["gemma4:31b", "gemma4:12b"]} 
+              label="Primary LLM Engine" 
+              description="Inference framework aktif (vLLM Marlin AWQ dianjurkan untuk performa tinggi)"
+              value={config.LLM_ENGINE || "vllm"} 
+              options={["vllm", "ollama"]} 
+              onChange={(val) => handleChange('LLM_ENGINE', val)} 
+            />
+            <ConfigInput 
+              label="Base Model Engine" 
+              description="Bobot dasar AWQ 31B (Marlin Quantized)"
+              value={config.MODEL_BASE || "/home/qisthi/models/gemma-4-31B-it-AWQ"} 
+              onChange={(val) => handleChange('MODEL_BASE', val)} 
+            />
+            <ConfigInput 
+              label="Call 1 Router Adapter (LoRA)" 
+              description="LoRA adapter klasifikasi intent agnostik & routing mode"
+              value={config.MODEL_ROUTER || "cakra-router"} 
+              onChange={(val) => handleChange('MODEL_ROUTER', val)} 
+            />
+            <ConfigInput 
+              label="Call 2 Persona / Core Model" 
+              description="Model generator utama untuk penalaran dan jawaban akhir"
+              value={config.MODEL_PERSONA || "/home/qisthi/models/gemma-4-31B-it-AWQ"} 
               onChange={(val) => handleChange('MODEL_PERSONA', val)} 
             />
             <ConfigDropdown 
-              label="Router Model Engine" 
-              description="Model Call 1 untuk klasifikasi intent"
-              value={config.MODEL_ROUTER || "gemma4:e4b"} 
-              options={ollamaModels.length ? ollamaModels : ["gemma4:e4b", "gemma4:31b"]} 
-              onChange={(val) => handleChange('MODEL_ROUTER', val)} 
-            />
-            <ConfigDropdown 
-              label="Embedding Engine" 
-              description="Model konversi vektor untuk database regulasi"
+              label="Embedding Engine (Ollama)" 
+              description="Model konversi vektor untuk database regulasi & knowledge retrieval"
               value={config.MODEL_EMBEDDING} 
               options={ollamaModels.length ? ollamaModels : ["mxbai-embed-large:latest", "nomic-embed-text:latest"]} 
               onChange={(val) => handleChange('MODEL_EMBEDDING', val)} 
             />
-            <ConfigDropdown 
-              label="Vision / OCR Engine" 
-              description="Model ekstraksi gambar & attachment"
-              value={config.MODEL_VISION || "minicpm-v:latest"} 
-              options={ollamaModels.length ? ollamaModels : ["minicpm-v:latest", "llava:latest"]} 
-              onChange={(val) => handleChange('MODEL_VISION', val)} 
-            />
           </ConfigSection>
 
-          <ConfigSection title="VRAM & Context Window" icon={<Cpu className="text-cyan-400" size={18}/>}>
+          <ConfigSection title="VRAM, Endpoints & PyTorch Acceleration" icon={<Cpu className="text-cyan-400" size={18}/>}>
             <ConfigInput 
               label="Core Context Window (NUM_CTX_CORE)" 
-              description="Panjang context tetap untuk model utama (16384)"
-              value={config.NUM_CTX_CORE || 16384} 
-              onChange={(val) => handleChange('NUM_CTX_CORE', parseInt(val) || 16384)} 
+              description="Panjang context tetap untuk model utama (32768)"
+              value={config.NUM_CTX_CORE || 32768} 
+              onChange={(val) => handleChange('NUM_CTX_CORE', parseInt(val) || 32768)} 
             />
             <ConfigInput 
               label="Router Context Window (NUM_CTX_ROUTER)" 
@@ -193,10 +197,28 @@ export const SettingsPanel = () => {
               onChange={(val) => handleChange('NUM_CTX_ROUTER', parseInt(val) || 4096)} 
             />
             <ConfigInput 
+              label="vLLM Inference Server URL" 
+              description="Endpoint OpenAI-compatible vLLM daemon"
+              value={config.VLLM_BASE_URL || "http://localhost:8005/v1"} 
+              onChange={(val) => handleChange('VLLM_BASE_URL', val)} 
+            />
+            <ConfigInput 
               label="Ollama Server URL" 
-              description="Endpoint HTTP daemon Ollama"
+              description="Endpoint HTTP daemon Ollama (Embedding)"
               value={config.OLLAMA_BASE_URL} 
               onChange={(val) => handleChange('OLLAMA_BASE_URL', val)} 
+            />
+            <ConfigInput 
+              label="Semantic Reranker (PyTorch CUDA)" 
+              description="Reranker BAAI bge-reranker-v2-m3"
+              value={config.MODEL_RERANKER || "BAAI/bge-reranker-v2-m3 (PyTorch CUDA)"} 
+              disabled 
+            />
+            <ConfigInput 
+              label="Neural Voice Engine (PyTorch CUDA)" 
+              description="F5-TTS Voice Synthesizer"
+              value={config.MODEL_TTS || "F5-TTS (PyTorch CUDA)"} 
+              disabled 
             />
           </ConfigSection>
         </div>

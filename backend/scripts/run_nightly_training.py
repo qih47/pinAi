@@ -70,6 +70,17 @@ def parse_args():
 async def main():
     args = parse_args()
 
+    # 0. Safety Shield: Cek apakah manual training adapter (router/core) sedang aktif
+    try:
+        import subprocess
+        res = subprocess.run(["pgrep", "-f", "train_dispatcher_router.py"], capture_output=True, text=True)
+        res_core = subprocess.run(["pgrep", "-f", "train_responder_core.py"], capture_output=True, text=True)
+        if (res.returncode == 0 and res.stdout.strip()) or (res_core.returncode == 0 and res_core.stdout.strip()):
+            logger.info("🛡️ [SAFETY_SHIELD] Training manual adapter (router/core) sedang berjalan di GPU! Cronjob otomatis di-skip 100% demi keamanan VRAM.")
+            return
+    except Exception as e:
+        logger.warning(f"Error checking active training: {e}")
+
     # 1. Pastikan single instance dengan process lock file
     lock_fd = acquire_process_lock()
     if not lock_fd:

@@ -55,6 +55,19 @@ class ModeGuest:
         if community_context:
             system_prompt += community_context
 
+        # 3b. Fetch External Public RAG Documents (STRICT ISOLATION: EXTERNAL ONLY)
+        try:
+            from backend.app.services.rag.rag_service import rag_service
+            rag_context, retrieved_chunks = await rag_service.assemble_powerful_context(
+                query=user_message,
+                limit=3,
+                allowed_access_tiers=["EXTERNAL"]  # Only public external documents
+            )
+            if rag_context:
+                system_prompt += f"\n\n[DOKUMEN PANDUAN PUBLIK / EKSTERNAL]:\n{rag_context}\n"
+        except Exception as e:
+            logger.warning(f"[MODE_GUEST] Optional external RAG lookup skipped: {e}")
+
         # 3. Inject Session Context (URL content / web fetch / ai_document_chunks)
         # Persis seperti mode_flash — konten URL yang sudah di-fetch server-side diinjeksi ke sini
         session_chunks = routing_data.get("_retrieved_session_chunks_text") or routing_data.get("_session_chunks_text", "")

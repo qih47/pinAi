@@ -1,6 +1,7 @@
 import logging
 import json
 import os
+import re
 import asyncio
 import base64
 import datetime
@@ -620,6 +621,30 @@ class ModeAttachment:
         if session_chunks:
             system_prompt = session_chunks + "\n\n" + system_prompt
 
+        # ── Siapkan Riwayat Percakapan (Preserve Context Multi-Turn) ───────────────
+        is_interrogator_focus = (
+            bool(routing_data.get("is_interrogator_focus")) 
+            or bool(re.search(r'\[Fokus Dokumen', user_message, re.I))
+        )
+
+        messages_dict = [{"role": m.role, "content": m.content} for m in (chat_history or [])]
+        # Hilangkan turn terakhir jika berupa user_message aktif yang sedang dieksekusi agar tidak duplikasi
+        past_messages = (
+            messages_dict[:-1] 
+            if (messages_dict and messages_dict[-1].get("role") == "user") 
+            else messages_dict
+        )
+
+        # Anti-contamination: HANYA bersihkan riwayat jika fresh standalone audit dokumen di awal sesi tanpa riwayat
+        if not is_continuation and not is_interrogator_focus and is_audit_mode and len(past_messages) == 0:
+            trimmed_messages = []
+            logger.info("[MODE_ATTACHMENT] 🛡️ Anti-contamination active: fresh standalone audit (empty history)")
+        else:
+            # Pertahankan hingga 6 dialog turn terakhir (user & assistant)
+            trimmed_messages = past_messages[-6:] if len(past_messages) > 6 else past_messages
+            if trimmed_messages:
+                logger.info(f"[MODE_ATTACHMENT] 🧠 Preserved {len(trimmed_messages)} dialogue turn(s) from conversation history")
+
         # Gabungkan teks yang diekstrak ke dalam pesan user
         augmented_user_message = user_message
         if multi_pdf_context:
@@ -669,12 +694,20 @@ class ModeAttachment:
                 )
         elif final_extracted_text:
             pdf_name = os.path.basename(pdf_file_path) if pdf_file_path else "dokumen.pdf"
-            augmented_user_message = (
-                f"PERHATIAN: Pengguna melampirkan dokumen baru '{pdf_name}'. Jawablah HANYA berdasarkan konten dokumen lampiran baru ini. Abaikan topik, peraturan, nomor halaman, atau audit dari riwayat percakapan sebelumnya.\n\n"
-                f"Pertanyaan Pengguna: {user_message}\n\n"
-                f"[KONTEN DOKUMEN PDF LAMPIRAN: '{pdf_name}' (Total {total_pages} Halaman)]:\n"
-                f"{final_extracted_text}"
-            )
+            if is_interrogator_focus or len(trimmed_messages) > 0:
+                augmented_user_message = (
+                    f"Konteks Dokumen: Pengguna menelaah bagian fokus dokumen '{pdf_name}' (Total {total_pages} Halaman).\n"
+                    f"Kutipan Konten Halaman Terkait:\n{final_extracted_text}\n\n"
+                    f"Instruksi: Sambungkan jawabanmu dengan riwayat diskusi/percakapan sebelumnya secara luwes, koheren, dan saling berkesinambungan. "
+                    f"Gunakan data rujukan halaman di atas untuk menanggapi maksud pengguna secara tepat.\n\n"
+                    f"Pertanyaan Pengguna: {user_message}"
+                )
+            else:
+                augmented_user_message = (
+                    f"Konteks Dokumen: '{pdf_name}' (Total {total_pages} Halaman).\n"
+                    f"Kutipan Konten Halaman Terkait:\n{final_extracted_text}\n\n"
+                    f"Pertanyaan Pengguna: {user_message}"
+                )
 
         elif text_contents:
             text_block = "\n\n".join(text_contents)
@@ -699,40 +732,21 @@ class ModeAttachment:
                 f"3. Berikan rangkuman komparasi visual tersebut secara sistematis, faktual, dan jelas."
             )
 
-        # Jika pengguna mengunggah dokumen baru (bukan lanjutan audit/multi-turn pada dokumen yang sama),
-        # bersihkan riwayat chat sebelumnya agar tidak terjadi kontaminasi silang dokumen/topik lain
-        if not is_continuation and (is_audit_mode or is_summary or (pdf_file_path and len(attachments or []) > 0)):
-            trimmed_messages = []
-            logger.info("[MODE_ATTACHMENT] 🛡️ Anti-contamination active: cleared previous history for fresh attachment")
-        else:
-            messages_dict = [{"role": m.role, "content": m.content} for m in chat_history]
-            trimmed_messages = messages_dict[-4:] if len(messages_dict) > 4 else messages_dict
-
-        # Build stream messages
-        stream_messages = [
-            {"role": "system", "content": system_prompt},
-            *trimmed_messages,
-        ]
-
         user_payload = {"role": "user", "content": augmented_user_message}
         
         # Masukkan gambar visual (baik dari PDF pages maupun direct images)
         all_imgs = final_base64_images + direct_images_b64
         if all_imgs:
-            # Safe branching: mode audit atau summary diperbolehkan hingga 20 gambar visual (sesuai limit-mm-per-prompt=20)
-            # Mode Targeted QA dibatasi hingga 8 gambar untuk efisiensi
-            max_img_allow = 20 if (is_audit_mode or is_summary) else 8
+            # Mengizinkan hingga 20 gambar visual halaman sesuai limit multimodal vision vLLM
+            max_img_allow = 20
             user_payload["images"] = all_imgs[:max_img_allow]
 
-        # Gantikan atau tambahkan pesan user terakhir
-        replaced = False
-        for i in range(len(stream_messages) - 1, -1, -1):
-            if stream_messages[i]["role"] == "user":
-                stream_messages[i] = user_payload
-                replaced = True
-                break
-        if not replaced:
-            stream_messages.append(user_payload)
+        # Build stream messages: System prompt -> Riwayat dialog sebelumnya -> Pesan user aktif
+        stream_messages = [
+            {"role": "system", "content": system_prompt},
+            *trimmed_messages,
+            user_payload
+        ]
 
         # ── 4. Fixed 32K Token Budget (Zero VRAM Eviction / Zero Reload) ───────────
         # Mengunci num_ctx di 32768 persis sama dengan seluruh mode lainnya

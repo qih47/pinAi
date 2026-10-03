@@ -17,6 +17,7 @@ venv/
 .venv/
 rag_env/*
 !rag_env/.gitkeep
+vllm_env/
 
 # ==============================================================================
 # NODE / FRONTEND
@@ -46,6 +47,11 @@ backend/assets/*
 
 backend/models/*
 !backend/models/.gitkeep
+
+models/*
+!models/.gitkeep
+*.safetensors
+checkpoint-*/
 
 backend/storage/*
 !backend/storage/.gitkeep
@@ -93,11 +99,14 @@ webui/tests/*
 *.log
 logs/*
 !logs/.gitkeep
+*.pid
 
 *.tmp
 *.temp
 *.swp
 *.swo
+*.patch
+*.diff
 
 # ==============================================================================
 # IDE & OS FILES
@@ -105,6 +114,7 @@ logs/*
 .vscode/
 .idea/
 .cursor/
+.gemini/
 .DS_Store
 Thumbs.db
 

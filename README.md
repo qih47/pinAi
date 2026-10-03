@@ -1,7 +1,6 @@
-# 🛡️ CAKRA AI — Enterprise Cognitive Intelligence Platform (PT Pindad)
+# 🛡️ CAKRA AI — Enterprise Architecture & System Documentation (PT Pindad)
 
-> **Cerdas, Adaptif, Konstruktif, Responsif, Analitik**  
-> Platform asisten kecerdasan kognitif enterprise terpadu berbasis **Two-Tier Neural Pipeline**, **Microservices Mesh**, **Triple-Database Architecture**, dan **Deep Knowledge Synthesis** yang dirancang khusus untuk ekosistem **PT Pindad (Persero)**.
+> Platform asisten dan analitik enterprise terpadu berbasis **Two-Tier Neural Pipeline**, **Microservices Mesh**, **Triple-Database Architecture**, dan **Dual-LoRA Adaptation** yang dirancang khusus untuk ekosistem **PT Pindad (Persero)**.
 
 ---
 
@@ -14,10 +13,12 @@
    - [Lapisan 1: Call 1 — Intent Router & Query Dispatcher](#lapisan-1-call-1--intent-router--query-dispatcher)
    - [Lapisan 1.5: Admission Controller & GPU Semaphore (TDAAC)](#lapisan-15-admission-controller--gpu-semaphore-tdaac)
    - [Lapisan 2: Call 2 — Synthesizer & Persona Responder](#lapisan-2-call-2--synthesizer--persona-responder)
+   - [Modern RAG Engine: Dual-Pathway Architecture](#modern-rag-engine-dual-pathway-architecture)
    - [Stream Demuxer & Benchmarking Realtime](#stream-demuxer--benchmarking-realtime)
 4. [Katalog Lengkap Mode Hub (12 Execution Handlers)](#-katalog-lengkap-mode-hub-12-execution-handlers)
-5. [Mesin Deep Training & Pembelajaran Mandiri (Nightly Orchestrator)](#-mesin-deep-training--pembelajaran-mandiri-nightly-orchestrator)
-   - [Arsitektur 6 Worker Multimodal](#arsitektur-6-worker-multimodal)
+5. [Mesin Training, Fine-Tuning & Pembelajaran Mandiri](#-mesin-training-fine-tuning--pembelajaran-mandiri)
+   - [Fine-Tuning QLoRA (Call 1 Router & Call 2 Core)](#fine-tuning-qlora-call-1-router--call-2-core)
+   - [Arsitektur 6 Worker Multimodal (Nightly Sync)](#arsitektur-6-worker-multimodal-nightly-sync)
    - [Two-Page Spread Book Reader](#two-page-spread-book-reader)
    - [Jadwal Operasional & Manual Override Safe Window](#jadwal-operasional--manual-override-safe-window)
 6. [Integrasi Ekosistem Enterprise Pindad](#-integrasi-ekosistem-enterprise-pindad)
@@ -37,7 +38,7 @@
 
 ## 🏛️ Ikhtisar Arsitektur Enterprise
 
-CAKRA AI meninggalkan paradigma monolitik tradisional dan beralih ke arsitektur **Clean Service Separation** dan **Microservices Mesh**. Frontend (React/Vite) tidak pernah berkomunikasi langsung dengan inferensi model berat secara sinkronus; seluruh alur pesan mengalir melalui **API Gateway**, didistribusikan ke layanan mikro independen, dan disalurkan ke pengguna via protokol **Server-Sent Events (SSE)** berkecepatan tinggi.
+CAKRA AI mengimplementasikan pemisahan layanan bersih (**Clean Service Separation**) dan jaring layanan mikro (**Microservices Mesh**). Frontend (React/Vite) tidak pernah berkomunikasi langsung dengan proses inferensi model berat secara sinkronus; seluruh alur pesan mengalir melalui **API Gateway**, didistribusikan ke layanan mikro independen, dan disalurkan ke pengguna via protokol **Server-Sent Events (SSE)** berkecepatan tinggi.
 
 ```text
 ┌────────────────────────────────────────────────────────────────────────────────────────┐
@@ -57,7 +58,7 @@ CAKRA AI meninggalkan paradigma monolitik tradisional dan beralih ke arsitektur 
 │ • Two-Tier Neural Pipeline    │   │ • Prompt Studio Dynamic Engine│   │ • JWT Cross-Auth HRIS         │
 │ • Dispatcher & Responder Hub  │   │ • Pipeline Latency Metrics    │   │ • Session Token Validation    │
 │ • Nextcloud Deck & SKEP RAG   │   │ • Token & Thinking Audit Logs │   │ • User Quotas & Storage Stats │
-│ • Nightly Training Engine     │   │ • Model Performance Profiling │   │ • Identity Profile Mapping    │
+│ • Dual-Pathway RAG Engine     │   │ • Model Performance Profiling │   │ • Identity Profile Mapping    │
 └───────────────┬───────────────┘   └───────────────────────────────┘   └───────────────────────────────┘
                 │
                 ├──────────────────────────────────────┬──────────────────────────────────────┐
@@ -65,15 +66,17 @@ CAKRA AI meninggalkan paradigma monolitik tradisional dan beralih ke arsitektur 
 ┌───────────────────────────────┐      ┌───────────────────────────────┐      ┌───────────────────────────────┐
 │        RAG DATABASE           │      │        HRIS DATABASE          │      │      PERATURAN DATABASE       │
 │ PostgreSQL 15 + pgvector      │      │ PostgreSQL Remote (Read-Only) │      │ MySQL Legacy (Read-Only)      │
-│ • 1024-dim Vector Chunks HNSW │      │ • Master Person & Master Unit │      │ • Berita Regulasi (SKEP)      │
-│ • Chat History & Sessions     │      │ • Validasi NPP Pegawai Pindad │      │ • Silsilah Hukum (Mencabut /  │
-│ • Nightly Training Checkpoints│      │ • Pemetaan Struktur Organisasi│      │   Dicabut Oleh)               │
+│ • 91.854 Embedded Chunks HNSW │      │ • Master Person & Master Unit │      │ • Berita Regulasi (SKEP)      │
+│ • Primary Data Feeder (No I/O)│      │ • Validasi NPP Pegawai Pindad │      │ • Secondary Fallback Branch & │
+│ • Chat History & Checkpoints  │      │ • Pemetaan Struktur Organisasi│      │   Silsilah Hukum Lineage      │
 └───────────────────────────────┘      └───────────────────────────────┘      └───────────────────────────────┘
                 │
                 ▼ INFERENCE CLUSTER (GPU Engine)
 ┌────────────────────────────────────────────────────────────────────────────────────────┐
-│ • vLLM Server (Port 8005)      : gemma-4-31B-it-AWQ (High-Throughput Tensor Core)      │
-│ • Ollama Server (Port 11434)   : gemma4:31b (Fallback / Router) & mxbai-embed-large   │
+│ • vLLM Server (Port 8005)      : gemma-4-31B-it-AWQ Base + Native Multi-LoRA Serving   │
+│                                  ├── cakra-router : Deterministic Intent & Anaphora    │
+│                                  └── cakra-core   : Domain Knowledge, CoT & Generative UI│
+│ • Ollama Server (Port 11434)   : Fallback Engine & mxbai-embed-large (1024-dim Vector) │
 │ • GPU Reranker Core            : BAAI/bge-reranker-v2-m3 (Cross-Encoder Scoring)       │
 └────────────────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -86,11 +89,11 @@ CAKRA AI meninggalkan paradigma monolitik tradisional dan beralih ke arsitektur 
 | :--- | :--- | :--- | :--- |
 | **Frontend WebUI** | `http://0.0.0.0:5173` | Antarmuka pengguna, workspace kolaborasi, chat | React 18, Vite, Tailwind/Vanilla CSS |
 | **API Gateway** | `http://0.0.0.0:8000` | Gerbang tunggal, router reverse-proxy, SSE pipe | FastAPI, httpx asinkronus |
-| **Chat Core Service** | `http://0.0.0.0:8001` | Logika pipeline AI, RAG, Deck, file processing | FastAPI, asyncpg, PyMuPDF, Jinja2 |
+| **Chat Core Service** | `http://0.0.0.0:8001` | Logika pipeline AI, Dual-Pathway RAG, Deck | FastAPI, asyncpg, PyMuPDF, Jinja2 |
 | **Analytics Service** | `http://0.0.0.0:8002` | Dashboard metrik, prompt studio, audit log | FastAPI, asyncpg, JSONL streaming |
 | **Auth Service** | `http://0.0.0.0:8003` | Otentikasi HRIS Pindad, manajemen sesi token | FastAPI, asyncpg, passlib, JWT |
-| **vLLM Inference** | `http://127.0.0.1:8005` | Eksekusi model utama (Synthesizer & Persona) | vLLM Engine (AWQ Quantization) |
-| **Ollama Inference** | `http://127.0.0.1:11434`| Eksekusi model pendukung, embeddings | Ollama API, GGML/GGUF |
+| **vLLM Inference** | `http://127.0.0.1:8005` | Base AWQ 31B + Native Multi-LoRA (`cakra-router` & `cakra-core`) | vLLM Engine (AWQ + Multi-Adapter Serving) |
+| **Ollama Inference** | `http://127.0.0.1:11434`| Eksekusi model pendukung, embeddings | Ollama API, GGML/GGUF (mxbai-embed-large) |
 
 ---
 
@@ -108,10 +111,10 @@ Sistem menggunakan alur pemrosesan modular **Two-Tier Neural Pipeline** (`backen
   └── Identity Linker: Nama Dinas Resmi (full_name) + Sapaan Akrab (employee_name)
          │
          ▼
-[1. PRECHECK & CALL 1: DISPATCHER ROUTER (Gemma 4)]
-  ├── Deterministic JSON Schema Extraction (temp=0.0, num_predict=200)
+[1. PRECHECK & CALL 1: DISPATCHER ROUTER (Gemma 4 + cakra-router-lora)]
+  ├── Deterministic JSON Schema Extraction (temp=0.0, num_predict=200, Latensi ~150ms)
   ├── 12 Parameter Kontrol Intensi (need_rag, is_deck_query, is_ambiguous, dll.)
-  └── Web Query Decomposition (Pemisahan pertanyaan majemuk jadi kueri terarah)
+  └── Multi-Turn Coreference & Anaphora Resolution (Penguncian dokumen aktif)
          │
          ├── Ambigu? ──▶ [Interactive Clarification Wizard (Mode Flash)]
          │
@@ -121,10 +124,15 @@ Sistem menggunakan alur pemrosesan modular **Two-Tier Neural Pipeline** (`backen
   └── Tracking Queue Wait Time
          │
          ▼
-[2. CALL 2: SYNTHESIZER / RESPONDER (Gemma 4 31B AWQ)]
+[1.8. DUAL-PATHWAY RAG ENGINE]
+  ├── Jalur Utama (Primary): 91.854 Embedded Chunks PostgreSQL (Hybrid pgvector + FTS RRF)
+  └── Jalur Percabangan (Fallback): Pencarian Katalog / Tag Dokumen MySQL Berita
+         │
+         ▼
+[2. CALL 2: SYNTHESIZER / RESPONDER (Gemma 4 31B AWQ + cakra-core-lora)]
   ├── Dynamic Lego Prompts Assembly (Mermaid, DataGrid, Deck, Math, dll.)
-  ├── Token Streaming & Thinking Demuxing
-  └── Direct Artifact Emission (```deck_tasks, ```chart, ```flowchart)
+  ├── Token Streaming & Structured Reasoning (<think>...</think>)
+  └── Direct Artifact Emission (```deck_tasks, ```chart, ```doc_media)
          │
          ▼
 [Client Output via SSE Stream (Chunk, Status, Thinking, Artifacts, Done)]
@@ -134,15 +142,15 @@ Sistem menggunakan alur pemrosesan modular **Two-Tier Neural Pipeline** (`backen
 - **Security Firewall (`security_firewall.py`):** Mencegah injeksi prompt, manipulasi sistem, kebocoran data rahasia (*content safety*), dan anomali semantik secara proaktif sebelum payload mencapai LLM.
 - **Dual Identity Resolution (`pipeline_orchestrator.py`):**
   - **`full_name` & `current_user_npp`:** Nama lengkap resmi kedinasan dari HRIS (misal: `06652 Qisthi Iskandar Haqiki`). Digunakan untuk pencocokan keabsahan hukum, daftar SK penugasan, dan klausul dokumen.
-  - **`employee_name`:** Nama panggilan santai sesuai preferensi di pengaturan akun (misal: `Qisthi`). Digunakan untuk sapaan hangat percakapan alami.
+  - **`employee_name`:** Nama panggilan sesuai preferensi di pengaturan akun (misal: `Qisthi`). Digunakan untuk sapaan percakapan dinas natural.
 
 ### Lapisan 1: Call 1 — Intent Router & Query Dispatcher
-Modul [`dispatcher_router.py`](file:///home/qisthi/pinAi/backend/app/services/pipeline/dispatcher_router.py) bertindak sebagai otak routing dengan karakteristik deterministik:
-- **Konfigurasi Eksekusi:** `temperature: 0.0`, `num_predict: 200`, `num_ctx: 4096`, `is_thinking: False`.
+Modul [`dispatcher_router.py`](file:///home/qisthi/pinAi/backend/app/services/pipeline/dispatcher_router.py) berjalan dengan dukungan adapter LoRA deterministik `cakra-router`:
+- **Karakteristik Operasional:** Latensi inferensi cepat (~150-200ms), `temperature: 0.0`, `num_predict: 200`, `num_ctx: 4096`, `is_thinking: False`.
 - **12 Parameter Kontrol JSON:**
-  1. `need_rag`: Apakah memerlukan penelusuran regulasi/dokumen internal Pindad.
-  2. `is_chitchat`: Obrolan kasual atau sapaan langsung tanpa data luar.
-  3. `is_web_search`: Membutuhkan penelusuran fakta eksternal internet terkini.
+  1. `need_rag`: Menentukan kebutuhan pengambilan konteks regulasi internal.
+  2. `is_chitchat`: Percakapan umum atau sapaan langsung tanpa data luar.
+  3. `is_web_search`: Penelusuran informasi eksternal internet terkini.
   4. `is_generate_file`: Permintaan pembuatan berkas fisik Word, Excel, atau PDF.
   5. `is_generate_email`: Draf korespondensi dinas resmi BUMN.
   6. `is_docwriter`: Penulisan surat dinas dan SOP pada workspace Document Writer.
@@ -150,18 +158,29 @@ Modul [`dispatcher_router.py`](file:///home/qisthi/pinAi/backend/app/services/pi
   8. `is_map_query`: Informasi geolokasi dan peta fasilitas operasional.
   9. `is_chart_query`: Permintaan data visual analitik atau grafik perbandingan.
   10. `is_ambiguous`: Pertanyaan multi-tafsir yang membutuhkan panduan wizard interaktif.
-  11. `needs_history`: Menentukan apakah riwayat obrolan masa lalu relevan dibawa ke Call 2.
-  12. `pronoun`: Menyesuaikan gaya bahasa (*formal dinas* vs *informal santai*).
-- **Smart Signal Stripping:** Menyingkirkan kode pemrograman panjang atau log error mentah saat mengevaluasi intensi, sehingga proses prefill Call 1 selesai dalam < 1.2 detik.
+  11. `needs_history`: Menentukan relevansi riwayat percakapan sesi untuk diinjeksi ke Call 2.
+  12. `pronoun`: Penyesuaian register bahasa (*formal dinas* vs *komunikasi santai*).
+- **Multi-Turn Anaphora & Coreference Resolution:** Menghubungkan kueri eliptis (seperti *"tunjukin lampiran E nya"*) dengan dokumen induk yang sedang aktif dibahas pada sesi sebelumnya.
 
 ### Lapisan 1.5: Admission Controller & GPU Semaphore (TDAAC)
 - Menggunakan tiket *Time-Decayed Adaptive Admission Control* (TDAAC).
-- Mengunci antrean pemanggilan GPU sehingga ketika puluhan pengguna mengirim prompt bersamaan, model 31B tetap berjalan stabil di VRAM tanpa tabrakan memori atau latensi *jitter*.
+- Mengunci antrean pemanggilan GPU sehingga saat banyak permintaan masuk bersamaan, model 31B tetap beroperasi stabil di VRAM tanpa tabrakan memori atau lonjakan latensi.
+
+### Modern RAG Engine: Dual-Pathway Architecture (Zero Disk I/O)
+Sistem RAG menerapkan prinsip percabangan terisolasi (*Safe Branching: A ➔ A1, B ➔ B1*):
+1. **Jalur Utama (Primary Vector Engine):**
+   - Mengambil data langsung dari **91.854 chunks bervektor** pada PostgreSQL `dokumen_chunk` menggunakan pencarian hibrida (`pgvector <=> embedding` + PostgreSQL Full-Text Search dengan perankingan RRF).
+   - Seluruh teks pasal, nomor halaman fisik (`page_number`), bab, dan metadata dokumen (`dokumen_id`, `nomor`, `judul`, `filename`) disuplai langsung dari database tanpa melakukan I/O baca file gambar atau dokumen PDF fisik di disk server.
+2. **Jalur Percabangan (Secondary Catalog Search & Fallback):**
+   - Mengakses tabel MySQL `berita` untuk pencarian berbasis kata kunci judul, tag regulasi, atau nomor surat mentah secara spesifik, serta bertindak sebagai *safety net* jika dokumen baru belum selesai di-embed.
+3. **On-Demand Visual Rendering (`DocumentPageViewer`):**
+   - File citra fisik halaman dokumen (`page_XXX.png`) hanya dipanggil ketika pengguna meminta penelusuran visual atau saat model mengaktifkan blok widget visual lampiran.
 
 ### Lapisan 2: Call 2 — Synthesizer & Persona Responder
-Modul [`llm_client.py`](file:///home/qisthi/pinAi/backend/app/core/llm_client.py) merakit instruksi sistem berbasis balok lego prompt (*Dynamic Lego Blocks*):
-- **Visual Lego Blocks:** Mermaid diagram, XYFlow flowchart, Chart.js engine, Gantt timeline, Interactive DataGrid, Infographic.
-- **Domain Lego Blocks:** Troubleshooting matrix, Deep Research, Coding Sandbox, Smart Mail, BUMN Document Writer, Nextcloud Deck Kanban.
+Modul [`llm_client.py`](file:///home/qisthi/pinAi/backend/app/core/llm_client.py) menjalankan inferensi dengan adapter LoRA `cakra-core`:
+- **Domain Grounding & Reasoning:** Melakukan penalaran eksplisit di dalam blok `<think>...</think>` sebelum menyajikan jawaban berbasis dasar hukum yang valid.
+- **Dynamic Lego Blocks Assembly:** Merakit instruksi sistem sesuai kebutuhan output (Mermaid, XYFlow, Chart.js, Interactive DataGrid, Infographic, Document Writer, Nextcloud Deck Kanban).
+- **Generative UI & Visual Document Viewer:** Mengeluarkan blok kode terstruktur seperti ````datagrid`, ````mermaid`, dan ````doc_media` untuk merender tampilan visual halaman lampiran asli.
 
 ### Stream Demuxer & Benchmarking Realtime
 - **`_StreamDemuxer`:** Memisahkan token penalaran (*reasoning channel*) `<|channel>thought ... <channel|>` dari jawaban final secara asinkron tanpa memutus aliran SSE.
@@ -176,9 +195,9 @@ Modul [`llm_client.py`](file:///home/qisthi/pinAi/backend/app/core/llm_client.py
 | Mode | Modul Handler | Deskripsi & Alur Kerja |
 | :--- | :--- | :--- |
 | **`flash`** | [`mode_flash.py`](file:///home/qisthi/pinAi/backend/app/services/pipeline/modes/mode_flash.py) | Respons instan untuk chit-chat dan konsultasi umum. Mengaktifkan *Interactive Decision Wizard* jika intent ambigu. |
-| **`documents`** | [`mode_documents.py`](file:///home/qisthi/pinAi/backend/app/services/pipeline/modes/mode_documents.py) | Mode RAG utama. Menelusuri arsip regulasi, Surat Keputusan (SKEP), dan dokumen teknis via pgvector (HNSW) & reranker BGE-M3. |
+| **`documents`** | [`mode_documents.py`](file:///home/qisthi/pinAi/backend/app/services/pipeline/modes/mode_documents.py) | Mode RAG utama berbasis Dual-Pathway (PostgreSQL pgvector 91k chunks sebagai sumber utama + fallback MySQL berita). Mendukung preservasi rujukan dokumen aktif pada percakapan multi-turn. |
 | **`focus`** | [`mode_focus.py`](file:///home/qisthi/pinAi/backend/app/services/pipeline/modes/mode_focus.py) | Analisis dokumen tunggal secara mendalam. Menggunakan *2-Stage Rerank Clustering* untuk membedah dokumen hingga ratusan halaman. |
-| **`attachment`** | [`mode_attachment.py`](file:///home/qisthi/pinAi/backend/app/services/pipeline/modes/mode_attachment.py) | Menangani berkas PDF, Word, Excel, dan gambar unggahan. Dilengkapi OCR multimodal vision dan alur *multi-turn document audit*. |
+| **`attachment`** | [`mode_attachment.py`](file:///home/qisthi/pinAi/backend/app/services/pipeline/modes/mode_attachment.py) | Menangani berkas PDF, Word, Excel, dan gambar unggahan. Dilengkapi OCR multimodal vision, integrasi `DocumentPageViewer` (widget `doc_media` visual lampiran), dan alur *multi-turn document audit*. |
 | **`deck`** | [`mode_deck.py`](file:///home/qisthi/pinAi/backend/app/services/pipeline/modes/mode_deck.py) | **Integrasi Nextcloud Deck (Pincloud).** Mengambil kartu tugas penugasan pegawai, merangkum progres, dan mengalirkan widget Kanban interaktif. |
 | **`insight`** | [`mode_insight.py`](file:///home/qisthi/pinAi/backend/app/services/pipeline/modes/mode_insight.py) | Rangkuman instan satu berkas PDF dan bagan relasi pencabutan Surat Keputusan (Silsilah SKEP) dari basis data MySQL legacy. |
 | **`generate_file`**| [`mode_generate_file.py`](file:///home/qisthi/pinAi/backend/app/services/pipeline/modes/mode_generate_file.py)| *Interceptor-Analyst Pipeline*. Memproduksi dokumen fisik siap unduh (`.docx`, `.xlsx`, `.pdf`) menggunakan sintaks `<create_file>`. |
@@ -190,38 +209,37 @@ Modul [`llm_client.py`](file:///home/qisthi/pinAi/backend/app/core/llm_client.py
 
 ---
 
-## 🔬 Mesin Deep Training & Pembelajaran Mandiri (Nightly Orchestrator)
+## 🔬 Mesin Training, Fine-Tuning & Pembelajaran Mandiri
 
-Modul [`backend/app/services/training/nightly/`](file:///home/qisthi/pinAi/backend/app/services/training/nightly/) adalah mesin ekstraksi dan pembentukan basis pengetahuan berkelanjutan (*Continuous Self-Learning Engine*):
+Sistem CAKRA AI mengombinasikan dua pilar pembelajaran model:
+1. **Fine-Tuning QLoRA (`backend/scripts/finetune/`)**: Melatih adapter LoRA spesifik per peran kognitif (Call 1 Router dan Call 2 Responder Core).
+2. **Nightly Orchestrator (`backend/app/services/training/nightly/`)**: Ekstraksi dan penyusunan dataset berkelanjutan dari basis data regulasi secara otomatis.
+
+### Fine-Tuning QLoRA (Call 1 Router & Call 2 Core)
 
 ```text
 ┌────────────────────────────────────────────────────────────────────────┐
-│                   NIGHTLY TRAINING ORCHESTRATOR                        │
+│                   DUAL-LORA SPECIALIZED ADAPTATION                     │
 ├───────────────────────────────────┬────────────────────────────────────┤
-│  Two-Page Spread Book Reader      │  Multi-Tier Document Prioritization│
-│  (Bentangan 2 Halaman Visual)     │  Tier 1: Aktif │ Tier 2: Dicabut   │
-└─────────────────┬─────────────────┴──────────────────┬─────────────────┘
-                  │                                    │
-                  ▼                                    ▼
-┌────────────────────────────────────────────────────────────────────────┐
-│                      6 WORKER MULTIMODAL SIMULTAN                      │
-│                                                                        │
-│ • Worker 1 (Text & Hybrid Chunking) : Struktur BAB, Pasal, Ayat HNSW   │
-│ • Worker 2 (QA Pair Synthesis)      : Pasangan Tanya-Jawab SFT/LoRA    │
-│ • Worker 3 (Knowledge Graph Engine) : Triplet Entity-Relation Graph    │
-│ • Worker 4 (Vision & Diagram OCR)   : Analisis Bagan, Tabel, Alur Visual│
-│ • Worker 5 (LoRA / SFT Data Formatter): Dataset Pelatihan Model Masa Depan│
-│ • Worker 6 (Agentic Tool Synthesizer): Pola Eksekusi Function Calling  │
-└─────────────────┬──────────────────────────────────────────────────────┘
-                  │
-                  ▼
-┌────────────────────────────────────────────────────────────────────────┐
-│  Checkpoint Manager (nightly_training_checkpoints di ragdb)            │
-│  Resumable Page-by-Page │ Live Monitor Terminal Stream │ Artifact View │
-└────────────────────────────────────────────────────────────────────────┘
+│  CALL 1 ROUTER ADAPTER            │  CALL 2 RESPONDER CORE ADAPTER     │
+│  (cakra-router-lora)              │  (cakra-core-lora)                 │
+├───────────────────────────────────┼────────────────────────────────────┤
+│ • Script: train_dispatcher_router │ • Script: train_responder_core.py  │
+│ • Base: Gemma 4 31B (BNB 4-bit)   │ • Base: Gemma 4 31B (BNB 4-bit)    │
+│ • Rank: 8 | Alpha: 16             │ • Rank: 16 | Alpha: 32             │
+│ • Max Seq: 1024 tokens            │ • Max Seq: 2048 tokens             │
+│ • Effective Batch: 24             │ • Effective Batch: 16 (Batch 4 x 4)│
+│ • Fokus: Deterministic Intent,    │ • Fokus: CoT (<think>), Regulasi   │
+│   Query Rewriting & Anaphora      │   Pindad, Generative UI Synthesizer│
+└───────────────────────────────────┴────────────────────────────────────┘
 ```
 
-### Arsitektur 6 Worker Multimodal
+- **Safety Shield Orchestrator (`weekend_adapter_trainer.py` & `run_nightly_training.py`):**
+  Sistem dilengkapi sensor `pgrep` yang mendeteksi proses training manual aktif di GPU. Jika salah satu training sedang berjalan, proses otomatisasi malam (cronjob) akan di-skip demi mencegah tabrakan VRAM.
+- **Checkpoint Resilience:**
+  Pelatihan menyimpan checkpoint secara bertahap (`save_steps=1000`) sehingga model terlatih dapat langsung dimuat ke vLLM tanpa harus menunggu tuntas 100%.
+
+### Arsitektur 6 Worker Multimodal (Nightly Sync)
 1. **Worker 1 (Text & Hybrid Chunking):** Memotong teks regulasi dengan pemahaman hierarki perundang-undangan (Bab, Bagian, Paragraf, Pasal, Ayat) dan menyimpannya ke `dokumen_chunk` dengan vektor embeddings 1024-dim.
 2. **Worker 2 (QA Pair Synthesis):** Menghasilkan ribuan variasi pertanyaan faktual, kontekstual, dan analisis implikasi hukum beserta jawaban rujukan resmi ke tabel `rag_document_questions`.
 3. **Worker 3 (Knowledge Graph Engine):** Memetakan entitas kunci (jabatan, divisi, wewenang, sanksi) dan relasinya ke tabel `knowledge_graph_nodes` dan `knowledge_graph_edges`.
@@ -270,7 +288,7 @@ Dibangun di atas **React 18 + Vite** dengan arsitektur berbasis fitur (*feature-
 - **Multi-Session Background Streaming:** Pengguna dapat mengirim prompt di Sesi A, berpindah ke Sesi B untuk membaca riwayat, dan proses streaming di Sesi A tetap berjalan di latar belakang tanpa terputus (*zero flickering*).
 
 ### Komponen Visual & Artifact Execution Engines
-Renderer respons [`CakraResponseRenderer.jsx`](file:///home/qisthi/pinAi/webui/src/features/chat/components/CakraResponseRenderer.jsx) secara cerdas menerjemahkan blok kode khusus menjadi antarmuka interaktif:
+Renderer respons [`CakraResponseRenderer.jsx`](file:///home/qisthi/pinAi/webui/src/features/chat/components/CakraResponseRenderer.jsx) mem-parsing blok kode terstruktur menjadi komponen antarmuka interaktif:
 
 | Blok Output LLM | Komponen Widget Frontend | Kemampuan Interaktif |
 | :--- | :--- | :--- |
@@ -284,7 +302,9 @@ Renderer respons [`CakraResponseRenderer.jsx`](file:///home/qisthi/pinAi/webui/s
 | ````infographic` | `TimelineInfographic`| Visualisasi grafis ringkasan informasi dan linimasa |
 | ````codesandbox` | `CodeSandboxViewer` | Editor dan eksekusi koding Python/JavaScript terisolasi |
 | ````smartmail` | `SmartMailChatWidget`| Pratinjau draf email dinas siap kirim |
+| ````doc_media` | `DocumentPageViewer` | Penampil halaman pindaian/visual dokumen asli Pindad |
 | `<create_file>` | `FileGenerationCard` | Kartu notifikasi berkas fisik siap diunduh pengguna |
+| `<pipeline_canvas>` | `PipelineFlowCanvas` | Visualisasi alur eksekusi pipeline kognitif dua tahap |
 
 ### Standarisasi Multibahasa i18n
 Seluruh teks antarmuka, status bar, tombol kontrol, dan event SSE wajib terdaftar secara terpusat pada [`webui/src/utils/translations.js`](file:///home/qisthi/pinAi/webui/src/utils/translations.js) dalam dua bahasa:
@@ -308,20 +328,21 @@ Seluruh teks antarmuka, status bar, tombol kontrol, dan event SSE wajib terdafta
 ```
 
 ### 1. `ragdb` (PostgreSQL 15+ dengan ekstensi `pgvector`)
-Basis data utama sistem CAKRA:
-- **`users`** & **`session_login`**: Akun pengguna hasil sinkronisasi HRIS dan pencatatan token sesi aktif.
-- **`chat_sessions`** & **`chat_messages`**: Riwayat obrolan dengan dukungan varian regenerasi dan *in-place edit*.
-- **`dokumen`** & **`dokumen_chunk`**: Metadata dokumen internal beserta vektor embedding 1024-dimensi berindeks HNSW.
-- **`rag_document_questions`**: Pasangan tanya-jawab sintetis hasil ekstrak Worker 2 untuk evaluasi akurasi RAG.
-- **`knowledge_graph_nodes`** & **`knowledge_graph_edges`**: Triplet graf pengetahuan entitas hukum Pindad.
-- **`nightly_training_checkpoints`**: Pelacak progres pembacaan buku per halaman untuk *resumable training*.
-- **`llm_thinking_audit`** & **`security_logs`**: Rekaman jejak penalaran model dan audit keamanan sistem.
+Basis data operasional utama dan memori semantik sistem CAKRA:
+- **`dokumen_chunk`**: Menyimpan **91.854 chunk regulasi ter-embed** dengan vektor dense 1024-dimensi berindeks HNSW. Berfungsi sebagai **sumber data primer RAG (*Zero Disk I/O*)**, menyuplai teks regulasi presisi tinggi langsung ke konteks prompt LLM tanpa perlu membaca berkas fisik dari media penyimpanan.
+- **`dokumen`**: Menyimpan metadata relasional 2.258 berkas hukum internal (nomor peraturan, judul, tahun, rentang halaman, path berkas pindaian, dan tingkat akses).
+- **`users`** & **`session_login`**: Akun pengguna hasil sinkronisasi HRIS dan pencatatan token sesi JWT aktif.
+- **`chat_sessions`** & **`chat_messages`**: Riwayat obrolan lengkap dengan dukungan varian regenerasi percabangan dan *in-place edit*.
+- **`rag_document_questions`**: Pasangan tanya-jawab sintetis hasil ekstraksi otomatis untuk validasi akurasi retrieval RAG.
+- **`knowledge_graph_nodes`** & **`knowledge_graph_edges`**: Triplet graf pengetahuan relasi entitas hukum dan struktur regulasi PT Pindad.
+- **`nightly_training_checkpoints`**: Pelacak progres pembacaan buku per halaman untuk *resumable self-learning*.
+- **`llm_thinking_audit`** & **`security_logs`**: Rekaman jejak penalaran `<think>` model dan audit keamanan firewall.
 
 ### 2. `hris_db` (PostgreSQL Remote HRIS — Read-Only)
-- **`tabel_user`**, **`master_person`**, **`master_unit`**: Sumber data primer kepegawaian PT Pindad untuk memvalidasi kredensial NPP dan memetakan struktur direktorat.
+- **`tabel_user`**, **`master_person`**, **`master_unit`**: Sumber data primer kepegawaian PT Pindad untuk memvalidasi kredensial NPP, memetakan unit kerja, dan verifikasi hak otorisasi.
 
 ### 3. `peraturan_db` (MySQL Legacy — Read-Only)
-- **`berita`** & **`kategori`**: Basis data historis Surat Keputusan (SKEP) dan regulasi lama untuk pemetaan silsilah pencabutan hukum (*lineage*).
+- **`berita`** & **`kategori`**: Basis data katalog historis Surat Keputusan (SKEP) dan regulasi lama. Berfungsi sebagai **jalur pencarian cadangan (*fallback catalog lookup*)** dan pemetaan silsilah pencabutan hukum (*lineage*). Dokumen gambar fisik dari basis data ini hanya diakses secara *on-demand* saat pengguna meminta pratinjau halaman asli via widget `doc_media`.
 
 ---
 
@@ -359,6 +380,14 @@ pinAi/
 │   │   │   ├── documents/               # Parser dokumen, chunking, silsilah SKEP
 │   │   │   └── collab/                  # Room coordination & notification hub
 │   │   └── utils/                       # Security firewall, OCR helpers, formatters
+│   ├── scripts/
+│   │   ├── finetune/                    # Skrip Pelatihan QLoRA (Unsloth + SFTTrainer)
+│   │   │   ├── train_dispatcher_router.py # Fine-tuning Call 1 Router (Gemma 4 31B)
+│   │   │   ├── train_responder_core.py    # Fine-tuning Call 2 Responder Core (Gemma 4 31B)
+│   │   │   ├── generate_synthetic_router_dataset.py # Generator 10k dataset Call 1
+│   │   │   └── run_finetune_pipeline.sh   # Pipeline eksekusi training otomatis
+│   │   └── scheduler/                   # Automasi & Penjadwalan Pelatihan Akhir Pekan
+│   │       └── weekend_adapter_trainer.py # Watchdog & automasi training weekend
 │   └── tests/
 │
 ├── webui/                               # React + Vite Frontend
@@ -373,6 +402,14 @@ pinAi/
 │   │   ├── services/                    # Client API Axios & Native SSE fetcher
 │   │   └── utils/translations.js        # Kamus Multibahasa Terstandar (ID & EN)
 │   └── package.json
+│
+├── data/
+│   └── finetune/                        # Dataset JSONL (nightly_cakra_core, router, dll.)
+│
+├── models/                              # Direktori Adapter LoRA & Checkpoints (Git Ignored)
+│   └── adapters/
+│       ├── cakra-router-lora/           # LoRA Adapter Call 1 Intent Classifier
+│       └── cakra-core-lora/             # LoRA Adapter Call 2 Responder Core
 │
 ├── run_gateway.py                       # API Gateway Microservice (Port 8000)
 ├── run_chat_service.py                  # Core Chat Service (Port 8001)
@@ -462,6 +499,27 @@ npm run dev
 ```
 
 Buka peramban pada `http://localhost:5173`. Sistem CAKRA AI siap digunakan dengan fitur lengkap!
+
+### 3. Eksekusi Pelatihan Model (Fine-Tuning QLoRA)
+Pelatihan adapter LoRA untuk model dasar **Gemma 4 31B** menggunakan pustaka Unsloth dan HuggingFace SFTTrainer:
+
+```bash
+# 1. Bersihkan alokasi VRAM GPU sebelum memulai pelatihan
+./start_services.sh reset-vram
+
+# 2. Jalankan pelatihan Call 1 Router (cakra-router-lora)
+./backend/scripts/finetune/run_finetune_pipeline.sh router
+
+# 3. Jalankan pelatihan Call 2 Responder Core (cakra-core-lora)
+./backend/scripts/finetune/run_finetune_pipeline.sh core
+
+# 4. Memantau progres pelatihan dan statistik loss secara realtime
+tail -f logs/training/train_cakra_core.log
+tail -f logs/training/train_router.log
+```
+
+> [!NOTE]
+> Seluruh skrip pelatihan dilengkapi pelindung benturan VRAM (*Safety Shield*). Jika proses training aktif terdeteksi, daemon cron `run_nightly_training.py` dan `weekend_adapter_trainer.py` akan otomatis menunda eksekusi agar alokasi memori GPU tetap stabil tanpa risiko CUDA Out-Of-Memory. Checkpoint adapter disimpan secara berkala pada `models/adapters/`.
 
 ---
 

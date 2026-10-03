@@ -772,6 +772,8 @@ def build_responder_system_prompt(
         if precheck.get("is_url_read") or precheck.get("_detected_urls"):
             raw_urls = precheck.get("_detected_urls") or []
             suggested_tools.append(f"urlfetch ({', '.join(raw_urls)})" if raw_urls else "urlfetch")
+        if precheck.get("requires_visual") and ("doc_media" in (precheck.get("visual_types") or []) or "bagan" in str(precheck.get("visual_types", ""))):
+            suggested_tools.append("doc_media (Visual Halaman / Lampiran / Bagan Dokumen)")
         if precheck.get("need_rag"):
             suggested_tools.append("docsearch (Regulasi / Dokumen Internal Pindad)")
         if precheck.get("is_web_search"):
@@ -802,7 +804,9 @@ def build_responder_system_prompt(
             if queries:
                 radar_lines.append(f"• Usulan Query RAG : {queries}")
 
-            if need_rag_active and not rag_context:
+            if precheck.get("requires_visual") and ("doc_media" in (precheck.get("visual_types") or []) or "bagan" in str(precheck.get("visual_types", ""))):
+                radar_lines.append("• PERMINTAAN VISUAL DOKUMEN: Pengguna ingin melihat fisik lampiran, bagan, atau halaman regulasi. Kamu WAJIB menyajikan cuplikan visual atau memanggil blok alat ```doc_media untuk merender halaman fisik PNG.")
+            elif need_rag_active and not rag_context:
                 radar_lines.append("• MANDAT DOKUMEN INTERNAL (MUTLAK): Pertanyaan menyangkut regulasi/kebijakan internal PT Pindad. Kamu WAJIB membuka blok alat ```docsearch dengan query_judul di atas untuk memverifikasi klausul resmi dari arsip atau memori sesi (Brain). DILARANG KERAS langsung menjawab pasal regulasi dari memori/asumsi tanpa memanggil ```docsearch!")
             else:
                 radar_lines.append("• Prinsip Mandiri  : Sinyal di atas adalah panduan awal. Kamu adalah Master Agentic Orchestrator: berdaulat penuh memutuskan apakah alat benar-benar diperlukan dan merumuskan query terbaikmu sendiri.")
@@ -1395,6 +1399,12 @@ def extract_responder_turn_context(content: str) -> Dict[str, Any]:
         details["visual"] = {"type": "map", "sub_type": "peta"}
         action_summaries.append('[RESPONDER_ACTION: VISUAL_DIBUAT]: Jenis="map (peta lokasi)"')
 
+    # 2e. Doc Media (Bagan Alur / Lampiran Gambar Dokumen)
+    if re.search(r'```(?:doc_media|docmedia|visual_media)\s*([\s\S]*?)```', content, flags=re.IGNORECASE) or "/api/documents/media/" in content:
+        action_type = "VISUAL_DIBUAT"
+        details["visual"] = {"type": "doc_media", "sub_type": "bagan_lampiran"}
+        action_summaries.append('[RESPONDER_ACTION: VISUAL_DIBUAT]: Jenis="doc_media (bagan/lampiran dokumen)"')
+
     # 3. 💻 Deteksi KODE & GENERATE FILE
     create_file_match = re.search(r'<create_file\s+filename="([^"]+)"', content)
     if create_file_match:
@@ -1416,6 +1426,7 @@ def extract_responder_turn_context(content: str) -> Dict[str, Any]:
         action_type = "REGULASI_DIJELASKAN"
         raw_sources = sources_match.group(1).strip()
         doc_titles = []
+        doc_ids = []
         try:
             src_list = json.loads(raw_sources)
             if isinstance(src_list, list):
@@ -1424,15 +1435,32 @@ def extract_responder_turn_context(content: str) -> Dict[str, Any]:
                         t = s.get("title") or s.get("document_title") or s.get("filename")
                         if t and t not in doc_titles:
                             doc_titles.append(str(t))
+                        d_id = s.get("id") or s.get("doc_id")
+                        if d_id and d_id not in doc_ids:
+                            doc_ids.append(d_id)
         except Exception:
             pass
         title_str = ", ".join(doc_titles[:3]) if doc_titles else "Regulasi Internal PT Pindad"
-        details["rag"] = {"documents": doc_titles}
+        details["rag"] = {
+            "documents": doc_titles,
+            "doc_ids": doc_ids,
+            "primary_doc_title": doc_titles[0] if doc_titles else "",
+            "primary_doc_id": doc_ids[0] if doc_ids else None
+        }
         action_summaries.append(f'[RESPONDER_ACTION: REGULASI_DIJELASKAN]: Dokumen="{title_str}"')
-    elif any(kw in content.lower() for kw in ["perjanjian kerja bersama", "pkb 2024", "sop pt pindad", "surat keputusan direksi", "skep/"]):
-        if action_type not in ["WIZARD_DITANYAKAN", "VISUAL_DIBUAT", "KODE_FILE_DIBUAT"]:
-            action_type = "REGULASI_DIJELASKAN"
-            action_summaries.append('[RESPONDER_ACTION: REGULASI_DIJELASKAN]: Regulasi & Kebijakan Internal')
+    else:
+        reg_match = re.search(r'\b((?:Permenhan|Peraturan\s+Menteri|SKEP|Surat\s+Keputusan|Surat\s+Edaran|PKB|SOP)\s+(?:Nomor|No\.?)?\s*[\w\d/.-]+(?:\s+Tahun\s+\d{4})?)', content, re.IGNORECASE)
+        if reg_match or any(kw in content.lower() for kw in ["perjanjian kerja bersama", "pkb 2024", "sop pt pindad", "surat keputusan direksi", "skep/"]):
+            if action_type not in ["WIZARD_DITANYAKAN", "VISUAL_DIBUAT", "KODE_FILE_DIBUAT"]:
+                action_type = "REGULASI_DIJELASKAN"
+                matched_reg_title = reg_match.group(1) if reg_match else "Regulasi & Kebijakan Internal"
+                details["rag"] = {
+                    "documents": [matched_reg_title] if reg_match else ["Regulasi Internal PT Pindad"],
+                    "doc_ids": [],
+                    "primary_doc_title": matched_reg_title if reg_match else "",
+                    "primary_doc_id": None
+                }
+                action_summaries.append(f'[RESPONDER_ACTION: REGULASI_DIJELASKAN]: {matched_reg_title}')
 
     # 5. 🌐 Deteksi HASIL PENCARIAN WEB
     if re.search(r'```(?:websearch|urlfetch)\s*([\s\S]*?)```', content, flags=re.IGNORECASE) or "hasil penelusuran web" in content.lower():
@@ -1576,6 +1604,9 @@ def build_responder_history_context(chat_history: List[Any], user_message: str =
             last_responder_state["has_prior_rag"] = True
             last_responder_state["last_rag"] = details["rag"]
             last_responder_state["last_rag_docs"] = details["rag"].get("documents", [])
+            last_responder_state["last_rag_doc_ids"] = details["rag"].get("doc_ids", [])
+            last_responder_state["active_regulation_title"] = details["rag"].get("primary_doc_title", "")
+            last_responder_state["active_regulation_id"] = details["rag"].get("primary_doc_id")
 
         # 5. Chitchat state
         elif action_type == "CHITCHAT_DIJAWAB":

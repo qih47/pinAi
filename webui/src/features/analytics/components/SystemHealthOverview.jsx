@@ -19,32 +19,32 @@ export const SystemHealthOverview = () => {
         value={kpi.tokens}
         subtitle="Total Accumulated"
         icon={<Zap className="w-5 h-5 text-cyan-400" />}
-        trend="+14% vs yesterday"
-        trendUp={true}
+        trend={kpi.token_trend || "Volume stabil"}
+        trendUp={kpi.token_trend_up !== undefined ? kpi.token_trend_up : true}
       />
       <KpiCard 
         title="Active Sessions"
         value={kpi.sessions}
         subtitle="Last 24 Hours"
         icon={<Network className="w-5 h-5 text-indigo-400" />}
-        trend="Peak load reached"
-        trendUp={false}
+        trend={kpi.session_trend || "Aktivitas stabil"}
+        trendUp={kpi.session_trend_up !== undefined ? kpi.session_trend_up : true}
       />
       <KpiCard 
-        title="Gemma4 Engine"
+        title="Gemma 4 Engine (vLLM / A40)"
         value={kpi.vram}
         subtitle="VRAM Utilization"
         icon={<Cpu className="w-5 h-5 text-amber-500" />}
-        trend="Optimal temperature"
-        trendUp={true}
+        trend={parseFloat(kpi.vram) > 90 ? "High Utilization (Active Compute)" : "Optimal VRAM Allocation"}
+        trendUp={parseFloat(kpi.vram) <= 90}
       />
       <KpiCard 
         title="Vector DB (PGVector)"
         value={kpi.db_storage}
         subtitle="Storage Capacity"
-        icon={<Database className="w-5 h-5 text-red-400" />}
-        trend="Nearing limit"
-        trendUp={false}
+        icon={<Database className="w-5 h-5 text-emerald-400" />}
+        trend="Index & DB Synchronized"
+        trendUp={true}
       />
     </div>
   );

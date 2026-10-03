@@ -168,10 +168,11 @@ async def ingest_document(
     title: str = Form(..., min_length=1, max_length=255),
     file: UploadFile = File(...),
     description: Optional[str] = Form(None),
+    access_tier: str = Form("INTERNAL"),
     current_user_npp: str = Depends(get_current_user_npp),
 ):
     """
-    Upload dokumen baru, chunk, dan embed ke vector database.
+    Upload dokumen baru, chunk, dan embed ke vector database dengan pilihan tier (INTERNAL / EXTERNAL).
     """
     
     if current_user_npp == "GUEST":
@@ -179,7 +180,7 @@ async def ingest_document(
     
     try:
         # 1. Validate file (Security Firewall + Content Validator)
-        logger.info(f"📤 [INGEST] Validating file: {file.filename}")
+        logger.info(f"📤 [INGEST] Validating file: {file.filename} with access_tier: {access_tier}")
         
         await validate_attachment_security(file)
         file_content = await file.read()
@@ -204,7 +205,11 @@ async def ingest_document(
             file_type=file.content_type or "application/octet-stream",
         )
         
-        logger.info(f"💾 [INGEST] Document record created: ID={doc_id}")
+        # 4b. Map access tier (INTERNAL vs EXTERNAL)
+        clean_tier = "EXTERNAL" if access_tier.upper() == "EXTERNAL" else "INTERNAL"
+        await documents_service.set_document_tier(doc_id, clean_tier)
+        
+        logger.info(f"💾 [INGEST] Document record created: ID={doc_id} | Tier={clean_tier}")
         
         # 5. Queue background task untuk chunk + embed
         background_tasks.add_task(
@@ -219,6 +224,7 @@ async def ingest_document(
             title=title,
             description=description or "",
             source_type="upload",
+            access_tier=clean_tier,
             file_path=str(file_path),
             file_size=len(file_content),
             file_type=file.content_type or "application/octet-stream",

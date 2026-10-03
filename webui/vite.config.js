@@ -2,25 +2,8 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import path from 'path'; // 🔥 Tarik utilitas path bawaan Node
 
-// Plugin: Blokir semua akses /analytics di port 5173 → redirect ke 5174
-const blockAnalyticsPlugin = () => ({
-  name: 'block-analytics-route',
-  configureServer(server) {
-    server.middlewares.use((req, res, next) => {
-      if (req.url === '/analytics' || req.url.startsWith('/analytics/') || req.url.startsWith('/analytics?')) {
-        const host = req.headers['host']?.split(':')[0] || 'localhost';
-        const redirectUrl = `http://${host}:5174/analytics`;
-        res.writeHead(302, { Location: redirectUrl });
-        res.end();
-        return;
-      }
-      next();
-    });
-  }
-});
-
 export default defineConfig({
-  plugins: [react(), blockAnalyticsPlugin()],
+  plugins: [react()],
   resolve: {
     alias: {
       // 🔥 Ajari Vite kalau '@' itu adalah folder 'src' secara absolut
@@ -31,7 +14,7 @@ export default defineConfig({
   server: {
     port: 5173,
     host: true,
-    allowedHosts: ['cakra.ai', 'www.cakra.ai', '.pindad.co.id', 'localhost', '127.0.0.1'],
+    allowedHosts: ['cakra.ai', 'www.cakra.ai', '.pindad.co.id', 'localhost', '127.0.0.1', '192.168.11.80'],
     proxy: {
       '/api': {
         target: 'http://localhost:8000',

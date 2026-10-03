@@ -338,7 +338,7 @@ export default function AuditLogsPage() {
             style={selectStyle}
           >
             {EVENT_TYPES.map(t => (
-              <option key={t.value} value={t.value}>{t.emoji} {t.label}</option>
+              <option key={t.value} value={t.value} style={{ background: '#0B0F19', color: '#e2e8f0' }}>{t.emoji} {t.label}</option>
             ))}
           </select>
 
@@ -357,11 +357,11 @@ export default function AuditLogsPage() {
             onChange={(e) => setDaysFilter(Number(e.target.value))}
             style={selectStyle}
           >
-            <option value={1}>1 Hari</option>
-            <option value={7}>7 Hari</option>
-            <option value={14}>14 Hari</option>
-            <option value={30}>30 Hari</option>
-            <option value={90}>3 Bulan</option>
+            <option value={1} style={{ background: '#0B0F19', color: '#e2e8f0' }}>1 Hari</option>
+            <option value={7} style={{ background: '#0B0F19', color: '#e2e8f0' }}>7 Hari</option>
+            <option value={14} style={{ background: '#0B0F19', color: '#e2e8f0' }}>14 Hari</option>
+            <option value={30} style={{ background: '#0B0F19', color: '#e2e8f0' }}>30 Hari</option>
+            <option value={90} style={{ background: '#0B0F19', color: '#e2e8f0' }}>3 Bulan</option>
           </select>
 
           <button
@@ -563,24 +563,28 @@ export default function AuditLogsPage() {
 // STYLE HELPERS
 // ===================================================================
 const selectStyle = {
-  background: 'rgba(255,255,255,0.06)',
-  border: '1px solid rgba(255,255,255,0.1)',
+  background: '#0B0F19',
+  backgroundColor: '#0B0F19',
+  border: '1px solid rgba(255,255,255,0.15)',
   borderRadius: '10px',
   color: '#e2e8f0',
   padding: '8px 12px',
   fontSize: '12px',
   cursor: 'pointer',
   outline: 'none',
+  colorScheme: 'dark',
 };
 
 const inputStyle = {
-  background: 'rgba(255,255,255,0.06)',
-  border: '1px solid rgba(255,255,255,0.1)',
+  background: '#0B0F19',
+  backgroundColor: '#0B0F19',
+  border: '1px solid rgba(255,255,255,0.15)',
   borderRadius: '10px',
   color: '#e2e8f0',
   padding: '8px 12px',
   fontSize: '12px',
   outline: 'none',
+  colorScheme: 'dark',
 };
 
 const refreshBtnStyle = {

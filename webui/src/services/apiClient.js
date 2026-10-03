@@ -4,10 +4,19 @@ import axios from 'axios';
 const generateRequestId = () => Math.random().toString(36).substring(2, 10).toUpperCase();
 
 const DEFAULT_API_BASE = import.meta.env.VITE_API_BASE_URL || '';
+const getBaseURL = () => {
+  if (DEFAULT_API_BASE) return DEFAULT_API_BASE;
+  if (typeof window === 'undefined') return '/api';
+  // Jika port standar 80 / 443 (misal cakra.ai melalui Nginx reverse proxy), gunakan origin /api
+  if (!window.location.port || window.location.port === '80' || window.location.port === '443') {
+    return `${window.location.origin}/api`;
+  }
+  return `${window.location.protocol}//${window.location.hostname}:8000/api`;
+};
+
 const apiClient = axios.create({
-  // Gateway sebagai single entry point. VITE_API_BASE_URL harus selalu diset ke port 8000 (Gateway).
-  // Fallback ke port 8000 jika env var tidak tersedia (bukan 5000 yang merupakan monolith lama).
-  baseURL: DEFAULT_API_BASE || (typeof window !== 'undefined' ? `${window.location.protocol}//${window.location.hostname}:8000/api` : '/api'),
+  // Gateway sebagai single entry point. VITE_API_BASE_URL selalu ke port 8000 (Gateway) atau reverse proxy /api.
+  baseURL: getBaseURL(),
   timeout: 30000,
   headers: {
     'Content-Type': 'application/json',

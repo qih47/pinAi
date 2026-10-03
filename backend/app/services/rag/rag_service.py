@@ -74,13 +74,14 @@ class RagService:
         return " | ".join(f"{t}:*" for t in tokens)
 
     async def assemble_powerful_context(
-        self, query: str, limit: int = 5, min_score: float = HARD_FLOOR
+        self, query: str, limit: int = 5, min_score: float = HARD_FLOOR,
+        allowed_access_tiers: Optional[List[str]] = None
     ) -> Tuple[str, List[Dict[str, Any]]]:
         """
-        Pipeline RAG 3 fase terpadu.
+        Pipeline RAG 3 fase terpadu dengan dukungan tiering akses (INTERNAL vs EXTERNAL).
         Sprint 3: min_score default = HARD_FLOOR (0.55), cap MAX_DOCS_TO_LLM=3.
         """
-        logger.debug(f'[RAG_SERVICE] Extracting RRF for query: "{query}"')
+        logger.debug(f'[RAG_SERVICE] Extracting RRF for query: "{query}" | Tiers: {allowed_access_tiers}')
 
         # ======================================================================
         # FASE 0: LAZY IMPORT
@@ -128,6 +129,7 @@ class RagService:
                             id,
                             ROW_NUMBER() OVER (ORDER BY embedding <=> $1::vector) AS rank
                         FROM dokumen_chunk
+                        WHERE ($4::text[] IS NULL OR access_tier = ANY($4))
                         ORDER BY embedding <=> $1::vector
                         LIMIT $3 * 10
                     ),
@@ -142,6 +144,7 @@ class RagService:
                             ) AS rank
                         FROM dokumen_chunk
                         WHERE to_tsvector('indonesian', content) @@ to_tsquery('indonesian', $2)
+                          AND ($4::text[] IS NULL OR access_tier = ANY($4))
                         ORDER BY ts_rank_cd(
                             to_tsvector('indonesian', content),
                             to_tsquery('indonesian', $2)
@@ -167,11 +170,12 @@ class RagService:
                         COALESCE(NULLIF(NULLIF(dc.page_number, '0'), ''), '1') AS page_str
                     FROM ranked_candidates rc
                     INNER JOIN dokumen_chunk dc ON rc.chunk_id = dc.id
+                    WHERE ($4::text[] IS NULL OR dc.access_tier = ANY($4))
                     ORDER BY rc.rrf_score DESC
                     LIMIT $3 * 4;
                 """
 
-                raw_chunks = await conn.fetch(hybrid_sql, query_vector_str, formatted_tsquery, limit)
+                raw_chunks = await conn.fetch(hybrid_sql, query_vector_str, formatted_tsquery, limit, allowed_access_tiers)
 
                 if not raw_chunks:
                     logger.warning("[RAG_HYBRID_WARNING] Zero match hybrid. Fallback to vector search.")
@@ -184,10 +188,11 @@ class RagService:
                             dc.chunk_id AS chunk_seq,
                             COALESCE(NULLIF(NULLIF(dc.page_number, '0'), ''), '1') AS page_str
                         FROM dokumen_chunk dc
+                        WHERE ($3::text[] IS NULL OR dc.access_tier = ANY($3))
                         ORDER BY dc.embedding <=> $1::vector
                         LIMIT $2 * 4;
                     """
-                    raw_chunks = await conn.fetch(vector_only_sql, query_vector_str, limit)
+                    raw_chunks = await conn.fetch(vector_only_sql, query_vector_str, limit, allowed_access_tiers)
 
                 if not raw_chunks:
                     logger.warning("[RAG_SERVICE] Zero matches in hybrid search")

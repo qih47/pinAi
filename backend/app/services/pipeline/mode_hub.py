@@ -178,7 +178,9 @@ class ModeHub:
                 f"wizard_confirm={last_responder_state.get('is_wizard_confirmation')} | "
                 f"prior_visual={last_responder_state.get('has_prior_visual')} | "
                 f"prior_coding={last_responder_state.get('has_prior_coding')} | "
-                f"prior_chitchat={last_responder_state.get('has_prior_chitchat')}"
+                f"prior_chitchat={last_responder_state.get('has_prior_chitchat')} | "
+                f"prior_rag={last_responder_state.get('has_prior_rag')} | "
+                f"active_reg='{last_responder_state.get('active_regulation_title')}' (id={last_responder_state.get('active_regulation_id')})"
             )
 
         # ── Step 1.5: Intercept URLs (Web Reader) — deteksi dulu, fetch nanti paralel ─────
@@ -653,6 +655,9 @@ class ModeHub:
                     }]
                     has_attachment = True
                     precheck["has_attachment"] = True
+                    precheck["is_interrogator_focus"] = True
+                    precheck["interrogator_file"] = focus_clean_name
+                    precheck["interrogator_pages"] = interrogator_match.group(2)
 
         # ── Fast-path Bypass untuk Attachment ──────────────────────────────────────
         if has_attachment:
@@ -678,6 +683,18 @@ class ModeHub:
                     logger.info(f"[MODE_HUB] Attachment First-Chat Title updated -> '{title}'")
                 except Exception as e:
                     logger.warning(f"[MODE_HUB] Gagal update attachment title: {e}")
+
+            # Emit pipeline routing for live telemetry
+            yield json.dumps({
+                "event_type": "pipeline_routing",
+                "mode": "attachment",
+                "lane": "attachment",
+                "need_rag": False,
+                "is_ambiguous": False,
+                "intent": "PDF Interrogator / Attachment Analysis",
+                "key_subject": attachments[0].get('file_name', 'Dokumen Lampiran') if attachments else 'Lampiran',
+                "timestamp": datetime.utcnow().isoformat() + "Z"
+            }) + "\n"
 
             handler = self.mode_handlers["attachment"]
             async for chunk in handler.execute(
@@ -705,6 +722,16 @@ class ModeHub:
                 active_audit = brain.get_active_audit()
                 if active_audit and (is_continuation_intent(user_message) or is_audit_intent(user_message)):
                     logger.info(f"[MODE_HUB] 📑 Active Document Audit continuation detected! Resuming batch: {active_audit.get('current_batch_label')}")
+                    yield json.dumps({
+                        "event_type": "pipeline_routing",
+                        "mode": "attachment",
+                        "lane": "attachment",
+                        "need_rag": False,
+                        "is_ambiguous": False,
+                        "intent": "Document Audit Continuation",
+                        "key_subject": active_audit.get("current_batch_label", "Audit Batch"),
+                        "timestamp": datetime.utcnow().isoformat() + "Z"
+                    }) + "\n"
                     handler = self.mode_handlers["attachment"]
                     async for chunk in handler.execute(
                         user_message=user_message,
@@ -1261,6 +1288,27 @@ class ModeHub:
             mode = "guest" if is_guest else "flash"
         
         logger.info(f"[MODE_HUB] Dispatching request to Mode: {mode.upper()}")
+
+        # ── Step 3.6: Emit Real Pipeline Routing Telemetry to Frontend ─────────────
+        resolved_lane = (
+            "flash" if mode in ["flash", "guest"]
+            else "attachment" if mode in ["attachment", "pdf_interrogator"]
+            else "rag" if mode in ["documents", "document", "rag", "compliance", "focus"]
+            else "ambiguous" if (mode == "ambiguous" or routing_data.get("is_ambiguous"))
+            else "generate_file" if mode == "generate_file"
+            else "tools" if mode in ["deck", "search", "websearch", "email", "code", "coding"]
+            else "flash"
+        )
+        yield json.dumps({
+            "event_type": "pipeline_routing",
+            "mode": mode,
+            "lane": resolved_lane,
+            "need_rag": bool(routing_data.get("need_rag")),
+            "is_ambiguous": bool(routing_data.get("is_ambiguous")),
+            "intent": routing_data.get("intent", "Direct Synthesis"),
+            "key_subject": current_key_subject,
+            "timestamp": datetime.utcnow().isoformat() + "Z"
+        }) + "\n"
         
         handler = self.mode_handlers[mode]
         

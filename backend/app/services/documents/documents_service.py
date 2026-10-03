@@ -293,7 +293,25 @@ class DocumentsService:
                     file_type,
                     "pending",
                 )
-                return doc_id
+    async def set_document_tier(self, doc_id: int, access_tier: str = "INTERNAL") -> None:
+        """Map access tier (INTERNAL / EXTERNAL) for a document."""
+        clean_tier = "EXTERNAL" if (access_tier or "").upper() == "EXTERNAL" else "INTERNAL"
+        async with get_db() as conn:
+            await conn.execute(
+                """
+                INSERT INTO dokumen_tier_mapping (dokumen_id, access_tier, updated_at)
+                VALUES ($1, $2, NOW())
+                ON CONFLICT (dokumen_id) DO UPDATE SET access_tier = $2, updated_at = NOW()
+                """,
+                doc_id,
+                clean_tier,
+            )
+            # Also update any chunks if already created
+            await conn.execute(
+                "UPDATE dokumen_chunk SET access_tier = $1 WHERE dokumen_id = $2",
+                clean_tier,
+                doc_id,
+            )
 
     async def delete_document(self, doc_id: int) -> Tuple[bool, Optional[str], int]:
         """Delete document from PostgreSQL. Returns (success, file_path, chunks_deleted)."""

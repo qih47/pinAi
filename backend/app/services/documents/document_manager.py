@@ -36,20 +36,27 @@ class DocumentManager:
             # 3. Embed chunks
             async with get_db() as conn:
                 async with conn.transaction():
+                    tier_row = await conn.fetchrow(
+                        "SELECT access_tier FROM dokumen_tier_mapping WHERE dokumen_id = $1",
+                        doc_id
+                    )
+                    doc_tier = tier_row["access_tier"] if tier_row else "INTERNAL"
+
                     for idx, chunk_text_content in enumerate(chunks):
                         # Get embedding dari rag_service
                         embedding = await rag_service.embed_text(chunk_text_content)
                         
-                        # Insert chunk
+                        # Insert chunk with access_tier
                         await conn.execute(
                             """
-                            INSERT INTO dokumen_chunk (dokumen_id, chunk_index, content, embedding)
-                            VALUES ($1, $2, $3, $4)
+                            INSERT INTO dokumen_chunk (dokumen_id, chunk_index, content, embedding, access_tier)
+                            VALUES ($1, $2, $3, $4, $5)
                             """,
                             doc_id,
                             idx,
                             chunk_text_content,
                             embedding,  # pgvector format
+                            doc_tier,
                         )
                     
                     # Update dokumen status to completed

@@ -85,13 +85,23 @@ app.add_middleware(
 
 analytics_service_router = APIRouter()
 
-from backend.app.api.endpoints import analytics, notifications, admin
+from backend.app.api.endpoints import analytics, notifications, admin, training, synthetic, api_keys
 analytics_service_router.include_router(analytics.router, prefix="/analytics", tags=["Analytics"])
 analytics_service_router.include_router(notifications.audit_router, tags=["Audit Logs"])
 analytics_service_router.include_router(admin.router, prefix="/admin", tags=["Admin"])
+analytics_service_router.include_router(training.router, prefix="/training", tags=["Training"])
+analytics_service_router.include_router(synthetic.router, prefix="/synthetic", tags=["Synthetic"])
+analytics_service_router.include_router(api_keys.router, prefix="/keys", tags=["API Keys"])
+
+# Alias /audit-logs direct access
+audit_direct_router = APIRouter(prefix="/audit-logs", tags=["Audit Logs Direct"])
+audit_direct_router.add_api_route("", notifications.get_audit_logs, methods=["GET"])
+audit_direct_router.add_api_route("/stats", notifications.get_audit_stats, methods=["GET"])
+audit_direct_router.add_api_route("/export", notifications.export_audit_logs, methods=["POST"])
+analytics_service_router.include_router(audit_direct_router)
 
 app.include_router(analytics_service_router, prefix="/api")
-logger.info("🔌 [ANALYTICS_SERVICE] /api/analytics, /api/admin, /audit-logs routers mounted.")
+logger.info("🔌 [ANALYTICS_SERVICE] /api/analytics, /api/admin, /api/training, /api/synthetic, /api/keys, /api/audit-logs mounted.")
 
 
 # ── Secure Static Files ───────────────────────────────────────────────────────

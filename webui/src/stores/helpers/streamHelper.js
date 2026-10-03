@@ -1,4 +1,20 @@
 import * as endpoints from "../../services/endpoints";
+import apiClient from "../../services/apiClient";
+
+export const emitPipelineTelemetry = (payload) => {
+    try {
+        const fullPayload = {
+            ...payload,
+            timestamp: Date.now()
+        };
+        if (typeof window !== 'undefined' && window.BroadcastChannel) {
+            const bc = new BroadcastChannel('cakra_pipeline_telemetry');
+            bc.postMessage(fullPayload);
+            bc.close();
+        }
+        apiClient.post('/analytics/pipeline/event', fullPayload).catch(() => {});
+    } catch (e) {}
+};
 
 export function normalizeAttachments(files) {
     if (!files || !files.length) return [];
@@ -87,6 +103,8 @@ export async function performStream(set, get, messagesToSend, assistantMessage, 
             const controller = new AbortController();
             set({ abortController: controller });
 
+            emitPipelineTelemetry({ type: 'PIPELINE_LIFECYCLE', stage: 'CONNECTING' });
+
             const activeForcedMode = streamOptions.forcedMode || streamOptions.forced_mode || get().activeModeTag || null;
             const activeBypassRouter = streamOptions.bypassRouter !== undefined ? streamOptions.bypassRouter : Boolean(streamOptions.bypass_router);
 
@@ -118,6 +136,13 @@ export async function performStream(set, get, messagesToSend, assistantMessage, 
                     language: get().language || (typeof localStorage !== 'undefined' ? localStorage.getItem("cakra_language") : 'id') || 'id'
                 },
                 {
+                    onPipelineRouting: (routeData) => {
+                        console.log('🧭 [PIPELINE_ROUTING] Router dispatched to:', routeData);
+                        emitPipelineTelemetry({
+                            type: 'PIPELINE_ROUTING',
+                            ...routeData
+                        });
+                    },
                     onTopicUpdate: (topic, keySubject) => {
                         console.log('🏷️ [TOPIC_UPDATE] Session active topic updated:', topic, '| key subject:', keySubject);
                         set(state => ({
@@ -133,6 +158,9 @@ export async function performStream(set, get, messagesToSend, assistantMessage, 
                         }));
                     },
                     onThinking: (thinking) => {
+                        if (!accumulatedThinking) {
+                            emitPipelineTelemetry({ type: 'PIPELINE_LIFECYCLE', stage: 'THINKING' });
+                        }
                         // Bersihkan marker <|channel> dan [GEMMA_THINK] dari string thinking
                         let cleanThinking = thinking
                             .replace(/<\|channel>thought/g, '')
@@ -174,6 +202,7 @@ export async function performStream(set, get, messagesToSend, assistantMessage, 
                         }
                     },
                     onStatus: (statusStr, statusKey) => {
+                        emitPipelineTelemetry({ type: 'PIPELINE_LIFECYCLE', stage: 'STATUS', statusStr, statusKey });
                         // Dipanggil oleh RAG / pipeline statis / agentic tool
                         let activeTool = assistantMessage.activeTool || null;
                         if (statusKey) {
@@ -251,6 +280,9 @@ export async function performStream(set, get, messagesToSend, assistantMessage, 
                         updateStreamState({ messages: currentMessages });
                     },
                     onChunk: (chunk) => {
+                        if (!accumulatedReply) {
+                            emitPipelineTelemetry({ type: 'PIPELINE_LIFECYCLE', stage: 'SYNTHESIS' });
+                        }
                         accumulatedReply += chunk;
                         let cleanReply = accumulatedReply;
 
@@ -505,6 +537,7 @@ export async function performStream(set, get, messagesToSend, assistantMessage, 
                         }
                     },
                     onDone: (data) => {
+                        emitPipelineTelemetry({ type: 'PIPELINE_LIFECYCLE', stage: 'COMPLETED' });
                         let finalFileGens = assistantMessage.fileGenerations;
                         if (finalFileGens && finalFileGens.length > 0) {
                             finalFileGens = finalFileGens.map(fg => {

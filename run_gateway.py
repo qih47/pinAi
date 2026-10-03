@@ -44,10 +44,13 @@ AUTH_SERVICE_URL    = os.getenv("AUTH_SERVICE_URL",      "http://localhost:8003"
 ROUTE_MAP = [
     # Auth Service
     ("/api/auth",        AUTH_SERVICE_URL),
-    # Analytics Service
+    # Analytics & Training Service
     ("/api/analytics",   ANALYTICS_SERVICE_URL),
     ("/api/admin",       ANALYTICS_SERVICE_URL),
     ("/api/audit-logs",  ANALYTICS_SERVICE_URL),
+    ("/api/training",    ANALYTICS_SERVICE_URL),
+    ("/api/synthetic",   ANALYTICS_SERVICE_URL),
+    ("/api/keys",        ANALYTICS_SERVICE_URL),
     # Chat Service — everything else under /api
     ("/api",             CHAT_SERVICE_URL),
     # Static files served by Chat Service

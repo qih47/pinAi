@@ -1,52 +1,56 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { useSystemMetrics } from '../hooks/useSystemMetrics';
-
-const dataAllTimes = [
-  { time: 'Jan', latency: 120 },
-  { time: 'Feb', latency: 140 },
-  { time: 'Mar', latency: 130 },
-  { time: 'Apr', latency: 310 },
-  { time: 'May', latency: 150 },
-  { time: 'Jun', latency: 220 },
-  { time: 'Jul', latency: 140 },
-];
-
-const dataToday = [
-  { time: '00:00', latency: 110 },
-  { time: '04:00', latency: 90 },
-  { time: '08:00', latency: 130 },
-  { time: '12:00', latency: 280 },
-  { time: '16:00', latency: 190 },
-  { time: '20:00', latency: 140 },
-  { time: '23:59', latency: 120 },
-];
-
-const dataLast7Days = [
-  { time: 'Mon', latency: 130 },
-  { time: 'Tue', latency: 150 },
-  { time: 'Wed', latency: 160 },
-  { time: 'Thu', latency: 120 },
-  { time: 'Fri', latency: 420 },
-  { time: 'Sat', latency: 180 },
-  { time: 'Sun', latency: 140 },
-];
+import apiClient from '../../../services/apiClient';
 
 export const RequestLatencyChart = () => {
   const [filter, setFilter] = useState('Live Stream');
+  const [dbData, setDbData] = useState({ series: [], avg: 0, peak: 0 });
+  const [loading, setLoading] = useState(false);
   const { metrics } = useSystemMetrics();
 
-  const { data, avg, peak } = useMemo(() => {
-    let selectedData = dataToday;
-    if (filter === 'Live Stream') selectedData = metrics?.latencies?.length ? metrics.latencies : [{ time: '00:00', latency: 0 }];
-    if (filter === 'All Times') selectedData = dataAllTimes;
-    if (filter === 'Last 7 Days') selectedData = dataLast7Days;
+  useEffect(() => {
+    if (filter === 'Live Stream') return;
 
-    const max = Math.max(...selectedData.map(d => d.latency)) || 0;
-    const average = selectedData.length ? Math.round(selectedData.reduce((acc, curr) => acc + curr.latency, 0) / selectedData.length) : 0;
-    
-    return { data: selectedData, avg: average, peak: max };
-  }, [filter, metrics]);
+    const periodMap = {
+      'Today': 'today',
+      'Last 7 Days': '7d',
+      'All Times': 'all'
+    };
+
+    const fetchLatencies = async () => {
+      setLoading(true);
+      try {
+        const res = await apiClient.get(`/analytics/latencies?period=${periodMap[filter] || 'today'}`);
+        if (res.data?.data) {
+          setDbData(res.data.data);
+        }
+      } catch (e) {
+        console.error('Failed to fetch aggregated latencies:', e);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchLatencies();
+    const interval = setInterval(fetchLatencies, 20000);
+    return () => clearInterval(interval);
+  }, [filter]);
+
+  const { data, avg, peak } = useMemo(() => {
+    if (filter === 'Live Stream') {
+      const selectedData = metrics?.latencies?.length ? metrics.latencies : [{ time: '00:00', latency: 0 }];
+      const max = Math.max(...selectedData.map(d => d.latency)) || 0;
+      const average = selectedData.length ? Math.round(selectedData.reduce((acc, curr) => acc + curr.latency, 0) / selectedData.length) : 0;
+      return { data: selectedData, avg: average, peak: max };
+    }
+
+    return {
+      data: dbData.series?.length ? dbData.series : [{ time: '00:00', latency: 0 }],
+      avg: Math.round(dbData.avg || 0),
+      peak: Math.round(dbData.peak || 0)
+    };
+  }, [filter, metrics, dbData]);
   return (
     <div className="h-full w-full rounded-xl border border-gray-800 bg-[#0B0F19]/90 backdrop-blur-md p-6 flex flex-col">
       <div className="flex justify-between items-start mb-6">

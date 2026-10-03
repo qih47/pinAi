@@ -70,6 +70,15 @@ Catatan: Sesi ini memiliki lampiran dokumen/file. Jika user menanyakan/merujuk d
 {% if has_prior_url_context and not session_brain_catalog %}
 Catatan: User pernah membuka tautan web di sesi ini. Jika user merujuk tautan tersebut: aktifkan is_web_search: true + needs_history: true.
 {% endif %}
+{% if active_regulation_title %}
+=== DOKUMEN / REGULASI AKTIF DI SESI INI ===
+Dokumen: {{ active_regulation_title }}{% if active_regulation_id %} (ID: {{ active_regulation_id }}){% endif %}
+Aturan Anaphora: Jika user bertanya lanjutan mengenai lampiran, pasal, ayat, bagan, bab, gambar, atau formulir ("tunjukin lampiran E nya", "pasal 14 bunyinya apa?", "lihat bagan alurnya", "buka halaman 10"):
+• Set "need_rag": true, "needs_history": true
+• Wajib sertakan "query_judul": ["{{ active_regulation_title }}"]
+• Rumuskan "queries" mandiri lengkap dengan menyertakan nama dokumen (contoh: "Lampiran E {{ active_regulation_title }}")
+• Jika user meminta melihat gambar/bagan/lampiran fisik: set "requires_visual": true, "visual_types": ["doc_media"]
+{% endif %}
 {% if previous_topic %}
 === TOPIK & ENTITAS SEBELUMNYA DI SESI INI ===
 Topik: {{ previous_topic }}
@@ -118,6 +127,8 @@ def build_dispatcher_prompt(
     has_prior_url_context = bool(precheck.get("_visited_urls")) or bool(precheck.get("has_url_context"))
     has_prior_doc_context = bool(precheck.get("_session_chunks_text")) or bool(precheck.get("_retrieved_session_chunks_text"))
     session_brain_catalog = str(precheck.get("_session_brain_catalog") or "").strip()
+    active_regulation_title = str(precheck.get("active_regulation_title") or "").strip()
+    active_regulation_id = precheck.get("active_regulation_id")
     
     from datetime import datetime
     from backend.app.services.ambient.weather_service import _HARI_INDONESIA, _BULAN_INDONESIA
@@ -133,6 +144,8 @@ def build_dispatcher_prompt(
         context_history_str=context_history_str,
         has_prior_doc_context=has_prior_doc_context,
         session_brain_catalog=session_brain_catalog,
+        active_regulation_title=active_regulation_title,
+        active_regulation_id=active_regulation_id,
         is_guest=is_guest,
         is_first_chat=is_first_chat,
         is_forced_doc_mode=is_forced_doc_mode,

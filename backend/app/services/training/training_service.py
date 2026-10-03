@@ -26,8 +26,12 @@ class TrainingService:
                     for row in rows:
                         mysql_docs.append(dict(zip(columns, row)))
 
-            # 2. Cross-check dengan PostgreSQL ragdb: hanya dokumen yang benar-benar memiliki embedding di dokumen_chunk
+            # 2. Cross-check dengan PostgreSQL ragdb:
+            # Dokumen dianggap tuntas (is_embedded = True) jika:
+            # a) Memiliki embedding vektor di dokumen_chunk, ATAU
+            # b) Telah selesai diproses 100% oleh Nightly 6-Worker Training (nightly_training_checkpoints)
             embedded_ids = set()
+            nightly_completed_ids = set()
             async with get_db() as conn_pg:
                 pg_rows = await conn_pg.fetch("""
                     SELECT DISTINCT dokumen_id 
@@ -36,12 +40,20 @@ class TrainingService:
                 """)
                 embedded_ids = {row['dokumen_id'] for row in pg_rows}
 
+                chk_rows = await conn_pg.fetch("""
+                    SELECT DISTINCT dokumen_id
+                    FROM nightly_training_checkpoints
+                    WHERE status = 'COMPLETED'
+                """)
+                nightly_completed_ids = {row['dokumen_id'] for row in chk_rows}
+
             # 3. Assemble response
             result = []
             for doc in mysql_docs:
                 doc_id = doc['id_berita']
                 tgl = doc.get('tanggal')
                 tgl_str = tgl.isoformat() if hasattr(tgl, 'isoformat') else str(tgl) if tgl else None
+                is_done = (doc_id in embedded_ids) or (doc_id in nightly_completed_ids)
                 result.append({
                     "id": doc_id,
                     "judul": doc['judul'],
@@ -49,7 +61,9 @@ class TrainingService:
                     "tanggal": tgl_str,
                     "kategori_id": doc['id_kategori'],
                     "file_name": doc['gambar'],
-                    "is_embedded": doc_id in embedded_ids
+                    "is_embedded": is_done,
+                    "has_vector_chunks": doc_id in embedded_ids,
+                    "is_nightly_completed": doc_id in nightly_completed_ids
                 })
 
             return result

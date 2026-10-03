@@ -1,4 +1,5 @@
 import * as endpoints from "../../services/endpoints";
+import apiClient from "../../services/apiClient";
 import { performStream, normalizeAttachments, parseMessageFileTags } from "../helpers/streamHelper";
 
 export const createStreamSlice = (set, get) => ({
@@ -44,6 +45,25 @@ export const createStreamSlice = (set, get) => ({
     sendMessage: async (content, npp, onSessionCreatedCallback, directUploadedFiles = null, chatMode = 'auto', isThinkingMode = true, toast = null, options = {}) => {
         const hasAttachments = (directUploadedFiles?.length > 0) || (get().stagedAttachments?.length > 0);
         if (!content.trim() && !hasAttachments) return;
+
+        // Broadcast to Analytics Live Pipeline Canvas (Same-Origin BroadcastChannel & Cross-Origin Backend SSE Bridge)
+        try {
+            const telemetryPayload = {
+                type: 'PIPELINE_LIFECYCLE',
+                stage: 'INIT',
+                prompt: content,
+                chatMode: chatMode,
+                timestamp: Date.now()
+            };
+            if (typeof window !== 'undefined' && window.BroadcastChannel) {
+                const bc = new BroadcastChannel('cakra_pipeline_telemetry');
+                bc.postMessage(telemetryPayload);
+                bc.close();
+            }
+            apiClient.post('/analytics/pipeline/event', telemetryPayload).catch(() => {});
+        } catch (e) {
+            // silent broadcast error
+        }
 
         const currentActiveStreams = get().activeStreams || {};
         if (Object.keys(currentActiveStreams).length >= 4) {

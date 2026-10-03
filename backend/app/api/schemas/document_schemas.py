@@ -7,6 +7,7 @@ class DocumentBaseSchema(BaseModel):
     title: str = Field(..., min_length=1, max_length=2000, description="Judul dokumen")
     description: Optional[str] = Field(None, max_length=1000, description="Deskripsi detail dokumen")
     source_type: str = Field("upload", description="Tipe sumber: upload, url, atau internal")
+    access_tier: str = Field("INTERNAL", description="Tier akses: INTERNAL atau EXTERNAL")
     
     class Config:
         from_attributes = True

@@ -28,6 +28,7 @@ const LazyDocAuditContinueWidget = lazy(() => import('./DocAuditContinueWidget')
 const LazyAgenticProcessCard = lazy(() => import('./AgenticProcessCard'));
 const LazyDocumentDiffProcessCard = lazy(() => import('./DocumentDiffProcessCard'));
 const LazyDeckTasksWidget = lazy(() => import('./DeckTasksWidget'));
+const LazyDocumentPageViewer = lazy(() => import('./DocumentPageViewer'));
 
 const remarkPluginsList = [remarkGfm, remarkMath];
 const rehypePluginsList = [rehypeKatex];
@@ -738,7 +739,34 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
                 );
             }
 
-            if (!inline && match && (match[1] === 'docsearch' || match[1] === 'python_calc' || match[1] === 'terminal_runner' || match[1] === 'doc_media' || match[1] === 'doc_diff' || match[1] === 'deck_task')) {
+            if (!inline && match && match[1] === 'doc_media') {
+                let toolData = null;
+                try {
+                    toolData = JSON.parse(cleanCode);
+                } catch (e) {
+                    try {
+                        const firstBrace = cleanCode.indexOf('{');
+                        const lastBrace = cleanCode.lastIndexOf('}');
+                        if (firstBrace !== -1 && lastBrace !== -1) {
+                            toolData = JSON.parse(cleanCode.substring(firstBrace, lastBrace + 1));
+                        }
+                    } catch (e2) {
+                        toolData = { raw: cleanCode };
+                    }
+                }
+                const { darkMode, language } = latestProps.current;
+                return (
+                    <Suspense fallback={<div className={`animate-pulse p-4 border rounded-2xl text-xs font-medium my-2 ${darkMode ? 'border-zinc-800 bg-zinc-900/60 text-zinc-400' : 'border-slate-200 bg-slate-50 text-slate-500'}`}>Memuat snapshot dokumen...</div>}>
+                        <LazyDocumentPageViewer 
+                            toolData={toolData}
+                            darkMode={darkMode}
+                            language={language}
+                        />
+                    </Suspense>
+                );
+            }
+
+            if (!inline && match && (match[1] === 'docsearch' || match[1] === 'python_calc' || match[1] === 'terminal_runner' || match[1] === 'doc_diff' || match[1] === 'deck_task')) {
                 let toolData = null;
                 try {
                     toolData = JSON.parse(cleanCode);

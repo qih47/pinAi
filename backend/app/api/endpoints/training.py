@@ -99,6 +99,18 @@ async def get_nightly_status():
         logger.error(f"Failed to fetch nightly status: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+
+@router.get("/lora/telemetry")
+async def get_lora_training_telemetry():
+    """Mengambil progres realtime training LoRA dari log file (train_cakra_router.log) dan metrik GPU"""
+    try:
+        from backend.app.services.training.lora_telemetry_service import lora_telemetry_service
+        telemetry = lora_telemetry_service.get_telemetry()
+        return {"status": "success", "data": telemetry}
+    except Exception as e:
+        logger.error(f"Failed to fetch LoRA telemetry: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 from typing import Optional
 
 class NightlyTriggerRequest(BaseModel):

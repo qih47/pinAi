@@ -357,3 +357,26 @@ html:not(.dark) .cakra-streaming-active > h4:last-child::after {
 .cakra-streaming-active {
   display: flow-root;
 }
+
+/* ========================================================================== */
+/* 🌙 DARK MODE SELECT & OPTION STYLING (ANTI-WHITE DROPDOWN POPUP)          */
+/* ========================================================================== */
+select {
+  background-color: #0b0f19 !important;
+  color: #e2e8f0 !important;
+  color-scheme: dark !important;
+}
+
+select option {
+  background-color: #0b0f19 !important;
+  color: #e2e8f0 !important;
+  padding: 8px 12px !important;
+}
+
+select option:hover,
+select option:focus,
+select option:checked {
+  background-color: #1e293b !important;
+  color: #38bdf8 !important;
+}
+

@@ -82,15 +82,15 @@ const PdfInterrogator = ({ darkMode, language = 'id', isMobile = false }) => {
         return undefined;
     }, [isMobile, containerWidth, scale, showSidebar]);
 
-    // Handle toggle page selection (maksimal 5 halaman)
+    // Handle toggle page selection (maksimal 20 halaman sesuai kapasitas vLLM)
     const togglePageSelection = useCallback((pNum, e) => {
         if (e) e.stopPropagation();
         setSelectedPages(prev => {
             if (prev.includes(pNum)) {
                 return prev.filter(p => p !== pNum);
             }
-            if (prev.length >= 5) {
-                // Maksimal 5 halaman agar context prompt optimal
+            if (prev.length >= 20) {
+                // Maksimal 20 halaman sesuai kemampuan multimodal vision vLLM
                 return prev;
             }
             return [...prev, pNum].sort((a, b) => a - b);
@@ -208,7 +208,7 @@ const PdfInterrogator = ({ darkMode, language = 'id', isMobile = false }) => {
                                         ? 'bg-blue-600 text-white' 
                                         : (darkMode ? 'bg-[#252528] text-gray-400' : 'bg-gray-200 text-gray-600')
                                 }`}>
-                                    {selectedPages.length}/5
+                                    {selectedPages.length}/20
                                 </span>
                             </div>
 

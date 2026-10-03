@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useChatStore } from '../../stores/chatStore';
-import { Activity, ShieldAlert, FileText, Settings, LogOut, Hexagon, Wrench, Database, ChevronLeft, ChevronRight, FileSearch, Code2, Archive, Key, Brain, Users, MessageSquare, Coins } from 'lucide-react';
+import { Activity, ShieldAlert, FileText, Settings, LogOut, Hexagon, Wrench, Database, ChevronLeft, ChevronRight, FileSearch, Code2, Archive, Key, Brain, Users, MessageSquare, Coins, Zap, Network } from 'lucide-react';
+import apiClient from '../../services/apiClient';
 import { LiveTerminal } from './components/LiveTerminal';
 import { RequestLatencyChart } from './components/RequestLatencyChart';
 import { AgenticRadar } from './components/AgenticRadar';
@@ -16,6 +17,7 @@ import { KnowledgeMonitor } from './components/KnowledgeMonitor';
 import { CyberSecurityTab } from './components/CyberSecurityTab';
 import { QualityRadar } from './components/QualityRadar';
 import { PipelineVisualizer } from './components/PipelineVisualizer';
+import { PipelineFlowCanvas } from './components/PipelineFlowCanvas';
 import { HardwareMonitor } from './components/HardwareMonitor';
 import { TokenLeaderboard } from './components/TokenLeaderboard';
 import { TokenMonitorTab } from './components/TokenMonitorTab';
@@ -33,10 +35,55 @@ import { useChatAuthStore } from '../../stores/authStore';
 export const DashboardLayout = () => {
   const navigate = useNavigate();
   const logout = useChatAuthStore((state) => state.logout);
-  const [activeTab, setActiveTab] = useState('overview');
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  // URL Query Parameters Sync (Deep Linking)
+  const activeTab = searchParams.get('tab') || 'overview';
+  const subTabParam = searchParams.get('subtab');
+
   const [isSidebarExpanded, setIsSidebarExpanded] = useState(true);
-  const [overviewTab, setOverviewTab] = useState('main');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [loraTelemetry, setLoraTelemetry] = useState(null);
+
+  // Derived subtabs based on URL parameters
+  const overviewTab = activeTab === 'overview' ? (subTabParam || 'main') : 'main';
+  const deepLearningSubTab = (activeTab === 'training' || activeTab === 'synthetic') ? (subTabParam || 'pipelines') : 'pipelines';
+
+  const handleTabChange = (newTab, newSubTab = null) => {
+    const params = new URLSearchParams();
+    params.set('tab', newTab);
+    if (newSubTab) {
+      params.set('subtab', newSubTab);
+    } else if (newTab === 'training') {
+      params.set('subtab', searchParams.get('subtab') || 'pipelines');
+    } else if (newTab === 'overview') {
+      params.set('subtab', searchParams.get('subtab') || 'main');
+    }
+    setSearchParams(params);
+  };
+
+  const handleSubTabChange = (newSubTab) => {
+    const params = new URLSearchParams(searchParams);
+    params.set('tab', activeTab);
+    params.set('subtab', newSubTab);
+    setSearchParams(params);
+  };
+
+  useEffect(() => {
+    const fetchTelemetry = async () => {
+      try {
+        const res = await apiClient.get('/training/lora/telemetry', { timeout: 4000 });
+        if (res.data?.data) {
+          setLoraTelemetry(res.data.data);
+        }
+      } catch (e) {
+        // silent fail
+      }
+    };
+    fetchTelemetry();
+    const interval = setInterval(fetchTelemetry, 3500);
+    return () => clearInterval(interval);
+  }, []);
 
   const handleLogout = () => {
     logout();
@@ -74,26 +121,34 @@ export const DashboardLayout = () => {
         </div>
 
         <nav className={`flex-1 w-full ${isSidebarExpanded ? 'px-4' : 'px-3'} space-y-2 overflow-y-auto custom-scrollbar`}>
-          <NavItem icon={<Activity />} label="Overview" active={activeTab === 'overview'} onClick={() => setActiveTab('overview')} isExpanded={isSidebarExpanded} />
-          <NavItem icon={<Database />} label="Knowledge Base" active={activeTab === 'knowledge'} onClick={() => setActiveTab('knowledge')} isExpanded={isSidebarExpanded} />
-          <NavItem icon={<Brain />} label="Deep Learning Hub" active={activeTab === 'training' || activeTab === 'synthetic'} onClick={() => setActiveTab('training')} isExpanded={isSidebarExpanded} />
-          <NavItem icon={<ShieldAlert />} label="Cyber Security" active={activeTab === 'security'} onClick={() => setActiveTab('security')} isExpanded={isSidebarExpanded} />
-          <NavItem icon={<Code2 />} label="Prompt Studio" active={activeTab === 'prompts'} onClick={() => setActiveTab('prompts')} isExpanded={isSidebarExpanded} />
-          <NavItem icon={<Archive />} label="Artifact Vault" active={activeTab === 'artifacts'} onClick={() => setActiveTab('artifacts')} isExpanded={isSidebarExpanded} />
-          <NavItem icon={<FileSearch />} label="OCR Sandbox" active={activeTab === 'ocr'} onClick={() => setActiveTab('ocr')} isExpanded={isSidebarExpanded} />
-          <NavItem icon={<Wrench />} label="Operations" active={activeTab === 'operations'} onClick={() => setActiveTab('operations')} isExpanded={isSidebarExpanded} />
-          <NavItem icon={<Users />} label="User Management" active={activeTab === 'users'} onClick={() => setActiveTab('users')} isExpanded={isSidebarExpanded} />
-          <NavItem icon={<FileText />} label="Logs" active={activeTab === 'logs'} onClick={() => setActiveTab('logs')} isExpanded={isSidebarExpanded} />
-          <NavItem icon={<Database />} label="Session Audit" active={activeTab === 'audit'} onClick={() => setActiveTab('audit')} isExpanded={isSidebarExpanded} />
-          <NavItem icon={<MessageSquare />} label="Chat Explorer" active={activeTab === 'chat_explorer'} onClick={() => setActiveTab('chat_explorer')} isExpanded={isSidebarExpanded} />
-          <NavItem icon={<Settings />} label="Settings" active={activeTab === 'settings'} onClick={() => setActiveTab('settings')} isExpanded={isSidebarExpanded} />
+          <NavItem icon={<Activity />} label="Overview" active={activeTab === 'overview'} onClick={() => handleTabChange('overview', 'main')} isExpanded={isSidebarExpanded} />
+          <NavItem icon={<Database />} label="Knowledge Base" active={activeTab === 'knowledge'} onClick={() => handleTabChange('knowledge')} isExpanded={isSidebarExpanded} />
+          <NavItem 
+            icon={<Brain />} 
+            label="Deep Learning Hub" 
+            active={activeTab === 'training' || activeTab === 'synthetic'} 
+            onClick={() => handleTabChange('training', 'pipelines')} 
+            isExpanded={isSidebarExpanded} 
+            badge={loraTelemetry?.is_running ? `${loraTelemetry.percentage?.toFixed(0)}%` : null}
+          />
+          <NavItem icon={<Network />} label="Pipeline Flow" active={activeTab === 'pipeline_flow'} onClick={() => handleTabChange('pipeline_flow')} isExpanded={isSidebarExpanded} />
+          <NavItem icon={<ShieldAlert />} label="Cyber Security" active={activeTab === 'security'} onClick={() => handleTabChange('security')} isExpanded={isSidebarExpanded} />
+          <NavItem icon={<Code2 />} label="Prompt Studio" active={activeTab === 'prompts'} onClick={() => handleTabChange('prompts')} isExpanded={isSidebarExpanded} />
+          <NavItem icon={<Archive />} label="Artifact Vault" active={activeTab === 'artifacts'} onClick={() => handleTabChange('artifacts')} isExpanded={isSidebarExpanded} />
+          <NavItem icon={<FileSearch />} label="OCR Sandbox" active={activeTab === 'ocr'} onClick={() => handleTabChange('ocr')} isExpanded={isSidebarExpanded} />
+          <NavItem icon={<Wrench />} label="Operations" active={activeTab === 'operations'} onClick={() => handleTabChange('operations')} isExpanded={isSidebarExpanded} />
+          <NavItem icon={<Users />} label="User Management" active={activeTab === 'users'} onClick={() => handleTabChange('users')} isExpanded={isSidebarExpanded} />
+          <NavItem icon={<FileText />} label="Logs" active={activeTab === 'logs'} onClick={() => handleTabChange('logs')} isExpanded={isSidebarExpanded} />
+          <NavItem icon={<Database />} label="Session Audit" active={activeTab === 'audit'} onClick={() => handleTabChange('audit')} isExpanded={isSidebarExpanded} />
+          <NavItem icon={<MessageSquare />} label="Chat Explorer" active={activeTab === 'chat_explorer'} onClick={() => handleTabChange('chat_explorer')} isExpanded={isSidebarExpanded} />
+          <NavItem icon={<Settings />} label="Settings" active={activeTab === 'settings'} onClick={() => handleTabChange('settings')} isExpanded={isSidebarExpanded} />
         </nav>
 
         <div className={`${isSidebarExpanded ? 'px-4' : 'px-3'} pb-4 space-y-2`}>
           <button 
             onClick={() => {
               useChatStore.getState().clearChat();
-              window.location.href = import.meta.env.VITE_CHAT_URL || `${window.location.protocol}//${window.location.hostname}:5173/chat/new`;
+              window.location.href = import.meta.env.VITE_CHAT_URL || '/chat/new';
             }}
             className={`w-full flex items-center ${isSidebarExpanded ? 'justify-start' : 'justify-center'} gap-3 p-3 rounded-lg text-gray-500 hover:bg-gray-800/50 hover:text-gray-300 transition-colors`}
           >
@@ -137,25 +192,25 @@ export const DashboardLayout = () => {
             {/* Sub Tabs Navigation */}
             <div className="flex gap-2 border-b border-gray-800 pb-2">
               <button 
-                onClick={() => setOverviewTab('main')}
+                onClick={() => handleTabChange('overview', 'main')}
                 className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${overviewTab === 'main' ? 'text-cyan-400 border-b-2 border-cyan-400 bg-cyan-900/20' : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800/50'}`}
               >
                 Main Dashboard
               </button>
               <button 
-                onClick={() => setOverviewTab('tokens')}
+                onClick={() => handleTabChange('overview', 'tokens')}
                 className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-colors flex items-center gap-1.5 ${overviewTab === 'tokens' ? 'text-cyan-400 border-b-2 border-cyan-400 bg-cyan-900/20' : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800/50'}`}
               >
                 <Coins size={14} /> Token Monitor
               </button>
               <button 
-                onClick={() => setOverviewTab('metrics')}
+                onClick={() => handleTabChange('overview', 'metrics')}
                 className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${overviewTab === 'metrics' ? 'text-cyan-400 border-b-2 border-cyan-400 bg-cyan-900/20' : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800/50'}`}
               >
                 Metrics & Quality
               </button>
               <button 
-                onClick={() => setOverviewTab('resources')}
+                onClick={() => handleTabChange('overview', 'resources')}
                 className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${overviewTab === 'resources' ? 'text-cyan-400 border-b-2 border-cyan-400 bg-cyan-900/20' : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800/50'}`}
               >
                 Resources & Telemetry
@@ -165,6 +220,45 @@ export const DashboardLayout = () => {
             {/* Main Tab */}
             {overviewTab === 'main' && (
               <div className="flex flex-col gap-6 animate-in fade-in duration-300">
+                {/* Live Training Banner if active */}
+                {loraTelemetry?.is_running && (
+                  <div 
+                    onClick={() => handleTabChange('training', 'lora')}
+                    className="group bg-gradient-to-r from-amber-950/60 via-purple-950/40 to-slate-900 border border-amber-500/50 hover:border-amber-400 rounded-2xl p-4 flex flex-col md:flex-row md:items-center justify-between gap-4 cursor-pointer transition-all shadow-lg hover:shadow-amber-500/20"
+                  >
+                    <div className="flex items-center gap-4">
+                      <div className="p-3 bg-amber-500/20 border border-amber-500/40 rounded-xl text-amber-400 animate-pulse shrink-0">
+                        <Zap size={24} />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 font-mono">
+                            ⚡ LIVE QLoRA TRAINING
+                          </span>
+                          <span className="text-white font-semibold text-sm">Gemma 4 31B (Router LoRA Adapter)</span>
+                          <span className="text-xs px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/40 font-mono">
+                            Batch {loraTelemetry.batch_size}
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-400 mt-1">
+                          Step <span className="text-amber-400 font-bold font-mono">{loraTelemetry.current_step}</span> / {loraTelemetry.total_steps} ({loraTelemetry.percentage?.toFixed(1)}%) • Kecepatan: <span className="text-cyan-400 font-mono">{loraTelemetry.speed}</span> • Sisa: <span className="text-emerald-400 font-mono">{loraTelemetry.eta}</span> • VRAM: <span className="text-pink-400 font-mono">{loraTelemetry.gpu_memory}</span>
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3 shrink-0">
+                      <div className="w-28 md:w-36 bg-slate-800 rounded-full h-2.5 overflow-hidden border border-slate-700">
+                        <div 
+                          className="bg-gradient-to-r from-amber-500 to-emerald-400 h-2.5 rounded-full transition-all duration-500" 
+                          style={{ width: `${Math.min(100, Math.max(0, loraTelemetry.percentage || 0))}%` }}
+                        />
+                      </div>
+                      <button className="flex items-center gap-1.5 px-3.5 py-1.5 bg-amber-500 hover:bg-amber-400 text-black font-bold text-xs rounded-xl transition-all shadow group-hover:scale-105">
+                        Buka Live Monitor 🚀
+                      </button>
+                    </div>
+                  </div>
+                )}
+
                 <div className="flex-none">
                   <SystemHealthOverview />
                 </div>
@@ -240,7 +334,15 @@ export const DashboardLayout = () => {
             )}
             {(activeTab === 'training' || activeTab === 'synthetic') && (
               <div className="flex-1 flex flex-col min-h-0 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                <DeepLearningTab />
+                <DeepLearningTab 
+                  initialSubTab={deepLearningSubTab} 
+                  onSubTabChange={handleSubTabChange} 
+                />
+              </div>
+            )}
+            {activeTab === 'pipeline_flow' && (
+              <div className="flex-1 flex flex-col min-h-0 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                <PipelineFlowCanvas />
               </div>
             )}
             {activeTab === 'security' && (
@@ -278,7 +380,7 @@ export const DashboardLayout = () => {
                 <ChatExplorer />
               </div>
             )}
-            {!['overview', 'knowledge', 'training', 'security', 'operations', 'settings', 'logs', 'audit', 'ocr', 'prompts', 'artifacts', 'users', 'chat_explorer'].includes(activeTab) && (
+            {!['overview', 'knowledge', 'training', 'pipeline_flow', 'security', 'operations', 'settings', 'logs', 'audit', 'ocr', 'prompts', 'artifacts', 'users', 'chat_explorer'].includes(activeTab) && (
               <div className="flex-1 flex items-center justify-center rounded-xl border border-dashed border-gray-800 bg-[#0B0F19]/50 min-h-[500px]">
                 <div className="text-center flex flex-col items-center">
                   <Wrench className="w-12 h-12 text-gray-700 mb-4 animate-[spin_6s_linear_infinite]" />
@@ -297,21 +399,28 @@ export const DashboardLayout = () => {
 };
 
 // Sidebar Nav Item Helper
-const NavItem = ({ icon, label, active, onClick, isExpanded }) => {
+const NavItem = ({ icon, label, active, onClick, isExpanded, badge }) => {
   return (
     <button 
       onClick={onClick}
-      className={`w-full flex items-center ${isExpanded ? 'justify-start' : 'justify-center'} gap-3 p-3 rounded-lg transition-all duration-200 ${
+      className={`w-full flex items-center ${isExpanded ? 'justify-between' : 'justify-center'} p-3 rounded-lg transition-all duration-200 ${
         active 
           ? 'bg-gradient-to-r from-cyan-900/40 to-transparent text-cyan-400 border-l-2 border-cyan-400' 
           : 'text-gray-500 hover:bg-gray-800/30 hover:text-gray-300'
       }`}
       title={!isExpanded ? label : undefined}
     >
-      <div className="shrink-0">
-        {React.cloneElement(icon, { size: 20 })}
+      <div className="flex items-center gap-3 min-w-0">
+        <div className="shrink-0">
+          {React.cloneElement(icon, { size: 20 })}
+        </div>
+        <span className={`${isExpanded ? 'block' : 'hidden'} text-sm font-medium tracking-wide whitespace-nowrap truncate`}>{label}</span>
       </div>
-      <span className={`${isExpanded ? 'block' : 'hidden'} text-sm font-medium tracking-wide whitespace-nowrap`}>{label}</span>
+      {isExpanded && badge && (
+        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 font-mono animate-pulse shrink-0">
+          {badge}
+        </span>
+      )}
     </button>
   );
 };
