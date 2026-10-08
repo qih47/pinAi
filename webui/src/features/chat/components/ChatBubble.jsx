@@ -93,6 +93,7 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
     const editAndRegenerate = useChatStore(state => state.editAndRegenerate);
     const regenerateAssistant = useChatStore(state => state.regenerateAssistant);
     const switchMessageVariant = useChatStore(state => state.switchMessageVariant);
+    const continueAssistantResponse = useChatStore(state => state.continueAssistantResponse);
 
     const handleInstantRetry = useCallback(() => {
         if (regenerateAssistant) {
@@ -115,19 +116,23 @@ const ChatBubble = memo(function ChatBubble({ msg, idx, darkMode, theme, isThink
     }, [idx, regenerateAssistant, editAndRegenerate]);
 
     const handleContinue = useCallback(() => {
-        const store = useChatStore.getState();
-        const send = store.sendMessage;
-        if (send) {
-            send(
-                tChat.continueResponse || "Lanjutkan",
-                store.userNpp,
-                null,
-                null,
-                store.chatMode || 'auto',
-                store.isThinkingMode !== undefined ? store.isThinkingMode : true
-            );
+        if (continueAssistantResponse) {
+            continueAssistantResponse(idx);
+        } else {
+            const store = useChatStore.getState();
+            const send = store.sendMessage;
+            if (send) {
+                send(
+                    tChat.continueResponse || "Lanjutkan",
+                    store.userNpp,
+                    null,
+                    null,
+                    store.chatMode || 'auto',
+                    store.isThinkingMode !== undefined ? store.isThinkingMode : true
+                );
+            }
         }
-    }, [tChat.continueResponse]);
+    }, [idx, continueAssistantResponse, tChat.continueResponse]);
 
     // TTS Audio State
     const [isAudioLoading, setIsAudioLoading] = useState(false);

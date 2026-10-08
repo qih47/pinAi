@@ -81,6 +81,7 @@ class ModeDocuments:
             from backend.app.services.peraturan_service import get_candidate_documents_metadata
             from backend.app.services.rag.reranker_service import reranker_service
             from backend.app.services.pipeline.document_intelligence import (
+                get_document_text_map_from_ragdb,
                 extract_and_ocr_document_async,
                 expand_tri_window_context,
                 extract_explicit_pages_from_query
@@ -548,14 +549,14 @@ class ModeDocuments:
 
                     # Ekstrak kata kunci fokus untuk Exact Keyword Boost (misal: "cuti", "remunerasi", "tunjangan", "gaji")
                     focus_keywords = set()
-                    for text_src in (rag_queries_clean + [user_message]):
-                        for token in text_src.lower().split():
-                            clean_tok = re.sub(r"[^\w]", "", token)
-                            if len(clean_tok) >= 4 and clean_tok not in [
-                                "dokumen", "peraturan", "terkait", "dalam", "surat", "nomor",
-                                "tentang", "mengenai", "pindad", "apakah", "bagaimana", "adalah"
-                            ]:
-                                focus_keywords.add(clean_tok)
+                    focus_src = routing_data.get("semantic_query") or user_message
+                    for token in focus_src.lower().split():
+                        clean_tok = re.sub(r"[^\w]", "", token)
+                        if len(clean_tok) >= 4 and clean_tok not in [
+                            "dokumen", "peraturan", "terkait", "dalam", "surat", "nomor",
+                            "tentang", "mengenai", "pindad", "apakah", "bagaimana", "adalah"
+                        ]:
+                            focus_keywords.add(clean_tok)
 
                     logger.info(f"[MODE_DOCUMENTS] Exact Keyword Boost terms: {focus_keywords}")
 
@@ -736,11 +737,14 @@ class ModeDocuments:
                 vector_sources = []
                 if rag_queries:
                     logger.info(f"[MODE_DOCUMENTS] [TIER 2] RAG triggered via Sub-Queries | queries={rag_queries}")
+                    from backend.app.services.pipeline.tool_dispatcher import _resolve_target_doc_ids_from_postgres
+                    target_doc_ids = await _resolve_target_doc_ids_from_postgres(query_judul_list, user_message)
                     async for sse in run_rag_pipeline(
                         rewritten_queries=rag_queries,
                         limit_per_query=4,
                         npp=current_user_npp,
                         use_cache=False,
+                        target_doc_ids=target_doc_ids,
                     ):
                         raw = sse.strip()
                         if not raw:

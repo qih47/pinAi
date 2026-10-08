@@ -963,14 +963,41 @@ async def get_candidate_documents_metadata(
             # 2. RECENCY BOOST: Dokumen lebih baru naik peringkat (max +0.30)
             boost += _recency_boost(doc_tanggal)
             
-            # 3. DOCUMENT TYPE MATCH BOOST: PKB/SOP/SKEP match (+0.45), topik umum (+0.20)
-            has_primary_match = any(t in doc_title_lower or t in doc_noper_lower or t in doc_tag_lower for t in explicit_primary_types)
-            has_general_match = any(t in doc_title_lower or t in doc_noper_lower or t in doc_tag_lower for t in general_target_tokens)
+            # 3. SUBSTANTIVE TOPIC VS DOCUMENT TYPE BOOST:
+            # Topik substantif spesifik (misal "pengadaan", "cuti", "disiplin", "munisi") selalu diprioritaskan
+            # di atas tipe dokumen umum ("sop", "ik", "instruksi kerja") agar tidak membajak topik pencarian.
+            has_substantive_match = False
+            matched_substantive_count = 0
+            for token in general_target_tokens:
+                token_words = [w for w in re.findall(r'\b\w{3,}\b', token) if w not in {
+                    "yang", "dan", "atau", "untuk", "dari", "pada", "dalam", "dengan", "ke", "di",
+                    "ini", "itu", "bumn", "alur", "proses", "regulasi", "aturan", "tentang", "pedoman"
+                }]
+                for w in token_words:
+                    if w in doc_title_lower or w in doc_tag_lower or w in doc_noper_lower:
+                        matched_substantive_count += 1
+                        has_substantive_match = True
             
-            if has_primary_match:
-                boost += 0.45
-            elif has_general_match:
-                boost += 0.20
+            has_type_match = any(t in doc_title_lower or t in doc_noper_lower or t in doc_tag_lower for t in explicit_primary_types)
+            
+            if general_target_tokens and any(len(t) >= 4 for t in general_target_tokens):
+                # Jika ada kata kunci topik substantif:
+                if has_substantive_match:
+                    boost += 0.55 + min(matched_substantive_count * 0.10, 0.30)
+                    if has_type_match:
+                        boost += 0.20  # Bonus jika tipe dokumen juga cocok
+                else:
+                    # Dokumen TIDAK cocok dengan topik yang dicari, hanya kebetulan punya kata SOP/IK/SKEP
+                    if has_type_match:
+                        boost += 0.05
+                    else:
+                        boost -= 0.25  # Penalti untuk dokumen yang tidak relevan dengan topik
+            else:
+                # Jika murni mencari berdasarkan tipe dokumen (misal "buka dokumen PKB"):
+                if has_type_match:
+                    boost += 0.45
+                elif any(t in doc_title_lower or t in doc_noper_lower for t in general_target_tokens):
+                    boost += 0.20
                 
             final_score = base_score + boost
             r[11] = final_score

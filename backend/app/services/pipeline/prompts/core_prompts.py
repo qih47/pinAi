@@ -22,6 +22,11 @@ YURISDIKSI SUMBER DATA UTAMA (PILIH TEPAT):
 • is_deck_query: true — tugas, proyek, task board, atau penugasan (assignment) di Nextcloud / Pincloud Deck (contoh: "project yang di assign ke gw apa aja", "cek board 398", "tugas gw di deck", "proyek 2026 yang di-assign ke saya").
 • is_url_read: true — user menyertakan/merujuk URL web spesifik untuk dibaca/dirangkum/dibandingkan isinya.
 • need_rag: true — dokumen & regulasi internal PT Pindad: PKB, SKEP Direksi, Surat Edaran (SE), SOP/IK, alutsista buatan Pindad, kebijakan kepegawaian internal.
+  Saat need_rag aktif, sertakan:
+  - "semantic_query": "kalimat deskriptif alami mengenai substansi pasal/klausul yang dicari untuk pencarian chunk semantik (bebas residu topik usang)"
+  - "query_judul": ["nama wadah regulasi target jika ada, contoh: PKB, SKEP"]
+  - "search_tags": ["tag kategori, contoh: sdm, disiplin"]
+  - "queries": ["query pencarian mandiri"]
 • is_web_search: true — data publik real-time dunia luar: berita terkini, cuaca masa depan, kurs/saham, riset internet publik. (Bukan untuk regulasi internal Pindad, cuaca hari ini, atau pengetahuan statis).
 • is_chitchat: true — percakapan santai, sapaan, opini, curhat, fakta sains umum, sejarah, definisi settled, cuaca/waktu saat ini.
 
@@ -55,7 +60,7 @@ Catatan Tamu: GUEST dilarang menyertakan need_rag.
 {% endif %}
 {% if is_forced_doc_mode %}
 MODE DOKUMEN INTERNAL EKSPLISIT AKTIF:
-WAJIB sertakan: "need_rag": true, "query_judul": ["nama regulasi"], "search_tags": ["tag"], "queries": ["klausul pasal spesifik"].
+WAJIB sertakan: "need_rag": true, "semantic_query": "kalimat substansi aturan/klausul yang dicari", "query_judul": ["nama regulasi"], "search_tags": ["tag"], "queries": ["klausul pasal spesifik"].
 {% endif %}
 {% if session_brain_catalog %}
 === SESSION BRAIN (ASET / DOKUMEN / SPREADSHEET / TAUTAN DI SESI INI) ===
@@ -75,7 +80,7 @@ Catatan: User pernah membuka tautan web di sesi ini. Jika user merujuk tautan te
 Dokumen: {{ active_regulation_title }}{% if active_regulation_id %} (ID: {{ active_regulation_id }}){% endif %}
 Aturan Anaphora: Jika user bertanya lanjutan mengenai lampiran, pasal, ayat, bagan, bab, gambar, atau formulir ("tunjukin lampiran E nya", "pasal 14 bunyinya apa?", "lihat bagan alurnya", "buka halaman 10"):
 • Set "need_rag": true, "needs_history": true
-• Wajib sertakan "query_judul": ["{{ active_regulation_title }}"]
+• Wajib sertakan "semantic_query": "substansi aturan spesifik", "query_judul": ["{{ active_regulation_title }}"]
 • Rumuskan "queries" mandiri lengkap dengan menyertakan nama dokumen (contoh: "Lampiran E {{ active_regulation_title }}")
 • Jika user meminta melihat gambar/bagan/lampiran fisik: set "requires_visual": true, "visual_types": ["doc_media"]
 {% endif %}
@@ -176,12 +181,15 @@ TUGAS:
    - Jika pesan pengguna berupa pertanyaan lanjutan atau pertanyaan eliptis yang bergantung pada obrolan sebelumnya (contoh: "tahapannya apa", "persyaratannya apa saja?", "bagaimana mekanismenya?", "siapa yang tanda tangan?"):
      WAJIB sertakan field `"queries"` yang menggabungkan subjek/topik dari riwayat percakapan menjadi kalimat pencarian mandiri (standalone) yang lengkap!
      Contoh riwayat membahas rekrutmen pegawai, lalu user tanya "persyaratannya apa saja?":
+     -> "semantic_query": "persyaratan kualifikasi dan tata cara seleksi penerimaan pegawai pt pindad"
      -> "queries": ["persyaratan rekrutmen pegawai pt pindad", "syarat seleksi penerimaan karyawan"]
      -> "query_judul": ["Rekrutmen", "Seleksi", "Pemenuhan Kebutuhan Tenaga Kerja"]
      -> "search_tags": ["rekrutmen", "seleksi", "sdm", "pegawai"]
      -> "key_subject": "Persyaratan Rekrutmen Pegawai"
+   - PENTING: `semantic_query` berupa kalimat deskriptif alami substansi klausul/topik yang dicari (khusus pencarian chunk DB).
    - PENTING: `query_judul` WAJIB berupa array string token istilah/wadah (DILARANG 1 string kalimat panjang).
    - Jika first_chat atau pesan sudah mandiri:
+     -> "semantic_query": "{{ user_message }}"
      -> "queries": ["{{ user_message }}"]
 2. DETEKSI AMBIGUITAS & RESOLUSI WIZARD / SIKLUS RESPONDER (`"is_ambiguous": true`):
    - Analisis apakah pesan pengguna AMBIGU, bercabang, atau router RAGU menentukan sub-fitur sebelum dieksekusi di mode {{ forced_mode }}. Jika ambigu, WAJIB sertakan: `"is_ambiguous": true` dan `"ambiguity_reason": "alasan spesifik keraguan dan aspek yang perlu diklarifikasi"`.
@@ -201,20 +209,20 @@ TUGAS:
    - `"is_deep_research": true`    -> riset mendalam, arsitektur enterprise, evaluasi komprehensif
    - `"is_security_critical": true` -> proteksi data rahasia, audit keamanan, hardening
    - `"is_generate_file": true`    -> permintaan eksplisit membuat berkas fisik unduhan (.xlsx, .docx, .py, dll)
-   - `"is_docwriter": true`        -> penyusunan naskah dinas resmi, surat edaran, memo, atau membuka editor dokumen
-   - `"is_generate_email": true`   -> draf email kedinasan atau korespondensi formal
+   - `"is_docwriter": true`        -> penyusunan naskah dinas resmi, nota dinas, surat edaran, memo internal, atau membuka editor dokumen
+   - `"is_generate_email": true`   -> penulisan draf pesan email / surel (bukan nota dinas atau surat edaran)
    - `"is_coding": true`           -> implementasi script pemrograman, koding, fungsi, database query
    - `"is_web_search": true`       -> pencarian web / informasi internet terkini luar internal Pindad
    - `"is_map_query": true`        -> letak geografis, fasilitas pabrik, kantor, koordinat Pindad
    - `"is_deck_query": true`       -> tugas, proyek, task board, atau penugasan (assignment) di Nextcloud Deck (Pincloud)
    - `"needs_history": true`       -> pesan user butuh konteks dari obrolan sebelumnya (jawaban/tanggapan atas pertanyaan/ajakan diskusi AI sebelumnya, dialog bersambung, kata rujukan/anaphora, revisi kode/visual, jawaban wizard, klarifikasi eliptis)
-5. Jika FIRST CHAT = true, WAJIB buatkan judul percakapan ringkas 2-4 kata -> "session_title": "..." (DILARANG KERAS 1 KATA, untuk pesan sapaan gunakan frasa akrab seperti "Sapaan Pagi yang Akrab" atau "Sapaan Pagi Brother").
+5. Jika FIRST CHAT = true, WAJIB buatkan judul percakapan ringkas 2-4 kata informatif, spesifik, dan relevan sesuai topik/substansi -> "session_title": "..." (DILARANG KERAS 1 KATA).
 
 ATURAN OUTPUT JSON (WAJIB DIIKUTI — STRICT SPARSE JSON):
 - Kembalikan JSON murni tanpa markdown/backtick.
 - HANYA sertakan field yang bernilai TRUE, array non-kosong, atau string non-null.
 - DILARANG KERAS menulis field yang bernilai false, null, atau array kosong [].
-- Jika FIRST CHAT = false, JANGAN sertakan field session_title.
+- Jika FIRST CHAT = false, JANGAN PERNAH sertakan field session_title.
 
 FORMAT OUTPUT JSON:
 {% if is_first_chat == "true" %}
@@ -312,13 +320,13 @@ PANDUAN PEMANGGILAN ALAT MANDIRI:
      Pahami konteksnya secara utuh: Topik pokok yang dicari berasal dari pesan/isu awal, sedangkan opsi widget menentukan saluran sumbernya (regulasi internal).
      Rumuskan parameter yang menyatukan substansi topik tersebut.
    • FORMULASI PARAMETER PENCARIAN DOKUMEN INTERNAL (MUTLAK):
-     1. "query": Kalimat/frasa substansi pokok masalah yang dicari (contoh: "prosedur rekrutmen pegawai", "ketentuan hak cuti tahunan", "mekanisme mutasi kerja").
-     2. "query_judul": Array token istilah/nama wadah dokumen target (contoh: ["Rekrutmen", "Seleksi"] atau ["PKB", "Cuti"]). WAJIB array kata/istilah pendek, DILARANG 1 kalimat panjang!
+     1. "query" / "semantic_query": Kalimat deskriptif alami substansi pokok masalah/aturan yang dicari secara semantik untuk database chunk (contoh: "ketentuan tata cara pemberian surat peringatan sp1 sp2 sp3 dan sanksi disiplin"). DILARANG membawa topik residu dari giliran sebelumnya jika pengguna sudah berpindah topik!
+     2. "query_judul": Array token istilah/nama wadah dokumen target jika terdeteksi (contoh: ["Rekrutmen", "Seleksi"] atau ["PKB"]). WAJIB array kata/istilah pendek untuk pencocokan katalog wadah.
      3. "intent": Alasan verifikasi dokumen internal.
    • 🚫 ATURAN NOISE ADMINISTRATIF: DILARANG menyertakan kata administratif umum ("SOP", "SKEP", "Direksi", "PT Pindad") di dalam parameter "query". Letakkan istilah spesifik wadah (misal "PKB") hanya di "query_judul" jika memang pengguna menyebutkannya secara spesifik.
    • Format:
    ```docsearch
-   {"query": "prosedur rekrutmen pegawai", "query_judul": ["Rekrutmen", "Seleksi"], "intent": "verifikasi ketentuan dan alur rekrutmen pegawai"}
+   {"query": "prosedur rekrutmen pegawai", "semantic_query": "ketentuan alur dan persyaratan seleksi rekrutmen pegawai", "query_judul": ["Rekrutmen", "Seleksi"], "intent": "verifikasi ketentuan dan alur rekrutmen pegawai"}
    ```
 
 3. DATA DUNIA LUAR & FAKTA TERKINI (```websearch):
@@ -1032,19 +1040,27 @@ Kapan blok ```docwriter WAJIB disertakan:
      "autoOpen": true
    }
    ```
-2. Menyiapkan / Membuat Draf Naskah Dinas Baru (Surat Edaran / SE, SKEP, Memo):
-   Jika user meminta "cakra siapkan draft SURAT EDARAN", "buatkan draf SE", "siapkan draf surat keputusan", dsb:
+2. Menyiapkan / Membuat Draf Naskah Dinas Baru (Surat Edaran, Nota Dinas / Memo, SKEP):
+   Jika user meminta "buatkan draf Nota Dinas", "siapkan draft SURAT EDARAN", "buatkan draf SE", "siapkan draf surat keputusan", dsb:
    Langsung buatkan draf formal yang rapi dengan template terkait!
-   Contoh format:
+
+   ⚠️ PENTING - ATURAN FORMAT NASKAH DINAS VS EMAIL:
+   - DILARANG KERAS menggunakan format markdown ```smartmail untuk Nota Dinas, Memo, Surat Edaran, atau SKEP! Tag ```smartmail HANYA digunakan jika user secara spesifik meminta email atau surat elektronik.
+   - Untuk NOTA DINAS / MEMO:
+     Jika menyertakan blok ```docwriter, gunakan "template": "template_memo".
+     Sajikan pula teks naskah dinas formal berstandar PT Pindad yang mencakup:
+     KOP PERUSAHAAN & DIVISI, JUDUL (NOTA DINAS), NOMOR, KEPADA, DARI, TANGGAL, PERIHAL, serta BUTIR-BUTIR PARAGRAF TERSTRUKTUR (1, 2, 3), diakhiri TANDA TANGAN dan NAMA JABATAN.
+
+   Contoh format ```docwriter untuk Nota Dinas / Memo:
    ```docwriter
    {
      "action": "draft",
-     "template": "template_se",
-     "title": "Surat Edaran ... (Topik Surat)",
-     "summary": "Draf Surat Edaran mengenai ...",
+     "template": "template_memo",
+     "title": "Nota Dinas - ... (Topik Surat)",
+     "summary": "Draf Nota Dinas mengenai ...",
      "autoOpen": true,
      "sectionId": "ISI_SURAT",
-     "content": "<p>Isi draf naskah dinas dalam format paragraf/poin HTML...</p>"
+     "content": "<p>Isi draf nota dinas dalam format paragraf/poin HTML...</p>"
    }
    ```
 3. Mengedit / Menambah / Memperbarui Bagian Dokumen (Surgical Patch):

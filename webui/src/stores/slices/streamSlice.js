@@ -581,6 +581,103 @@ export const createStreamSlice = (set, get) => ({
     },
 
     /**
+     * Seamless Token Continuation: Lanjutkan stream pesan asisten yang terpotong tanpa membuat bubble chat baru.
+     * @param {number} assistantIdx - Indeks pesan asisten dalam array messages
+     */
+    continueAssistantResponse: async (assistantIdx) => {
+        const sessionUuid = get().sessionUuid;
+        const currentActiveStreams = get().activeStreams || {};
+        if (currentActiveStreams[sessionUuid]?.isStreaming) return;
+
+        const currentMessages = [...get().messages];
+        const targetAssistantMsg = currentMessages[assistantIdx];
+        if (!targetAssistantMsg || targetAssistantMsg.role !== 'assistant') return;
+
+        // Cari user message sebelumnya
+        let userIdx = assistantIdx - 1;
+        while (userIdx >= 0 && currentMessages[userIdx]?.role !== 'user') {
+            userIdx--;
+        }
+        if (userIdx < 0) return;
+        const userMsg = currentMessages[userIdx];
+
+        // Matikan flag is_truncated pada pesan asisten agar tombol hilang dan status streaming kembali aktif
+        targetAssistantMsg.is_truncated = false;
+        if (targetAssistantMsg.metadata) {
+            targetAssistantMsg.metadata = {
+                ...targetAssistantMsg.metadata,
+                is_truncated: false
+            };
+        }
+        targetAssistantMsg.isStreaming = true;
+
+        const controller = new AbortController();
+        const activeStreams = { ...currentActiveStreams };
+        activeStreams[sessionUuid] = {
+            messages: currentMessages,
+            isStreaming: true,
+            isThinking: false,
+            abortController: controller,
+            currentThinking: ''
+        };
+
+        set({
+            activeStreams,
+            messages: currentMessages,
+            isStreaming: true,
+            isThinking: false,
+            abortController: controller,
+            currentThinking: ''
+        });
+
+        const npp = JSON.parse(localStorage.getItem('cakra_user') || '{}')?.npp || null;
+        const effectiveChatMode = targetAssistantMsg.chatMode || targetAssistantMsg.mode || userMsg.chatMode || 'auto';
+        const msgStreamOptions = targetAssistantMsg?.streamOptions || userMsg?.streamOptions || {};
+        const savedIsolatedDocId = msgStreamOptions.isolated_doc_id || 
+                                   msgStreamOptions.isolatedDocId || 
+                                   targetAssistantMsg?.isolatedDocId || 
+                                   userMsg?.isolatedDocId || 
+                                   get().activeIsolatedDocId || 
+                                   null;
+
+        const continuationOptions = {
+            ...msgStreamOptions,
+            is_continuation: true,
+            isContinuation: true,
+            assistant_message_id: targetAssistantMsg.id,
+            assistantMessageId: targetAssistantMsg.id,
+            partial_content: targetAssistantMsg.content || '',
+            target_index: assistantIdx,
+            isolated_doc_id: savedIsolatedDocId,
+            isolatedDocId: savedIsolatedDocId,
+            forced_mode: effectiveChatMode,
+            forcedMode: effectiveChatMode,
+            bypass_router: true,
+            bypassRouter: true,
+        };
+
+        // Kirim riwayat percakapan sampai assistant message saat ini
+        const messagesToSend = currentMessages.slice(0, assistantIdx + 1);
+
+        await performStream(
+            set,
+            get,
+            messagesToSend,
+            targetAssistantMsg,
+            sessionUuid,
+            npp,
+            savedIsolatedDocId,
+            [],
+            effectiveChatMode,
+            false,
+            null,
+            assistantIdx, // targetAssistantIdx
+            null,
+            continuationOptions
+        );
+    },
+
+    /**
      * Switch actively displayed variant of a message (< 1 / 3 >) in-memory without reloading
      * @param {number} messageIdx - Index of message in messages array
      * @param {number} targetVariantIdx - Index in msg.variants (0-based)

@@ -52,12 +52,13 @@ ATURAN EVALUASI:
    "primary_doc_id": "<ID dokumen utama>",
    "reference_doc_ids": ["<ID dokumen referensi>", ...],
    "reason": "alasan singkat kecocokan",
-   "suggested_query_judul": [], "suggested_queries": [], "suggested_tags": []
+   "suggested_semantic_query": "", "suggested_query_judul": [], "suggested_queries": [], "suggested_tags": []
 3. JIKA SALAH / TIDAK RELEVAN (dokumen yang ditemukan tidak memuat atau berbeda topik):
    "is_relevant": false,
    "primary_doc_id": null,
    "reference_doc_ids": [],
    "reason": "alasan singkat mengapa tidak cocok",
+   "suggested_semantic_query": "kalimat deskriptif alami substansi aturan yang tepat untuk pencarian chunk",
    "suggested_query_judul": ["nama dokumen yang lebih tepat"],
    "suggested_queries": ["query alternatif"],
    "suggested_tags": ["tag yang relevan"]
@@ -68,6 +69,7 @@ OUTPUT JSON FORMAT (WAJIB JSON MURNI TANPA MARKDOWN):
   "primary_doc_id": "123",
   "reference_doc_ids": ["124"],
   "reason": "...",
+  "suggested_semantic_query": "",
   "suggested_query_judul": [],
   "suggested_queries": [],
   "suggested_tags": []
@@ -195,6 +197,7 @@ async def verify_retrieved_documents_crag(
         suggested_qj = [str(q).strip() for q in res_json.get("suggested_query_judul", []) if str(q).strip()]
         suggested_queries = [str(q).strip() for q in res_json.get("suggested_queries", []) if str(q).strip()]
         suggested_tags = [str(t).strip() for t in res_json.get("suggested_tags", []) if str(t).strip()]
+        suggested_semantic_query = str(res_json.get("suggested_semantic_query") or "").strip()
 
         logger.info(
             f"⚡ [TIMING_BENCHMARK] [CONTEXT_VERIFIER] Evaluasi selesai dalam {duration_ms:.1f}ms ({duration_ms/1000:.2f}s) | "
@@ -206,6 +209,7 @@ async def verify_retrieved_documents_crag(
             "primary_doc_id": primary_doc_id,
             "reference_doc_ids": reference_doc_ids,
             "reason": reason,
+            "suggested_semantic_query": suggested_semantic_query,
             "suggested_query_judul": suggested_qj,
             "suggested_queries": suggested_queries,
             "suggested_tags": suggested_tags,
@@ -222,6 +226,7 @@ async def verify_retrieved_documents_crag(
             "primary_doc_id": default_primary,
             "reference_doc_ids": default_refs,
             "reason": f"Fallback error: {e}",
+            "suggested_semantic_query": "",
             "suggested_query_judul": [],
             "suggested_queries": [],
             "suggested_tags": [],
@@ -231,4 +236,64 @@ async def verify_retrieved_documents_crag(
 
 # Agnostic architectural alias
 verify_retrieval_context = verify_retrieved_documents_crag
+
+
+FALLBACK_CATALOG_RECOMMENDER_PROMPT = """Kamu adalah Verifikator & Pencari Regulasi Cakra AI PT Pindad.
+Pencarian semantik pada basis data klausul tidak membuahkan hasil untuk kueri berikut:
+"{{ user_query }}"
+
+TUGAS:
+Rekomendasikan 1-3 kata kunci judul/wadah regulasi resmi (misal: "PKB", "Perjanjian Kerja Bersama", "SKEP Cuti", "Peraturan Disiplin", "SOP") yang kemungkinan besar memuat aturan tersebut di katalog berita dan arsip fisik.
+
+OUTPUT JSON FORMAT (WAJIB JSON MURNI TANPA MARKDOWN):
+{
+  "suggested_query_judul": ["PKB", "Perjanjian Kerja Bersama"],
+  "reason": "Topik ini lazimnya diatur dalam regulasi tersebut"
+}
+"""
+
+
+async def recommend_fallback_catalog_queries(
+    user_query: str,
+    target_judul_list: Optional[List[str]] = None,
+    request: Optional[Request] = None,
+) -> List[str]:
+    """
+    Call 1.1 Fast Recommender: Membangkitkan target nama regulasi/wadah di arsip katalog berita
+    ketika pencarian semantik (Jalur 1) zonk atau dokumen belum ter-chunk.
+    """
+    if not user_query or not user_query.strip():
+        return target_judul_list or []
+
+    prompt = (
+        FALLBACK_CATALOG_RECOMMENDER_PROMPT
+        .replace("{{ user_query }}", user_query.strip())
+    )
+
+    model = getattr(settings, "MODEL_ROUTER", "/home/qisthi/models/gemma-4-31B-it-AWQ")
+    router_ctx = getattr(settings, "NUM_CTX_ROUTER", 4096)
+
+    try:
+        res_json = await generate_json_response(
+            model_name=model,
+            messages=[{"role": "user", "content": prompt}],
+            request=request,
+            temperature=0.0,
+            top_p=0.1,
+            top_k=1,
+            keep_alive=-1,
+            num_ctx=router_ctx,
+            num_predict=150,
+            timeout=10.0,
+        )
+        if isinstance(res_json, dict) and res_json.get("suggested_query_judul"):
+            s_qj = [str(x).strip() for x in res_json["suggested_query_judul"] if str(x).strip()]
+            if s_qj:
+                logger.info(f"[CONTEXT_VERIFIER] 🧭 Call 1.1 menyarankan fallback query_judul: {s_qj}")
+                return s_qj
+    except Exception as e:
+        logger.warning(f"[CONTEXT_VERIFIER] Fallback catalog recommendation error: {e}")
+
+    return target_judul_list or []
+
 

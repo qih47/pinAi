@@ -171,7 +171,7 @@ export const SettingsPanel = () => {
             <ConfigInput 
               label="Call 2 Persona / Core Model" 
               description="Model generator utama untuk penalaran dan jawaban akhir"
-              value={config.MODEL_PERSONA || "/home/qisthi/models/gemma-4-31B-it-AWQ"} 
+              value={config.MODEL_PERSONA || "cakra-core"} 
               onChange={(val) => handleChange('MODEL_PERSONA', val)} 
             />
             <ConfigDropdown 

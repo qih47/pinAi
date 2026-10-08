@@ -48,6 +48,16 @@ def _get_score_label(score: float) -> str:
         return "RENDAH"
 
 
+# Kata-kata prosedural regulasi dan boilerplate yang sering menjadi noise pencarian FTS/Dense
+_PROCEDURAL_NOISE = {
+    "pasal", "ayat", "huruf", "angka", "nomor", "no", "tentang", "ketentuan",
+    "aturan", "peraturan", "berapa", "bagaimana", "apakah", "jatah", "terkait",
+    "mengenai", "berdasarkan", "menurut", "dalam", "pada", "oleh", "bagi",
+    "untuk", "syarat", "tata", "cara", "pedoman", "standar", "adalah", "yaitu",
+    "pindad", "pt", "persero", "pkb", "skep", "sop", "ik", "se", "dokumen"
+}
+
+
 class RagService:
     """
     Orkestrator Advanced RAG — Hybrid Search PostgreSQL (pgvector + FTS)
@@ -61,25 +71,32 @@ class RagService:
 
     def _prepare_tsquery(self, query: str) -> str:
         cleaned = "".join(c if c.isalnum() or c.isspace() else " " for c in query)
-        tokens = [
+        raw_tokens = [
             t.lower()
             for t in cleaned.split()
             if t and t.lower() not in _STOPWORDS_ID and len(t) > 1
         ]
 
-        if not tokens:
+        if not raw_tokens:
             return "pindad"
 
-        tokens = tokens[:6]
+        # Prioritaskan kata substantif (buang procedural noise)
+        substantive_tokens = [t for t in raw_tokens if t not in _PROCEDURAL_NOISE]
+        tokens = substantive_tokens if substantive_tokens else raw_tokens
+
+        # Ambil hingga 10 kata kunci substantif tanpa memotong secara sembrono
+        tokens = tokens[:10]
         return " | ".join(f"{t}:*" for t in tokens)
 
     async def assemble_powerful_context(
         self, query: str, limit: int = 5, min_score: float = HARD_FLOOR,
-        allowed_access_tiers: Optional[List[str]] = None
+        allowed_access_tiers: Optional[List[str]] = None,
+        target_doc_ids: Optional[List[int]] = None
     ) -> Tuple[str, List[Dict[str, Any]]]:
         """
-        Pipeline RAG 3 fase terpadu dengan dukungan tiering akses (INTERNAL vs EXTERNAL).
-        Sprint 3: min_score default = HARD_FLOOR (0.55), cap MAX_DOCS_TO_LLM=3.
+        Pipeline RAG 3 fase terpadu dengan dukungan tiering akses (INTERNAL vs EXTERNAL)
+        serta anchoring dokumen target (target_doc_ids).
+        Sprint 3: min_score default = HARD_FLOOR (0.45), cap MAX_DOCS_TO_LLM=10.
         """
         logger.debug(f'[RAG_SERVICE] Extracting RRF for query: "{query}" | Tiers: {allowed_access_tiers}')
 
@@ -100,8 +117,15 @@ class RagService:
                     []
                 )
 
+        # Bersihkan noise korporat/boilerplate agar embedding berfokus pada topik substantif
+        embed_tokens = [
+            w for w in query.split()
+            if w.lower() not in _PROCEDURAL_NOISE and len(w) > 1
+        ]
+        effective_embed_query = " ".join(embed_tokens) if len(embed_tokens) >= 2 else query
+
         try:
-            query_embedding = await vector_service.get_query_embedding(query)
+            query_embedding = await vector_service.get_query_embedding(effective_embed_query)
         except AttributeError as ae:
             logger.error(f"[RAG_CRITICAL_ERROR] Method get_query_embedding not found: {str(ae)}")
             return "[PERINGATAN SISTEM]: Method pencarian embedding absen di backend.", []
@@ -119,7 +143,45 @@ class RagService:
         document_candidates: Dict[int, Dict[str, Any]] = {}
 
         # ======================================================================
-        # FASE 1: HYBRID SEARCH + RRF
+        # FASE 0: Q2Q SEMANTIC MATCHING (Pencocokan Pertanyaan Alami via rag_document_questions)
+        # ======================================================================
+        synt_qa_matches = []
+        synt_target_doc_ids = set()
+
+        async with get_db() as conn_qa:
+            try:
+                qa_sql = """
+                    SELECT
+                        q.id,
+                        q.source_id AS dokumen_id,
+                        q.generated_question,
+                        q.answer,
+                        q.page_range,
+                        d.judul,
+                        d.nomor,
+                        1.0 - (q.embedding <=> $1::vector) AS similarity
+                    FROM rag_document_questions q
+                    JOIN dokumen d ON q.source_id = d.id
+                    WHERE ($2::int[] IS NULL OR q.source_id = ANY($2))
+                    ORDER BY q.embedding <=> $1::vector
+                    LIMIT 4;
+                """
+                qa_rows = await conn_qa.fetch(qa_sql, query_vector_str, target_doc_ids)
+                for qr in qa_rows:
+                    sim = float(qr["similarity"]) if qr["similarity"] is not None else 0.0
+                    if sim >= 0.82:
+                        synt_qa_matches.append(dict(qr))
+                        synt_target_doc_ids.add(int(qr["dokumen_id"]))
+                if synt_qa_matches:
+                    logger.info(
+                        f"[RAG_SERVICE] 🎯 [Q2Q HIT] Menemukan {len(synt_qa_matches)} QA cocok dari 183k pertanyaan "
+                        f"(Top Score: {synt_qa_matches[0]['similarity']:.4f} | Dokumen {synt_qa_matches[0]['dokumen_id']}: '{synt_qa_matches[0]['judul'][:30]}...')"
+                    )
+            except Exception as e_qa:
+                logger.warning(f"[RAG_SERVICE] ⚠️ Q2Q pre-matching pass skipped: {e_qa}")
+
+        # ======================================================================
+        # FASE 1: HYBRID SEARCH + RRF (Perluasan pool kandidat ke 150)
         # ======================================================================
         async with get_db() as conn:
             try:
@@ -130,8 +192,9 @@ class RagService:
                             ROW_NUMBER() OVER (ORDER BY embedding <=> $1::vector) AS rank
                         FROM dokumen_chunk
                         WHERE ($4::text[] IS NULL OR access_tier = ANY($4))
+                          AND ($5::int[] IS NULL OR dokumen_id = ANY($5))
                         ORDER BY embedding <=> $1::vector
-                        LIMIT $3 * 10
+                        LIMIT $3 * 30
                     ),
                     text_search AS (
                         SELECT
@@ -145,11 +208,12 @@ class RagService:
                         FROM dokumen_chunk
                         WHERE to_tsvector('indonesian', content) @@ to_tsquery('indonesian', $2)
                           AND ($4::text[] IS NULL OR access_tier = ANY($4))
+                          AND ($5::int[] IS NULL OR dokumen_id = ANY($5))
                         ORDER BY ts_rank_cd(
                             to_tsvector('indonesian', content),
                             to_tsquery('indonesian', $2)
                         ) DESC
-                        LIMIT $3 * 10
+                        LIMIT $3 * 30
                     ),
                     ranked_candidates AS (
                         SELECT
@@ -171,11 +235,12 @@ class RagService:
                     FROM ranked_candidates rc
                     INNER JOIN dokumen_chunk dc ON rc.chunk_id = dc.id
                     WHERE ($4::text[] IS NULL OR dc.access_tier = ANY($4))
+                      AND ($5::int[] IS NULL OR dc.dokumen_id = ANY($5))
                     ORDER BY rc.rrf_score DESC
-                    LIMIT $3 * 4;
+                    LIMIT $3 * 8;
                 """
 
-                raw_chunks = await conn.fetch(hybrid_sql, query_vector_str, formatted_tsquery, limit, allowed_access_tiers)
+                raw_chunks = await conn.fetch(hybrid_sql, query_vector_str, formatted_tsquery, limit, allowed_access_tiers, target_doc_ids)
 
                 if not raw_chunks:
                     logger.warning("[RAG_HYBRID_WARNING] Zero match hybrid. Fallback to vector search.")
@@ -189,10 +254,11 @@ class RagService:
                             COALESCE(NULLIF(NULLIF(dc.page_number, '0'), ''), '1') AS page_str
                         FROM dokumen_chunk dc
                         WHERE ($3::text[] IS NULL OR dc.access_tier = ANY($3))
+                          AND ($4::int[] IS NULL OR dc.dokumen_id = ANY($4))
                         ORDER BY dc.embedding <=> $1::vector
                         LIMIT $2 * 4;
                     """
-                    raw_chunks = await conn.fetch(vector_only_sql, query_vector_str, limit, allowed_access_tiers)
+                    raw_chunks = await conn.fetch(vector_only_sql, query_vector_str, limit, allowed_access_tiers, target_doc_ids)
 
                 if not raw_chunks:
                     logger.warning("[RAG_SERVICE] Zero matches in hybrid search")
@@ -204,21 +270,25 @@ class RagService:
 
                     doc_id = int(row["dokumen_id"])
                     rrf_score = float(row["rrf_score"])
-                    chunk_seq = row["chunk_seq"] or 0
+                    chunk_db_id = int(row["chunk_id"])
                     page_str = row["page_str"] or "1"
+
+                    # Q2Q Boost: jika dokumen ini juga terverifikasi di rag_document_questions, berikan boost
+                    q2q_boost = 0.015 if doc_id in synt_target_doc_ids else 0.0
+                    boosted_score = rrf_score + q2q_boost
 
                     if doc_id not in document_candidates:
                         document_candidates[doc_id] = {
-                            "best_chunk_seq": chunk_seq,
-                            "rrf_score": rrf_score,
+                            "best_chunk_seq": chunk_db_id,
+                            "rrf_score": boosted_score,
                             "pages": {page_str},
-                            "target_seqs": {chunk_seq}
+                            "target_chunk_ids": {chunk_db_id}
                         }
                     else:
                         document_candidates[doc_id]["pages"].add(page_str)
-                        document_candidates[doc_id]["target_seqs"].add(chunk_seq)
-                        if rrf_score > document_candidates[doc_id]["rrf_score"]:
-                            document_candidates[doc_id]["rrf_score"] = rrf_score
+                        document_candidates[doc_id]["target_chunk_ids"].add(chunk_db_id)
+                        if boosted_score > document_candidates[doc_id]["rrf_score"]:
+                            document_candidates[doc_id]["rrf_score"] = boosted_score
 
             except Exception as sql_err:
                 logger.error(f"[RAG_SQL_ERROR] Failed to execute Hybrid Search RRF: {str(sql_err)}")
@@ -312,31 +382,39 @@ class RagService:
                     if not parent:
                         continue
 
-                    seq_to_fetch = set()
-                    for seq in doc_info["target_seqs"]:
-                        seq_to_fetch.add(max(0, seq - 1))
-                        seq_to_fetch.add(seq)
-                        seq_to_fetch.add(seq + 1)
+                    chunk_ids_to_fetch = set()
+                    cids = sorted(list(doc_info.get("target_chunk_ids", [])))
+                    if cids:
+                        for cid in cids:
+                            # Setiap target chunk diperluas secara kontinu (-3 sampai +8)
+                            # agar mencakup seluruh klausul dalam bab terkait (misal: pasal cuti 22 s/d 27)
+                            for offset in range(-3, 8):
+                                if cid + offset >= 1:
+                                    chunk_ids_to_fetch.add(cid + offset)
 
                     chunk_fetch_sql = """
-                        SELECT dc.content, dc.chunk_id, ds.section_title, ds.section_type
+                        SELECT dc.id, dc.content, dc.chunk_id, dc.page_number, ds.section_title, ds.section_type
                         FROM dokumen_chunk dc
                         LEFT JOIN dokumen_section ds ON dc.dokumen_id = ds.dokumen_id
                             AND (dc.section_id = ds.id OR ds.id::text = dc.parent_id)
-                        WHERE dc.dokumen_id = $1 AND dc.chunk_id = ANY($2)
-                        ORDER BY dc.chunk_id ASC;
+                        WHERE dc.dokumen_id = $1 AND dc.id = ANY($2)
+                        ORDER BY dc.id ASC;
                     """
-                    chunk_rows = await conn.fetch(chunk_fetch_sql, doc_id, list(seq_to_fetch))
+                    chunk_rows = await conn.fetch(chunk_fetch_sql, doc_id, list(chunk_ids_to_fetch))
 
-                    seen_seqs = set()
+                    seen_ids = set()
                     text_segments = []
                     sections_found = set()
 
                     for crow in chunk_rows:
-                        c_seq = crow["chunk_id"]
-                        if c_seq in seen_seqs:
+                        c_id = crow["id"]
+                        if c_id in seen_ids:
                             continue
-                        seen_seqs.add(c_seq)
+                        seen_ids.add(c_id)
+
+                        cp_str = str(crow["page_number"] or "").strip()
+                        if cp_str and cp_str not in ["0", "0.0", "null", "None"]:
+                            doc_info["pages"].add(cp_str)
 
                         segment_text = ""
                         if crow["section_title"]:
@@ -393,7 +471,16 @@ class RagService:
             rerank_scores = await reranker_service.compute_scores(query, corpus_texts)
 
             for idx, score in enumerate(rerank_scores):
-                expanded_blocks[idx]["final_score"] = float(score)
+                base_score = float(score)
+                doc_status = expanded_blocks[idx].get("status_berlaku", "Berlaku")
+                if doc_status == "Berlaku":
+                    final_score = min(1.0, base_score + 0.05)
+                elif doc_status in ["Tidak Berlaku", "Dicabut"]:
+                    final_score = max(0.0, base_score - 0.15)
+                else:
+                    final_score = base_score
+                expanded_blocks[idx]["final_score"] = final_score
+                expanded_blocks[idx]["raw_bge_score"] = base_score
 
             logger.debug("[RAG_SERVICE] Re-ranking complete, applying hard floor filter...")
 
@@ -403,7 +490,12 @@ class RagService:
             )
             expanded_blocks = expanded_blocks[:2]
             for b in expanded_blocks:
-                b["final_score"] = b["rrf_score"]
+                base_score = float(b["rrf_score"])
+                doc_status = b.get("status_berlaku", "Berlaku")
+                if doc_status in ["Tidak Berlaku", "Dicabut"]:
+                    b["final_score"] = max(0.0, base_score - 0.15)
+                else:
+                    b["final_score"] = base_score
 
         # Urutkan berdasarkan skor tertinggi
         expanded_blocks.sort(key=lambda x: x["final_score"], reverse=True)
@@ -416,8 +508,9 @@ class RagService:
         )
         for idx, b in enumerate(expanded_blocks):
             passed = "✅ PASS" if b["final_score"] >= HARD_FLOOR else "❌ DROP"
+            status_tag = b.get("status_berlaku", "Berlaku")
             logger.info(
-                f"   [{passed}] #{idx+1} '{b['nomor']}' | BGE={b['final_score']:.4f}"
+                f"   [{passed}] #{idx+1} '{b['nomor']}' ({status_tag}) | Score={b['final_score']:.4f} (raw={b.get('raw_bge_score', b['final_score']):.4f})"
             )
 
         # ======================================================================
@@ -437,12 +530,15 @@ class RagService:
                 break
 
             f_score = b.get("final_score", 0.0)
+            best_score = expanded_blocks[0].get("final_score", 0.0) if expanded_blocks else 0.0
+            # Dynamic Margin Pruning: jika dokumen teratas kuat (>= 0.55),
+            # pangkas dokumen yang skornya drop > 0.003 dari best_score agar dokumen marjinal/asing tidak menyusup
+            dynamic_floor = max(HARD_FLOOR, best_score - 0.003) if best_score >= 0.55 else HARD_FLOOR
 
-            # ── SPRINT 3: Hard Floor 0.55 ─────────────────────────────────────
-            if f_score < HARD_FLOOR:
+            if f_score < dynamic_floor:
                 logger.debug(
                     f"[RAG_SERVICE] Dropped '{b['judul']}' "
-                    f"(BGE score {f_score:.4f} < floor {HARD_FLOOR})"
+                    f"(score {f_score:.4f} < dynamic floor {dynamic_floor:.4f})"
                 )
                 continue
 
@@ -503,12 +599,26 @@ class RagService:
                 []
             )
 
+        qa_summary_block = ""
+        if synt_qa_matches:
+            qa_lines = ["[RINGKASAN INTISARI REGULASI TERKAIT (TANYA-JAWAB RESMI)]"]
+            for m in synt_qa_matches[:2]:
+                q_text = m.get("generated_question", "")
+                a_text = m.get("answer", "")
+                p_text = m.get("page_range", "")
+                j_text = m.get("judul", "")
+                qa_lines.append(f"• Dokumen: {j_text} (Estimasi Halaman: {p_text})")
+                qa_lines.append(f"  Tanya: {q_text}")
+                qa_lines.append(f"  Intisari: {a_text}")
+            qa_summary_block = "\n".join(qa_lines) + "\n\n"
+
         logger.info(
             f"[RAG_SERVICE] {len(final_contexts)} documents passed "
             f"(hard_floor={HARD_FLOOR}, cap={MAX_DOCS_TO_LLM}, "
             f"from {len(expanded_blocks)} candidates)"
         )
-        return "\n".join(final_contexts), sources_metadata
+        full_context_text = (qa_summary_block + "\n".join(final_contexts)) if qa_summary_block else "\n".join(final_contexts)
+        return full_context_text, sources_metadata
 
 
 rag_service = RagService()

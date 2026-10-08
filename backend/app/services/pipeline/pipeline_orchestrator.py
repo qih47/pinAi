@@ -30,7 +30,19 @@ async def _sequential_pipeline_generator(
     if not payload.messages:
         raise HTTPException(status_code=400, detail="Pesan tidak boleh kosong!")
 
-    user_message = payload.messages[-1].content
+    is_continuation_event = bool(getattr(payload, 'is_continuation', False))
+    if is_continuation_event:
+        # Untuk continuation, cari pesan user terakhir sebelum pesan asisten parsial
+        user_message = ""
+        for m in reversed(payload.messages):
+            if getattr(m, 'role', None) == 'user' or (isinstance(m, dict) and m.get('role') == 'user'):
+                user_message = getattr(m, 'content', '') if not isinstance(m, dict) else m.get('content', '')
+                break
+        if not user_message:
+            user_message = payload.messages[-1].content
+    else:
+        user_message = payload.messages[-1].content
+
     chat_mode = getattr(payload, "mode", "auto")
 
     logger.info(f'[PIPELINE] User message | "{user_message[:100]}" | mode={chat_mode}')
@@ -137,7 +149,7 @@ async def _sequential_pipeline_generator(
         getattr(payload, 'is_regenerate', False) 
         or payload.regenerated_from_id is not None
     )
-    if payload.session_uuid and not is_regenerate_event:
+    if payload.session_uuid and not is_regenerate_event and not is_continuation_event:
         user_text = f"{original_user_message}"
         
         if getattr(payload, 'edit_message_id', None) is not None:
@@ -290,6 +302,8 @@ async def _sequential_pipeline_generator(
             forced_mode=active_forced_mode,
             bypass_router=active_bypass_router,
             is_regenerate=is_regenerate_event,
+            is_continuation=is_continuation_event,
+            partial_content=getattr(payload, 'partial_content', None),
         )
 
 
@@ -493,15 +507,39 @@ async def _sequential_pipeline_generator(
                         regenerated_from_id=actual_regen_from_id
                     )
                 elif getattr(payload, 'assistant_message_id', None) is not None:
+                    final_save_text = ((payload.partial_content or "") + clean_db_text) if is_continuation_event else clean_db_text
                     logger.info(f"[PIPELINE] In-place updating assistant message by physical ID: {payload.assistant_message_id}")
                     await chat_history_service.update_chat_message_by_id(
                         message_id=payload.assistant_message_id,
                         role="assistant",
-                        text=clean_db_text,
+                        text=final_save_text,
                         thought=ast_thought,
                         sources=preloaded_rag_sources,
                         metadata=message_metadata
                     )
+                elif is_continuation_event:
+                    final_save_text = (payload.partial_content or "") + clean_db_text
+                    try:
+                        from backend.app.core.database import get_db
+                        async with get_db() as conn:
+                            session_pk = await chat_history_service._resolve_session_pk(conn, payload.session_uuid)
+                            if session_pk:
+                                last_ast_id = await conn.fetchval(
+                                    "SELECT id FROM chat_messages WHERE session_id = $1 AND role = 'assistant' ORDER BY timestamp DESC, id DESC LIMIT 1",
+                                    session_pk
+                                )
+                                if last_ast_id:
+                                    logger.info(f"[PIPELINE] In-place updating continuation assistant message: {last_ast_id}")
+                                    await chat_history_service.update_chat_message_by_id(
+                                        message_id=last_ast_id,
+                                        role="assistant",
+                                        text=final_save_text,
+                                        thought=ast_thought,
+                                        sources=preloaded_rag_sources,
+                                        metadata=message_metadata
+                                    )
+                    except Exception as _ce:
+                        logger.warning(f"[PIPELINE] Gagal update continuation: {_ce}")
                 elif payload.edit_index is not None:
                     await chat_history_service.update_chat_message(
                         session_id=payload.session_uuid,

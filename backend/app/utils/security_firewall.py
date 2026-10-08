@@ -112,7 +112,8 @@ def check_rate_limit(client_ip: str, policy: str = "chat") -> bool:
 # ==============================================================================
 
 _MAX_BODY_SIZE    = 512 * 1024          # 512 KB JSON body hard cap
-_MAX_STRING_LEN   = 32_768             # 32 KB per string field
+_MAX_STRING_LEN   = 32_768             # 32 KB per string field (metadata / small fields)
+_MAX_CONTENT_LEN  = 262_144            # 256 KB per content/document/code string field
 _MAX_ARRAY_ITEMS  = 200                # Max items in any array
 _MAX_NESTING      = 10                 # Max JSON nesting depth
 
@@ -120,10 +121,14 @@ _NULL_BYTE_PATTERN    = re.compile(r"\x00")
 _CONTROL_CHAR_PATTERN = re.compile(r"[\x01-\x08\x0b\x0c\x0e-\x1f\x7f]")
 
 
-def _check_string_safety(text: str, field_name: str = "field") -> None:
+def _check_string_safety(text: str, field_name: str = "field", is_content_field: bool = False) -> None:
     """Validate a single string: length, null bytes, control chars, encoding."""
-    if len(text) > _MAX_STRING_LEN:
-        logger.warning(f"[INPUT_VALIDATION] Field '{field_name}' exceeds max length ({len(text)} chars)")
+    field_leaf = field_name.split(".")[-1].split("[")[0].strip()
+    is_content = is_content_field or (field_leaf in _SAFE_TEXT_PAYLOAD_FIELDS)
+    max_len = _MAX_CONTENT_LEN if is_content else _MAX_STRING_LEN
+
+    if len(text) > max_len:
+        logger.warning(f"[INPUT_VALIDATION] Field '{field_name}' exceeds max length ({len(text)} > {max_len} chars)")
         raise HTTPException(status_code=400, detail="Input terlalu panjang.")
 
     if _NULL_BYTE_PATTERN.search(text):
@@ -290,10 +295,10 @@ _SAFE_TEXT_PAYLOAD_FIELDS = frozenset({
 })
 
 
-def _scan_dict_recursive(data: Any, path: str = "root", skip_injection: bool = False, prompt_injection_only: bool = False) -> None:
+def _scan_dict_recursive(data: Any, path: str = "root", skip_injection: bool = False, prompt_injection_only: bool = False, is_content_field: bool = False) -> None:
     """Recursively scan all string values in nested dicts/lists."""
     if isinstance(data, str):
-        _check_string_safety(data, path)
+        _check_string_safety(data, path, is_content_field=is_content_field)
         if prompt_injection_only:
             _scan_for_prompt_injections_only(data, path)
         elif not skip_injection:
@@ -302,14 +307,14 @@ def _scan_dict_recursive(data: Any, path: str = "root", skip_injection: bool = F
         for k, v in data.items():
             if str(k) in _SAFE_TEXT_PAYLOAD_FIELDS:
                 # Run ONLY prompt injection checks on these sensitive chat/text/collab fields
-                _scan_dict_recursive(v, f"{path}.{k}", skip_injection=True, prompt_injection_only=True)
+                _scan_dict_recursive(v, f"{path}.{k}", skip_injection=True, prompt_injection_only=True, is_content_field=True)
             else:
                 if not skip_injection and not prompt_injection_only:
                     _scan_for_injections(str(k), f"{path}.key")
-                _scan_dict_recursive(v, f"{path}.{k}", skip_injection, prompt_injection_only)
+                _scan_dict_recursive(v, f"{path}.{k}", skip_injection, prompt_injection_only, is_content_field=False)
     elif isinstance(data, list):
         for i, item in enumerate(data):
-            _scan_dict_recursive(item, f"{path}[{i}]", skip_injection, prompt_injection_only)
+            _scan_dict_recursive(item, f"{path}[{i}]", skip_injection, prompt_injection_only, is_content_field=is_content_field)
 
 
 # ==============================================================================

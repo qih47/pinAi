@@ -44,6 +44,8 @@ class ChatStreamRequest(BaseModel):
     is_regenerate: Optional[bool] = Field(False, description="Flag penanda bahwa stream ini adalah regenerasi respons")
     target_index: Optional[int] = Field(None, description="Index offset pesan asisten dalam riwayat sesi")
     parent_index: Optional[int] = Field(None, description="Index offset pesan user induk dalam riwayat sesi")
+    is_continuation: Optional[bool] = Field(False, description="Flag penanda bahwa request ini adalah kelanjutan stream pesan asisten sebelumnya")
+    partial_content: Optional[str] = Field(None, description="Teks parsial yang sudah dihasilkan asisten sebelum terpotong")
 
     class Config:
         from_attributes = True

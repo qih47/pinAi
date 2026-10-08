@@ -101,7 +101,7 @@ Selain memutuskan should_intervene, evaluasi juga apakah obrolan menyentuh topik
 - Surat Edaran (SE), SK, SOP, Peraturan Direksi (Perdir), SKEP
 - Tunjangan, gaji, perjalanan dinas, fasilitas kendaraan dinas, biaya operasional resmi
 - Spesifikasi, kontrak, atau data teknis produk/alutsista Pindad
-Jika iya, tetapkan need_rag: true dan tentukan queries semantik, query_judul dokumen target, serta search_tags kategori.
+Jika iya, tetapkan need_rag: true dan tentukan semantic_query untuk chunk semantik, queries pencarian, query_judul dokumen target, serta search_tags kategori.
 
 FORMAT OUTPUT WAJIB JSON MURNI (STRICT SPARSE JSON):
 - Kembalikan JSON murni tanpa markdown/backtick.
@@ -115,6 +115,7 @@ FORMAT OUTPUT WAJIB JSON MURNI (STRICT SPARSE JSON):
     "should_intervene": true,
     "reason": "Alasan singkat, jujur, dari sudut pandang rekan kerja",
     "need_rag": true / false,
+    "semantic_query": "kalimat deskriptif alami substansi aturan untuk pencarian chunk DB jika need_rag: true",
     "queries": ["substansi pencarian semantik jika need_rag: true"],
     "query_judul": ["nama dokumen target, array pendek, jika need_rag: true"],
     "search_tags": ["tag kategori dokumen jika need_rag: true"],
@@ -123,7 +124,7 @@ FORMAT OUTPUT WAJIB JSON MURNI (STRICT SPARSE JSON):
     "is_coding": true,
     "is_docwriter": true
   }
-- CATATAN SPARSE: Field seperti queries, query_judul, visual_types, is_coding, is_docwriter HANYA disertakan jika bernilai aktif (true / non-empty). Dilarang menyertakan array kosong [] atau field yang tidak dibutuhkan.
+- CATATAN SPARSE: Field seperti semantic_query, queries, query_judul, visual_types, is_coding, is_docwriter HANYA disertakan jika bernilai aktif (true / non-empty). Dilarang menyertakan array kosong [] atau field yang tidak dibutuhkan.
 """
 
 COLLAB_AUTO_NOTE_EVAL_PROMPT = """Anda adalah asisten kurasi notulensi rapat cerdas PT Pindad.

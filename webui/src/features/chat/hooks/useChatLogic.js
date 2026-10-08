@@ -966,25 +966,22 @@ export function useChatLogic({ isGuest,
     el.style.overflow = newHeight >= 450 ? "auto" : "hidden";
     el.scrollTop = scrollTop;
 
+    const hasNewlines = input.includes("\n");
+    const isLongText = input.length > 70;
     const baseline = baselineHeightRef.current;
-    if (baseline > 0) {
-      const hasNewlines = input.includes("\n");
-      const isCurrentlyThick = newHeight > baseline + 3 || hasNewlines;
+    const isCurrentlyThick = newHeight > (baseline > 0 ? baseline + 3 : 40) || hasNewlines || isLongText;
 
-      // Gunakan variabel lokal 'isCurrentlyThick' untuk membandingkan dengan state sebelumnya melalui pembaruan fungsional untuk menghindari pembaruan langsung
-      setIsMultiLine((prevIsMultiLine) => {
-        if (!prevIsMultiLine) {
-          // LOGIKA NAIK: Jika aslinya single, tapi sekarang mendeteksi tebal
-          return isCurrentlyThick;
-        } else {
-          // LOGIKA TURUN: Jika aslinya multi, hanya boleh balik single kalau tidak tebal di simulasi lebar single
-          if (!isCurrentlyThick) {
-            return false;
-          }
-          return true; // Tetap mengunci multi-line
+    setIsMultiLine((prevIsMultiLine) => {
+      if (hasNewlines || isLongText) return true;
+      if (!prevIsMultiLine) {
+        return isCurrentlyThick;
+      } else {
+        if (!isCurrentlyThick) {
+          return false;
         }
-      });
-    }
+        return true;
+      }
+    });
   }, [input, isMultiLine]); // PENTING: tambahkan isMultiLine ke dependensi untuk validasi ulang lebar
 
   // 2. PROSES PENGUNGGAHAN BERKAS DIJALANKAN DI SINI SAAT TOMBOL KIRIM DIKLIK
@@ -1215,10 +1212,103 @@ export function useChatLogic({ isGuest,
       useChatStore.getState().setActiveModeTag(null);
       return;
     }
-    if (e.key === "Enter" && !e.shiftKey) {
+
+    // Ctrl+Enter atau Cmd+Enter -> Selalu submit (bahkan saat di dalam list)
+    if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
       e.preventDefault();
       if (isStreaming) return;
       handleSubmit();
+      return;
+    }
+
+    // ── Smart Auto-List Continuation (1. Text -> Enter -> 2. Text, Bullet -> Bullet) ──
+    if (e.key === "Enter") {
+      const textarea = textareaRef?.current;
+      if (textarea) {
+        const { selectionStart, selectionEnd, value } = textarea;
+        if (selectionStart === selectionEnd) {
+          const textBeforeCursor = value.slice(0, selectionStart);
+          const lastNewline = textBeforeCursor.lastIndexOf("\n");
+          const lineStart = lastNewline === -1 ? 0 : lastNewline + 1;
+          const currentLine = textBeforeCursor.slice(lineStart);
+
+          // 1. Numbered List: e.g. "1. ", "2. ", "   10. "
+          const numMatch = currentLine.match(/^(\s*)(\d+)\.\s*(.*)$/);
+          if (numMatch) {
+            const indent = numMatch[1];
+            const num = parseInt(numMatch[2], 10);
+            const lineContent = numMatch[3];
+
+            if (!lineContent || !lineContent.trim()) {
+              // Jika baris nomor kosong (hanya "2. "), tekan Enter keluar dari list
+              e.preventDefault();
+              const newText = value.slice(0, lineStart) + value.slice(selectionEnd);
+              setInput(newText);
+              setTimeout(() => {
+                if (textareaRef.current) {
+                  textareaRef.current.selectionStart = textareaRef.current.selectionEnd = lineStart;
+                }
+              }, 0);
+              return;
+            } else {
+              // Lanjut ke nomor berikutnya secara otomatis
+              e.preventDefault();
+              const nextNum = num + 1;
+              const insertText = `\n${indent}${nextNum}. `;
+              const newText = value.slice(0, selectionStart) + insertText + value.slice(selectionEnd);
+              setInput(newText);
+              setTimeout(() => {
+                if (textareaRef.current) {
+                  const newCursor = selectionStart + insertText.length;
+                  textareaRef.current.selectionStart = textareaRef.current.selectionEnd = newCursor;
+                }
+              }, 0);
+              return;
+            }
+          }
+
+          // 2. Bullet List: e.g. "* ", "- ", "+ "
+          const bulletMatch = currentLine.match(/^(\s*)([\*\-\+])\s*(.*)$/);
+          if (bulletMatch) {
+            const indent = bulletMatch[1];
+            const bullet = bulletMatch[2];
+            const lineContent = bulletMatch[3];
+
+            if (!lineContent || !lineContent.trim()) {
+              // Jika bullet kosong, tekan Enter keluar dari bullet list
+              e.preventDefault();
+              const newText = value.slice(0, lineStart) + value.slice(selectionEnd);
+              setInput(newText);
+              setTimeout(() => {
+                if (textareaRef.current) {
+                  textareaRef.current.selectionStart = textareaRef.current.selectionEnd = lineStart;
+                }
+              }, 0);
+              return;
+            } else {
+              // Lanjut ke bullet berikutnya
+              e.preventDefault();
+              const insertText = `\n${indent}${bullet} `;
+              const newText = value.slice(0, selectionStart) + insertText + value.slice(selectionEnd);
+              setInput(newText);
+              setTimeout(() => {
+                if (textareaRef.current) {
+                  const newCursor = selectionStart + insertText.length;
+                  textareaRef.current.selectionStart = textareaRef.current.selectionEnd = newCursor;
+                }
+              }, 0);
+              return;
+            }
+          }
+        }
+      }
+
+      // Default Enter behavior (submit chat jika bukan Shift+Enter)
+      if (!e.shiftKey) {
+        e.preventDefault();
+        if (isStreaming) return;
+        handleSubmit();
+      }
     }
   };
 

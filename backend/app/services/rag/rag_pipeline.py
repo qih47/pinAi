@@ -30,6 +30,7 @@ async def run_rag_pipeline(
     limit_per_query: int = 3,
     npp: Optional[str] = None,
     use_cache: bool = False,
+    target_doc_ids: Optional[List[int]] = None,
 ) -> AsyncGenerator[str, None]:
     if not rewritten_queries:
         logger.info("[RAG_PIPELINE] No queries → skip RAG")
@@ -68,7 +69,7 @@ async def run_rag_pipeline(
 
     # ── CACHE MISS: Jalankan RAG DB Pipeline Normal ──────────────────────────
     rag_task = asyncio.create_task(
-        _run_parallel_rag(rewritten_queries, limit_per_query)
+        _run_parallel_rag(rewritten_queries, limit_per_query, target_doc_ids=target_doc_ids)
     )
 
     try:
@@ -167,6 +168,7 @@ async def _save_cache_for_queries(
 async def _run_parallel_rag(
     rewritten_queries: List[str],
     limit_per_query: int,
+    target_doc_ids: Optional[List[int]] = None,
 ) -> Tuple[str, List[Dict[str, Any]], int]:
     from backend.app.utils.embedding_cache import get_embedding_cache
     cache = get_embedding_cache()
@@ -175,7 +177,7 @@ async def _run_parallel_rag(
     async def _fetch(q: str, limit: int):
         try:
             ctx, sources = await rag_service.assemble_powerful_context(
-                query=q, limit=limit
+                query=q, limit=limit, target_doc_ids=target_doc_ids
             )
             return ctx, sources
         except Exception as e:

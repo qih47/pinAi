@@ -78,7 +78,7 @@ export async function fetchChatSuggestions(mode = 'documents', query = '', limit
  * @param {Object} options - Configuration options (timeoutMs, etc)
  */
 export async function streamChat(
-  { sessionUuid, messages, chatMode, thinking, isolatedDocId, attachmentPaths, npp, editIndex, editMessageId, assistantMessageId, signal, activeTopic, keySubject, forcedMode, bypassRouter, language, regeneratedFromId, parentId, isRegenerate, targetIndex, parentIndex, docTitle, hintSource, contextIsolation },
+  { sessionUuid, messages, chatMode, thinking, isolatedDocId, attachmentPaths, npp, editIndex, editMessageId, assistantMessageId, signal, activeTopic, keySubject, forcedMode, bypassRouter, language, regeneratedFromId, parentId, isRegenerate, targetIndex, parentIndex, docTitle, hintSource, contextIsolation, isContinuation, partialContent },
   { onThinking, onStatus, onSources, onChunk, onFileStatus, onDone, onError, onTopicUpdate, onPipelineRouting },
   options = {}
 ) {
@@ -171,7 +171,9 @@ export async function streamChat(
           language: language || localStorage.getItem("cakra_language") || 'id'
         },
         forced_mode: forcedMode || undefined,
-        bypass_router: Boolean(bypassRouter)
+        bypass_router: Boolean(bypassRouter),
+        is_continuation: Boolean(isContinuation),
+        partial_content: partialContent || undefined,
       }),
       signal: controller.signal,  // ✅ ADD: Abort signal for timeout
     });

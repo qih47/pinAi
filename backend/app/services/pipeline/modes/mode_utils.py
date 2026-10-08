@@ -1156,41 +1156,6 @@ def format_session_title(title_input: str, user_message: str = "", max_words: in
     lower_raw = cleaned.lower()
     user_lower = (user_message or "").lower()
 
-    # 1. 🌅 Deteksi Khusus Sapaan / Salam / Pembuka Obrolan:
-    # Jika input atau user_message adalah salam/sapaan singkat, jadikan judul 2-4 kata yang luwes
-    combined_greet_text = f"{lower_raw} {user_lower}"
-    if any(w in combined_greet_text for w in ["pagi", "subuh", "morning"]):
-        if any(w in combined_greet_text for w in ["brother", "bro", "bray", "bre"]):
-            return "Sapaan Pagi Brother"
-        elif any(w in combined_greet_text for w in ["cuy", "kuy"]):
-            return "Sapaan Pagi Cuy"
-        elif any(w in combined_greet_text for w in ["bos", "boss"]):
-            return "Sapaan Pagi Bos"
-        return "Sapaan Pagi yang Akrab"
-    elif any(w in combined_greet_text for w in ["siang", "afternoon"]):
-        return "Sapaan Siang yang Akrab"
-    elif any(w in combined_greet_text for w in ["sore"]):
-        return "Sapaan Sore yang Hangat"
-    elif any(w in combined_greet_text for w in ["malam", "evening", "night"]):
-        return "Sapaan Malam yang Santai"
-    elif any(w in combined_greet_text for w in ["assalamualaikum", "assalam", "samlikum"]):
-        return "Salam & Sapaan Hangat"
-    elif any(w in combined_greet_text for w in ["halo", "hai", "helo", "hello", "hi "]):
-        if any(w in combined_greet_text for w in ["brother", "bro"]):
-            return "Sapaan Akrab Brother"
-        elif any(w in combined_greet_text for w in ["cuy"]):
-            return "Sapaan Akrab Cuy"
-        return "Sapaan Ramah & Santai"
-    elif any(w in combined_greet_text for w in ["semangat", "kerja"]):
-        try:
-            from backend.app.services.ambient.weather_service import get_current_time_period
-            period = get_current_time_period()
-        except Exception:
-            period = "Pagi"
-        return f"Semangat {period} Kerja"
-    elif any(w in combined_greet_text for w in ["terima kasih", "makasih", "thanks", "tq", "nuhun"]):
-        return "Apresiasi & Ucapan Terima Kasih"
-
     # Strip common leading command phrases
     for prefix in [
         "Buatkan format ", "Buatkan draft ", "Buatkan ", "Bikinin ", "Buat ", "Gambarkan ",

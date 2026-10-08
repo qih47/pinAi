@@ -93,7 +93,8 @@ export async function performStream(set, get, messagesToSend, assistantMessage, 
                 await new Promise(resolve => setTimeout(resolve, delay));
             }
 
-            let accumulatedReply = '';
+            const isContinuation = Boolean(streamOptions?.is_continuation || streamOptions?.isContinuation);
+            let accumulatedReply = isContinuation ? (assistantMessage.content || '') : '';
             let renderTimeout = null;
             let renderThinkingTimeout = null;
             let renderStatusTimeout = null;
@@ -133,6 +134,8 @@ export async function performStream(set, get, messagesToSend, assistantMessage, 
                     docTitle: streamOptions.doc_title || streamOptions.docTitle || get().activeIsolatedTitle || null,
                     hintSource: streamOptions.hint_source || streamOptions.hintSource || null,
                     contextIsolation: streamOptions.context_isolation || streamOptions.contextIsolation || null,
+                    isContinuation: isContinuation,
+                    partialContent: isContinuation ? (assistantMessage.content || '') : undefined,
                     language: get().language || (typeof localStorage !== 'undefined' ? localStorage.getItem("cakra_language") : 'id') || 'id'
                 },
                 {
@@ -598,6 +601,11 @@ export async function performStream(set, get, messagesToSend, assistantMessage, 
                                 ...(assistantMessage.metadata || {}),
                                 is_truncated: true
                             };
+                        } else {
+                            assistantMessage.is_truncated = false;
+                            if (assistantMessage.metadata) {
+                                assistantMessage.metadata.is_truncated = false;
+                            }
                         }
                         if (data && data.eval_count && data.eval_duration) {
                             assistantMessage.eval_count = data.eval_count;

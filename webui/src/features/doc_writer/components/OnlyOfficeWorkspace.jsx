@@ -13,7 +13,15 @@ import {
   HelpCircle
 } from 'lucide-react';
 
-const ONLYOFFICE_SERVER_URL = import.meta.env.VITE_ONLYOFFICE_URL || 'http://localhost:8085';
+const getOnlyOfficeUrl = () => {
+  if (import.meta.env.VITE_ONLYOFFICE_URL) return import.meta.env.VITE_ONLYOFFICE_URL;
+  if (typeof window !== 'undefined') {
+    return `${window.location.protocol}//${window.location.hostname}:8085`;
+  }
+  return 'http://localhost:8085';
+};
+
+const ONLYOFFICE_SERVER_URL = getOnlyOfficeUrl();
 
 const OnlyOfficeWorkspace = ({
   docId,

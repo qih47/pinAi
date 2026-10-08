@@ -1047,7 +1047,8 @@ def _validate_and_normalize_routing(
         routing["is_ambiguous"] = False
         routing["is_chitchat"] = False
         routing["is_greeting"] = False
-        logger.info("[DISPATCHER_ROUTER] 📄 Document Writer intent enforced -> is_docwriter=True & is_ambiguous=False")
+        routing["is_generate_email"] = False
+        logger.info("[DISPATCHER_ROUTER] 📄 Document Writer intent enforced -> is_docwriter=True, is_generate_email=False & is_ambiguous=False")
 
     # ── ATURAN STRICT AMBIGUOUS GATE ──────────────────────────────────────────
     # Jika is_ambiguous True, paksa need_rag = False dan kosongkan search queries/web search
@@ -1130,7 +1131,14 @@ def _validate_and_normalize_routing(
     )
     routing["query_judul"] = clean_qj
     routing["search_tags"] = clean_st
-    logger.info(f"[DISPATCHER_ROUTER] Sanitized query_judul: {routing['query_judul']} | search_tags: {routing['search_tags']}")
+    
+    raw_semantic_query = routing.get("semantic_query") or routing_json.get("semantic_query", "")
+    if isinstance(raw_semantic_query, str) and raw_semantic_query.strip():
+        routing["semantic_query"] = raw_semantic_query.strip()
+    elif routing.get("need_rag"):
+        routing["semantic_query"] = routing.get("key_subject") or user_message
+        
+    logger.info(f"[DISPATCHER_ROUTER] Sanitized query_judul: {routing['query_judul']} | search_tags: {routing['search_tags']} | semantic_query: '{routing.get('semantic_query', '')}'")
 
     context_snippets = routing_json.get("context_snippets", [])
     if isinstance(context_snippets, list):
@@ -1195,24 +1203,25 @@ def _validate_and_normalize_routing(
     else:
         routing["format_constraint"] = None
 
-    # Ekstrak judul obrolan untuk sidebar kiri (Gemma 4 Call 1 LLM)
+    # Ekstrak judul obrolan untuk sidebar kiri (Gemma 4 Call 1 LLM) — HANYA saat FIRST CHAT
     from backend.app.services.pipeline.modes.mode_utils import format_session_title, GENERIC_SESSION_TITLES
-    session_title = routing_json.get("session_title")
-    if isinstance(session_title, str) and session_title.strip() and session_title.strip().lower() not in GENERIC_SESSION_TITLES:
-        routing["session_title"] = format_session_title(session_title, user_message=user_message)
-    elif is_first_chat:
-        # Fallback bertingkat:
-        # 1. Gunakan key_subject atau active_topic jika informatif
-        subj = routing_json.get("key_subject") or routing_json.get("active_topic")
-        if subj and subj.strip().lower() not in GENERIC_SESSION_TITLES:
-            routing["session_title"] = format_session_title(subj, user_message=user_message)
+    if is_first_chat:
+        session_title = routing_json.get("session_title")
+        if isinstance(session_title, str) and session_title.strip() and session_title.strip().lower() not in GENERIC_SESSION_TITLES:
+            routing["session_title"] = format_session_title(session_title, user_message=user_message)
         else:
-            # 2. Format dari pesan pengguna agar judul langsung luwes di sidebar
-            formatted_user = format_session_title(user_message, user_message=user_message)
-            if formatted_user and formatted_user.strip().lower() not in GENERIC_SESSION_TITLES:
-                routing["session_title"] = formatted_user
+            # Fallback bertingkat jika Call 1 absen session_title:
+            # 1. Gunakan key_subject atau active_topic jika informatif
+            subj = routing_json.get("key_subject") or routing_json.get("active_topic")
+            if subj and subj.strip().lower() not in GENERIC_SESSION_TITLES:
+                routing["session_title"] = format_session_title(subj, user_message=user_message)
             else:
-                routing["session_title"] = "Sapaan & Obrolan Santai"
+                # 2. Format dari pesan pengguna agar judul langsung luwes di sidebar
+                formatted_user = format_session_title(user_message, user_message=user_message)
+                if formatted_user and formatted_user.strip().lower() not in GENERIC_SESSION_TITLES:
+                    routing["session_title"] = formatted_user
+                else:
+                    routing["session_title"] = "Obrolan Cakra AI"
     else:
         routing["session_title"] = None
 
@@ -1226,7 +1235,7 @@ def _validate_and_normalize_routing(
         routing["is_coding"] = True
         
 
-    if precheck.get("is_generate_email") and not routing["is_generate_email"]:
+    if precheck.get("is_generate_email") and not routing["is_generate_email"] and not routing.get("is_docwriter"):
         logger.warning("[DISPATCHER_ROUTER] Precheck override: is_generate_email forced to True")
         routing["is_generate_email"] = True
 
@@ -1632,7 +1641,14 @@ async def dispatch_preset_route(
             result["query_judul"] = clean_qj
         if clean_st:
             result["search_tags"] = clean_st
-        logger.info(f"[PRESET_DISPATCHER] Sanitized query_judul: {result.get('query_judul', [])} | search_tags: {result.get('search_tags', [])}")
+            
+        raw_preset_sq = res_json.get("semantic_query")
+        if isinstance(raw_preset_sq, str) and raw_preset_sq.strip():
+            result["semantic_query"] = raw_preset_sq.strip()
+        elif forced_mode in ["documents", "document", "rag", "focus", "audit", "compliance", "redteam"]:
+            result["semantic_query"] = res_json.get("key_subject") or user_message
+            
+        logger.info(f"[PRESET_DISPATCHER] Sanitized query_judul: {result.get('query_judul', [])} | search_tags: {result.get('search_tags', [])} | semantic_query: '{result.get('semantic_query', '')}'")
 
         # Proteksi sapaan di preset:
         user_msg_p_lower = user_message.lower()

@@ -148,15 +148,153 @@ def sanitize_doc_search_query(q: str) -> str:
     return cleaned if len(cleaned) >= 4 else q.strip()
 
 
+def sanitize_hallucinated_articles(query_text: str, user_raw_text: str) -> str:
+    """
+    Jika query pencarian memuat rujukan pasal/ayat tertentu yang TIDAK PERNAH disebutkan
+    oleh pengguna pada pesan aslinya, bersihkan rujukan pasal halusinasi tersebut agar
+    tidak membiaskan pencarian BM25/FTS ke sembarang regulasi yang memiliki nomor pasal serupa.
+    Jika pengguna memang menyebutkan pasal tersebut di pesan aslinya, pertahankan secara utuh!
+    """
+    if not query_text:
+        return ""
+    user_raw_lower = (user_raw_text or "").lower()
+    
+    pasal_pattern = re.compile(
+        r'\bpasal\s+\d+(?:(?:\s+(?:ayat|huruf|angka)\s+[a-z0-9]+|\s+(?:dan|atau)\s+[a-z0-9]+)*)?',
+        re.IGNORECASE
+    )
+    
+    def _replace_if_hallucinated(match):
+        matched_str = match.group(0)
+        nums = re.findall(r'\d+', matched_str)
+        if not any(f"pasal {n}" in user_raw_lower for n in nums):
+            return ""
+        return matched_str
+
+    sanitized = pasal_pattern.sub(_replace_if_hallucinated, query_text)
+    sanitized = re.sub(r'\s+', ' ', sanitized).strip()
+    return sanitized if sanitized else query_text
+
+
+async def _resolve_target_doc_ids_from_postgres(
+    query_judul_list: List[str],
+    user_query: str = "",
+    user_message: str = "",
+) -> List[int]:
+    """
+    Menemukan id dokumen di PostgreSQL ragdb yang cocok dengan judul/akronim regulasi target (Kasus A).
+    Secara otomatis memprioritaskan dokumen yang berstatus aktif di database (stataktif != 'obsolete').
+    """
+    from backend.app.core.database import get_db, get_peraturan_db
+
+    target_tokens = []
+    
+    # 1. Periksa token eksplisit dari query_judul_list jika ada
+    # HINDARI token umum/noise seperti 'ketentuan', 'pedoman', 'peraturan', dll.
+    TITLE_NOISE_WORDS = {
+        "dokumen", "peraturan", "terkait", "surat", "nomor", "tentang", "mengenai",
+        "ketentuan", "pedoman", "instruksi", "tata", "tertib", "sistem", "kebijakan"
+    }
+    for qj in (query_judul_list or []):
+        qj_str = str(qj).strip()
+        if len(qj_str) >= 2 and qj_str.lower() not in TITLE_NOISE_WORDS:
+            target_tokens.append(qj_str)
+
+    # 2. Cek penyebutan eksplisit tipe atau nomor dokumen dari user_query dan user_message
+    combined_user_text = f"{user_query} {user_message}".lower()
+    
+    # Deteksi PKB
+    if re.search(r'\b(pkb|perjanjian kerja bersama)\b', combined_user_text):
+        if not any(t.lower() in ("pkb", "perjanjian kerja bersama") for t in target_tokens):
+            target_tokens.append("PKB")
+
+    # Deteksi pola penomoran resmi (skep, perdir, se, sop, dll)
+    doc_num_matches = re.findall(
+        r'\b((?:skep|perdir|sop|ik|se|surat edaran|keputusan direksi)/\d+/[^\s,]+|\b(?:skep|perdir)/\d+/[^\s,]+)\b',
+        combined_user_text
+    )
+    for dm in doc_num_matches:
+        if dm not in [t.lower() for t in target_tokens]:
+            target_tokens.append(dm)
+
+    # Deteksi regulasi eksternal penting jika ada
+    for ext_doc in ["permenaker", "perpres", "uu", "pp"]:
+        if re.search(rf'\b{ext_doc}\b\s*(?:nomor|no\.?)?\s*\d+', combined_user_text):
+            m = re.search(rf'\b{ext_doc}\b\s*(?:nomor|no\.?)?\s*(\d+[^\s,]*)', combined_user_text)
+            if m:
+                target_tokens.append(f"{ext_doc} {m.group(1)}")
+
+    if not target_tokens:
+        return []
+
+    matched_doc_ids = []
+    try:
+        async with get_db() as conn:
+            for token in target_tokens:
+                token_clean = token.strip()
+                if not token_clean:
+                    continue
+                if len(token_clean) <= 4:
+                    pattern = r'\y' + re.escape(token_clean) + r'\y'
+                    sql = """
+                        SELECT id, nomor, judul
+                        FROM dokumen
+                        WHERE (judul ~* $1 OR nomor ~* $1)
+                        ORDER BY id DESC LIMIT 10
+                    """
+                    rows = await conn.fetch(sql, pattern)
+                else:
+                    pattern = r'\y' + re.escape(token_clean) + r'\y'
+                    ilike_term = f"%{token_clean}%"
+                    sql = """
+                        SELECT id, nomor, judul
+                        FROM dokumen
+                        WHERE (judul ~* $1 OR nomor ~* $1 OR judul ILIKE $2)
+                        ORDER BY id DESC LIMIT 10
+                    """
+                    rows = await conn.fetch(sql, pattern, ilike_term)
+
+                for r in rows:
+                    matched_doc_ids.append(int(r["id"]))
+
+        if not matched_doc_ids:
+            return []
+
+        unique_ids = list(dict.fromkeys(matched_doc_ids))
+
+        try:
+            async with get_peraturan_db() as p_conn:
+                async with p_conn.cursor() as p_cur:
+                    format_strings = ','.join(['%s'] * len(unique_ids))
+                    await p_cur.execute(
+                        f"SELECT id_berita, stataktif FROM berita WHERE id_berita IN ({format_strings})",
+                        tuple(unique_ids)
+                    )
+                    status_rows = await p_cur.fetchall()
+                    obsolete_ids = {r[0] for r in status_rows if str(r[1] or '').lower() in ('obsolete', 'tidak berlaku', 'dicabut')}
+                    active_ids = [did for did in unique_ids if did not in obsolete_ids]
+                    if active_ids:
+                        return active_ids[:5]
+        except Exception as e_mysql:
+            logger.warning(f"[TOOL_DISPATCHER] Warning checking status in MySQL: {e_mysql}")
+
+        return unique_ids[:5]
+    except Exception as e:
+        logger.error(f"[TOOL_DISPATCHER] Error resolving target doc ids from postgres: {e}")
+        return []
+
+
 async def execute_doc_search_tool_stream(
     query: str, 
     reason: str = "", 
     doc_type: str = "",
     query_judul: Optional[Union[List[str], str]] = None,
     search_tags: Optional[Union[List[str], str]] = None,
+    semantic_query: Optional[str] = None,
     session_uuid: Optional[str] = None,
     current_user_npp: Optional[str] = None,
     request: Optional[Any] = None,
+    user_message: str = "",
 ) -> AsyncGenerator[Union[Tuple[str, str], ToolResult], None]:
     """
     Eksekusi alur RAG lengkap untuk tool docsearch:
@@ -174,6 +312,7 @@ async def execute_doc_search_tool_stream(
     from backend.app.services.pipeline.context_verifier import verify_retrieval_context, verify_retrieved_documents_crag, ENABLE_CONTEXT_VERIFIER
     from backend.app.services.rag.reranker_service import reranker_service
     from backend.app.services.pipeline.document_intelligence import (
+        get_document_text_map_from_ragdb,
         extract_and_ocr_document_async,
         expand_tri_window_context,
         extract_explicit_pages_from_query,
@@ -193,10 +332,25 @@ async def execute_doc_search_tool_stream(
         else:
             query_judul_list = [query_judul.strip()]
 
-    if not query_judul_list:
-        query_judul_list = [w for w in effective_query.split() if len(w) >= 3]
-        if not query_judul_list:
-            query_judul_list = [effective_query]
+    # 🛡️ Anti-Residue Multi-Turn Sanitizer:
+    # Saring kata dalam query_judul_list. Jika sebuah token adalah kata topik spesifik (bukan tipe dokumen baku)
+    # dan SAMA SEKALI tidak muncul di query pengguna saat ini (clean_query / user_message), buang kata halusinasi/residu tersebut!
+    DOC_TYPE_ALLOWLIST = {"pkb", "skep", "sop", "ik", "se", "perdir", "permen", "permenaker", "perpres", "uu", "pp"}
+    sanitized_qj = []
+    clean_query_lower = clean_query.lower()
+    user_msg_lower = (user_message or "").lower()
+    for qj in query_judul_list:
+        qj_clean = qj.strip()
+        qj_lower = qj_clean.lower()
+        if qj_lower in DOC_TYPE_ALLOWLIST:
+            sanitized_qj.append(qj_clean)
+        elif any(part in clean_query_lower or part in user_msg_lower for part in qj_lower.split() if len(part) >= 3):
+            sanitized_qj.append(qj_clean)
+        else:
+            logger.info(f"[TOOL_DISPATCHER] 🧹 Menghapus kata residu multi-turn '{qj_clean}' dari query_judul karena tidak ada di konteks pertanyaan saat ini.")
+
+    if sanitized_qj:
+        query_judul_list = sanitized_qj
 
     # 2. Parsing search_tags
     search_tags_list: List[str] = []
@@ -351,13 +505,140 @@ async def execute_doc_search_tool_stream(
                     crag_primary_id = crag_eval.get("primary_doc_id")
 
         if not candidate_docs:
-            yield ("Menelusuri regulasi", "SEARCHING_REGULATIONS")
+            # ── 🌟 JALUR DEFAULT (SISTEM BARU: SEMANTIC CHUNK RAG 'dokumen_chunk') ──
+            # Menjalankan pencarian hybrid dense pgvector + BM25 langsung ke tabel dokumen_chunk (91k chunks).
+            # Query diformulasikan dari semantic_query bebas residu judul berita multi-turn!
+            raw_semantic_query = (semantic_query or clean_query).strip()
+            # 🛡️ Sanitasi pasal halusinasi: jika model menyuntikkan rujukan pasal yang tidak pernah disebut pengguna
+            effective_semantic_query = sanitize_hallucinated_articles(raw_semantic_query, clean_query)
+
+            # 🎯 Resolusi target_doc_ids jika pengguna atau router merujuk dokumen tertentu (Kasus A: Anchored Search)
+            target_doc_ids = await _resolve_target_doc_ids_from_postgres(
+                query_judul_list, 
+                clean_query, 
+                user_message=user_message
+            )
+            if target_doc_ids:
+                logger.info(f"[TOOL_DISPATCHER] 🎯 [KASUS A: ANCHORED SEARCH] Mengunci pencarian hanya pada dokumen target: {target_doc_ids}")
+            else:
+                logger.info("[TOOL_DISPATCHER] 🌐 [KASUS B: GLOBAL DISCOVERY SEARCH] Pencarian global klausul regulasi dengan dynamic pruning.")
+
+            needs_explicit_file_ocr = bool(
+                any(w in clean_query.lower() for w in ["lampiran", "bagan", "tunjukin", "lihat gambar", "cap dinas", "tanda tangan"])
+            )
+            chunk_context = ""
+            chunk_sources = []
+
+            if not needs_explicit_file_ocr and effective_semantic_query:
+                try:
+                    from backend.app.services.rag.rag_service import rag_service
+                    yield ("Menelusuri klausul regulasi", "TOOL_DOCSEARCH_CHUNK_SEARCH")
+                    chunk_context, chunk_sources = await rag_service.assemble_powerful_context(
+                        query=effective_semantic_query,
+                        limit=5,
+                        allowed_access_tiers=["INTERNAL"],
+                        target_doc_ids=target_doc_ids,
+                    )
+                except Exception as e_chunk:
+                    logger.warning(f"[TOOL_DISPATCHER] ⚠️ Gagal eksekusi pencarian dokumen_chunk ({e_chunk}). Fallback ke sistem legacy.")
+                    chunk_context = ""
+                    chunk_sources = []
+
+            # Jika sistem baru (dokumen_chunk) berhasil menemukan klausul relevan:
+            if chunk_context and chunk_sources:
+                logger.info(f"[TOOL_DISPATCHER] 🌟 [SISTEM BARU CHUNK HIT] Berhasil mengambil {len(chunk_sources)} klausul dari dokumen_chunk!")
+                
+                # Registrasi dokumen aktif ke SessionBrain untuk memori turn selanjutnya
+                if brain:
+                    for s in chunk_sources[:3]:
+                        s_id = str(s.get("id") or s.get("dokumen_id") or "")
+                        if s_id:
+                            try:
+                                brain.register_document(
+                                    doc_id=s_id,
+                                    title=s.get("title", f"Dokumen {s_id}"),
+                                    nomor=s.get("nomor", ""),
+                                    jenis=s.get("jenis", "Regulasi"),
+                                    total_pages=s.get("total_pages", 1),
+                                    file_path=s.get("file_path", "")
+                                )
+                            except Exception as _eb:
+                                logger.debug(f"[TOOL_DISPATCHER] Brain registration note: {_eb}")
+
+                display_docs = []
+                for s in chunk_sources[:5]:
+                    f_path = s.get("file_path") or (f"file_peraturan/{s.get('filename')}" if s.get("filename") else None)
+                    f_name = s.get("filename") or (os.path.basename(f_path) if f_path else "")
+                    display_docs.append({
+                        "id": str(s.get("id") or s.get("dokumen_id")),
+                        "judul": s.get("title") or s.get("judul", ""),
+                        "nomor": s.get("nomor", ""),
+                        "score": s.get("score", 1.0),
+                        "status_berlaku": s.get("stataktif") or s.get("status_berlaku", "Berlaku"),
+                        "stataktif": s.get("stataktif") or s.get("status_berlaku", "Berlaku"),
+                        "page": s.get("page") or s.get("page_number", 1),
+                        "file_path": f_path,
+                        "filename": f_name,
+                        "total_pages": s.get("total_pages", ""),
+                        "jenis": s.get("jenis", "Regulasi"),
+                    })
+
+                safe_chunk_context = chunk_context[:45000]
+
+                yield ToolResult(
+                    tool_name="docsearch",
+                    status="success",
+                    intent=intent_desc,
+                    display_data={
+                        "tool": "docsearch",
+                        "intent": intent_desc,
+                        "query": clean_query,
+                        "semantic_query": effective_semantic_query,
+                        "documents": display_docs,
+                        "stage": "done",
+                    },
+                    llm_context=f"--- HASIL PENELUSURAN REGULASI RESMI (BASIS DATA KLAUSUL PT PINDAD) ---\n"
+                                f"Kueri Semantik: {effective_semantic_query}\n\n"
+                                f"{safe_chunk_context}\n\n"
+                                f"PANDUAN SINTESIS:\n"
+                                f"- Jawab pertanyaan pengguna secara akurat berdasarkan pasal dan klausul regulasi di atas.\n"
+                                f"- Kutip nomor regulasi, pasal, atau estimasi halaman dokumen sebagai sitasi resmi.\n"
+                                f"- JANGAN berhalusinasi atau mencampuradukkan aturan jika tidak tertera di dalam teks.",
+                )
+                return
+
+            # ── 🔀 PERCABANGAN KONDISIONAL (JALUR SISTEM LAMA: MySQL berita + Ekstraktor PDF Fisik) ──
+            # Berjalan jika chunk_context kosong / di bawah threshold, ATAU ada permintaan file fisik/visual spesifik
+            logger.info("[TOOL_DISPATCHER] 🔀 Masuk ke percabangan sistem lama (MySQL berita & PDF reader fisik)...")
+            yield ("Menelusuri arsip regulasi fisik", "SEARCHING_REGULATIONS")
+
+            # Integrasi Call 1.1 CRAG Verifier: Rekomendasikan nama wadah/judul regulasi di katalog jika query_judul belum spesifik
+            from backend.app.services.pipeline.context_verifier import recommend_fallback_catalog_queries
+            target_qj = query_judul_list
+            if not target_qj or all(len(w) < 4 for w in target_qj):
+                target_qj = await recommend_fallback_catalog_queries(clean_query, query_judul_list, request=request)
+
             candidate_docs = await get_candidate_documents_metadata(
                 user_message=clean_query,
-                query_judul_list=query_judul_list,
+                query_judul_list=target_qj,
                 rag_queries=[clean_query],
                 search_tags=search_tags_list
             ) or []
+
+            # Jika belum ditemukan, beri kesempatan Call 1.1 merekomendasikan query judul alternatif ke MySQL berita
+            if not candidate_docs and ENABLE_CONTEXT_VERIFIER:
+                suggested_fallback_qj = await recommend_fallback_catalog_queries(clean_query, target_qj, request=request)
+                if suggested_fallback_qj and suggested_fallback_qj != target_qj:
+                    logger.info(f"[TOOL_DISPATCHER] 🧭 Call 1.1 CRAG mengaktifkan katalog alternatif: {suggested_fallback_qj}")
+                    yield ("Menajamkan pencarian arsip regulasi", "CRAG_RETRY")
+                    candidate_docs = await get_candidate_documents_metadata(
+                        user_message=clean_query,
+                        query_judul_list=suggested_fallback_qj,
+                        rag_queries=[clean_query],
+                        search_tags=search_tags_list
+                    ) or []
+                    if candidate_docs:
+                        query_judul_list = suggested_fallback_qj
 
             if candidate_docs and ENABLE_CONTEXT_VERIFIER:
                 yield ("Menilai relevansi dokumen", "TOOL_DOCSEARCH_SCORING")
@@ -587,12 +868,13 @@ async def execute_doc_search_tool_stream(
             page_corpus = [p["text"] if p["text"] else f"Dokumen {p['doc_title']} halaman {p['page_num']}" for p in global_page_pool]
             scores = await reranker_service.compute_scores(effective_page_query, page_corpus)
 
+            # Ekstrak kata kunci fokus HANYA dari substansi pertanyaan pengguna (clean_query)
             focus_keywords = set()
-            for token in effective_page_query.lower().split():
+            for token in clean_query.lower().split():
                 clean_tok = re.sub(r"[^\w]", "", token)
                 if len(clean_tok) >= 4 and clean_tok not in [
                     "dokumen", "peraturan", "terkait", "dalam", "surat", "nomor",
-                    "tentang", "mengenai", "pindad", "apakah", "bagaimana", "adalah"
+                    "tentang", "mengenai", "pindad", "apakah", "bagaimana", "adalah", "berapa", "jelaskan", "saja"
                 ]:
                     focus_keywords.add(clean_tok)
 
@@ -600,8 +882,10 @@ async def execute_doc_search_tool_stream(
                 p_obj = global_page_pool[idx]
                 final_score = float(score)
                 p_text_lower = p_obj.get("text", "").lower()
-                if focus_keywords and any(kw in p_text_lower for kw in focus_keywords):
-                    final_score += 0.4
+                if focus_keywords:
+                    matched_kws = [kw for kw in focus_keywords if kw in p_text_lower]
+                    if matched_kws:
+                        final_score += 0.35 + min(len(matched_kws) * 0.1, 0.3)
                 p_obj["score"] = final_score
 
             global_page_pool.sort(key=lambda x: x["score"], reverse=True)
@@ -739,9 +1023,11 @@ async def execute_doc_search_tool(
     doc_type: str = "",
     query_judul: Optional[Union[List[str], str]] = None,
     search_tags: Optional[Union[List[str], str]] = None,
+    semantic_query: Optional[str] = None,
     session_uuid: Optional[str] = None,
     current_user_npp: Optional[str] = None,
     request: Optional[Any] = None,
+    user_message: str = "",
 ) -> ToolResult:
     """Wrapper sinkronisasi tool doc search untuk backward-compatibility."""
     last_res = None
@@ -751,9 +1037,11 @@ async def execute_doc_search_tool(
         doc_type=doc_type,
         query_judul=query_judul,
         search_tags=search_tags,
+        semantic_query=semantic_query,
         session_uuid=session_uuid,
         current_user_npp=current_user_npp,
         request=request,
+        user_message=user_message,
     ):
         if isinstance(item, ToolResult):
             last_res = item
@@ -1844,15 +2132,18 @@ async def dispatch_agentic_tool_stream(
         doc_type_val = parsed_json.get("doc_type") or ""
         q_judul_val = parsed_json.get("query_judul")
         s_tags_val = parsed_json.get("search_tags") or parsed_json.get("tags")
+        semantic_query_val = parsed_json.get("semantic_query") or query_val
         async for item in execute_doc_search_tool_stream(
             query_val, 
             reason=reason_val, 
             doc_type=doc_type_val,
             query_judul=q_judul_val,
             search_tags=s_tags_val,
+            semantic_query=semantic_query_val,
             session_uuid=session_uuid,
             current_user_npp=current_user_npp,
             request=request,
+            user_message=user_message,
         ):
             yield item
 

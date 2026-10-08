@@ -261,6 +261,91 @@ async def extract_and_ocr_document_async(
     return text_map, all_base64_images, total_pages
 
 
+async def get_document_text_map_from_ragdb(
+    doc_id: Any
+) -> Tuple[Optional[List[Dict[str, Any]]], int]:
+    """
+    Mengambil mapping teks per halaman langsung dari tabel `dokumen_chunk` (PostgreSQL ragdb).
+    Zero Disk I/O: Super cepat (~20-50ms) tanpa membaca file fisik PDF/OCR dari filesystem server.
+    
+    Returns:
+        (text_map, total_pages) jika ditemukan di ragdb,
+        atau (None, 0) jika dokumen belum terindeks (akan fallback ke sistem ekstraksi fisik lama).
+    """
+    if not doc_id:
+        return None, 0
+    try:
+        clean_id = int(doc_id)
+    except (ValueError, TypeError):
+        return None, 0
+
+    from backend.app.core.database import get_db
+
+    try:
+        async with get_db() as conn:
+            rows = await conn.fetch("""
+                SELECT chunk_id, page_number, metadata, content
+                FROM dokumen_chunk
+                WHERE dokumen_id = $1
+                ORDER BY id ASC;
+            """, clean_id)
+            
+            if not rows:
+                return None, 0
+
+            # Cek total_pages resmi dari nightly_training_checkpoints jika ada
+            cp_pages = await conn.fetchval("""
+                SELECT total_pages 
+                FROM nightly_training_checkpoints 
+                WHERE dokumen_id = $1 AND total_pages > 0;
+            """, clean_id)
+
+            page_map: Dict[int, List[str]] = {}
+            for r in rows:
+                meta = r["metadata"]
+                if isinstance(meta, str):
+                    try:
+                        meta = json.loads(meta)
+                    except Exception:
+                        meta = {}
+                elif not isinstance(meta, dict):
+                    meta = {}
+
+                p_start = meta.get("page_start")
+                if p_start is not None:
+                    try:
+                        p_idx = int(p_start) - 1
+                    except (ValueError, TypeError):
+                        p_idx = 0
+                else:
+                    p_str = str(r["page_number"] or "").split("-")[0].strip()
+                    try:
+                        p_idx = max(0, int(p_str) - 1)
+                    except (ValueError, TypeError):
+                        p_idx = 0
+
+                if p_idx not in page_map:
+                    page_map[p_idx] = []
+                page_map[p_idx].append(r["content"] or "")
+
+            if not page_map:
+                return None, 0
+
+            calculated_max = max(page_map.keys()) + 1
+            final_total_pages = int(cp_pages) if (cp_pages and int(cp_pages) >= calculated_max) else calculated_max
+            text_map = [{"page_num": p, "text": "\n\n".join(texts)} for p, texts in sorted(page_map.items())]
+            
+            # Cache di L1 in-memory cache
+            set_document_cache(f"doc_{clean_id}", text_map, [])
+            logger.info(f"[DOC_INTEL] ⚡ [ZERO_DISK_IO] Loaded Doc ID {clean_id} from ragdb ({len(text_map)} pages, {len(rows)} chunks, total_pages={final_total_pages})")
+            return text_map, final_total_pages
+
+    except Exception as e:
+        logger.warning(f"[DOC_INTEL] ⚠️ Gagal load chunk ragdb untuk Doc ID {clean_id}: {e}")
+        return None, 0
+
+
+
 
 async def two_stage_rerank_cluster_async(
     user_message: str,

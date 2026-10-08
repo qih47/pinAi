@@ -69,19 +69,67 @@ class ModeHub:
         forced_mode: Optional[str] = None,
         bypass_router: bool = False,
         is_regenerate: bool = False,
+        is_continuation: bool = False,
+        partial_content: Optional[str] = None,
     ) -> AsyncGenerator[str, None]:
         """
         Main entry point for stream.py to route the request to the correct mode handler.
         """
-        logger.info(f"[MODE_HUB] Starting execution for chat_mode: {chat_mode.upper()} | is_regenerate={is_regenerate}")
+        logger.info(f"[MODE_HUB] Starting execution for chat_mode: {chat_mode.upper()} | is_regenerate={is_regenerate} | is_continuation={is_continuation}")
         effective_req_mode = (forced_mode or "").lower().strip()
-        
-        # ── Step 1: Pre-check rule-based ──────────────────────────────────────────
-        has_attachment = bool(attachments) or has_new_document
 
         # Ambil preferensi komunikasi default user dari database lintas sesi (cross-session memory)
         from backend.app.services.memory.memory_service import memory_service
         user_default_pronoun = await memory_service.get_employee_communication_preference(current_user_npp) if current_user_npp else "formal_saya_anda"
+
+        # ── ⚡ FAST-PATH: SEAMLESS TOKEN CONTINUATION (TOMBOL CONTINUE) ───────────────
+        if is_continuation:
+            logger.info(f"[MODE_HUB] ⏩ Direct seamless continuation for session: {session_uuid}")
+            yield format_sse(status="✍️ Melanjutkan respons...", status_key="CONTINUING_STREAM", event_type=SSEEventType.STATUS)
+
+            target_partial = partial_content or ""
+            if not target_partial and chat_history:
+                for m in reversed(chat_history):
+                    m_role = getattr(m, 'role', None) if not isinstance(m, dict) else m.get('role')
+                    if m_role == 'assistant':
+                        target_partial = getattr(m, 'content', '') if not isinstance(m, dict) else m.get('content', '')
+                        break
+
+            # Ambil master prompt persona CAKRA
+            from backend.app.services.pipeline.prompts.core_prompts import get_base_persona
+            core_sys = get_base_persona(
+                employee_name=employee_name,
+                mode_title="CAKRA AI",
+                client_context=client_context,
+                has_prior_context=True,
+            )
+
+            # Bangun prompt messages: system + user + assistant prefill
+            stream_messages = [
+                {"role": "system", "content": core_sys},
+                {"role": "user", "content": user_message},
+                {"role": "assistant", "content": target_partial}
+            ]
+
+            from backend.app.services.pipeline.agentic_interceptor import agentic_stream_wrapper
+            from backend.app.core.config import settings
+
+            async for chunk in agentic_stream_wrapper(
+                model_name=getattr(settings, "MODEL_PERSONA", "cakra-core"),
+                messages=stream_messages,
+                request=request,
+                is_thinking=False,
+                employee_name=employee_name,
+                session_uuid=session_uuid,
+                max_tool_loops=0,
+                continue_final_message=True,
+                is_continuation=True,
+            ):
+                yield chunk
+            return
+        
+        # ── Step 1: Pre-check rule-based ──────────────────────────────────────────
+        has_attachment = bool(attachments) or has_new_document
 
         precheck = detect_precheck(
             user_message, 
@@ -974,7 +1022,8 @@ class ModeHub:
             logger.info(f"[MODE_HUB] 🧠 Targeted asset retrieval loaded {len(targeted_chunks)} asset(s) into Call 2 context.")
         
         # ── Update Session Title (Gemma 4 Native / Fallback) (Non-blocking background) ────────
-        if routing_data.get("session_title") and session_uuid:
+        # Mutlak: Hanya perbarui judul pada first chat atau jika judul sesi masih generic
+        if needs_title_update and routing_data.get("session_title") and session_uuid:
             try:
                 new_title = format_session_title(routing_data["session_title"], user_message=user_message)
                 from backend.app.services.chat.chat_history_service import chat_history_service
@@ -1259,15 +1308,15 @@ class ModeHub:
         if routing_data.get("is_generate_file") and not is_guest and not routing_data.get("is_ambiguous"):
             logger.info("[MODE_HUB] Explicit is_generate_file detected & not ambiguous → routing to GENERATE_FILE mode")
             mode = "generate_file"
+        elif (routing_data.get("is_docwriter") or precheck.get("is_docwriter")) and not is_guest:
+            logger.info("[MODE_HUB] is_docwriter=True detected → routing to FLASH mode for Document Writer")
+            mode = "flash"
         elif routing_data.get("is_generate_email") and not is_guest and not routing_data.get("is_ambiguous"):
             logger.info("[MODE_HUB] is_generate_email=True detected & not ambiguous → routing to EMAIL mode")
             mode = "email"
         elif (routing_data.get("is_deck_query") or precheck.get("is_deck_query")) and not is_guest:
             logger.info("[MODE_HUB] is_deck_query=True detected → routing to DECK mode")
             mode = "deck"
-        elif (routing_data.get("is_docwriter") or precheck.get("is_docwriter")) and not is_guest:
-            logger.info("[MODE_HUB] is_docwriter=True detected → routing to FLASH mode for Document Writer")
-            mode = "flash"
         elif mode == "auto":
             # Jika is_ambiguous True, pastikan masuk flash mode untuk klarifikasi wizard
             if routing_data.get("is_ambiguous"):

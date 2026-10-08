@@ -42,7 +42,7 @@ class Settings(BaseSettings):
 
     MODEL_BASE: str = "/home/qisthi/models/gemma-4-31B-it-AWQ"          # Base Physical Weights for vLLM (Gemma 4 31B AWQ)
     MODEL_ROUTER: str = "cakra-router"                                  # Target Adapter Call 1 (JSON Intent & Routing)
-    MODEL_PERSONA: str = "/home/qisthi/models/gemma-4-31B-it-AWQ"       # Target Call 2 (cakra-core LoRA, or Base AWQ)
+    MODEL_PERSONA: str = "cakra-core"                                  # Target Call 2 (cakra-core LoRA adapter)
     MODEL_EMBEDDING: str = "mxbai-embed-large:latest"                   # Embedding untuk RAG (Ollama)
 
     NUM_CTX_CORE: int = 32768                # Standardisasi context window untuk Core Model (32K Context)

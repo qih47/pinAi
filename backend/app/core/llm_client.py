@@ -6,6 +6,7 @@ Gemma 4 handles thinking natively via the `thought` field in Ollama responses â€
 no external thinking API params needed.
 """
 
+import os
 import re
 import asyncio
 import httpx
@@ -644,6 +645,7 @@ async def stream_ollama_chat(
         # Hybrid Token Budget Processing
         token_budget = kwargs.pop("token_budget", None)
         num_predict = kwargs.pop("num_predict", None)
+        continue_final_message = kwargs.pop("continue_final_message", False) or kwargs.pop("is_continuation", False)
         if num_predict is None or num_predict == -1:
             num_predict = 8192 if is_thinking else 8192
         
@@ -668,8 +670,8 @@ async def stream_ollama_chat(
             if model_name in ["gemma4:31b", "gemma-4-31B-it-AWQ", "base", "base_model", base_model]:
                 target_vllm_model = base_model
             elif model_name == "cakra-core":
-                core_adapter_path = "/home/qisthi/pinAi/models/adapters/cakra-core-lora/adapter_config.json"
-                target_vllm_model = "cakra-core" if os.path.exists(core_adapter_path) else base_model
+                # vLLM sudah me-load adapter ini saat startup; langsung passthrough ke vLLM
+                target_vllm_model = "cakra-core"
             elif model_name == "cakra-router":
                 target_vllm_model = "cakra-router"
             else:
@@ -703,6 +705,9 @@ async def stream_ollama_chat(
                 "top_p": ollama_options.get("top_p", 0.95),
                 "skip_special_tokens": False if is_thinking else True,
             }
+            if continue_final_message:
+                payload["continue_final_message"] = True
+                payload["add_generation_prompt"] = False
             if is_thinking:
                 payload["chat_template_kwargs"] = {"enable_thinking": True, "thinking": True}
             # vLLM validates: input_tokens + max_tokens <= max_model_len (32768).

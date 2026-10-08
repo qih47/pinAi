@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useMemo } from "react";
 import PlusButton from "./PlusButton";
 import CustomModeSelector from "./CustomModeSelector";
 import SendButton from "./SendButton";
@@ -8,6 +8,8 @@ import IsolatedDocBanner from "./ChatInputArea/IsolatedDocBanner";
 import AttachmentPreview from "./ChatInputArea/AttachmentPreview";
 import useNextcloudStore from "../../../stores/nextcloudStore";
 import { Paperclip, Cloud, Globe, FileText, Code2, Target, X, BarChart3, Workflow, FilePlus, Mail, AlertTriangle, HardDrive } from "lucide-react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import VoiceButton from "./ChatInputArea/VoiceButton";
 import PlusActionMenu from "./ChatInputArea/PlusActionMenu";
 import { translations } from "../../../utils/translations";
@@ -113,9 +115,62 @@ export default function ChatInputArea({
     }
   }, [shouldShowHints, hintsMounted]);
 
-  // Pada mode mobile, selalu gunakan layout bertingkat (textarea di atas, buttons di bawah)
-  // Pada mode desktop, tetap responsif mengikuti state isMultiLine
-  const showMultilineLayout = isMobile || isMultiLine;
+  // Pada mode mobile atau ketika teks memiliki baris ganda, selalu gunakan layout bertingkat
+  const hasMultipleLines = Boolean(input && (input.includes("\n") || input.length > 70));
+  const showMultilineLayout = isMobile || isMultiLine || hasMultipleLines;
+
+  const [isMarkdownPreview, setIsMarkdownPreview] = useState(false);
+
+  // Fungsi sinkronisasi tinggi textarea agar tidak pernah nyelem/collapsing ke 1 baris
+  const adjustTextareaHeight = () => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    const scrollH = el.scrollHeight;
+    const targetHeight = Math.min(Math.max(scrollH, 36), 450);
+    el.style.height = `${targetHeight}px`;
+    el.style.overflowY = scrollH > 450 ? "auto" : "hidden";
+  };
+
+  // Pastikan saat beralih dari preview rapi ke edit textarea, tinggi langsung pas
+  useEffect(() => {
+    if (!isMarkdownPreview && textareaRef.current) {
+      adjustTextareaHeight();
+    }
+  }, [isMarkdownPreview, input]);
+
+  // Deteksi apakah input mengandung sintaks Markdown (heading, list, bold, dsb.)
+  const hasMarkdownSyntax = useMemo(() => {
+    if (!input || input.trim().length < 2) return false;
+    return /(^|\n)(#{1,6}\s|\*{1,2}|_{1,2}|-\s|\*\s|\+\s|\d+\.\s|```|>)/.test(input) || input.includes('**');
+  }, [input]);
+
+  // Reset mode preview saat input dikosongkan
+  useEffect(() => {
+    if (!input || !input.trim()) {
+      setIsMarkdownPreview(false);
+    }
+  }, [input]);
+
+  // Otomatisasi tampilan rapi saat paste tanpa perlu tombol manual
+  const handleSmartPaste = (e) => {
+    const clipboardText = e.clipboardData?.getData("text/plain");
+    handlePaste(e);
+
+    if (clipboardText && clipboardText.length <= 4000) {
+      const isMd = /(^|\n)(#{1,6}\s|\*{1,2}|_{1,2}|-\s|\*\s|\+\s|•\s|\d+\.\s|```|>)/.test(clipboardText) || clipboardText.includes('**');
+      if (isMd) {
+        if (isMarkdownPreview) {
+          e.preventDefault();
+          setInput((prev) => (prev ? prev + "\n" + clipboardText : clipboardText));
+        } else {
+          setTimeout(() => {
+            setIsMarkdownPreview(true);
+          }, 30);
+        }
+      }
+    }
+  };
 
   const renderFloatingActiveModePillBadge = () => {
     const effectiveTag = activeModeTag || (chatMode && chatMode !== 'auto' && chatMode !== 'flash' && chatMode !== 'guest' ? chatMode : null);
@@ -449,7 +504,7 @@ export default function ChatInputArea({
 
         <form
           onSubmit={handleSubmit}
-          onPaste={handlePaste}
+          onPaste={handleSmartPaste}
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
@@ -532,40 +587,108 @@ export default function ChatInputArea({
             {/* 🏷️ ACTIVE MODE PILL DI DALAM INPUT AREA (Desktop single line) */}
             {!showMultilineLayout && renderFloatingActiveModePillBadge()}
 
-            <textarea
-              ref={textareaRef}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder={
-                activeIsolatedTitle
-                  ? t.askDoc
-                  : t.askCakra
-              }
-              rows={1}
-              style={{
-                flex: 1,
-                color: theme.textColor,
-                background: "transparent",
-                border: "none",
-                outline: "none",
-                resize: "none",
-                paddingLeft: "8px",
-                paddingRight: "8px",
-                paddingTop: "8px",
-                paddingBottom: "8px",
-                fontSize: "15px",
-                lineHeight: "1.5",
-                fontFamily: "inherit",
-                minHeight: "36px",
-                height: "auto",
-                maxHeight: "450px",
-                overflowY: "hidden",
-                wordWrap: "break-word",
-                overflowWrap: "break-word",
-                whiteSpace: "pre-wrap",
-              }}
-            />
+            {isMarkdownPreview ? (
+              <div
+                onClick={() => {
+                  setIsMarkdownPreview(false);
+                  setTimeout(() => {
+                    if (textareaRef.current) {
+                      textareaRef.current.focus();
+                      adjustTextareaHeight();
+                    }
+                  }, 10);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    handleSubmit(e);
+                    return;
+                  }
+                  if (!e.ctrlKey && !e.metaKey && !e.altKey && (e.key.length === 1 || e.key === "Backspace")) {
+                    setIsMarkdownPreview(false);
+                    setTimeout(() => {
+                      if (textareaRef.current) {
+                        textareaRef.current.focus();
+                        adjustTextareaHeight();
+                      }
+                    }, 10);
+                  }
+                }}
+                tabIndex={0}
+                role="textbox"
+                aria-label="Area teks rapi"
+                title="Klik untuk mengedit teks"
+                style={{
+                  flex: 1,
+                  color: theme.textColor,
+                  background: "transparent",
+                  border: "none",
+                  outline: "none",
+                  paddingLeft: "8px",
+                  paddingRight: "8px",
+                  paddingTop: "6px",
+                  paddingBottom: "6px",
+                  fontSize: "14.5px",
+                  lineHeight: "1.6",
+                  fontFamily: "inherit",
+                  minHeight: "36px",
+                  height: "auto",
+                  maxHeight: "450px",
+                  overflowY: "auto",
+                  wordWrap: "break-word",
+                  overflowWrap: "break-word",
+                  cursor: "text",
+                  userSelect: "text",
+                }}
+                className="prose dark:prose-invert max-w-none text-sm leading-relaxed"
+              >
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                  {input}
+                </ReactMarkdown>
+              </div>
+            ) : (
+              <textarea
+                ref={textareaRef}
+                value={input}
+                onChange={(e) => {
+                  setInput(e.target.value);
+                  adjustTextareaHeight();
+                }}
+                onFocus={adjustTextareaHeight}
+                onKeyDown={handleKeyDown}
+                placeholder={
+                  activeIsolatedTitle
+                    ? t.askDoc
+                    : t.askCakra
+                }
+                rows={1}
+                spellCheck={false}
+                autoCorrect="off"
+                autoCapitalize="off"
+                style={{
+                  flex: 1,
+                  color: theme.textColor,
+                  background: "transparent",
+                  border: "none",
+                  outline: "none",
+                  resize: "none",
+                  paddingLeft: "8px",
+                  paddingRight: "8px",
+                  paddingTop: "8px",
+                  paddingBottom: "8px",
+                  fontSize: "15px",
+                  lineHeight: "1.5",
+                  fontFamily: "inherit",
+                  minHeight: "36px",
+                  height: "auto",
+                  maxHeight: "450px",
+                  overflowY: "hidden",
+                  wordWrap: "break-word",
+                  overflowWrap: "break-word",
+                  whiteSpace: "pre-wrap",
+                }}
+              />
+            )}
 
             {/* Kanan single line: Auto + Send (hanya di desktop single line) */}
             {!showMultilineLayout && (
