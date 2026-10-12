@@ -71,7 +71,7 @@ Berikan implementasi solusinya secara proaktif, rapi, dan terstruktur. Jika menu
     + DYNAMIC_TONE_AND_PRONOUN
     + """
 {% if has_prior_context %}
-• Lanjutan Diskusi Teknis: DILARANG mengulang salam pembuka ("Halo/Hai {{ employee_name }}"). Langsung lanjutkan pembahasan teknis atau kode secara to-the-point!
+• Lanjutan Diskusi Teknis: DILARANG mengulang salam pembuka ("Halo/Hai {{ employee_name }}"). Langsung lanjutkan pembahasan teknis atau kode secara solutif dan terstruktur!
 {% else %}
 • Sapa {{ employee_name }} dengan ramah.
 {% endif %}

@@ -145,6 +145,7 @@ async def handle_web_search(
             num_ctx=16384,
             num_predict=-1,
             max_tool_loops=2,
+            allowed_tools=["websearch", "urlfetch"],
         ):
             yield chunk
     except Exception as e:

@@ -844,7 +844,15 @@ def _validate_and_normalize_routing(
         else:
             routing["is_web_search"] = bool(routing_json.get("is_web_search", False)) or is_explicit_web or bool(precheck.get("is_public_web"))
 
-    if routing.get("is_web_search") and (is_forced_doc_mode or has_doc_signal):
+    is_forced_web_mode = forced_mode_clean in ["websearch", "web_search"]
+    if is_forced_web_mode:
+        routing["is_web_search"] = True
+        routing["need_rag"] = False
+        routing["query_judul"] = []
+        if not routing.get("queries"):
+            routing["queries"] = [user_message]
+        logger.info("[DISPATCHER_ROUTER] 🌐 Preset forced_mode is websearch -> enforcing is_web_search=True, need_rag=False")
+    elif routing.get("is_web_search") and (is_forced_doc_mode or has_doc_signal):
         routing["need_rag"] = True
         routing["is_web_search"] = False
         if not routing.get("queries"):
@@ -891,6 +899,12 @@ def _validate_and_normalize_routing(
                 logger.info("[DISPATCHER_ROUTER] 🛡️ Dynamic Self-Correction: Regulation context detected -> maintaining need_rag.")
                 routing["is_web_search"] = False
                 routing["need_rag"] = True
+            else:
+                logger.info("[DISPATCHER_ROUTER] 🌐 Dynamic Self-Correction: Public/factual dispute detected -> activating is_web_search=True for factual verification.")
+                routing["is_web_search"] = True
+                routing["need_rag"] = False
+                if not routing.get("queries"):
+                    routing["queries"] = [user_message]
 
     # ── 🔄 UNIVERSAL BIDIRECTIONAL CONTEXT SYNCHRONIZATION (RESPONDER ➔ DISPATCHER) ──
     # Mengetahui profil tindakan Responder pada turn sebelumnya (wizard, visual, coding, chitchat, RAG)

@@ -808,6 +808,10 @@ def build_responder_system_prompt(
                 radar_lines.append("• PERMINTAAN VISUAL DOKUMEN: Pengguna ingin melihat fisik lampiran, bagan, atau halaman regulasi. Kamu WAJIB menyajikan cuplikan visual atau memanggil blok alat ```doc_media untuk merender halaman fisik PNG.")
             elif need_rag_active and not rag_context:
                 radar_lines.append("• MANDAT DOKUMEN INTERNAL (MUTLAK): Pertanyaan menyangkut regulasi/kebijakan internal PT Pindad. Kamu WAJIB membuka blok alat ```docsearch dengan query_judul di atas untuk memverifikasi klausul resmi dari arsip atau memori sesi (Brain). DILARANG KERAS langsung menjawab pasal regulasi dari memori/asumsi tanpa memanggil ```docsearch!")
+            elif (precheck.get("is_self_correction") or module_name == "self_correction") and precheck.get("is_web_search"):
+                radar_lines.append("• MANDAT RISET WEB / CEK FAKTA (MUTLAK): Pengguna menyanggah/mendebat fakta atau data umum terkini. Kamu WAJIB memanggil blok alat ```websearch di responsmu untuk mengecek fakta terbaru. DILARANG KERAS hanya memberi janji teks tanpa memanggil alat!")
+            elif precheck.get("is_web_search") and not precheck.get("need_rag"):
+                radar_lines.append("• MANDAT RISET WEB: Pertanyaan menyangkut informasi eksternal/publik di internet. Jika butuh data/verifikasi tambahan, gunakan alat ```websearch. DILARANG memanggil ```docsearch.")
             else:
                 radar_lines.append("• Prinsip Mandiri  : Sinyal di atas adalah panduan awal. Kamu adalah Master Agentic Orchestrator: berdaulat penuh memutuskan apakah alat benar-benar diperlukan dan merumuskan query terbaikmu sendiri.")
             prompt += "\n\n" + "\n".join(radar_lines) + "\n"

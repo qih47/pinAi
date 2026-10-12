@@ -1124,7 +1124,8 @@ class CollabService:
             eval_ok, eval_reason, routing_data = await mode_collab.should_intervene(
                 recent_messages=recent_messages,
                 room_topic=room["topic"] or "",
-                is_mention=is_mention
+                is_mention=is_mention,
+                members=team_members
             )
             is_followup = len(recent_messages) >= 2 and recent_messages[-2].get("sender_type") == "CAKRA"
             if is_mention:
@@ -1190,7 +1191,8 @@ class CollabService:
                     re_eval_ok, re_reason, re_routing = await mode_collab.should_intervene(
                         recent_messages=recent_messages,
                         room_topic=room["topic"] or "",
-                        is_mention=False
+                        is_mention=False,
+                        members=team_members
                     )
                     if not re_eval_ok:
                         logger.info(f"[COLLAB_AI] Pre-empted by teammate message in room {room_id}. CAKRA yields floor and stays silent.")

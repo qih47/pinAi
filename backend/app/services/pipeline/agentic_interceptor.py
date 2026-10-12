@@ -224,6 +224,7 @@ async def agentic_stream_wrapper(
     rag_sources: Optional[List[Dict[str, Any]]] = None,
     max_tool_loops: int = 2,
     current_user_npp: Optional[str] = None,
+    allowed_tools: Optional[List[str]] = None,
     **kwargs,
 ) -> AsyncGenerator[str, None]:
     """
@@ -381,12 +382,7 @@ async def agentic_stream_wrapper(
                                 accumulated_full_text += preamble
                                 pre_tool_text += preamble
 
-                            is_capturing_tool = True
                             tool_tag = open_match.group(1).lower()
-                            tool_buffer = tail[open_match.end():]
-                            buffer = ""
-                            logger.info(f"[AGENTIC_TOOL] 🎯 Intercepted ```{tool_tag} open tag during stream!")
-
                             _norm_tag = tool_tag
                             if _norm_tag in ("web_search", "websearch"):
                                 _norm_tag = "websearch"
@@ -406,6 +402,19 @@ async def agentic_stream_wrapper(
                                 _norm_tag = "doc_diff"
                             elif _norm_tag in ("deck_task", "deck", "pincloud_deck"):
                                 _norm_tag = "deck_task"
+
+                            if allowed_tools is not None and _norm_tag not in allowed_tools:
+                                logger.info(f"[AGENTIC_TOOL] 🛡️ Tool '{_norm_tag}' blocked by allowed_tools whitelist ({allowed_tools}) — treated as markdown")
+                                yield format_sse(buffer, "", False, event_type=SSEEventType.CHUNK)
+                                accumulated_full_text += buffer
+                                pre_tool_text += buffer
+                                buffer = ""
+                                continue
+
+                            is_capturing_tool = True
+                            tool_buffer = tail[open_match.end():]
+                            buffer = ""
+                            logger.info(f"[AGENTIC_TOOL] 🎯 Intercepted ```{tool_tag} open tag during stream!")
 
                             tool_initial_statuses = {
                                 "websearch": ("Mencari di web", "TOOL_WEBSEARCH_SEARCHING"),

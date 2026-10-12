@@ -22,7 +22,8 @@ from backend.app.core.llm_client import generate_json_response, stream_ollama_ch
 from backend.app.services.pipeline.prompts.collab_prompts import (
     COLLAB_TEAMMATE_SYSTEM_PROMPT,
     COLLAB_INTERVENTION_EVAL_PROMPT,
-    COLLAB_AUTO_NOTE_EVAL_PROMPT
+    COLLAB_AUTO_NOTE_EVAL_PROMPT,
+    build_collab_intervention_eval_prompt
 )
 
 logger = logging.getLogger("MODE_COLLAB")
@@ -42,12 +43,13 @@ class ModeCollab:
         self,
         recent_messages: List[Dict[str, Any]],
         room_topic: Optional[str] = None,
-        is_mention: bool = False
+        is_mention: bool = False,
+        members: Optional[List[Dict[str, Any]]] = None
     ) -> Tuple[bool, str, Dict[str, Any]]:
         """
         Mengevaluasi apakah CAKRA perlu merespons percakapan tim (proaktif atau karena mention)
         SERTA mengekstrak parameter pencarian dokumen regulasi (RAG).
-        Menggunakan model router ringan (gemma4:e4b).
+        Menggunakan model router Call 1 dengan kesadaran rekan kerja (AI Teammate).
         """
         default_routing = {
             "need_rag": False,
@@ -76,6 +78,22 @@ class ModeCollab:
                 if aname:
                     last_att_names.append(aname)
         has_last_attachment = bool(last_att_names)
+
+        # 🛑 DETEKSI PENUTUP PERCAKAPAN / ACKNOWLEDGMENT SINGKAT
+        # Jika rekan kerja hanya mengonfirmasi penutup (misal "oke cuy", "siap", "noted", "makasih ya")
+        # CAKRA harus standby diam (tidak membalas lagi) agar tidak memicu lingkaran percakapan tanpa henti.
+        closing_acknowledgments = [
+            "oke cuy", "ok cuy", "oke bro", "ok bro", "siap cuy", "siap bro", "siap", "sip bro", "sip cuy",
+            "noted", "makasih", "makasih ya", "terima kasih", "tengkyu", "thanks", "wkwk", "haha"
+        ]
+        is_closing = (
+            any(last_text == ca or last_text.startswith(ca + " ") or last_text.endswith(" " + ca) for ca in closing_acknowledgments)
+            or (len(last_text) < 20 and last_text in ["oke", "ok", "siap", "sip", "noted", "yoi", "mantap", "makasih", "terima kasih"])
+        ) and "?" not in last_text
+
+        if is_closing and not is_mention and not has_last_attachment:
+            logger.info(f"[COLLAB_EVAL] Rekan kerja [{last_sender}] memberikan konfirmasi penutup/acknowledgment ('{last_text}'). CAKRA standby diam.")
+            return False, f"Konfirmasi penutup/acknowledgment dari rekan kerja ('{last_text}')", default_routing
 
         # ATURAN EMAS 1: Jika rekan kerja melampirkan berkas/dokumen setelah diminta oleh CAKRA sebelumnya
         # CAKRA WAJIB langsung merespons dan membedah berkas tersebut (DILARANG diam / ghosting)
@@ -115,22 +133,10 @@ class ModeCollab:
             addressing_other_human = any(len(n) >= 3 and n in last_text for n in other_member_names)
 
             if not addressing_other_human:
-                # 1. Jika CAKRA baru saja melempar pertanyaan / tebakan, rekan kerja yang menjawab/menebak WAJIB direspons & dikonfirmasi!
+                # Jika CAKRA baru saja melempar pertanyaan / tebakan, rekan kerja yang menjawab/menebak WAJIB direspons & dikonfirmasi!
                 if is_cakra_asking:
                     logger.info(f"[COLLAB_EVAL] Rekan kerja [{last_sender}] menjawab tebakan/pertanyaan CAKRA: '{last_text}'. CAKRA wajib merespons dan mengonfirmasi!")
                     return True, f"Rekan kerja [{last_sender}] menjawab tebakan atau pertanyaan yang diajukan CAKRA ('{last_text}')", default_routing
-
-                # 2. Jika pesan adalah respon lanjutan langsung ke CAKRA (is_followup_to_cakra)
-                if is_followup_to_cakra:
-                    confirmation_words = [
-                        "bener", "benar", "betul", "salah", "iya", "ya", "nggak", "gak", "bukan",
-                        "oke", "ok", "siap", "mantap", "setuju", "ikut", "ayo", "gas", "boleh",
-                        "rudal", "tank", "tebak", "makasih", "keren", "seru", "wkwk", "haha",
-                        "gimana", "udah", "sudah", "bisa", "paham", "noted", "tapi", "coba"
-                    ]
-                    if any(cw in last_text for cw in confirmation_words) or "?" in last_text or len(last_text) <= 50:
-                        logger.info(f"[COLLAB_EVAL] Rekan kerja [{last_sender}] berdialog / merespons langsung perkataan CAKRA ('{last_text}'). CAKRA merespons!")
-                        return True, f"Rekan kerja [{last_sender}] merespons atau mengonfirmasi langsung perkataan CAKRA ('{last_text}')", default_routing
 
         # Format 5-8 pesan terakhir lengkap dengan rincian berkas lampiran
         transcript_lines = []
@@ -171,20 +177,11 @@ class ModeCollab:
             logger.info(f"[COLLAB_EVAL] Obrolan santai/basa-basi umum antar personil ('{last_text}'), CAKRA diam dan tidak mengganggu.")
             return False, "Obrolan santai antar rekan kerja", default_routing
 
-        if is_mention:
-            dialog_status = "YA (DIPANGGIL / DIMENTION LANGSUNG OLEH ANGGOTA TIM)"
-        elif is_followup_to_cakra:
-            dialog_status = "YA (REKAN TIM MERESPON / MENGONFIRMASI LANGSUNG PERNYATAAN ATAU PERMINTAAN CAKRA SEBELUMNYA)"
-        else:
-            dialog_status = "TIDAK (DISKUSI TIM BEBAS ANTAR REKAN)"
-
         transcript_str = "\n".join(transcript_lines)
         collab_envelope = f"[KONTEKS: COLLAB_SPACE]\n{transcript_str}"
 
-        system_prompt = (
-            "Kamu adalah Cakra Router (Call 1) yang sangat presisi dan deterministik. "
-            "Analisis pesan pengguna dan kembalikan sparse JSON routing payload murni."
-        )
+        # Gunakan prompt evaluasi batin AI Teammate yang komprehensif
+        system_prompt = build_collab_intervention_eval_prompt(room_topic=room_topic, members=members)
 
         messages = [
             {"role": "system", "content": system_prompt},
@@ -208,11 +205,6 @@ class ModeCollab:
             has_active_intent = bool(res.get("need_rag") or res.get("is_coding") or res.get("is_generate_file") or res.get("queries"))
             should_intervene = bool(res.get("should_intervene", False)) or is_mention or has_active_intent
             reason = str(res.get("reason", ""))
-
-            # Safety Net: Jika rekan kerja merespon langsung CAKRA, jangan biarkan model router salah menolak
-            if not should_intervene and is_followup_to_cakra:
-                should_intervene = True
-                reason = f"Safety Net: Rekan kerja sedang berdialog langsung / merespons pesan CAKRA sebelumnya ('{last_text}')"
 
             need_rag = bool(res.get("need_rag", False))
             routing_dict = {
@@ -530,9 +522,9 @@ class ModeCollab:
             )
         else:
             system_context += (
-                "\n[PANDUAN PANJANG RESPONS]: Diskusi tim sedang berlangsung normal atau bertukar pikiran singkat. "
-                "Berikan tanggapan yang SINGKAT, PADAT, DAN TO-THE-POINT (cukup 1 hingga 3 kalimat saja) layaknya rekan kerja yang sedang mengobrol di ruang obrolan. "
-                "JANGAN membuat esai panjang, ringkasan berlebihan, atau format kaku, kecuali nanti diminta detail lebih lanjut oleh rekan tim.\n"
+                "\n[PANDUAN PANJANG RESPONS]: Berikan tanggapan yang natural, mengalir, dan berbobot layaknya rekan kerja profesional. "
+                "Jelaskan konteks, solusi, atau pertimbangan secara tuntas dan informatif. "
+                "Hindari jawaban terlalu irit atau sepotong-potong; berikan penjelasan yang bernilai nyata bagi tim dengan struktur yang rapi.\n"
             )
 
         messages = [{"role": "system", "content": system_context}]
@@ -575,6 +567,10 @@ class ModeCollab:
             messages.append({"role": "user", "content": "Halo CAKRA, mohon bantu diskusi tim kami."})
 
         # Panggil streaming model persona
+        initial_buffer = ""
+        prefix_checked = False
+        re_impersonation_prefix = re.compile(r"^\s*\[(?:CAKRA|AI|[^\]]+)\]:\s*", re.IGNORECASE)
+
         try:
             async for raw_chunk in stream_ollama_chat(
                 model_name=self.persona_model,
@@ -592,15 +588,33 @@ class ModeCollab:
                     line = line.strip()
                     if not line:
                         continue
+                    text_piece = ""
                     try:
                         parsed = json.loads(line)
                         text_piece = parsed.get("chunk", "")
-                        if text_piece:
-                            yield text_piece
                     except Exception:
                         # Jika baris bukan JSON, cek apakah ini chunk teks langsung
                         if not line.startswith("{") and not line.endswith("}"):
-                            yield line
+                            text_piece = line
+
+                    if not text_piece:
+                        continue
+
+                    # Bersihkan kemungkinan label impersonasi di awal respons
+                    if not prefix_checked:
+                        initial_buffer += text_piece
+                        if "\n" in initial_buffer or len(initial_buffer) >= 30:
+                            cleaned = re_impersonation_prefix.sub("", initial_buffer)
+                            prefix_checked = True
+                            if cleaned:
+                                yield cleaned
+                    else:
+                        yield text_piece
+
+            if not prefix_checked and initial_buffer:
+                cleaned = re_impersonation_prefix.sub("", initial_buffer)
+                if cleaned:
+                    yield cleaned
         except Exception as e:
             logger.error(f"[COLLAB_GEN] Streaming response gagal: {e}")
             yield f"Mohon maaf rekan-rekan, terjadi kendala teknis saat memproses respons: {str(e)}"

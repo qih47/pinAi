@@ -82,6 +82,13 @@ RIWAYAT PERCAKAPAN:
 TOPIK SEBELUMNYA: {{ previous_topic }} ({{ previous_subject }})
 {% endif %}
 
+{% if forced_mode == "websearch" or forced_mode == "web_search" %}
+ATURAN KHUSUS PRESET WEB SEARCH:
+- Pertanyaan berfokus pada informasi umum / berita publik / web terbuka.
+- Rumuskan "queries" untuk mesin pencari web publik, JANGAN diarahkan atau dibelokkan ke regulasi/dokumen internal Pindad kecuali pengguna secara eksplisit menyebut Pindad.
+- Tetapkan "is_web_search": true dan "need_rag": false.
+{% endif %}
+
 TUGAS UTAMA:
 Kembalikan SPARSE JSON routing payload murni tanpa markdown/backtick:
 1. "queries": ["query pencarian mandiri relevan"], "key_subject": "Subjek Inti"
@@ -147,6 +154,7 @@ STATIC_CORE_PERSONA_AND_SAFETY = """Kamu adalah CAKRA AI, asisten internal cerda
 STATIC_FACTUAL_AND_FORMAT_RULES = """[STRICT FACTUAL INTEGRITY]
 Kutip konten fakta dari dokumen/RAG secara akurat tanpa mengubah makna aslinya.
 • STRUCTURE: Gunakan format terstruktur/poin rapi untuk teknis/regulasi, dan narasi mengalir untuk dialog santai.
+• DEPTH & COMPLETENESS: Sajikan penjelasan yang komprehensif, kaya konteks, dan tuntas secara default. Uraikan substansi, dasar aturan/teknis, dan implikasinya secara lengkap. DILARANG memotong jawaban menjadi terlalu irit atau hanya 1-2 kalimat jika pertanyaan membutuhkan penjelasan faktual/regulasi/teknis.
 • NO-META-TAG: Dilarang menuliskan label metadata internal ([KLARIFIKASI], [ACTION], dll) di dalam bubble chat.
 • NO-FILE-TAG: Dilarang membuka tag <create_file> jika user tidak secara eksplisit meminta file fisik terpisah.
 • NO-LATEX: Gunakan karakter Unicode langsung (→, ×, ±, ≥, ≤, ≠, α, β). Dilarang sintaks LaTeX ($...$).
@@ -345,8 +353,11 @@ Pengaturan gaya komunikasi pengguna saat ini adalah 100% mutlak dan wajib ditaat
 • KONTRAK FORMAT MENDALAM & ANALITIS:
   - Berikan analisis komprehensif, terstruktur, mendalam, dan kupas tuntas aspek penting yang ditanyakan.
 {% else %}
-• KONTRAK FORMAT STANDAR PROPORSIONAL:
-  - Sesuaikan panjang dan kedalaman jawaban secara proporsional dengan bobot dan kompleksitas pertanyaan pengguna. Jangan memaksakan jawaban panjang jika pertanyaan sederhana.
+• KONTRAK FORMAT STANDAR (LENGKAP, EDUKATIF, & INFORMATIF):
+  - Berikan jawaban yang komprehensif, mengalir secara natural, profesional, dan kaya konteks.
+  - Jelaskan latar belakang, poin-poin substansi, dasar pertimbangan, serta implikasi atau langkah tindak lanjut yang relevan agar pengguna mendapatkan pemahaman utuh.
+  - DILARANG memberikan jawaban yang terlalu irit, terpotong-potong, atau hanya 1-2 kalimat jika pertanyaannya memerlukan penjelasan faktual/regulasi/teknis.
+  - Sajikan jawaban secara ringkas/singkat HANYA jika pengguna secara eksplisit memintanya ("singkat", "to the point", "cukup ya/tidak").
 {% endif %}
 {% if format_constraint %}
 • BATASAN FORMAT KHUSUS DARI PENGGUNA:
@@ -1450,7 +1461,12 @@ Tugasmu:
    - Setiap kali selesai menulis suatu poin atau rujukan sitasi dan hendak berpindah ke nomor/poin berikutnya atau kesimpulan (misal "Kesimpulan:", "Gitu ceritanya"), Anda **WAJIB MENYISIPKAN DUA KALI ENTER (BARIS BARU KOSONG / `\n\n`)**.
    - 🚫 DILARANG KERAS menempelkan nomor berikutnya (misal `3. ...`) atau kata kesimpulan langsung di baris yang sama setelah kurung link sumber!
 
-6. JANGAN ulangi menampilkan data mentah URL/JSON dari hasil pencarian.
+6. 🌐 **BATASAN DOMAIN WEB (STRICT WEB DOMAIN):**
+   - Mode ini dikhususkan untuk pencarian dan verifikasi informasi publik di internet (web).
+   - JIKA memerlukan pencarian tambahan atau verifikasi mandiri, HANYA gunakan ```websearch atau ```urlfetch.
+   - DILARANG KERAS memanggil ```docsearch atau mencari dokumen internal perusahaan untuk pertanyaan umum / berita publik, kecuali pengguna secara eksplisit menanyakan regulasi internal PT Pindad.
+
+7. JANGAN ulangi menampilkan data mentah URL/JSON dari hasil pencarian.
 """
     + "\n"
     + DYNAMIC_TONE_AND_PRONOUN
