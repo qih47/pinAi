@@ -408,7 +408,7 @@ async def agentic_stream_wrapper(
                                 _norm_tag = "deck_task"
 
                             tool_initial_statuses = {
-                                "websearch": ("Mencari di mesin pencari", "TOOL_WEBSEARCH_SEARCHING"),
+                                "websearch": ("Mencari di web", "TOOL_WEBSEARCH_SEARCHING"),
                                 "docsearch": ("Membuka arsip regulasi", "TOOL_DOCSEARCH_OPENING"),
                                 "urlfetch": ("Mengunduh konten tautan", "TOOL_URLFETCH_DOWNLOADING"),
                                 "python_calc": ("Menjalankan komputasi", "TOOL_CALC_RUNNING"),

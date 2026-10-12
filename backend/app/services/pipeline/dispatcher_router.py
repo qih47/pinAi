@@ -304,12 +304,21 @@ async def dispatch_intent_route(
     forced_mode = str(precheck.get("forced_mode") or "").strip().lower()
     is_collab = bool(precheck.get("is_collab") or precheck.get("collab_room_id"))
 
+    envelope_lines = []
     if is_collab:
-        context_envelope = f"[KONTEKS: COLLAB_SPACE]\n{stripped_message}"
+        envelope_lines.append("[KONTEKS: COLLAB_SPACE]")
     elif forced_mode:
-        context_envelope = f"[KONTEKS: PRESET ({forced_mode})]\n{stripped_message}"
+        envelope_lines.append(f"[KONTEKS: PRESET ({forced_mode})]")
     else:
-        context_envelope = f"[KONTEKS: NORMAL_CHAT]\n{stripped_message}"
+        envelope_lines.append("[KONTEKS: NORMAL_CHAT]")
+
+    if previous_topic:
+        envelope_lines.append(f"[TOPIK SEBELUMNYA: {previous_topic}]")
+    if context_history_str and len(context_history_str.strip()) > 0:
+        envelope_lines.append(f"[RIWAYAT:\n{context_history_str.strip()}\n]")
+
+    envelope_lines.append(stripped_message)
+    context_envelope = "\n".join(envelope_lines)
 
     messages = [
         {"role": "system", "content": system_prompt},
@@ -317,11 +326,11 @@ async def dispatch_intent_route(
     ]
 
     # Alokasi num_predict dinamis hemat token untuk kecepatan respons maksimal (~0.8s - 1.2s)
-    # Dioptimalkan ke 200/150 karena Call 1 kini lean tanpa beban query generation
-    dynamic_predict = 200 if is_first_chat else 150
+    # Dioptimalkan ke 250/200 karena Call 1 kini lean tanpa beban query generation
+    dynamic_predict = 250 if is_first_chat else 200
 
     # Tentukan model yang digunakan
-    effective_model = model_name or getattr(settings, "MODEL_ROUTER", "/home/qisthi/models/gemma-4-31B-it-AWQ")
+    effective_model = model_name or getattr(settings, "MODEL_ROUTER", "cakra-router")
 
     # Kunci num_ctx adaptif: Gemma (vocab 256k -> ~3.1k tokens) cukup 4096. Model lain (Granite/Llama/MiniCPM vocab 128k -> ~5.1k tokens) butuh 8192.
     if any(k in effective_model.lower() for k in ["granite", "llama", "mistral", "qwen", "minicpm"]):
@@ -1148,11 +1157,21 @@ def _validate_and_normalize_routing(
     routing["query_judul"] = clean_qj
     routing["search_tags"] = clean_st
     
-    raw_semantic_query = routing.get("semantic_query") or routing_json.get("semantic_query", "")
+    raw_semantic_query = (
+        routing.get("semantic_query") 
+        or routing_json.get("semantic_query") 
+        or routing_json.get("query_semantic") 
+        or ""
+    )
     if isinstance(raw_semantic_query, str) and raw_semantic_query.strip():
         routing["semantic_query"] = raw_semantic_query.strip()
     elif routing.get("need_rag"):
         routing["semantic_query"] = routing.get("key_subject") or user_message
+
+    if not routing.get("queries") and routing_json.get("query_keyword"):
+        kw = str(routing_json["query_keyword"]).strip()
+        if kw:
+            routing["queries"] = [kw]
         
     logger.info(f"[DISPATCHER_ROUTER] Sanitized query_judul: {routing['query_judul']} | search_tags: {routing['search_tags']} | semantic_query: '{routing.get('semantic_query', '')}'")
 

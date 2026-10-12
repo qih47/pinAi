@@ -1323,12 +1323,9 @@ class ModeHub:
                 logger.info("[MODE_HUB] Ambiguous intent detected → routing to FLASH mode for guided wizard clarification")
                 mode = "flash"
             else:
-                # 🛡️ SAFE BRANCHING:
-                # HANYA masuk ke mode documents jika user EKSPLISIT memilih pill tag dokumen/focus/compliance/redteam
-                # Pada mode default/auto, masuk ke FLASH mode di mana Call 2 memanggil docsearch in-stream jika dibutuhkan
-                is_explicit_doc_mode = effective_req_mode in ["documents", "document", "rag", "focus", "compliance", "redteam"]
-                need_rag = precheck.get("need_rag", False) and not (precheck.get("is_map_query", False) or routing_data.get("is_map_query", False))
-                if need_rag and not is_guest and is_explicit_doc_mode:
+                need_rag = (routing_data.get("need_rag", False) or precheck.get("need_rag", False)) and not (precheck.get("is_map_query", False) or routing_data.get("is_map_query", False))
+                if need_rag and not is_guest:
+                    logger.info("[MODE_HUB] need_rag=True in AUTO mode → routing to DOCUMENTS (Deep RAG) mode")
                     mode = "documents"
                 else:
                     mode = "guest" if is_guest else "flash"

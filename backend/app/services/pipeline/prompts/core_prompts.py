@@ -6,80 +6,13 @@ logger = logging.getLogger("CAKRA_PROMPTS")
 
 _RAG_CONTEXT_MAX_CHARS = 60_000
 
-DISPATCHER_ROUTING_PROMPT_TEMPLATE = """Kamu adalah CAKRA AI Router (Call 1) PT Pindad.
-Analisis maksud pesan pengguna secara holistik dan kembalikan SPARSE JSON routing payload murni (hanya field aktif bernilai true, string terisi, atau array non-kosong; tanpa markdown/backtick/penjelasan).
-
-YURISDIKSI KANAL UTAMA:
-• need_rag: true — dokumen & regulasi internal PT Pindad (PKB, SKEP Direksi, SE, SOP, kebijakan SDM, alutsista Pindad).
-  Wajib sertakan: "semantic_query": "kalimat deskriptif substansi aturan", "query_judul": ["nama wadah regulasi"], "search_tags": ["tag"], "queries": ["query pencarian"]
-• is_deck_query: true — tugas, board, atau penugasan kartu di Nextcloud / Pincloud Deck
-• is_url_read: true — user menyertakan tautan/URL web spesifik untuk dibaca/dirangkum
-• is_web_search: true — berita publik terkini, informasi dunia luar/internet real-time
-• is_chitchat: true — sapaan, apresiasi, tanggapan refleksi, terima kasih, obrolan santai, curhat, opini, definisi umum, cuaca saat ini
-
-KAPABILITAS TAMBAHAN (SPARSE):
-• requires_visual: true + "visual_types": ["mermaid"|"chart"|"gantt"|"datagrid"|"infographic"|"slides"|"map"]
-• is_coding: true (kode/script/SQL/debug teknis) | is_troubleshooting: true (error log/bug)
-• is_generate_file: true (eksplisit meminta unduhan berkas fisik .xlsx/.docx/.py/.jsx dll)
-  - Sertakan: "file_action": "create"|"edit", "target_files": ["nama_file.ext"]
-• history_scope: "recent" (default anaphora biasa) | "full_session" (rangkuman sesi ini / list tadi) | "cross_session" (sesi lampau / obrolan kemarin)
-• is_docwriter: true (draf naskah dinas/nota dinas/editor) | is_generate_email: true (surel)
-• is_map_query: true (letak pabrik/divisi/fasilitas Pindad) | is_ambiguous: true + "ambiguity_reason": "..."
-• is_self_correction: true (koreksi/sanggahan jawaban AI sebelumnya)
-• target_brain_assets: [ID_angka] (data/isi aset session brain) | is_comparative: true
-• needs_live_refetch: true (minta pembaruan data/revisi terbaru)
-• needs_history: true (jawaban wizard, kata rujukan tadi/itu, dialog bersambung, anaphora)
-• format opsional: "response_format": "yes_no"|"concise"|"detailed", "format_constraint": "..."
-• Khusus [KONTEKS: COLLAB_SPACE]: sertakan "should_intervene": false (obrolan santai antar personil) atau true (bantuan/mention) + "reason": "..."
-
-METADATA WAJIB DI SETIAP OUTPUT:
-{
-{% if is_first_chat %}  "session_title": "judul ringkas 2-4 kata informatif & spesifik",
-{% endif %}  "active_topic": "topik besar (2-3 kata)",
-  "key_subject": "entitas spesifik yang dibahas (2-5 kata)"
-}
-{% if is_guest %}
-Catatan Tamu: GUEST dilarang menyertakan need_rag.
-{% endif %}
-{% if is_forced_doc_mode %}
-MODE DOKUMEN INTERNAL EKSPLISIT AKTIF:
-WAJIB: "need_rag": true, "semantic_query": "substansi aturan yang dicari", "query_judul": ["nama regulasi"], "queries": ["klausul pasal"].
-{% endif %}
+DISPATCHER_ROUTING_PROMPT_TEMPLATE = """Kamu adalah Cakra Router (Call 1) yang sangat presisi dan deterministik. Analisis pesan pengguna dan kembalikan sparse JSON routing payload murni.
+{% if current_year %}Tahun saat ini: {{ current_year }}.{% endif %}
+{% if is_guest %}Catatan Tamu: GUEST dilarang menyertakan need_rag.{% endif %}
 {% if session_brain_catalog %}
 === SESSION BRAIN (ASET DI SESI INI) ===
 {{ session_brain_catalog }}
-Aturan: Jika merujuk aset di atas, sertakan: "target_brain_assets": [ID], "needs_history": true.
 {% endif %}
-{% if has_prior_doc_context and not session_brain_catalog %}
-Catatan: Sesi memiliki lampiran dokumen/file. Jika merujuk dokumen tersebut: aktifkan needs_history: true.
-{% endif %}
-{% if has_prior_url_context and not session_brain_catalog %}
-Catatan: Sesi memiliki tautan web. Jika merujuk tautan tersebut: aktifkan is_web_search: true + needs_history: true.
-{% endif %}
-{% if active_regulation_title %}
-=== DOKUMEN / REGULASI AKTIF DI SESI INI ===
-Dokumen: {{ active_regulation_title }}{% if active_regulation_id %} (ID: {{ active_regulation_id }}){% endif %}
-Jika user bertanya lanjutan mengenai pasal, ayat, lampiran, formulir, atau bagan dokumen tersebut:
-• Set "need_rag": true, "needs_history": true, "semantic_query": "substansi aturan", "query_judul": ["{{ active_regulation_title }}"]
-• Rumuskan "queries" mandiri dengan nama dokumen (contoh: "Lampiran E {{ active_regulation_title }}")
-• Jika meminta gambar/bagan fisik: set "requires_visual": true, "visual_types": ["doc_media"]
-{% endif %}
-{% if previous_topic %}
-=== TOPIK & ENTITAS SEBELUMNYA ===
-Topik: {{ previous_topic }} ({{ previous_subject or previous_topic }})
-{% endif %}
-{% if context_history_str %}
-=== RIWAYAT PERCAKAPAN ===
-{{ context_history_str }}
-{% endif %}
-
-=== JANGKAR TAHUN AKTUAL ===
-Tahun saat ini: {{ current_year }} ({{ current_date_str }}). Jangan gunakan tahun lampau sebagai acuan "terkini".
-
-=== PESAN USER ===
-{{ user_message }}
-
-OUTPUT JSON:
 """
 
 prompt_manager.register_default(

@@ -59,7 +59,7 @@ async def execute_web_search_tool_stream(query: str, reason: str = "", user_mess
             scrape_top_k=2,
         ):
             if event.event_type == "SEARCHING":
-                yield ("Mencari di mesin pencari", "TOOL_WEBSEARCH_SEARCHING")
+                yield ("Mencari di web", "TOOL_WEBSEARCH_SEARCHING")
             elif event.event_type == "RERANKING":
                 yield ("Menyaring rujukan web", "TOOL_WEBSEARCH_RERANKING")
             elif event.event_type == "RANKED":
@@ -535,7 +535,7 @@ async def execute_doc_search_tool_stream(
                     yield ("Menelusuri klausul regulasi", "TOOL_DOCSEARCH_CHUNK_SEARCH")
                     chunk_context, chunk_sources = await rag_service.assemble_powerful_context(
                         query=effective_semantic_query,
-                        limit=5,
+                        limit=8,
                         allowed_access_tiers=["INTERNAL"],
                         target_doc_ids=target_doc_ids,
                     )

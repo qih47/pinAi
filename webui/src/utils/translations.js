@@ -1034,6 +1034,8 @@ export const translations = {
       OPENING_REDTEAM_DOC: "🕵️ Membedah dokumen sasaran",
       ANALYZING_COMPLIANCE_SCENARIO: "⚖️ Menganalisis kepatuhan skenario terhadap klausul utuh",
       DISSECTING_LEGAL_LOOPHOLES: "⚔️ Membedah celah hukum dari 2 sudut pandang ekstrem",
+      DRAFTING_COMPLIANCE: "⚖️ Menyusun analisis kepatuhan",
+      DRAFTING_REDTEAM: "⚔️ Menyusun simulasi red team",
       RETRIEVING_FULL_TEXT: "📂 Mengambil teks utuh dari arsip dokumen",
       SEARCHING_GLOBAL_ARCHIVE: "🔄 Mencari secara global di arsip",
       SEARCHING_GLOBAL: "🔄 Mencari secara global",
@@ -1062,11 +1064,12 @@ export const translations = {
       THINKING_DONE: "✨ Selesai berpikir",
       // ── AGENTIC TOOL STATUS KEYS ──
       AGENTIC_TOOL_START: "🛠️ Menjalankan alat",
-      TOOL_WEBSEARCH_SEARCHING: "Mencari di mesin pencari",
+      TOOL_WEBSEARCH_SEARCHING: "Mencari di web",
       TOOL_WEBSEARCH_RERANKING: "Menyaring rujukan web",
       TOOL_WEBSEARCH_SCRAPING: "Membaca isi tautan web",
       TOOL_DOCSEARCH_OPENING: "Membuka arsip regulasi",
       TOOL_DOCSEARCH_SEARCHING: "Menelusuri klausul rujukan",
+      TOOL_DOCSEARCH_CHUNK_SEARCH: "Menelusuri klausul regulasi",
       TOOL_DOCSEARCH_SCORING: "Menilai relevansi dokumen",
       TOOL_URLFETCH_DOWNLOADING: "Mengunduh konten tautan",
       TOOL_URLFETCH_PARSING: "Mengekstrak isi halaman",
@@ -2195,6 +2198,8 @@ export const translations = {
       OPENING_REDTEAM_DOC: "🕵️ Dissecting target document",
       ANALYZING_COMPLIANCE_SCENARIO: "⚖️ Analyzing compliance against full clause",
       DISSECTING_LEGAL_LOOPHOLES: "⚔️ Dissecting legal loopholes from opposing angles",
+      DRAFTING_COMPLIANCE: "⚖️ Drafting compliance analysis",
+      DRAFTING_REDTEAM: "⚔️ Drafting red team simulation",
       RETRIEVING_FULL_TEXT: "📂 Retrieving full text from document archive",
       SEARCHING_GLOBAL_ARCHIVE: "🔄 Searching all document archives",
       SEARCHING_GLOBAL: "🔄 Searching globally",
@@ -2223,11 +2228,12 @@ export const translations = {
       THINKING_DONE: "✨ Thinking done",
       // ── AGENTIC TOOL STATUS KEYS ──
       AGENTIC_TOOL_START: "🛠️ Executing tool",
-      TOOL_WEBSEARCH_SEARCHING: "Searching web engines",
+      TOOL_WEBSEARCH_SEARCHING: "Searching the web",
       TOOL_WEBSEARCH_RERANKING: "Filtering web references",
       TOOL_WEBSEARCH_SCRAPING: "Reading web pages content",
       TOOL_DOCSEARCH_OPENING: "Opening regulatory archive",
       TOOL_DOCSEARCH_SEARCHING: "Searching reference clauses",
+      TOOL_DOCSEARCH_CHUNK_SEARCH: "Searching regulatory clauses",
       TOOL_DOCSEARCH_SCORING: "Scoring document relevance",
       TOOL_URLFETCH_DOWNLOADING: "Downloading link content",
       TOOL_URLFETCH_PARSING: "Extracting page content",
@@ -2554,8 +2560,11 @@ export function resolveStatusMessage(statusInput, language = 'id', explicitKey =
     if (cleanR.includes('rujukan web') || cleanR.includes('menyaring rujukan web')) return stripDots(sseDict.TOOL_WEBSEARCH_RERANKING || 'Filtering web references');
     if (cleanR.includes('isi tautan web') || cleanR.includes('membaca isi tautan web')) return stripDots(sseDict.TOOL_WEBSEARCH_SCRAPING || 'Reading web pages content');
     if (cleanR.includes('arsip regulasi') || cleanR.includes('membuka arsip regulasi')) return stripDots(sseDict.TOOL_DOCSEARCH_OPENING || 'Opening regulatory archive');
+    if (cleanR.includes('klausul regulasi') || cleanR.includes('menelusuri klausul regulasi')) return stripDots(sseDict.TOOL_DOCSEARCH_CHUNK_SEARCH || 'Searching regulatory clauses');
     if (cleanR.includes('klausul rujukan') || cleanR.includes('menelusuri klausul rujukan')) return stripDots(sseDict.TOOL_DOCSEARCH_SEARCHING || 'Searching reference clauses');
     if (cleanR.includes('relevansi dokumen') || cleanR.includes('menilai relevansi dokumen')) return stripDots(sseDict.TOOL_DOCSEARCH_SCORING || 'Scoring document relevance');
+    if (cleanR.includes('analisis kepatuhan') || cleanR.includes('kepatuhan skenario')) return stripDots(sseDict.DRAFTING_COMPLIANCE || '⚖️ Drafting compliance analysis');
+    if (cleanR.includes('red team') || cleanR.includes('celah hukum')) return stripDots(sseDict.DRAFTING_REDTEAM || '⚔️ Drafting red team simulation');
     if (cleanR.includes('mengunduh konten tautan') || cleanR.includes('konten tautan')) return stripDots(sseDict.TOOL_URLFETCH_DOWNLOADING || 'Downloading link content');
     if (cleanR.includes('mengekstrak isi halaman') || cleanR.includes('isi halaman')) return stripDots(sseDict.TOOL_URLFETCH_PARSING || 'Extracting page content');
     if (cleanR.includes('menjalankan komputasi') || cleanR.includes('komputasi')) return stripDots(sseDict.TOOL_CALC_RUNNING || 'Running computation');

@@ -179,33 +179,34 @@ class ModeCollab:
             dialog_status = "TIDAK (DISKUSI TIM BEBAS ANTAR REKAN)"
 
         transcript_str = "\n".join(transcript_lines)
-        eval_prompt = (
-            f"Topik Ruang Diskusi: {room_topic or 'Umum / Diskusi Kerja'}\n"
-            f"Status Keterlibatan Langsung CAKRA: {dialog_status}\n\n"
-            f"Transkrip Percakapan Terbaru:\n{transcript_str}\n\n"
-            f"Berdasarkan transkrip di atas:\n"
-            f"1. Apakah CAKRA perlu menanggapi? (Jika mention langsung, ada lampiran berkas yang diminta, ATAU respon/konfirmasi atas ucapan CAKRA = WAJIB true; jika diskusi bebas antar rekan = nilai apakah substantif/butuh masukan)\n"
-            f"2. Apakah topik memerlukan pencarian DOKUMEN REGULASI INTERNAL PT PINDAD (RAG) seperti PKB, SE, SOP, SK, aturan kerja, hak karyawan, atau data teknis internal? Tentukan need_rag, queries, query_judul, dan search_tags."
+        collab_envelope = f"[KONTEKS: COLLAB_SPACE]\n{transcript_str}"
+
+        system_prompt = (
+            "Kamu adalah Cakra Router (Call 1) yang sangat presisi dan deterministik. "
+            "Analisis pesan pengguna dan kembalikan sparse JSON routing payload murni."
         )
 
         messages = [
-            {"role": "system", "content": COLLAB_INTERVENTION_EVAL_PROMPT},
-            {"role": "user", "content": eval_prompt}
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": collab_envelope}
         ]
 
         router_ctx = getattr(settings, "NUM_CTX_ROUTER", 4096)
+        effective_model = self.router_model or getattr(settings, "MODEL_ROUTER", "cakra-router")
         try:
             res = await generate_json_response(
-                model_name=self.router_model,
+                model_name=effective_model,
                 messages=messages,
                 temperature=0.0,
                 top_p=0.1,
                 top_k=1,
                 keep_alive=-1,
                 num_ctx=router_ctx,
+                num_predict=220,
                 timeout=60.0
             )
-            should_intervene = bool(res.get("should_intervene", False)) or is_mention
+            has_active_intent = bool(res.get("need_rag") or res.get("is_coding") or res.get("is_generate_file") or res.get("queries"))
+            should_intervene = bool(res.get("should_intervene", False)) or is_mention or has_active_intent
             reason = str(res.get("reason", ""))
 
             # Safety Net: Jika rekan kerja merespon langsung CAKRA, jangan biarkan model router salah menolak
