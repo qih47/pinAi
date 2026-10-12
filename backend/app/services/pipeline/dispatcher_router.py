@@ -300,9 +300,20 @@ async def dispatch_intent_route(
         previous_subject=previous_subject,
     )
 
+    # ── CONTEXT ENVELOPE FORMATTING (BENTUK 1, 2, ATAU 3) ──
+    forced_mode = str(precheck.get("forced_mode") or "").strip().lower()
+    is_collab = bool(precheck.get("is_collab") or precheck.get("collab_room_id"))
+
+    if is_collab:
+        context_envelope = f"[KONTEKS: COLLAB_SPACE]\n{stripped_message}"
+    elif forced_mode:
+        context_envelope = f"[KONTEKS: PRESET ({forced_mode})]\n{stripped_message}"
+    else:
+        context_envelope = f"[KONTEKS: NORMAL_CHAT]\n{stripped_message}"
+
     messages = [
         {"role": "system", "content": system_prompt},
-        {"role": "user", "content": stripped_message},
+        {"role": "user", "content": context_envelope},
     ]
 
     # Alokasi num_predict dinamis hemat token untuk kecepatan respons maksimal (~0.8s - 1.2s)
@@ -595,6 +606,11 @@ def _validate_and_normalize_routing(
         "needs_live_refetch": False,
         "wizard": None,
         "needs_history": False,
+        "history_scope": "recent",
+        "file_action": "create",
+        "target_files": [],
+        "should_intervene": True,
+        "collab_reason": "",
     }
 
     user_msg_lower = (user_message or "").lower()
@@ -1400,6 +1416,46 @@ def _validate_and_normalize_routing(
                     routing["is_chitchat"] = True
         routing["is_multi_document"] = False
 
+    # ── Master Router (3 Forms) & Dual-Layer Memory Normalization ──
+    # 1. history_scope
+    raw_scope = str(routing_json.get("history_scope") or "").strip().lower()
+    if raw_scope in ["recent", "full_session", "cross_session"]:
+        routing["history_scope"] = raw_scope
+    else:
+        if any(kw in user_msg_lower for kw in ["rangkum diskusi", "rangkum sesi", "hasil diskusi kita", "tadi udah kita list", "rekap hasil obrolan", "rekap percakapan"]):
+            routing["history_scope"] = "full_session"
+            routing["needs_history"] = True
+        elif any(kw in user_msg_lower for kw in ["sesi kemarin", "obrolan kemarin", "minggu lalu", "sesi lampau", "sesi sebelumnya"]):
+            routing["history_scope"] = "cross_session"
+            routing["needs_history"] = True
+        else:
+            routing["history_scope"] = "recent"
+
+    # 2. file_action & target_files
+    raw_action = str(routing_json.get("file_action") or "").strip().lower()
+    if raw_action in ["create", "edit"]:
+        routing["file_action"] = raw_action
+    else:
+        if any(kw in user_msg_lower for kw in ["edit file", "ubah file", "perbaiki file", "update file", "modifikasi"]):
+            routing["file_action"] = "edit"
+        else:
+            routing["file_action"] = "create"
+
+    raw_targets = routing_json.get("target_files") or routing_json.get("target_file") or []
+    if isinstance(raw_targets, str):
+        routing["target_files"] = [raw_targets.strip()] if raw_targets.strip() else []
+    elif isinstance(raw_targets, list):
+        routing["target_files"] = [str(f).strip() for f in raw_targets if str(f).strip()]
+    else:
+        routing["target_files"] = []
+
+    # 3. Collab intervention parameters
+    if "should_intervene" in routing_json:
+        routing["should_intervene"] = bool(routing_json.get("should_intervene"))
+    else:
+        routing["should_intervene"] = True
+    routing["collab_reason"] = str(routing_json.get("collab_reason") or routing_json.get("reason") or "").strip()
+
     return routing
 
 
@@ -1456,18 +1512,27 @@ def _build_fallback_routing(precheck: Dict[str, Any]) -> Dict[str, Any]:
         "tone_hint": precheck.get("tone_hint", "formal"),
         "detected_language": "id",
         "session_title": None,
+        "history_scope": "recent",
+        "file_action": "create",
+        "target_files": [],
+        "should_intervene": True,
+        "collab_reason": "",
     }
 
     # 3. Sinyal Keyword Safety Net untuk 15 Fitur:
     # A. Visualisasi & Bagan Alir
-    visual_kws = ["diagram", "flowchart", "grafik", "chart", "bagan alir", "visualisasi", "gantt", "kurva", "plot"]
+    visual_kws = ["diagram", "flowchart", "grafik", "chart", "bagan alir", "visualisasi", "gantt", "kurva", "plot", "datagrid", "tabel datagrid"]
     if any(k in user_lower for k in visual_kws):
         fallback["requires_visual"] = True
 
     # B. Pembuatan File Fisik
-    file_kws = ["buatkan file", "bikin file", "ekspor", "export", "unduh excel", "unduh word", ".xlsx", ".docx", ".pdf"]
-    if any(k in user_lower for k in file_kws):
+    file_kws = ["buatkan file", "bikin file", "ekspor", "export", "unduh excel", "unduh word", ".xlsx", ".docx", ".pdf", "simpan di file", "simpan file", "update filenya", "update langsung filenya", "edit file", "update file"]
+    if any(k in user_lower for k in file_kws) or (any(k in user_lower for k in ["perbaiki bug", "fix bug"]) and "file" in user_lower):
         fallback["is_generate_file"] = True
+        if any(k in user_lower for k in ["edit file", "update file", "update filenya", "update langsung filenya", "perbaiki bug"]):
+            fallback["file_action"] = "edit"
+        else:
+            fallback["file_action"] = "create"
 
     # C. Persuratan Dinas & Email
     email_kws = ["buatkan email", "draf email", "nota dinas", "surat dinas", "surat tugas", "memo dinas"]
@@ -1475,53 +1540,87 @@ def _build_fallback_routing(precheck: Dict[str, Any]) -> Dict[str, Any]:
         fallback["is_generate_email"] = True
 
     # D. Troubleshooting & Error
-    trouble_kws = ["error", "bug", "gagal", "crash", "traceback", "kenapa tidak bisa", "tidak connect", "timeout", "econnrefused"]
+    trouble_kws = ["error", "bug", "gagal", "crash", "traceback", "kenapa tidak bisa", "tidak connect", "timeout", "econnrefused", "keyerror"]
     if any(k in user_lower for k in trouble_kws):
         fallback["is_troubleshooting"] = True
 
-    # E. Komparasi / Perbandingan
-    comp_kws = ["bandingkan", "perbedaan", "vs", "komparasi", "kelebihan dan kekurangan", "pilih mana", "lebih bagus mana"]
+    # E. Koding & Pemrograman
+    coding_kws = ["react", "tailwind", "fastapi", "sqlite", "auth.py", "skrip", "script", "traceback", "keyerror", "package.json", "npm", "vite", "docker", "deploy", "middleware express", "jwt token"]
+    if any(k in user_lower for k in coding_kws):
+        fallback["is_coding"] = True
+
+    # F. Analitik & Kalkulasi
+    analytic_kws = ["hitung", "pesangon", "formula", "simulasikan", "simulasi biaya", "kalkulasi"]
+    if any(k in user_lower for k in analytic_kws):
+        fallback["need_analytic"] = True
+
+    # G. Komparasi / Perbandingan
+    comp_kws = ["bandingkan", "perbedaan", "vs", "komparasi", "kelebihan dan kekurangan", "pilih mana", "lebih bagus mana", "cocokkan"]
     if any(k in user_lower for k in comp_kws):
         fallback["is_comparative"] = True
 
-    # F. Workflow & SOP Actionable
+    # H. Workflow & SOP Actionable
     sop_kws = ["sop", "prosedur", "tahapan", "alur pengajuan", "syarat izin", "langkah-langkah", "tata cara"]
     if any(k in user_lower for k in sop_kws):
         fallback["has_actionable_workflow"] = True
 
-    # G. Deep Research / Enterprise Architecture
-    research_kws = ["analisis mendalam", "kajian", "studi kelayakan", "arsitektur sistem", "evaluasi komprehensif"]
+    # I. Deep Research / Enterprise Architecture
+    research_kws = ["analisis mendalam", "kajian", "studi kelayakan", "arsitektur sistem", "evaluasi komprehensif", "kajian komprehensif", "riset mendalam"]
     if any(k in user_lower for k in research_kws):
         fallback["is_deep_research"] = True
 
-    # H. Security Critical
+    # J. Security Critical
     sec_kws = ["keamanan", "enkripsi", "jwt", "otentikasi", "vulnerability", "hardening", "owasp", "bcrypt", "password hash"]
     if any(k in user_lower for k in sec_kws):
         fallback["is_security_critical"] = True
 
-    # I. Map / Lokasi
-    map_kws = ["lokasi", "alamat", "dimana gedung", "peta", "turen", "bandung", "fasilitas pindad"]
+    # K. Map / Lokasi
+    map_kws = ["lokasi", "alamat", "dimana gedung", "peta", "turen", "bandung", "fasilitas pindad", "denah lokasi", "koordinat"]
     if any(k in user_lower for k in map_kws):
         fallback["is_map_query"] = True
 
-    # J. Deteksi Ambiguitas (Pesan umum ringkas tanpa detail)
+    # L. Koreksi & Sanggahan (Self-Correction)
+    correction_kws = ["bukan, maksud saya", "kamu salah!", "bukan maksud", "salah,"]
+    if any(k in user_lower for k in correction_kws):
+        fallback["is_self_correction"] = True
+        fallback["needs_history"] = True
+
+    # M. Dual-Layer Memory Recall
+    if any(k in user_lower for k in ["rangkum diskusi", "rangkum sesi", "hasil diskusi kita", "tadi udah kita list", "rekap percakapan"]):
+        fallback["history_scope"] = "full_session"
+        fallback["needs_history"] = True
+    elif any(k in user_lower for k in ["sesi kemarin", "obrolan kemarin", "minggu lalu", "sesi lampau", "sesi sebelumnya"]):
+        fallback["history_scope"] = "cross_session"
+        fallback["needs_history"] = True
+
+    # N. URL Reader
+    if any(k in user_lower for k in ["http://", "https://", ".html", "link "]):
+        fallback["is_url_read"] = True
+
+    # O. Deteksi Ambiguitas (Pesan umum ringkas tanpa detail)
     ambiguous_prompts = [
         "aturan cuti", "soal cuti", "prosedur mutasi", "buatkan surat dinas", "bikin nota dinas",
-        "diagram alur", "bikin aplikasi", "buatkan web", "aplikasi error", "sistem down"
+        "diagram alur", "bikin aplikasi", "buatkan web", "aplikasi error", "sistem down", "bikin sistem baru"
     ]
-    if any(p in user_lower for p in ambiguous_prompts) and len(user_message.split()) <= 4:
+    if any(p in user_lower for p in ambiguous_prompts) and len(user_message.split()) <= 6:
         fallback["is_ambiguous"] = True
 
-    # K. Dokumen & Regulasi Internal (RAG)
+    # P. Dokumen & Regulasi Internal (RAG)
     rag_kws = [
         "skep", "sk", "sop", "pkb", "peraturan", "keputusan", "surat edaran", "direksi",
         "pindad", "organisasi", "tata kerja", "otk", "cuti", "mutasi", "gaji", "tunjangan",
-        "alutsista", "senjata", "munisi", "kendaraan khusus", "anoa", "komodo", "ss2", "harimau"
+        "alutsista", "senjata", "munisi", "kendaraan khusus", "anoa", "komodo", "ss2", "harimau",
+        "tata laksana penyambutan delegasi", "delegasi kementerian"
     ]
-    is_doc_intent = any(k in user_lower for k in rag_kws) or precheck.get("need_rag_hint") or precheck.get("is_doc_query")
+    has_prior_reg = (
+        any(reg_word in str(precheck.get("previous_topic") or "").lower() for reg_word in ["cuti", "pkb", "sop", "skep", "regulasi", "hubungan kerja", "aturan"])
+        or any(reg_word in str(precheck.get("previous_subject") or "").lower() for reg_word in ["cuti", "pkb", "sop", "skep", "regulasi", "hubungan kerja", "aturan"])
+    )
+    is_anaphora_reg = has_prior_reg and any(k in user_lower for k in ["kalau", "bagaimana kalau", "berapa lama", "syaratnya", "gimana jika", "keguguran"])
+    is_doc_intent = any(k in user_lower for k in rag_kws) or precheck.get("need_rag_hint") or precheck.get("is_doc_query") or is_anaphora_reg
     if is_doc_intent and not is_guest and not fallback["is_ambiguous"]:
         fallback["need_rag"] = True
-        fallback["query_judul"] = [user_message]
+        fallback["query_judul"] = [precheck.get("previous_subject") or user_message]
         fallback["queries"] = build_rule_based_queries(user_message, fallback["key_subject"], fallback["active_topic"])
         fallback["is_web_search"] = False
 
@@ -1835,6 +1934,13 @@ async def dispatch_preset_route(
         ]:
             if res_json.get(flag) is True:
                 result[flag] = True
+
+        if res_json.get("file_action"):
+            result["file_action"] = str(res_json["file_action"]).strip().lower()
+        if res_json.get("target_files") and isinstance(res_json["target_files"], list):
+            result["target_files"] = [str(f).strip() for f in res_json["target_files"] if str(f).strip()]
+        if res_json.get("history_scope"):
+            result["history_scope"] = str(res_json["history_scope"]).strip().lower()
 
         # Session title — hanya jika first_chat
         if is_first_chat:

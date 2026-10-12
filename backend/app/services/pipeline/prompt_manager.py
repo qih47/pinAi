@@ -110,6 +110,7 @@ class PromptManager:
             logger.warning(f"[PROMPT_MANAGER] Prompt '{name}' not found in cache!")
             if name in self._default_prompts:
                 template = self.env.from_string(self._default_prompts[name]["template"])
+                self._cache[name] = template
             else:
                 return ""
         try:

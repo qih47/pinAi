@@ -55,7 +55,7 @@ async def search_community_knowledge(query: str, is_guest: bool, limit: int = 3)
             context_pieces = []
             for idx, r in enumerate(results, 1):
                 # Filter manual: pastikan rank cukup relevan (mencegah teks acak masuk)
-                if r['rank'] > 0.01:
+                if r['rank'] > 0.02:
                     user_text = r['user_text'] or ""
                     assistant_text = r['assistant_text'] or ""
                     
@@ -64,9 +64,11 @@ async def search_community_knowledge(query: str, is_guest: bool, limit: int = 3)
                     assistant_text = re.sub(r'<think>.*?</think>', '', assistant_text, flags=re.DOTALL).strip()
                     user_text = re.sub(r'<think>.*?</think>', '', user_text, flags=re.DOTALL).strip()
 
-                    # Potong jika hasil masa lalu terlalu panjang
-                    if len(assistant_text) > 1000:
-                        assistant_text = assistant_text[:1000] + "... [dipotong]"
+                    # Potong riwayat agar prompt tetap ramping & responsif
+                    if len(user_text) > 300:
+                        user_text = user_text[:300] + "... [dipotong]"
+                    if len(assistant_text) > 500:
+                        assistant_text = assistant_text[:500] + "... [dipotong]"
                         
                     if assistant_text:
                         context_pieces.append(f"Diskusi {idx}:\nUser Sebelumnya: {user_text}\nJawaban AI Sebelumnya: {assistant_text}")
@@ -81,10 +83,9 @@ async def search_community_knowledge(query: str, is_guest: bool, limit: int = 3)
                 "\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
                 "💡 <COMMUNITY_CONTEXT>: INGATAN KOLEKTIF\n"
                 "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-                "Berikut adalah riwayat percakapan sebelumnya yang berkaitan dengan pertanyaan saat ini:\n\n"
+                "Berikut adalah referensi riwayat percakapan sebelumnya yang relevan:\n\n"
                 f"{final_context}\n\n"
-                "Instruksi: Gunakan informasi di atas sebagai acuan utama jawabanmu. "
-                "DILARANG KERAS menggunakan pengetahuan umummu jika tidak ada jawaban relevan di atas. Jika kamu tidak menemukan jawabannya di context, katakan secara eksplisit bahwa kamu tidak tahu!\n"
+                "Gunakan informasi di atas sebagai referensi pendukung jika relevan dengan pertanyaan saat ini.\n"
             )
             
     except Exception as e:

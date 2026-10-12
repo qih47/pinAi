@@ -291,7 +291,9 @@ _SAFE_TEXT_PAYLOAD_FIELDS = frozenset({
     "rag_prompt", "query", "queries",
     # Interactive chat & user query payload fields (safe for SQL/code discussions)
     "message", "user_message", "user_input", "input_text", "question",
-    "query_text", "search_query", "body"
+    "query_text", "search_query", "body",
+    # Agentic File & Memory fields
+    "target_files", "target_file", "file_action", "session_journal", "listed_items", "key_decisions"
 })
 
 

@@ -225,6 +225,11 @@ class ModeCollab:
                 routing_dict["visual_types"] = res.get("visual_types", ["mermaid"])
             if res.get("is_coding"):
                 routing_dict["is_coding"] = True
+            if res.get("is_generate_file"):
+                routing_dict["is_generate_file"] = True
+                routing_dict["file_action"] = str(res.get("file_action", "create"))
+                if res.get("target_files"):
+                    routing_dict["target_files"] = res.get("target_files")
             if res.get("is_docwriter"):
                 routing_dict["is_docwriter"] = True
 

@@ -62,7 +62,8 @@ class NightlyTrainingOrchestrator:
             "w3_graph": "IDLE",
             "w4_vision": "IDLE",
             "w5_lora": "IDLE",
-            "w6_agentic": "IDLE"
+            "w6_agentic": "IDLE",
+            "w7_agentic": "IDLE"
         }
         self.started_at: Optional[str] = None
         self.latest_log: str = "Menunggu trigger..."
@@ -799,6 +800,17 @@ async def get_nightly_dashboard_status() -> Dict[str, Any]:
             "mode": "Otomatis via Cronjob & Tombol Manual"
         }
     }
+
+    # Injeksi telemetri Worker 7 (Agentic & Synthetic Generator)
+    try:
+        from backend.app.services.training.agentic_generator_service import get_agentic_generator_service
+        agentic_svc = get_agentic_generator_service()
+        agentic_status = agentic_svc.get_status()
+        result["agentic_generator"] = agentic_status
+        result["workers"]["w7_agentic"] = agentic_status.get("status", "IDLE")
+    except Exception as e:
+        logger.debug(f"[ORCHESTRATOR] Gagal baca status agentic generator: {e}")
+
     _last_dash_status_cache = result
     _last_dash_status_time = now
     return result

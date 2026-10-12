@@ -188,3 +188,46 @@ async def reset_nightly_training_from_zero(clean_artifacts: bool = True):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# ─── WORKER 7: AGENTIC & SYNTHETIC DATASET GENERATOR ENDPOINTS ───────────────
+
+class AgenticTriggerRequest(BaseModel):
+    samples: int = 25000
+
+@router.get("/agentic/status")
+async def get_agentic_status():
+    """Mengambil status real-time pembangkitan dataset Worker 7"""
+    try:
+        from backend.app.services.training.agentic_generator_service import get_agentic_generator_service
+        service = get_agentic_generator_service()
+        return {"status": "success", "data": service.get_status()}
+    except Exception as e:
+        logger.error(f"Gagal mengambil status agentic generator: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/agentic/start")
+async def start_agentic_generator(req: Optional[AgenticTriggerRequest] = None):
+    """Memicu proses pembangkitan dataset 25.000 sampel Worker 7 di background"""
+    try:
+        from backend.app.services.training.agentic_generator_service import get_agentic_generator_service
+        service = get_agentic_generator_service()
+        target = req.samples if req else 25000
+        res = await service.start_generator(target_samples=target)
+        return {"status": "success", "data": res}
+    except Exception as e:
+        logger.error(f"Gagal memulai agentic generator: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/agentic/stop")
+async def stop_agentic_generator():
+    """Menghentikan Worker 7 secara aman"""
+    try:
+        from backend.app.services.training.agentic_generator_service import get_agentic_generator_service
+        service = get_agentic_generator_service()
+        res = await service.stop_generator()
+        return {"status": "success", "data": res}
+    except Exception as e:
+        logger.error(f"Gagal menghentikan agentic generator: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+

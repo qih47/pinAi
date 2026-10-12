@@ -41,7 +41,8 @@ import {
   X,
   Upload,
   Shield,
-  Globe
+  Globe,
+  Cpu
 } from 'lucide-react';
 import apiClient from '../../../services/apiClient';
 
@@ -63,11 +64,13 @@ const DeepLearningTab = ({ initialSubTab = 'pipelines', onSubTabChange }) => {
   const [pipelinePage, setPipelinePage] = useState(1);
   const [syntheticPage, setSyntheticPage] = useState(1);
 
-  // Nightly 6-Worker Training State
+  // Nightly Multi-Worker Training State
   const [nightlyStatus, setNightlyStatus] = useState(null);
   const [isNightlyStarting, setIsNightlyStarting] = useState(false);
   const [isNightlyStopping, setIsNightlyStopping] = useState(false);
   const [isSyncingCatalog, setIsSyncingCatalog] = useState(false);
+  const [isAgenticStarting, setIsAgenticStarting] = useState(false);
+  const [isAgenticStopping, setIsAgenticStopping] = useState(false);
 
   // Self-Service PDF Upload Modal State (Internal vs External Isolation)
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
@@ -237,6 +240,32 @@ const DeepLearningTab = ({ initialSubTab = 'pipelines', onSubTabChange }) => {
       alert("Gagal reset training: " + (e.response?.data?.detail || e.message));
     } finally {
       setIsResetting(false);
+    }
+  };
+
+  const handleStartAgenticGenerator = async (samples = 25000) => {
+    if (!window.confirm(`⚡ Mulai proses pembangkitan dataset sintetis Worker 7 (Target: ${samples.toLocaleString()} sampel Core & Router)?\n\nDataset akan mencakup kasus koding fisik <create_file>, in-stream tools, memori dual-layer, universal anti-sycophancy, visual widgets, dan persona.`)) return;
+    setIsAgenticStarting(true);
+    try {
+      await apiClient.post('/training/agentic/start', { samples });
+      await fetchNightlyStatus();
+    } catch (e) {
+      alert("Gagal memulai Worker 7: " + (e.response?.data?.detail || e.message));
+    } finally {
+      setIsAgenticStarting(false);
+    }
+  };
+
+  const handleStopAgenticGenerator = async () => {
+    if (!window.confirm("Hentikan proses Worker 7 (Agentic Synthetic Generator)?")) return;
+    setIsAgenticStopping(true);
+    try {
+      await apiClient.post('/training/agentic/stop');
+      await fetchNightlyStatus();
+    } catch (e) {
+      alert("Gagal menghentikan Worker 7: " + (e.response?.data?.detail || e.message));
+    } finally {
+      setIsAgenticStopping(false);
     }
   };
 
@@ -776,8 +805,8 @@ const DeepLearningTab = ({ initialSubTab = 'pipelines', onSubTabChange }) => {
             </div>
           )}
 
-          {/* 6-Worker Status Strip */}
-          <div className="mt-4 pt-3 border-t border-indigo-900/40 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 text-xs">
+          {/* Multi-Worker Status Strip */}
+          <div className="mt-4 pt-3 border-t border-indigo-900/40 grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2 text-xs">
             <div className="bg-slate-900/80 border border-slate-800 rounded-lg p-2 flex flex-col">
               <span className="text-[10px] text-slate-400 font-medium">Worker 1: Text RAG</span>
               <span className="font-bold text-cyan-400 flex items-center gap-1 mt-0.5">
@@ -825,6 +854,14 @@ const DeepLearningTab = ({ initialSubTab = 'pipelines', onSubTabChange }) => {
                 {nightlyStatus?.workers?.w6_agentic || 'STANDBY'}
               </span>
             </div>
+
+            <div className="bg-slate-900/80 border border-violet-500/30 rounded-lg p-2 flex flex-col bg-violet-950/20">
+              <span className="text-[10px] text-violet-300 font-medium">Worker 7: Agentic Synth</span>
+              <span className="font-bold text-violet-400 flex items-center gap-1 mt-0.5">
+                <span className={`w-1.5 h-1.5 rounded-full ${nightlyStatus?.workers?.w7_agentic === 'RUNNING' || nightlyStatus?.agentic_generator?.is_running ? 'bg-violet-400 animate-ping' : 'bg-slate-500'}`} />
+                {nightlyStatus?.workers?.w7_agentic || nightlyStatus?.agentic_generator?.status || 'STANDBY'}
+              </span>
+            </div>
           </div>
 
           {/* Live Ticker Log */}
@@ -834,6 +871,101 @@ const DeepLearningTab = ({ initialSubTab = 'pipelines', onSubTabChange }) => {
               <span className="text-[10px] text-slate-500 shrink-0 ml-2">ragdb checkpoint synced</span>
             </div>
           )}
+
+          {/* Worker 7: Dedicated Agentic & Dynamic Synthetic Dataset Generator Control Panel */}
+          <div className="mt-3.5 p-3.5 bg-gradient-to-r from-slate-900/95 via-indigo-950/30 to-slate-900/95 border border-violet-500/30 rounded-xl shadow-lg">
+            <div className="flex items-center justify-between flex-wrap gap-2 mb-2.5">
+              <div className="flex items-center gap-2">
+                <span className="p-1.5 bg-violet-500/20 text-violet-400 rounded-lg">
+                  <Cpu className="w-4 h-4" />
+                </span>
+                <div>
+                  <h4 className="text-xs font-bold text-white flex items-center gap-2">
+                    Worker 7: Agentic & Dynamic Synthetic Dataset Generator
+                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${nightlyStatus?.agentic_generator?.is_running ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-slate-800 text-slate-400'}`}>
+                      {nightlyStatus?.agentic_generator?.status || 'STANDBY'}
+                    </span>
+                  </h4>
+                  <p className="text-[11px] text-slate-400">
+                    Membangkitkan 25.000 sampel Core (Coding XML, Tools, Anti-Sycophancy, Memory, Widgets, Persona, Guest) & 25.000 Master Router.
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                {nightlyStatus?.agentic_generator?.is_running ? (
+                  <button
+                    onClick={handleStopAgenticGenerator}
+                    disabled={isAgenticStopping}
+                    className="flex items-center gap-1.5 bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold px-3.5 py-1.5 rounded-lg shadow-md transition-all cursor-pointer"
+                  >
+                    <Square size={12} className="fill-white" />
+                    <span>Hentikan Generator</span>
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => handleStartAgenticGenerator(25000)}
+                    disabled={isAgenticStarting}
+                    className="flex items-center gap-1.5 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white text-xs font-bold px-3.5 py-1.5 rounded-lg shadow-md transition-all cursor-pointer hover:scale-[1.02] active:scale-[0.98]"
+                  >
+                    {isAgenticStarting ? <Activity className="w-3.5 h-3.5 animate-spin" /> : <Play size={12} className="fill-white" />}
+                    <span>⚡ Mulai Generate 25k Data</span>
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Progress Metrics Strip */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2 text-[10px]">
+              <div className="bg-slate-950/60 p-2 rounded-lg border border-slate-800">
+                <span className="text-slate-400 block">Total Core</span>
+                <span className="text-white font-bold text-xs">
+                  {nightlyStatus?.agentic_generator?.core_progress?.total?.toLocaleString() || 0} / 25k
+                </span>
+              </div>
+              <div className="bg-slate-950/60 p-2 rounded-lg border border-slate-800">
+                <span className="text-slate-400 block">Total Router</span>
+                <span className="text-white font-bold text-xs">
+                  {nightlyStatus?.agentic_generator?.router_progress?.total?.toLocaleString() || 0} / 25k
+                </span>
+              </div>
+              <div className="bg-slate-950/60 p-2 rounded-lg border border-slate-800">
+                <span className="text-cyan-400 block">Koding & Berkas</span>
+                <span className="text-slate-200 font-semibold">
+                  {nightlyStatus?.agentic_generator?.core_progress?.coding_files?.toLocaleString() || 0}
+                </span>
+              </div>
+              <div className="bg-slate-950/60 p-2 rounded-lg border border-slate-800">
+                <span className="text-amber-400 block">In-Stream Tools</span>
+                <span className="text-slate-200 font-semibold">
+                  {nightlyStatus?.agentic_generator?.core_progress?.instream_tools?.toLocaleString() || 0}
+                </span>
+              </div>
+              <div className="bg-slate-950/60 p-2 rounded-lg border border-slate-800">
+                <span className="text-emerald-400 block">Anti-Sycophancy</span>
+                <span className="text-slate-200 font-semibold">
+                  {nightlyStatus?.agentic_generator?.core_progress?.anti_sycophancy?.toLocaleString() || 0}
+                </span>
+              </div>
+              <div className="bg-slate-950/60 p-2 rounded-lg border border-slate-800">
+                <span className="text-purple-400 block">Memory Recall</span>
+                <span className="text-slate-200 font-semibold">
+                  {nightlyStatus?.agentic_generator?.core_progress?.memory_recall?.toLocaleString() || 0}
+                </span>
+              </div>
+              <div className="bg-slate-950/60 p-2 rounded-lg border border-slate-800">
+                <span className="text-pink-400 block">Visual Widgets</span>
+                <span className="text-slate-200 font-semibold">
+                  {nightlyStatus?.agentic_generator?.core_progress?.visual_widgets?.toLocaleString() || 0}
+                </span>
+              </div>
+              <div className="bg-slate-950/60 p-2 rounded-lg border border-slate-800">
+                <span className="text-teal-400 block">Persona & Guest</span>
+                <span className="text-slate-200 font-semibold">
+                  {((nightlyStatus?.agentic_generator?.core_progress?.persona_modes || 0) + (nightlyStatus?.agentic_generator?.core_progress?.guest_guard || 0)).toLocaleString()}
+                </span>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 

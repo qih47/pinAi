@@ -814,25 +814,10 @@ def build_responder_system_prompt(
 
         # 🛡️ FACTUAL ISOLATION & AGENTIC VERIFICATION: Jika need_rag=True murni regulasi
         if (precheck.get("need_rag") or module_name in ["rag", "multi_document"]) and not precheck.get("is_coding") and not precheck.get("is_web_search"):
-            if not rag_context:
+            if rag_context:
                 prompt += (
-                    "\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-                    "📌 PEDOMAN SUMBER & VERIFIKASI DOKUMEN REGULASI INTERNAL\n"
-                    "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-                    "1. Sesi ini adalah verifikasi dokumen, regulasi, SOP, atau kebijakan resmi internal PT Pindad.\n"
-                    "2. Belum ada kutipan dokumen yang dilampirkan. Kamu WAJIB memanggil alat ```docsearch terlebih dahulu untuk menarik pasal/ayat resmi dari memori sesi (Brain) atau arsip database.\n"
-                    "3. Dilarang keras mengarang nomor pasal, isi ayat, atau rincian aturan dari asumsi/memori sebelum diverifikasi lewat ```docsearch.\n"
-                    "4. DILARANG KERAS memunculkan atau meneruskan potongan kode program/koding/script dari percakapan sebelumnya.\n"
-                )
-            else:
-                prompt += (
-                    "\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-                    "📌 PEDOMAN SUMBER & VERIFIKASI DOKUMEN REGULASI INTERNAL\n"
-                    "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-                    "1. Sesi ini adalah verifikasi dokumen, regulasi, SOP, atau kebijakan resmi internal PT Pindad.\n"
-                    "2. Rujukan utama adalah konteks dokumen yang telah disediakan di atas. Dilarang mengarang aturan yang tidak ada buktinya.\n"
-                    "3. DILARANG KERAS memunculkan atau meneruskan potongan kode program/koding/script dari percakapan sebelumnya.\n"
-                    "4. Jika klausul spesifik yang dicari belum ada di konteks di atas atau pengguna menyanggah ketiadaan pasal, kamu BERWENANG memanggil alat ```docsearch atau ```websearch secara mandiri untuk melengkapi data sebelum menyimpulkan jawaban.\n"
+                    "\n\n📌 RUJUKAN UTAMA: Rujukan utama adalah kutipan dokumen di atas. "
+                    "Jika klausul spesifik yang dicari belum lengkap atau pengguna menyanggah ketiadaan pasal, kamu berwenang memanggil alat ```docsearch untuk melengkapi data sebelum menyimpulkan jawaban.\n"
                 )
 
         # Injeksi Wizard jika ambigu pada modul selain ambiguous
@@ -898,6 +883,32 @@ def build_responder_system_prompt(
             from backend.app.services.pipeline.prompts.core_prompts import build_modular_visual_guidance
             visual_types = precheck.get("visual_types", [])
             prompt += "\n\n" + build_modular_visual_guidance(visual_types) + "\n\n"
+
+        # 🧠 Injeksi Memori Dual-Layer (Short-Term Journal & Long-Term Manifest)
+        user_message_clean = str(precheck.get("_user_message") or precheck.get("user_message") or "").strip()
+        history_scope = precheck.get("history_scope") or precheck.get("routing", {}).get("history_scope")
+        session_uuid = precheck.get("session_uuid") or precheck.get("session_id")
+        current_npp = precheck.get("current_user_npp") or precheck.get("npp")
+
+        # 1. Short-Term Journal: jika scope full_session atau permintaan rekapitulasi/list
+        if history_scope == "full_session" or (user_message_clean and any(w in user_message_clean.lower() for w in ["rangkum diskusi", "rekap obrolan", "udah kita list", "tadi kita bahas"])):
+            try:
+                from backend.app.services.pipeline.memory_service import get_session_journal, format_session_journal_for_prompt
+                journal = get_session_journal(current_npp, session_uuid)
+                if journal:
+                    prompt += "\n\n" + format_session_journal_for_prompt(journal) + "\n\n"
+            except Exception as e_j:
+                logger.debug(f"[MEMORY] Journal injection skipped: {e_j}")
+
+        # 2. Long-Term Cross-Session Memory: jika scope cross_session atau rujukan ke sesi lampau
+        if history_scope == "cross_session" or (user_message_clean and any(w in user_message_clean.lower() for w in ["sesi kemarin", "sesi lain", "obrolan kemarin", "minggu lalu kita"])):
+            try:
+                from backend.app.services.pipeline.memory_service import get_matching_past_sessions, format_past_sessions_for_prompt
+                past_sessions = get_matching_past_sessions(current_npp, user_message_clean)
+                if past_sessions:
+                    prompt += "\n\n" + format_past_sessions_for_prompt(past_sessions) + "\n\n"
+            except Exception as e_m:
+                logger.debug(f"[MEMORY] Cross-session injection skipped: {e_m}")
 
     # ── 🛡️ STRICT RECENCY-REINFORCED PRONOUN & STYLE ENFORCER (SINGLE SOURCE OF TRUTH) ──
     # Untuk modul chitchat, aturan sapaan & pronoun sudah dirangkum secara solid di template chitchat

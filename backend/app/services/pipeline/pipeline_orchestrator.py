@@ -307,6 +307,9 @@ async def _sequential_pipeline_generator(
         )
 
 
+        last_active_topic = getattr(payload, 'active_topic', None)
+        last_key_subject = getattr(payload, 'key_subject', None)
+
         async for sse in agentic_engine:
             raw = sse.strip()
             if not raw:
@@ -315,6 +318,10 @@ async def _sequential_pipeline_generator(
             try:
                 event_data = json.loads(raw)
                 event_type = event_data.get("event_type")
+
+                if event_type == "topic_update":
+                    last_active_topic = event_data.get("topic") or last_active_topic
+                    last_key_subject = event_data.get("key_subject") or last_key_subject
 
                 if event_data.get("is_truncated") or event_data.get("done_reason") == "length":
                     is_truncated = True
@@ -575,6 +582,19 @@ async def _sequential_pipeline_generator(
                         )
                     except Exception as e:
                         logger.warning(f"[DB] Gagal save dialogue corpus: {e}")
+
+                # 🧠 Update Dual-Layer Memory (Short-Term Journal) di background
+                try:
+                    from backend.app.services.pipeline.memory_service import update_session_journal_background
+                    await update_session_journal_background(
+                        npp=current_user_npp,
+                        session_id=payload.session_uuid,
+                        user_message=user_message,
+                        assistant_reply=clean_db_text,
+                        routing={"active_topic": last_active_topic, "key_subject": last_key_subject}
+                    )
+                except Exception as e_mem:
+                    logger.debug(f"[MEMORY] Background journal update skipped: {e_mem}")
         except Exception as err:
             logger.error(f"[DB] Gagal save data setelah stream: {err}")
 

@@ -44,6 +44,10 @@ class ModeFlash:
         if current_user_npp == "GUEST":
             routing_data["is_guest"] = True
             routing_data["is_docwriter"] = False
+
+        routing_data["current_user_npp"] = current_user_npp
+        routing_data["session_uuid"] = session_uuid
+        routing_data["user_message"] = user_message
         
         # Select module
         module_name = select_responder_module(routing_data, has_rag_context=False)

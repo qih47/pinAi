@@ -949,6 +949,10 @@ class ModeDocuments:
                 observation=json.dumps(obs_json)
             ))
 
+        routing_data["current_user_npp"] = current_user_npp
+        routing_data["session_uuid"] = session_uuid
+        routing_data["user_message"] = user_message
+
         system_prompt = build_responder_system_prompt(
             module_name=module_name,
             employee_name=employee_name,
