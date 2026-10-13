@@ -707,10 +707,11 @@ def select_responder_module(routing: Dict[str, Any], has_rag_context: bool = Fal
         return "general_expert"       # dokumen writer / editor
     if routing.get("is_ambiguous"):
         return "ambiguous"            # klarifikasi umum/regulasi
-    if routing.get("is_chitchat") or routing.get("is_greeting"):
+    has_substantive_task = bool(routing.get("is_web_search") or routing.get("need_rag") or routing.get("queries"))
+    if (routing.get("is_chitchat") or routing.get("is_greeting")) and not has_substantive_task:
         return "chitchat"             # sudah benar
     topic_sub = f"{routing.get('active_topic', '')} {routing.get('key_subject', '')}".lower()
-    if any(kw in topic_sub for kw in ["sapaan", "salam", "chitchat", "greeting", "kabar", "semangat pagi"]):
+    if any(kw in topic_sub for kw in ["sapaan", "salam", "chitchat", "greeting", "kabar", "semangat pagi"]) and not has_substantive_task:
         return "chitchat"
     return "general_expert"           # sudah benar
 

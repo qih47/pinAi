@@ -89,12 +89,12 @@ const InteractiveWizardWidget = ({ data, messageIndex, isStreaming, darkMode = t
     // Helper to get option key and label with fallbacks
     const getOptionMeta = (opt, idx) => {
         if (!opt) return { val: `opt_${idx}`, label: `Opsi ${idx + 1}`, prompt: `Opsi ${idx + 1}` };
-        if (typeof opt === 'string') return { val: opt, label: opt, prompt: `Gunakan ${opt}` };
+        if (typeof opt === 'string') return { val: opt, label: opt, prompt: opt };
         const label = opt.label || opt.name || opt.title || opt.text || `Opsi ${idx + 1}`;
         const val = opt.value || opt.id || label;
         let prompt = opt.prompt;
         if (!prompt || typeof prompt !== 'string' || prompt.length > 80 || /^(cocok|bagus|mudah|dasar|untuk|adalah)/i.test(prompt.trim())) {
-            prompt = `Gunakan ${label}`;
+            prompt = label;
         }
         return { val, label, prompt };
     };

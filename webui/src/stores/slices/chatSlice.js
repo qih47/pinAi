@@ -188,9 +188,50 @@ export const createChatSlice = (set, get) => ({
                 loadedArtifacts.forEach(a => uniqueArtifactsMap.set(a.filename, a));
                 const finalArtifacts = Array.from(uniqueArtifactsMap.values());
 
+                // 🔥 REKONSTRUKSI WIZARD ANSWERS PADA LOAD SESSION (PERSISTENSI PILIHAN USER) 🔥
+                const reconstructedWizardAnswers = {};
+                sanitizedMessages.forEach((msg, idx) => {
+                    if (msg.role === 'assistant' && msg.content && /```(?:wizard|interactive_options)/i.test(msg.content)) {
+                        const nextMsg = sanitizedMessages[idx + 1];
+                        if (nextMsg && nextMsg.role === 'user' && nextMsg.content) {
+                            const wizardMatch = msg.content.match(/```(?:wizard|interactive_options)\s*([\s\S]*?)```/i);
+                            if (wizardMatch) {
+                                try {
+                                    const wizData = JSON.parse(wizardMatch[1].trim());
+                                    const questions = wizData.questions || [];
+                                    const userText = nextMsg.content.trim().toLowerCase();
+                                    const matchedAnswers = [];
+                                    for (const q of questions) {
+                                        for (const opt of (q.options || [])) {
+                                            const p = (opt.prompt || '').trim().toLowerCase();
+                                            const l = (opt.label || '').trim().toLowerCase();
+                                            const v = (opt.value || opt.id || '').trim().toLowerCase();
+                                            if (
+                                                (p && (userText === p || userText.includes(p) || p.includes(userText))) ||
+                                                (l && (userText === l || userText.includes(l) || l.includes(userText))) ||
+                                                (v && (userText === v || userText.includes(v)))
+                                            ) {
+                                                matchedAnswers.push({
+                                                    question: q.question,
+                                                    answer: opt.label || opt.selectedValue || opt.prompt
+                                                });
+                                                break;
+                                            }
+                                        }
+                                    }
+                                    if (matchedAnswers.length > 0) {
+                                        reconstructedWizardAnswers[idx] = matchedAnswers;
+                                    }
+                                } catch (e) { }
+                            }
+                        }
+                    }
+                });
+
                 set({
                     messages: sanitizedMessages,
                     artifacts: finalArtifacts,
+                    wizardAnswers: reconstructedWizardAnswers,
                     isLoading: false
                 });
             } else {

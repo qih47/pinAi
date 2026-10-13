@@ -192,17 +192,17 @@ const PersistentTaskListItem = ({
     ...props
 }) => {
     const childArray = React.Children.toArray(children);
-    const checkboxIndex = childArray.findIndex(child => 
+    const checkboxIndex = childArray.findIndex(child =>
         React.isValidElement(child) && (
-            child.type === 'input' || 
+            child.type === 'input' ||
             child.props?.type === 'checkbox' ||
             child.props?.className?.includes('text-indigo-600')
         )
     );
 
     const checkbox = checkboxIndex !== -1 ? childArray[checkboxIndex] : null;
-    const textContent = checkboxIndex !== -1 
-        ? childArray.filter((_, idx) => idx !== checkboxIndex) 
+    const textContent = checkboxIndex !== -1
+        ? childArray.filter((_, idx) => idx !== checkboxIndex)
         : childArray;
 
     const initialMarkdownChecked = Boolean(
@@ -259,16 +259,16 @@ const PersistentTaskListItem = ({
     };
 
     return (
-        <li 
-            className="flex items-start gap-2.5 mb-2.5 w-full group select-none transition-all duration-200" 
-            style={{ 
-                listStyleType: 'none', 
+        <li
+            className="flex items-start gap-2.5 mb-2.5 w-full group select-none transition-all duration-200"
+            style={{
+                listStyleType: 'none',
                 paddingLeft: 0,
                 marginLeft: 0,
                 wordBreak: 'break-word',
                 overflowWrap: 'anywhere',
                 opacity: isChecked ? 0.6 : 1,
-            }} 
+            }}
             {...props}
         >
             <div className="mt-1 flex-shrink-0 flex items-center justify-center">
@@ -280,14 +280,14 @@ const PersistentTaskListItem = ({
                     style={{ cursor: 'pointer' }}
                 />
             </div>
-            <div 
+            <div
                 onClick={handleTextClick}
-                className="flex-1 min-w-0 cursor-pointer transition-colors duration-150" 
-                style={{ 
-                    fontSize: '15px', 
-                    lineHeight: '1.75', 
-                    color: isChecked 
-                        ? (darkMode ? '#94a3b8' : '#64748b') 
+                className="flex-1 min-w-0 cursor-pointer transition-colors duration-150"
+                style={{
+                    fontSize: '15px',
+                    lineHeight: '1.75',
+                    color: isChecked
+                        ? (darkMode ? '#94a3b8' : '#64748b')
                         : (darkMode ? '#f1f5f9' : '#334155'),
                     wordBreak: 'break-word',
                     overflowWrap: 'anywhere',
@@ -412,7 +412,7 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
                         if (parsed && (parsed.questions || parsed.options)) {
                             wizard = partial.substring(firstBrace, lastBrace + 1);
                         }
-                    } catch (e) {}
+                    } catch (e) { }
                 }
                 // Sembunyikan teks JSON mentah dari atas chat saat sedang streaming
                 final = final.replace(/```(?:wizard|interactive_options)\s*[\s\S]*$/i, '').trim();
@@ -446,6 +446,12 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
 
         // 3. Pastikan penutup persona santai seperti 'Gitu ceritanya' tampil di paragraf tersendiri
         final = final.replace(/([.!?])[ \t]+(Gitu ceritanya)/g, '$1\n\n$2');
+
+        // 4. Normalisasi pemisah butir poin / bullet agar selalu menjadi list rapi dan tidak menyatu sebaris:
+        // Pisahkan bullet point (•) yang menempel setelah kalimat atau link menjadi baris baru
+        final = final.replace(/([^\n])\s*•\s+/g, '$1\n\n- ');
+        // Ubah bullet unicode (•) di awal baris menjadi list markdown standar (- )
+        final = final.replace(/(?:^|\n)[ \t]*•\s+/g, '\n- ');
 
         return { thinkingBlock: thinking, finalResponseBlock: final, wizardBlock: wizard, isWizardStreaming };
     }, [rawContent, thinkingContent]);
@@ -487,18 +493,18 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
             const { darkMode, theme, searchQuery, isStreaming, language } = latestProps.current;
             const isTaskList = className?.includes('contains-task-list');
             return (
-                <ul 
+                <ul
                     className={className}
-                    style={{ 
-                        marginLeft: isTaskList ? '4px' : '18px', 
-                        paddingLeft: isTaskList ? '0px' : '12px', 
-                        listStyleType: isTaskList ? 'none' : 'disc', 
-                        marginTop: '8px', 
+                    style={{
+                        marginLeft: isTaskList ? '4px' : '18px',
+                        paddingLeft: isTaskList ? '0px' : '12px',
+                        listStyleType: isTaskList ? 'none' : 'disc',
+                        marginTop: '8px',
                         marginBottom: '16px',
                         width: '100%',
                         maxWidth: '100%',
                         boxSizing: 'border-box'
-                    }} 
+                    }}
                     {...props}
                 >
                     {recursiveHighlight(children, searchQuery)}
@@ -523,16 +529,16 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
                 );
             }
             return (
-                <li 
-                    style={{ 
-                        marginBottom: '12px', 
-                        fontSize: '15px', 
-                        lineHeight: '1.75', 
-                        paddingLeft: '8px', 
+                <li
+                    style={{
+                        marginBottom: '12px',
+                        fontSize: '15px',
+                        lineHeight: '1.75',
+                        paddingLeft: '8px',
                         color: darkMode ? '#f1f5f9' : '#334155',
                         wordBreak: 'break-word',
                         overflowWrap: 'anywhere'
-                    }} 
+                    }}
                     {...props}
                 >
                     {recursiveHighlight(children, searchQuery)}
@@ -727,12 +733,12 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
 
                 return (
                     <Suspense fallback={<div className="animate-pulse p-4 border rounded-xl text-xs text-gray-400 font-medium my-2">Memuat penelusuran web</div>}>
-                        <LazyWebSearchWidget 
-                            searchData={searchData} 
-                            isStreaming={isStreaming} 
-                            hasStartedResponding={hasStartedResponding} 
-                            darkMode={darkMode} 
-                            language={language} 
+                        <LazyWebSearchWidget
+                            searchData={searchData}
+                            isStreaming={isStreaming}
+                            hasStartedResponding={hasStartedResponding}
+                            darkMode={darkMode}
+                            language={language}
                             statusText={statusMessage}
                         />
                     </Suspense>
@@ -757,7 +763,7 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
                 const { darkMode, language } = latestProps.current;
                 return (
                     <Suspense fallback={<div className={`animate-pulse p-4 border rounded-2xl text-xs font-medium my-2 ${darkMode ? 'border-zinc-800 bg-zinc-900/60 text-zinc-400' : 'border-slate-200 bg-slate-50 text-slate-500'}`}>Memuat snapshot dokumen...</div>}>
-                        <LazyDocumentPageViewer 
+                        <LazyDocumentPageViewer
                             toolData={toolData}
                             darkMode={darkMode}
                             language={language}
@@ -796,13 +802,13 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
 
                 return (
                     <Suspense fallback={<div className={`animate-pulse p-3 border rounded-xl text-xs font-medium my-2 ${darkMode ? 'border-[#2d2d2d] bg-[#1e1e1e] text-gray-400' : 'border-slate-200 bg-slate-50 text-slate-500'}`}>Memuat proses</div>}>
-                        <LazyAgenticProcessCard 
-                            toolData={toolData} 
-                            toolType={match[1]} 
-                            isStreaming={isStreaming} 
-                            hasStartedResponding={hasStartedResponding} 
-                            darkMode={darkMode} 
-                            language={language} 
+                        <LazyAgenticProcessCard
+                            toolData={toolData}
+                            toolType={match[1]}
+                            isStreaming={isStreaming}
+                            hasStartedResponding={hasStartedResponding}
+                            darkMode={darkMode}
+                            language={language}
                             statusText={statusMessage}
                         />
                     </Suspense>
@@ -831,11 +837,11 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
 
                 return (
                     <Suspense fallback={<div className="animate-pulse p-2 text-xs text-gray-400 font-medium my-2">{tGlobal.readingWebLinks || "Membaca tautan web"}</div>}>
-                        <LazyUrlFetchTimelineWidget 
-                            data={fetchPayload} 
-                            isStreaming={isStreaming} 
-                            hasStartedResponding={hasStartedResponding} 
-                            darkMode={darkMode} 
+                        <LazyUrlFetchTimelineWidget
+                            data={fetchPayload}
+                            isStreaming={isStreaming}
+                            hasStartedResponding={hasStartedResponding}
+                            darkMode={darkMode}
                             language={language}
                             statusText={statusMessage}
                         />
@@ -870,12 +876,12 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
             if (!inline && match && (match[1] === 'docwriter' || match[1] === 'doc_writer' || match[1] === 'document_writer')) {
                 return (
                     <Suspense fallback={<div className="animate-pulse p-4 border border-dashed rounded-xl text-sm text-center font-medium my-2">Memuat Dokumen Studio...</div>}>
-                        <LazyDocWriterWidget 
-                            codeBlockContent={cleanCode} 
-                            darkMode={darkMode} 
-                            theme={theme} 
-                            language={language} 
-                            isStreaming={isStreaming} 
+                        <LazyDocWriterWidget
+                            codeBlockContent={cleanCode}
+                            darkMode={darkMode}
+                            theme={theme}
+                            language={language}
+                            isStreaming={isStreaming}
                         />
                     </Suspense>
                 );
@@ -906,11 +912,11 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
                 }
                 return (
                     <Suspense fallback={<div className="animate-pulse p-3 border rounded-xl text-xs font-medium my-2">Memuat komparasi dokumen...</div>}>
-                        <LazyDocumentDiffProcessCard 
-                            diffData={cleanCode} 
-                            darkMode={darkMode} 
-                            language={language} 
-                            isStreaming={isStreaming} 
+                        <LazyDocumentDiffProcessCard
+                            diffData={cleanCode}
+                            darkMode={darkMode}
+                            language={language}
+                            isStreaming={isStreaming}
                             hasStartedResponding={hasStartedResponding}
                         />
                     </Suspense>
@@ -918,8 +924,8 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
             }
 
             if (!inline && match && (
-                match[1] === 'doc-audit-continue' || 
-                match[1] === 'docauditcontinue' || 
+                match[1] === 'doc-audit-continue' ||
+                match[1] === 'docauditcontinue' ||
                 match[1] === 'audit-continue' ||
                 match[1] === 'doc-audit-final' ||
                 match[1] === 'docauditfinal' ||
@@ -929,8 +935,8 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
                 const tAudit = translations[language]?.docAudit || translations.id.docAudit || {};
                 return (
                     <Suspense fallback={<div className="animate-pulse p-4 border border-dashed rounded-xl text-xs text-center font-medium my-3">{tAudit.loadingWidget || "Memuat Progres Audit..."}</div>}>
-                        <LazyDocAuditContinueWidget 
-                            rawContent={cleanCode} 
+                        <LazyDocAuditContinueWidget
+                            rawContent={cleanCode}
                             darkMode={darkMode}
                             messageIndex={messageIndex}
                             isLastMessage={isLastMessage}
@@ -1103,7 +1109,43 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
                     }
                 }
 
-                const answeredList = (messageIndex !== null && messageIndex !== undefined) ? wizardAnswers[messageIndex] : null;
+                const answeredList = (() => {
+                    if (messageIndex !== null && messageIndex !== undefined && wizardAnswers[messageIndex]) {
+                        return wizardAnswers[messageIndex];
+                    }
+                    if (wizardBlock && messageIndex !== null && messageIndex !== undefined) {
+                        try {
+                            const allMessages = useChatStore.getState().messages;
+                            const nextMsg = allMessages?.[messageIndex + 1];
+                            if (nextMsg && nextMsg.role === 'user' && nextMsg.content) {
+                                const wizData = typeof wizardBlock === 'string' ? JSON.parse(wizardBlock) : wizardBlock;
+                                const questions = wizData.questions || [];
+                                const userText = nextMsg.content.trim().toLowerCase();
+                                const matchedAnswers = [];
+                                for (const q of questions) {
+                                    for (const opt of (q.options || [])) {
+                                        const p = (opt.prompt || '').trim().toLowerCase();
+                                        const l = (opt.label || '').trim().toLowerCase();
+                                        const v = (opt.value || opt.id || '').trim().toLowerCase();
+                                        if (
+                                            (p && (userText === p || userText.includes(p) || p.includes(userText))) ||
+                                            (l && (userText === l || userText.includes(l) || l.includes(userText))) ||
+                                            (v && (userText === v || userText.includes(v)))
+                                        ) {
+                                            matchedAnswers.push({
+                                                question: q.question,
+                                                answer: opt.label || opt.selectedValue || opt.prompt
+                                            });
+                                            break;
+                                        }
+                                    }
+                                }
+                                if (matchedAnswers.length > 0) return matchedAnswers;
+                            }
+                        } catch (e) { }
+                    }
+                    return null;
+                })();
                 const hasPendingAction = Boolean(finalResponseBlock && (/\[ACTION:/i.test(finalResponseBlock) || /<(?:create_file|edit_file)/i.test(finalResponseBlock)));
 
                 // 🎯 DETEKSI STATUS EKSEKUSI ALAT AGAR EFEK GELAP/INK-TRAIL TIDAK MENUTUPI TEKS
@@ -1136,7 +1178,7 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
                                 />
                             </div>
                         )}
-                        
+
                         {/* 🛠️ LIVE STREAMING TOOL ACCORDION (Jika tool sedang jalan tapi blok markdown belum tiba) */}
                         {isStreaming && effectiveActiveTool && !rawContent?.includes(`\`\`\`${effectiveActiveTool}`) && (
                             <div className="w-full animate-fadeInUp" style={{ animationDuration: '0.2s' }}>
@@ -1189,23 +1231,22 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
                                 )}
                             </div>
                         )}
-                        
+
                         {/* 🎯 REKAM JEJAK PILIHAN USER (SUMMARY BADGES) SETELAH WIZARD DISUBMIT */}
                         {answeredList && Array.isArray(answeredList) && answeredList.length > 0 && (
                             <div className={`mt-3 pt-2.5 border-t flex flex-col gap-2 ${darkMode ? 'border-zinc-800/80' : 'border-gray-200'}`}>
                                 <div className="text-[11.5px] font-semibold text-indigo-400 flex items-center gap-1.5">
                                     <Layers className="w-3.5 h-3.5" />
-                                    <span>Konfirmasi Rujukan Terpilih:</span>
+                                    <span>{translations[language]?.wizard?.selectedReferenceConfirmation || translations.id.wizard.selectedReferenceConfirmation || "Konfirmasi Rujukan Terpilih:"}</span>
                                 </div>
                                 <div className="flex flex-col gap-1.5">
                                     {answeredList.map((item, idx) => (
-                                        <div 
-                                            key={idx} 
-                                            className={`flex items-start sm:items-center gap-2 px-3 py-1.5 rounded-lg text-[12px] border ${
-                                                darkMode 
-                                                    ? 'bg-indigo-500/10 border-indigo-500/20 text-indigo-200' 
+                                        <div
+                                            key={idx}
+                                            className={`flex items-start sm:items-center gap-2 px-3 py-1.5 rounded-lg text-[12px] border ${darkMode
+                                                    ? 'bg-indigo-500/10 border-indigo-500/20 text-indigo-200'
                                                     : 'bg-indigo-50 border-indigo-200 text-indigo-900'
-                                            }`}
+                                                }`}
                                         >
                                             <CheckCircle className="w-3.5 h-3.5 text-indigo-400 flex-shrink-0 mt-0.5 sm:mt-0" />
                                             <div className="flex flex-wrap items-center gap-1 min-w-0">

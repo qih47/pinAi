@@ -88,20 +88,25 @@ Setiap kali merancang fitur, menangani input baru, atau mengelola transmisi data
 
 ## 🔀 FASE 5: PRINSIP NON-DESTRUKTIF & PERCABANGAN KHUSUS (SAFE BRANCHING: A ➔ A1, B ➔ B1)
 * **Jangan Merusak Sistem yang Stabil:** Hindari merombak alur global atau mengganti kondisi umum yang berpotensi memicu efek domino destruktif.
+* **DILARANG MENGHILANGKAN / MENGEBIRI KEMAMPUAN DINAMIS:**
+  - JANGAN PERNAH mematikan, menyunat, atau mengunci kemampuan cerdas sistem (contoh: DILARANG mengunci web search atau tool calling hanya saat pill tag diklik secara manual dari UI). Mode `auto` harus tetap dinamis, mandiri, dan leluasa memanggil tools/search ketika Call 1 mendeteksi kebutuhan data terkini/eksternal.
+  - JANGAN PERNAH mendowngrade kueri pengguna yang memiliki intensi pencarian fakta/data substantif menjadi sekadar `chitchat` kosong tanpa data.
 * **Prioritaskan Percabangan Terisolasi:** Jika menemukan kebutuhan khusus atau penanganan kasus tepi (*edge case*):
   - Jika kasus A ➔ arahkan ke sub-cabang A1.
   - Jika kasus B ➔ arahkan ke sub-cabang B1.
   - Alur default yang sudah stabil tetap berjalan tanpa terganggu.
-* **Sinkronisasi Alur Parameter Lintas Jalur:** Setiap kali menambah atau memodifikasi parameter (misal di `precheck`, `routing`, atau context orchestrator):
-  - Lakukan audit terhadap SELURUH jalur konsumen yang memakai data tersebut (Flash Mode, Documents/RAG, Coding Expert, Analyst, Chitchat, SSE Streamer).
-  - JANGAN SAMPAI ketika memperbaiki 1 fungsi, fungsi lain yang semestinya ikut ke jalur tersebut malah putus atau tidak bekerja. Parameter baru harus bersifat aditif dan mempertahankan backward compatibility.
+* **Sinkronisasi Alur Parameter Lintas Jalur (Audit Rantai Utuh):** Setiap kali menambah atau memodifikasi parameter (misal di `precheck`, `routing`, atau context orchestrator):
+  - Lakukan audit terhadap SELURUH rantai konsumen yang memakai data tersebut: **Call 1 Router ➔ Mode Hub ➔ Modul Responder ➔ Call 2 Interceptor ➔ SSE Stream ➔ Frontend Markdown Renderer**.
+  - JANGAN SAMPAI ketika memperbaiki 1 fungsi, fungsi lain yang semestinya ikut ke jalur tersebut malah putus, terpotong, atau tidak bekerja. Parameter baru harus bersifat aditif dan mempertahankan backward compatibility.
 
-## 🧠 FASE 6: PROMPT UNIVERSAL & INTELIJEN CALL 1 (BUKAN SELALU REGEX)
+## 🧠 FASE 6: PROMPT UNIVERSAL, DINAMIS & ANTI-OVERFITTING (BUKAN SELALU REGEX)
 * **Manfaatkan Kecerdasan Call 1:** Model Call 1 Router (Gemma 4) sudah sangat cerdas dan memiliki pemahaman semantik serta konteks multi-turn yang mendalam.
 * **Hindari Ketergantungan Regex Berlebih:** Jangan selalu menyelesaikan masalah klasifikasi atau formatting dengan tumpukan regex rapuh yang rentan false-positive/bentrok (seperti bentrok kata "kabar" di web search). Regex hanya difungsikan sebagai *fast-path* atau *safety net* komplementer, bukan penentu tunggal.
-* **Desain Prompt Universal (Anti-Overfitting):**
-  - Rancang instruksi prompt yang tegas, universal, dan berfokus pada mekanika perilaku (misal pemenuhan format jawaban dinamis: biner, singkat, komprehensif).
-  - **DILARANG KERAS OVERFITTING TOPIK:** Jangan memasukkan contoh kasus percakapan spesifik (seperti topik curhat keluarga, anak, emoji khusus uji coba `🍼`, dsb.) ke dalam prompt sistem. Prompt harus berlaku universal untuk topik apapun yang dibahas oleh pengguna.
+* **Desain Prompt Universal & Dinamis (DILARANG KERAS CONTOH KALIMAT):**
+  - **DILARANG KERAS Memberikan Contoh Kalimat Baku / Template Dialog:** JANGAN PERNAH menyertakan contoh frasa verbal atau kalimat dialog (misal: *"Bentar ya cuy..."*, *"Tunggu sebentar..."*, *"Halo kak..."*) di dalam prompt sistem atau prompt perbaikan. LLM akan membeo (*parrot*) dan meniru kalimat contoh tersebut secara kaku di semua percakapan tanpa peduli konteks.
+  - **Prinsip Konseptual & Mekanika Perilaku:** Rancang instruksi secara konseptual, universal, dan berfokus pada mekanika tindakan (misal: *Wajib sampaikan pernyataan pengantar secara transparan di stream sebelum membuka blok alat*). Biarkan model merangkai kata-katanya sendiri secara dinamis dan luwes sesuai pronoun dan nada bicara aktif.
+  - **Agnostik Topik (DILARANG Overfitting Topik):** Jangan mengunci contoh kasus percakapan spesifik (seperti topik curhat keluarga, anak, kopi, santai, emoji khusus uji coba `🍼`, dsb.) ke dalam prompt sistem. Prompt harus berlaku universal untuk topik apa pun yang dibahas oleh pengguna.
+  - **Instruksi Ekstraksi Kueri Universal:** Saat memerintahkan model merumuskan kueri pencarian, rumuskan aturan secara universal: ambil entitas inti dan substansi kebutuhan faktual pengguna, buang basa-basi/obrolan santai, tanpa mengotak-ngotakkan atau meng-hardcode kata-kata obrolan tertentu.
 
 ## 🔄 WORKFLOW SIKLUS HIDUP EKSEKUSI
 1. **Analyze:** Gunakan `grep_search` atau `view_file` untuk memetakan arsitektur yang sudah ada dan cek dependensi dengan `security_firewall.py`.
@@ -114,6 +119,8 @@ Jika kamu membuat script pengecekan, file test sementara, atau file dummy yang h
 
 > 🚨 **CONSTRAINTS (BATASAN MUTLAK):**
 > - Jangan pernah membuat arsitektur baru jika arsitektur pusat sudah ada. Ikuti pola yang sudah dibuat.
+> - **DILARANG KERAS merusak atau mengebiri fungsi dinamis** yang sudah ada (misal: mematikan web search dinamis, mendowngrade query ke chitchat kosong).
+> - **DILARANG KERAS menulis contoh kalimat dialog/baku di dalam prompt**. Gunakan instruksi mekanika konseptual yang dinamis.
 > - Selalu taati aturan keamanan di `security_firewall.py` saat menangani payload pengguna.
 > - Jika kamu bingung di mana sebuah modul harus didaftarkan, WAJIB berhenti dan bertanya kepada pengguna.
 > - **FE HANYA BOLEH MENEMBAK PORT 8000 (API GATEWAY)**. Jangan hardcode port 8001/8002/8003 di kode FE.

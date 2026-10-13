@@ -933,45 +933,26 @@ def _validate_and_normalize_routing(
     active_reg_id = precheck.get("active_regulation_id")
 
     # 1. 🧙 Penanganan Konfirmasi Wizard:
+    wizard_resolved = False
     if is_replying_to_wizard:
         # 🛡️ ANTI-LOOP: User sedang menjawab pertanyaan wizard Responder, TIDAK BOLEH ambigu lagi!
         routing["is_ambiguous"] = False
-        logger.info("[DISPATCHER_ROUTER] 🎯 Resolving Wizard Answer from Responder -> Overriding is_ambiguous=False")
+        wizard_resolved = True
+        logger.info("[DISPATCHER_ROUTER] 🎯 Resolving Wizard Answer from Responder -> Overriding is_ambiguous=False (wizard_resolved=True)")
         
-        # Resolusi Domain Berdasarkan Jawaban User / Opsi Wizard:
-        # A. Visual / Grafik / Diagram (misal: "bikin chart pie", "bar chart", "flowchart")
-        if any(w in user_msg_lower for w in ["chart", "grafik", "pie", "bar", "line", "diagram", "mermaid", "datagrid", "tabel"]):
-            routing["requires_visual"] = True
-            if any(w in user_msg_lower for w in ["chart", "grafik", "pie", "bar", "line", "radar", "donut"]):
-                routing["visual_types"] = ["chart"]
-            elif any(w in user_msg_lower for w in ["diagram", "alur", "mermaid"]):
-                routing["visual_types"] = ["mermaid"]
-            routing["need_rag"] = False
-            routing["is_chitchat"] = False
-
-        # B. Regulasi / Dokumen Internal (misal: "cuti tahunan", "PKB 2024", "SOP")
-        elif any(w in user_msg_lower for w in ["cuti", "pkb", "sop", "sk", "peraturan", "tunjangan", "dinas", "pindad", "pegawai"]) or (precheck.get("last_wizard", {}).get("title", "").lower().find("cuti") != -1 or precheck.get("last_wizard", {}).get("title", "").lower().find("regulasi") != -1):
-            if not is_guest:
-                routing["need_rag"] = True
-                routing["is_chitchat"] = False
-                routing["is_web_search"] = False
-                if not routing.get("queries") or len(routing["queries"][0].split()) <= 2:
-                    wiz_title = precheck.get("last_wizard", {}).get("title", "")
-                    routing["queries"] = [f"{wiz_title} {user_message}".strip()]
-                if not routing.get("query_judul"):
-                    if "pkb" in user_msg_lower or "cuti" in user_msg_lower:
-                        routing["query_judul"] = ["PKB", "Cuti"]
-                    elif "sop" in user_msg_lower:
-                        routing["query_judul"] = ["SOP"]
-
-        # C. Koding / Tech Stack (misal: "react", "fastapi", "python")
-        elif any(w in user_msg_lower for w in ["react", "vue", "python", "fastapi", "sql", "koding", "script", "node", "nextjs"]):
-            routing["is_coding"] = True
-            routing["need_rag"] = False
-            routing["is_chitchat"] = False
+        # Hormati keputusan semantik Call 1 Router (Gemma 4):
+        # Call 1 Router mengevaluasi konteks pertanyaan wizard dan jawaban pilihan pengguna secara semantik.
+        # Fallback kueri mandiri jika Call 1 belum mengisi queries:
+        if not routing.get("queries") or len(routing["queries"][0].split()) == 0:
+            wiz_meta = precheck.get("last_wizard") or {}
+            wiz_title = str(wiz_meta.get("title") or "").strip()
+            if wiz_title:
+                routing["queries"] = [f"{wiz_title} {user_message}".strip()]
+            else:
+                routing["queries"] = [user_message.strip()]
 
     # 2. 📊 Penanganan Kelanjutan Visual (Call 2 baru saja membuat visual):
-    if has_prior_visual and not routing["need_rag"]:
+    if has_prior_visual and not routing["need_rag"] and not wizard_resolved:
         visual_mod_kw = ["warna", "ganti", "ubah", "potongan", "pie", "bar", "line", "tambah", "label", "tampilan", "judul", "chart", "grafik", "diagram"]
         if any(w in user_msg_lower for w in visual_mod_kw) and len(user_message.split()) <= 15:
             routing["requires_visual"] = True
@@ -982,7 +963,7 @@ def _validate_and_normalize_routing(
             logger.info(f"[DISPATCHER_ROUTER] 📊 Continuous Visual Refinement detected -> requires_visual=True, visual_types={routing['visual_types']}")
 
     # 3. 💻 Penanganan Kelanjutan Koding (Call 2 baru saja membuat kode/file):
-    if has_prior_coding and not routing["need_rag"]:
+    if has_prior_coding and not routing["need_rag"] and not wizard_resolved:
         coding_cont_kw = ["tambah", "fitur", "fungsi", "error", "bug", "perbaiki", "lanjut", "jalankan", "file", "kode", "skrip", "refactor", "ubah fungsi"]
         if any(w in user_msg_lower for w in coding_cont_kw) and len(user_message.split()) <= 15:
             routing["is_coding"] = True
@@ -990,7 +971,7 @@ def _validate_and_normalize_routing(
             logger.info("[DISPATCHER_ROUTER] 💻 Continuous Coding Refinement detected -> is_coding=True")
 
     # 4. 💬 Penanganan Kelanjutan Basa-basi (Call 2 baru saja menjawab chitchat):
-    if has_prior_chitchat and not routing["need_rag"] and not routing["is_coding"] and not routing["requires_visual"]:
+    if has_prior_chitchat and not routing["need_rag"] and not routing["is_coding"] and not routing["requires_visual"] and not wizard_resolved:
         casual_ack_kw = {"mantap", "siap", "oke", "ok", "haha", "wkwk", "makasih", "terima kasih", "thanks", "tq", "sip", "semangat", "keren", "bener", "betul", "iya", "nice", "good"}
         user_words = set(re.findall(r'\b[a-zA-Z0-9_]+\b', user_msg_lower))
         has_doc_terms = any(kw in user_msg_lower for kw in ["dokumen", "pkb", "sop", "peraturan", "skep", "surat", "cuti", "pasal", "gaji", "tunjangan", "kpi", "audit"])
@@ -1001,17 +982,15 @@ def _validate_and_normalize_routing(
             logger.info("[DISPATCHER_ROUTER] 💬 Continuous Casual / Chitchat flow detected -> is_chitchat=True")
 
     # 5. 📚 Penanganan Kelanjutan Dokumen / Regulasi Multi-turn (Termasuk Lampiran, Bagan, Bab, Pasal):
-    # Jika percakapan sebelumnya membahas dokumen/PKB/regulasi dan pesan lanjutan menanyakan rincian
-    has_prior_doc_context = bool(
-        has_prior_rag
-        or (context_history_str and any(kw in context_history_str.lower() for kw in ["pkb", "pasal", "peraturan", "sop", "skep", "surat keputusan", "ketentuan", "kebijakan", "dokumen"]))
-    )
-    if has_prior_doc_context and not routing.get("is_coding") and not is_simple_greeting and not is_explicit_web:
+    # HANYA aktif jika giliran SEBELUMNYA LANGSUNG (N-1) memang sedang aktif membahas dokumen regulasi fisik
+    # dan BUKAN merupakan kelanjutan wizard yang sudah terselesaikan di atas
+    has_prior_doc_context = bool(has_prior_rag or active_reg_title)
+    if has_prior_doc_context and not wizard_resolved and not routing.get("is_coding") and not routing.get("is_web_search") and not is_simple_greeting and not is_explicit_web:
         doc_anaphora_kw = [
-            "lampiran", "pasal", "ayat", "bagan", "bab", "gambar", "tabel", "skema", "alur", "formulir", "format",
+            "lampiran", "pasal", "ayat", "bagan", "bab", "skema", "alur", "formulir", "format",
             "bagaimana dengan", "bagaimana kalau", "lalu", "kalau", "kompensasi", "lembur", "lapangan", "sanksi",
             "syarat", "ketentuan", "aturan", "berapa", "karyawan", "pegawai", "hak", "tunjangan", "halaman",
-            "tunjukin", "tampilkan", "lihat", "buka", "perlihatkan", "detail", "isi dari", "apa bunyi", "bunyinya"
+            "isi dari", "apa bunyi", "bunyinya"
         ]
         if any(w in user_msg_lower for w in doc_anaphora_kw) or routing.get("need_rag"):
             routing["need_rag"] = True
@@ -1020,7 +999,7 @@ def _validate_and_normalize_routing(
             routing["needs_history"] = True
             
             # Jika user meminta melihat visual / gambar / lampiran dari dokumen regulasi
-            if any(w in user_msg_lower for w in ["lampiran", "bagan", "gambar", "alur", "skema", "diagram", "tunjukin", "lihat", "tampilkan", "format", "formulir", "dokumen"]):
+            if any(w in user_msg_lower for w in ["lampiran", "bagan", "gambar", "alur", "skema", "diagram", "format", "formulir", "dokumen"]):
                 routing["requires_visual"] = True
                 if "doc_media" not in routing.get("visual_types", []):
                     if not routing.get("visual_types"):
@@ -1893,11 +1872,11 @@ async def dispatch_preset_route(
 
         # Kelanjutan RAG & Lampiran regulasi multi-turn jika Call 2 sebelumnya telah membahas regulasi
         if has_prior_rag and not result.get("is_coding") and not is_guest_user:
-            doc_anaph_p = ["lampiran", "pasal", "ayat", "bagan", "bab", "gambar", "tabel", "skema", "alur", "format", "formulir", "tunjukin", "lihat", "tampilkan", "buka"]
+            doc_anaph_p = ["lampiran", "pasal", "ayat", "bagan", "bab", "gambar", "tabel", "skema", "alur", "format", "formulir"]
             if any(w in user_lower_check for w in doc_anaph_p):
                 result["need_rag"] = True
                 result["is_ambiguous"] = False
-                if any(w in user_lower_check for w in ["lampiran", "bagan", "gambar", "alur", "skema", "tunjukin", "lihat", "tampilkan"]):
+                if any(w in user_lower_check for w in ["lampiran", "bagan", "gambar", "alur", "skema", "format", "formulir"]):
                     result["requires_visual"] = True
                     vt_curr = result.get("visual_types", [])
                     if isinstance(vt_curr, list) and "doc_media" not in vt_curr:

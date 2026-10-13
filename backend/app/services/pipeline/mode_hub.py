@@ -1258,11 +1258,23 @@ class ModeHub:
 
         # ── Web Search Mode Routing ─────────────────────────────────────
         # JANGAN izinkan web search jika need_rag bernilai True atau user secara eksplisit mengunci mode Dokumen
-        # HANYA masuk ke handle_web_search jika user secara EKSPLISIT memilih pill tag websearch dari FE
-        # Pada mode auto/general, websearch didelegasikan sepenuhnya ke Call 2 in-stream!
-        is_explicit_web_tag = effective_req_mode in ["websearch", "search", "web"]
-        if is_explicit_web_tag and precheck.get("is_web_search", False) and not precheck.get("need_rag", False):
-            logger.info("[MODE_HUB] Routing to Web Search Mode (Explicit Pill Tag).")
+        is_explicit_doc_locked = effective_req_mode in ["documents", "document", "rag", "focus", "compliance", "redteam"]
+        is_file_or_task_mode = bool(
+            routing_data.get("is_generate_file")
+            or routing_data.get("is_generate_email")
+            or routing_data.get("is_deck_query")
+            or routing_data.get("is_docwriter")
+            or precheck.get("is_docwriter")
+        )
+        should_web_search = (
+            precheck.get("is_web_search", False)
+            and not precheck.get("need_rag", False)
+            and not is_explicit_doc_locked
+            and not is_file_or_task_mode
+        )
+
+        if should_web_search:
+            logger.info("[MODE_HUB] Routing to Web Search Mode (Dynamic Web Search).")
             from backend.app.services.pipeline.modes.mode_web_search import handle_web_search
             # Convert ChatMessageSchema to dict
             history_dicts = [m.model_dump() for m in chat_history]

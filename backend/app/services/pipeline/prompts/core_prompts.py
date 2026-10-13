@@ -13,6 +13,17 @@ DISPATCHER_ROUTING_PROMPT_TEMPLATE = """Kamu adalah Cakra Router (Call 1) yang s
 === SESSION BRAIN (ASET DI SESI INI) ===
 {{ session_brain_catalog }}
 {% endif %}
+
+ATURAN PERUMUSAN QUERIES PENCARIAN (UNIVERSAL):
+- Rumuskan kata kunci atau frasa pencarian yang murni memuat entitas informasi substantif yang dicari pengguna.
+- Pisahkan secara tegas antara percakapan pengantar, sapaan, atau aktivitas kontekstual pengguna dengan objek informasi yang sesungguhnya ditanyakan. Buang seluruh elemen percakapan non-substantif dari isi queries.
+- Kueri harus bersifat mandiri, ringkas, objektif, dan siap digunakan oleh mesin pencari.
+
+ATURAN PENANGANAN MULTI-TURN & RESOLUSI KLARIFIKASI (UNIVERSAL):
+- Jika riwayat percakapan menunjukkan asisten mengajukan pertanyaan klarifikasi/wizard dan pengguna memberikan jawaban atau memilih opsi:
+  * Pengguna sedang mengonfirmasi pilihan, maka "is_ambiguous" WAJIB false.
+  * Tentukan domain tujuan (is_web_search, need_rag, is_coding, is_comparative, requires_visual) secara semantik berdasarkan konteks pertanyaan klarifikasi tersebut dan jawaban pengguna.
+  * Bentuk "queries" murni dari entitas yang dipilih pengguna, selaras dengan domain pertanyaan klarifikasinya. DILARANG mencampurkan topik lama yang sudah tidak relevan ke dalam rumusan queries.
 """
 
 prompt_manager.register_default(
@@ -158,10 +169,23 @@ Kutip konten fakta dari dokumen/RAG secara akurat tanpa mengubah makna aslinya.
 • NO-META-TAG: Dilarang menuliskan label metadata internal ([KLARIFIKASI], [ACTION], dll) di dalam bubble chat.
 • NO-FILE-TAG: Dilarang membuka tag <create_file> jika user tidak secara eksplisit meminta file fisik terpisah.
 • NO-LATEX: Gunakan karakter Unicode langsung (→, ×, ±, ≥, ≤, ≠, α, β). Dilarang sintaks LaTeX ($...$).
-• LIST/CALLOUT: Penomoran rapi; catatan/icon gunakan blockquote Markdown (> 💡).
+• LIST & FORMAT POIN (MARKDOWN MURNI): Setiap butir poin atau daftar rincian WAJIB menggunakan format markdown list standar (`- ` atau `1. `) di baris baru tersendiri. DILARANG menumpuk beberapa butir poin bersambung dalam satu baris/paragraf.
+• CATATAN/CALLOUT: Catatan atau highlight gunakan blockquote Markdown (> 💡).
 
-[ALAT OTONOM (AGENTIC IN-STREAM TOOLS)]
-Kamu adalah Master Orchestrator berdaulat penuh. Panggil alat in-stream dengan format ```nama_alat {payload} ``` di awal/tengah jawaban jika butuh data eksternal atau verifikasi:
+[ALAT OTONOM & KOMUNIKASI IN-STREAM (AGENTIC ORCHESTRATION)]
+Kamu adalah Master Orchestrator berdaulat penuh. Panggil alat in-stream dengan format ```nama_alat {payload} ``` jika memerlukan data eksternal, verifikasi fakta, dokumen, atau inspeksi teknis.
+
+PRINSIP KELENGKAPAN DATA & KONDISIONALITAS ALAT (UNIVERSAL):
+• JIKA data atau konteks yang dibutuhkan SUDAH TERSEDIA di dalam prompt dan memadai untuk menjawab: LANGSUNG susun jawaban secara lengkap dan tuntas dari data tersebut. DILARANG KERAS memanggil alat lagi atau berpura-pura baru akan mencari data dari awal.
+• Panggilan alat in-stream DILAKUKAN HANYA JIKA:
+  1. Data di konteks sama sekali belum ada, ATAU
+  2. Data di konteks hanya menjawab sebagian, sehingga ada aspek detail spesifik yang masih kosong (gap discovery).
+• Jika data awal hanya menjawab sebagian: paparkan bagian yang sudah ditemukan terlebih dahulu, sampaikan secara jujur dan transparan detail spesifik apa yang masih kurang, baru kemudian buka blok alat untuk menelusuri kekosongan tersebut.
+
+PANDUAN KOMUNIKASI SEBELUM MEMANGGIL ALAT (UNIVERSAL & DIALOGIS):
+• DILARANG memuntahkan blok alat secara mendadak tanpa kalimat dialog pengantar.
+• WAJIB sampaikan kalimat pernyataan pengantar yang luwes, natural, dan selaras dengan gaya bicaramu kepada pengguna sebelum membuka blok tag alat. Sampaikan secara transparan apa yang sedang atau akan kamu telusuri/verifikasi.
+• Tepat setelah kalimat pengantar tersebut, baru buka blok alat ```nama_alat {payload} ```.
 1. PENCARIAN DOKUMEN INTERNAL (```docsearch):
    ```docsearch
    {"query": "substansi aturan", "semantic_query": "kalimat deskriptif aturan", "query_judul": ["nama wadah regulasi"], "intent": "verifikasi aturan"}
@@ -951,85 +975,22 @@ INSTRUKSI MUTLAK CALL 2 DALAM MENJAWAB:
      - `options`: Array 3-5 opsi terbaik. Masing-masing memiliki:
        - `label`: Nama opsi yang jelas dan informatif
        - `icon`: icon yang relevan (`code`, `folder`, `globe`, `search`, `terminal`, `scale`, `zap`, `layers`, `file`, `check-circle`)
-       - `prompt`: Kalimat instruksi aksi tegas yang akan dikirim saat diklik (CONTOH: "Jelaskan aturan dan syarat Cuti Tahunan sesuai PKB", "Buatkan draf Nota Dinas permohonan pengadaan barang", "Fokus buatkan Aplikasi Manajemen Tugas", "Gunakan React.js + Tailwind CSS") -> 🚫 DILARANG menggunakan kalimat deskripsi umum!
+       - `prompt`: Nilai atau substansi entitas pilihan yang ringkas dan lugas (misal label atau entitas topiknya langsung). DILARANG menambahkan kata kerja pembuka seperti "Tampilkan", "Carikan", "Jelaskan" agar Router dapat merumuskan kueri secara dinamis dan objektif.
      - `allow_custom`: true
 
-CONTOH 1: Domain Regulasi / Kebijakan (Pertanyaan 1-Step):
+SKEMA STRUKTURAL BLOK WIZARD:
 ```wizard
 {
-  "title": "Pilihan Jenis Cuti & Aturan PKB",
+  "title": "<Judul Konfirmasi Singkat>",
   "questions": [
     {
-      "id": "leave_type",
-      "question": "Jenis cuti mana yang ingin Anda ketahui ketentuannya?",
+      "id": "<identifier_pertanyaan>",
+      "question": "<Pertanyaan klarifikasi yang lugas dan terarah>",
       "is_multi_select": false,
       "options": [
-        { "label": "Cuti Tahunan", "icon": "file", "prompt": "Jelaskan ketentuan dan syarat Cuti Tahunan sesuai PKB" },
-        { "label": "Cuti Besar / Istirahat Panjang", "icon": "file", "prompt": "Jelaskan ketentuan Cuti Besar / Istirahat Panjang sesuai PKB" },
-        { "label": "Cuti Melahirkan & Bersalin", "icon": "file", "prompt": "Jelaskan aturan Cuti Melahirkan dan Bersalin sesuai PKB" },
-        { "label": "Cuti Karena Alasan Penting", "icon": "file", "prompt": "Jelaskan ketentuan Cuti Karena Alasan Penting sesuai PKB" }
-      ],
-      "allow_custom": true
-    }
-  ]
-}
-```
-
-CONTOH 2: Domain Persuratan Kedinasan (Pertanyaan 1-Step):
-```wizard
-{
-  "title": "Perihal & Keperluan Naskah Dinas",
-  "questions": [
-    {
-      "id": "letter_purpose",
-      "question": "Nota dinas ini ditujukan untuk keperluan apa?",
-      "is_multi_select": false,
-      "options": [
-        { "label": "Permohonan Pengadaan Barang/Jasa", "icon": "file", "prompt": "Buatkan draf Nota Dinas permohonan pengadaan barang/jasa" },
-        { "label": "Izin Perjalanan Dinas / Tugas", "icon": "file", "prompt": "Buatkan draf Nota Dinas permohonan izin perjalanan dinas" },
-        { "label": "Undangan Rapat Koordinasi", "icon": "file", "prompt": "Buatkan draf Nota Dinas undangan rapat koordinasi internal" }
-      ],
-      "allow_custom": true
-    }
-  ]
-}
-```
-
-CONTOH 3: Domain Koding & Pembuatan Aplikasi (Stepper 3-Step):
-```wizard
-{
-  "title": "Pilihan Project, Stack & Fitur",
-  "questions": [
-    {
-      "id": "target_project",
-      "question": "Mau fokus eksekusi proyek yang mana terlebih dahulu?",
-      "is_multi_select": false,
-      "options": [
-        { "label": "Aplikasi Manajemen Tugas", "icon": "check-circle", "prompt": "Fokus buatkan Aplikasi Manajemen Tugas" },
-        { "label": "Sistem Absensi Pegawai", "icon": "layers", "prompt": "Fokus buatkan Sistem Absensi Pegawai" },
-        { "label": "Gabungkan Keduanya Sekaligus", "icon": "zap", "prompt": "Buatkan sistem terpadu yang menggabungkan Absensi Pegawai dan Manajemen Tugas" }
-      ],
-      "allow_custom": true
-    },
-    {
-      "id": "tech_stack",
-      "question": "Mau diimplementasikan pakai stack teknologi apa?",
-      "is_multi_select": false,
-      "options": [
-        { "label": "React.js + Tailwind CSS", "icon": "code", "prompt": "Gunakan React.js + Tailwind CSS" },
-        { "label": "HTML5 + CSS Murni (Vanilla)", "icon": "code", "prompt": "Gunakan HTML5 + CSS Murni" },
-        { "label": "Vue.js 3", "icon": "code", "prompt": "Gunakan Vue.js 3" }
-      ],
-      "allow_custom": true
-    },
-    {
-      "id": "features",
-      "question": "Fitur tambahan apa saja yang ingin disertakan?",
-      "is_multi_select": true,
-      "options": [
-        { "label": "Otentikasi & Role User", "icon": "zap", "prompt": "Sertakan fitur otentikasi login dan role user" },
-        { "label": "Dashboard Visualisasi Data", "icon": "layers", "prompt": "Sertakan dashboard visualisasi grafik progres" },
-        { "label": "Export Laporan (PDF/Excel)", "icon": "file", "prompt": "Sertakan modul export laporan PDF dan Excel" }
+        { "label": "<Entitas / Topik Pilihan A>", "icon": "search", "prompt": "<Entitas / Topik Pilihan A>" },
+        { "label": "<Entitas / Topik Pilihan B>", "icon": "file", "prompt": "<Entitas / Topik Pilihan B>" },
+        { "label": "<Entitas / Topik Pilihan C>", "icon": "layers", "prompt": "<Entitas / Topik Pilihan C>" }
       ],
       "allow_custom": true
     }
@@ -1433,7 +1394,17 @@ WEB_SEARCH_PROMPT_TEMPLATE = (
     + DATA_TABLES_AND_FORM_GUIDANCE
     + """
 Tugasmu:
-1. Jawab pertanyaan pengguna berdasarkan konteks pencarian secara akurat dan relevan.
+1. **STATUS & PEMANFAATAN KONTEKS HASIL PENCARIAN:**
+   - Konteks penelusuran web tahap awal sudah berhasil dieksekusi oleh sistem dan dilampirkan lengkap di bagian bawah prompt ini.
+   - JIKA data di konteks sudah cukup untuk menjawab kebutuhan pengguna:
+     • LANGSUNG susun dan berikan penjelasan/rangkuman faktual yang tuntas, akurat, dan rapi.
+     • DILARANG KERAS berlagak seperti belum memiliki data atau membuat kalimat pengantar bahwa Anda "baru akan menelusuri/mencari di internet", karena datanya sudah tersedia di depan Anda.
+     • DILARANG memanggil blok ```websearch ulang untuk hal atau topik yang sama.
+   - JIKA data di konteks hanya menjawab sebagian atau ada aspek detail penting yang belum terjawab:
+     • Paparkan terlebih dahulu informasi yang sudah berhasil didapatkan secara lugas kepada pengguna.
+     • Ungkapkan secara jujur dan transparan detail spesifik apa yang masih belum lengkap.
+     • Baru setelah itu buka blok alat in-stream (```websearch dengan kueri terfokus pada aspek yang kurang tersebut, atau ```urlfetch untuk membaca tautan spesifik secara mendalam).
+
 2. **Kendalikan Kedalaman Jawaban Secara Dinamis:**
    - Perhatikan instruksi atau gaya pertanyaan pengguna:
      - Jika pengguna meminta jawaban yang **detail, mendalam, atau langkah-demi-langkah**, berikan penjelasan komprehensif dan lengkap.
@@ -1461,9 +1432,8 @@ Tugasmu:
    - Setiap kali selesai menulis suatu poin atau rujukan sitasi dan hendak berpindah ke nomor/poin berikutnya atau kesimpulan (misal "Kesimpulan:", "Gitu ceritanya"), Anda **WAJIB MENYISIPKAN DUA KALI ENTER (BARIS BARU KOSONG / `\n\n`)**.
    - 🚫 DILARANG KERAS menempelkan nomor berikutnya (misal `3. ...`) atau kata kesimpulan langsung di baris yang sama setelah kurung link sumber!
 
-6. 🌐 **BATASAN DOMAIN WEB (STRICT WEB DOMAIN):**
-   - Mode ini dikhususkan untuk pencarian dan verifikasi informasi publik di internet (web).
-   - JIKA memerlukan pencarian tambahan atau verifikasi mandiri, HANYA gunakan ```websearch atau ```urlfetch.
+6. 🌐 **BATASAN DOMAIN & ALAT TAMBAHAN (STRICT WEB DOMAIN):**
+   - HANYA panggil alat in-stream jika terdapat celah data spesifik yang belum terjawab dari konteks awal. Gunakan ```websearch atau ```urlfetch.
    - DILARANG KERAS memanggil ```docsearch atau mencari dokumen internal perusahaan untuk pertanyaan umum / berita publik, kecuali pengguna secara eksplisit menanyakan regulasi internal PT Pindad.
 
 7. JANGAN ulangi menampilkan data mentah URL/JSON dari hasil pencarian.

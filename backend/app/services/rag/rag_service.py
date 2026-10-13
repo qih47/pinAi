@@ -612,12 +612,35 @@ class RagService:
                 qa_lines.append(f"  Intisari: {a_text}")
             qa_summary_block = "\n".join(qa_lines) + "\n\n"
 
+        # ======================================================================
+        # FASE 4: KNOWLEDGE GRAPH CONTEXT ENRICHMENT (GRAPH RAG)
+        # ======================================================================
+        graph_summary_block = ""
+        try:
+            from backend.app.services.rag.graph_retriever import graph_retriever
+            passed_doc_ids = [s["id"] for s in sources_metadata if "id" in s]
+            if passed_doc_ids:
+                graph_summary_block = await graph_retriever.retrieve_graph_context(
+                    doc_ids=passed_doc_ids,
+                    query=query,
+                    max_relations=6
+                )
+        except Exception as e_graph:
+            logger.warning(f"[RAG_SERVICE] ⚠️ Graph context extraction skipped: {e_graph}")
+
         logger.info(
             f"[RAG_SERVICE] {len(final_contexts)} documents passed "
             f"(hard_floor={HARD_FLOOR}, cap={MAX_DOCS_TO_LLM}, "
             f"from {len(expanded_blocks)} candidates)"
         )
-        full_context_text = (qa_summary_block + "\n".join(final_contexts)) if qa_summary_block else "\n".join(final_contexts)
+        prefix_blocks = []
+        if qa_summary_block:
+            prefix_blocks.append(qa_summary_block.strip())
+        if graph_summary_block:
+            prefix_blocks.append(graph_summary_block.strip())
+
+        full_prefix = ("\n\n".join(prefix_blocks) + "\n\n") if prefix_blocks else ""
+        full_context_text = full_prefix + "\n".join(final_contexts)
         return full_context_text, sources_metadata
 
 

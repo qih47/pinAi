@@ -915,7 +915,8 @@ export const translations = {
       next: "Lanjut",
       send: "Kirim",
       sent: "Terkirim",
-      preparingOptions: "Menyiapkan opsi interaktif..."
+      preparingOptions: "Menyiapkan opsi interaktif...",
+      selectedReferenceConfirmation: "Konfirmasi Rujukan Terpilih:"
     },
     docAudit: {
       title: "Audit Dokumen Kedinasan",
@@ -2079,7 +2080,8 @@ export const translations = {
       next: "Next",
       send: "Send",
       sent: "Sent",
-      preparingOptions: "Preparing interactive options..."
+      preparingOptions: "Preparing interactive options...",
+      selectedReferenceConfirmation: "Selected Choice Confirmation:"
     },
     docAudit: {
       title: "Official Document Audit",
