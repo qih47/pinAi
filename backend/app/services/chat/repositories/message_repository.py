@@ -163,7 +163,9 @@ class MessageRepository:
                 return False
 
     
-    async def trim_session_messages(self, session_uuid: str, keep_count: int) -> bool:
+    async def trim_session_messages(
+        self, session_uuid: str, keep_count: Optional[int] = None, after_message_id: Optional[int] = None
+    ) -> bool:
         """Menghapus pesan-pesan setelah urutan tertentu (keep_count) saat user melakukan Edit/Regenerate, termasuk file artifact-nya."""
         async with get_db() as conn:
             try:
@@ -171,6 +173,56 @@ class MessageRepository:
                 if session_pk is None:
                     return False
                 
+                # Skenario 1: Potong berdasarkan ID fisik pesan referensi (presisi tinggi untuk branch reset)
+                if after_message_id is not None:
+                    ref_row = await conn.fetchrow(
+                        "SELECT id, timestamp FROM chat_messages WHERE session_id = $1 AND id = $2",
+                        session_pk, after_message_id
+                    )
+                    if ref_row:
+                        select_after = """
+                            SELECT metadata FROM chat_messages 
+                            WHERE session_id = $1 
+                              AND (timestamp > $3 OR (timestamp = $3 AND id > $2))
+                              AND (regenerated_from_id IS NULL OR regenerated_from_id != $2)
+                        """
+                        rows_after = await conn.fetch(select_after, session_pk, ref_row["id"], ref_row["timestamp"])
+                        import os
+                        from backend.app.core.paths import ACCOUNTS_DIR
+                        from pathlib import Path
+                        base_dir = Path(ACCOUNTS_DIR).parent
+                        for row in rows_after:
+                            if row["metadata"]:
+                                try:
+                                    meta = json.loads(row["metadata"]) if isinstance(row["metadata"], str) else row["metadata"]
+                                    artifacts = meta.get("artifacts", [])
+                                    for art_item in artifacts:
+                                        try:
+                                            art_path = art_item.get("file_path", "") if isinstance(art_item, dict) else art_item
+                                            if not art_path:
+                                                continue
+                                            full_path = base_dir / art_path
+                                            if full_path.exists() and full_path.is_file():
+                                                os.remove(full_path)
+                                                logger.info(f"[CHAT_HISTORY] Deleted artifact file: {full_path}")
+                                        except Exception as e:
+                                            logger.warning(f"[CHAT_HISTORY] Failed to delete artifact file {art_path}: {e}")
+                                except Exception as e:
+                                    logger.warning(f"[CHAT_HISTORY] Failed to parse metadata for artifact deletion: {e}")
+
+                        delete_after = """
+                            DELETE FROM chat_messages 
+                            WHERE session_id = $1 
+                              AND (timestamp > $3 OR (timestamp = $3 AND id > $2))
+                              AND (regenerated_from_id IS NULL OR regenerated_from_id != $2)
+                        """
+                        res = await conn.execute(delete_after, session_pk, ref_row["id"], ref_row["timestamp"])
+                        logger.info(f"[CHAT_HISTORY] Trimmed session {session_uuid[:8]} after message ID {after_message_id}: {res}")
+                        return True
+
+                if keep_count is None or keep_count < 0:
+                    return True
+
                 # Ambil metadata dari pesan yang akan dihapus
                 select_query = """
                     SELECT metadata FROM chat_messages 
@@ -350,7 +402,67 @@ class MessageRepository:
 
                     formatted_messages.append(msg_data)
 
-            return formatted_messages
+            return self._partition_message_branches(formatted_messages)
+
+    def _partition_message_branches(self, messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """
+        Untuk pesan asisten yang memiliki multi-varian (regenerate),
+        partisi pesan-pesan anak berikutnya ke dalam downstreamMessages masing-masing varian
+        berdasarkan rentang ID/waktu pembuatan varian tersebut.
+        """
+        if not messages:
+            return messages
+
+        # Cari pesan asisten pertama yang memiliki lebih dari 1 varian
+        for i, msg in enumerate(messages):
+            if msg.get("role") == "assistant" and len(msg.get("variants", [])) > 1:
+                variants = msg["variants"]
+                variants.sort(key=lambda v: (v.get("variant_index", 1), v.get("id") or 0))
+                active_idx = msg.get("activeVariantIndex", len(variants) - 1)
+                if active_idx < 0 or active_idx >= len(variants):
+                    active_idx = len(variants) - 1
+
+                subsequent_messages = messages[i + 1:]
+                
+                # Inisialisasi downstreamMessages untuk setiap varian jika belum ada
+                for v in variants:
+                    if "downstreamMessages" not in v:
+                        v["downstreamMessages"] = []
+
+                # Kelompokkan setiap pesan anak ke varian yang tepat
+                for sub_msg in subsequent_messages:
+                    sub_id = sub_msg.get("id") or 0
+                    sub_time = sub_msg.get("timestamp") or sub_msg.get("created_at") or ""
+                    
+                    assigned_v_idx = 0
+                    for v_idx in range(len(variants) - 1):
+                        next_v = variants[v_idx + 1]
+                        next_id = next_v.get("id") or 0
+                        next_time = next_v.get("timestamp") or next_v.get("created_at") or ""
+                        
+                        if sub_id and next_id and sub_id < next_id:
+                            assigned_v_idx = v_idx
+                            break
+                        elif sub_time and next_time and sub_time < next_time:
+                            assigned_v_idx = v_idx
+                            break
+                    else:
+                        assigned_v_idx = len(variants) - 1
+
+                    variants[assigned_v_idx]["downstreamMessages"].append(sub_msg)
+
+                # Rekursif untuk downstream varian aktif
+                active_downstream = variants[active_idx].get("downstreamMessages", [])
+                processed_active_downstream = self._partition_message_branches(active_downstream)
+
+                # Rekursif untuk downstream varian non-aktif
+                for v_idx, v in enumerate(variants):
+                    if v_idx != active_idx and v.get("downstreamMessages"):
+                        v["downstreamMessages"] = self._partition_message_branches(v["downstreamMessages"])
+
+                return messages[:i] + [msg] + processed_active_downstream
+
+        return messages
 
     
     # =========================================================================

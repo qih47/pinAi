@@ -118,16 +118,22 @@ async def assign_chat_session(
         raise HTTPException(status_code=400, detail="Gagal mentransfer sesi atau sesi bukan milik GUEST.")
     return {"status": "success", "message": "Sesi berhasil ditransfer!"}
 
+@router.delete("/sessions/{session_uuid}/messages/trim")
 @router.delete("/{session_uuid}/messages/trim")
 async def trim_session_messages(
     session_uuid: str, 
-    keep_count: int
+    keep_count: Optional[int] = Query(None),
+    after_message_id: Optional[int] = Query(None)
 ):
-    """Memotong percakapan setelah keep_count pesan (untuk fitur edit/regenerate)."""
-    success = await chat_history_service.trim_session_messages(session_uuid, keep_count)
+    """Memotong percakapan setelah keep_count pesan atau setelah ID fisik pesan (untuk fitur edit/regenerate)."""
+    success = await chat_history_service.trim_session_messages(
+        session_uuid=session_uuid,
+        keep_count=keep_count,
+        after_message_id=after_message_id
+    )
     if not success:
         raise HTTPException(status_code=500, detail="Gagal memangkas histori percakapan.")
-    return {"status": "success", "message": f"Histori dipangkas menjadi {keep_count} pesan terawal."}
+    return {"status": "success", "message": f"Histori sesi {session_uuid} berhasil dipangkas."}
 
 
 @router.get("/sessions/{session_uuid}/settings")

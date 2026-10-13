@@ -111,7 +111,7 @@ def check_rate_limit(client_ip: str, policy: str = "chat") -> bool:
 # LAYER 2: INPUT VALIDATION
 # ==============================================================================
 
-_MAX_BODY_SIZE    = 512 * 1024          # 512 KB JSON body hard cap
+_MAX_BODY_SIZE    = 2 * 1024 * 1024     # 2 MB JSON body hard cap (headroom untuk percakapan panjang)
 _MAX_STRING_LEN   = 32_768             # 32 KB per string field (metadata / small fields)
 _MAX_CONTENT_LEN  = 262_144            # 256 KB per content/document/code string field
 _MAX_ARRAY_ITEMS  = 200                # Max items in any array

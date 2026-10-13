@@ -4,17 +4,21 @@ import { validateSSEEvent } from './utilsApi';
 /**
  * Trim session messages history for edit/regenerate
  * @param {string} sessionUuid - The UUID of the session
- * @param {number} keepCount - Number of messages to keep from the beginning
+ * @param {number|null} keepCount - Number of messages to keep from the beginning
+ * @param {number|null} afterMessageId - Physical message ID to trim after
  */
-export async function trimSessionMessages(sessionUuid, keepCount) {
+export async function trimSessionMessages(sessionUuid, keepCount = null, afterMessageId = null) {
   try {
+    const params = {};
+    if (keepCount !== null && keepCount !== undefined) params.keep_count = keepCount;
+    if (afterMessageId !== null && afterMessageId !== undefined) params.after_message_id = afterMessageId;
     const response = await apiClient.delete(`/chat/sessions/${sessionUuid}/messages/trim`, {
-      params: { keep_count: keepCount }
+      params
     });
     return response.data;
   } catch (error) {
     console.error('Error trimming session messages:', error);
-    throw new Error(error.response?.data?.detail || 'Failed to trim session messages');
+    return null;
   }
 }
 
@@ -146,7 +150,10 @@ export async function streamChat(
       headers,
       body: JSON.stringify({
         session_uuid: sessionUuid,
-        messages: (messages || []).map(({ thought, thinking, ...rest }) => rest),
+        messages: (messages || []).map(m => ({
+          role: m.role,
+          content: typeof m.content === 'string' ? m.content : (m.text || '')
+        })),
         mode: chatMode,
         thinking: thinking,
         temperature: 0.7,

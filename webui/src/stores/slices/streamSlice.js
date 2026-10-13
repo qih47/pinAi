@@ -214,15 +214,16 @@ export const createStreamSlice = (set, get) => ({
         const sessionUuid = get().sessionUuid;
         if (!newContent.trim() || get().activeStreams?.[sessionUuid]?.isStreaming) return;
 
-        // 1. Pertahankan SELURUH pesan percakapan (JANGAN hapus/potong chat di bawahnya!)
-        const currentMessages = [...get().messages];
-        currentMessages[index] = { ...currentMessages[index], content: newContent };
-
-        // Cek mode asli dan thinking asli dari pesan yang diedit atau respons setelahnya
-        const editedMsg = currentMessages[index];
-        const prevAssistantMsg = currentMessages[index + 1];
+        // 1. Truncate pesan percakapan: hanya pertahankan sampai indeks yang diedit,
+        // buang/reset seluruh turn anak di bawahnya karena parent di-regenerate
+        const allMessages = get().messages;
+        const editedMsg = allMessages[index];
+        const prevAssistantMsg = allMessages[index + 1];
         const targetMessageId = messageId || editedMsg?.id || null;
         const targetAssistantMessageId = prevAssistantMsg?.id || null;
+
+        const currentMessages = allMessages.slice(0, index + 1);
+        currentMessages[index] = { ...currentMessages[index], content: newContent };
 
         const currentIsolatedDocId = get().activeIsolatedDocId;
         const currentChatMode = get().chatMode || 'auto';
@@ -269,7 +270,7 @@ export const createStreamSlice = (set, get) => ({
             effectiveThinkingMode = Boolean(detectedThinking);
         }
 
-        // 2. Siapkan/update asisten message tepat di posisi index + 1
+        // 2. Tambahkan asisten message baru tepat di posisi index + 1
         const assistantMessage = {
             role: 'assistant',
             content: '',
@@ -284,11 +285,7 @@ export const createStreamSlice = (set, get) => ({
             mode: effectiveChatMode,
             isThinkingMode: effectiveThinkingMode
         };
-        if (currentMessages[index + 1] && currentMessages[index + 1].role === 'assistant') {
-            currentMessages[index + 1] = assistantMessage;
-        } else {
-            currentMessages.splice(index + 1, 0, assistantMessage);
-        }
+        currentMessages.push(assistantMessage);
 
         const controller = new AbortController();
         const activeStreams = { ...get().activeStreams };
@@ -306,6 +303,15 @@ export const createStreamSlice = (set, get) => ({
                 delete newWizardAnswers[k];
             }
         });
+
+        // Simpan downstream messages pada assistant message sebelumnya jika ada varian
+        if (prevAssistantMsg && Array.isArray(prevAssistantMsg.variants)) {
+            const prevActiveVIdx = prevAssistantMsg.activeVariantIndex !== undefined ? prevAssistantMsg.activeVariantIndex : (prevAssistantMsg.variants.length - 1);
+            if (prevAssistantMsg.variants[prevActiveVIdx]) {
+                prevAssistantMsg.variants[prevActiveVIdx].downstreamMessages = allMessages.slice(index + 2);
+                prevAssistantMsg.variants[prevActiveVIdx].userPrompt = allMessages[index]?.content || null;
+            }
+        }
 
         set({
             activeStreams,
@@ -374,17 +380,20 @@ export const createStreamSlice = (set, get) => ({
         const sessionUuid = get().sessionUuid;
         if (get().activeStreams?.[sessionUuid]?.isStreaming) return;
 
-        const currentMessages = [...get().messages];
-        const targetAssistantMsg = currentMessages[assistantIdx];
+        const allMessages = get().messages;
+        const targetAssistantMsg = allMessages[assistantIdx];
         if (!targetAssistantMsg || targetAssistantMsg.role !== 'assistant') return;
 
         // Cari user message sebelumnya
         let userIdx = assistantIdx - 1;
-        while (userIdx >= 0 && currentMessages[userIdx]?.role !== 'user') {
+        while (userIdx >= 0 && allMessages[userIdx]?.role !== 'user') {
             userIdx--;
         }
         if (userIdx < 0) return;
-        const userMsg = currentMessages[userIdx];
+        const userMsg = allMessages[userIdx];
+
+        // Truncate pesan percakapan: buang seluruh turn anak di bawah assistantIdx
+        const currentMessages = allMessages.slice(0, assistantIdx + 1);
 
         // Dapatkan mode dan thinking asli
         const currentIsolatedDocId = get().activeIsolatedDocId;
@@ -444,7 +453,7 @@ export const createStreamSlice = (set, get) => ({
             }];
         }
 
-        // Pastikan varian aktif saat ini tersimpan sempurna dengan content & fileGenerations yang sudah rapi
+        // Pastikan varian aktif saat ini tersimpan sempurna dengan content & downstreamMessages yang rapi
         const currentActiveVIdx = targetAssistantMsg.activeVariantIndex !== undefined ? targetAssistantMsg.activeVariantIndex : (existingVariants.length - 1);
         if (existingVariants[currentActiveVIdx]) {
             existingVariants[currentActiveVIdx] = {
@@ -454,7 +463,9 @@ export const createStreamSlice = (set, get) => ({
                 fileGenerations: targetAssistantMsg.fileGenerations || [],
                 allFilesDone: targetAssistantMsg.allFilesDone || false,
                 sources: targetAssistantMsg.sources,
-                metadata: targetAssistantMsg.metadata
+                metadata: targetAssistantMsg.metadata,
+                userPrompt: userMsg?.content || null,
+                downstreamMessages: allMessages.slice(assistantIdx + 1)
             };
         }
 
@@ -473,7 +484,9 @@ export const createStreamSlice = (set, get) => ({
             isStreaming: true,
             variant_index: newVariantIndex,
             timestamp: nowIso,
-            created_at: nowIso
+            created_at: nowIso,
+            userPrompt: userMsg?.content || null,
+            downstreamMessages: [] // Branch baru dimulai tanpa turn anak lama
         };
 
         const updatedVariants = [...existingVariants, newVariant];
@@ -515,12 +528,23 @@ export const createStreamSlice = (set, get) => ({
             currentThinking: effectiveThinkingMode ? 'Sedang berpikir...' : ''
         };
 
+        const newWizardAnswers = { ...(get().wizardAnswers || {}) };
+        Object.keys(newWizardAnswers).forEach(k => {
+            if (parseInt(k, 10) >= userIdx) {
+                delete newWizardAnswers[k];
+            }
+        });
+
+
+
         set({
             activeStreams,
             messages: currentMessages,
             isStreaming: true,
             isThinking: effectiveThinkingMode,
             isEditRegenerating: true,
+            activeWizard: null,
+            wizardAnswers: newWizardAnswers,
             abortController: controller,
             currentThinking: effectiveThinkingMode ? 'Sedang berpikir...' : ''
         });
@@ -687,6 +711,29 @@ export const createStreamSlice = (set, get) => ({
         const targetMsg = messages[messageIdx];
         if (!targetMsg || !targetMsg.variants || !targetMsg.variants[targetVariantIdx]) return;
 
+        // Cari user message sebelumnya untuk sinkronisasi userPrompt
+        let userIdx = messageIdx - 1;
+        while (userIdx >= 0 && messages[userIdx]?.role !== 'user') {
+            userIdx--;
+        }
+
+        // 1. Simpan downstream messages saat ini ke varian yang sedang aktif
+        const currentActiveVIdx = targetMsg.activeVariantIndex !== undefined ? targetMsg.activeVariantIndex : (targetMsg.variants.length - 1);
+        if (targetMsg.variants[currentActiveVIdx]) {
+            targetMsg.variants[currentActiveVIdx] = {
+                ...targetMsg.variants[currentActiveVIdx],
+                content: targetMsg.content,
+                thought: targetMsg.thought || targetMsg.thinking || '',
+                fileGenerations: targetMsg.fileGenerations || [],
+                allFilesDone: targetMsg.allFilesDone || false,
+                sources: targetMsg.sources,
+                metadata: targetMsg.metadata,
+                userPrompt: (userIdx >= 0 && messages[userIdx]) ? messages[userIdx].content : null,
+                downstreamMessages: messages.slice(messageIdx + 1)
+            };
+        }
+
+        // 2. Siapkan varian target yang dipilih
         let selectedVariant = targetMsg.variants[targetVariantIdx];
         selectedVariant = parseMessageFileTags({
             ...selectedVariant,
@@ -697,7 +744,8 @@ export const createStreamSlice = (set, get) => ({
 
         const selectedThought = selectedVariant.thought || selectedVariant.thinking || '';
         const selectedTime = selectedVariant.created_at || selectedVariant.timestamp || targetMsg.created_at || targetMsg.timestamp;
-        messages[messageIdx] = {
+        
+        const updatedTargetMsg = {
             ...targetMsg,
             ...selectedVariant,
             content: selectedVariant.content,
@@ -710,14 +758,32 @@ export const createStreamSlice = (set, get) => ({
             activeVariantIndex: targetVariantIdx
         };
 
-        set({ messages });
+        // Update user message jika varian target menyimpan userPrompt spesifik
+        if (userIdx >= 0 && messages[userIdx] && selectedVariant.userPrompt) {
+            messages[userIdx] = {
+                ...messages[userIdx],
+                content: selectedVariant.userPrompt
+            };
+        }
+
+        // 3. Ambil downstream messages milik varian target (jika ada)
+        const targetDownstream = Array.isArray(selectedVariant.downstreamMessages) ? selectedVariant.downstreamMessages : [];
+
+        // 4. Rekonstruksi array messages: pesan sebelum target + updatedTargetMsg + downstream messages varian target
+        const newMessages = [
+            ...messages.slice(0, messageIdx),
+            updatedTargetMsg,
+            ...targetDownstream
+        ];
+
+        set({ messages: newMessages });
 
         const sessionUuid = get().sessionUuid;
         if (sessionUuid && get().activeStreams?.[sessionUuid]) {
             const activeStreams = { ...get().activeStreams };
             activeStreams[sessionUuid] = {
                 ...activeStreams[sessionUuid],
-                messages
+                messages: newMessages
             };
             set({ activeStreams });
         }
