@@ -987,12 +987,33 @@ async def generate_json_response(
         base_awq_model = getattr(settings, "MODEL_BASE", "/home/qisthi/models/gemma-4-31B-it-AWQ")
         target_vllm_model = base_awq_model if model_name in ["gemma4:31b", "gemma-4-31B-it-AWQ", "gemma4:e4b", "base", "base_model"] or "/home/qisthi/models/" in model_name else model_name
 
+        # Transform Ollama-style 'images' list into OpenAI-compatible multimodal content structure
+        vllm_messages = []
+        for m in messages:
+            m_copy = dict(m)
+            imgs = m_copy.pop("images", None)
+            if imgs and isinstance(imgs, list):
+                content = m_copy.get("content", "")
+                content_parts = []
+                for img_b64 in imgs:
+                    clean_b64 = img_b64.split(",")[-1] if "," in img_b64 else img_b64
+                    content_parts.append({
+                        "type": "image_url",
+                        "image_url": {"url": f"data:image/png;base64,{clean_b64}"}
+                    })
+                if isinstance(content, str):
+                    content_parts.append({"type": "text", "text": content})
+                elif isinstance(content, list):
+                    content_parts.extend(content)
+                m_copy["content"] = content_parts
+            vllm_messages.append(m_copy)
+
         payload = {
             "model": target_vllm_model,
-            "messages": messages,
+            "messages": vllm_messages,
             "temperature": temperature,
             "stream": False,
-            "max_tokens": min(num_predict, 2048),
+            "max_tokens": num_predict if (num_predict and num_predict > 0) else 4096,
             "response_format": {"type": "json_object"}
         }
 

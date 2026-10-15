@@ -23,28 +23,34 @@ export function getUploadUrl(filePath) {
   
   let npp = '';
   try {
-    const authStorage = localStorage.getItem('auth-storage');
-    if (authStorage) {
-      const parsed = JSON.parse(authStorage);
-      npp = parsed?.state?.authUser?.npp || '';
+    const rawUser = localStorage.getItem('cakra_user');
+    if (rawUser && rawUser !== 'undefined' && rawUser !== 'null') {
+      const parsed = JSON.parse(rawUser);
+      npp = parsed?.npp || '';
     }
   } catch(e) {}
   
   const tokenQuery = npp ? `?npp=${encodeURIComponent(npp)}` : '';
-  const cleanPath = filePath.startsWith('/') ? filePath.slice(1) : filePath;
+  let cleanPath = filePath.startsWith('/') ? filePath.slice(1) : filePath;
+  if (cleanPath.startsWith('api/')) {
+    cleanPath = cleanPath.slice(4);
+  }
+  
+  const rootBase = getApiBase();
+  const apiPrefix = `${rootBase}/api`;
   
   if (cleanPath.startsWith('accounts/')) {
-    return `${getApiBase()}/${cleanPath}${tokenQuery}`;
+    return `${apiPrefix}/${cleanPath}${tokenQuery}`;
   }
   if (cleanPath.startsWith('uploads/')) {
-    return `${getApiBase()}/${cleanPath}${tokenQuery}`;
+    return `${apiPrefix}/${cleanPath}${tokenQuery}`;
   }
   if (cleanPath.includes('file_peraturan/')) {
     const filename = cleanPath.split('file_peraturan/').pop();
-    return `${getApiBase()}/file_peraturan/${filename}${tokenQuery}`;
+    return `${apiPrefix}/file_peraturan/${filename}${tokenQuery}`;
   }
   const filename = cleanPath.includes('/') ? cleanPath.split('/').pop() : cleanPath;
-  return `${getApiBase()}/uploads/${filename}${tokenQuery}`;
+  return `${apiPrefix}/uploads/${filename}${tokenQuery}`;
 }
 
 /**

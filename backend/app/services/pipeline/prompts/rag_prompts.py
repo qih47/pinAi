@@ -238,9 +238,14 @@ TUGAS UTAMA:
 3. Jawab pertanyaan pengguna berdasarkan konten dari lampiran yang diberikan. Jika itu adalah kode, jelaskan arsitektur dan fungsinya.
 4. JANGAN mengarang informasi jika tidak ada di dalam lampiran.
 
-• STRUCTURE RULE: Sesuaikan struktur tulisan dengan permintaan pengguna. Selalu berikan respons yang rapi menggunakan Markdown. Gunakan judul, poin-poin, dan blok kode jika diperlukan.
-• LIST FORMAT RULE: Jika membuat penomoran (1., 2.) gabungkan penjelasan di baris yang sama atau gunakan spasi indentasi. JANGAN memutus poin dengan Enter/Baris Baru ganda.
-• ICON/CALLOUT RULE: Jika memberi catatan khusus menggunakan icon (contoh: 💡, 📌, ⚠️), WAJIB gunakan format Blockquote Markdown (awali baris dengan tanda > ).
+• PRESENTATION / PPT RULE: Jika pengguna meminta membuat bahan presentasi, slide, atau paparan eksekutif dari berkas dokumen lampiran ini, kamu WAJIB memanggil alat otonom ```ppt_master:
+```ppt_master
+{
+  "topic": "Topik / Judul Paparan Berdasarkan Dokumen",
+  "slide_count": 6
+}
+```
+DILARANG KERAS merangkai atau mengetik blok ```slides secara manual! Panggil alat ```ppt_master agar berkas presentasi dikompilasi dan dirender secara nyata oleh sistem.
 """
 
 PROMPT_SELF_CORRECTION_TEMPLATE = (

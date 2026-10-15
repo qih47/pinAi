@@ -318,6 +318,7 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
         if (upper.includes('MAP')) return 'map_search';
         if (upper.includes('CLI') || upper.includes('TERMINAL')) return 'terminal_runner';
         if (upper.includes('DIFF') || upper.includes('COMPUTING_DIFF')) return 'document_diff';
+        if (upper.includes('PPT') || upper.includes('PRESENTATION') || upper.includes('SLIDE')) return 'ppt_master';
         return null;
     })();
 
@@ -336,7 +337,7 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
 
         // 🛡️ Bersihkan HANYA partial/unclosed tool block (yang belum memiliki penutup ```) saat streaming agar tidak merender blok JSON mentah
         if (isStreaming) {
-            final = final.replace(/```(?:websearch|docsearch|urlfetch|python_calc|map_search|terminal_runner|document_diff|documentdiff|doc_diff)(?:(?!```)[\s\S])*$/i, '').trim();
+            final = final.replace(/```(?:websearch|docsearch|urlfetch|python_calc|map_search|terminal_runner|document_diff|documentdiff|doc_diff|ppt_master|pptmaster)(?:(?!```)[\s\S])*$/i, '').trim();
         }
 
         // Samarkan kata 'mermaid' menjadi 'Cakra AI Diagram' agar user tidak bingung,
@@ -432,26 +433,35 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
         // 💵 Cegah simbol mata uang ($5, $35, $50, $1.400) keliru terparse sebagai KaTeX math
         final = escapeCurrencyDollars(final);
 
-        // 🧹 Bersihkan titik terisolasi yang berdiri sendiri di baris baru setelah sitasi / list (gunakan [ \t] agar tidak memakan newline)
-        final = final.replace(/\n[ \t]*\.[ \t]*(?=\n|$)/g, '\n');
-        final = final.replace(/(\[[^\]]+\]\([^\)]+\))[ \t]*\n[ \t]*\.[ \t]*/g, '$1\n');
-        final = final.replace(/(\[[^\]]+\]\([^\)]+\))[ \t]*\.[ \t]*(?=\n|$)/g, '$1');
+        // 🛡️ Terapkan normalisasi teks (titik, penomoran, sitasi, bullet) HANYA di luar blok kode agar tidak merusak isi kode/JSON (misal: blok ```slides)
+        const parts = final.split(/(```[\s\S]*?(?:```|$)|`[^`\n]+`)/g);
+        final = parts.map((part, idx) => {
+            if (idx % 2 === 1) return part; // Pertahankan blok kode atau inline code secara utuh tanpa modifikasi
 
-        // 🎯 Normalisasi pemisah baris sitasi & penomoran (anti-nempel sebaris):
-        // 1. Pisahkan judul bagian bernomor / kesimpulan yang langsung nempel sebaris setelah sitasi link
-        final = final.replace(/(\[[^\]]+\]\([^\)]+\))[ \t]*\.?[ \t]+(\*\*\d+\.|\d+\.\s+[A-Za-z]|Kesimpulan[a-zA-Z]*:|Gitu ceritanya)/g, '$1.\n\n$2');
+            let p = part;
+            // 🧹 Bersihkan titik terisolasi yang berdiri sendiri di baris baru setelah sitasi / list
+            p = p.replace(/\n[ \t]*\.[ \t]*(?=\n|$)/g, '\n');
+            p = p.replace(/(\[[^\]]+\]\([^\)]+\))[ \t]*\n[ \t]*\.[ \t]*/g, '$1\n');
+            p = p.replace(/(\[[^\]]+\]\([^\)]+\))[ \t]*\.[ \t]*(?=\n|$)/g, '$1');
 
-        // 2. Pastikan ada double enter sebelum penomoran utama baru atau blok kesimpulan
-        final = final.replace(/([^\n])\n(\*\*\d+\.|\d+\.\s+[A-Za-z]|Kesimpulan[a-zA-Z]*:)/g, '$1\n\n$2');
+            // 🎯 Normalisasi pemisah baris sitasi & penomoran (anti-nempel sebaris):
+            // 1. Pisahkan judul bagian bernomor / kesimpulan yang langsung nempel sebaris setelah sitasi link
+            p = p.replace(/(\[[^\]]+\]\([^\)]+\))[ \t]*\.?[ \t]+(\*\*\d+\.|\d+\.\s+[A-Za-z]|Kesimpulan[a-zA-Z]*:|Gitu ceritanya)/g, '$1.\n\n$2');
 
-        // 3. Pastikan penutup persona santai seperti 'Gitu ceritanya' tampil di paragraf tersendiri
-        final = final.replace(/([.!?])[ \t]+(Gitu ceritanya)/g, '$1\n\n$2');
+            // 2. Pastikan ada double enter sebelum penomoran utama baru atau blok kesimpulan
+            p = p.replace(/([^\n])\n(\*\*\d+\.|\d+\.\s+[A-Za-z]|Kesimpulan[a-zA-Z]*:)/g, '$1\n\n$2');
 
-        // 4. Normalisasi pemisah butir poin / bullet agar selalu menjadi list rapi dan tidak menyatu sebaris:
-        // Pisahkan bullet point (•) yang menempel setelah kalimat atau link menjadi baris baru
-        final = final.replace(/([^\n])\s*•\s+/g, '$1\n\n- ');
-        // Ubah bullet unicode (•) di awal baris menjadi list markdown standar (- )
-        final = final.replace(/(?:^|\n)[ \t]*•\s+/g, '\n- ');
+            // 3. Pastikan penutup persona santai seperti 'Gitu ceritanya' tampil di paragraf tersendiri
+            p = p.replace(/([.!?])[ \t]+(Gitu ceritanya)/g, '$1\n\n$2');
+
+            // 4. Normalisasi pemisah butir poin / bullet agar selalu menjadi list rapi dan tidak menyatu sebaris:
+            // Pisahkan bullet point (•) yang menempel setelah kalimat atau link menjadi baris baru
+            p = p.replace(/([^\n])\s*•\s+/g, '$1\n\n- ');
+            // Ubah bullet unicode (•) di awal baris menjadi list markdown standar (- )
+            p = p.replace(/(?:^|\n)[ \t]*•\s+/g, '\n- ');
+
+            return p;
+        }).join('');
 
         return { thinkingBlock: thinking, finalResponseBlock: final, wizardBlock: wizard, isWizardStreaming };
     }, [rawContent, thinkingContent]);
@@ -810,6 +820,7 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
                             darkMode={darkMode}
                             language={language}
                             statusText={statusMessage}
+                            statusKey={statusKey}
                         />
                     </Suspense>
                 );
@@ -887,13 +898,68 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
                 );
             }
 
-            if (!inline && match && (match[1] === 'slides' || match[1] === 'slide' || match[1] === 'presentation' || match[1] === 'slidedeck')) {
-                const { darkMode, language } = latestProps.current;
+            if (!inline && match && (match[1] === 'slides' || match[1] === 'slide' || match[1] === 'presentation' || match[1] === 'slidedeck' || match[1] === 'ppt_master')) {
+                const { rawContent, isStreaming, darkMode, language, statusMessage, statusKey } = latestProps.current;
                 const tSlide = translations[language]?.slideDeck || translations.id.slideDeck || {};
+
+                let slideDeckData = null;
+                try {
+                    slideDeckData = JSON.parse(cleanCode);
+                } catch (e) {
+                    try {
+                        const firstBrace = cleanCode.indexOf('{');
+                        const lastBrace = cleanCode.lastIndexOf('}');
+                        if (firstBrace !== -1 && lastBrace !== -1) {
+                            slideDeckData = JSON.parse(cleanCode.substring(firstBrace, lastBrace + 1));
+                        }
+                    } catch (e2) {
+                        slideDeckData = { raw: cleanCode };
+                    }
+                }
+
+                const pptToolData = {
+                    tool: 'ppt_master',
+                    topic: slideDeckData?.title || slideDeckData?.topic || 'Presentasi',
+                    total_slides: slideDeckData?.total_slides || (Array.isArray(slideDeckData?.slides) ? slideDeckData.slides.length : 0),
+                    slides: Array.isArray(slideDeckData?.slides)
+                        ? slideDeckData.slides.map(s => (typeof s === 'string' ? s : s?.title || ''))
+                        : [],
+                    download_url: slideDeckData?.download_url,
+                    filename: slideDeckData?.filename,
+                    theme_style: slideDeckData?.theme_style,
+                    stage: 'done'
+                };
+
+                let hasStartedResponding = false;
+                const toolBlockTag = `\`\`\`${match[1]}`;
+                if (rawContent && rawContent.includes(toolBlockTag)) {
+                    const wsIdx = rawContent.indexOf(toolBlockTag);
+                    const afterOpen = rawContent.substring(wsIdx + toolBlockTag.length);
+                    const closeFenceIdx = afterOpen.indexOf('```');
+                    if (closeFenceIdx !== -1) {
+                        const afterClose = afterOpen.substring(closeFenceIdx + 3).trim();
+                        hasStartedResponding = afterClose.length > 0;
+                    }
+                }
+
                 return (
-                    <Suspense fallback={<div className="animate-pulse p-8 border border-dashed rounded-xl text-sm text-center font-medium my-4">{tSlide.preparingSlides || "Menyiapkan Slide Presentasi..."}</div>}>
-                        <LazySlideDeckViewer rawContent={cleanCode} darkMode={darkMode} language={language} />
-                    </Suspense>
+                    <div className="w-full my-3 space-y-2.5">
+                        <Suspense fallback={null}>
+                            <LazyAgenticProcessCard
+                                toolData={pptToolData}
+                                toolType="ppt_master"
+                                isStreaming={isStreaming}
+                                hasStartedResponding={hasStartedResponding}
+                                darkMode={darkMode}
+                                language={language}
+                                statusText={statusMessage}
+                                statusKey={statusKey}
+                            />
+                        </Suspense>
+                        <Suspense fallback={<div className="animate-pulse p-8 border border-dashed rounded-xl text-sm text-center font-medium my-4">{tSlide.preparingSlides || "Menyiapkan Slide Presentasi..."}</div>}>
+                            <LazySlideDeckViewer rawContent={cleanCode} darkMode={darkMode} language={language} />
+                        </Suspense>
+                    </div>
                 );
             }
 
@@ -1153,9 +1219,9 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
                 const isToolExecuting = Boolean(
                     effectiveActiveTool ||
                     (statusKey && (statusKey.startsWith('TOOL_') || statusKey.startsWith('AGENTIC_TOOL_'))) ||
-                    (rawContent && /```(?:websearch|docsearch|urlfetch|python_calc|map_search|terminal_runner)/i.test(rawContent) && (() => {
+                    (rawContent && /```(?:websearch|docsearch|urlfetch|python_calc|map_search|terminal_runner|ppt_master)/i.test(rawContent) && (() => {
                         // Cek apakah ada teks kelanjutan yang sedang aktif streaming setelah blok tool terakhir
-                        const lastToolMatch = [...rawContent.matchAll(/```(?:websearch|docsearch|urlfetch|python_calc|map_search|terminal_runner)[\s\S]*?```/gi)].pop();
+                        const lastToolMatch = [...rawContent.matchAll(/```(?:websearch|docsearch|urlfetch|python_calc|map_search|terminal_runner|ppt_master)[\s\S]*?```/gi)].pop();
                         if (lastToolMatch) {
                             const textAfter = rawContent.substring(lastToolMatch.index + lastToolMatch[0].length).trim();
                             return textAfter.length === 0; // Jika belum ada teks kelanjutan, berarti tool masih/baru selesai dieksekusi
@@ -1180,7 +1246,7 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
                         )}
 
                         {/* 🛠️ LIVE STREAMING TOOL ACCORDION (Jika tool sedang jalan tapi blok markdown belum tiba) */}
-                        {isStreaming && effectiveActiveTool && !rawContent?.includes(`\`\`\`${effectiveActiveTool}`) && (
+                        {isStreaming && effectiveActiveTool && !rawContent?.includes(`\`\`\`${effectiveActiveTool}`) && !((effectiveActiveTool === 'ppt_master' || effectiveActiveTool === 'presentation') && rawContent?.includes('```slides')) && (
                             <div className="w-full animate-fadeInUp" style={{ animationDuration: '0.2s' }}>
                                 {effectiveActiveTool === 'websearch' && (
                                     <Suspense fallback={null}>
@@ -1206,7 +1272,7 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
                                         />
                                     </Suspense>
                                 )}
-                                {(effectiveActiveTool === 'docsearch' || effectiveActiveTool === 'python_calc' || effectiveActiveTool === 'map_search' || effectiveActiveTool === 'terminal_runner') && (
+                                {(effectiveActiveTool === 'docsearch' || effectiveActiveTool === 'python_calc' || effectiveActiveTool === 'map_search' || effectiveActiveTool === 'terminal_runner' || effectiveActiveTool === 'ppt_master') && (
                                     <Suspense fallback={null}>
                                         <LazyAgenticProcessCard
                                             toolData={null}
@@ -1216,6 +1282,7 @@ const CakraResponseRenderer = ({ rawContent, thinkingContent, isStreaming, darkM
                                             darkMode={darkMode}
                                             language={language}
                                             statusText={statusMessage}
+                                            statusKey={statusKey}
                                         />
                                     </Suspense>
                                 )}

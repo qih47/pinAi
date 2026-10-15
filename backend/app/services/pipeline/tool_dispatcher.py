@@ -2087,6 +2087,107 @@ async def execute_deck_task_tool(
     return last_res or ToolResult("deck_task", "error", reason, {}, "Gagal mengeksekusi deck_task")
 
 
+async def execute_ppt_master_tool_stream(
+    topic: str,
+    slide_count: int = 6,
+    theme: str = "pindad-dark",
+    reason: str = "",
+    session_uuid: Optional[str] = None,
+    current_user_npp: Optional[str] = None,
+    user_message: str = "",
+    user_preferences: Optional[Dict[str, Any]] = None,
+    user_instructions: Optional[str] = None,
+    attachment_paths: Optional[List[str]] = None,
+) -> AsyncGenerator[Union[Tuple[str, Any], ToolResult], None]:
+    """Eksekusi alur pembuatan slide presentasi sovereign PPT Master dengan emisi progresif."""
+    from backend.app.services.tools.ppt_master_generator import execute_ppt_master_generation_stream
+    
+    intent_desc = reason.strip() if reason.strip() else f"Menyusun presentasi PPT Master: '{topic}' ({slide_count} slide)"
+    logger.info(f"[TOOL_DISPATCHER] 📊 Executing ppt_master: topic='{topic}', slide_count={slide_count}")
+    
+    context_material = user_message or ""
+    if session_uuid:
+        try:
+            from backend.app.services.session.session_brain_service import SessionBrainService
+            brain = SessionBrainService(current_user_npp, session_uuid)
+            docs = brain.list_documents()
+            if docs:
+                extracted_parts = []
+                for d in docs[:3]:
+                    d_id = str(d.get("id") or d.get("doc_id")) if isinstance(d, dict) else str(d)
+                    d_text = brain.get_document_text(d_id)
+                    if d_text:
+                        doc_name = d.get('filename', d_id) if isinstance(d, dict) else d_id
+                        extracted_parts.append(f"[DOKUMEN RUJUKAN SESI: {doc_name}]:\n{d_text[:6000]}")
+                if extracted_parts:
+                    context_material += "\n\n" + "\n\n".join(extracted_parts)
+        except Exception as e_b:
+            logger.debug(f"[TOOL_DISPATCHER] PPT Master brain load skipped: {e_b}")
+
+    final_payload = None
+    try:
+        async for event_type, data in execute_ppt_master_generation_stream(
+            topic=topic,
+            slide_count=slide_count,
+            user_instructions=user_instructions,
+            attachment_paths=attachment_paths,
+            content_sources=context_material,
+            theme=theme,
+            user_preferences=user_preferences,
+            session_id=session_uuid,
+            current_user_npp=current_user_npp,
+            chat_context=user_message,
+        ):
+            if event_type == "TOOL_PREVIEW":
+                yield ("TOOL_PREVIEW", data)
+                if data.get("stage") == "done":
+                    final_payload = data.get("presentation_data")
+                    
+        if final_payload:
+            llm_context = (
+                f"Presentasi PowerPoint (.pptx) '{topic}' telah berhasil disusun, dikompilasi, dan dirender ke SVG secara lengkap ({len(final_payload.get('slides', []))} slide).\n"
+                f"File telah disimpan ke disk artefak: {final_payload.get('filename')}\n"
+                f"Tautan Unduh Resmi: {final_payload.get('download_url')}\n\n"
+                f"Seluruh slide telah otomatis disajikan langsung ke antarmuka pengguna (Slide Deck Player).\n"
+                f"DILARANG KERAS merangkai atau mengetik ulang blok ```slides atau menulis ulang JSON presentasi! Cukup sampaikan pengantar ramah dan ringkasan eksekutif 2-3 kalimat mengenai poin penting paparan."
+            )
+            yield ToolResult(
+                tool_name="ppt_master",
+                status="success",
+                intent=intent_desc,
+                display_data={
+                    "tool": "ppt_master",
+                    "topic": topic,
+                    "stage": "done",
+                    "download_url": final_payload.get("download_url"),
+                    "filename": final_payload.get("filename"),
+                    "total_slides": len(final_payload.get("slides", [])),
+                    "slides": [s.get("title", "") for s in final_payload.get("slides", [])],
+                    "presentation_data": final_payload,
+                },
+                llm_context=llm_context,
+            )
+        else:
+            yield ToolResult(
+                tool_name="ppt_master",
+                status="error",
+                intent=intent_desc,
+                display_data={"tool": "ppt_master", "stage": "error"},
+                llm_context="Gagal mengompilasi presentasi PPT Master.",
+                error_message="Gagal mengompilasi presentasi PPT Master.",
+            )
+    except Exception as e:
+        logger.error(f"[TOOL_DISPATCHER] Error in ppt_master: {e}", exc_info=True)
+        yield ToolResult(
+            tool_name="ppt_master",
+            status="error",
+            intent=intent_desc,
+            display_data={"tool": "ppt_master", "stage": "error"},
+            llm_context=f"Kendala teknis pembuatan presentasi: {str(e)}",
+            error_message=str(e),
+        )
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # 10. MASTER DISPATCHER (MCP-READY HUB)
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -2214,6 +2315,29 @@ async def dispatch_agentic_tool_stream(
             board_id=b_id_val,
             reason=reason_val,
             current_user_npp=current_user_npp,
+        ):
+            yield item
+
+    elif tool_clean in ("ppt_master", "pptmaster", "presentation", "slide_deck", "slides", "pptx", "create_presentation"):
+        topic_val = parsed_json.get("topic") or parsed_json.get("title") or parsed_json.get("query") or query_val or user_message
+        count_val = int(parsed_json.get("slide_count") or parsed_json.get("total_slides") or parsed_json.get("count") or parsed_json.get("slides_count") or (len(parsed_json.get("slides", [])) if isinstance(parsed_json.get("slides"), list) and len(parsed_json.get("slides")) > 0 else 0) or 6)
+        theme_val = parsed_json.get("theme") or "pindad-dark"
+        prefs_val = parsed_json.get("user_preferences") or {}
+        instructions_val = parsed_json.get("user_instructions") or parsed_json.get("instructions") or ""
+        attachment_paths_val = parsed_json.get("attachment_paths") or parsed_json.get("attachments") or []
+        if isinstance(attachment_paths_val, str):
+            attachment_paths_val = [attachment_paths_val]
+        async for item in execute_ppt_master_tool_stream(
+            topic=str(topic_val),
+            slide_count=count_val,
+            theme=str(theme_val),
+            user_preferences=prefs_val,
+            reason=reason_val,
+            session_uuid=session_uuid,
+            current_user_npp=current_user_npp,
+            user_message=user_message,
+            user_instructions=str(instructions_val),
+            attachment_paths=attachment_paths_val,
         ):
             yield item
 

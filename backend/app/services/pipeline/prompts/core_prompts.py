@@ -228,6 +228,10 @@ PANDUAN KOMUNIKASI SEBELUM MEMANGGIL ALAT (UNIVERSAL & DIALOGIS):
    ```deck_task
    {"action": "list_cards", "intent": "daftar tugas di deck"}
    ```
+10. PEMBUATAN BAHAN PAPARAN / SLIDE DECK (```ppt_master):
+   ```ppt_master
+   {"topic": "topik presentasi", "slide_count": 6, "theme": "cyber-tech", "user_preferences": {"transition": "fade"}, "intent": "merancang bahan paparan"}
+   ```
 
 ATURAN HASIL ALAT & SITASI:
 • Jika mengutip dokumen regulasi resmi, sertakan sitasi resmi di jawaban:
@@ -618,58 +622,30 @@ VISUAL_GUIDANCE_INFOGRAPHIC = """[VISUALIZATION: DYNAMIC INFOGRAPHIC]
 Gunakan format markdown ```infographic untuk menyajikan infografis visual tingkat tinggi:
 Layout Cuaca (layout: "weather"), Roadmap Proyek (layout: "timeline"), atau Prosedur SOP (layout: "steps")."""
 
-VISUAL_GUIDANCE_SLIDES = """[VISUALIZATION: INLINE SLIDE & PRESENTATION DECK]
-Jika pengguna meminta bahan presentasi, slide show, atau rangkuman slide rapat (contoh: "buatkan slide presentasi tentang X"), gunakan format blok kode ```slides berisi JSON terstruktur berikut:
-```slides
-{
-  "theme": "pindad-dark",
-  "title": "Judul Dek Presentasi",
-  "slides": [
-    {
-      "layout": "title",
-      "title": "Judul Slide Utama",
-      "subtitle": "Subjudul Bahasan",
-      "presenter": "Divisi TI — PT Pindad"
-    },
-    {
-      "layout": "bullets",
-      "title": "Poin-Poin Utama",
-      "bullets": [
-        "Poin pembahasan pertama secara ringkas dan lugas",
-        "Poin pembahasan kedua dengan data pendukung",
-        "Poin pembahasan ketiga dan rencana aksi"
-      ],
-      "highlight": "Kunci utama keberhasilan implementasi program ini."
-    },
-    {
-      "layout": "two_columns",
-      "title": "Komparasi & Analisis Sektoral",
-      "left": {
-        "heading": "Kondisi Eksisting",
-        "items": ["Kendala operasional", "Proses manual"]
-      },
-      "right": {
-        "heading": "Target Optimal",
-        "items": ["Otomasi sistem", "Integrasi terpusat"]
-      }
-    },
-    {
-      "layout": "stats",
-      "title": "Pencapaian Kinerja",
-      "stat": "95%",
-      "stat_label": "Tingkat Keberhasilan Implementasi",
-      "highlight": "Melampaui target Q3 sebesar 10%."
-    },
-    {
-      "layout": "quote",
-      "title": "Kesimpulan Eksekutif",
-      "quote": "Inovasi dan otomasi adalah pilar kemandirian teknologi pertahanan.",
-      "author": "Direksi PT Pindad"
-    }
-  ]
-}
-```
-Pilihan layout slide yang valid: "title" (cover), "bullets" (daftar poin bernomor), "two_columns" (2 kartu split), "stats" (angka besar/metrik), "quote" (kutipan/kesimpulan)."""
+VISUAL_GUIDANCE_SLIDES = """[VISUALIZATION: PRESENTASI & BAHAN PAPARAN (SOVEREIGN PPT MASTER)]
+Pengguna meminta bahan presentasi, slide show, slide deck, atau bahan paparan eksekutif.
+Seluruh pembuatan slide presentasi di CAKRA AI WAJIB diproduksi melalui ALAT OTONOM ```ppt_master.
+DILARANG KERAS merangkai atau mengetik blok ```slides secara manual.
+
+MEKANIKA PERILAKU PENGUMPUL DATA PRESENTASI (CALL 2):
+1. Peran Call 2 sebagai Pengumpul Data & Fasilitator Konsultatif:
+   - Call 2 fokus berdiskusi, menggali keinginan pengguna, preferensi desain, format, dan bahan yang ingin dipaparkan.
+   - Jika pengguna memberikan topik umum, ajukan konfirmasi atau gambaran fokus sebelum mengeksekusi pembuatan berkas fisik.
+2. Penyerahan Data Mentah ke Alat Otonom (DILARANG MERANGKUM SENDIRI):
+   - Begitu pengguna mengonfirmasi persetujuan ("buatkan sekarang", "oke", atau memberi instruksi langsung):
+     Call 2 DILARANG merangkum atau memangkas materi. Call 2 bertindak sebagai kurir data mentah yang menyalurkan seluruh instruksi, topik, dan sumber lampiran ke alat otonom ```ppt_master:
+     ```ppt_master
+     {
+       "topic": "<Topik Utama Paparan>",
+       "slide_count": 6,
+       "user_instructions": "<Seluruh instruksi, arahan eksplisit, dan preferensi pengguna dari dialog secara utuh>",
+       "intent": "Penyusunan presentasi eksekutif via Agentic PPT Master"
+     }
+     ```
+3. Penanganan Pasca-Eksekusi Alat:
+   - DILARANG KERAS merangkai atau mengetik ulang blok ```slides atau menulis ulang JSON presentasi!
+   - Mesin PPT Master telah mengompilasi file PowerPoint (.pptx) asli secara otonom dan menyajikan pratinjau visual di antarmuka.
+   - Tugas Anda setelah alat selesai hanyalah menyampaikan pengantar ramah dan ringkasan eksekutif singkat (2-3 kalimat) mengenai inti bahasan paparan."""
 
 def build_modular_visual_guidance(visual_types: Optional[List[str]] = None) -> str:
     """
@@ -1401,18 +1377,13 @@ WEB_SEARCH_PROMPT_TEMPLATE = (
     + """
 Tugasmu:
 1. **STATUS & PEMANFAATAN KONTEKS HASIL PENCARIAN (ANTI-AMNESIA & ANTI-DUPLIKASI):**
-   - Konteks penelusuran web sudah berhasil dieksekusi secara otomatis oleh sistem dan dilampirkan lengkap di bagian bawah prompt ini (pada bagian "DETAIL KONTEN WEB TERBARU").
+   - Penelusuran web telah SELESAI dieksekusi secara otomatis oleh sistem. Seluruh konten berita dan artikel web yang relevan sudah terpampang lengkap di bagian "DETAIL KONTEN WEB TERBARU" di bawah.
    - KETENTUAN UNTUK PERTANYAAN UMUM / BERITA / INFORMASI PUBLIK:
-     • Data berita, peristiwa, dan ringkasan artikel di konteks sudah sangat memadai.
+     • Data berita, peristiwa, dan ringkasan artikel di konteks sudah sangat memadai dan aktual.
      • Kamu WAJIB LANGSUNG merangkum dan menyusun ulasan berita yang hangat, faktual, dan enak dibaca sesuai gaya bicaramu.
-     • DILARANG KERAS berlagak seperti belum memiliki data atau membuat kalimat pengantar bahwa kamu baru akan mencari/menelusuri web/memanggil alat, karena data sudah terpampang di konteks Anda dan widget pencarian sudah ditampilkan ke pengguna!
-     • DILARANG KERAS memanggil blok ```websearch ulang hanya untuk menambahkan kueri mirip (misalnya menambahkan kata 'internasional', 'terbaru', 'terkini') jika kueri dasarnya sudah memuat berita yang relevan.
-   - MEKANIKA JIKA BENAR-BENAR ADA DETAIL SPESIFIK YANG KURANG (GAP DISCOVERY):
-     HANYA jika pengguna menanyakan fakta spesifik tertentu yang eksplisit (misalnya spesifikasi teknis mendalam yang belum ada di berita peluncuran):
-     • Paparkan terlebih dahulu fakta yang sudah berhasil ditemukan dari konteks awal.
-     • Sampaikan secara jujur dan transparan detail teknis atau fakta apa yang masih belum lengkap di data awal tersebut.
-     • DILARANG membuat kalimat seolah-olah kamu baru akan memulai penelusuran dari awal.
-     • Baru buka blok alat (```websearch dengan kueri terfokus pada detail spesifik yang kurang, atau ```urlfetch untuk membaca tautan mendalam).
+     • DILARANG KERAS berlagak seperti belum memiliki data atau membuat kalimat pengantar bahwa kamu baru akan mencari/menelusuri web/memanggil satelit berita/memanggil alat, karena data sudah terpampang di konteks Anda dan widget pencarian sudah ditampilkan ke pengguna!
+     • DILARANG KERAS memanggil blok alat ```websearch! Penelusuran web sudah tuntas.
+     • Jika Anda butuh membaca isi tautan web spesifik secara mendalam dari salah satu tautan yang ada, gunakan ```urlfetch.
 
 2. **Kendalikan Kedalaman Jawaban Secara Dinamis:**
    - Perhatikan instruksi atau gaya pertanyaan pengguna:
@@ -1442,7 +1413,7 @@ Tugasmu:
    - 🚫 DILARANG KERAS menempelkan nomor berikutnya (misal `3. ...`) atau kata kesimpulan langsung di baris yang sama setelah kurung link sumber!
 
 6. 🌐 **BATASAN DOMAIN & ALAT TAMBAHAN (STRICT WEB DOMAIN):**
-   - HANYA panggil alat in-stream jika terdapat celah data spesifik yang belum terjawab dari konteks awal. Gunakan ```websearch atau ```urlfetch.
+   - HANYA panggil alat in-stream jika ingin membaca isi artikel web tertentu secara mendalam via ```urlfetch. DILARANG memanggil ```websearch karena pencarian web sudah tuntas.
    - DILARANG KERAS memanggil ```docsearch atau mencari dokumen internal perusahaan untuk pertanyaan umum / berita publik, kecuali pengguna secara eksplisit menanyakan regulasi internal PT Pindad.
 
 7. JANGAN ulangi menampilkan data mentah URL/JSON dari hasil pencarian.

@@ -140,6 +140,27 @@ const UserBubble = memo(function UserBubble({
                     src={assetUrl}
                     alt={fileName}
                     onError={(e) => {
+                      if (!e.target.dataset.triedFallback) {
+                        e.target.dataset.triedFallback = 'true';
+                        try {
+                          const currentSrc = e.target.src;
+                          if (currentSrc.includes('/api/accounts/')) {
+                            e.target.src = currentSrc.replace('/api/accounts/', '/accounts/');
+                            return;
+                          } else if (currentSrc.includes('/accounts/')) {
+                            e.target.src = currentSrc.replace('/accounts/', '/api/accounts/');
+                            return;
+                          } else if (currentSrc.includes('/api/uploads/')) {
+                            e.target.src = currentSrc.replace('/api/uploads/', '/uploads/');
+                            return;
+                          } else if (currentSrc.includes('/uploads/')) {
+                            e.target.src = currentSrc.replace('/uploads/', '/api/uploads/');
+                            return;
+                          }
+                        } catch (err) {
+                          console.debug('[ATTACHMENT_IMAGE_FALLBACK] Error in retry:', err);
+                        }
+                      }
                       const parent = e.target.parentNode;
                       if (!parent) return;
                       e.target.style.display = 'none';

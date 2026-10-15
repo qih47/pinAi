@@ -896,6 +896,24 @@ export const translations = {
       deckRunning: "Mengakses Nextcloud Deck ({elapsed}s)",
       deckAnalyzing: "Menyinkronkan status tugas Deck",
       deckDefault: "Sinkronisasi tugas Nextcloud Deck",
+      pptComplete: "Bahan Paparan (PPT Master) Selesai",
+      pptFailed: "Pembuatan bahan paparan (terkendala)",
+      pptRunning: "Menyusun bahan paparan ({elapsed}s)",
+      pptAnalyzing: "Mengompilasi file PowerPoint (.pptx)...",
+      pptDefault: "Penyusunan slide PPT Master",
+      pptTopic: "Topik Paparan",
+      pptSlidesCount: "Slide",
+      pptReady: "Siap",
+      pptDraftingOutline: "Menyiapkan kerangka narasi & alur presentasi...",
+      pptDeckTitle: "PPT Master Sovereign Deck",
+      downloadPptx: "Unduh PPTX",
+      pptPlanning: "Menganalisis materi & merancang kerangka narasi {count} slide via AI Architect...",
+      pptDraftingSlide: "Merancang Slide {current} dari {total}: {title}...",
+      pptExecuting: "Membangun Slide {current} dari {total}: {title}...",
+      pptEvaluating: "Mengevaluasi kesesuaian materi & menyempurnakan kualitas slide...",
+      pptCompilingPptx: "Finishing & mengompilasi file PowerPoint (.pptx) dengan elemen native DrawingML...",
+      pptRenderingPreviews: "Merender pratinjau slide resolusi tinggi dari berkas PPTX asli...",
+      pptPresented: "Presentasi selesai & siap disajikan (Presented)",
       analyzingCalcResults: "Menganalisis hasil kalkulasi...",
       analyzingDocResults: "Menganalisis hasil penelusuran...",
       done: "Selesai",
@@ -967,7 +985,11 @@ export const translations = {
       prevSlide: "Slide Sebelumnya (←)",
       nextSlide: "Slide Selanjutnya (→)",
       goToSlide: "Pindah ke Slide {number}",
-      preparingSlides: "Menyiapkan Slide Presentasi..."
+      preparingSlides: "Menyiapkan Slide Presentasi...",
+      themePindadDark: "Pindad Navy",
+      themeModernDark: "Modern Slate",
+      themeCleanLight: "Clean Light",
+      themeEmeraldTactical: "Tactical Emerald"
     },
     documentDiff: {
       finishedComparison: "Selesai komparasi {count} dokumen",
@@ -1080,6 +1102,13 @@ export const translations = {
       TOOL_DOCMEDIA_FETCHING: "Mengambil bagan alur & visual dokumen",
       TOOL_DOCDIFF_ANALYZING: "Membandingkan pasal regulasi",
       TOOL_DECK_EXECUTING: "Mengelola tugas di Nextcloud Deck",
+      TOOL_PPT_MASTER_PLANNING: "🧠 Menganalisis materi & merancang kerangka narasi {count} slide",
+      TOOL_PPT_MASTER_EXECUTING: "🛠️ Membangun Slide {current} dari {total}: {title}",
+      TOOL_PPT_MASTER_DRAFTING: "✍️ Merancang Slide {current} dari {total}: {title}",
+      TOOL_PPT_MASTER_EVALUATING: "🔍 Mengevaluasi kesesuaian materi & menyempurnakan kualitas slide",
+      TOOL_PPT_MASTER_COMPILING: "💻 Mengompilasi berkas PowerPoint (.pptx)",
+      TOOL_PPT_MASTER_RENDERING: "🖼️ Merender pratinjau slide resolusi tinggi",
+      TOOL_PPT_MASTER_DONE: "✨ Presentasi selesai & siap disajikan",
       TOOL_GENERIC_RUNNING: "Menjalankan alat",
       // ── PRESET & VISUAL STATUS KEYS ──
       WEB_INIT: "🌐 Menjelajah web",
@@ -2061,6 +2090,24 @@ export const translations = {
       deckRunning: "Accessing Nextcloud Deck ({elapsed}s)",
       deckAnalyzing: "Synchronizing Deck task status",
       deckDefault: "Nextcloud Deck task synchronization",
+      pptComplete: "Presentation Deck (PPT Master) Complete",
+      pptFailed: "Presentation generation (encountered issue)",
+      pptRunning: "Drafting presentation ({elapsed}s)",
+      pptAnalyzing: "Compiling PowerPoint presentation (.pptx)...",
+      pptDefault: "Executive Presentation",
+      pptTopic: "Presentation Topic",
+      pptSlidesCount: "Slides",
+      pptReady: "Ready",
+      pptDraftingOutline: "Drafting narrative outline & slide flow...",
+      pptDeckTitle: "PPT Master Sovereign Deck",
+      downloadPptx: "Download PPTX",
+      pptPlanning: "Analyzing content & structuring {count}-slide narrative outline via AI Architect...",
+      pptDraftingSlide: "Designing Slide {current} of {total}: {title}...",
+      pptExecuting: "Building Slide {current} of {total}: {title}...",
+      pptEvaluating: "Evaluating content alignment & refining slide quality...",
+      pptCompilingPptx: "Finalizing & compiling native PowerPoint (.pptx) with DrawingML elements...",
+      pptRenderingPreviews: "Rendering high-resolution true previews from native PPTX...",
+      pptPresented: "Presentation complete & ready to present (Presented)",
       analyzingCalcResults: "Analyzing calculation results...",
       analyzingDocResults: "Analyzing search results...",
       done: "Done",
@@ -2132,7 +2179,11 @@ export const translations = {
       prevSlide: "Previous Slide (←)",
       nextSlide: "Next Slide (→)",
       goToSlide: "Go to Slide {number}",
-      preparingSlides: "Preparing Slide Presentation..."
+      preparingSlides: "Preparing Slide Presentation...",
+      themePindadDark: "Pindad Navy",
+      themeModernDark: "Modern Slate",
+      themeCleanLight: "Clean Light",
+      themeEmeraldTactical: "Tactical Emerald"
     },
     documentDiff: {
       finishedComparison: "Finished comparison of {count} documents",
@@ -2245,6 +2296,13 @@ export const translations = {
       TOOL_DOCMEDIA_FETCHING: "Retrieving document flowcharts & visuals",
       TOOL_DOCDIFF_ANALYZING: "Comparing regulatory clauses & articles",
       TOOL_DECK_EXECUTING: "Managing Nextcloud Deck tasks",
+      TOOL_PPT_MASTER_PLANNING: "🧠 Analyzing content & structuring {count}-slide narrative outline",
+      TOOL_PPT_MASTER_EXECUTING: "🛠️ Building Slide {current} of {total}: {title}",
+      TOOL_PPT_MASTER_DRAFTING: "✍️ Designing Slide {current} of {total}: {title}",
+      TOOL_PPT_MASTER_EVALUATING: "🔍 Evaluating content alignment & refining slide quality",
+      TOOL_PPT_MASTER_COMPILING: "💻 Compiling native PowerPoint (.pptx) file",
+      TOOL_PPT_MASTER_RENDERING: "🖼️ Rendering high-resolution true previews",
+      TOOL_PPT_MASTER_DONE: "✨ Presentation complete & ready to present",
       TOOL_GENERIC_RUNNING: "Executing tool",
       // ── PRESET & VISUAL STATUS KEYS ──
       WEB_INIT: "🌐 Browsing web",
@@ -2380,6 +2438,7 @@ export function resolveStatusMessage(statusInput, language = 'id', explicitKey =
     if (!targetTpl.includes('{')) {
       return stripDots(targetTpl);
     }
+    let res = targetTpl;
     const idTpl = idDict[key];
     if (idTpl && idTpl.includes('{')) {
       const pNames = [];
@@ -2391,14 +2450,42 @@ export function resolveStatusMessage(statusInput, language = 'id', explicitKey =
       }) + '$';
       const m = cleanText(raw).match(new RegExp(rxStr, 'iu'));
       if (m) {
-        let res = targetTpl;
         pNames.forEach((name, idx) => {
           res = res.replace(new RegExp(`\\{${name}\\}`, 'g'), m[idx + 1].trim());
         });
-        return stripDots(res);
       }
     }
-    return stripDots(targetTpl);
+
+    // Ekstraksi parameter cerdas jika pola template di atas belum terisi
+    if (res.includes('{count}')) {
+      const countVal = (typeof statusInput === 'object' && (statusInput.total_slides || statusInput.count || statusInput.params?.count))
+        || (raw.match(/(\d+)\s*(?:slide|halaman|dokumen|rujukan|tautan|item|file|pages?)/i)?.[1])
+        || (raw.match(/(\d+)/)?.[1])
+        || '6';
+      res = res.replace(/\{count\}/g, countVal);
+    }
+    if (res.includes('{current}')) {
+      const curVal = (typeof statusInput === 'object' && (statusInput.current_slide || statusInput.current || statusInput.params?.current))
+        || (raw.match(/slide\s*(\d+)/i)?.[1])
+        || '1';
+      res = res.replace(/\{current\}/g, curVal);
+    }
+    if (res.includes('{total}')) {
+      const totVal = (typeof statusInput === 'object' && (statusInput.total_slides || statusInput.total || statusInput.params?.total))
+        || (raw.match(/(?:dari|of)\s*(\d+)/i)?.[1])
+        || '6';
+      res = res.replace(/\{total\}/g, totVal);
+    }
+    if (res.includes('{title}')) {
+      const titleVal = (typeof statusInput === 'object' && (statusInput.current_title || statusInput.title || statusInput.params?.title))
+        || (raw.match(/:\s*(.+?)(?:\.{1,3})?$/)?.[1])
+        || '';
+      res = res.replace(/\{title\}/g, titleVal);
+    }
+
+    // Safeguard: jangan pernah biarkan tanda kurung kurawal kurung parameter bocor ke UI
+    res = res.replace(/\{[a-zA-Z0-9_]+\}/g, '');
+    return stripDots(res);
   }
 
   const cleanR = cleanText(raw);
@@ -2437,6 +2524,41 @@ export function resolveStatusMessage(statusInput, language = 'id', explicitKey =
   const mFileReady = raw.match(/^(?:✨)?\s*(?:Berkas|File)\s+(.+?)\s+siap/i);
   if (mFileReady) {
     return stripDots(language === 'en' ? `✨ File ${mFileReady[1]} ready` : `✨ Berkas ${mFileReady[1]} siap`);
+  }
+
+  const mPptPlanning = raw.match(/(?:menganalisis|merancang|planner).*?(\d+)\s+slide/i) || raw.match(/(\d+)\s+slide/i);
+  if (mPptPlanning) {
+    return stripDots(language === 'en' ? `🧠 Analyzing content & structuring ${mPptPlanning[1]}-slide narrative outline` : `🧠 Menganalisis materi & merancang kerangka narasi ${mPptPlanning[1]} slide`);
+  }
+
+  const mPptDrafting = raw.match(/^(?:✍️)?\s*Merancang\s+Slide\s+(\d+)\s+dari\s+(\d+):\s*(.+?)(?:\.{1,3})?$/i);
+  if (mPptDrafting) {
+    return stripDots(language === 'en' ? `✍️ Designing Slide ${mPptDrafting[1]} of ${mPptDrafting[2]}: ${mPptDrafting[3]}` : `✍️ Merancang Slide ${mPptDrafting[1]} dari ${mPptDrafting[2]}: ${mPptDrafting[3]}`);
+  }
+
+  const mPptExecuting = raw.match(/^(?:🛠️)?\s*(?:Membangun|Building)\s+Slide\s+(\d+)\s+(?:dari|of)\s+(\d+):\s*(.+?)(?:\.{1,3})?$/i);
+  if (mPptExecuting) {
+    return stripDots(language === 'en' ? `🛠️ Building Slide ${mPptExecuting[1]} of ${mPptExecuting[2]}: ${mPptExecuting[3]}` : `🛠️ Membangun Slide ${mPptExecuting[1]} dari ${mPptExecuting[2]}: ${mPptExecuting[3]}`);
+  }
+
+  const mPptEvaluating = raw.match(/(?:mengevaluasi|evaluating|mengaudit|auditing)\s+(?:kesesuaian|content)/i);
+  if (mPptEvaluating) {
+    return stripDots(language === 'en' ? `🔍 Evaluating content alignment & refining slide quality` : `🔍 Mengevaluasi kesesuaian materi & menyempurnakan kualitas slide`);
+  }
+
+  const mPptCompiling = raw.match(/(?:mengompilasi|compiling)\s+file\s+powerpoint/i);
+  if (mPptCompiling) {
+    return stripDots(language === 'en' ? `💻 Finalizing & compiling native PowerPoint (.pptx) file` : `💻 Finishing & mengompilasi file PowerPoint (.pptx)`);
+  }
+
+  const mPptRendering = raw.match(/(?:merender|rendering)\s+pratinjau\s+slide/i);
+  if (mPptRendering) {
+    return stripDots(language === 'en' ? `🖼️ Rendering high-resolution true previews` : `🖼️ Merender pratinjau slide resolusi tinggi`);
+  }
+
+  const mPptDone = raw.match(/presentasi\s+selesai\s+&\s+siap\s+disajikan/i);
+  if (mPptDone) {
+    return stripDots(language === 'en' ? `✨ Presentation complete & ready to present` : `✨ Presentasi selesai & siap disajikan`);
   }
 
   const mScanDoc = raw.match(/^(?:⚙️)?\s*Memindai\s+(?:isi\s+)?(.+?)(?:\.{1,3})?$/i);

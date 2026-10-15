@@ -1,6 +1,7 @@
 import logging
 from pathlib import Path
 
+from typing import Optional
 from fastapi import APIRouter, HTTPException, Query, Depends, Form
 from fastapi.responses import PlainTextResponse
 
@@ -11,13 +12,87 @@ from backend.app.api.dependencies.auth import get_current_user_npp
 
 import zipfile
 import io
-from fastapi.responses import PlainTextResponse, StreamingResponse
+from fastapi.responses import PlainTextResponse, StreamingResponse, FileResponse
 
 router = APIRouter()
 logger = logging.getLogger("CAKRA_ARTIFACTS")
 
 # Maksimum ukuran file yang boleh dibaca (5MB)
 _MAX_READ_SIZE = 5 * 1024 * 1024
+
+
+@router.get("/download/artifact/{session_id}/{filename}")
+@router.head("/download/artifact/{session_id}/{filename}")
+@router.get("/artifacts/download/{session_id}/{filename}")
+@router.head("/artifacts/download/{session_id}/{filename}")
+async def download_session_artifact(
+    session_id: str,
+    filename: str,
+    current_user_npp: Optional[str] = Depends(get_current_user_npp),
+):
+    """
+    Mengunduh file artifact sesi secara langsung (misal: file PowerPoint .pptx hasil kompilasi server).
+    Mendukung unduhan browser langsung tanpa header Authorization (auth fallback via DB / FS lookup).
+    """
+    safe_name = Path(filename).name
+    if not safe_name or safe_name.startswith(".") or "/" in safe_name or "\\" in safe_name:
+        raise HTTPException(status_code=400, detail="Nama file tidak valid.")
+
+    safe_sess = "".join(c if c.isalnum() or c == "-" else "_" for c in str(session_id)).strip("_")
+    from backend.app.core.paths import ACCOUNTS_DIR
+
+    target = None
+
+    # 1. Coba path direktori user saat ini jika user terotentikasi
+    if current_user_npp and current_user_npp != "None":
+        target_dir = get_account_session_dir(current_user_npp, session_id, "artifacts")
+        candidate = target_dir / safe_name
+        if candidate.exists() and candidate.is_file():
+            target = candidate
+
+    # 2. Coba lookup pemilik sesi di database PostgreSQL
+    if not target:
+        try:
+            from backend.app.core.database import get_db
+            async with get_db() as conn:
+                row = await conn.fetchrow(
+                    "SELECT user_npp FROM chat_sessions WHERE session_uuid = $1 LIMIT 1",
+                    session_id
+                )
+                if row and row["user_npp"]:
+                    sess_npp = row["user_npp"]
+                    sess_dir = get_account_session_dir(sess_npp, session_id, "artifacts")
+                    candidate = sess_dir / safe_name
+                    if candidate.exists() and candidate.is_file():
+                        target = candidate
+        except Exception as e:
+            logger.debug(f"[ARTIFACT_DOWNLOAD] DB session owner lookup: {e}")
+
+    # 3. Fallback scan direktori accounts (SSOT brain/artifacts dan legacy artifacts)
+    if not target:
+        for candidate in Path(ACCOUNTS_DIR).glob(f"*/{safe_sess}/brain/artifacts/{safe_name}"):
+            if candidate.exists() and candidate.is_file():
+                target = candidate
+                break
+        if not target:
+            for candidate in Path(ACCOUNTS_DIR).glob(f"*/{safe_sess}/artifacts/{safe_name}"):
+                if candidate.exists() and candidate.is_file():
+                    target = candidate
+                    break
+
+    if not target or not target.exists() or not target.is_file():
+        raise HTTPException(status_code=404, detail=f"File '{safe_name}' tidak ditemukan.")
+
+    media_type = (
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+        if safe_name.endswith(".pptx")
+        else "application/octet-stream"
+    )
+    return FileResponse(
+        path=str(target),
+        filename=safe_name,
+        media_type=media_type
+    )
 
 
 @router.get("/artifacts/read", response_class=PlainTextResponse)

@@ -21,7 +21,7 @@ from backend.app.services.pipeline.tool_dispatcher import dispatch_agentic_tool,
 
 logger = logging.getLogger("CAKRA_AGENTIC_INTERCEPTOR")
 
-_RE_TOOL_OPEN = re.compile(r"```(websearch|docsearch|python_calc|web_search|doc_search|calc|urlfetch|url_fetch|read_url|fetch_url|map_search|map|geocode|terminal_runner|terminal|cli_runner|cli|bash|shell|doc_media|docmedia|visual_media|flowchart|doc_diff|docdiff|diff_regulations|regulasi_diff|deck_task|deck|pincloud_deck)", re.IGNORECASE)
+_RE_TOOL_OPEN = re.compile(r"```(websearch|docsearch|python_calc|web_search|doc_search|calc|urlfetch|url_fetch|read_url|fetch_url|map_search|map|geocode|terminal_runner|terminal|cli_runner|cli|bash|shell|doc_media|docmedia|visual_media|flowchart|doc_diff|docdiff|diff_regulations|regulasi_diff|deck_task|deck|pincloud_deck|ppt_master|pptmaster|presentation|slide_deck|slides|pptx|create_presentation)", re.IGNORECASE)
 _RE_TRIPLE_BACKTICKS = re.compile(r"```")
 _RE_SOURCES_OPEN = re.compile(r"<\s*sources_json\s*>", re.IGNORECASE)
 _RE_SOURCES_CLOSE = re.compile(r"<\s*/\s*sources_json\s*>", re.IGNORECASE)
@@ -254,6 +254,8 @@ async def agentic_stream_wrapper(
 
         buffer = ""
         is_capturing_tool = False
+        is_suppressing_tool = False
+        suppressed_tool_tag = None
         tool_tag = None
         tool_buffer = ""
         tool_executed = False
@@ -353,7 +355,7 @@ async def agentic_stream_wrapper(
                             continue
 
                 # 3. Track text stream & deteksi tool calling
-                if not is_capturing_tool:
+                if not is_capturing_tool and not is_suppressing_tool:
                     buffer += chunk_text
                     
                     # 🛡️ BUFFER HOLDING: Tahan potongan tag <sources_json> agar token pembuka tidak bocor ke klien
@@ -402,12 +404,14 @@ async def agentic_stream_wrapper(
                                 _norm_tag = "doc_diff"
                             elif _norm_tag in ("deck_task", "deck", "pincloud_deck"):
                                 _norm_tag = "deck_task"
+                            elif _norm_tag in ("ppt_master", "pptmaster", "presentation", "slide_deck", "slides", "pptx", "create_presentation"):
+                                _norm_tag = "ppt_master"
 
                             if allowed_tools is not None and _norm_tag not in allowed_tools:
-                                logger.info(f"[AGENTIC_TOOL] 🛡️ Tool '{_norm_tag}' blocked by allowed_tools whitelist ({allowed_tools}) — treated as markdown")
-                                yield format_sse(buffer, "", False, event_type=SSEEventType.CHUNK)
-                                accumulated_full_text += buffer
-                                pre_tool_text += buffer
+                                logger.info(f"[AGENTIC_TOOL] 🛡️ Tool '{_norm_tag}' blocked by allowed_tools whitelist ({allowed_tools}) — suppressing block completely")
+                                is_suppressing_tool = True
+                                suppressed_tool_tag = _norm_tag
+                                tool_buffer = tail[open_match.end():]
                                 buffer = ""
                                 continue
 
@@ -426,6 +430,7 @@ async def agentic_stream_wrapper(
                                 "doc_media": ("Mengambil bagan alur & visual dokumen", "TOOL_DOCMEDIA_FETCHING"),
                                 "doc_diff": ("Membandingkan pasal regulasi", "TOOL_DOCDIFF_ANALYZING"),
                                 "deck_task": ("Mengelola tugas di Nextcloud Deck", "TOOL_DECK_EXECUTING"),
+                                "ppt_master": ("Menyusun presentasi PPT Master", "TOOL_PPT_MASTER_PREPARING"),
                             }
                             init_status = tool_initial_statuses.get(_norm_tag, (f"Menyiapkan alat {_norm_tag}", f"TOOL_{_norm_tag.upper()}_PREPARING"))
                             yield format_sse(status=init_status[0], status_key=init_status[1], event_type=SSEEventType.STATUS)
@@ -466,6 +471,17 @@ async def agentic_stream_wrapper(
                             pre_tool_text += buffer
                             buffer = ""
 
+                elif is_suppressing_tool:
+                    # Sedang mengabaikan payload blok tool yang tidak diizinkan
+                    tool_buffer += chunk_text
+                    close_match = _RE_TRIPLE_BACKTICKS.search(tool_buffer)
+                    if close_match:
+                        logger.info(f"[AGENTIC_TOOL] 🛡️ Suppressed unallowed tool '{suppressed_tool_tag}' block successfully swallowed without execution.")
+                        is_suppressing_tool = False
+                        buffer = tool_buffer[close_match.end():]
+                        tool_buffer = ""
+                        suppressed_tool_tag = None
+
                 else:
                     # Sedang menangkap payload di dalam blok tool
                     tool_buffer += chunk_text
@@ -491,7 +507,10 @@ async def agentic_stream_wrapper(
                             if isinstance(item, tuple):
                                 status_msg, status_k = item
                                 if status_msg in ("TOOL_PREVIEW", "DOCUMENTS_PREVIEW"):
-                                    if not preview_emitted:
+                                    if isinstance(status_k, dict) and status_k.get("status_text"):
+                                        st_stage = str(status_k.get("stage", "PROGRESS")).upper()
+                                        yield format_sse(status=status_k["status_text"], status_key=f"TOOL_{tool_tag.upper()}_{st_stage}", event_type=SSEEventType.STATUS)
+                                    if tool_tag == "websearch" and not preview_emitted:
                                         # Kirim enriched JSON block preview awal agar UI langsung menampilkan widget secara realtime
                                         preview_block = f"\n```{tool_tag}\n{json.dumps(status_k)}\n```\n\n"
                                         yield format_sse(preview_block, "", False, event_type=SSEEventType.CHUNK)
@@ -585,7 +604,11 @@ async def agentic_stream_wrapper(
                                 logger.warning(f"[AGENTIC_INTERCEPTOR] Gagal menyimpan chunk urlfetch ke memori sesi: {e_mem}")
 
                         # Kirim enriched JSON block ke UI (akan dirender oleh Frontend jika belum dipancarkan saat preview)
-                        if not preview_emitted:
+                        if tool_result.tool_name == "ppt_master" and tool_result.display_data.get("presentation_data"):
+                            slides_block = f"\n```slides\n{json.dumps(tool_result.display_data['presentation_data'], ensure_ascii=False)}\n```\n\n"
+                            yield format_sse(slides_block, "", False, event_type=SSEEventType.CHUNK)
+                            accumulated_full_text += slides_block
+                        elif not preview_emitted:
                             enriched_block = f"\n```{tool_result.tool_name}\n{json.dumps(tool_result.display_data)}\n```\n\n"
                             yield format_sse(enriched_block, "", False, event_type=SSEEventType.CHUNK)
                             accumulated_full_text += enriched_block
@@ -605,6 +628,15 @@ async def agentic_stream_wrapper(
                                 f"  2. Setelah tag </sources_json>, lanjutkan jawabanmu secara tuntas, akurat, dan terstruktur menyambung respons sebelumnya. Patuhi gaya bahasa & kata ganti aktifmu.\n"
                                 f"- JIKA HASIL TIDAK RELEVAN, SALAH DOKUMEN, ATAU KURANG LENGKAP: Kamu WAJIB LANGSUNG MEMANGGIL ALAT LAGI (misal ```docsearch dengan kata kunci substansi yang lebih spesifik, atau ```websearch jika topik tidak ada di arsip internal) DI BAWAH KALIMATMU SEKARANG JUGA! DILARANG KERAS hanya berjanji dalam bentuk teks tanpa menyertakan blok pemanggilan alatnya!\n"
                                 f"Tetap konsisten menjaga gaya bahasa aktifmu. JANGAN mengulangi sapaan awal."
+                            )
+                        elif tool_result.tool_name == "ppt_master":
+                            continuation_instruction = (
+                                f"\n\n[SISTEM: HASIL EKSEKUSI ALAT 'PPT_MASTER']:\n"
+                                f"{safe_context}\n\n"
+                                f"[INSTRUKSI LANJUTAN]:\n"
+                                f"Seluruh berkas presentasi telah berhasil dikompilasi ke file PowerPoint (.pptx) resmi dan telah disajikan ke antarmuka pengguna dalam Slide Deck Viewer.\n"
+                                f"DILARANG KERAS merangkai atau mengetik ulang blok ```slides atau menulis ulang JSON presentasi!\n"
+                                f"Cukup berikan respons penutup ramah dan ringkasan eksekutif singkat (2-3 kalimat) mengenai substansi materi presentasi tersebut. Tetap konsisten menjaga gaya bahasa aktifmu."
                             )
                         else:
                             context_body = safe_context

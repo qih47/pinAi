@@ -811,7 +811,8 @@ class ModeAttachment:
 
         async def stream_worker():
             try:
-                async for chunk_line in stream_ollama_chat(
+                from backend.app.services.pipeline.agentic_interceptor import agentic_stream_wrapper
+                async for chunk_line in agentic_stream_wrapper(
                     model_name=target_model,
                     messages=stream_messages,
                     request=request,
@@ -819,8 +820,10 @@ class ModeAttachment:
                     num_ctx=num_ctx,
                     num_predict=8192,
                     is_thinking=is_thinking,
-                    stream_speed=0.01,
-                    employee_name=employee_name
+                    employee_name=employee_name,
+                    session_uuid=session_uuid,
+                    current_user_npp=current_user_npp,
+                    max_tool_loops=2
                 ):
                     if not stop_ticker.is_set():
                         stop_ticker.set()

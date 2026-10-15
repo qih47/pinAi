@@ -129,6 +129,12 @@ async def handle_web_search(
     modified_messages = [m for m in trimmed_history if m["role"] != "system"]
     modified_messages.insert(0, {"role": "system", "content": system_prompt})
     
+    # 🛡️ Rekam penyelesaian pencarian ke turn assistant agar LLM sadar penelusuran sudah tuntas
+    modified_messages.append({
+        "role": "assistant",
+        "content": f"[SISTEM: Penelusuran web untuk kueri '{display_query}' telah berhasil dieksekusi oleh sistem, widget pencarian sudah disajikan ke pengguna, dan rangkuman data berita tertera lengkap di konteks.]"
+    })
+    
     yield format_sse(status="💡 Menyusun ringkasan", status_key="DRAFTING_SUMMARY", event_type=SSEEventType.STATUS)
 
     # 5. Mulai streaming jawaban dari LLM via Agentic Interceptor (num_ctx=16384, num_predict=-1)
@@ -145,7 +151,7 @@ async def handle_web_search(
             num_ctx=16384,
             num_predict=-1,
             max_tool_loops=2,
-            allowed_tools=["websearch", "urlfetch"],
+            allowed_tools=["urlfetch"],
             user_message=query,
         ):
             yield chunk

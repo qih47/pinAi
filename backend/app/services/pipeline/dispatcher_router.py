@@ -637,7 +637,7 @@ def _validate_and_normalize_routing(
     routing["is_generate_email"] = bool(routing_json.get("is_generate_email", False))
     routing["is_docwriter"] = bool(routing_json.get("is_docwriter", False)) or bool(precheck.get("is_docwriter", False))
     routing["is_url_read"] = bool(routing_json.get("is_url_read", False))
-    if precheck.get("_detected_urls") and not routing_json.get("need_rag") and not routing_json.get("is_web_search"):
+    if precheck.get("_detected_urls") and not routing_json.get("need_rag"):
         routing["is_url_read"] = True
     routing["is_coding"] = bool(routing_json.get("is_coding", False))
     if any(neg in user_msg_lower for neg in CODING_NEGATIONS):
@@ -769,7 +769,7 @@ def _validate_and_normalize_routing(
 
         # 7. Slides & Presentasi
         if any(w in user_lower for w in [
-            "slide", "slides", "presentasi", "presentation", "powerpoint", "ppt", "dek presentasi"
+            "slide", "slides", "presentasi", "presentation", "powerpoint", "ppt", "dek presentasi", "slide deck", "slidedeck", "paparan", "bahan paparan", "slideshow", "slide show"
         ]):
             routing["visual_types"].append("slides")
 
@@ -864,11 +864,12 @@ def _validate_and_normalize_routing(
         logger.info("[DISPATCHER_ROUTER] 🌐 Resolving dual-intent conflict: is_web_search takes priority over need_rag for external data")
 
     # 🌐 Penyelarasan URL Reader vs Web Search:
-    # Jika is_url_read aktif dan pengguna TIDAK meminta pencarian web luar secara eksplisit, matikan is_web_search
-    if routing.get("is_url_read") and not routing_json.get("is_web_search") and not is_explicit_web:
+    # Jika is_url_read aktif atau ada URL terdeteksi, dan pengguna TIDAK meminta pencarian web luar secara eksplisit, matikan is_web_search
+    has_detected_url = bool(routing.get("is_url_read")) or bool(precheck.get("_detected_urls"))
+    if has_detected_url and not is_explicit_web and not is_forced_web_mode:
         routing["is_web_search"] = False
         routing["queries"] = []
-        logger.info("[DISPATCHER_ROUTER] 🔗 is_url_read active without explicit web search request -> setting is_web_search=False, queries=[]")
+        logger.info("[DISPATCHER_ROUTER] 🔗 is_url_read/detected URL active without explicit web search request -> setting is_web_search=False, queries=[]")
 
     # 🎯 SELF-CORRECTION DYNAMIC CONTEXT RESOLUTION
     # Sanggahan/koreksi user harus adaptif terhadap domain yang sedang dibahas:
@@ -1068,6 +1069,43 @@ def _validate_and_normalize_routing(
         routing["is_generate_email"] = False
         logger.info("[DISPATCHER_ROUTER] 📄 Document Writer intent enforced -> is_docwriter=True, is_generate_email=False & is_ambiguous=False")
 
+    # ── ATURAN SLIDE DECK & PPT MASTER (POINT 1 & POINT 2) ───────────────────
+    is_slide_intent = any(w in user_msg_lower for w in [
+        "slide", "slides", "presentasi", "presentation", "powerpoint", "ppt", 
+        "dek presentasi", "slide deck", "slidedeck", "paparan", "bahan paparan", 
+        "slideshow", "slide show"
+    ])
+    if is_slide_intent:
+        routing["requires_visual"] = True
+        if "slides" not in routing.get("visual_types", []):
+            routing["visual_types"].append("slides")
+        
+        # 🛡️ Mutually exclusive: PPT / slide deck DILARANG dialihkan ke generate_file (khusus code/doc XML)
+        # ataupun ke deck (khusus Nextcloud Deck Kanban)
+        routing["is_generate_file"] = False
+        routing["is_deck_query"] = False
+        routing["is_docwriter"] = False
+        
+        has_prior_context_data = bool(
+            routing.get("key_subject") 
+            or precheck.get("previous_subject") 
+            or precheck.get("active_regulation_title") 
+            or precheck.get("_detected_urls") 
+            or precheck.get("_session_chunks_text")
+        )
+        # Permintaan spesifik jika memuat indikator topik atau parameter slide yang jelas
+        has_substantive_params = len(user_msg_lower.split()) >= 4 and any(
+            w in user_msg_lower for w in ["tentang", "topik", "materi", "mengenai", "arsitektur", "halaman", "slide", "roadmap", "rencana", "strategi", "sistem"]
+        )
+        
+        if not has_substantive_params and not has_prior_context_data:
+            routing["is_ambiguous"] = True
+            routing["ambiguity_reason"] = "Permintaan pembuatan bahan paparan atau slide presentasi memerlukan kejelasan topik utama dan perkiraan jumlah halaman slide."
+            logger.info("[DISPATCHER_ROUTER] 📊 Slide Deck Intent Ambiguous -> Enforcing is_ambiguous=True with wizard context")
+        elif routing.get("is_ambiguous") and (has_substantive_params or has_prior_context_data):
+            routing["is_ambiguous"] = False
+            logger.info("[DISPATCHER_ROUTER] 📊 Slide Deck Intent Specific -> Enforcing is_ambiguous=False for direct generation")
+
     # ── ATURAN STRICT AMBIGUOUS GATE ──────────────────────────────────────────
     # Jika is_ambiguous True, paksa need_rag = False dan kosongkan search queries/web search
     # agar sistem tidak buang latency RAG & langsung menanyakan klarifikasi/wizard ke user.
@@ -1255,8 +1293,10 @@ def _validate_and_normalize_routing(
 
     # Override dengan precheck jika ada hint yang kuat (HANYA jika bukan public web search, bukan URL reader, dan BUKAN chitchat/greeting/closing)
     if precheck.get("need_rag_hint") is True and not routing["need_rag"] and not routing.get("is_web_search") and not precheck.get("has_url_context") and not precheck.get("is_public_web") and not routing.get("is_chitchat") and not routing.get("is_greeting"):
-        logger.warning("[DISPATCHER_ROUTER] Precheck override: need_rag forced to True")
-        routing["need_rag"] = True
+        # Hormati keputusan semantik Call 1 jika diarahkan ke pembuatan berkas/slide/coding
+        if not routing.get("is_generate_file") and not routing.get("is_coding") and not routing.get("is_deck_query"):
+            logger.warning("[DISPATCHER_ROUTER] Precheck override: need_rag forced to True")
+            routing["need_rag"] = True
 
     if precheck.get("is_coding") and not routing["is_coding"]:
         logger.warning("[DISPATCHER_ROUTER] Precheck override: is_coding forced to True")
@@ -1931,7 +1971,7 @@ async def dispatch_preset_route(
                 ]):
                     result["visual_types"].append("infographic")
                 if any(w in user_lower for w in [
-                    "slide", "slides", "presentasi", "presentation", "powerpoint", "ppt", "dek presentasi"
+                    "slide", "slides", "presentasi", "presentation", "powerpoint", "ppt", "dek presentasi", "slide deck", "slidedeck", "paparan", "bahan paparan", "slideshow", "slide show"
                 ]):
                     result["visual_types"].append("slides")
                 if not result["visual_types"]:

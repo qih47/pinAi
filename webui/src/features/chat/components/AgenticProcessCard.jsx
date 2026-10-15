@@ -11,11 +11,13 @@ import {
     ExternalLink,
     Image as ImageIcon,
     GitCompare,
-    CheckSquare
+    CheckSquare,
+    Presentation,
+    Download
 } from 'lucide-react';
 import { useChatStore } from '../../../stores/chatStore';
-import { getUploadUrl } from '../../../services/endpoints';
-import { translations } from '../../../utils/translations';
+import { getUploadUrl, getApiBase } from '../../../services/endpoints';
+import { translations, resolveStatusMessage } from '../../../utils/translations';
 
 /**
  * AgenticProcessCard
@@ -31,7 +33,8 @@ const AgenticProcessCard = ({
     hasStartedResponding = false,
     darkMode = true,
     language = 'id',
-    statusText
+    statusText,
+    statusKey
 }) => {
     // Parsing payload jika masih string
     const data = React.useMemo(() => {
@@ -53,6 +56,7 @@ const AgenticProcessCard = ({
     const isMedia = resolvedTool.includes('media') || resolvedTool.includes('flowchart') || resolvedTool.includes('visual');
     const isDiff = resolvedTool.includes('diff');
     const isDeck = resolvedTool.includes('deck');
+    const isPpt = resolvedTool.includes('ppt') || resolvedTool.includes('presentation') || resolvedTool.includes('slide');
 
     const [isOpen, setIsOpen] = useState(() => Boolean(isStreaming && !hasStartedResponding));
     const [elapsedSec, setElapsedSec] = useState(0);
@@ -65,7 +69,7 @@ const AgenticProcessCard = ({
     const outputContent = data.output || data.result || '';
     const errorContent = data.error || (data.status === 'error' ? (data.output || 'Eksekusi gagal') : null);
 
-    const hasData = Boolean(outputContent || data.documents || data.items || data.doc_1 || data.active_cards || data.total_assigned !== undefined);
+    const hasData = Boolean(outputContent || data.documents || data.items || data.doc_1 || data.active_cards || data.slides || data.presentation_data || data.total_assigned !== undefined);
     const isExecuting = isStreaming && !hasData;
     const isAnalyzing = isStreaming && hasData && !hasStartedResponding;
     const isComplete = hasStartedResponding || (!isStreaming && (hasData || data.stage === 'done'));
@@ -102,6 +106,7 @@ const AgenticProcessCard = ({
     // Header label
     const getHeaderLabel = () => {
         if (isComplete) {
+            if (isPpt) return isError ? (t.pptFailed || "Pembuatan bahan paparan (terkendala)") : (t.pptComplete || "Bahan Paparan (PPT Master) Selesai");
             if (isTerminal) return isError ? (t.terminalFailed || "Eksekusi terminal (terkendala)") : (t.terminalComplete || "Hasil eksekusi terminal Ubuntu");
             if (isCalc) return isError ? (t.calcFailed || "Kalkulasi matematis (terkendala)") : (t.calcComplete || "Hasil kalkulasi matematis presisi");
             if (isMedia) return isError ? (t.docMediaFailed || "Pengambilan visual dokumen (terkendala)") : (t.docMediaComplete || "Bagan alur & visual dokumen");
@@ -110,7 +115,50 @@ const AgenticProcessCard = ({
             if (isDoc) return t.docSearchComplete || "Hasil penelusuran regulasi internal";
             return t.genericComplete || "Hasil proses alat otonom";
         }
+        // 1. Prioritas stage data langsung dari PPT Master jika ada
+        if (isPpt) {
+            const effectiveKey = statusKey || data.status_key;
+            const effectiveCount = data.total_slides || data.count || (statusText && statusText.match(/(\d+)\s+slide/i)?.[1]) || 6;
+            if (data.stage === 'planning' || effectiveKey === 'TOOL_PPT_MASTER_PLANNING') {
+                return (t.pptPlanning || "Menganalisis materi & merancang kerangka narasi {count} slide via AI Architect...")
+                    .replace('{count}', effectiveCount);
+            }
+            if (data.stage === 'executing' || effectiveKey === 'TOOL_PPT_MASTER_EXECUTING' || data.stage === 'drafting' || effectiveKey === 'TOOL_PPT_MASTER_DRAFTING') {
+                const curSlide = data.current_slide || (statusText && statusText.match(/slide\s*(\d+)/i)?.[1]) || 1;
+                const totSlide = data.total_slides || (statusText && statusText.match(/(?:dari|of)\s*(\d+)/i)?.[1]) || effectiveCount;
+                const curTitle = data.current_title || (statusText && statusText.match(/:\s*(.+?)(?:\.{1,3})?$/)?.[1]) || '';
+                return (t.pptExecuting || t.pptDraftingSlide || "Membangun Slide {current} dari {total}: {title}...")
+                    .replace('{current}', curSlide)
+                    .replace('{total}', totSlide)
+                    .replace('{title}', curTitle);
+            }
+            if (data.stage === 'evaluating' || effectiveKey === 'TOOL_PPT_MASTER_EVALUATING') {
+                return t.pptEvaluating || "Mengevaluasi kesesuaian materi & menyempurnakan kualitas slide...";
+            }
+            if (data.stage === 'compiling' || effectiveKey === 'TOOL_PPT_MASTER_COMPILING') {
+                return t.pptCompilingPptx || "Finishing & mengompilasi file PowerPoint (.pptx) dengan elemen native DrawingML...";
+            }
+            if (data.stage === 'rendering' || effectiveKey === 'TOOL_PPT_MASTER_RENDERING') {
+                return t.pptRenderingPreviews || "Merender pratinjau slide resolusi tinggi dari berkas PPTX asli...";
+            }
+            if (data.stage === 'done' || effectiveKey === 'TOOL_PPT_MASTER_DONE') {
+                return t.pptComplete || "Bahan Paparan (PPT Master) Selesai";
+            }
+        }
+
+        // 2. Terjemahkan statusText / statusKey melalui resolveStatusMessage
+        if (statusText || statusKey || data.status_key) {
+            const effectiveKey = statusKey || data.status_key;
+            const resolved = resolveStatusMessage({ statusMessage: statusText, statusKey: effectiveKey }, language);
+            if (resolved) return resolved;
+        }
+
         if (statusText) return statusText;
+        if (isPpt) {
+            if (isExecuting) return (t.pptRunning || "Menyusun bahan paparan ({elapsed}s)").replace('{elapsed}', elapsedSec);
+            if (isAnalyzing) return t.pptAnalyzing || "Mengompilasi file PowerPoint (.pptx)...";
+            return t.pptDefault || "Penyusunan slide PPT Master";
+        }
         if (isTerminal) {
             if (isExecuting) return (t.terminalRunning || "Mengeksekusi terminal ({elapsed}s)").replace('{elapsed}', elapsedSec);
             if (isAnalyzing) return t.terminalAnalyzing || "Menganalisis output terminal";
@@ -145,6 +193,7 @@ const AgenticProcessCard = ({
     };
 
     const displayQuery = data.command || data.query || data.intent || (
+        isPpt ? (data.topic || "Penyusunan presentasi eksekutif") :
         isTerminal ? (t.terminalDefault || "Eksekusi perintah terminal Ubuntu") :
         isCalc ? (t.calcDefault || "Kalkulasi matematis via Python Sandbox") :
         isMedia ? (t.docMediaDefault || "Pengambilan visual & bagan alur dokumen") :
@@ -217,7 +266,9 @@ const AgenticProcessCard = ({
                             <div className={`py-1 px-1 rounded-full z-10 relative flex items-center justify-center ${
                                 darkMode ? 'bg-[#1e1e1e]' : 'bg-white border border-slate-200 shadow-sm'
                             }`}>
-                                {isMedia ? (
+                                {isPpt ? (
+                                    <Presentation className={`w-[14px] h-[14px] flex-shrink-0 ${darkMode ? 'text-emerald-400' : 'text-emerald-600'}`} />
+                                ) : isMedia ? (
                                     <ImageIcon className={`w-[14px] h-[14px] flex-shrink-0 ${darkMode ? 'text-pink-400' : 'text-pink-600'}`} />
                                 ) : isDiff ? (
                                     <GitCompare className={`w-[14px] h-[14px] flex-shrink-0 ${darkMode ? 'text-cyan-400' : 'text-cyan-600'}`} />
@@ -229,32 +280,49 @@ const AgenticProcessCard = ({
                                     <BookOpen className={`w-[14px] h-[14px] flex-shrink-0 ${darkMode ? 'text-amber-400' : 'text-amber-600'}`} />
                                 )}
                             </div>
-                            <span className={`text-[13.5px] font-medium truncate flex-grow ${
-                                darkMode ? 'text-[#888888]' : 'text-slate-700'
-                            }`} title={data.intent ? `Maksud: ${data.intent}` : undefined}>
-                                "{displayQuery}"
-                                {data.intent && data.query && data.intent.toLowerCase() !== data.query.toLowerCase() && (
-                                    <span className={`ml-2 text-[12px] font-normal opacity-75 hidden sm:inline`}>
-                                        ({data.intent})
+                            {isPpt ? (
+                                <span className={`text-[13.5px] font-medium truncate flex-grow flex items-center gap-2 ${
+                                    darkMode ? 'text-slate-200' : 'text-slate-700'
+                                }`}>
+                                    <span className="text-[10.5px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/20 flex-shrink-0">
+                                        {t.pptTopic || 'Topik Paparan'}
                                     </span>
-                                )}
-                            </span>
+                                    <span className="truncate" title={data.topic || data.title || displayQuery}>
+                                        {data.topic || data.title || displayQuery}
+                                    </span>
+                                </span>
+                            ) : (
+                                <span className={`text-[13.5px] font-medium truncate flex-grow ${
+                                    darkMode ? 'text-[#888888]' : 'text-slate-700'
+                                }`} title={data.intent ? `Maksud: ${data.intent}` : undefined}>
+                                    "{displayQuery}"
+                                    {data.intent && data.query && data.intent.toLowerCase() !== data.query.toLowerCase() && (
+                                        <span className={`ml-2 text-[12px] font-normal opacity-75 hidden sm:inline`}>
+                                            ({data.intent})
+                                        </span>
+                                    )}
+                                </span>
+                            )}
                             <span className={`text-[12px] whitespace-nowrap ${
                                 darkMode ? 'text-[#666666]' : 'text-slate-400'
                             }`}>
-                                {isTerminal
-                                    ? "ubuntu bash cli"
-                                    : isCalc 
-                                        ? (t.sandboxExecution || "sandbox execution")
-                                        : isMedia
-                                            ? `${data.items?.length || 0} visual`
-                                            : isDiff
-                                                ? (data.has_changes ? "perbedaan terdeteksi" : "regulasi identik")
-                                                : isDeck
-                                                    ? `${data.total_assigned || 0} tugas`
-                                                    : (isExecuting && (!data.documents || data.documents.length === 0))
-                                                        ? (t.searchingReferences || "Mencari referensi...")
-                                                        : `${data.documents?.length || 0} ${t.referencesCount || (language === 'en' ? 'references' : 'referensi')}`}
+                                {isPpt
+                                    ? (isExecuting && (!data.slides || data.slides.length === 0)
+                                        ? (t.pptDraftingOutline || "Menyiapkan kerangka...")
+                                        : `${data.total_slides || data.slides?.length || 0} ${t.pptSlidesCount || (language === 'en' ? 'Slides' : 'Slide')}`)
+                                    : isTerminal
+                                        ? "ubuntu bash cli"
+                                        : isCalc 
+                                            ? (t.sandboxExecution || "sandbox execution")
+                                            : isMedia
+                                                ? `${data.items?.length || 0} visual`
+                                                : isDiff
+                                                    ? (data.has_changes ? "perbedaan terdeteksi" : "regulasi identik")
+                                                    : isDeck
+                                                        ? `${data.total_assigned || 0} tugas`
+                                                        : (isExecuting && (!data.documents || data.documents.length === 0))
+                                                            ? (t.searchingReferences || "Mencari referensi...")
+                                                            : `${data.documents?.length || 0} ${t.referencesCount || (language === 'en' ? 'references' : 'referensi')}`}
                             </span>
                         </div>
 
@@ -577,11 +645,60 @@ const AgenticProcessCard = ({
                                     </div>
                                 </div>
                             )}
+
+                            {/* F. PPT_MASTER (Presentation Deck Box) */}
+                            {isPpt && (
+                                <div className={`p-3 rounded-xl border overflow-hidden transition-colors ${
+                                    darkMode ? 'border-[#2a2a2a] bg-[#1c1c1c] shadow-[0_4px_20px_rgba(0,0,0,0.3)]' : 'border-slate-200 bg-white shadow-[0_4px_20px_rgba(0,0,0,0.06)]'
+                                }`}>
+                                    <div className="flex items-center justify-between pb-2 border-b border-white/5 text-[12px]">
+                                        <div className="flex items-center gap-2">
+                                            <Presentation className="w-4 h-4 text-emerald-400" />
+                                            <span className="font-semibold text-emerald-400">{t.pptDeckTitle || "PPT Master Sovereign Deck"}</span>
+                                        </div>
+                                        <span className="text-[11px] text-gray-400 font-mono">
+                                            {data.total_slides ? `${data.total_slides} ${t.pptSlidesCount || 'Slide'}` : (t.pptDefault || 'Presentasi Eksekutif')}
+                                        </span>
+                                    </div>
+                                    <div className="mt-2 space-y-1.5 max-h-[200px] overflow-y-auto">
+                                        {data.slides && data.slides.length > 0 ? (
+                                            data.slides.map((title, idx) => (
+                                                <div key={idx} className={`p-2 rounded border flex items-center justify-between text-[11.5px] ${darkMode ? 'border-white/5 bg-[#141414]' : 'border-slate-100 bg-slate-50'}`}>
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="w-2 h-2 rounded-full bg-emerald-500 flex-shrink-0" />
+                                                        <span className={`font-medium line-clamp-1 ${darkMode ? 'text-white' : 'text-slate-800'}`}>{`Slide ${idx + 1}: ${title}`}</span>
+                                                    </div>
+                                                    <span className="text-[10px] text-emerald-400 px-1.5 py-0.5 rounded bg-emerald-500/10 font-mono">
+                                                        {t.pptReady || "Siap"}
+                                                    </span>
+                                                </div>
+                                            ))
+                                        ) : (
+                                            <div className="text-[12px] text-gray-400 p-2">{t.pptDraftingOutline || "Menyiapkan kerangka narasi & alur presentasi..."}</div>
+                                        )}
+                                    </div>
+                                    {data.download_url && (
+                                        <div className="mt-2.5 pt-2 border-t border-white/5 flex items-center justify-between">
+                                            <span className="text-[11px] text-gray-400 font-mono truncate max-w-[65%]">{data.filename || "presentasi.pptx"}</span>
+                                            <a 
+                                                href={data.download_url.startsWith('http') ? data.download_url : `${getApiBase()}${data.download_url.startsWith('/') ? '' : '/'}${data.download_url}`} 
+                                                download={data.filename || "presentasi.pptx"}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11.5px] font-medium bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 transition-colors shadow-sm cursor-pointer"
+                                            >
+                                                <Download className="w-3.5 h-3.5" />
+                                                {t.downloadPptx || "Unduh PPTX"}
+                                            </a>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
                         </div>
                     </div>
 
                     {/* Step 2: Analyzing / Done */}
-                    {(outputContent || data.documents || data.items || data.doc_1 || data.active_cards || isComplete) && (
+                    {(outputContent || data.documents || data.items || data.doc_1 || data.active_cards || data.slides || isComplete) && (
                         <div className="flex flex-col gap-3 mt-1 ml-[1px]">
                             <div className="flex items-center gap-3">
                                 <div className={`py-0.5 rounded-full z-10 relative flex items-center justify-center w-[18px] ${
@@ -601,7 +718,9 @@ const AgenticProcessCard = ({
                                     }`}
                                     style={isAnalyzing ? glossyShimmerStyle : undefined}
                                 >
-                                    {isMedia
+                                    {isPpt
+                                        ? (t.pptAnalyzing || "Mengompilasi file PowerPoint (.pptx)...")
+                                        : isMedia
                                         ? (t.docMediaAnalyzing || "Menganalisis bagan alur & visual dokumen...")
                                         : isDiff
                                             ? (t.docDiffAnalyzing || "Menganalisis perbedaan pasal & klausul...")

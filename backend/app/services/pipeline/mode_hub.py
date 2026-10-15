@@ -707,9 +707,14 @@ class ModeHub:
                     precheck["interrogator_file"] = focus_clean_name
                     precheck["interrogator_pages"] = interrogator_match.group(2)
 
-        # ── Fast-path Bypass untuk Attachment ──────────────────────────────────────
-        if has_attachment:
-            logger.info("[MODE_HUB] Attachment detected! Bypassing Call 1 and routing to Attachment Mode.")
+        # ── Fast-path Bypass untuk Attachment (Hanya untuk Tanya Jawab Dokumen Murni) ──
+        is_tool_action_requested = bool(re.search(
+            r'\b(presentasi|slide|slides|pptx|ppt|powerpoint|dek|slide deck|flowchart|diagram|hitung|kalkulasi|python_calc|websearch|cari di web|browsing)\b',
+            user_message,
+            re.IGNORECASE
+        ))
+        if has_attachment and not is_tool_action_requested:
+            logger.info("[MODE_HUB] Attachment detected (pure Q&A/Analysis)! Bypassing Call 1 and routing to Attachment Mode.")
             if session_uuid:
                 from backend.app.services.chat.chat_history_service import chat_history_service
                 radar_scores = {"dokumen": 100, "coding": 10, "chitchat": 10, "analitik": 100, "ambigu": 10}
@@ -859,10 +864,14 @@ class ModeHub:
         else:
             approved_fetch_urls = [u for u in detected_fetch_urls if u not in already_in_memory]
 
-        # HANYA jalankan blocking fetch di mode_hub jika user EKSPLISIT memilih pill tag tertentu
-        # Pada mode default/auto (Master Agentic Flow), urlfetch didelegasikan sepenuhnya ke Call 2 in-stream
+        # Progressive URL Fetching Stepper:
+        # Berjalan baik jika user memilih pill mode maupun pada mode default/auto jika terdapat URL yang terdeteksi
         is_explicit_pill_mode = effective_req_mode in ["documents", "document", "rag", "focus", "compliance", "redteam", "websearch", "search", "web"]
-        if approved_fetch_urls and is_explicit_pill_mode:
+        is_auto_or_default = effective_req_mode in ["auto", "default", ""]
+        is_url_read_intent = bool(routing_data.get("is_url_read")) or bool(precheck.get("is_url_read"))
+
+        should_fetch_urls = bool(approved_fetch_urls) and (is_explicit_pill_mode or is_auto_or_default or is_url_read_intent)
+        if should_fetch_urls:
             logger.info(f"[MODE_HUB] Regex-detected {len(approved_fetch_urls)} new URL(s) for live progressive fetching: {approved_fetch_urls}")
             
             collected_nodes = []
@@ -1215,10 +1224,13 @@ class ModeHub:
             precheck["need_rag"] = False
             # Jika user menghendaki is_url_read dan URL berhasil di-fetch:
             # Matikan web search KECUALI jika user secara eksplisit juga meminta web search (kasus kombo)
-            has_explicit_web = bool(routing_data.get("is_web_search", False)) and bool(routing_data.get("queries"))
+            from backend.app.services.pipeline.intent_dictionary import is_explicit_web_search_required
+            is_explicit_web_req = is_explicit_web_search_required(user_message) or (effective_req_mode in ["websearch", "web_search", "web", "search"])
+            has_explicit_web = is_explicit_web_req and bool(routing_data.get("queries"))
             if url_contexts and url_contexts.strip():
                 if not has_explicit_web:
                     precheck["is_web_search"] = False
+                    routing_data["is_web_search"] = False
                     logger.info("[MODE_HUB] URL content fetched successfully → murni URL reader, skipping web search")
                 else:
                     logger.info("[MODE_HUB] URL content fetched AND explicit web search requested → combo mode")
@@ -1315,18 +1327,30 @@ class ModeHub:
         # Ensure mode exists, fallback to auto
         mode = chat_mode if chat_mode in self.mode_handlers else "auto"
 
+        # ── Check Slide/Presentation intent (PPT Master) ───────────────────────────
+        visual_types = routing_data.get("visual_types") or precheck.get("visual_types") or []
+        is_presentation_intent = (
+            "slides" in visual_types
+            or routing_data.get("visual_type") == "slides"
+            or precheck.get("visual_type") == "slides"
+            or any(w in user_message.lower() for w in [
+                "buat ppt", "bikin ppt", "buatkan ppt", "buat slide", "bikin slide", 
+                "buatkan slide", "bahan paparan", "slide deck", "slidedeck", "powerpoint"
+            ])
+        )
+
         # ── Priority 1: is_generate_file intent (Interceptor-Analyst Pipeline) ──────
-        # Masuk ke generate_file HANYA jika ada permintaan pembuatan file eksplisit dan bukan ambigu
-        if routing_data.get("is_generate_file") and not is_guest and not routing_data.get("is_ambiguous"):
+        # Masuk ke generate_file HANYA jika ada permintaan pembuatan file eksplisit dan BUKAN slide/presentasi
+        if routing_data.get("is_generate_file") and not is_presentation_intent and not is_guest and not routing_data.get("is_ambiguous"):
             logger.info("[MODE_HUB] Explicit is_generate_file detected & not ambiguous → routing to GENERATE_FILE mode")
             mode = "generate_file"
-        elif (routing_data.get("is_docwriter") or precheck.get("is_docwriter")) and not is_guest:
+        elif (routing_data.get("is_docwriter") or precheck.get("is_docwriter")) and not is_guest and not is_presentation_intent:
             logger.info("[MODE_HUB] is_docwriter=True detected → routing to FLASH mode for Document Writer")
             mode = "flash"
         elif routing_data.get("is_generate_email") and not is_guest and not routing_data.get("is_ambiguous"):
             logger.info("[MODE_HUB] is_generate_email=True detected & not ambiguous → routing to EMAIL mode")
             mode = "email"
-        elif (routing_data.get("is_deck_query") or precheck.get("is_deck_query")) and not is_guest:
+        elif (routing_data.get("is_deck_query") or precheck.get("is_deck_query")) and not is_guest and not is_presentation_intent:
             logger.info("[MODE_HUB] is_deck_query=True detected → routing to DECK mode")
             mode = "deck"
         elif mode == "auto":

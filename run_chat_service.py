@@ -269,6 +269,7 @@ from backend.app.api.dependencies.auth import get_current_user_npp
 
 DB_DOC_DIR = os.path.join(CURRENT_FILE_DIR, "db_doc")
 
+@app.get("/api/db_doc/{file_path:path}", tags=["Static Files"])
 @app.get("/db_doc/{file_path:path}", tags=["Static Files"])
 async def serve_db_doc(file_path: str, request: Request, current_user_npp: Optional[str] = Depends(get_current_user_npp)):
     if not current_user_npp or current_user_npp == "GUEST":
@@ -302,7 +303,10 @@ async def get_system_models_status():
     }
 
 
+@app.get("/api/uploads/{file_path:path}", tags=["Static Files"])
+@app.head("/api/uploads/{file_path:path}", tags=["Static Files"])
 @app.get("/uploads/{file_path:path}", tags=["Static Files"])
+@app.head("/uploads/{file_path:path}", tags=["Static Files"])
 async def serve_uploads(file_path: str, request: Request):
     abs_path = os.path.join(UPLOAD_DIR, file_path)
     if not os.path.exists(abs_path):
@@ -318,7 +322,10 @@ async def serve_uploads(file_path: str, request: Request):
         raise HTTPException(status_code=404, detail="File tidak ditemukan")
     return FileResponse(abs_path)
 
+@app.get("/api/accounts/{file_path:path}", tags=["Static Files"])
+@app.head("/api/accounts/{file_path:path}", tags=["Static Files"])
 @app.get("/accounts/{file_path:path}", tags=["Static Files"])
+@app.head("/accounts/{file_path:path}", tags=["Static Files"])
 async def serve_accounts(file_path: str, request: Request, current_user_npp: Optional[str] = Depends(get_current_user_npp)):
     abs_path = os.path.join(ACCOUNTS_DIR, file_path)
     if not os.path.exists(abs_path):
@@ -339,6 +346,8 @@ async def serve_accounts(file_path: str, request: Request, current_user_npp: Opt
         raise HTTPException(status_code=404, detail="File tidak ditemukan")
     return FileResponse(abs_path)
 
+@app.get("/api/file_peraturan/{file_path:path}", tags=["Static Files"])
+@app.head("/api/file_peraturan/{file_path:path}", tags=["Static Files"])
 @app.get("/file_peraturan/{file_path:path}", tags=["Static Files"])
 @app.head("/file_peraturan/{file_path:path}", tags=["Static Files"])
 async def serve_file_peraturan(file_path: str, request: Request):
@@ -417,6 +426,7 @@ async def serve_file_peraturan(file_path: str, request: Request):
 DOC_PAGES_DIR = "/home/qisthi/pinAi/backend/storage/doc_pages"
 os.makedirs(DOC_PAGES_DIR, exist_ok=True)
 
+@app.get("/api/doc_pages/{file_path:path}", tags=["Static Files"])
 @app.get("/doc_pages/{file_path:path}", tags=["Static Files"])
 async def serve_doc_pages(file_path: str):
     abs_path = os.path.join(DOC_PAGES_DIR, file_path)

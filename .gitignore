@@ -158,3 +158,9 @@ data/
 
 docs/*
 !docs/.gitkeep
+
+# ==============================================================================
+# THIRD-PARTY TOOLS & EXTERNAL SKILLS
+# ==============================================================================
+backend/app/services/tools/ppt_master/
+.agents/skills/ppt_master

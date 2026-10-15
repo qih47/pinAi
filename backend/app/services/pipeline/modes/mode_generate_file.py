@@ -330,8 +330,17 @@ class ModeGenerateFile:
                         continue
 
                     try:
-                        content = art_file.read_text(encoding="utf-8")
-                        existing_artifacts_content += f"\n<existing_file filename=\"{art_file.name}\">\n{content}\n</existing_file>\n"
+                        ext = art_file.suffix.lower()
+                        if ext in [".png", ".jpg", ".jpeg", ".webp", ".zip", ".tar", ".gz", ".exe", ".bin"]:
+                            continue
+                        if ext in [".pdf", ".docx", ".xlsx"]:
+                            from backend.app.services.tools.unified_extractor import extract_document
+                            doc = await extract_document(str(art_file))
+                            content = doc.full_text if doc else ""
+                        else:
+                            content = art_file.read_text(encoding="utf-8", errors="replace")
+                        if content and content.strip():
+                            existing_artifacts_content += f"\n<existing_file filename=\"{art_file.name}\">\n{content.strip()}\n</existing_file>\n"
                     except Exception as fe:
                         logger.warning(f"[MODE_GENERATE_FILE] Gagal membaca artifact {art_file.name}: {fe}")
 
@@ -344,9 +353,19 @@ class ModeGenerateFile:
                             if not att_path.is_absolute():
                                 att_path = account_artifacts_dir.parent / "attachments" / att_path.name
                             if att_path.exists():
-                                content = att_path.read_text(encoding="utf-8")
-                                filename = att.get("file_name", att_path.name)
-                                existing_artifacts_content += f"\n<existing_file filename=\"{filename}\" type=\"user_attachment\">\n{content}\n</existing_file>\n"
+                                ext = att_path.suffix.lower()
+                                if ext in [".png", ".jpg", ".jpeg", ".webp", ".zip", ".tar", ".gz", ".exe", ".bin"]:
+                                    continue
+                                if ext in [".pdf", ".docx", ".xlsx"]:
+                                    from backend.app.services.tools.unified_extractor import extract_document
+                                    doc = await extract_document(str(att_path))
+                                    content = doc.full_text if doc else ""
+                                else:
+                                    content = att_path.read_text(encoding="utf-8", errors="replace")
+                                
+                                if content and content.strip():
+                                    filename = att.get("file_name", att_path.name)
+                                    existing_artifacts_content += f"\n<existing_file filename=\"{filename}\" type=\"user_attachment\">\n{content.strip()}\n</existing_file>\n"
                     except Exception as e:
                         logger.warning(f"[MODE_GENERATE_FILE] Gagal membaca attachment {att.get('file_path')}: {e}")
         except Exception as e:

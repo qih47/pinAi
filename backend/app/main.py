@@ -248,6 +248,7 @@ from backend.app.api.dependencies.auth import get_current_user_npp
 from typing import Optional
 from fastapi import Request, HTTPException
 
+@app.get("/api/db_doc/{file_path:path}", tags=["Static Files"])
 @app.get("/db_doc/{file_path:path}", tags=["Static Files"])
 async def serve_db_doc(file_path: str, request: Request, current_user_npp: Optional[str] = Depends(get_current_user_npp)):
     if not current_user_npp or current_user_npp == "GUEST":
@@ -261,7 +262,10 @@ async def serve_db_doc(file_path: str, request: Request, current_user_npp: Optio
     return FileResponse(abs_path)
 
 
+@app.get("/api/uploads/{file_path:path}", tags=["Static Files"])
+@app.head("/api/uploads/{file_path:path}", tags=["Static Files"])
 @app.get("/uploads/{file_path:path}", tags=["Static Files"])
+@app.head("/uploads/{file_path:path}", tags=["Static Files"])
 async def serve_uploads(file_path: str, request: Request):
     abs_path = os.path.join(UPLOAD_DIR, file_path)
     if not os.path.exists(abs_path):
@@ -269,7 +273,10 @@ async def serve_uploads(file_path: str, request: Request):
     return FileResponse(abs_path)
 
 
+@app.get("/api/accounts/{file_path:path}", tags=["Static Files"])
+@app.head("/api/accounts/{file_path:path}", tags=["Static Files"])
 @app.get("/accounts/{file_path:path}", tags=["Static Files"])
+@app.head("/accounts/{file_path:path}", tags=["Static Files"])
 async def serve_accounts(file_path: str, request: Request, current_user_npp: Optional[str] = Depends(get_current_user_npp)):
     abs_path = os.path.join(ACCOUNTS_DIR, file_path)
     if not os.path.exists(abs_path):
@@ -291,7 +298,10 @@ async def serve_accounts(file_path: str, request: Request, current_user_npp: Opt
     return FileResponse(abs_path)
 
 
+@app.get("/api/file_peraturan/{file_path:path}", tags=["Static Files"])
+@app.head("/api/file_peraturan/{file_path:path}", tags=["Static Files"])
 @app.get("/file_peraturan/{file_path:path}", tags=["Static Files"])
+@app.head("/file_peraturan/{file_path:path}", tags=["Static Files"])
 async def serve_file_peraturan(file_path: str, request: Request):
     abs_path = os.path.join(FILE_PERATURAN_DIR, file_path)
     if not os.path.exists(abs_path):
@@ -299,6 +309,7 @@ async def serve_file_peraturan(file_path: str, request: Request):
     return FileResponse(abs_path)
 
 
+@app.get("/api/doc_pages/{file_path:path}", tags=["Static Files"])
 @app.get("/doc_pages/{file_path:path}", tags=["Static Files"])
 async def serve_doc_pages(file_path: str, request: Request):
     # Proteksi path traversal

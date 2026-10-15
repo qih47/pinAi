@@ -20,6 +20,26 @@ export default defineConfig({
         target: 'http://localhost:8000',
         changeOrigin: true,
       },
+      '/accounts': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+      },
+      '/uploads': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+      },
+      '/file_peraturan': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+      },
+      '/db_doc': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+      },
+      '/doc_pages': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+      },
     },
   },
   build: {
